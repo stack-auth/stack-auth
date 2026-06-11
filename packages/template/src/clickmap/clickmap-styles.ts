@@ -290,6 +290,57 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     color: var(--sdt-text);
   }
 
+  /* Presses must always target the button itself: the chevron svg is replaced
+     when the panel toggles, and a press whose mousedown landed on a since-
+     detached svg never produces a click. */
+  .hexclave-clickmap .sdt-hm-icon-btn svg {
+    pointer-events: none;
+  }
+
+  /* Styled tooltips for toolbar controls, driven by a data-sdt-tip attribute
+     instead of native title so they match the overlay theme and also show on
+     keyboard focus. The hover transition-delay acts as a hover-intent gate so
+     tooltips don't flash while the pointer crosses the toolbar; hover-out has
+     no delay, so they dismiss instantly. */
+  .hexclave-clickmap [data-sdt-tip] {
+    position: relative;
+  }
+
+  .hexclave-clickmap [data-sdt-tip]::after {
+    content: attr(data-sdt-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    padding: 4px 8px;
+    border: 1px solid var(--sdt-border);
+    border-radius: var(--sdt-radius);
+    background: var(--sdt-overlay-bg);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    color: var(--sdt-text);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    z-index: 3;
+  }
+
+  .hexclave-clickmap [data-sdt-tip]:hover::after,
+  .hexclave-clickmap [data-sdt-tip]:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    transition-delay: 0.35s;
+  }
+
+  /* The info button's tooltip would sit on top of its own help popover. */
+  .hexclave-clickmap .sdt-hm-filter-info[aria-expanded="true"]::after {
+    opacity: 0;
+  }
+
   .hexclave-clickmap .sdt-hm-details {
     display: none;
     max-height: min(460px, calc(100vh - 98px));
@@ -665,7 +716,7 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
   .hexclave-clickmap .sdt-hm-row {
     width: 100%;
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-columns: minmax(42px, auto) minmax(0, 1fr) 24px;
     align-items: center;
     gap: 10px;
     border: 0;
@@ -701,34 +752,54 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 34px;
     height: 24px;
-    border-radius: 999px;
+    border-radius: calc(var(--sdt-radius) - 2px);
     background: var(--sdt-accent-muted);
     color: var(--sdt-accent-hover);
-    border: 0;
-    appearance: none;
-    padding: 0;
+    padding: 0 7px;
     font-size: 12px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     font-family: var(--sdt-font);
-    cursor: pointer;
   }
 
-  .hexclave-clickmap .sdt-hm-row-count:hover {
+  .hexclave-clickmap .sdt-hm-row-muted .sdt-hm-row-count {
+    background: var(--sdt-bg-elevated);
+    color: var(--sdt-text-tertiary);
+  }
+
+  .hexclave-clickmap .sdt-hm-row-eye {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: calc(var(--sdt-radius) - 2px);
+    background: var(--sdt-bg-elevated);
+    color: var(--sdt-text-secondary);
+    appearance: none;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .hexclave-clickmap .sdt-hm-row:hover .sdt-hm-row-eye,
+  .hexclave-clickmap .sdt-hm-row:focus-within .sdt-hm-row-eye,
+  .hexclave-clickmap .sdt-hm-row-muted .sdt-hm-row-eye {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .hexclave-clickmap .sdt-hm-row-eye:hover {
     background: var(--sdt-bg-hover);
+    border-color: var(--sdt-border);
     color: var(--sdt-text);
     transition: none;
   }
 
-  .hexclave-clickmap .sdt-hm-row-count[aria-pressed="true"] {
-    background: var(--sdt-bg-elevated);
-    color: var(--sdt-text-tertiary);
-    text-decoration: line-through;
-  }
-
-  .hexclave-clickmap .sdt-hm-row-count:focus-visible {
+  .hexclave-clickmap .sdt-hm-row-eye:focus-visible {
     outline: 2px solid var(--sdt-accent);
     outline-offset: 2px;
   }
@@ -762,6 +833,8 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     inset: 0;
     z-index: 2147483646;
     pointer-events: none;
+    --resize-dur: 320ms;
+    --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .sdt-hm-overlay-root .sdt-hm-marker {
@@ -816,13 +889,30 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
 
   .sdt-hm-overlay-root .sdt-hm-highlight {
     position: fixed;
-    display: none;
     border-radius: 5px;
     background: rgba(250, 204, 21, 0.28);
     box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.7), 0 0 0 9999px rgba(0, 0, 0, 0.04);
+    opacity: 0;
+    will-change: top, left, width, height;
+    transition: opacity 0.18s ease;
   }
 
   .sdt-hm-overlay-root .sdt-hm-highlight-visible {
-    display: block;
+    opacity: 1;
+  }
+
+  .sdt-hm-overlay-root .sdt-hm-highlight-animating {
+    transition:
+      top var(--resize-dur) var(--resize-ease),
+      left var(--resize-dur) var(--resize-ease),
+      width var(--resize-dur) var(--resize-ease),
+      height var(--resize-dur) var(--resize-ease),
+      opacity 0.18s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sdt-hm-overlay-root .sdt-hm-highlight-animating {
+      transition: opacity 0.18s ease;
+    }
   }
 `;

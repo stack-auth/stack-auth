@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clickmap: Beyond PostHog — Improvement Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06080c;
+    --bg-2: #090c12;
+    --panel: #0c1018;
+    --panel-2: #10151f;
+    --border: #1b2231;
+    --border-soft: #141a26;
+    --text: #e9edf4;
+    --muted: #8b95a8;
+    --faint: #5b6478;
+
+    /* thermal ramp — same hue range as getClickmapHue(): 185 → 30 */
+    --heat-cyan:   hsl(185, 92%, 58%);
+    --heat-green:  hsl(140, 75%, 55%);
+    --heat-yellow: hsl(58, 95%, 58%);
+    --heat-orange: hsl(25, 100%, 58%);
+    --heat-red:    hsl(4, 92%, 62%);
+    --ramp: linear-gradient(90deg, var(--heat-cyan), var(--heat-green), var(--heat-yellow), var(--heat-orange), var(--heat-red));
+
+    --serif: "Fraunces", Georgia, serif;
+    --sans: "Schibsted Grotesk", -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: hsla(185, 92%, 58%, 0.28); color: #fff; }
+
+  /* ---------- atmosphere ---------- */
+  .dotfield {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: radial-gradient(circle, #1d2536 1px, transparent 1px);
+    background-size: 34px 34px;
+    opacity: 0.5;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 0%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 0%, transparent 75%);
+  }
+  .grain {
+    position: fixed; inset: -50%; z-index: 9990; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    animation: grain 7s steps(8) infinite;
+  }
+  @keyframes grain {
+    0%,100% { transform: translate(0,0); } 12% { transform: translate(-3%,2%); }
+    25% { transform: translate(2%,-3%); } 37% { transform: translate(-2%,-2%); }
+    50% { transform: translate(3%,3%); } 62% { transform: translate(-3%,1%); }
+    75% { transform: translate(2%,2%); } 87% { transform: translate(-1%,-3%); }
+  }
+
+  /* ---------- scroll progress (the page's own scrollmap) ---------- */
+  #progress {
+    position: fixed; top: 0; left: 0; height: 3px; width: 100%;
+    z-index: 9995; pointer-events: none;
+    background: var(--ramp);
+    transform-origin: 0 50%;
+    transform: scaleX(0);
+    box-shadow: 0 0 18px hsla(25, 100%, 58%, 0.45);
+  }
+
+  /* ---------- instrument HUD ---------- */
+  #hud {
+    position: fixed; left: 18px; bottom: 16px; z-index: 9994;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+    color: var(--muted);
+    background: hsla(220, 30%, 6%, 0.82);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex; gap: 14px; align-items: center;
+    user-select: none;
+  }
+  #hud b { color: var(--text); font-weight: 500; }
+  #hud .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--heat-cyan); box-shadow: 0 0 8px var(--heat-cyan); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  #hud .sep { color: var(--faint); }
+  @media (max-width: 720px) { #hud { display: none; } }
+
+  /* ---------- side nav ---------- */
+  #rail {
+    position: fixed; right: 26px; top: 50%; transform: translateY(-50%);
+    z-index: 9993; display: flex; flex-direction: column; gap: 4px;
+  }
+  #rail a {
+    display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+    text-decoration: none; padding: 6px 0;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+    color: var(--faint); transition: color 0.25s;
+  }
+  #rail a .tick { width: 18px; height: 1px; background: var(--faint); transition: all 0.25s; }
+  #rail a.active { color: var(--text); }
+  #rail a.active .tick { width: 30px; background: var(--heat-orange); box-shadow: 0 0 10px var(--heat-orange); }
+  #rail a:hover { color: var(--muted); }
+  @media (max-width: 1180px) { #rail { display: none; } }
+
+  /* ---------- click recorder layer ---------- */
+  #clickLayer { position: absolute; top: 0; left: 0; width: 100%; z-index: 9000; pointer-events: none; }
+  .cdot { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
+  .cdot .blob {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: radial-gradient(circle, var(--c) 0%, transparent 70%);
+    box-shadow: 0 0 16px 4px color-mix(in srgb, var(--c) 55%, transparent);
+    animation: blobIn 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+  .cdot .ring {
+    position: absolute; inset: -10px; border-radius: 50%;
+    border: 1.5px solid var(--c);
+    animation: ringOut 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+  @keyframes blobIn { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes ringOut { from { transform: scale(0.3); opacity: 0.9; } to { transform: scale(2.4); opacity: 0; } }
+
+  #rageToast {
+    position: fixed; bottom: 60px; left: 50%; transform: translate(-50%, 20px);
+    z-index: 9996; opacity: 0; pointer-events: none;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    color: var(--heat-red);
+    background: hsla(220, 30%, 6%, 0.92);
+    border: 1px solid color-mix(in srgb, var(--heat-red) 50%, transparent);
+    border-radius: 999px; padding: 9px 18px;
+    box-shadow: 0 0 30px hsla(4, 92%, 62%, 0.25);
+    transition: all 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+  #rageToast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- layout ---------- */
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 32px; position: relative; z-index: 2; }
+  @media (max-width: 720px) { .wrap { padding: 0 20px; } }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative; min-height: 100vh;
+    display: flex; flex-direction: column; justify-content: center;
+    cursor: crosshair;
+    border-bottom: 1px dashed #243049;
+  }
+  #heatCanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0;
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+  .hero .gridlines {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background-image:
+      linear-gradient(to right, hsla(220, 40%, 60%, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, hsla(220, 40%, 60%, 0.05) 1px, transparent 1px);
+    background-size: 90px 90px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, black, transparent 90%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 40%, black, transparent 90%);
+  }
+  .crosshair { position: absolute; z-index: 1; width: 22px; height: 22px; opacity: 0.5; pointer-events: none; }
+  .crosshair::before, .crosshair::after { content: ""; position: absolute; background: #3a4666; }
+  .crosshair::before { left: 50%; top: 0; width: 1px; height: 100%; }
+  .crosshair::after { top: 50%; left: 0; height: 1px; width: 100%; }
+  .ch-tl { top: 36px; left: 36px; } .ch-tr { top: 36px; right: 36px; }
+  .ch-bl { bottom: 90px; left: 36px; } .ch-br { bottom: 90px; right: 36px; }
+
+  .hero-inner { position: relative; z-index: 2; }
+  .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em;
+    color: var(--heat-cyan); text-transform: uppercase;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .kicker::before { content: ""; width: 36px; height: 1px; background: var(--heat-cyan); box-shadow: 0 0 8px var(--heat-cyan); }
+  .kicker .dim { color: var(--faint); }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(56px, 9.5vw, 124px);
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    margin: 26px 0 0;
+  }
+  h1 .hot {
+    background: var(--ramp);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    filter: drop-shadow(0 0 28px hsla(25, 100%, 58%, 0.22));
+  }
+  .hero .verdict {
+    margin: 30px 0 0; max-width: 64ch;
+    font-size: clamp(15px, 1.6vw, 18px); line-height: 1.7; color: var(--muted);
+  }
+  .hero .verdict b { color: var(--text); font-weight: 600; }
+
+  .statline { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 36px; }
+  .stat {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 8px 16px; color: var(--muted);
+    background: hsla(220, 30%, 8%, 0.6);
+    display: flex; align-items: center; gap: 9px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .stat i { font-style: normal; width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .stat b { color: var(--text); font-weight: 600; font-size: 14px; }
+
+  .foldline {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 3;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 36px; transform: translateY(50%);
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.2em; color: var(--faint);
+  }
+  .foldline::before, .foldline::after { content: ""; flex: 1; }
+  .foldline span { background: var(--bg); padding: 2px 14px; border: 1px dashed #243049; border-radius: 999px; }
+
+  .scrollcue {
+    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 3;
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.3em; color: var(--faint);
+    animation: bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob { 50% { transform: translate(-50%, 6px); } }
+
+  /* ---------- sections ---------- */
+  section { position: relative; padding: 110px 0 30px; }
+  .secthead { position: relative; margin-bottom: 34px; }
+  .ghost {
+    position: absolute; top: -78px; left: -14px; z-index: 0;
+    font-family: var(--serif); font-weight: 700;
+    font-size: clamp(120px, 16vw, 210px); line-height: 1;
+    color: transparent;
+    -webkit-text-stroke: 1px #1a2233;
+    user-select: none; pointer-events: none;
+  }
+  .seclabel {
+    position: relative; z-index: 1;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.24em;
+    text-transform: uppercase; color: var(--heat-orange);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .seclabel::before { content: ""; width: 28px; height: 1px; background: var(--heat-orange); }
+  h2 {
+    position: relative; z-index: 1;
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(34px, 4.6vw, 52px); line-height: 1.08; letter-spacing: -0.02em;
+    margin: 14px 0 10px;
+  }
+  .lede { color: var(--muted); font-size: 16.5px; max-width: 74ch; margin: 0; position: relative; z-index: 1; }
+
+  code {
+    font-family: var(--mono); font-size: 0.84em;
+    background: var(--panel-2); border: 1px solid var(--border-soft);
+    border-radius: 5px; padding: 1px 6px; color: #c8d2e4;
+  }
+
+  /* ---------- scorecard table ---------- */
+  .tbl {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; margin: 36px 0 0;
+    box-shadow: 0 30px 80px -40px rgba(0,0,0,0.8);
+  }
+  .tbl table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .tbl th {
+    text-align: left; font-family: var(--mono); font-weight: 500;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--faint); padding: 16px 18px 14px;
+    border-bottom: 1px solid var(--border);
+    background: hsla(220, 30%, 8%, 0.5);
+  }
+  .tbl td { padding: 15px 18px; border-bottom: 1px solid var(--border-soft); vertical-align: top; color: var(--muted); }
+  .tbl td:first-child { color: var(--text); font-weight: 600; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl tbody tr { position: relative; transition: background 0.25s; }
+  .tbl tbody tr:hover { background: hsla(215, 50%, 50%, 0.05); }
+  .tbl tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--heat-cyan); }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+    padding: 4px 11px; border-radius: 999px; letter-spacing: 0.12em; white-space: nowrap;
+    border: 1px solid;
+  }
+  .pill.win  { color: var(--heat-cyan); border-color: color-mix(in srgb, var(--heat-cyan) 40%, transparent); background: color-mix(in srgb, var(--heat-cyan) 9%, transparent); text-shadow: 0 0 12px color-mix(in srgb, var(--heat-cyan) 60%, transparent); }
+  .pill.gap  { color: var(--heat-red); border-color: color-mix(in srgb, var(--heat-red) 40%, transparent); background: color-mix(in srgb, var(--heat-red) 10%, transparent); text-shadow: 0 0 12px color-mix(in srgb, var(--heat-red) 60%, transparent); }
+  .pill.par  { color: var(--muted); border-color: var(--border); background: hsla(220, 20%, 50%, 0.06); }
+  .pill.part { color: var(--heat-yellow); border-color: color-mix(in srgb, var(--heat-yellow) 35%, transparent); background: color-mix(in srgb, var(--heat-yellow) 8%, transparent); }
+  .pill.sz   { color: var(--faint); border-color: var(--border); background: transparent; }
+
+  .callout {
+    position: relative;
+    margin: 28px 0 0; padding: 22px 26px 22px 30px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--heat-cyan) 6%, var(--panel)) 0%, var(--panel) 60%);
+    border: 1px solid color-mix(in srgb, var(--heat-cyan) 22%, var(--border));
+    border-radius: 14px; font-size: 15px; max-width: none; color: var(--muted);
+  }
+  .callout::before {
+    content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px;
+    border-radius: 3px; background: var(--heat-cyan); box-shadow: 0 0 14px var(--heat-cyan);
+  }
+  .callout b { color: var(--text); }
+  .callout.hot { background: linear-gradient(135deg, color-mix(in srgb, var(--heat-orange) 7%, var(--panel)) 0%, var(--panel) 60%); border-color: color-mix(in srgb, var(--heat-orange) 25%, var(--border)); }
+  .callout.hot::before { background: var(--heat-orange); box-shadow: 0 0 14px var(--heat-orange); }
+
+  /* ---------- posthog cards ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 36px; }
+  @media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
+  .card {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border); border-radius: 16px; padding: 26px 28px;
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1), border-color 0.3s;
+  }
+  .card:hover { transform: translateY(-3px); border-color: #2a3349; }
+  .card h4 {
+    margin: 0 0 16px; font-family: var(--mono); font-weight: 500;
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--heat-green);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card h4::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .card ul { margin: 0; padding: 0; list-style: none; }
+  .card li { position: relative; margin: 11px 0; padding-left: 20px; font-size: 14px; color: var(--muted); }
+  .card li::before { content: "▸"; position: absolute; left: 0; top: 0; color: var(--heat-green); font-size: 11px; }
+  .card li b { color: var(--text); font-weight: 600; }
+
+  /* ---------- phases ---------- */
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: 0.06em; }
+  .thermo {
+    height: 6px; border-radius: 999px; background: var(--ramp);
+    margin: 38px 0 6px; position: relative;
+    box-shadow: 0 0 24px hsla(25, 100%, 58%, 0.25);
+  }
+  .thermo .tlabels { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; color: var(--faint); padding-top: 10px; }
+
+  .phase {
+    position: relative;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border); border-radius: 18px;
+    padding: 34px 38px 26px; margin: 26px 0;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .phase::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--pc); box-shadow: 0 0 22px var(--pc);
+  }
+  .phase::after {
+    content: ""; position: absolute; top: -120px; right: -120px; width: 320px; height: 320px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--pc) 9%, transparent) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .phase:hover { border-color: color-mix(in srgb, var(--pc) 30%, var(--border)); }
+
+  .phase-head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .pnum {
+    font-family: var(--serif); font-weight: 700;
+    font-size: 54px; line-height: 1; color: var(--pc);
+    text-shadow: 0 0 30px color-mix(in srgb, var(--pc) 50%, transparent);
+  }
+  .phase-head h3 { margin: 0; font-family: var(--serif); font-weight: 600; font-size: clamp(22px, 2.8vw, 30px); letter-spacing: -0.01em; }
+  .huetag {
+    margin-left: auto; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+    color: var(--pc); border: 1px solid color-mix(in srgb, var(--pc) 35%, transparent);
+    border-radius: 999px; padding: 4px 12px;
+    background: color-mix(in srgb, var(--pc) 7%, transparent);
+  }
+  .phase .goal { color: var(--muted); font-size: 14.5px; margin: 12px 0 8px; max-width: 84ch; }
+
+  .item { display: grid; grid-template-columns: 1fr auto; gap: 18px; padding: 18px 0; border-top: 1px solid var(--border-soft); }
+  .item:first-of-type { border-top: none; margin-top: 12px; }
+  .item b.t { font-weight: 650; font-size: 15.5px; color: var(--text); }
+  .item .desc { color: var(--muted); font-size: 13.8px; margin-top: 4px; max-width: 80ch; line-height: 1.6; }
+  .tags { display: flex; gap: 6px; align-items: flex-start; padding-top: 4px; }
+
+  /* ---------- touchpoints ---------- */
+  .tbl.compact td, .tbl.compact th { padding: 13px 18px; }
+  .tbl.compact td:first-child { white-space: nowrap; }
+
+  /* ---------- risks ---------- */
+  .risks { margin: 36px 0 0; display: grid; gap: 12px; }
+  .risk {
+    display: grid; grid-template-columns: 26px 1fr; gap: 14px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 22px; font-size: 14.5px; color: var(--muted);
+    transition: border-color 0.25s;
+  }
+  .risk:hover { border-color: color-mix(in srgb, var(--heat-red) 30%, var(--border)); }
+  .risk .n { font-family: var(--mono); font-size: 11px; color: var(--heat-red); padding-top: 3px; }
+  .risk b { color: var(--text); }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 100px; padding: 36px 0 90px;
+    border-top: 1px dashed #243049;
+    font-family: var(--mono); font-size: 11px; line-height: 2; color: var(--faint);
+    letter-spacing: 0.04em;
+  }
+  footer .sig { margin-top: 14px; }
+  footer .sig span { background: var(--ramp); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; font-weight: 600; }
+
+  /* ---------- reveal animations ---------- */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.3, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1); transition-delay: var(--d, 0s); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  .float-in { opacity: 0; transform: translateY(28px); animation: floatIn 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; animation-delay: var(--d, 0s); }
+  @keyframes floatIn { to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+    .reveal, .float-in { opacity: 1 !important; transform: none !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="dotfield" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+<div id="progress" aria-hidden="true"></div>
+<div id="clickLayer" aria-hidden="true"></div>
+<div id="rageToast" aria-hidden="true">RAGE CLICK DETECTED · 3 CLICKS / &lt;1S / &lt;30PX</div>
+
+<div id="hud" aria-hidden="true">
+  <span class="dot"></span>
+  <span>SCROLL <b id="hudScroll">000%</b></span><span class="sep">·</span>
+  <span>VIEWPORT <b id="hudVp">—</b></span><span class="sep">·</span>
+  <span>CLICKS <b id="hudClicks">000</b></span>
+</div>
+
+<nav id="rail" aria-label="Sections">
+  <a href="#s1"><span>SCORECARD</span><span class="tick"></span></a>
+  <a href="#s2"><span>POSTHOG</span><span class="tick"></span></a>
+  <a href="#s3"><span>THE PLAN</span><span class="tick"></span></a>
+  <a href="#s4"><span>FILES</span><span class="tick"></span></a>
+  <a href="#s5"><span>RISKS</span><span class="tick"></span></a>
+</nav>
+
+<!-- ================= HERO ================= -->
+<div class="hero">
+  <canvas id="heatCanvas" aria-hidden="true"></canvas>
+  <div class="gridlines" aria-hidden="true"></div>
+  <div class="crosshair ch-tl" aria-hidden="true"></div>
+  <div class="crosshair ch-tr" aria-hidden="true"></div>
+  <div class="crosshair ch-bl" aria-hidden="true"></div>
+  <div class="crosshair ch-br" aria-hidden="true"></div>
+
+  <div class="wrap hero-inner">
+    <div class="kicker float-in" style="--d:0.05s">Hexclave Analytics <span class="dim">/</span> Strategy Brief <span class="dim">/</span> feat/heatmaps <span class="dim">/</span> 2026-06-11</div>
+    <h1>
+      <span class="float-in" style="--d:0.15s; display:block">Turn up</span>
+      <span class="float-in hot" style="--d:0.28s; display:block">the heat.</span>
+    </h1>
+    <p class="verdict float-in" style="--d:0.45s">A capture-to-dashboard teardown of our clickmap against PostHog's heatmap suite — and the plan to go past it. The verdict up front: <b>our element-anchored capture and token model already beat PostHog structurally</b>, but we're missing the entire heat-signal family — rage, dead, scroll, coordinate gradients — and our viewing flow (paste a snippet into the console) is the one part that's embarrassing next to theirs.</p>
+    <div class="statline float-in" style="--d:0.6s">
+      <span class="stat"><b>16</b> CAPABILITIES COMPARED</span>
+      <span class="stat"><i style="background:var(--heat-cyan); box-shadow:0 0 8px var(--heat-cyan)"></i><b>5</b> AHEAD</span>
+      <span class="stat"><i style="background:var(--muted)"></i><b>3</b> PAR</span>
+      <span class="stat"><i style="background:var(--heat-yellow); box-shadow:0 0 8px var(--heat-yellow)"></i><b>2</b> PARTIAL</span>
+      <span class="stat"><i style="background:var(--heat-red); box-shadow:0 0 8px var(--heat-red)"></i><b>6</b> GAPS</span>
+    </div>
+  </div>
+
+  <div class="scrollcue" aria-hidden="true">SCROLL ▾</div>
+  <div class="foldline" aria-hidden="true"><span>AVG. FOLD · 100VH</span></div>
+</div>
+
+<div class="wrap">
+
+<!-- ================= 01 SCORECARD ================= -->
+<section id="s1">
+  <div class="secthead reveal">
+    <div class="ghost" aria-hidden="true">01</div>
+    <div class="seclabel">Scorecard</div>
+    <h2>Us vs PostHog, today</h2>
+    <p class="lede">Capability by capability. "Ahead" means structurally better, not just present. Hover a row to mark it.</p>
+  </div>
+
+  <div class="tbl reveal" style="--d:0.1s"><table>
+    <thead><tr><th style="width:22%">Capability</th><th style="width:31%">PostHog</th><th style="width:31%">Hexclave today</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>Click capture</td>
+        <td>Coordinate points in a 5s-flushed <code>$$heatmap</code> buffer; element identity comes separately from autocapture and is reconciled later</td>
+        <td>One rich <code>$click</code> event: coords (raw + /16 scaled + normalized), <code>elements_chain</code>, selector, text, href, viewport, <code>pointer_target_fixed</code> — captured atomically at click time</td>
+        <td><span class="pill win">AHEAD</span></td></tr>
+      <tr><td>Element identity</td>
+        <td>Autocapture elements chain; toolbar matches elements client-side</td>
+        <td>Same chain format plus 5-stage matching fallback (stable attrs → tag+class → DOM-index scoring) with visibility checks</td>
+        <td><span class="pill win">AHEAD</span></td></tr>
+      <tr><td>Rage clicks</td>
+        <td>Yes — 3 clicks within 1s inside 30px</td>
+        <td>None</td>
+        <td><span class="pill gap">GAP</span></td></tr>
+      <tr><td>Dead clicks</td>
+        <td>Yes — behavioral detector: alive if scroll ≤100ms, selection ≤100ms, or DOM mutation ≤2500ms after click; dead at 2750ms; 1s sweep</td>
+        <td>None</td>
+        <td><span class="pill gap">GAP</span></td></tr>
+      <tr><td>Scroll depth / scrollmap</td>
+        <td>Yes — <code>$prev_pageview_max_scroll</code>, 100px buckets, fold line, reach canvas</td>
+        <td>None — no scroll signal captured at all</td>
+        <td><span class="pill gap">GAP</span></td></tr>
+      <tr><td>Coordinate gradient heat</td>
+        <td>heatmap.js canvas, palettes, mousemove maps</td>
+        <td>We store scaled x/y per click but never aggregate by coordinate — no coordinate-bucket query exists; overlay shows element badges only</td>
+        <td><span class="pill gap">GAP</span></td></tr>
+      <tr><td>Viewing UX</td>
+        <td>In-app page: iframe embed of the site with overlay, screenshot fallback when iframes are blocked, screenshots sourced from session replay</td>
+        <td>Dashboard mints a token, user copy-pastes a JS snippet into their browser console on the live site</td>
+        <td><span class="pill gap">BIGGEST GAP</span></td></tr>
+      <tr><td>Overlay auth</td>
+        <td>Toolbar auth flow (heavier, full toolbar session)</td>
+        <td>Origin-bound 24h JWT, <code>clickmap:read</code> scope only, verified per request</td>
+        <td><span class="pill win">AHEAD</span></td></tr>
+      <tr><td>URL matching</td>
+        <td>Exact or manual wildcard pattern</td>
+        <td>Glob + server-validated regex + auto-wildcarding of UUID/ULID/ObjectId/numeric path segments</td>
+        <td><span class="pill win">AHEAD</span></td></tr>
+      <tr><td>Aggregation modes</td>
+        <td><code>total_count</code> or <code>unique_visitors</code> toggle</td>
+        <td>Total clicks only at element level (unique users exist at route level + admin user/replay lists)</td>
+        <td><span class="pill part">PARTIAL</span></td></tr>
+      <tr><td>Sampling</td>
+        <td>None built into heatmap queries</td>
+        <td>Deterministic per-user hash sampling with linear upscaling</td>
+        <td><span class="pill win">AHEAD</span></td></tr>
+      <tr><td>Storage</td>
+        <td>Dedicated CH table ordered <code>(type, team, date, url, viewport_width)</code>, scale 16, monthly parts</td>
+        <td>Dedicated CH MV <code>clickmap_events</code> ordered <code>(project, branch, date, path, viewport_width)</code>, scale 16, monthly parts, backfilled</td>
+        <td><span class="pill par">PAR</span></td></tr>
+      <tr><td>Replay integration</td>
+        <td>Screenshot-from-replay; "view heatmap" from a recording</td>
+        <td><code>session_replay_id</code> already stored on every click row — but no UX uses it</td>
+        <td><span class="pill part">DATA READY</span></td></tr>
+      <tr><td>Device / viewport filters</td>
+        <td>Viewport tolerance around current width; fixed-position display modes (fixed/relative/hidden)</td>
+        <td>7 named device buckets + min/max override + mismatch warning; no fixed-position display mode</td>
+        <td><span class="pill par">PAR</span></td></tr>
+      <tr><td>PII / retention</td>
+        <td>Optional query-param masking (<code>mask_personal_data_properties</code>)</td>
+        <td>Raw URLs, raw element text, no retention policy, indefinite storage</td>
+        <td><span class="pill gap">GAP</span></td></tr>
+      <tr><td>Billing / quotas</td>
+        <td>Event-based billing</td>
+        <td>Plan entitlement check per batch at ingest (<code>analyticsEvents</code> item)</td>
+        <td><span class="pill par">PAR</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout reveal" style="--d:0.15s"><b>What to protect:</b> our one-event-carries-everything capture design. PostHog splits identity (autocapture) from coordinates (<code>$$heatmap</code>) from dead clicks (a separate lazy event stream) and reconciles them downstream. We capture identity + coordinates atomically per click — every improvement below should extend that single enriched row, never add parallel streams.</div>
+</section>
+
+<!-- ================= 02 POSTHOG ================= -->
+<section id="s2">
+  <div class="secthead reveal">
+    <div class="ghost" aria-hidden="true">02</div>
+    <div class="seclabel">Reconnaissance</div>
+    <h2>How PostHog actually does it</h2>
+    <p class="lede">Condensed from posthog-js heatmaps + dead-clicks entrypoints and the PostHog ClickHouse pipeline.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card reveal" style="--d:0.05s">
+      <h4>Capture — posthog-js</h4>
+      <ul>
+        <li><code>Heatmaps</code> class buffers points per URL, flushes a <code>$$heatmap</code> event every <b>5s</b> + on <code>beforeunload</code></li>
+        <li>Types: <code>click</code>, <code>rageclick</code> (<b>3 clicks / 1s / 30px</b>), <code>deadclick</code>, sampled <code>mousemove</code></li>
+        <li>Dead clicks: lazy-loaded detector — MutationObserver + capture-phase scroll + selectionchange + visibilitychange; alive if scroll/selection <b>≤100ms</b> or mutation <b>≤2500ms</b>; dead at <b>2750ms</b>; navigation implicitly = alive</li>
+        <li>Scroll depth rides on the next pageview/pageleave as <code>$prev_pageview_max_scroll</code></li>
+        <li>Coords get <code>scrollX/Y</code> added unless target is fixed/sticky (<code>target_fixed</code>)</li>
+      </ul>
+    </div>
+    <div class="card reveal" style="--d:0.15s">
+      <h4>Backend + UX — posthog</h4>
+      <ul>
+        <li>plugin-server <code>extractHeatmapData</code> scales x/y/viewport by <b>16</b> → CH <code>heatmaps</code> table ordered <code>(type, team_id, date, current_url, viewport_width)</code></li>
+        <li>API: <code>type</code>, date range, <code>url_exact</code>/<code>url_pattern</code>, scaled viewport min/max, <code>total_count</code> vs <code>unique_visitors</code>; scrolldepth bucketed to <b>100px</b></li>
+        <li>In-app HeatmapScene: sandboxed iframe of the user's site; screenshot fallback when X-Frame-Options blocks; screenshots generated from session replay</li>
+        <li>heatmap.js canvas gradient + element count labels + scrollmap fold line; toolbar mirrors it on the live site</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 PLAN ================= -->
+<section id="s3">
+  <div class="secthead reveal">
+    <div class="ghost" aria-hidden="true">03</div>
+    <div class="seclabel">The Plan</div>
+    <h2>Four phases, cold to hot</h2>
+    <p class="lede">Sizes: <span class="pill sz">S</span> ≤2 days · <span class="pill sz">M</span> ≤1 week · <span class="pill sz">L</span> 1–3 weeks. Canonical SDK source is <code>packages/template/src/clickmap/</code> + the event tracker (synced into <code>packages/js</code> / <code>packages/next</code>). Phase hues follow <code>getClickmapHue()</code> — 185 down to 30, cold to hot.</p>
+    <div class="thermo reveal" style="--d:0.1s" aria-hidden="true">
+      <div class="tlabels"><span>P0 · HUE 185</span><span>P1 · HUE 140</span><span>P2 · HUE 58</span><span>P3 · HUE 30</span></div>
+    </div>
+  </div>
+
+  <!-- PHASE 0 -->
+  <div class="phase reveal" style="--pc:var(--heat-cyan)">
+    <div class="phase-head">
+      <span class="pnum">P0</span>
+      <h3>Quick wins — ship from data we already have</h3>
+      <span class="huetag">hue(185)</span>
+    </div>
+    <p class="goal">No schema changes, no new capture. Everything here is unlocked by existing ClickHouse rows.</p>
+
+    <div class="item"><div><b class="t">Coordinate aggregation endpoint</b>
+      <div class="desc">We store <code>pointer_x/pointer_y</code> (scaled /16) on every row but the query engine only groups by route/selector/element. Add <code>kind: "coordinates"</code> to <code>analytics-clickmap-query.ts</code>: <code>GROUP BY pointer_x, pointer_y</code> (+ <code>pointer_target_fixed</code> split, <code>client_y</code> variant for fixed elements) returning <code>{x, y, count}</code>. Prerequisite for gradient heat in P2.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">Replay deep-links from the overlay</b>
+      <div class="desc"><code>session_replay_id</code> is on every click row and the admin endpoint already returns per-replay aggregates. Add "watch replays of this click" on each element row → links into session replay filtered to that element's clicks. PostHog parity with near-zero backend work.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">Unique-users toggle per element</b>
+      <div class="desc">Add <code>uniqExact(user_id)</code> to the elements aggregation and a clicks / users toggle in the overlay. Matches PostHog's <code>total_count</code> vs <code>unique_visitors</code>.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">CSV/JSON export + share state</b>
+      <div class="desc">Export the element table; encode overlay filter state (range, pattern, device) into the sessionStorage payload so a reload restores the exact view.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">CTR per element</b>
+      <div class="desc">We already ingest <code>$page-view</code>. Join clicks ÷ pageviews of the matching path to show "X% of visitors to this page clicked this" — PostHog's toolbar shows raw counts and rank percentages, not true view-based CTR.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div class="phase reveal" style="--pc:var(--heat-green)">
+    <div class="phase-head">
+      <span class="pnum">P1</span>
+      <h3>Signal parity — rage, dead, scroll (done better)</h3>
+      <span class="huetag">hue(140)</span>
+    </div>
+    <p class="goal">Match PostHog's signal family, but keep our single-enriched-row model: flags and measurements on the <code>$click</code> event instead of separate event streams that need reconciliation.</p>
+
+    <div class="item"><div><b class="t">Annotate-in-place click pipeline</b>
+      <div class="desc">In the event tracker, hold each <code>$click</code> in a pending buffer for up to ~3s before enqueueing to the batch (flush interval is 10s, so latency cost is nil). During the hold, run the effect detector below and stamp the result onto the event. On <code>pagehide</code>, flush pending clicks immediately as alive-by-navigation.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Dead-click + interaction-latency detector</b>
+      <div class="desc">One document-level MutationObserver (subtree, attrs, childList, charData) + capture-phase <code>scroll</code> + <code>selectionchange</code> + <code>visibilitychange</code>. PostHog thresholds as defaults: scroll/selection ≤100ms = alive, mutation ≤2500ms = alive, dead at 2750ms. But record more than a boolean: stamp <code>effect_delay_ms</code> (click → first qualifying effect). That number is the raw material for the latency map in P3 — PostHog throws it away. Add <code>data-hexclave-effect="none"</code> opt-out for clipboard/audio/network-only elements (their known false-positive class).</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Rage-click detection</b>
+      <div class="desc">Rolling window in the click handler: ≥3 clicks within 1s inside a 30px radius → stamp <code>is_rage: 1</code> on the clicks in the burst (plus <code>burst_size</code>). No separate event type. Try it on this page, by the way.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">Scroll-depth capture — reach AND attention</b>
+      <div class="desc">New <code>$scroll</code> event emitted at pageview end (route change / pagehide): <code>max_scroll_y_scaled</code>, doc height, viewport, and a compact dwell histogram — ms spent per 10%-of-page band. PostHog only captures max depth (reach); dwell-per-band gives us Clarity-style attention maps they don't have.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Backend: extend schema + MV</b>
+      <div class="desc">Add to <code>$click</code> enum/columns: <code>is_rage UInt8</code>, <code>is_dead UInt8</code>, <code>effect_delay_ms Nullable(UInt16)</code>, <code>pointer_type LowCardinality</code>, <code>click_index UInt16</code>. New <code>$scroll</code> event type + <code>scrollmap_events</code> MV ordered like <code>clickmap_events</code>. Add scrolldepth + interaction-type filters to the query engine (<code>interaction: "all" | "rage" | "dead"</code>).</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Overlay: signal toggles + scrollmap view</b>
+      <div class="desc">Toolbar chips: All / Rage / Dead. Dead-click badges in red with dead-rate percentage per element ("18% of clicks here do nothing"). Scrollmap mode: horizontal reach gradient + average-fold line + per-band reach %, rendered from the <code>$scroll</code> aggregation.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div class="phase reveal" style="--pc:var(--heat-yellow)">
+    <div class="phase-head">
+      <span class="pnum">P2</span>
+      <h3>The viewing experience — kill the console paste</h3>
+      <span class="huetag">hue(58)</span>
+    </div>
+    <p class="goal">This is where PostHog beats us most and where users feel it most. Three escalating viewing modes, all launched with one click from the dashboard.</p>
+
+    <div class="item"><div><b class="t">URL-fragment token handoff (replaces the snippet)</b>
+      <div class="desc">Dashboard "Open clickmap" opens <code>https://site.com/#hexclave-clickmap-token=&lt;JWT&gt;</code>. The SDK reads the fragment on boot, moves the token to sessionStorage, and strips the fragment via <code>history.replaceState</code> — fragments never reach servers or logs, and the existing origin-bound 24h JWT model is unchanged. The console snippet stays only as a documented fallback. This single change removes our worst UX step — consider pulling it into P0.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">In-dashboard iframe viewer + postMessage bridge</b>
+      <div class="desc">New dashboard view embedding the site in a sandboxed iframe (token passed via fragment). A small bridge protocol (<code>hexclave:clickmap:*</code> messages, origin-checked both ways) lets the dashboard own the filter panel — date range, device, pattern, signal toggles, element list — while the overlay inside the iframe renders markers/heat only. Filters in dashboard chrome instead of floating on the page beats PostHog's toolbar-in-iframe approach.</div></div>
+      <div class="tags"><span class="pill sz">L</span></div></div>
+    <div class="item"><div><b class="t">Screenshot fallback from session replay</b>
+      <div class="desc">When X-Frame-Options/CSP blocks the iframe: reconstruct a static page image from our newest session replay snapshot matching the URL pattern + viewport bucket (auto-picked, with a manual picker), render it in the dashboard, and overlay coordinate heat + element badges on top. PostHog does this manually from a recording; auto-selection makes ours zero-config.</div></div>
+      <div class="tags"><span class="pill sz">L</span></div></div>
+    <div class="item"><div><b class="t">Canvas gradient heat layer</b>
+      <div class="desc">Render the P0 coordinate aggregation as a real heat gradient: ~100 lines — additive-alpha radial blobs on an offscreen canvas, then a palette LUT pass. No heatmap.js dependency. (The hero of this very page is that exact technique.) Modes: element badges / gradient / both; fixed-position points rendered viewport-anchored (<code>client_y</code>), scrolling points page-anchored — same split PostHog handles with <code>target_fixed</code>.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Dashboard landing page becomes a real page</b>
+      <div class="desc">Replace the token-launcher list with: per-origin preview cards, top pages by clicks, top elements site-wide, rage/dead hotspot counts for the selected range — each card opens the viewer pre-filtered.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+  </div>
+
+  <!-- PHASE 3 -->
+  <div class="phase reveal" style="--pc:var(--heat-orange)">
+    <div class="phase-head">
+      <span class="pnum">P3</span>
+      <h3>Beyond PostHog — things nobody ships</h3>
+      <span class="huetag">hue(30)</span>
+    </div>
+    <p class="goal">Built on <code>effect_delay_ms</code>, <code>click_index</code>, dwell bands, and our replay linkage — data PostHog either discards or never captures.</p>
+
+    <div class="item"><div><b class="t">Interaction latency map</b>
+      <div class="desc">p50/p75/p95 of <code>effect_delay_ms</code> per element, painted as a slowness gradient. "This button works, but takes 1.8s to do anything visible" — INP-adjacent, per-element, from real users. PostHog's detector computes this delay internally and throws it away; no heatmap product surfaces it.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Error clicks</b>
+      <div class="desc">Capture-side: <code>window.onerror</code> / <code>unhandledrejection</code> within 1s of a click stamps <code>had_error: 1</code>. A dead click tells you nothing happened; an error click tells you why. Distinct toggle + color in the overlay.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">First-click map + hesitation</b>
+      <div class="desc"><code>click_index</code> (added in P1) filtered to 1 = what users do first on each page. Hesitation: ms of hover dwell on the target before the click (<code>pointerenter</code> → click) — high hesitation + high dead-rate = confusing UI, a signal combo no competitor has.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Attention map</b>
+      <div class="desc">Render the P1 dwell-per-band histograms as a time-weighted scrollmap: not "how far did they get" but "where did they stay". Clarity-class feature, beyond PostHog entirely.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Compare mode + weekly hotspot digest</b>
+      <div class="desc">Side-by-side or delta overlay of two date ranges / device classes ("did the redesign move clicks?"). Plus a scheduled digest: top dead/rage/error hotspots week-over-week, deep-linking into the pre-filtered viewer. Turns the clickmap from a tool you remember to open into a product that tells you things.</div></div>
+      <div class="tags"><span class="pill sz">L</span></div></div>
+  </div>
+
+  <!-- HARDENING -->
+  <div class="phase reveal" style="--pc:var(--muted)">
+    <div class="phase-head">
+      <span class="pnum" style="font-size:30px; align-self:center">∥</span>
+      <h3>Hardening track — scale, privacy, correctness</h3>
+      <span class="huetag">parallel</span>
+    </div>
+    <p class="goal">Runs alongside the phases; none of it blocks features, all of it blocks growth if skipped.</p>
+
+    <div class="item"><div><b class="t">Hourly rollups</b>
+      <div class="desc"><code>SummingMergeTree</code> keyed by <code>(project, branch, hour, path, viewport_bucket, cityHash64(elements_chain), interaction_type)</code>. Long-range queries hit rollups; raw rows only for short ranges, coordinates, and replay drill-ins. Fixes the full-scan risk on 90-day queries.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Retention + PII guard</b>
+      <div class="desc">Per-project retention via CH <code>TTL</code> (default ~12 months). Capture-side masking: never record text from <code>input</code>/<code>textarea</code>/<code>[type=password]</code>/<code>data-hexclave-mask</code> subtrees; query-param allowlist on captured URLs (strip by default). PostHog's masking is opt-in; ours should be safe-by-default.</div></div>
+      <div class="tags"><span class="pill sz">M</span></div></div>
+    <div class="item"><div><b class="t">Ingest dedup + input metadata</b>
+      <div class="desc">Drop replayed batches by <code>batch_id</code> (retries currently double-count). Capture <code>pointerType</code> (mouse/touch/pen), devicePixelRatio, and keyboard activations (Enter/Space on focused element — clicks with no coordinates, currently invisible to every heatmap product).</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+    <div class="item"><div><b class="t">Sampling correctness</b>
+      <div class="desc">Today unique counts are exact while click counts are upscaled — at low sampling rates "users &gt; clicks" is possible. Either upscale uniques with HLL or annotate sampled responses so the UI labels estimates.</div></div>
+      <div class="tags"><span class="pill sz">S</span></div></div>
+  </div>
+</section>
+
+<!-- ================= 04 FILES ================= -->
+<section id="s4">
+  <div class="secthead reveal">
+    <div class="ghost" aria-hidden="true">04</div>
+    <div class="seclabel">Blast Radius</div>
+    <h2>File-level touchpoints</h2>
+  </div>
+
+  <div class="tbl compact reveal" style="--d:0.08s"><table>
+    <thead><tr><th>Area</th><th>Files</th><th style="width:14%">Phases</th></tr></thead>
+    <tbody>
+      <tr><td>Capture / SDK</td><td><code>packages/template/src/lib/.../event-tracker.ts</code> (pending-buffer, detectors, $scroll, masking) · <code>packages/shared/src/utils/elements-chain.tsx</code></td><td>P1 · P3 · ∥</td></tr>
+      <tr><td>Overlay</td><td><code>packages/template/src/clickmap/clickmap-core.ts</code> + <code>clickmap-styles.ts</code> (toggles, scrollmap, canvas heat, bridge mode, fragment-token boot)</td><td>P1 · P2</td></tr>
+      <tr><td>Schema / migrations</td><td><code>apps/backend/scripts/clickhouse-migrations.ts</code> (MV columns, scrollmap MV, rollups, TTL)</td><td>P1 · ∥</td></tr>
+      <tr><td>Query engine</td><td><code>apps/backend/src/lib/analytics-clickmap-query.ts</code> (coordinates kind, interaction filters, uniq toggle, latency percentiles, scrolldepth, CTR join)</td><td>P0 · P1 · P3</td></tr>
+      <tr><td>Routes / tokens</td><td><code>apps/backend/src/app/api/latest/analytics/clickmap/route.ts</code> + <code>internal/.../clickmap/route.ts</code> + <code>analytics-clickmap-tokens.ts</code> · batch route enum for <code>$scroll</code></td><td>P0 · P1 · P2</td></tr>
+      <tr><td>Dashboard</td><td><code>apps/dashboard/.../analytics/clickmaps/page-client.tsx</code> → landing page + new iframe/screenshot viewer + postMessage bridge</td><td>P2 · P3</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= 05 RISKS ================= -->
+<section id="s5">
+  <div class="secthead reveal">
+    <div class="ghost" aria-hidden="true">05</div>
+    <div class="seclabel">Failure Modes</div>
+    <h2>Risks &amp; design notes</h2>
+  </div>
+
+  <div class="risks">
+    <div class="risk reveal" style="--d:0.02s"><span class="n">R1</span><div><b>Dead-click false positives</b> — clicks whose only effect is network/clipboard/audio look dead. Mitigations: the <code>data-hexclave-effect</code> opt-out, and (beyond PostHog) optionally counting fetch/XHR activity within the window as alive.</div></div>
+    <div class="risk reveal" style="--d:0.06s"><span class="n">R2</span><div><b>Pending-buffer loss</b> — holding clicks ≤3s risks losing the tail on hard tab kills. <code>pagehide</code> flush covers navigation; accept the residual loss like PostHog does, or mirror pending clicks to <code>sessionStorage</code>.</div></div>
+    <div class="risk reveal" style="--d:0.1s"><span class="n">R3</span><div><b>Element drift</b> — chains break when the DOM changes across deploys. Our 5-stage matcher degrades gracefully; surface an "unmatched clicks" count in the overlay instead of dropping silently.</div></div>
+    <div class="risk reveal" style="--d:0.14s"><span class="n">R4</span><div><b>Iframe embedding will fail often</b> — many production sites send <code>X-Frame-Options</code>. That's why fragment-handoff (works always) ships before the iframe viewer, and the screenshot path is a first-class mode, not an apology.</div></div>
+    <div class="risk reveal" style="--d:0.18s"><span class="n">R5</span><div><b>Regex filter cost</b> — user regex runs per-row at query time. Rollups bound the damage; keep regex on raw-row paths only and prefer glob in the UI.</div></div>
+    <div class="risk reveal" style="--d:0.22s"><span class="n">R6</span><div><b>Quota growth</b> — <code>$scroll</code> (1/pageview) is cheap; mousemove sampling is the expensive one, which is why it's deliberately excluded until there's a proven need.</div></div>
+  </div>
+
+  <div class="callout hot reveal" style="--d:0.1s"><b>Sequencing summary:</b> P0 is days of work and makes the existing tool feel finished. P1 reaches signal parity with a structurally better data model. P2 removes the only part of our flow that's embarrassing next to PostHog. P3 is the moat — latency maps, error clicks, hesitation, attention — all derived from data we'll already be capturing by then.</div>
+</section>
+
+<footer class="reveal">
+  GENERATED 2026-06-11 · BRANCH feat/heatmaps<br>
+  SOURCES: posthog-js heatmaps / dead-clicks entrypoints · PostHog ClickHouse heatmaps pipeline + HeatmapScene/toolbar · Hexclave event-tracker / clickmap-core / clickhouse-migrations / analytics-clickmap-query
+  <div class="sig">this page recorded <span id="sigClicks">0</span> of your clicks. <span>that's the product.</span></div>
+</footer>
+
+</div><!-- /wrap -->
+
+<script>
+(function () {
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- hero heat canvas: additive radial blobs (the P2 technique) ---------- */
+  var canvas = document.getElementById("heatCanvas");
+  var ctx = canvas.getContext("2d");
+  var hero = document.querySelector(".hero");
+  var heroVisible = true, t = 0;
+
+  function sprite(hue, size) {
+    var c = document.createElement("canvas");
+    c.width = c.height = size;
+    var g = c.getContext("2d");
+    var grad = g.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    grad.addColorStop(0, "hsla(" + hue + ", 95%, 58%, 0.55)");
+    grad.addColorStop(0.45, "hsla(" + hue + ", 95%, 52%, 0.22)");
+    grad.addColorStop(1, "hsla(" + hue + ", 95%, 50%, 0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    return c;
+  }
+
+  // blobs along the getClickmapHue ramp: 185 → 30
+  var hues = [185, 160, 130, 95, 58, 38, 25, 10];
+  var blobs = hues.map(function (h, i) {
+    return {
+      img: sprite(h, 560),
+      bx: 0.12 + (i / (hues.length - 1)) * 0.76, // drift left-cold → right-hot
+      by: 0.3 + ((i * 37) % 50) / 100,
+      ax: 0.05 + ((i * 13) % 9) / 100,
+      ay: 0.06 + ((i * 29) % 11) / 100,
+      sx: 0.00022 + i * 0.00004,
+      sy: 0.00031 + i * 0.00003,
+      ph: i * 1.7,
+      sc: 0.85 + ((i * 53) % 40) / 100
+    };
+  });
+
+  function sizeCanvas() {
+    var r = hero.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = r.width * dpr;
+    canvas.height = r.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  sizeCanvas();
+  window.addEventListener("resize", sizeCanvas);
+
+  function draw() {
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "lighter";
+    for (var i = 0; i < blobs.length; i++) {
+      var b = blobs[i];
+      var x = (b.bx + Math.sin(t * b.sx * 1000 + b.ph) * b.ax) * w;
+      var y = (b.by + Math.cos(t * b.sy * 1000 + b.ph * 1.3) * b.ay) * h;
+      var s = 560 * b.sc;
+      ctx.drawImage(b.img, x - s / 2, y - s / 2, s, s);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  if (reduced) { draw(); }
+  else {
+    new IntersectionObserver(function (e) { heroVisible = e[0].isIntersecting; }).observe(hero);
+    (function loop() {
+      if (heroVisible) { t += 0.016; draw(); }
+      requestAnimationFrame(loop);
+    })();
+  }
+
+  /* ---------- scroll progress + HUD ---------- */
+  var prog = document.getElementById("progress");
+  var hudScroll = document.getElementById("hudScroll");
+  var hudVp = document.getElementById("hudVp");
+  var pad = function (n) { return String(n).padStart(3, "0"); };
+
+  function onScroll() {
+    var max = document.documentElement.scrollHeight - window.innerHeight;
+    var p = max > 0 ? window.scrollY / max : 0;
+    prog.style.transform = "scaleX(" + p + ")";
+    hudScroll.textContent = pad(Math.round(p * 100)) + "%";
+  }
+  function onResize() {
+    hudVp.textContent = window.innerWidth + "×" + window.innerHeight;
+    layer.style.height = document.documentElement.scrollHeight + "px";
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onResize);
+
+  /* ---------- click recorder (the page is its own clickmap) ---------- */
+  var layer = document.getElementById("clickLayer");
+  var hudClicks = document.getElementById("hudClicks");
+  var sigClicks = document.getElementById("sigClicks");
+  var toast = document.getElementById("rageToast");
+  var clicks = 0, recent = [], toastTimer = null, dots = [];
+
+  document.addEventListener("click", function (e) {
+    clicks++;
+    hudClicks.textContent = pad(clicks);
+    sigClicks.textContent = clicks;
+
+    // heat up: hue 185 → 30 as the count climbs, same curve as getClickmapHue
+    var hue = Math.max(30, 185 - clicks * 7);
+    var d = document.createElement("div");
+    d.className = "cdot";
+    d.style.left = e.pageX + "px";
+    d.style.top = e.pageY + "px";
+    d.style.setProperty("--c", "hsl(" + hue + ", 95%, 58%)");
+    d.innerHTML = '<div class="ring"></div><div class="blob"></div>';
+    layer.appendChild(d);
+    dots.push(d);
+    if (dots.length > 80) { var old = dots.shift(); old.remove(); }
+
+    // rage detection: 3 clicks / 1s / 30px — PostHog's actual thresholds
+    var now = Date.now();
+    recent.push({ x: e.pageX, y: e.pageY, t: now });
+    recent = recent.filter(function (c) { return now - c.t < 1000; });
+    if (recent.length >= 3) {
+      var a = recent[recent.length - 3];
+      var close = recent.slice(-3).every(function (c) {
+        return Math.abs(c.x - a.x) <= 30 && Math.abs(c.y - a.y) <= 30;
+      });
+      if (close) {
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 2400);
+        recent = [];
+      }
+    }
+  });
+
+  /* ---------- reveals ---------- */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+    });
+  }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
+  document.querySelectorAll(".reveal").forEach(function (el) {
+    if (reduced) el.classList.add("in"); else io.observe(el);
+  });
+
+  /* ---------- scrollspy rail ---------- */
+  var links = document.querySelectorAll("#rail a");
+  var spy = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (en.isIntersecting) {
+        links.forEach(function (l) {
+          l.classList.toggle("active", l.getAttribute("href") === "#" + en.target.id);
+        });
+      }
+    });
+  }, { rootMargin: "-30% 0px -55% 0px" });
+  document.querySelectorAll("section[id]").forEach(function (s) { spy.observe(s); });
+
+  onScroll(); onResize();
+})();
+</script>
+</body>
+</html>

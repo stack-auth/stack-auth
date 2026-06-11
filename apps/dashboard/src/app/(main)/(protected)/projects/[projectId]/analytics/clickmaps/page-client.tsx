@@ -52,20 +52,6 @@ function createConsoleSnippet(token: string): string {
   ].join("\n");
 }
 
-function installClickmapTokenForCurrentOrigin(token: AnalyticsClickmapTokenResponse): boolean {
-  if (token.origin !== window.location.origin) {
-    return false;
-  }
-  try {
-    window.sessionStorage.setItem(CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY, token.token);
-    window.dispatchEvent(new Event(CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT));
-    return true;
-  } catch {
-    window.alert("Could not enable the clickmap toolbar in this tab. Copy the snippet and paste it in the console instead.");
-    return false;
-  }
-}
-
 function ClickmapTokenDialog(props: {
   origin: ClickmapOrigin | null,
   token: AnalyticsClickmapTokenResponse | null,
@@ -98,6 +84,7 @@ function ClickmapTokenDialog(props: {
         </DialogBody>
         <DialogFooter>
           <Button
+            className="gap-1.5"
             disabled={props.token == null}
             onClick={() => {
               const target = props.token?.origin ?? props.origin?.origin;
@@ -162,7 +149,6 @@ export default function PageClient() {
       throw error;
     }
     setToken(created);
-    installClickmapTokenForCurrentOrigin(created);
     setAutoCopied(false);
     try {
       await navigator.clipboard.writeText(createConsoleSnippet(created.token));
@@ -191,6 +177,7 @@ export default function PageClient() {
                 <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
               </div>
               <Button
+                className="gap-1.5"
                 disabled={customOrigin.trim() === ""}
                 onClick={async () => {
                   const origin = normalizeOrigin(customOrigin);
@@ -213,7 +200,7 @@ export default function PageClient() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span>Add a trusted domain before launching a production clickmap.</span>
               <Button
-                className="shrink-0"
+                className="shrink-0 gap-1.5"
                 onClick={() => router.push(`/projects/${project.id}/domains`)}
               >
                 Go to trusted domains
@@ -236,7 +223,7 @@ export default function PageClient() {
                     </Typography>
                   </div>
                 </div>
-                <Button onClick={async () => await showClickmap(origin)}>
+                <Button className="gap-1.5" onClick={async () => await showClickmap(origin)}>
                   Show clickmap
                   <ArrowRight className="h-4 w-4" />
                 </Button>
