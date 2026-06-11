@@ -737,7 +737,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           <SpotlightSearchWrapper projectId={projectId} />
 
           {/* Body Layout (Left Sidebar + Content + Right Companion) */}
-          <div className="relative flex flex-1 items-start w-full">
+          <div className="relative flex flex-1 items-start w-full has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:items-stretch">
             {/* Left Sidebar - Sticky */}
             <aside
               className={cn(
@@ -753,13 +753,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 lg:pr-24 dark:py-0 dark:px-2 dark:pb-3 dark:lg:pr-24">
+            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 lg:pr-24 dark:py-0 dark:px-2 dark:pb-3 dark:lg:pr-24 has-[[data-contained-height]]:flex has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:flex-col">
               <div className={cn(
               "relative flex min-w-0 flex-col overflow-visible has-[[data-full-bleed]]:h-full",
               // Light mode card styling (companion gutter is on <main>, not here — avoids empty card chrome behind Stack Companion)
               "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06]",
               // Dark mode: remove card styling
               "dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0",
+              // Contained pages own their internal scroll regions, so the shell must pass down a finite flex height instead of sizing to content.
+              "has-[[data-contained-height]]:flex-1 has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:overflow-hidden",
               // Full-bleed pages (email editors etc.): remove card styling in light mode too
               "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
             )}>

@@ -367,7 +367,7 @@ type SatelliteHandle = {
   lastCountryCheckAt: number,
 };
 
-export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, children?: React.ReactNode}) {
+export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
@@ -379,6 +379,7 @@ export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, sa
         totalUsers={totalUsers}
         activeUsersByCountry={activeUsersByCountry ?? {}}
         satelliteCount={satelliteCount ?? 2}
+        interactive={interactive ?? false}
       />
     </Suspense>
   );
@@ -473,7 +474,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
@@ -686,15 +687,24 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     if (!globeRef.current || !shouldShowGlobe) return;
 
     const controls = globeRef.current.controls();
-    controls.maxDistance = cameraDistance;
-    controls.minDistance = cameraDistance;
+    if (interactive) {
+      controls.enableZoom = true;
+      controls.minDistance = cameraDistance;
+      // Large containers can push cameraDistance past 600; keep min <= max so
+      // OrbitControls doesn't end up with an inverted zoom range.
+      controls.maxDistance = Math.max(600, cameraDistance);
+    } else {
+      controls.enableZoom = false;
+      controls.maxDistance = cameraDistance;
+      controls.minDistance = cameraDistance;
+    }
     globeRef.current.camera().position.z = cameraDistance;
 
     // Update border size and trigger re-render when size changes
     const visualDiameter = calculateGlobeVisualDiameter(globeRef);
     setBorderSizeFromGlobe(visualDiameter);
     resumeRender();
-  }, [cameraDistance, shouldShowGlobe, globeSize]);
+  }, [cameraDistance, shouldShowGlobe, globeSize, interactive]);
 
 
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
@@ -1058,7 +1068,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   }, []);
 
   return (
-    <div ref={rootRef} className='relative mx-auto' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
+    <div ref={rootRef} className='relative mx-auto overflow-hidden' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
       <div inert className='absolute inset-0 pointer-events-none'>
         <GlobeLoading
           devReason="not ready"
@@ -1079,7 +1089,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
 
         {/* Globe Container - Premium 3D */}
         {shouldShowGlobe && (
-          <div className='relative w-full h-full flex items-center justify-center'>
+          <div className='relative w-full h-full overflow-hidden flex items-center justify-center'>
             {/* Border container - same approach as globe */}
             <div inert className='absolute top-0 left-0 right-0 pointer-events-none flex items-center justify-center'>
               {/* Inner square div - contain behavior (square, fills either width or height) */}
@@ -1160,10 +1170,15 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         const controls = current.controls();
                         controls.autoRotate = false;
                         controls.autoRotateSpeed = 0.5;
-                        controls.maxDistance = cameraDistance;
-                        controls.minDistance = cameraDistance;
+                        if (interactive) {
+                          controls.minDistance = cameraDistance;
+                          controls.maxDistance = 600;
+                        } else {
+                          controls.maxDistance = cameraDistance;
+                          controls.minDistance = cameraDistance;
+                        }
                         controls.dampingFactor = 0.15;
-                        controls.enableZoom = false;
+                        controls.enableZoom = interactive;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
                         // Little Saint James Island, U.S. Virgin Islands

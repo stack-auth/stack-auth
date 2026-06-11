@@ -26,9 +26,6 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-# @hexclave/template must be in the prune scope: the root turbo.json declares
-# `@hexclave/next#build` -> `@hexclave/template#build`, and next is pulled in by
-# the dashboard, so turbo fails to resolve the task graph if template is missing.
 RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --scope=@hexclave/template --docker
 
 

@@ -24,15 +24,19 @@ export function SimpleTooltip(props: {
     <>{icon}{props.children}</>
   );
 
+  // Radix only opens tooltips on focus if the trigger is focusable — without
+  // a tab stop the tooltip content is unreachable by keyboard.
+  const triggerTabIndex = props.tooltip && !props.disabled ? 0 : undefined;
+
   return (
     <Tooltip delayDuration={0} open={props.disabled ? false : undefined} disableHoverableContent={false}>
       <TooltipTrigger asChild>
         {props.inline ? (
-          <span className={cn(props.className)}>
+          <span tabIndex={triggerTabIndex} className={cn(props.className)}>
             {trigger}
           </span>
         ) : (
-          <div className={cn("flex items-center gap-1", props.className)}>
+          <div tabIndex={triggerTabIndex} className={cn("flex items-center gap-1", props.className)}>
             {trigger}
           </div>
         )}
