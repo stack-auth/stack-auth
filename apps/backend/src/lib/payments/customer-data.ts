@@ -51,7 +51,10 @@ async function getLatestRow<T>(
   if ('$replica' in prisma) {
     try {
       replicaClient = (prisma as any).$replica();
-    } catch {
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.includes('Cannot use $replica inside of a transaction')) {
+        throw e;
+      }
       replicaClient = prisma;
     }
   }
