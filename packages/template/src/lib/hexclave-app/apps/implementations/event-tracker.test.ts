@@ -55,6 +55,8 @@ describe("EventTracker", () => {
 
       await advancePastFlush();
 
+      // Dead-click classification marks the buffered $click in place —
+      // exactly one click event either way.
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
         [
           "$page-view",
@@ -193,6 +195,159 @@ describe("EventTracker", () => {
       const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, data: Record<string, unknown> }[] };
       const click = payload.events.find((event) => event.event_type === "$click");
       expect(click?.data.pointer_target_fixed).toBe(1);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("flags a click with no observable effect as dead on its single $click event", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"dead\">Does nothing</button>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const clickAtMs = Date.now();
+      document.querySelector("#dead")?.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        clientX: 10,
+        clientY: 20,
+      }));
+
+      await advancePastFlush();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, event_at_ms: number, data: Record<string, unknown> }[] };
+      const clicks = payload.events.filter((event) => event.event_type === "$click");
+      expect(clicks).toHaveLength(1);
+      const click = clicks[0];
+
+      // One event per physical click: the buffered $click is marked dead in
+      // place, still timestamped at the original click rather than at
+      // classification time (~3s later).
+      expect(click.data.dead).toBe(1);
+      expect(click.event_at_ms).toBe(clickAtMs);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("does not flag a click as dead when it mutates the DOM", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"live\">Adds content</button><div id=\"out\"></div>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const button = document.querySelector("#live");
+      if (button == null) throw new Error("button missing");
+      button.addEventListener("click", () => {
+        document.querySelector("#out")?.appendChild(document.createElement("p"));
+      });
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      // Let the MutationObserver microtask run so the mutation is recorded
+      // before the dead-click sweeps start.
+      await Promise.resolve();
+
+      await advancePastFlush();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, data: Record<string, unknown> }[] };
+      const clicks = payload.events.filter((event) => event.event_type === "$click");
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0].data.dead).toBeUndefined();
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("drains held clicks as alive on pagehide so navigation clicks are never lost", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<a id=\"nav\" href=\"/pricing\">Pricing</a>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const clickAtMs = Date.now();
+      document.querySelector("#nav")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      // Navigation fires pagehide well before any classification sweep — the
+      // keepalive flush ships the still-unclassified click as a plain (alive)
+      // $click.
+      window.dispatchEvent(new Event("pagehide"));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, event_at_ms: number, data: Record<string, unknown> }[] };
+      const clicks = payload.events.filter((event) => event.event_type === "$click");
+      expect(clicks).toHaveLength(1);
+      expect(clicks[0].data.dead).toBeUndefined();
+      expect(clicks[0].event_at_ms).toBe(clickAtMs);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("holds an unclassified click out of a flush and ships it on the next one", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"late\">Late click</button>";
+
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      // Click 500ms before the 10s flush tick: classification cannot finish
+      // in time, so the flush must hold the click back rather than send it
+      // unclassified.
+      await vi.advanceTimersByTimeAsync(9_500);
+      document.querySelector("#late")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
+        [
+          "$page-view",
+        ]
+      `);
+
+      // By the next flush the sweep has classified it (dead — nothing
+      // observable happened) and it ships marked.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, data: Record<string, unknown> }[] };
+      expect(second.events.map((event) => event.event_type)).toMatchInlineSnapshot(`
+        [
+          "$click",
+        ]
+      `);
+      expect(second.events[0].data.dead).toBe(1);
     } finally {
       tracker.stop();
     }

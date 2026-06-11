@@ -204,8 +204,8 @@ type ClickmapRouteRow = { path: string, clicks: number, users: number, replays: 
 type ClickmapRawRouteRow = { path: string, clicks: number | string, users: number | string, replays: number | string };
 type ClickmapSelectorRow = { selector: string, clicks: number };
 type ClickmapRawSelectorRow = { selector: string, clicks: number | string };
-type ClickmapElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number };
-type ClickmapRawElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number | string };
+type ClickmapElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number, dead_clicks: number };
+type ClickmapRawElementRow = { elements_chain: string, elements_text: string, tag_name: string, href: string | null, clicks: number | string, dead_clicks: number | string };
 type ClickmapUserRow = { id: string, clicks: number, replays: number, last_event_at_millis: number };
 type ClickmapRawUserRow = { id: string, clicks: number | string, replays: number | string, last_event_at_millis: number | string };
 type ClickmapReplayRow = {
@@ -264,6 +264,7 @@ export function normalizeClickmapClicksQueryRows(input: {
       tag_name: row.tag_name,
       href: row.href,
       clicks: scaleSampledEventCount(row.clicks),
+      dead_clicks: scaleSampledEventCount(row.dead_clicks),
     })),
     users: input.userRows.map((row) => ({
       id: row.id,
@@ -374,13 +375,17 @@ export async function runClickmapClicksQuery(
     LIMIT {routeLimit:UInt32}
   `);
 
+  // Dead clicks are flagged rows on the same table (is_dead), so the dead
+  // subset rides the click aggregate as a countIf — count() stays the total
+  // because each physical click is exactly one row.
   const elementsQuery = runJson<ClickmapRawElementRow>(`
     SELECT
       elements_chain,
       any(elements_text) AS elements_text,
       any(tag_name) AS tag_name,
       any(href) AS href,
-      count() AS clicks
+      count() AS clicks,
+      countIf(is_dead = 1) AS dead_clicks
     FROM ${CLICKMAP_TABLE}
     WHERE ${sharedWhere}
       AND elements_chain != ''

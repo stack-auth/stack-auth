@@ -237,6 +237,7 @@ export const AnalyticsClickmapResponseBodySchema = yupObject({
     tag_name: yupString().defined(),
     href: yupString().nullable().defined(),
     clicks: yupNumber().integer().defined(),
+    dead_clicks: yupNumber().integer().defined(),
   }).defined()).optional().default([]),
 }).defined();
 

@@ -141,7 +141,7 @@ describe("analytics clickmap query helpers", () => {
       samplingPct: 25,
       routesRows: [{ path: "/pricing", clicks: "10", users: "8", replays: "3" }],
       selectorsRows: [{ selector: "button.primary", clicks: "4" }],
-      elementsRows: [{ elements_chain: "button.primary", elements_text: "Buy", tag_name: "button", href: null, clicks: "5" }],
+      elementsRows: [{ elements_chain: "button.primary", elements_text: "Buy", tag_name: "button", href: null, clicks: "5", dead_clicks: "2" }],
       userRows: [{ id: "user-123", clicks: "6", replays: "2", last_event_at_millis: "1710000000000" }],
       replayRows: [{ id: "replay-123", linked_user_id: "user-123", route_path: "/pricing", viewport_width: "1440", viewport_height: "900", clicks: "7", last_event_at_millis: "1710000000123" }],
     });
@@ -151,6 +151,7 @@ describe("analytics clickmap query helpers", () => {
         "elements": [
           {
             "clicks": 20,
+            "dead_clicks": 8,
             "elements_chain": "button.primary",
             "elements_text": "Buy",
             "href": null,

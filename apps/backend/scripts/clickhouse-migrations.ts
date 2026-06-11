@@ -673,6 +673,12 @@ CREATE DATABASE IF NOT EXISTS analytics_internal;
 // Order key (project_id, branch_id, date, path, viewport_width) matches the
 // hot clickmap query: "all clicks on this path in this date range at these
 // viewport widths".
+//
+// Dead-click classification lives on the click row itself: the SDK watches
+// each click for up to ~3.75s for any observable effect and sets data.dead=1
+// on the $click when there was none. One row per physical click, so count()
+// stays the total and countIf(is_dead) is the dead subset; no second event
+// type or table.
 const CLICKMAP_EVENTS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS analytics_internal.clickmap_events (
     project_id           String,
@@ -693,7 +699,8 @@ CREATE TABLE IF NOT EXISTS analytics_internal.clickmap_events (
     selector             String,
     elements_text        String,
     tag_name             LowCardinality(String),
-    href                 Nullable(String)
+    href                 Nullable(String),
+    is_dead              UInt8 DEFAULT 0
 )
 ENGINE MergeTree
 PARTITION BY toYYYYMM(event_at)
@@ -742,7 +749,8 @@ SELECT
     toString(data.selector) AS selector,
     toString(data.text) AS elements_text,
     toString(data.tag_name) AS tag_name,
-    nullIf(toString(data.href), '') AS href
+    nullIf(toString(data.href), '') AS href,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
 FROM analytics_internal.events
 WHERE event_type = '$click';
 `;
@@ -783,7 +791,8 @@ SELECT
     toString(data.selector) AS selector,
     toString(data.text) AS elements_text,
     toString(data.tag_name) AS tag_name,
-    nullIf(toString(data.href), '') AS href
+    nullIf(toString(data.href), '') AS href,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
 FROM analytics_internal.events
 WHERE event_type = '$click'
   AND event_at < coalesce(
@@ -815,6 +824,7 @@ SELECT
   selector,
   elements_text,
   tag_name,
-  href
+  href,
+  is_dead
 FROM analytics_internal.clickmap_events;
 `;

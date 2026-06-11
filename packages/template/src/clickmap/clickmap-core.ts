@@ -15,7 +15,7 @@ import {
 } from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
 import { CLICKMAP_ROOT_ID, DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
 import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
-import { parseElementsChain, type ElementsChainSegment } from "@hexclave/shared/dist/utils/elements-chain";
+import { buildElementsChain, parseElementsChain, type ElementsChainSegment } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { getGlobalUiInstance, h, hasAppendChild, setGlobalUiInstance, setHtml, type UiGlobalInstance } from "../in-page-ui/dom";
@@ -33,6 +33,8 @@ type ClickmapClickGroup = {
   selector: string;
   label: string;
   count: number;
+  // Clicks on this element that produced no observable effect (is_dead rows).
+  deadCount: number;
   element: Element | null;
   rect: DOMRect | null;
 };
@@ -45,11 +47,14 @@ type ClickmapGroupOverlayElement = {
 type ClickmapListRowElement = {
   row: HTMLElement;
   count: HTMLElement;
+  check: HTMLButtonElement;
   eye: HTMLButtonElement;
   label: HTMLElement;
+  dead: HTMLElement;
   selector: HTMLElement;
   group: ClickmapClickGroup | null;
   renderedEyeIcon: string;
+  renderedCheckIcon: string;
 };
 
 const CLICKMAP_FILTERS_STORAGE_KEY = 'hexclave-clickmap-overlay-filters';
@@ -62,6 +67,12 @@ type ClickmapFilters = {
   device: ClickmapDeviceKey,
   urlPattern: string,
   elementSearch: string,
+  // Reveal dead clicks in the overlay. Off by default: every displayed count
+  // is alive clicks only, dead chips are hidden, and elements whose clicks
+  // were all dead are dropped. Pure client-side filter — the server response
+  // always carries both clicks (total) and dead_clicks per element, so
+  // toggling never refetches.
+  showDead: boolean,
 };
 
 type ClickmapViewportBucket = {
@@ -74,6 +85,7 @@ const CLICKMAP_DEFAULT_FILTERS: ClickmapFilters = {
   device: 'all',
   urlPattern: '',
   elementSearch: '',
+  showDead: false,
 };
 
 const CLICKMAP_RANGE_MS: Record<ClickmapRangeKey, number> = {
@@ -129,6 +141,7 @@ type ServerClickmapElement = {
   tagName: string;
   href: string | null;
   clicks: number;
+  deadClicks: number;
 };
 
 type ServerClickmap = {
@@ -152,9 +165,22 @@ function readChainAttr(segment: ElementsChainSegment, attr: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+// Compact, human-readable counts for tight UI surfaces (markers, chips,
+// stats): 999 → "999", 1234 → "1.2k", 1_250_000 → "1.3m", 2e9 → "2b". One
+// decimal place (trailing .0 drops out of the arithmetic), and rounding
+// cascades into the next unit so 999_950+ reads "1m" rather than "1000k".
 function formatClickmapCount(value: number): string {
-  if (value >= 1000) return `${Math.round(value / 100) / 10}k`;
-  return String(value);
+  let scaled = value;
+  let suffix = '';
+  for (const nextSuffix of ['k', 'm', 'b']) {
+    // 999.95 is the smallest value that would display as "1000" at one
+    // decimal place, so it already belongs to the next unit up.
+    if (scaled < 999.95) break;
+    scaled /= 1000;
+    suffix = nextSuffix;
+  }
+  if (suffix === '') return String(Math.round(scaled));
+  return `${Math.round(scaled * 10) / 10}${suffix}`;
 }
 
 function getClickmapHue(count: number, maxCount: number): number {
@@ -287,6 +313,7 @@ function parseServerClickmapResponse(value: unknown, path: string): ServerClickm
       tagName: element.tag_name,
       href: element.href,
       clicks: element.clicks,
+      deadClicks: element.dead_clicks,
     })),
   };
 }
@@ -393,6 +420,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
         device: isClickmapDeviceKey(obj.device) ? obj.device : CLICKMAP_DEFAULT_FILTERS.device,
         urlPattern: typeof obj.urlPattern === 'string' ? obj.urlPattern : CLICKMAP_DEFAULT_FILTERS.urlPattern,
         elementSearch: typeof obj.elementSearch === 'string' ? obj.elementSearch : CLICKMAP_DEFAULT_FILTERS.elementSearch,
+        showDead: typeof obj.showDead === 'boolean' ? obj.showDead : CLICKMAP_DEFAULT_FILTERS.showDead,
       };
     } catch {
       return { ...CLICKMAP_DEFAULT_FILTERS };
@@ -418,7 +446,20 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   let highlightedGroupSelector: string | null = null;
   let highlightRenderedSelector: string | null = null;
   let highlightSettleTimer: number | null = null;
+  // Hovering a count marker tints its outline. The marker button is the only
+  // pointer-interactive part of the overlay (outlines are pointer-events:none
+  // so the page stays usable), so it owns the hover.
+  let hoveredGroupSelector: string | null = null;
   const mutedGroupSelectors = new Set<string>();
+  // Datagrid-style row selection, keyed by the same selector ids as muting but
+  // independent of it: it drives the page highlight and scopes the list
+  // header's bulk show/hide actions. The anchor remembers the last plainly
+  // clicked row so shift+click can extend a contiguous range in list order.
+  const selectedGroupSelectors = new Set<string>();
+  let selectionAnchorSelector: string | null = null;
+  // Snapshot of the groups from the last render, in list order. Range
+  // selection and the header's bulk actions operate on this.
+  let latestGroups: ClickmapClickGroup[] = [];
   const groupOverlayElements = new Map<string, ClickmapGroupOverlayElement>();
   const listRowElements = new Map<string, ClickmapListRowElement>();
 
@@ -445,6 +486,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   let domIndexDebounce = 0;
   function rebuildDomIndex() {
     domIndex.clear();
+    trimTargetCache = new WeakMap();
     const all = document.querySelectorAll('*');
     for (const el of all) {
       if (!isElementVisibleForClickmap(el)) continue;
@@ -454,6 +496,43 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       domIndex.set(tag, bucket);
     }
     domIndexDirty = false;
+  }
+
+  // Attribute clicks to the logical control, not the fragment the browser
+  // reported (PostHog's trimElement). A click on a <span> or <svg> inside a
+  // button records a span/svg-leaf chain, so the matched element walks up to
+  // the nearest clickable ancestor: a real control (semantic selector) or the
+  // element where cursor:pointer begins (computed pointer while the parent's
+  // isn't — catches div-as-button components with zero hardcoded tags). No
+  // hit within the cap returns the element unchanged. Resolution happens here
+  // at render time, never at capture: stored chains stay raw, so these rules
+  // can evolve and historical clicks regroup for free.
+  const CLICKMAP_TRIM_TARGET_SELECTOR = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"], [contenteditable="true"]';
+  const CLICKMAP_TRIM_MAX_HOPS = 10;
+  // getComputedStyle on every hop is too hot for the per-render group loop;
+  // resolutions are cached per matched element and dropped together with the
+  // dom index (same trigger: the page's DOM changed).
+  let trimTargetCache = new WeakMap<Element, { target: Element, key: string }>();
+  function resolveClickTarget(start: Element): { target: Element, key: string } {
+    const cached = trimTargetCache.get(start);
+    if (cached != null) return cached;
+    let target = start;
+    let current: Element | null = start;
+    for (let hops = 0; current != null && current !== document.body && current !== document.documentElement && hops < CLICKMAP_TRIM_MAX_HOPS; hops++) {
+      if (current.matches(CLICKMAP_TRIM_TARGET_SELECTOR)) {
+        target = current;
+        break;
+      }
+      const parent: Element | null = current.parentElement;
+      if (window.getComputedStyle(current).cursor === 'pointer' && (parent == null || window.getComputedStyle(parent).cursor !== 'pointer')) {
+        target = current;
+        break;
+      }
+      current = parent;
+    }
+    const resolved = { target, key: buildElementsChain(target) };
+    trimTargetCache.set(start, resolved);
+    return resolved;
   }
   function ensureDomIndex() {
     if (domIndexDirty) rebuildDomIndex();
@@ -609,6 +688,8 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   const chevronDownSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
   const clicksIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg>';
   const elementsIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
+  const eyeIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+  const eyeOffIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
   // Only swap the chevron when the expanded state actually changes. render()
   // runs constantly (route poll, scroll, body mutations), and rewriting the
   // button's SVG on every pass detaches the element under the user's pointer
@@ -829,6 +910,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     className: 'sdt-hm-filter-input',
     type: 'text',
     placeholder: 'Search element text or tag',
+    'aria-label': 'Search element text or tag',
     spellcheck: 'false',
     autocomplete: 'off',
     autocapitalize: 'off',
@@ -856,6 +938,79 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   const elementsIcon = h('span', { className: 'sdt-hm-toolbar-metric-icon' });
   setHtml(clicksIcon, clicksIconSvg);
   setHtml(elementsIcon, elementsIconSvg);
+
+  // "Show dead clicks" toggle. Two synced controls — a compact icon toggle in
+  // the always-visible toolbar and a labeled button in the expanded actions
+  // row — flip the same filters.showDead flag. Off (default) the overlay
+  // pretends dead clicks don't exist: counts are alive-only and all-dead
+  // elements are hidden; on, totals include dead clicks and the per-element
+  // "% dead" chips appear. Icons are written once at creation (see
+  // syncExpandIcon for the dead-spot hazard of rewriting SVG on every
+  // render); state sync only toggles classes/attrs.
+  const showDeadIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>';
+  const showDeadMiniToggle = h('button', {
+    className: 'sdt-hm-icon-btn sdt-hm-dead-toggle',
+    type: 'button',
+    'aria-pressed': 'false',
+    'aria-label': 'Show dead clicks',
+    'data-sdt-tip': 'Show dead clicks',
+  }) as HTMLButtonElement;
+  setHtml(showDeadMiniToggle, showDeadIconSvg);
+  const showDeadToggleIcon = h('span', { className: 'sdt-hm-dead-toggle-icon' });
+  setHtml(showDeadToggleIcon, showDeadIconSvg);
+  const showDeadToggle = h('button', {
+    className: 'sdt-hm-btn sdt-hm-dead-toggle',
+    type: 'button',
+    'aria-pressed': 'false',
+    'data-sdt-tip': 'Include clicks that had no effect',
+  }, showDeadToggleIcon, 'Dead clicks') as HTMLButtonElement;
+
+  function syncShowDeadToggles() {
+    for (const button of [showDeadMiniToggle, showDeadToggle]) {
+      button.setAttribute('aria-pressed', String(filters.showDead));
+      button.classList.toggle('sdt-hm-dead-toggle-active', filters.showDead);
+    }
+  }
+  function setShowDead(next: boolean) {
+    if (filters.showDead === next) return;
+    filters = { ...filters, showDead: next };
+    persistFilters(filters);
+    syncShowDeadToggles();
+    scheduleRender();
+  }
+  showDeadMiniToggle.addEventListener('click', () => setShowDead(!filters.showDead));
+  showDeadToggle.addEventListener('click', () => setShowDead(!filters.showDead));
+  syncShowDeadToggles();
+
+  // Overlay visibility toggle in the always-visible toolbar, twinned with the
+  // expanded panel's labeled button (both flip overlayVisible). Eye = shown,
+  // eye-off = hidden; the icon is only rewritten on state flips (see
+  // syncExpandIcon for the dead-spot hazard of rewriting SVG every render).
+  const overlayMiniToggle = h('button', {
+    className: 'sdt-hm-icon-btn',
+    type: 'button',
+    'aria-pressed': 'false',
+    'aria-label': 'Hide overlay',
+    'data-sdt-tip': 'Hide overlay',
+  }) as HTMLButtonElement;
+  let renderedOverlayMiniIcon = '';
+  function syncOverlayMiniToggle() {
+    overlayMiniToggle.setAttribute('aria-pressed', String(!overlayVisible));
+    const label = overlayVisible ? 'Hide overlay' : 'Show overlay';
+    overlayMiniToggle.setAttribute('aria-label', label);
+    overlayMiniToggle.setAttribute('data-sdt-tip', label);
+    overlayMiniToggle.classList.toggle('sdt-hm-overlay-mini-off', !overlayVisible);
+    const icon = overlayVisible ? eyeIconSvg : eyeOffIconSvg;
+    if (renderedOverlayMiniIcon !== icon) {
+      renderedOverlayMiniIcon = icon;
+      setHtml(overlayMiniToggle, icon);
+    }
+  }
+  overlayMiniToggle.addEventListener('click', () => {
+    overlayVisible = !overlayVisible;
+    render();
+  });
+  syncOverlayMiniToggle();
   const toolbar = h('div', { className: 'sdt-hm-toolbar' },
     closeButton,
     h('div', { className: 'sdt-hm-toolbar-title' }, 'Clickmap'),
@@ -867,6 +1022,8 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       h('span', { className: 'sdt-hm-toolbar-metric', 'data-sdt-tip': 'Aggregate clicks' }, miniClicks, clicksIcon),
       h('span', { className: 'sdt-hm-toolbar-metric', 'data-sdt-tip': 'Mapped elements' }, miniElements, elementsIcon),
     ),
+    showDeadMiniToggle,
+    overlayMiniToggle,
     expandButton,
   );
 
@@ -932,20 +1089,58 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     updateElementSearch(elementSearchInput.value);
   });
 
-  // Two regions: a fixed head and a scrolling body (status, list). The head
-  // is ordered so each control sits next to what it affects: viewport filter
-  // (+ its mismatch warning), then the stat chips paired with the overlay
-  // toggle, then element search last — directly above the element list it
-  // filters, but outside the scroll region so it can't scroll away.
-  // Keeping borders to a single head/body divider avoids the dense stack of
-  // bordered bands that made the expanded panel feel congested.
-  const actions = h('div', { className: 'sdt-hm-actions' }, stats, overlayToggle);
+  // Two regions: a fixed head (viewport filter + stats/actions) and a
+  // scrolling body (status, list header, list). Element search lives in the
+  // sticky list header next to the selection and bulk-visibility controls,
+  // so every list control sits in one row directly above the rows it
+  // operates on. Keeping borders to a single head/body divider avoids the
+  // dense stack of bordered bands that made the expanded panel feel
+  // congested.
+  const actions = h('div', { className: 'sdt-hm-actions' }, stats, showDeadToggle, overlayToggle);
   const head = h('div', { className: 'sdt-hm-head' },
     filterRow,
     actions,
-    wrapFilterField('Element search', elementSearchInput),
   );
-  const body = h('div', { className: 'sdt-hm-body' }, status, list);
+  // Datagrid-style list header: master checkbox + selection summary on the
+  // left, bulk visibility actions on the right. Sticky inside the scrolling
+  // body so the bulk actions stay reachable while the list scrolls.
+  const listHeaderCheck = h('button', {
+    className: 'sdt-hm-row-check',
+    type: 'button',
+    role: 'checkbox',
+    'aria-checked': 'false',
+    'aria-label': 'Select all elements',
+  }) as HTMLButtonElement;
+  const listHeaderSummary = h('span', { className: 'sdt-hm-list-header-summary' });
+  const listShowButton = h('button', { className: 'sdt-hm-btn sdt-hm-btn-sm', type: 'button' }, 'Show all') as HTMLButtonElement;
+  const listHideButton = h('button', { className: 'sdt-hm-btn sdt-hm-btn-sm', type: 'button' }, 'Hide all') as HTMLButtonElement;
+  const listHeader = h('div', { className: 'sdt-hm-list-header' },
+    listHeaderCheck,
+    listHeaderSummary,
+    elementSearchInput,
+    listShowButton,
+    listHideButton,
+  );
+  listHeaderCheck.addEventListener('click', () => {
+    const allSelected = latestGroups.length > 0 && latestGroups.every((group) => selectedGroupSelectors.has(group.selector));
+    if (allSelected) {
+      clearSelection();
+      return;
+    }
+    selectedGroupSelectors.clear();
+    for (const group of latestGroups) selectedGroupSelectors.add(group.selector);
+    selectionAnchorSelector = null;
+    scheduleRender();
+  });
+  listShowButton.addEventListener('click', () => {
+    for (const group of getBulkActionGroups()) mutedGroupSelectors.delete(group.selector);
+    scheduleRender();
+  });
+  listHideButton.addEventListener('click', () => {
+    for (const group of getBulkActionGroups()) mutedGroupSelectors.add(group.selector);
+    scheduleRender();
+  });
+  const body = h('div', { className: 'sdt-hm-body' }, status, listHeader, list);
   const details = h('div', { className: 'sdt-hm-details' }, head, body);
 
   function getGroups(): ClickmapClickGroup[] {
@@ -972,18 +1167,22 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
           element = queryUniqueBySelector(`a[href="${cssEscapeAttrValue(elementEntry.href)}"]`);
         }
         if (element == null) continue;
-        const key = elementEntry.elementsChain;
+        // Group by the trimmed click target, not the raw chain: span-leaf and
+        // button-leaf rows for the same control land in one group.
+        const { target, key } = resolveClickTarget(element);
         const existing = byKey.get(key);
         if (existing != null) {
           existing.count += elementEntry.clicks;
+          existing.deadCount += elementEntry.deadClicks;
           continue;
         }
         byKey.set(key, {
           selector: key,
-          label: getReadableElementLabel(element),
+          label: getReadableElementLabel(target),
           count: elementEntry.clicks,
-          element,
-          rect: element.getBoundingClientRect(),
+          deadCount: elementEntry.deadClicks,
+          element: target,
+          rect: target.getBoundingClientRect(),
         });
       }
     }
@@ -994,18 +1193,38 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
         if (searchQuery !== '' && !selectorClickmap.selector.toLowerCase().includes(searchQuery)) continue;
         const element = getElementFromSelector(selectorClickmap.selector);
         if (element == null) continue;
-        byKey.set(selectorClickmap.selector, {
-          selector: selectorClickmap.selector,
-          label: getReadableElementLabel(element),
+        const { target, key } = resolveClickTarget(element);
+        const existing = byKey.get(key);
+        if (existing != null) {
+          existing.count += selectorClickmap.clicks;
+          continue;
+        }
+        byKey.set(key, {
+          selector: key,
+          label: getReadableElementLabel(target),
           count: selectorClickmap.clicks,
-          element,
-          rect: element.getBoundingClientRect(),
+          // Legacy selector rows have no dead-click aggregation.
+          deadCount: 0,
+          element: target,
+          rect: target.getBoundingClientRect(),
         });
       }
     }
 
-    return Array.from(byKey.values())
-      .sort((a, b) => b.count - a.count || stringCompare(a.selector, b.selector));
+    let groups = Array.from(byKey.values());
+    if (!filters.showDead) {
+      // Dead clicks are hidden by default: an element whose clicks were all
+      // dead has nothing left to display.
+      groups = groups.filter((group) => getGroupDisplayCount(group) > 0);
+    }
+    return groups.sort((a, b) => getGroupDisplayCount(b) - getGroupDisplayCount(a) || stringCompare(a.selector, b.selector));
+  }
+
+  // Displayed numbers follow the toggle: alive clicks only by default, full
+  // totals (alive + dead) when dead clicks are shown. The clamp guards
+  // against sampling-scaled dead counts rounding above the scaled total.
+  function getGroupDisplayCount(group: ClickmapClickGroup): number {
+    return filters.showDead ? group.count : Math.max(0, group.count - group.deadCount);
   }
 
   function scheduleRender() {
@@ -1046,43 +1265,129 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     scheduleRender();
   }
 
-  function highlightGroup(group: ClickmapClickGroup) {
-    highlightedGroupSelector = group.selector;
+  function clearSelection() {
+    if (selectedGroupSelectors.size === 0 && highlightedGroupSelector == null) return;
+    selectedGroupSelectors.clear();
+    selectionAnchorSelector = null;
+    highlightedGroupSelector = null;
     scheduleRender();
   }
 
-  const eyeIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
-  const eyeOffIconSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+  function toggleSelectedGroup(selector: string) {
+    if (selectedGroupSelectors.has(selector)) {
+      selectedGroupSelectors.delete(selector);
+      if (highlightedGroupSelector === selector) highlightedGroupSelector = null;
+    } else {
+      selectedGroupSelectors.add(selector);
+      highlightedGroupSelector = selector;
+    }
+    selectionAnchorSelector = selector;
+    scheduleRender();
+  }
+
+  // Datagrid click semantics on list rows: plain click selects just that row
+  // (clicking the only selected row clears the selection again), ctrl/cmd
+  // toggles membership, shift extends a contiguous range from the anchor in
+  // list order. The most recently clicked row becomes the highlighted lead,
+  // which drives the page's glide-highlight box.
+  function selectGroupFromEvent(group: ClickmapClickGroup, event: { shiftKey: boolean, ctrlKey: boolean, metaKey: boolean }) {
+    const toggle = event.ctrlKey || event.metaKey;
+    if (event.shiftKey && selectionAnchorSelector != null) {
+      const order = latestGroups.map((candidate) => candidate.selector);
+      const anchorIndex = order.indexOf(selectionAnchorSelector);
+      const targetIndex = order.indexOf(group.selector);
+      if (anchorIndex !== -1 && targetIndex !== -1) {
+        if (!toggle) selectedGroupSelectors.clear();
+        const [start, end] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+        for (const selector of order.slice(start, end + 1)) {
+          selectedGroupSelectors.add(selector);
+        }
+        highlightedGroupSelector = group.selector;
+        scheduleRender();
+        return;
+      }
+    }
+    if (toggle) {
+      toggleSelectedGroup(group.selector);
+      return;
+    }
+    selectionAnchorSelector = group.selector;
+    if (selectedGroupSelectors.size === 1 && selectedGroupSelectors.has(group.selector)) {
+      selectedGroupSelectors.delete(group.selector);
+      highlightedGroupSelector = null;
+    } else {
+      selectedGroupSelectors.clear();
+      selectedGroupSelectors.add(group.selector);
+      highlightedGroupSelector = group.selector;
+    }
+    scheduleRender();
+  }
+
+  // Targets for the header's bulk show/hide: the selection when there is one,
+  // otherwise every listed element.
+  function getBulkActionGroups(): ClickmapClickGroup[] {
+    if (selectedGroupSelectors.size > 0) {
+      return latestGroups.filter((group) => selectedGroupSelectors.has(group.selector));
+    }
+    return latestGroups;
+  }
+
+  function setHoveredGroup(selector: string | null) {
+    if (hoveredGroupSelector === selector) return;
+    hoveredGroupSelector = selector;
+    scheduleRender();
+  }
+
+  const checkIconSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const dashIconSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>';
 
   function createListRowElement(selector: string): ClickmapListRowElement {
     const count = h('span', { className: 'sdt-hm-row-count' });
     const label = h('span', { className: 'sdt-hm-row-label' });
+    const dead = h('span', { className: 'sdt-hm-row-dead' });
     const selectorText = h('span', { className: 'sdt-hm-row-selector' });
+    const check = h('button', { className: 'sdt-hm-row-check', type: 'button', role: 'checkbox', 'aria-checked': 'false' }) as HTMLButtonElement;
     const eye = h('button', { className: 'sdt-hm-row-eye', type: 'button' }) as HTMLButtonElement;
     const row = h('div', {
       className: 'sdt-hm-row',
       role: 'button',
       tabindex: '0',
     },
+      check,
       count,
-      h('span', { className: 'sdt-hm-row-meta' }, label, selectorText),
+      h('span', { className: 'sdt-hm-row-meta' },
+        h('span', { className: 'sdt-hm-row-label-row' }, label, dead),
+        selectorText,
+      ),
       eye,
     );
-    const rowElement: ClickmapListRowElement = { row, count, eye, label, selector: selectorText, group: null, renderedEyeIcon: '' };
+    const rowElement: ClickmapListRowElement = { row, count, check, eye, label, dead, selector: selectorText, group: null, renderedEyeIcon: '', renderedCheckIcon: '' };
+    check.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (rowElement.group == null) return;
+      // The checkbox always toggles membership (no modifier needed), like a
+      // datagrid checkbox column; shift still extends an additive range.
+      if (event.shiftKey && selectionAnchorSelector != null) {
+        selectGroupFromEvent(rowElement.group, { shiftKey: true, ctrlKey: true, metaKey: false });
+        return;
+      }
+      toggleSelectedGroup(rowElement.group.selector);
+    });
     eye.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
       toggleMutedGroup(selector);
     });
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (event) => {
       if (rowElement.group == null) return;
-      highlightGroup(rowElement.group);
+      selectGroupFromEvent(rowElement.group, event);
     });
     row.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       if (rowElement.group == null) return;
-      highlightGroup(rowElement.group);
+      selectGroupFromEvent(rowElement.group, event);
     });
     return rowElement;
   }
@@ -1090,10 +1395,21 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   function updateListRowElement(rowElement: ClickmapListRowElement, group: ClickmapClickGroup) {
     const muted = mutedGroupSelectors.has(group.selector);
     const highlighted = highlightedGroupSelector === group.selector;
+    const selected = selectedGroupSelectors.has(group.selector);
     rowElement.group = group;
     rowElement.row.classList.toggle('sdt-hm-row-muted', muted);
     rowElement.row.classList.toggle('sdt-hm-row-highlighted', highlighted);
-    rowElement.count.textContent = formatClickmapCount(group.count);
+    rowElement.row.classList.toggle('sdt-hm-row-selected', selected);
+    rowElement.check.setAttribute('aria-checked', String(selected));
+    rowElement.check.setAttribute('aria-label', selected ? `Deselect ${group.label}` : `Select ${group.label}`);
+    // Same dead-spot hazard as syncExpandIcon: only rewrite the SVG when the
+    // selected state actually flips.
+    const checkIcon = selected ? checkIconSvg : '';
+    if (rowElement.renderedCheckIcon !== checkIcon) {
+      rowElement.renderedCheckIcon = checkIcon;
+      setHtml(rowElement.check, checkIcon);
+    }
+    rowElement.count.textContent = formatClickmapCount(getGroupDisplayCount(group));
     rowElement.eye.setAttribute('aria-pressed', String(muted));
     rowElement.eye.setAttribute('aria-label', muted ? `Unmute ${group.label}` : `Mute ${group.label}`);
     rowElement.eye.title = muted ? 'Unmute element' : 'Mute element';
@@ -1105,6 +1421,16 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       setHtml(rowElement.eye, eyeIcon);
     }
     rowElement.label.textContent = group.label;
+    if (filters.showDead && group.deadCount > 0) {
+      const deadPct = group.count > 0 ? Math.round((group.deadCount / group.count) * 100) : 100;
+      rowElement.dead.textContent = `${deadPct}% dead`;
+      rowElement.dead.title = `${formatClickmapCount(group.deadCount)} of ${formatClickmapCount(group.count)} clicks had no visible effect`;
+      rowElement.dead.classList.add('sdt-hm-row-dead-visible');
+    } else {
+      rowElement.dead.textContent = '';
+      rowElement.dead.title = '';
+      rowElement.dead.classList.remove('sdt-hm-row-dead-visible');
+    }
     rowElement.selector.textContent = group.selector;
   }
 
@@ -1119,15 +1445,19 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     }
 
     const visibleGroupKeys = new Set<string>();
-    const maxCount = Math.max(1, ...groups.map((group) => group.count));
+    const maxCount = Math.max(1, ...groups.map(getGroupDisplayCount));
     for (const group of groups) {
       if (group.rect == null || group.rect.width <= 0 || group.rect.height <= 0) {
         continue;
       }
       visibleGroupKeys.add(group.selector);
-      const hue = getClickmapHue(group.count, maxCount);
+      const displayCount = getGroupDisplayCount(group);
+      const hue = getClickmapHue(displayCount, maxCount);
       const muted = mutedGroupSelectors.has(group.selector);
-      const highlighted = highlightedGroupSelector === group.selector;
+      // Every selected row reads as highlighted on the page, so a multi-row
+      // selection lights up all of its outlines at once; the glide box still
+      // follows only the lead (highlightedGroupSelector).
+      const highlighted = highlightedGroupSelector === group.selector || selectedGroupSelectors.has(group.selector);
       let overlayElement = groupOverlayElements.get(group.selector);
       if (overlayElement == null) {
         const marker = h('button', { className: 'sdt-hm-marker', type: 'button', tabindex: '-1' });
@@ -1135,6 +1465,10 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
           event.preventDefault();
           event.stopPropagation();
           toggleMutedGroup(group.selector);
+        });
+        marker.addEventListener('pointerenter', () => setHoveredGroup(group.selector));
+        marker.addEventListener('pointerleave', () => {
+          if (hoveredGroupSelector === group.selector) setHoveredGroup(null);
         });
         overlayElement = {
           marker,
@@ -1144,13 +1478,16 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
         overlayRoot.append(overlayElement.outline, overlayElement.marker);
       }
       const { marker, outline } = overlayElement;
-      marker.title = muted ? `Unmute ${group.selector}` : `Mute ${group.count} clicks on ${group.selector}`;
+      const deadSuffix = filters.showDead && group.deadCount > 0 && group.count > 0
+        ? ` (${Math.round((group.deadCount / group.count) * 100)}% dead)`
+        : '';
+      marker.title = muted ? `Unmute ${group.selector}` : `Mute ${displayCount} clicks${deadSuffix} on ${group.selector}`;
       marker.setAttribute('aria-label', marker.title);
       marker.style.left = `${Math.round(group.rect.left + group.rect.width / 2)}px`;
       marker.style.top = `${Math.round(group.rect.top + group.rect.height / 2)}px`;
       marker.style.background = `hsla(${hue}, 96%, 58%, 0.94)`;
       marker.style.boxShadow = `0 0 0 1px hsla(${hue}, 96%, 22%, 0.35), 0 8px 24px hsla(${hue}, 96%, 45%, 0.32)`;
-      marker.textContent = formatClickmapCount(group.count);
+      marker.textContent = formatClickmapCount(displayCount);
       marker.classList.toggle('sdt-hm-marker-muted', muted);
       marker.classList.toggle('sdt-hm-marker-highlighted', highlighted);
 
@@ -1159,6 +1496,9 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       outline.style.width = `${group.rect.width}px`;
       outline.style.height = `${group.rect.height}px`;
       outline.style.borderColor = `hsla(${hue}, 96%, 58%, 0.5)`;
+      // Hover fills the box with a faint wash of its own border color; the
+      // empty string falls back to the stylesheet's neutral background.
+      outline.style.background = hoveredGroupSelector === group.selector ? `hsla(${hue}, 96%, 58%, 0.16)` : '';
       outline.classList.toggle('sdt-hm-outline-muted', muted);
       outline.classList.toggle('sdt-hm-outline-highlighted', highlighted);
     }
@@ -1237,6 +1577,37 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     body.scrollTop = previousScrollTop;
   }
 
+  // Same dead-spot hazard as syncExpandIcon: only rewrite the master
+  // checkbox's SVG when its tri-state actually changes.
+  let renderedHeaderCheckIcon = '';
+  function syncListHeader(groups: ClickmapClickGroup[]) {
+    // The header stays visible while a search is filtering everything out —
+    // the search box lives here, so hiding it would leave no way to clear
+    // the query. It only disappears in the true empty state (no data).
+    const visible = groups.length > 0 || filters.elementSearch.trim() !== '';
+    listHeader.classList.toggle('sdt-hm-list-header-visible', visible);
+    if (!visible) return;
+    const selectedCount = selectedGroupSelectors.size;
+    const allSelected = selectedCount > 0 && groups.every((group) => selectedGroupSelectors.has(group.selector));
+    listHeaderCheck.setAttribute('aria-checked', allSelected ? 'true' : selectedCount > 0 ? 'mixed' : 'false');
+    listHeaderCheck.setAttribute('aria-label', allSelected ? 'Clear selection' : 'Select all elements');
+    const headerCheckIcon = allSelected ? checkIconSvg : selectedCount > 0 ? dashIconSvg : '';
+    if (renderedHeaderCheckIcon !== headerCheckIcon) {
+      renderedHeaderCheckIcon = headerCheckIcon;
+      setHtml(listHeaderCheck, headerCheckIcon);
+    }
+    listHeaderSummary.textContent = selectedCount > 0
+      ? `${formatClickmapCount(selectedCount)} of ${formatClickmapCount(groups.length)} selected`
+      : `${formatClickmapCount(groups.length)} element${groups.length === 1 ? '' : 's'}`;
+    const bulkTargets = getBulkActionGroups();
+    const bulkScope = selectedCount > 0 ? 'selected' : 'all';
+    listShowButton.textContent = `Show ${bulkScope}`;
+    listHideButton.textContent = `Hide ${bulkScope}`;
+    // Disabled whenever the action would be a no-op on its targets.
+    listShowButton.disabled = bulkTargets.every((group) => !mutedGroupSelectors.has(group.selector));
+    listHideButton.disabled = bulkTargets.every((group) => mutedGroupSelectors.has(group.selector));
+  }
+
   function render() {
     if (currentPath !== window.location.pathname) {
       currentPath = window.location.pathname;
@@ -1247,16 +1618,27 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       runAsynchronously(loadServerClickmap());
     }
     const groups = getGroups();
+    latestGroups = groups;
     const groupKeys = new Set(groups.map((group) => group.selector));
     for (const mutedGroupSelector of mutedGroupSelectors) {
       if (!groupKeys.has(mutedGroupSelector)) mutedGroupSelectors.delete(mutedGroupSelector);
     }
+    for (const selectedGroupSelector of selectedGroupSelectors) {
+      if (!groupKeys.has(selectedGroupSelector)) selectedGroupSelectors.delete(selectedGroupSelector);
+    }
+    if (selectionAnchorSelector != null && !groupKeys.has(selectionAnchorSelector)) {
+      selectionAnchorSelector = null;
+    }
     if (highlightedGroupSelector != null && !groupKeys.has(highlightedGroupSelector)) {
       highlightedGroupSelector = null;
     }
+    if (hoveredGroupSelector != null && !groupKeys.has(hoveredGroupSelector)) {
+      hoveredGroupSelector = null;
+    }
     // Clicks mapped to an element that actually exists in the current DOM (what
     // the overlay can draw) vs. the true aggregate the filter matched server-side.
-    const mappedClicks = groups.reduce((sum, group) => sum + group.count, 0);
+    // Follows the dead-clicks toggle so the message matches the drawn numbers.
+    const mappedClicks = groups.reduce((sum, group) => sum + getGroupDisplayCount(group), 0);
     const aggregateClicks = serverClickmap.path === currentPath ? serverClickmap.totalClicks : 0;
     const viewport = getClickmapViewportSize();
     const roundedViewportWidth = Math.round(viewport.width);
@@ -1267,6 +1649,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     selectorCount.textContent = formatClickmapCount(groups.length);
     viewportValue.textContent = `${roundedViewportWidth}x${roundedViewportHeight}`;
     overlayToggle.textContent = overlayVisible ? 'Hide overlay' : 'Show overlay';
+    syncOverlayMiniToggle();
     viewportWarning.classList.toggle('sdt-hm-viewport-warning-visible', !viewportFilterMatches);
     if (selectedViewportBucket != null && !viewportFilterMatches) {
       const recommendedWidth = getClickmapRecommendedViewportWidth(selectedViewportBucket);
@@ -1319,6 +1702,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     // out (expand, resize-driven re-render); it no-ops while collapsed.
     positionDeviceThumb();
     renderOverlay(groups);
+    syncListHeader(groups);
     renderList(groups);
   }
 
@@ -1433,6 +1817,12 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   pinPressToButton(overlayToggle);
   pinPressToButton(closeButton);
   pinPressToButton(expandButton);
+  pinPressToButton(showDeadMiniToggle);
+  pinPressToButton(showDeadToggle);
+  pinPressToButton(overlayMiniToggle);
+  pinPressToButton(listHeaderCheck);
+  pinPressToButton(listShowButton);
+  pinPressToButton(listHideButton);
   overlayToggle.addEventListener('click', () => {
     overlayVisible = !overlayVisible;
     render();
@@ -1466,7 +1856,13 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
   const visualViewport = window.visualViewport;
   mutationObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
 
-  document.body.appendChild(overlayRoot);
+  // Mounted inside the clickmap root (not document.body) so everything that
+  // ignores Hexclave UI by root id — most importantly the SDK's dead-click
+  // MutationObserver — also ignores the overlay's constant marker/outline
+  // rewrites instead of reading them as the page reacting to a click. The
+  // overlay root is position:fixed, so the unstyled parent changes nothing
+  // visually.
+  (document.getElementById(CLICKMAP_ROOT_ID) ?? document.body).appendChild(overlayRoot);
   rebuildDomIndex();
   scheduleRender();
   window.addEventListener('beforeunload', onBeforeUnloadResume);
@@ -1486,7 +1882,12 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     setUrlHelpOpen(false);
   };
   const onDocumentKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && urlHelpOpen) setUrlHelpOpen(false);
+    if (event.key !== 'Escape') return;
+    if (urlHelpOpen) {
+      setUrlHelpOpen(false);
+      return;
+    }
+    clearSelection();
   };
   document.addEventListener('mousedown', onDocumentPointerDown, true);
   document.addEventListener('keydown', onDocumentKeyDown, true);

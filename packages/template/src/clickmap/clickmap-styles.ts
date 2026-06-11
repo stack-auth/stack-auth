@@ -55,10 +55,17 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     background: transparent;
   }
 
+  /* One spacing rhythm across the pill: a tight 2px base gap so adjacent
+     controls read as clusters, with the wider between-group separation
+     coming only from the metrics block's own padding (and the title's
+     trailing padding). Item-level whitespace inside ghost icon buttons
+     already provides the rest of the breathing room. */
   .hexclave-clickmap .sdt-hm-toolbar {
+    position: relative;
+    z-index: 4;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 2px;
     min-height: 44px;
     padding: 6px 8px;
     border: 1px solid var(--sdt-border);
@@ -70,7 +77,7 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
 
   .hexclave-clickmap .sdt-hm-toolbar-title {
     flex-shrink: 0;
-    padding-left: 2px;
+    padding: 0 6px 0 2px;
     font-size: 13px;
     font-weight: 650;
     color: var(--sdt-text);
@@ -104,7 +111,8 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
+    /* The revert/info ghost buttons hug the input they belong to. */
+    gap: 2px;
   }
 
   .hexclave-clickmap .sdt-hm-toolbar-url .sdt-hm-filter-input {
@@ -180,7 +188,7 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     position: absolute;
     bottom: calc(100% + 10px);
     right: 0;
-    z-index: 2;
+    z-index: 6;
     width: 320px;
     max-width: min(320px, calc(100vw - 32px));
     box-sizing: border-box;
@@ -247,8 +255,10 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 0 4px;
+    gap: 8px;
+    /* Side padding is what separates the metrics group from the url field
+       on its left and the toggle cluster on its right. */
+    padding: 0 8px;
   }
 
   .hexclave-clickmap .sdt-hm-toolbar-metric {
@@ -272,8 +282,8 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
   }
 
   .hexclave-clickmap .sdt-hm-icon-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -343,6 +353,8 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
 
   .hexclave-clickmap .sdt-hm-details {
     display: none;
+    position: relative;
+    z-index: 1;
     max-height: min(460px, calc(100vh - 98px));
     overflow: hidden;
     border: 1px solid var(--sdt-border);
@@ -558,6 +570,52 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     transition: none;
   }
 
+  .hexclave-clickmap .sdt-hm-btn-sm {
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .hexclave-clickmap .sdt-hm-btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  /* Dead-clicks-only filter toggle (toolbar icon button + expanded-panel
+     button). Active state borrows the error tint used by the dead chips so
+     the mode reads as "you are looking at failures". */
+  .hexclave-clickmap .sdt-hm-dead-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .hexclave-clickmap .sdt-hm-dead-toggle-icon {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .hexclave-clickmap .sdt-hm-dead-toggle-active,
+  .hexclave-clickmap .sdt-hm-dead-toggle-active:hover {
+    background: var(--sdt-error-muted);
+    border-color: var(--sdt-error);
+    color: var(--sdt-error);
+    transition: none;
+  }
+
+  /* Toolbar overlay toggle while the overlay is hidden: tinted so the off
+     state reads at a glance, eye-off icon carries the meaning. */
+  .hexclave-clickmap .sdt-hm-overlay-mini-off,
+  .hexclave-clickmap .sdt-hm-overlay-mini-off:hover {
+    background: var(--sdt-accent-muted);
+    color: var(--sdt-accent-hover);
+  }
+
   .hexclave-clickmap .sdt-hm-stats {
     flex: 1;
     min-width: 0;
@@ -591,6 +649,10 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     font-variant-numeric: tabular-nums;
   }
 
+  /* No top padding on the scroller: the sticky list header pins at top 0,
+     and scroller padding reads as a see-through strip above it while the
+     list scrolls (Chromium offsets sticky insets by the scroll container's
+     padding). The status line below carries the 12px instead. */
   .hexclave-clickmap .sdt-hm-body {
     flex: 1;
     min-height: 0;
@@ -598,12 +660,12 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px 16px 14px;
+    padding: 0 16px 14px;
   }
 
   .hexclave-clickmap .sdt-hm-token-status {
     color: var(--sdt-text-secondary);
-    padding: 0 2px;
+    padding: 12px 2px 0;
     font-size: 11.5px;
     line-height: 1.45;
   }
@@ -700,6 +762,52 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     gap: 2px;
   }
 
+  /* Datagrid-style header above the element list. Sticky inside the
+     scrolling body (full-bleed via negative margins) so select-all and the
+     bulk show/hide actions stay reachable while the list scrolls. The 24px
+     left padding lines its master checkbox up with the row checkboxes
+     (16px body padding + 8px row padding). */
+  .hexclave-clickmap .sdt-hm-list-header {
+    display: none;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    align-items: center;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 8px 24px;
+    background: var(--sdt-bg);
+    border-bottom: 1px solid var(--sdt-border-subtle);
+  }
+
+  .hexclave-clickmap .sdt-hm-list-header-visible {
+    display: flex;
+  }
+
+  .hexclave-clickmap .sdt-hm-list-header-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--sdt-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Element search, compacted to header height. Shrinks before the summary
+     does, but never below a usable width. */
+  .hexclave-clickmap .sdt-hm-list-header .sdt-hm-filter-input {
+    flex: 0 1 220px;
+    width: auto;
+    min-width: 90px;
+    height: 24px;
+    border-radius: 999px;
+    font-size: 11px;
+    padding: 0 10px;
+  }
+
   .hexclave-clickmap .sdt-hm-empty {
     display: flex;
     align-items: center;
@@ -716,7 +824,7 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
   .hexclave-clickmap .sdt-hm-row {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(42px, auto) minmax(0, 1fr) 24px;
+    grid-template-columns: 16px minmax(42px, auto) minmax(0, 1fr) 24px;
     align-items: center;
     gap: 10px;
     border: 0;
@@ -746,6 +854,51 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
 
   .hexclave-clickmap .sdt-hm-row-highlighted {
     background: rgba(250, 204, 21, 0.12);
+  }
+
+  /* Declared after -highlighted and with a :hover pair so the selection tint
+     wins over both the lead-highlight wash and the plain hover background. */
+  .hexclave-clickmap .sdt-hm-row-selected,
+  .hexclave-clickmap .sdt-hm-row-selected:hover {
+    background: var(--sdt-accent-muted);
+  }
+
+  /* Row checkbox (also reused as the list header's master checkbox). A
+     button with role=checkbox instead of a native input so it can render the
+     overlay-themed check/indeterminate icons. */
+  .hexclave-clickmap .sdt-hm-row-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border: 1px solid var(--sdt-border);
+    border-radius: calc(var(--sdt-radius) - 3px);
+    background: var(--sdt-bg-elevated);
+    color: white;
+    appearance: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .hexclave-clickmap .sdt-hm-row-check:hover {
+    border-color: var(--sdt-accent);
+  }
+
+  .hexclave-clickmap .sdt-hm-row-check[aria-checked="true"],
+  .hexclave-clickmap .sdt-hm-row-check[aria-checked="mixed"] {
+    background: var(--sdt-accent);
+    border-color: var(--sdt-accent);
+  }
+
+  .hexclave-clickmap .sdt-hm-row-check:focus-visible {
+    outline: 2px solid var(--sdt-accent);
+    outline-offset: 2px;
+  }
+
+  .hexclave-clickmap .sdt-hm-row-check svg {
+    pointer-events: none;
   }
 
   .hexclave-clickmap .sdt-hm-row-count {
@@ -811,12 +964,39 @@ export const clickmapCSS = getInPageUiBaseCSS('.hexclave-clickmap') + `
     gap: 1px;
   }
 
+  .hexclave-clickmap .sdt-hm-row-label-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
   .hexclave-clickmap .sdt-hm-row-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
     font-size: 12px;
     font-weight: 600;
+  }
+
+  .hexclave-clickmap .sdt-hm-row-dead {
+    display: none;
+    flex: none;
+    align-items: center;
+    height: 16px;
+    border-radius: calc(var(--sdt-radius) - 3px);
+    background: var(--sdt-error-muted);
+    color: var(--sdt-error);
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .hexclave-clickmap .sdt-hm-row-dead-visible {
+    display: inline-flex;
   }
 
   .hexclave-clickmap .sdt-hm-row-selector {
