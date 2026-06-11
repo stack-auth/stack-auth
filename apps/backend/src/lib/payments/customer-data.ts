@@ -44,7 +44,17 @@ async function getLatestRow<T>(
     ORDER BY "__all_rows"."rowsortkey" DESC NULLS LAST, "__all_rows"."rowidentifier" DESC
     LIMIT 1
   `;
-  const replicaClient = '$replica' in prisma ? (prisma as any).$replica() : prisma;
+  // `$replica` exists on transaction clients too, but calling it throws
+  // "Cannot use $replica inside of a transaction". Fall back to `prisma`
+  // (which is `tx` in that case) when that happens.
+  let replicaClient = prisma;
+  if ('$replica' in prisma) {
+    try {
+      replicaClient = (prisma as any).$replica();
+    } catch {
+      replicaClient = prisma;
+    }
+  }
   const rows = await replicaClient.$queryRaw`${Prisma.raw(sql)}` as any[];
   if (rows.length === 0) return null;
   return rows[0].rowdata as T;
