@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-router';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component, useMemo, useSyncExternalStore } from 'react';
+import '../styles.css';
 
 
 export function getProjectId(): string | null {
