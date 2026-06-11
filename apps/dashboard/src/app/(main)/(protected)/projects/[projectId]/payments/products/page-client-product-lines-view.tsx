@@ -1155,7 +1155,8 @@ function productLineTypeKeyToString(key: ProductLineTypeKey): string {
 }
 
 function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct, onDeleteProduct, onCreateNewItem, onOpenProductDetails, onSaveProductWithGroup, onCreateProductLine, onUpdateProductLine, onDeleteProductLine, createDraftRequestId, draftCustomerType, onDraftHandled, paymentsConfig, onMoveProduct }: ProductLineViewProps) {
-  const projectId = useProjectId();
+  const hexclaveAdminApp = useAdminApp();
+  const projectId = hexclaveAdminApp.projectId;
   const [drafts, setDrafts] = useState<Array<{ key: string, productLineId: string | undefined, product: Product }>>([]);
   const [creatingGroupKey, setCreatingGroupKey] = useState<string | undefined>(undefined);
   const [newProductLineDisplayName, setNewProductLineDisplayName] = useState("");
@@ -1203,6 +1204,12 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
     return new Set(all);
   }, [groupedProducts, drafts]);
   const lastHandledDraftRequestRef = useRef<string | undefined>(undefined);
+  const getCreateProductHref = (productLineId: string | undefined, customerType: 'user' | 'team' | 'custom' | undefined) => {
+    if (productLineId == null || customerType == null) {
+      return urlString`/projects/${projectId}/payments/products/new`;
+    }
+    return urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}`;
+  };
 
   useEffect(() => {
     if (!createDraftRequestId) return;
@@ -1478,7 +1485,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                       ))}
 
                       {/* Add product button */}
-                      <Link href={productLineId && customerType ? urlString`/projects/${projectId}/payments/products/new?productLineId=${productLineId}&customerType=${customerType}` : urlString`/projects/${projectId}/payments/products/new`}>
+                      <Link href={getCreateProductHref(productLineId, customerType)}>
                         <Button
                           variant="outline"
                           size="plain"
@@ -1533,7 +1540,7 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
                       onOpenDetails={(o) => onOpenProductDetails(o)}
                     />
                   ))}
-                  <Link href={`/projects/${projectId}/payments/products/new`}>
+                  <Link href={getCreateProductHref(undefined, undefined)}>
                     <Button
                       variant="outline"
                       size="plain"

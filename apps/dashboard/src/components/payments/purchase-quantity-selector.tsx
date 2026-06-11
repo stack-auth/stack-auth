@@ -45,30 +45,32 @@ export function PurchaseQuantitySelector({
               type="button"
               size="icon"
               variant="outline"
-              className="size-8 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
+              className="size-8 shrink-0 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
               disabled={quantityNumber <= 1}
               aria-label="Decrease quantity"
               onClick={() => onQuantityChange(String(Math.max(1, quantityNumber - 1)))}
             >
               <MinusIcon className="size-3.5 text-foreground" />
             </DesignButton>
-            <DesignInput
-              className="h-8 w-20 text-center text-sm font-semibold tabular-nums border-border/40 bg-foreground/[0.01] text-foreground focus-visible:ring-blue-500/20"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              type="text"
-              value={quantityInput}
-              aria-label="Quantity"
-              onChange={(event) => {
-                const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
-                onQuantityChange(digitsOnly);
-              }}
-            />
+            <div className="w-20 shrink-0">
+              <DesignInput
+                className="h-8 text-center text-sm font-semibold tabular-nums border-border/40 bg-foreground/[0.01] text-foreground focus-visible:ring-blue-500/20"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                type="text"
+                value={quantityInput}
+                aria-label="Quantity"
+                onChange={(event) => {
+                  const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
+                  onQuantityChange(digitsOnly);
+                }}
+              />
+            </div>
             <DesignButton
               type="button"
               size="icon"
               variant="outline"
-              className="size-8 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
+              className="size-8 shrink-0 border-border/40 bg-foreground/[0.01] hover:bg-foreground/[0.03]"
               aria-label="Increase quantity"
               onClick={() => onQuantityChange(String(quantityNumber + 1))}
             >
