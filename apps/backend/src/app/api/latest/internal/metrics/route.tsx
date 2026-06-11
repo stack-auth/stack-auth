@@ -1854,6 +1854,10 @@ async function loadAnalyticsOverview(
         branchId: tenancy.branchId,
       },
     ));
+    // Rethrowing skips the `await replayPromise` below, so observe it here to
+    // keep a concurrent Postgres failure from becoming an unhandled rejection.
+    // (anonymousVisitorsPromise swallows its own failures and never rejects.)
+    replayPromise.catch(() => {});
     throw error;
   }
 
