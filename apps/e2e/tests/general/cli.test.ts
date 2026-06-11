@@ -461,7 +461,7 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
     expect(content).toContain("export const config: HexclaveConfig");
   });
 
@@ -556,7 +556,7 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
     expect(content).toContain("export const config: HexclaveConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {

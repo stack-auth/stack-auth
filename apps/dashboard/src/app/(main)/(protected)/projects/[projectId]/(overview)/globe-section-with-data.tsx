@@ -17,10 +17,10 @@ function captureGlobeErrorOnce(error: Error) {
   captureError("metrics-globe-error-boundary", error);
 }
 
-export function GlobeSectionWithData({ includeAnonymous }: { includeAnonymous: boolean }) {
+export function GlobeSectionWithData({ includeAnonymous, interactive }: { includeAnonymous: boolean, interactive?: boolean }) {
   return (
     <ErrorBoundary errorComponent={GlobeErrorComponent}>
-      <GlobeSectionWithMetrics includeAnonymous={includeAnonymous} />
+      <GlobeSectionWithMetrics includeAnonymous={includeAnonymous} interactive={interactive} />
     </ErrorBoundary>
   );
 }
@@ -30,7 +30,7 @@ function GlobeErrorComponent(props: { error: Error }) {
   return <div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>;
 }
 
-function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boolean }) {
+function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAnonymous: boolean, interactive?: boolean }) {
   const adminApp = useAdminApp();
   const data = (adminApp as any)[hexclaveAppInternalsSymbol].useMetrics(includeAnonymous);
 
@@ -41,6 +41,7 @@ function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boole
         countryData={data.users_by_country}
         totalUsers={data.total_users}
         activeUsersByCountry={data.active_users_by_country ?? {}}
+        interactive={interactive}
       />
     </>
   );

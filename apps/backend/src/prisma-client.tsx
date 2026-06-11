@@ -629,6 +629,9 @@ export const PRISMA_ERROR_CODES = {
   UNIQUE_CONSTRAINT_VIOLATION: "P2002",
   FOREIGN_CONSTRAINT_VIOLATION: "P2003",
   GENERIC_CONSTRAINT_VIOLATION: "P2004",
+  // Thrown by `delete`/`update` (and relation requirements) when the targeted row
+  // doesn't exist — e.g. when two requests race to consume the same single-use row.
+  DEPENDENT_RECORD_NOT_FOUND: "P2025",
 } as const;
 
 export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {

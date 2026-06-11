@@ -183,6 +183,10 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     await teamInvitationCodeHandler.revokeCode({
       tenancy: auth.tenancy,
       id: params.id,
+      dataFilter: {
+        path: ['team_id'],
+        equals: teamId,
+      },
     });
   },
 }));

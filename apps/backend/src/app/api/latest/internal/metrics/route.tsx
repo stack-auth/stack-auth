@@ -20,7 +20,7 @@ import {
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
 } from "@hexclave/shared/dist/interface/admin-metrics";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -362,6 +362,53 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
   return out;
 }
 
+async function loadHourlyUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
+  const latestHour = new Date(now);
+  latestHour.setUTCMinutes(0, 0, 0);
+  const since = new Date(latestHour.getTime() - 23 * 60 * 60 * 1000);
+  const untilExclusive = new Date(latestHour.getTime() + 60 * 60 * 1000);
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+
+  const result = await clickhouseClient.query({
+    query: `
+      SELECT
+        toStartOfHour(signed_up_at) AS hour,
+        count() AS hourly_users
+      FROM analytics_internal.users FINAL
+      WHERE project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND sync_is_deleted = 0
+        AND signed_up_at >= {since:DateTime}
+        AND signed_up_at < {untilExclusive:DateTime}
+        AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
+      GROUP BY hour
+      ORDER BY hour
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      includeAnonymous: includeAnonymous ? 1 : 0,
+    },
+    format: "JSONEachRow",
+  });
+  const rows = await result.json() as { hour: string, hourly_users: string | number }[];
+
+  const countByHour = new Map<string, number>();
+  for (const row of rows) {
+    countByHour.set(new Date(row.hour).toISOString().slice(0, 13), Number(row.hourly_users));
+  }
+
+  const out: DataPoints = [];
+  for (let i = 0; i < 24; i++) {
+    const hour = new Date(since.getTime() + i * 60 * 60 * 1000);
+    const key = hour.toISOString().slice(0, 13);
+    out.push({ date: `${key}:00:00.000Z`, activity: countByHour.get(key) ?? 0 });
+  }
+  return out;
+}
+
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
@@ -411,6 +458,53 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
       date: dayKey,
       activity: dauByDay.get(dayKey) ?? 0,
     });
+  }
+  return out;
+}
+
+async function loadHourlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
+  const latestHour = new Date(now);
+  latestHour.setUTCMinutes(0, 0, 0);
+  const since = new Date(latestHour.getTime() - 23 * 60 * 60 * 1000);
+  const untilExclusive = new Date(latestHour.getTime() + 60 * 60 * 1000);
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+  const result = await clickhouseClient.query({
+    query: `
+      SELECT
+        toStartOfHour(event_at) AS hour,
+        uniqExact(assumeNotNull(user_id)) AS dau
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND event_at < {untilExclusive:DateTime}
+        AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+      GROUP BY hour
+      ORDER BY hour ASC
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      includeAnonymous: includeAnonymous ? 1 : 0,
+    },
+    format: "JSONEachRow",
+  });
+
+  const rows: { hour: string, dau: number }[] = await result.json();
+  const dauByHour = new Map<string, number>();
+  for (const row of rows) {
+    dauByHour.set(new Date(row.hour).toISOString().slice(0, 13), Number(row.dau));
+  }
+
+  const out: DataPoints = [];
+  for (let i = 0; i < 24; i += 1) {
+    const hour = new Date(since.getTime() + i * 60 * 60 * 1000);
+    const key = hour.toISOString().slice(0, 13);
+    out.push({ date: `${key}:00:00.000Z`, activity: dauByHour.get(key) ?? 0 });
   }
   return out;
 }
@@ -1057,11 +1151,142 @@ async function loadSessionReplayAggregates(tenancy: Tenancy, since: Date): Promi
   };
 }
 
-async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymous: boolean) {
+const DIRECT_REFERRER_LABEL = "(direct)";
+
+export type AnalyticsOverviewFilters = {
+  country_code?: string,
+  referrer?: string,
+  browser?: string,
+  os?: string,
+  device?: string,
+  // ISO 8601 datetimes bounding the top-N breakdowns (referrers, regions,
+  // browsers/OS/devices). Clamped to the analytics window server-side; the
+  // daily/hourly series intentionally stay full-window so the dashboard can
+  // compute previous-period deltas client-side.
+  since?: string,
+  until?: string,
+};
+
+export function normalizeAnalyticsOverviewFilters(filters: AnalyticsOverviewFilters): AnalyticsOverviewFilters {
+  const countryCode = filters.country_code?.trim().toUpperCase();
+  const referrer = filters.referrer?.trim();
+  const browser = filters.browser?.trim();
+  const os = filters.os?.trim();
+  const device = filters.device?.trim();
+  const since = filters.since?.trim();
+  const until = filters.until?.trim();
+  return {
+    country_code: countryCode || undefined,
+    referrer: referrer || undefined,
+    browser: browser || undefined,
+    os: os || undefined,
+    device: device || undefined,
+    since: since || undefined,
+    until: until || undefined,
+  };
+}
+
+function parseAnalyticsRangeBound(value: string | undefined, paramName: string): Date | undefined {
+  if (value == null) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new StatusError(400, `Invalid ${paramName}: expected an ISO 8601 datetime, got ${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
+const analyticsOverviewUserAgentSql = "toString(e.data.user_agent)";
+const analyticsOverviewViewportWidthSql = "toInt32(toInt64OrZero(toString(e.data.viewport_width)))";
+
+const analyticsOverviewBrowserSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edg/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edge/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edga/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'edgios/') > 0, 'Edge',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'opr/') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'opera') > 0, 'Opera',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'samsungbrowser') > 0, 'Samsung Internet',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'firefox') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'fxios') > 0, 'Firefox',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'crios') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'chrome') > 0, 'Chrome',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'safari') > 0, 'Safari',
+  'Other'
+)`;
+
+const analyticsOverviewOsSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'windows') > 0, 'Windows',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0, 'Android',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'iphone') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipad') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipod') > 0, 'iOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mac os') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'macintosh') > 0, 'macOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'cros') > 0, 'ChromeOS',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'linux') > 0, 'Linux',
+  'Other'
+)`;
+
+const analyticsOverviewDeviceSql = `multiIf(
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipad') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'tablet') > 0 OR (positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0 AND positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mobile') = 0), 'Tablet',
+  positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'mobile') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'iphone') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'ipod') > 0 OR positionCaseInsensitive(${analyticsOverviewUserAgentSql}, 'android') > 0, 'Mobile',
+  ${analyticsOverviewViewportWidthSql} > 0 AND ${analyticsOverviewViewportWidthSql} < 600, 'Mobile',
+  ${analyticsOverviewViewportWidthSql} >= 600 AND ${analyticsOverviewViewportWidthSql} < 1024, 'Tablet',
+  'Desktop'
+)`;
+
+function buildAnalyticsOverviewUserAgentFilterFragments(filters: AnalyticsOverviewFilters): {
+  browserFragment: string,
+  osFragment: string,
+  deviceFragment: string,
+  params: Record<string, string>,
+} {
+  return {
+    browserFragment: filters.browser ? `AND ${analyticsOverviewBrowserSql} = {browserFilter:String}` : "",
+    osFragment: filters.os ? `AND ${analyticsOverviewOsSql} = {osFilter:String}` : "",
+    deviceFragment: filters.device ? `AND ${analyticsOverviewDeviceSql} = {deviceFilter:String}` : "",
+    params: {
+      ...(filters.browser ? { browserFilter: filters.browser } : {}),
+      ...(filters.os ? { osFilter: filters.os } : {}),
+      ...(filters.device ? { deviceFilter: filters.device } : {}),
+    },
+  };
+}
+
+export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: AnalyticsOverviewFilters): {
+  hasBrowserFilter: boolean,
+  hasOsFilter: boolean,
+  hasDeviceFilter: boolean,
+  params: Record<string, string>,
+  usesRawUserAgentAllowlist: boolean,
+} {
+  const fragments = buildAnalyticsOverviewUserAgentFilterFragments(filters);
+  const combinedFragments = [
+    fragments.browserFragment,
+    fragments.osFragment,
+    fragments.deviceFragment,
+  ].join("\n");
+  return {
+    hasBrowserFilter: fragments.browserFragment.length > 0,
+    hasOsFilter: fragments.osFragment.length > 0,
+    hasDeviceFilter: fragments.deviceFragment.length > 0,
+    params: fragments.params,
+    usesRawUserAgentAllowlist: combinedFragments.includes("matchingUAs") || combinedFragments.includes("IN {"),
+  };
+}
+
+async function loadAnalyticsOverview(
+  tenancy: Tenancy,
+  now: Date,
+  includeAnonymous: boolean,
+  filters: AnalyticsOverviewFilters = {},
+) {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
+
+  // Optional date range for the top-N breakdowns, clamped to the analytics
+  // window (ClickHouse only has detail for the last METRICS_WINDOW_DAYS).
+  // The daily/hourly series stay full-window — see AnalyticsOverviewFilters.
+  const requestedRangeSince = parseAnalyticsRangeBound(filters.since, "filter_since");
+  const requestedRangeUntil = parseAnalyticsRangeBound(filters.until, "filter_until");
+  const rangeSince = new Date(Math.max(since.getTime(), requestedRangeSince?.getTime() ?? since.getTime()));
+  const rangeUntilExclusive = new Date(Math.min(untilExclusive.getTime(), requestedRangeUntil?.getTime() ?? untilExclusive.getTime()));
+  if (rangeSince.getTime() >= rangeUntilExclusive.getTime()) {
+    throw new StatusError(400, "filter_since must be before filter_until after clamping to the analytics window");
+  }
 
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
@@ -1082,24 +1307,43 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     dailyPageViews: DataPoints,
     dailyClicks: DataPoints,
     dailyVisitors: DataPoints,
+    hourlyPageViews: DataPoints,
+    hourlyActiveUsers: DataPoints,
+    hourlyVisitors: DataPoints,
+    dailyBounceRate: DataPoints,
+    dailyAvgSession: DataPoints,
     visitors: number,
     onlineLive: number,
+    bounceRate: number,
+    avgSessionSeconds: number,
     topReferrers: { referrer: string, visitors: number }[],
     topRegion: { country_code: string | null, region_code: string | null, count: number } | null,
+    topRegions: { country_code: string, count: number }[],
+    topBrowsers: { name: string, visitors: number }[],
+    topOperatingSystems: { name: string, visitors: number }[],
+    topDevices: { name: string, visitors: number }[],
   } | null = null;
 
-  try {
+  // Explicit installed-check instead of inferring "analytics not enabled" from
+  // a failed ClickHouse query: when the app isn't installed we skip ClickHouse
+  // entirely and return the token-refresh fallback payload; when it IS
+  // installed, every ClickHouse error propagates to the caller so the
+  // dashboard renders its error state instead of plausible-looking zeros.
+  const analyticsInstalled = tenancy.config.apps.installed["analytics"]?.enabled ?? false;
+
+  if (analyticsInstalled) try {
     // The `event_at >= since` bound on the inner subquery is load-bearing:
     // without it the GROUP BY hash table holds one row per ever-seen user.
     // Edge case: anonymous page-views by users with no token-refresh in the
     // last 30 days now coalesce to non-anonymous. The proper fix is to stamp
     // `is_anonymous` on page-view/click events at ingest and drop this join
     // entirely (the coalesce below short-circuits on the first non-null arg).
-    const analyticsUserJoin = `
+    const buildAnalyticsUserJoin = (includeCountry: boolean) => `
       LEFT JOIN (
         SELECT
           user_id,
           argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
+          ${includeCountry ? ", argMax(CAST(data.ip_info.country_code, 'Nullable(String)'), event_at) AS latest_country" : ""}
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
@@ -1111,37 +1355,74 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       ) AS token_refresh_users
         ON e.user_id = token_refresh_users.user_id
     `;
+    const analyticsUserJoinForFilteredEvents = buildAnalyticsUserJoin(filters.country_code != null);
+    const analyticsUserJoinWithCountry = buildAnalyticsUserJoin(true);
     const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
-    const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult] = await Promise.all([
+    const analyticsContributingUserFilter = `e.user_id IS NOT NULL AND ${nonAnonymousAnalyticsUserFilter}`;
+
+    // Build per-dimension filter fragments; callers below opt out of the
+    // fragment matching their own dimension so top-N queries don't collapse to
+    // a single row (e.g. top_referrers must not also filter by referrer).
+    const referrerFragment = filters.referrer
+      ? (filters.referrer === DIRECT_REFERRER_LABEL
+        ? `AND CAST(e.data.referrer, 'String') = ''`
+        : `AND CAST(e.data.referrer, 'String') = {referrerFilter:String}`)
+      : '';
+    const countryFragment = filters.country_code
+      ? `AND upper(coalesce(token_refresh_users.latest_country, '')) = {countryFilter:String}`
+      : '';
+    const userAgentFilterFragments = buildAnalyticsOverviewUserAgentFilterFragments(filters);
+    const uaFragment = [
+      userAgentFilterFragments.browserFragment,
+      userAgentFilterFragments.osFragment,
+      userAgentFilterFragments.deviceFragment,
+    ].join(" ");
+
+    const sharedExtraFilters = `${referrerFragment} ${countryFragment} ${uaFragment}`.trim();
+    const filterParams = {
+      ...(filters.referrer && filters.referrer !== DIRECT_REFERRER_LABEL ? { referrerFilter: filters.referrer } : {}),
+      ...(filters.country_code ? { countryFilter: filters.country_code } : {}),
+      ...userAgentFilterFragments.params,
+    };
+    const onlineFilteredUserFragment = sharedExtraFilters
+      ? `
+            AND user_id IN (
+              SELECT assumeNotNull(e.user_id)
+              FROM analytics_internal.events AS e
+              ${filters.country_code != null ? analyticsUserJoinWithCountry : ""}
+              WHERE e.event_type = '$page-view'
+                AND e.project_id = {projectId:String}
+                AND e.branch_id = {branchId:String}
+                AND e.user_id IS NOT NULL
+                AND e.event_at >= {since:DateTime}
+                AND e.event_at < {untilExclusive:DateTime}
+                ${sharedExtraFilters}
+              GROUP BY e.user_id
+            )
+        `
+      : '';
+    const [dailyEventResult, hourlyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, sessionResult, userAgentResult] = await Promise.all([
       // Combined daily aggregates: page-view count, click count, and unique
       // visitors per day — one scan over the page-view/click event types.
       clickhouseClient.query({
         query: `
           SELECT
             toDate(e.event_at) AS day,
-            countIf(
-              e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS pv,
-            countIf(
-              e.event_type = '$click'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS cl,
+            countIf(e.event_type = '$page-view') AS pv,
+            countIf(e.event_type = '$click') AS cl,
             uniqExactIf(
               assumeNotNull(e.user_id),
               e.event_type = '$page-view'
-                AND e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type IN ('$page-view', '$click')
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
+            ${sharedExtraFilters}
           GROUP BY day
           ORDER BY day ASC
         `,
@@ -1151,25 +1432,63 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
         },
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
         query: `
           SELECT
+            toStartOfHour(e.event_at) AS hour,
+            countIf(e.event_type = '$page-view') AS pv,
             uniqExactIf(
               assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
+              e.event_type IN ('$page-view', '$click')
+            ) AS active_users,
+            uniqExactIf(
+              assumeNotNull(e.user_id),
+              e.event_type = '$page-view'
             ) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
+          WHERE e.event_type IN ('$page-view', '$click')
+            AND e.project_id = {projectId:String}
+            AND e.branch_id = {branchId:String}
+            AND e.event_at >= {hourlySince:DateTime}
+            AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
+            ${sharedExtraFilters}
+          GROUP BY hour
+          ORDER BY hour ASC
+        `,
+        query_params: {
+          hourlySince: formatClickhouseDateTimeParam((() => {
+            const latestHour = new Date(now);
+            latestHour.setUTCMinutes(0, 0, 0);
+            return new Date(latestHour.getTime() - 23 * 60 * 60 * 1000);
+          })()),
+          since: formatClickhouseDateTimeParam(since),
+          untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
+        },
+        format: "JSONEachRow",
+      }),
+      clickhouseClient.query({
+        query: `
+          SELECT
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
+          FROM analytics_internal.events AS e
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.user_id IS NOT NULL
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
+            ${sharedExtraFilters}
         `,
         query_params: {
           since: formatClickhouseDateTimeParam(since),
@@ -1177,6 +1496,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
         },
         format: "JSONEachRow",
       }),
@@ -1184,18 +1504,17 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query: `
           SELECT
             nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
-            uniqExactIf(
-              assumeNotNull(e.user_id),
-              e.user_id IS NOT NULL
-                AND ${nonAnonymousAnalyticsUserFilter}
-            ) AS visitors
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
           FROM analytics_internal.events AS e
-          ${analyticsUserJoin}
+          ${analyticsUserJoinForFilteredEvents}
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.event_at >= {since:DateTime}
-            AND e.event_at < {untilExclusive:DateTime}
+            AND e.event_at >= {rangeSince:DateTime}
+            AND e.event_at < {rangeUntilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
+            ${countryFragment}
+            ${uaFragment}
           GROUP BY referrer
           HAVING visitors > 0
           ORDER BY visitors DESC
@@ -1204,40 +1523,48 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
         },
         format: "JSONEachRow",
       }),
+      // Top regions come from the same page-view population as the rest of the
+      // analytics overview, but intentionally omit the country filter so the
+      // country card still shows a distribution when one country is selected.
       clickhouseClient.query({
         query: `
           SELECT
-            CAST(data.ip_info.country_code, 'Nullable(String)') AS country_code,
-            CAST(data.ip_info.region_code, 'Nullable(String)') AS region_code,
-            uniqExactIf(
-              assumeNotNull(user_id),
-              user_id IS NOT NULL
-                AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
-            ) AS visitors
-          FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {untilExclusive:DateTime}
-          GROUP BY country_code, region_code
+            upper(coalesce(token_refresh_users.latest_country, '')) AS country_code,
+            uniqExact(assumeNotNull(e.user_id)) AS visitors
+          FROM analytics_internal.events AS e
+          ${analyticsUserJoinWithCountry}
+          WHERE e.event_type = '$page-view'
+            AND e.project_id = {projectId:String}
+            AND e.branch_id = {branchId:String}
+            AND e.event_at >= {rangeSince:DateTime}
+            AND e.event_at < {rangeUntilExclusive:DateTime}
+            AND ${analyticsContributingUserFilter}
+            AND coalesce(token_refresh_users.latest_country, '') != ''
+            ${referrerFragment}
+            ${uaFragment}
+          GROUP BY country_code
           HAVING visitors > 0
           ORDER BY visitors DESC
-          LIMIT 1
+          LIMIT ${TOP_REGIONS_PAGE_SIZE}
         `,
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
         },
         format: "JSONEachRow",
       }),
@@ -1253,13 +1580,129 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
             AND event_at >= {onlineSince:DateTime}
             AND event_at < {untilExclusive:DateTime}
             AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+            ${onlineFilteredUserFragment}
         `,
         query_params: {
           onlineSince: formatClickhouseDateTimeParam(new Date(now.getTime() - 5 * 60 * 1000)),
+          since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
+        },
+        format: "JSONEachRow",
+      }),
+      // Session aggregates keyed by session_replay_segment_id (one row per
+      // browser tab/session): bounce rate (single-page-view sessions) and
+      // average session duration per day.
+      clickhouseClient.query({
+        query: `
+          WITH matching_sessions AS (
+            SELECT
+              e.session_replay_segment_id AS sid
+            FROM analytics_internal.events AS e
+            ${analyticsUserJoinForFilteredEvents}
+            WHERE e.session_replay_segment_id IS NOT NULL
+              AND e.project_id = {projectId:String}
+              AND e.branch_id = {branchId:String}
+              AND e.event_at >= {since:DateTime}
+              AND e.event_at < {untilExclusive:DateTime}
+              AND e.event_type = '$page-view'
+              AND ${analyticsContributingUserFilter}
+              ${sharedExtraFilters}
+            GROUP BY sid
+          ),
+          sessions AS (
+            SELECT
+              e.session_replay_segment_id AS sid,
+              toDate(min(e.event_at)) AS session_day,
+              countIf(e.event_type = '$page-view') AS pv,
+              dateDiff('second', min(e.event_at), max(e.event_at)) AS duration_s
+            FROM analytics_internal.events AS e
+            WHERE e.session_replay_segment_id IN (SELECT sid FROM matching_sessions)
+              AND e.project_id = {projectId:String}
+              AND e.branch_id = {branchId:String}
+              AND e.event_at >= {since:DateTime}
+              AND e.event_at < {untilExclusive:DateTime}
+              AND e.event_type IN ('$page-view', '$click')
+            GROUP BY sid
+          )
+          SELECT
+            session_day AS day,
+            count() AS sessions,
+            countIf(pv = 1) AS bounced,
+            avg(duration_s) AS avg_duration_s
+          FROM sessions
+          GROUP BY day
+          ORDER BY day ASC
+        `,
+        query_params: {
+          since: formatClickhouseDateTimeParam(since),
+          untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
+        },
+        format: "JSONEachRow",
+      }),
+      // User-Agent buckets pulled from the same `$page-view` event stream so
+      // visitor counts line up with the referrer / region cards on the overview.
+      // `data.user_agent` is captured client-side (navigator.userAgent) only —
+      // there is no server-side fallback — so older rows that pre-date capture
+      // simply return empty here.
+      clickhouseClient.query({
+        query: `
+          SELECT
+            tupleElement(facet, 1) AS dimension,
+            tupleElement(facet, 2) AS name,
+            uniqExact(assumeNotNull(user_id)) AS visitors
+          FROM (
+            SELECT
+              e.user_id AS user_id,
+              ${analyticsOverviewBrowserSql} AS browser,
+              ${analyticsOverviewOsSql} AS os,
+              ${analyticsOverviewDeviceSql} AS device
+            FROM analytics_internal.events AS e
+            ${analyticsUserJoinForFilteredEvents}
+            WHERE e.event_type = '$page-view'
+              AND e.project_id = {projectId:String}
+              AND e.branch_id = {branchId:String}
+              AND e.event_at >= {rangeSince:DateTime}
+              AND e.event_at < {rangeUntilExclusive:DateTime}
+              AND ${analyticsContributingUserFilter}
+              AND ${analyticsOverviewUserAgentSql} != ''
+              ${referrerFragment}
+              ${countryFragment}
+          )
+          ARRAY JOIN [
+            ('browser', browser),
+            ('os', os),
+            ('device', device)
+          ] AS facet
+          WHERE ({browserFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'browser' OR browser = {browserFilter:String})
+            AND ({osFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'os' OR os = {osFilter:String})
+            AND ({deviceFilterEnabled:UInt8} = 0 OR tupleElement(facet, 1) = 'device' OR device = {deviceFilter:String})
+          GROUP BY dimension, name
+          HAVING visitors > 0
+          ORDER BY dimension ASC, visitors DESC
+        `,
+        query_params: {
+          since: formatClickhouseDateTimeParam(since),
+          untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          includeAnonymous: includeAnonymous ? 1 : 0,
+          ...filterParams,
+          browserFilterEnabled: filters.browser ? 1 : 0,
+          browserFilter: filters.browser ?? "",
+          osFilterEnabled: filters.os ? 1 : 0,
+          osFilter: filters.os ?? "",
+          deviceFilterEnabled: filters.device ? 1 : 0,
+          deviceFilter: filters.device ?? "",
         },
         format: "JSONEachRow",
       }),
@@ -1275,55 +1718,147 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       clByDay.set(key, Number(row.cl));
       visitorByDay.set(key, Number(row.visitors));
     }
+    const hourlyEventRows: { hour: string, pv: number, active_users: number, visitors: number }[] = await hourlyEventResult.json();
+    const pageViewsByHour = new Map<string, number>();
+    const activeUsersByHour = new Map<string, number>();
+    const visitorsByHour = new Map<string, number>();
+    for (const row of hourlyEventRows) {
+      const key = new Date(row.hour).toISOString().slice(0, 13);
+      pageViewsByHour.set(key, Number(row.pv));
+      activeUsersByHour.set(key, Number(row.active_users));
+      visitorsByHour.set(key, Number(row.visitors));
+    }
+    const hourlyPageViews: DataPoints = [];
+    const hourlyActiveUsers: DataPoints = [];
+    const hourlyVisitors: DataPoints = [];
+    const latestHour = new Date(now);
+    latestHour.setUTCMinutes(0, 0, 0);
+    for (let i = 23; i >= 0; i--) {
+      const hour = new Date(latestHour.getTime() - i * 60 * 60 * 1000);
+      const key = hour.toISOString().slice(0, 13);
+      const date = `${key}:00:00.000Z`;
+      hourlyPageViews.push({ date, activity: pageViewsByHour.get(key) ?? 0 });
+      hourlyActiveUsers.push({ date, activity: activeUsersByHour.get(key) ?? 0 });
+      hourlyVisitors.push({ date, activity: visitorsByHour.get(key) ?? 0 });
+    }
     const totalVisitorRows: { visitors: number }[] = await totalVisitorResult.json();
     const visitors = Number(totalVisitorRows[0]?.visitors ?? 0);
+
+    const sessionRows: { day: string, sessions: string | number, bounced: string | number, avg_duration_s: string | number | null }[] = await sessionResult.json();
+    const sessionsByDay = new Map<string, { sessions: number, bounced: number, avg_duration_s: number }>();
+    for (const row of sessionRows) {
+      const key = row.day.split('T')[0];
+      sessionsByDay.set(key, {
+        sessions: Number(row.sessions),
+        bounced: Number(row.bounced),
+        avg_duration_s: Number(row.avg_duration_s ?? 0),
+      });
+    }
 
     const dailyPageViews: DataPoints = [];
     const dailyClicks: DataPoints = [];
     const dailyVisitors: DataPoints = [];
+    const dailyBounceRate: DataPoints = [];
+    const dailyAvgSession: DataPoints = [];
+    let totalSessions = 0;
+    let totalBounced = 0;
+    let totalDurationWeighted = 0;
     for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
       const day = new Date(since.getTime() + i * ONE_DAY_MS);
       const key = day.toISOString().split('T')[0];
       dailyPageViews.push({ date: key, activity: pvByDay.get(key) ?? 0 });
       dailyClicks.push({ date: key, activity: clByDay.get(key) ?? 0 });
       dailyVisitors.push({ date: key, activity: visitorByDay.get(key) ?? 0 });
+      const s = sessionsByDay.get(key);
+      const sessions = s?.sessions ?? 0;
+      const bounced = s?.bounced ?? 0;
+      const avgDuration = s?.avg_duration_s ?? 0;
+      dailyBounceRate.push({ date: key, activity: sessions > 0 ? Number(((bounced / sessions) * 100).toFixed(1)) : 0 });
+      dailyAvgSession.push({ date: key, activity: Math.round(avgDuration) });
+      totalSessions += sessions;
+      totalBounced += bounced;
+      totalDurationWeighted += avgDuration * sessions;
     }
+    // Weighted (not arithmetic mean of dailies) so a high-traffic day counts
+    // more than a 1-session day at 100% bounce.
+    const bounceRate = totalSessions > 0 ? Number(((totalBounced / totalSessions) * 100).toFixed(1)) : 0;
+    const avgSessionSeconds = totalSessions > 0 ? Number((totalDurationWeighted / totalSessions).toFixed(1)) : 0;
 
     const referrers: { referrer: string | null, visitors: number }[] = await referrerResult.json();
-    const topRegionRows: { country_code: string | null, region_code: string | null, visitors: number }[] = await topRegionResult.json();
+    const topRegionRows: { country_code: string, visitors: number }[] = await topRegionResult.json();
     const onlineRows: { online: number }[] = await onlineResult.json();
+
+    const userAgentRows: { dimension: string, name: string, visitors: number | string }[] = await userAgentResult.json();
+    const browserCounts = new Map<string, number>();
+    const osCounts = new Map<string, number>();
+    const deviceCounts = new Map<string, number>();
+    for (const row of userAgentRows) {
+      const visitors = Number(row.visitors);
+      if (!Number.isFinite(visitors) || visitors <= 0) continue;
+      if (row.dimension === "browser") {
+        browserCounts.set(row.name, visitors);
+      } else if (row.dimension === "os") {
+        osCounts.set(row.name, visitors);
+      } else if (row.dimension === "device") {
+        deviceCounts.set(row.name, visitors);
+      }
+    }
+    const toSortedTop = (m: Map<string, number>, limit: number) =>
+      Array.from(m.entries())
+        .map(([name, visitors]) => ({ name, visitors }))
+        .sort((a, b) => b.visitors - a.visitors)
+        .slice(0, limit);
+    const topBrowsers = toSortedTop(browserCounts, 10);
+    const topOperatingSystems = toSortedTop(osCounts, 10);
+    const topDevices = toSortedTop(deviceCounts, 3);
+    const topRegions = topRegionRows
+      .map((row) => ({ country_code: row.country_code, count: Number(row.visitors) }))
+      .filter((row) => row.country_code !== "" && row.count > 0);
 
     clickhouseAggregates = {
       dailyPageViews,
       dailyClicks,
       dailyVisitors,
+      hourlyPageViews,
+      hourlyActiveUsers,
+      hourlyVisitors,
+      dailyBounceRate,
+      dailyAvgSession,
       visitors,
       onlineLive: Number(onlineRows[0]?.online ?? 0),
+      bounceRate,
+      avgSessionSeconds,
       topReferrers: referrers.map((row) => ({
         referrer: row.referrer ?? '(direct)',
         visitors: Number(row.visitors),
       })),
       topRegion: topRegionRows[0] ? {
         country_code: topRegionRows[0].country_code,
-        region_code: topRegionRows[0].region_code,
+        region_code: null,
         count: Number(topRegionRows[0].visitors),
       } : null,
+      topRegions,
+      topBrowsers,
+      topOperatingSystems,
+      topDevices,
     };
   } catch (error) {
-    // Only swallow real ClickHouse errors — that's the "analytics not enabled
-    // for this project" path. Anything else is a real bug and should propagate.
-    if (!(error instanceof ClickHouseError)) {
-      throw error;
-    }
-    captureError("internal-metrics-analytics-overview-clickhouse-fallback", new HexclaveAssertionError(
-      "Falling back to empty analytics overview due to ClickHouse query failure.",
+    // The analytics app is installed, so a ClickHouse failure here is a real
+    // error — capture with context, then propagate so the dashboard shows its
+    // error state instead of silently rendering an empty overview.
+    captureError("internal-metrics-analytics-overview-clickhouse", new HexclaveAssertionError(
+      "Analytics overview ClickHouse queries failed for a project with the analytics app installed.",
       {
         cause: error,
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
       },
     ));
-    // Leave clickhouseAggregates as null — handled in the response builder below.
+    // Rethrowing skips the `await replayPromise` below, so observe it here to
+    // keep a concurrent Postgres failure from becoming an unhandled rejection.
+    // (anonymousVisitorsPromise swallows its own failures and never rejects.)
+    replayPromise.catch(() => {});
+    throw error;
   }
 
   // Postgres-backed session replay query has its own error surface — let it
@@ -1340,6 +1875,9 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       daily_page_views: [] as DataPoints,
       daily_clicks: [] as DataPoints,
       daily_visitors: [] as DataPoints,
+      hourly_page_views: [] as DataPoints,
+      hourly_active_users: [] as DataPoints,
+      hourly_visitors: [] as DataPoints,
       daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
@@ -1348,10 +1886,17 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       visitors: 0,
       anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
       avg_session_seconds: replayResult.avgSessionSeconds,
+      bounce_rate: 0,
+      daily_bounce_rate: [] as DataPoints,
+      daily_avg_session_seconds: [] as DataPoints,
       online_live: 0,
       revenue_per_visitor: 0,
       top_referrers: [],
       top_region: null,
+      top_regions: [],
+      top_browsers: [],
+      top_operating_systems: [],
+      top_devices: [],
     };
   }
 
@@ -1366,6 +1911,9 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     daily_page_views: clickhouseAggregates.dailyPageViews,
     daily_clicks: clickhouseAggregates.dailyClicks,
     daily_visitors: clickhouseAggregates.dailyVisitors,
+    hourly_page_views: clickhouseAggregates.hourlyPageViews,
+    hourly_active_users: clickhouseAggregates.hourlyActiveUsers,
+    hourly_visitors: clickhouseAggregates.hourlyVisitors,
     daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
     daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
     total_revenue_cents: replayResult.totalRevenueCents,
@@ -1373,13 +1921,20 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     recent_replays: replayResult.recent,
     visitors: clickhouseAggregates.visitors,
     anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
-    avg_session_seconds: replayResult.avgSessionSeconds,
+    avg_session_seconds: clickhouseAggregates.avgSessionSeconds,
+    bounce_rate: clickhouseAggregates.bounceRate,
+    daily_bounce_rate: clickhouseAggregates.dailyBounceRate,
+    daily_avg_session_seconds: clickhouseAggregates.dailyAvgSession,
     online_live: clickhouseAggregates.onlineLive,
     revenue_per_visitor: effectiveVisitors > 0
       ? Number(((replayResult.totalRevenueCents / 100) / effectiveVisitors).toFixed(2))
       : 0,
     top_referrers: clickhouseAggregates.topReferrers,
     top_region: clickhouseAggregates.topRegion,
+    top_regions: clickhouseAggregates.topRegions,
+    top_browsers: clickhouseAggregates.topBrowsers,
+    top_operating_systems: clickhouseAggregates.topOperatingSystems,
+    top_devices: clickhouseAggregates.topDevices,
   };
 }
 
@@ -1471,6 +2026,7 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
 
 const RECENT_LIST_PAGE_SIZE = 100;
 const TOP_REFERRERS_PAGE_SIZE = 100;
+const TOP_REGIONS_PAGE_SIZE = 100;
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -1483,6 +2039,15 @@ export const GET = createSmartRouteHandler({
     }),
     query: yupObject({
       include_anonymous: yupString().oneOf(["true", "false"]).optional(),
+      filter_country_code: yupString().optional(),
+      filter_referrer: yupString().optional(),
+      filter_browser: yupString().optional(),
+      filter_os: yupString().optional(),
+      filter_device: yupString().optional(),
+      // ISO 8601 datetimes bounding the analytics top-N breakdowns (referrers,
+      // regions, browsers/OS/devices); clamped to the analytics window.
+      filter_since: yupString().optional(),
+      filter_until: yupString().optional(),
     }),
   }),
   response: yupObject({
@@ -1493,6 +2058,8 @@ export const GET = createSmartRouteHandler({
       live_users: yupNumber().integer().defined(),
       daily_users: DataPointsSchema,
       daily_active_users: DataPointsSchema,
+      hourly_users: DataPointsSchema,
+      hourly_active_users: DataPointsSchema,
       users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
       active_users_by_country: MetricsActiveUsersByCountrySchema,
       // recently_registered/active are CRUD User objects passed through from
@@ -1511,10 +2078,21 @@ export const GET = createSmartRouteHandler({
   handler: async (req) => {
     const now = new Date();
     const includeAnonymous = req.query.include_anonymous === "true";
+    const analyticsFilters = normalizeAnalyticsOverviewFilters({
+      country_code: req.query.filter_country_code || undefined,
+      referrer: req.query.filter_referrer || undefined,
+      browser: req.query.filter_browser || undefined,
+      os: req.query.filter_os || undefined,
+      device: req.query.filter_device || undefined,
+      since: req.query.filter_since || undefined,
+      until: req.query.filter_until || undefined,
+    });
 
     const [
       dailyUsers,
       dailyActiveUsers,
+      hourlyUsers,
+      hourlyActiveUsers,
       usersByCountry,
       activeUsersByCountry,
       liveUsers,
@@ -1529,6 +2107,8 @@ export const GET = createSmartRouteHandler({
     ] = await Promise.all([
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
       loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
+      loadHourlyUsers(req.auth.tenancy, now, includeAnonymous),
+      loadHourlyActiveUsers(req.auth.tenancy, now, includeAnonymous),
       loadUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadActiveUsersByCountry(req.auth.tenancy, now, includeAnonymous),
       loadLiveUsersCount(req.auth.tenancy, now, includeAnonymous),
@@ -1549,7 +2129,7 @@ export const GET = createSmartRouteHandler({
       loadAuthOverview(req.auth.tenancy, includeAnonymous, now),
       loadPaymentsOverview(req.auth.tenancy, now),
       loadEmailOverview(req.auth.tenancy, now),
-      loadAnalyticsOverview(req.auth.tenancy, now, includeAnonymous),
+      loadAnalyticsOverview(req.auth.tenancy, now, includeAnonymous, analyticsFilters),
       loadDailyRevenue(req.auth.tenancy, now),
     ] as const);
 
@@ -1567,6 +2147,8 @@ export const GET = createSmartRouteHandler({
         live_users: liveUsers,
         daily_users: dailyUsers,
         daily_active_users: dailyActiveUsers,
+        hourly_users: hourlyUsers,
+        hourly_active_users: hourlyActiveUsers,
         users_by_country: usersByCountry,
         active_users_by_country: activeUsersByCountry,
         recently_registered: recentlyRegistered,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn, Spinner } from "@hexclave/ui";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useGlassmorphicDefault } from "./card";
@@ -38,6 +38,13 @@ type GradientClass = {
   activeBadge: string,
   underline: string,
 };
+
+type SliderMetrics = {
+  left: number,
+  width: number,
+};
+
+const sliderTransition = "transform 200ms ease-out, width 200ms ease-out";
 
 const tabSizeClasses = new Map<DesignTabsSize, TabSizeClass>([
   ["sm", { button: "px-3 py-2 text-xs", badge: "text-[10px] px-1.5 py-0.5" }],
@@ -119,6 +126,10 @@ export function DesignCategoryTabs({
   const sizeClass = getMapValueOrThrow(tabSizeClasses, size, "tabSizeClasses");
   const gradientClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
   const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(null);
+  const [sliderMetrics, setSliderMetrics] = useState<SliderMetrics | null>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const tabListRef = useRef<HTMLDivElement | null>(null);
+  const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const handleSelect = (categoryId: string) => {
     const result = onSelect(categoryId);
@@ -129,6 +140,43 @@ export function DesignCategoryTabs({
       );
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePrefersReducedMotion = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePrefersReducedMotion();
+    mediaQuery.addEventListener("change", updatePrefersReducedMotion);
+
+    return () => mediaQuery.removeEventListener("change", updatePrefersReducedMotion);
+  }, []);
+
+  useEffect(() => {
+    const tabList = tabListRef.current;
+    const selectedButton = tabButtonRefs.current.get(selectedCategory);
+
+    if (!tabList || !selectedButton) {
+      setSliderMetrics(null);
+      return;
+    }
+
+    const updateSliderMetrics = () => {
+      setSliderMetrics({
+        left: selectedButton.offsetLeft,
+        width: selectedButton.offsetWidth,
+      });
+    };
+
+    updateSliderMetrics();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const resizeObserver = new ResizeObserver(updateSliderMetrics);
+    resizeObserver.observe(tabList);
+    resizeObserver.observe(selectedButton);
+
+    return () => resizeObserver.disconnect();
+  }, [categories, selectedCategory]);
 
   return (
     <div
@@ -142,10 +190,34 @@ export function DesignCategoryTabs({
       {...props}
     >
       <div
+        ref={tabListRef}
         className={cn(
-          "flex min-h-0 min-w-0 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+          "relative flex min-h-0 min-w-0 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
         )}
       >
+        {glassmorphic && sliderMetrics != null && (
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-lg bg-background shadow-sm ring-1 ring-black/[0.12] motion-reduce:transition-none dark:ring-white/[0.06]"
+            style={{
+              transition: prefersReducedMotion ? undefined : sliderTransition,
+              transform: `translateX(${sliderMetrics.left}px)`,
+              width: sliderMetrics.width,
+            }}
+          />
+        )}
+        {!glassmorphic && sliderMetrics != null && (
+          <div
+            className={cn(
+              "pointer-events-none absolute bottom-0 left-0 h-0.5 motion-reduce:transition-none",
+              gradientClass.underline
+            )}
+            style={{
+              transition: prefersReducedMotion ? undefined : sliderTransition,
+              transform: `translateX(${sliderMetrics.left}px)`,
+              width: sliderMetrics.width,
+            }}
+          />
+        )}
         {categories.map((category) => {
           const isActive = selectedCategory === category.id;
           const badgeValue = category.badgeCount ?? category.count;
@@ -154,18 +226,22 @@ export function DesignCategoryTabs({
           return (
             <button
               key={category.id}
+              ref={(element) => {
+                if (element) {
+                  tabButtonRefs.current.set(category.id, element);
+                } else {
+                  tabButtonRefs.current.delete(category.id);
+                }
+              }}
               onClick={() => handleSelect(category.id)}
               disabled={loadingCategoryId !== null}
               className={cn(
-                "font-medium transition-all duration-150 hover:transition-none relative flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap",
+                "font-medium transition-all duration-150 hover:transition-none relative z-10 flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap",
                 "hover:text-gray-900 dark:hover:text-gray-100",
                 sizeClass.button,
                 glassmorphic ? "rounded-lg" : "",
                 isActive
-                  ? cn(
-                    gradientClass.activeText,
-                    glassmorphic && "bg-white shadow-sm ring-1 ring-black/[0.12] dark:bg-background dark:ring-white/[0.06]"
-                  )
+                  ? gradientClass.activeText
                   : cn(
                     "text-gray-700 dark:text-gray-400",
                     glassmorphic && "rounded-lg hover:bg-white/50 dark:hover:bg-white/[0.06]",
@@ -200,9 +276,6 @@ export function DesignCategoryTabs({
                   </span>
                 )}
               </span>
-              {!glassmorphic && isActive && (
-                <div className={cn("absolute bottom-0 left-0 right-0 h-0.5", gradientClass.underline)} />
-              )}
             </button>
           );
         })}

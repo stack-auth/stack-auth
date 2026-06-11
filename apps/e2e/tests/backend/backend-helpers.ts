@@ -8,7 +8,7 @@ import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
 import * as jose from "jose";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
@@ -745,6 +745,9 @@ export namespace Auth {
 
 
   export namespace OAuth {
+    export const testCodeVerifier = "some-code-challenge";
+    export const testCodeChallenge = createHash("sha256").update(testCodeVerifier).digest("base64url");
+
     export async function getAuthorizeQuery(options: TurnstileTestOptions & {
       forceBranchId?: string,
       includeClientSecret?: boolean,
@@ -766,8 +769,8 @@ export namespace Auth {
         response_type: "code",
         state: "this-is-some-state",
         grant_type: "authorization_code",
-        code_challenge: "some-code-challenge",
-        code_challenge_method: "plain",
+        code_challenge: Auth.OAuth.testCodeChallenge,
+        code_challenge_method: "S256",
         token: userAuth?.accessToken ?? undefined,
         bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
         bot_challenge_phase: options.turnstilePhase,
