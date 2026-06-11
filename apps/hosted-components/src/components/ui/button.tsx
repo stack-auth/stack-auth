@@ -79,7 +79,7 @@ const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
         disabled={props.disabled || loading}
         onClick={(e) => runAsynchronouslyWithAlert(handleClick(e))}
         size={size}
-        className={cn("relative", loading && "[&>:not(.hosted-button-do-not-hide-when-siblings-are)]:invisible", props.className)}
+        className={cn("relative", loading && loadingStyle === "spinner" && "[&>:not(.hosted-button-do-not-hide-when-siblings-are)]:invisible", props.className)}
       >
         {loadingStyle === "spinner" && <Spinner className={cn("absolute inset-0 flex items-center justify-center hosted-button-do-not-hide-when-siblings-are", !loading && "invisible")} />}
         <Slottable>

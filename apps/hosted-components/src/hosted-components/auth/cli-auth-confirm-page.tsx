@@ -39,7 +39,7 @@ export function HostedCliAuthConfirm(props: {
             Failed to authorize the CLI application:
           </Typography>
           <Typography className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded-lg break-all">
-            {cliAuth.error?.message || "An unknown error occurred."}
+            This authorization request could not be completed. Please try again.
           </Typography>
         </div>
       </HostedAuthMessage>

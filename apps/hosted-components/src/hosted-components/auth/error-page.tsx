@@ -103,7 +103,7 @@ export function HostedError(props: {
     >
       <div className="flex flex-col gap-1 text-center">
         <Typography className="text-sm text-muted-foreground">Error Code: {error.errorCode}</Typography>
-        <Typography className="text-sm text-muted-foreground">Error Message: {error.message}</Typography>
+        <Typography className="text-sm text-muted-foreground">Please try again or contact support if the problem continues.</Typography>
       </div>
     </HostedAuthMessage>
   );

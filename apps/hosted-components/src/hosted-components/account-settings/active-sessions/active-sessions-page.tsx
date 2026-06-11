@@ -96,9 +96,12 @@ export function ActiveSessionsPage(props?: {
 
     runAsynchronously(async () => {
       setIsLoading(true);
-      const sessionsData = await userFromHook.getActiveSessions();
-      setSessions(sessionsData);
-      setIsLoading(false);
+      try {
+        const sessionsData = await userFromHook.getActiveSessions();
+        setSessions(sessionsData);
+      } finally {
+        setIsLoading(false);
+      }
     });
   }, [mockSessionsData, userFromHook, props?.mockMode, props?.mockSessions]);
 

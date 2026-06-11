@@ -1,6 +1,6 @@
 import { useStackApp, useUser } from "@hexclave/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 
 import {
   Tabs,
@@ -40,25 +40,25 @@ function AutomaticRedirect(props: {
   type: AuthType,
 }) {
   const app = useStackApp();
-  const redirectResultPromise = useMemo(async (): Promise<AutomaticRedirectResult> => {
-    try {
-      await (
-        props.isRestricted
-          ? app.redirectToOnboarding({ replace: true })
-          : props.type === "sign-in"
-            ? app.redirectToAfterSignIn({ replace: true })
-            : app.redirectToAfterSignUp({ replace: true })
-      );
-      return { status: "success" };
-    } catch (error) {
-      return { status: "error" };
-    }
-  }, [app, props.isRestricted, props.type]);
-
   const [result, setResult] = useState<AutomaticRedirectResult | null>(null);
+
   useEffect(() => {
-    runAsynchronouslyWithAlert(redirectResultPromise.then(setResult));
-  }, [redirectResultPromise]);
+    setResult(null);
+    runAsynchronouslyWithAlert((async () => {
+      try {
+        await (
+          props.isRestricted
+            ? app.redirectToOnboarding({ replace: true })
+            : props.type === "sign-in"
+              ? app.redirectToAfterSignIn({ replace: true })
+              : app.redirectToAfterSignUp({ replace: true })
+        );
+        setResult({ status: "success" });
+      } catch (error) {
+        setResult({ status: "error" });
+      }
+    })());
+  }, [app, props.isRestricted, props.type]);
 
   if (result?.status === "error") {
     return (

@@ -1,7 +1,7 @@
 import { useStackApp, useUser } from "@hexclave/react";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { AlertTriangle, Check, Mail } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Input, Label, Spinner, Typography } from "~/components/ui";
 
@@ -94,6 +94,7 @@ export function HostedOnboarding(props: {
   const [error, setError] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
+  const lastRedirectTargetRef = useRef<"after-sign-in" | "sign-in" | null>(null);
 
   // Sync email input when user primaryEmail changes or when changeEmail is toggled
   useEffect(() => {
@@ -104,19 +105,34 @@ export function HostedOnboarding(props: {
     }
   }, [user?.primaryEmail, changeEmail]);
 
+  const redirectTarget = !demoMode
+    ? user != null && !user.isRestricted
+      ? "after-sign-in"
+      : user == null || user.isAnonymous
+        ? "sign-in"
+        : null
+    : null;
+
+  useEffect(() => {
+    if (redirectTarget == null || lastRedirectTargetRef.current === redirectTarget) {
+      return;
+    }
+
+    lastRedirectTargetRef.current = redirectTarget;
+    runAsynchronously(
+      redirectTarget === "after-sign-in"
+        ? app.redirectToAfterSignIn()
+        : app.redirectToSignIn(),
+    );
+  }, [app, redirectTarget]);
+
   // If user is not restricted, redirect to after-sign-in page
   if (user && !user.isRestricted) {
-    if (!demoMode) {
-      runAsynchronously(app.redirectToAfterSignIn());
-    }
     return <HostedAuthLoading fullPage={props.fullPage} />;
   }
 
   // If no user or anonymous, redirect to sign-in
   if (!user || user.isAnonymous) {
-    if (!demoMode) {
-      runAsynchronously(app.redirectToSignIn());
-    }
     return <HostedAuthLoading fullPage={props.fullPage} />;
   }
 
