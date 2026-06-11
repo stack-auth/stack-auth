@@ -1,0 +1,69 @@
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_3382fc8a7032f9::t_d4bcf7ec7a0841 586,591
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_3382fc8a7032f9::t_f0b335a9674d44 33-34,42-43
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_3382fc8a7032f9::t_29b3f3dbfd054c 1889-1890,1893
+  s_3382fc8a7032f9::t_9eef2f2b00366c 1403
+  s_3382fc8a7032f9::t_371f1dd66b89ec 1742-1744,1746
+  s_3382fc8a7032f9::t_2af5a0e6349999 751-753
+  s_fc971015ca5caa::t_88d0a208d84d44 634-713,735-737,739,741-743
+  s_3382fc8a7032f9::t_19c39c38f7aa1c 330-331,335-377
+  s_3382fc8a7032f9::t_ecd1ac38dee664 1430-1431
+  s_3382fc8a7032f9::t_ec5a096f4b1ab6 1455
+  s_3382fc8a7032f9::t_04c734db782db5 1414-1418
+  s_fc971015ca5caa::t_9762dedbed66a0 755,1462-1473
+  s_fc971015ca5caa::t_4f3faf7a24d5b6 143,148-152,173,714-715,719,724-726,728-732,738,740,1457-1459
+  s_3382fc8a7032f9::t_6035a89245bde2 790
+packages/shared/src/interface/admin-metrics.ts
+  s_3382fc8a7032f9::t_5afacf8cb893b2 143-144
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/page-client.tsx
+  s_3382fc8a7032f9::t_0e1faa39706730 18
+packages/dashboard-ui-components/src/components/tabs.tsx
+  s_3382fc8a7032f9::t_10ccd81136bee7 195
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_3382fc8a7032f9::t_6887759272d352 1652-1654
+  s_3382fc8a7032f9::t_dfad5df46489c3 23
+  s_3382fc8a7032f9::t_2bd9723ab383be 1162-1167,1176-1177,1184-1185,1189-1195
+  s_3382fc8a7032f9::t_a0f661ab299b1e 1548-1549,1562-1563
+  s_3382fc8a7032f9::t_1ec51f672a32d2 1513-1514,1526-1527
+  s_3382fc8a7032f9::t_5614af3b5e8da0 1672-1673
+  s_3382fc8a7032f9::t_08a18ebeb784b8 1694-1695
+  s_3382fc8a7032f9::t_09bd478a16c833 1846-1850,1857
+  s_3382fc8a7032f9::t_333dc43aa6bbe4 2043-2046
+  s_3382fc8a7032f9::t_5a50fbc64013b7 1280-1290
+  s_3382fc8a7032f9::t_edbf3408940435 2083-2084
+  s_3382fc8a7032f9::t_172153eaa2b8ea 1327-1334
+apps/dashboard/src/lib/hexclave-app-internals.ts
+  s_3382fc8a7032f9::t_ea6a85c3e32025 46-50
+packages/shared/src/interface/admin-interface.ts
+  s_3382fc8a7032f9::t_f36123abff70c1 372-373,385-386
+  s_3382fc8a7032f9::t_f8e57887a19e24 395-398,404-405,409-410,423-424
+  s_3382fc8a7032f9::t_58e45348d01a98 399-403,406-408,411-422
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/globe.tsx
+  s_3382fc8a7032f9::t_efcf5231469d89 693-695
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7fcd3558a588a1091e45aa931f91a658a85c374d",
+  "prompts": {},
+  "sessions": {
+    "s_3382fc8a7032f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "294b8e5f-0efd-46d9-be53-e3580b2ee910",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fc971015ca5caa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb402-3d59-78e1-b045-5aa44d6077d1",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
