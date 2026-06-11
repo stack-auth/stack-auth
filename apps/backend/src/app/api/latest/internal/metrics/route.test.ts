@@ -30,6 +30,8 @@ describe("internal metrics helpers", () => {
       browser: "",
       os: " macOS ",
       device: " Desktop ",
+      since: " 2026-06-01T00:00:00.000Z ",
+      until: "",
     })).toMatchInlineSnapshot(`
       {
         "browser": undefined,
@@ -37,6 +39,8 @@ describe("internal metrics helpers", () => {
         "device": "Desktop",
         "os": "macOS",
         "referrer": "https://example.com",
+        "since": "2026-06-01T00:00:00.000Z",
+        "until": undefined,
       }
     `);
   });

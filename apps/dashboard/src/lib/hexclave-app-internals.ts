@@ -43,6 +43,11 @@ export type AnalyticsOverviewFilters = {
   browser?: string,
   os?: string,
   device?: string,
+  // ISO 8601 datetimes bounding the analytics top-N breakdowns server-side
+  // (top referrers / regions / browsers / OS / devices). The daily and hourly
+  // series stay full-window so previous-period deltas can be computed locally.
+  since?: string,
+  until?: string,
 };
 
 export function useMetricsOrThrow(

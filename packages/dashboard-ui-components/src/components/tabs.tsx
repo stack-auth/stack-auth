@@ -192,7 +192,7 @@ export function DesignCategoryTabs({
       <div
         ref={tabListRef}
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+          "relative flex min-h-0 min-w-0 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
         )}
       >
         {glassmorphic && sliderMetrics != null && (

@@ -583,12 +583,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       // IF_PLATFORM react-like
       useMetrics: (
         includeAnonymous: boolean = false,
-        filters?: { country_code?: string, referrer?: string, browser?: string, os?: string, device?: string },
+        filters?: { country_code?: string, referrer?: string, browser?: string, os?: string, device?: string, since?: string, until?: string },
       ): MetricsResponse => {
         const filtersKey = (() => {
           if (filters == null) return "";
           const params = new URLSearchParams();
-          for (const key of ["browser", "country_code", "device", "os", "referrer"] as const) {
+          for (const key of ["browser", "country_code", "device", "os", "referrer", "since", "until"] as const) {
             const v = filters[key];
             if (v != null) params.set(key, v);
           }

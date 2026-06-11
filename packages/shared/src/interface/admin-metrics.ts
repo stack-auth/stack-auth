@@ -140,8 +140,8 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_bounce_rate: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_avg_session_seconds: yupArray(MetricsDataPointSchema).optional().default([]),
   // User-Agent-derived breakdowns for the analytics overview. Computed from the
-  // `data.user_agent` blob on `$page-view` events (captured client-side, with a
-  // server-side header fallback). Optional + default-[] for one release cycle
+  // `data.user_agent` blob on `$page-view` events (captured client-side only,
+  // no server-side fallback). Optional + default-[] for one release cycle
   // so older clients / servers without UA capture don't fail validation.
   top_browsers: yupArray(MetricsNamedCountSchema).optional().default([]),
   top_operating_systems: yupArray(MetricsNamedCountSchema).optional().default([]),

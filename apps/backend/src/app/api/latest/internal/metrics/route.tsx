@@ -20,7 +20,7 @@ import {
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
 } from "@hexclave/shared/dist/interface/admin-metrics";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -1159,6 +1159,12 @@ export type AnalyticsOverviewFilters = {
   browser?: string,
   os?: string,
   device?: string,
+  // ISO 8601 datetimes bounding the top-N breakdowns (referrers, regions,
+  // browsers/OS/devices). Clamped to the analytics window server-side; the
+  // daily/hourly series intentionally stay full-window so the dashboard can
+  // compute previous-period deltas client-side.
+  since?: string,
+  until?: string,
 };
 
 export function normalizeAnalyticsOverviewFilters(filters: AnalyticsOverviewFilters): AnalyticsOverviewFilters {
@@ -1167,13 +1173,26 @@ export function normalizeAnalyticsOverviewFilters(filters: AnalyticsOverviewFilt
   const browser = filters.browser?.trim();
   const os = filters.os?.trim();
   const device = filters.device?.trim();
+  const since = filters.since?.trim();
+  const until = filters.until?.trim();
   return {
     country_code: countryCode || undefined,
     referrer: referrer || undefined,
     browser: browser || undefined,
     os: os || undefined,
     device: device || undefined,
+    since: since || undefined,
+    until: until || undefined,
   };
+}
+
+function parseAnalyticsRangeBound(value: string | undefined, paramName: string): Date | undefined {
+  if (value == null) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new StatusError(400, `Invalid ${paramName}: expected an ISO 8601 datetime, got ${JSON.stringify(value)}`);
+  }
+  return parsed;
 }
 
 const analyticsOverviewUserAgentSql = "toString(e.data.user_agent)";
@@ -1258,6 +1277,17 @@ async function loadAnalyticsOverview(
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
+  // Optional date range for the top-N breakdowns, clamped to the analytics
+  // window (ClickHouse only has detail for the last METRICS_WINDOW_DAYS).
+  // The daily/hourly series stay full-window — see AnalyticsOverviewFilters.
+  const requestedRangeSince = parseAnalyticsRangeBound(filters.since, "filter_since");
+  const requestedRangeUntil = parseAnalyticsRangeBound(filters.until, "filter_until");
+  const rangeSince = new Date(Math.max(since.getTime(), requestedRangeSince?.getTime() ?? since.getTime()));
+  const rangeUntilExclusive = new Date(Math.min(untilExclusive.getTime(), requestedRangeUntil?.getTime() ?? untilExclusive.getTime()));
+  if (rangeSince.getTime() >= rangeUntilExclusive.getTime()) {
+    throw new StatusError(400, "filter_since must be before filter_until after clamping to the analytics window");
+  }
+
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
   // Session replay aggregates come from Postgres and have nothing to do with
@@ -1294,7 +1324,14 @@ async function loadAnalyticsOverview(
     topDevices: { name: string, visitors: number }[],
   } | null = null;
 
-  try {
+  // Explicit installed-check instead of inferring "analytics not enabled" from
+  // a failed ClickHouse query: when the app isn't installed we skip ClickHouse
+  // entirely and return the token-refresh fallback payload; when it IS
+  // installed, every ClickHouse error propagates to the caller so the
+  // dashboard renders its error state instead of plausible-looking zeros.
+  const analyticsInstalled = tenancy.config.apps.installed["analytics"]?.enabled ?? false;
+
+  if (analyticsInstalled) try {
     // The `event_at >= since` bound on the inner subquery is load-bearing:
     // without it the GROUP BY hash table holds one row per ever-seen user.
     // Edge case: anonymous page-views by users with no token-refresh in the
@@ -1473,8 +1510,8 @@ async function loadAnalyticsOverview(
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.event_at >= {since:DateTime}
-            AND e.event_at < {untilExclusive:DateTime}
+            AND e.event_at >= {rangeSince:DateTime}
+            AND e.event_at < {rangeUntilExclusive:DateTime}
             AND ${analyticsContributingUserFilter}
             ${countryFragment}
             ${uaFragment}
@@ -1486,6 +1523,8 @@ async function loadAnalyticsOverview(
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
@@ -1506,8 +1545,8 @@ async function loadAnalyticsOverview(
           WHERE e.event_type = '$page-view'
             AND e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
-            AND e.event_at >= {since:DateTime}
-            AND e.event_at < {untilExclusive:DateTime}
+            AND e.event_at >= {rangeSince:DateTime}
+            AND e.event_at < {rangeUntilExclusive:DateTime}
             AND ${analyticsContributingUserFilter}
             AND coalesce(token_refresh_users.latest_country, '') != ''
             ${referrerFragment}
@@ -1520,6 +1559,8 @@ async function loadAnalyticsOverview(
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
@@ -1608,9 +1649,9 @@ async function loadAnalyticsOverview(
       }),
       // User-Agent buckets pulled from the same `$page-view` event stream so
       // visitor counts line up with the referrer / region cards on the overview.
-      // `data.user_agent` is captured client-side (navigator.userAgent) with a
-      // server-side header fallback, so older rows that pre-date capture simply
-      // return empty here.
+      // `data.user_agent` is captured client-side (navigator.userAgent) only —
+      // there is no server-side fallback — so older rows that pre-date capture
+      // simply return empty here.
       clickhouseClient.query({
         query: `
           SELECT
@@ -1628,8 +1669,8 @@ async function loadAnalyticsOverview(
             WHERE e.event_type = '$page-view'
               AND e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}
-              AND e.event_at >= {since:DateTime}
-              AND e.event_at < {untilExclusive:DateTime}
+              AND e.event_at >= {rangeSince:DateTime}
+              AND e.event_at < {rangeUntilExclusive:DateTime}
               AND ${analyticsContributingUserFilter}
               AND ${analyticsOverviewUserAgentSql} != ''
               ${referrerFragment}
@@ -1650,6 +1691,8 @@ async function loadAnalyticsOverview(
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          rangeSince: formatClickhouseDateTimeParam(rangeSince),
+          rangeUntilExclusive: formatClickhouseDateTimeParam(rangeUntilExclusive),
           projectId: tenancy.project.id,
           branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
@@ -1800,20 +1843,18 @@ async function loadAnalyticsOverview(
       topDevices,
     };
   } catch (error) {
-    // Only swallow real ClickHouse errors — that's the "analytics not enabled
-    // for this project" path. Anything else is a real bug and should propagate.
-    if (!(error instanceof ClickHouseError)) {
-      throw error;
-    }
-    captureError("internal-metrics-analytics-overview-clickhouse-fallback", new HexclaveAssertionError(
-      "Falling back to empty analytics overview due to ClickHouse query failure.",
+    // The analytics app is installed, so a ClickHouse failure here is a real
+    // error — capture with context, then propagate so the dashboard shows its
+    // error state instead of silently rendering an empty overview.
+    captureError("internal-metrics-analytics-overview-clickhouse", new HexclaveAssertionError(
+      "Analytics overview ClickHouse queries failed for a project with the analytics app installed.",
       {
         cause: error,
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
       },
     ));
-    // Leave clickhouseAggregates as null — handled in the response builder below.
+    throw error;
   }
 
   // Postgres-backed session replay query has its own error surface — let it
@@ -1999,6 +2040,10 @@ export const GET = createSmartRouteHandler({
       filter_browser: yupString().optional(),
       filter_os: yupString().optional(),
       filter_device: yupString().optional(),
+      // ISO 8601 datetimes bounding the analytics top-N breakdowns (referrers,
+      // regions, browsers/OS/devices); clamped to the analytics window.
+      filter_since: yupString().optional(),
+      filter_until: yupString().optional(),
     }),
   }),
   response: yupObject({
@@ -2035,6 +2080,8 @@ export const GET = createSmartRouteHandler({
       browser: req.query.filter_browser || undefined,
       os: req.query.filter_os || undefined,
       device: req.query.filter_device || undefined,
+      since: req.query.filter_since || undefined,
+      until: req.query.filter_until || undefined,
     });
 
     const [

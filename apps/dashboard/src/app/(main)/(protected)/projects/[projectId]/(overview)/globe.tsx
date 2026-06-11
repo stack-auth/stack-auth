@@ -690,7 +690,9 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     if (interactive) {
       controls.enableZoom = true;
       controls.minDistance = cameraDistance;
-      controls.maxDistance = 600;
+      // Large containers can push cameraDistance past 600; keep min <= max so
+      // OrbitControls doesn't end up with an inverted zoom range.
+      controls.maxDistance = Math.max(600, cameraDistance);
     } else {
       controls.enableZoom = false;
       controls.maxDistance = cameraDistance;

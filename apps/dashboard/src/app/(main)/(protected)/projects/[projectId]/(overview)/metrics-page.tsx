@@ -71,7 +71,6 @@ import {
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 import { ReferrersWithAnalyticsCard, TopNamedListCard, TopRegionsCard } from "./top-lists";
-import { easeOutCubic, prefersReducedMotion } from "./animation-utils";
 import {
   ANALYTICS_CHART_METRIC_MODE_ORDER,
   toggleAnalyticsChartMetricMode,
@@ -115,7 +114,6 @@ function formatPagesPerVisitor(value: number): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-const OVERVIEW_WIDGET_ANIMATION_MS = 260;
 const OVERVIEW_HEADER_COMPACT_SCROLL_TOP = 24;
 const OVERVIEW_HEADER_MORPH_MS = 520;
 const OVERVIEW_HEADER_TITLE_EXIT_MS = 150;
@@ -142,11 +140,16 @@ function findScrollContainer(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function useOverviewHeaderCompacted() {
+function useOverviewHeaderCompacted(enabled: boolean) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [compacted, setCompacted] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setCompacted(false);
+      return;
+    }
+
     const sentinel = sentinelRef.current;
     if (sentinel == null) return;
 
@@ -167,7 +170,7 @@ function useOverviewHeaderCompacted() {
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [enabled]);
 
   return { compacted, sentinelRef };
 }
@@ -202,52 +205,6 @@ function useDelayedTrue(value: boolean, delayMs: number): boolean {
   }, [delayMs, value]);
 
   return delayedValue;
-}
-
-function useAnimatedSeriesValues<T extends { value: number }>(series: T[]): T[] {
-  const [animatedSeries, setAnimatedSeries] = useState(series);
-  const previousSeriesRef = useRef(series);
-
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      previousSeriesRef.current = series;
-      setAnimatedSeries(series);
-      return;
-    }
-
-    const previousSeries = previousSeriesRef.current;
-    const startedAt = performance.now();
-    let frameId: number | null = null;
-
-    const renderFrame = (now: number) => {
-      const linearProgress = Math.min(1, (now - startedAt) / OVERVIEW_WIDGET_ANIMATION_MS);
-      const progress = easeOutCubic(linearProgress);
-      setAnimatedSeries(series.map((point, index) => {
-        const previous = previousSeries[index]?.value ?? 0;
-        return {
-          ...point,
-          value: previous + (point.value - previous) * progress,
-        };
-      }));
-
-      if (linearProgress < 1) {
-        frameId = requestAnimationFrame(renderFrame);
-        return;
-      }
-
-      previousSeriesRef.current = series;
-      setAnimatedSeries(series);
-    };
-
-    frameId = requestAnimationFrame(renderFrame);
-    return () => {
-      if (frameId != null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [series]);
-
-  return animatedSeries;
 }
 
 const BROWSER_SLUGS = new Map<string, string>([
@@ -370,7 +327,54 @@ function analyticsFiltersKey(filters: AnalyticsOverviewFilters): string {
       params.set(dimension, value);
     }
   }
+  if (filters.since != null) params.set("since", filters.since);
+  if (filters.until != null) params.set("until", filters.until);
   return params.toString();
+}
+
+// Matches getDateKey in line-chart.tsx: custom-range picker dates are
+// local-midnight Dates, and the daily series keys are "YYYY-MM-DD".
+function localDateKey(date: Date): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Server-side date bounds for the top-N breakdowns (referrers, regions,
+// browsers/OS/devices), derived from the chart time range. Quantized to the
+// current UTC hour (1d) / UTC day (7d) so the metrics cache key stays stable
+// across renders instead of changing every millisecond.
+function analyticsDateRangeForTimeRange(
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null,
+): Pick<AnalyticsOverviewFilters, "since" | "until"> {
+  switch (timeRange) {
+    case "1d": {
+      const latestHour = new Date();
+      latestHour.setUTCMinutes(0, 0, 0);
+      return { since: new Date(latestHour.getTime() - 23 * 60 * 60 * 1000).toISOString() };
+    }
+    case "7d": {
+      const todayUtc = new Date();
+      todayUtc.setUTCHours(0, 0, 0, 0);
+      return { since: new Date(todayUtc.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString() };
+    }
+    case "30d":
+    case "all": {
+      return {};
+    }
+    case "custom": {
+      if (customDateRange == null) {
+        return {};
+      }
+      const untilExclusive = new Date(new Date(`${localDateKey(customDateRange.to)}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000);
+      return {
+        since: `${localDateKey(customDateRange.from)}T00:00:00.000Z`,
+        until: untilExclusive.toISOString(),
+      };
+    }
+  }
 }
 
 function getFilterDimensionLabel(dimension: keyof AnalyticsOverviewFilters): string {
@@ -627,80 +631,116 @@ function ViewToggle({ view, onChange }: { view: "overview" | "globe", onChange: 
   );
 }
 
-function OverviewStickyHeader({ title, actions }: { title: string, actions: ReactNode }) {
-  const { compacted, sentinelRef } = useOverviewHeaderCompacted();
+function OverviewHeaderChrome({
+  title,
+  actions,
+  compacted,
+  layoutCompacted,
+  renderTitle,
+  layoutTransition,
+  animateLayout,
+}: {
+  title: string,
+  actions: ReactNode,
+  compacted: boolean,
+  layoutCompacted: boolean,
+  renderTitle: boolean,
+  layoutTransition: Transition,
+  animateLayout: boolean,
+}) {
+  return (
+    <motion.div
+      layout={animateLayout}
+      transition={layoutTransition}
+      className={cn(
+        "pointer-events-auto relative w-full max-w-full",
+        layoutCompacted && "ml-auto w-fit",
+      )}
+    >
+      <motion.div
+        layout={animateLayout}
+        transition={layoutTransition}
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
+          layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
+        )}
+      />
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
+          layoutCompacted && "opacity-100",
+        )}
+      />
+      <div
+        className={cn(
+          "relative z-10 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 dark:px-0 dark:py-0 dark:sm:px-0 dark:sm:py-0",
+          layoutCompacted && "gap-0 sm:gap-0",
+          layoutCompacted && "px-3 py-2 sm:px-4 sm:py-2.5 dark:px-4 dark:py-2.5 dark:sm:px-4 dark:sm:py-2.5",
+        )}
+      >
+        {renderTitle && (
+          <div
+            className={cn(
+              "min-w-0 transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
+              compacted && "pointer-events-none opacity-0 blur-[1px]",
+            )}
+          >
+            <Typography
+              type="h2"
+              className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
+            >
+              {title}
+            </Typography>
+          </div>
+        )}
+        <motion.div
+          layout={animateLayout}
+          transition={layoutTransition}
+          className={cn(
+            "relative z-10 min-w-0 max-w-full flex-shrink-0 overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "transition-opacity duration-[520ms] motion-reduce:transition-none",
+            layoutCompacted && "opacity-95",
+          )}
+        >
+          {actions}
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+function OverviewHeader({ title, actions, sticky }: { title: string, actions: ReactNode, sticky: boolean }) {
+  const { compacted, sentinelRef } = useOverviewHeaderCompacted(sticky);
   const renderTitle = useRenderWhileClosing(!compacted, OVERVIEW_HEADER_TITLE_EXIT_MS);
   const shouldReduceMotion = useReducedMotion();
   const delayedCompacted = useDelayedTrue(compacted, shouldReduceMotion ? 0 : OVERVIEW_HEADER_TITLE_EXIT_MS);
-  const layoutCompacted = shouldReduceMotion ? compacted : delayedCompacted;
+  const layoutCompacted = sticky && (shouldReduceMotion ? compacted : delayedCompacted);
   const layoutTransition = shouldReduceMotion ? reducedOverviewHeaderLayoutTransition : overviewHeaderLayoutTransition;
 
   return (
     <>
-      <div ref={sentinelRef} aria-hidden className="-mb-[17px] h-px w-px" />
+      {sticky && (
+        <div key="sentinel" ref={sentinelRef} aria-hidden className="-mb-[17px] h-px w-px" />
+      )}
       <div
-        className="sticky top-[4.25rem] z-30 mb-2 w-full pointer-events-none dark:top-[5.75rem]"
+        key="header"
+        className={cn(
+          "relative z-30 w-full pointer-events-none",
+          sticky && "sticky top-[4.25rem] mb-2 dark:top-[5.75rem]",
+        )}
       >
         <LayoutGroup id="overview-sticky-header">
-          <motion.div
-            layout
-            transition={layoutTransition}
-            className={cn(
-              "pointer-events-auto relative w-full max-w-full",
-              layoutCompacted && "ml-auto w-fit",
-            )}
-          >
-            <motion.div
-              layout
-              transition={layoutTransition}
-              aria-hidden
-              className={cn(
-                "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
-                layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
-              )}
-            />
-            <div
-              aria-hidden
-              className={cn(
-                "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
-                layoutCompacted && "opacity-100",
-              )}
-            />
-            <div
-              className={cn(
-                "relative z-10 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 dark:px-0 dark:py-0 dark:sm:px-0 dark:sm:py-0",
-                layoutCompacted && "gap-0 sm:gap-0",
-                layoutCompacted && "px-3 py-2 sm:px-4 sm:py-2.5 dark:px-4 dark:py-2.5 dark:sm:px-4 dark:sm:py-2.5",
-              )}
-            >
-              {renderTitle && (
-                <div
-                  className={cn(
-                    "min-w-0 transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
-                    compacted && "pointer-events-none opacity-0 blur-[1px]",
-                  )}
-                >
-                  <Typography
-                    type="h2"
-                    className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
-                  >
-                    {title}
-                  </Typography>
-                </div>
-              )}
-              <motion.div
-                layout
-                transition={layoutTransition}
-                className={cn(
-                  "relative z-10 min-w-0 max-w-full flex-shrink-0 overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                  "transition-opacity duration-[520ms] motion-reduce:transition-none",
-                  layoutCompacted && "opacity-95",
-                )}
-              >
-                {actions}
-              </motion.div>
-            </div>
-          </motion.div>
+          <OverviewHeaderChrome
+            title={title}
+            actions={actions}
+            compacted={sticky ? compacted : false}
+            layoutCompacted={layoutCompacted}
+            renderTitle={sticky ? renderTitle : true}
+            layoutTransition={layoutTransition}
+            animateLayout
+          />
         </LayoutGroup>
       </div>
     </>
@@ -708,8 +748,11 @@ function OverviewStickyHeader({ title, actions }: { title: string, actions: Reac
 }
 
 function GlobeView({ includeAnonymous }: { includeAnonymous: boolean }) {
+  // Fills the height granted by PageLayout's containedHeight mode (the globe
+  // tab sets it) instead of guessing the chrome height with 100vh math, which
+  // left a slight page scroll whenever the guess was off.
   return (
-    <div className="relative h-[calc(100vh-12rem)] min-h-[480px] w-full overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-black/[0.06] backdrop-blur-xl dark:rounded-none dark:bg-transparent dark:shadow-none dark:ring-0 dark:backdrop-blur-none">
+    <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-black/[0.06] backdrop-blur-xl dark:rounded-none dark:bg-transparent dark:shadow-none dark:ring-0 dark:backdrop-blur-none">
       <GlobeSectionWithData includeAnonymous={includeAnonymous} interactive />
     </div>
   );
@@ -744,7 +787,7 @@ function AnalyticsInChartPill({
 }) {
   const tooltipByLabel = new Map([
     ["Daily Active Users", "Shows active users by day so you can see current product usage."],
-    ["Unique Visitors", "Counts distinct visitors from analytics events in the selected period."],
+    ["Visitors", "Sums each day's unique visitors across the selected period, so returning visitors count once per day."],
     ["Revenue", "Shows new revenue from payments for the selected period."],
   ]);
 
@@ -1357,7 +1400,7 @@ function QuickAccessApps({ projectId, installedApps }: { projectId: string, inst
   );
 }
 
-export default function MetricsPage(props: { toSetup: () => void }) {
+export default function MetricsPage() {
   const includeAnonymous = false;
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
@@ -1368,7 +1411,11 @@ export default function MetricsPage(props: { toSetup: () => void }) {
 
   const displayName = user?.displayName || user?.primaryEmail || null;
   const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
-  const selectedFilterKey = analyticsFiltersKey(analyticsFilters);
+  // The fetched filters combine the dimension chips with the date bounds from
+  // the time-range toggle, so range changes re-query the top-N breakdowns too.
+  const analyticsDateRange = useMemo(() => analyticsDateRangeForTimeRange(timeRange, customDateRange), [timeRange, customDateRange]);
+  const requestedAnalyticsFilters = useMemo(() => ({ ...analyticsFilters, ...analyticsDateRange }), [analyticsFilters, analyticsDateRange]);
+  const selectedFilterKey = analyticsFiltersKey(requestedAnalyticsFilters);
   const loadedFilterKey = analyticsFiltersKey(loadedAnalyticsFilters);
   const isUpdatingAnalyticsFilters = selectedFilterKey !== loadedFilterKey;
 
@@ -1380,8 +1427,8 @@ export default function MetricsPage(props: { toSetup: () => void }) {
     setAnalyticsFilters((previous) => ({ ...previous, [dimension]: previous[dimension] === value ? undefined : value }));
   }, []);
   const markAnalyticsFiltersLoaded = useCallback(() => {
-    setLoadedAnalyticsFilters(analyticsFilters);
-  }, [analyticsFilters]);
+    setLoadedAnalyticsFilters(requestedAnalyticsFilters);
+  }, [requestedAnalyticsFilters]);
   const headerTitle = `Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`;
   const headerActions = (
     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -1405,20 +1452,25 @@ export default function MetricsPage(props: { toSetup: () => void }) {
     <PageLayout
       fillWidth
       fullBleed
+      containedHeight={view === "globe"}
     >
-      <OverviewStickyHeader title={headerTitle} actions={headerActions} />
+      {/* The globe tab is a contained, no-scroll scene. A sticky top offset would
+          shift this bar over the globe card and clip the live-users badge. */}
+      <OverviewHeader title={headerTitle} actions={headerActions} sticky={view === "overview"} />
       {view === "overview" && <AnalyticsEventLimitBanner />}
-      {view === "overview" && isUpdatingAnalyticsFilters && (
-        <Suspense fallback={null}>
-          <MetricsFilterPreloader
-            includeAnonymous={includeAnonymous}
-            filters={analyticsFilters}
-            filterKey={selectedFilterKey}
-            onReady={markAnalyticsFiltersLoaded}
-          />
-        </Suspense>
-      )}
       <ErrorBoundary errorComponent={MetricsErrorComponent}>
+        {/* Inside the error boundary so a failed filtered fetch surfaces the
+            page's own error fallback instead of escaping to the layout. */}
+        {view === "overview" && isUpdatingAnalyticsFilters && (
+          <Suspense fallback={null}>
+            <MetricsFilterPreloader
+              includeAnonymous={includeAnonymous}
+              filters={requestedAnalyticsFilters}
+              filterKey={selectedFilterKey}
+              onReady={markAnalyticsFiltersLoaded}
+            />
+          </Suspense>
+        )}
         <Suspense fallback={<MetricsLoadingFallback />}>
           {view === "globe" ? (
             <GlobeView includeAnonymous={includeAnonymous} />
@@ -1687,8 +1739,11 @@ function MetricsContent({
       dauTotal: formatCompact(latestDau),
       dauLabel: "Daily Active Users",
       dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
+      // Sum of per-bucket uniques — a visitor active on several days counts
+      // once per day, so this is NOT deduplicated across the whole period.
+      // Labeled "Visitors" (not "Unique Visitors") for that reason.
       visitorsTotal: formatCompact(visitorsTotalInRange),
-      visitorsLabel: "Unique Visitors",
+      visitorsLabel: "Visitors",
       visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: paymentsEnabled
         ? formatUsdFromCents(totalRevenueCentsInRange)
@@ -1831,11 +1886,11 @@ function MetricsContent({
         />
         <UserPageMetricCard
           label="Avg. Session Time"
-          tooltip="Average session duration from page views and clicks in the analytics window."
-          value={analyticsEnabled ? formatSeconds(analytics.avg_session_seconds) : "—"}
+          tooltip="Average session duration from page views and clicks for the selected period."
+          value={analyticsEnabled ? formatSeconds(analyticsPeriodTotals.avgSession) : "—"}
           description="in period"
           gradient="purple"
-          delta={analyticsPeriodTotals.hasPreviousWindow ? {
+          delta={analyticsEnabled && analyticsPeriodTotals.hasPreviousWindow ? {
             current: analyticsPeriodTotals.avgSession,
             previous: analyticsPeriodTotals.previousAvgSession,
             comparisonLabel: "vs prev. period",
