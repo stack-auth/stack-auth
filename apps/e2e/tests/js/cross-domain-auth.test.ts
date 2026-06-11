@@ -310,8 +310,10 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
     } as any;
 
     try {
+      // accountSettings (unlike afterSignIn & co, which resolve to local URLs) still lives on the
+      // hosted domain, so it exercises the nested cross-domain auth params path.
       await expect((clientApp as any)._redirectToHandler(
-        "afterSignIn",
+        "accountSettings",
         { replace: true },
         { awaitPendingAuthResolutions: false },
       )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
@@ -320,9 +322,9 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
       globalThis.document = previousDocument;
     }
 
-    expect(fetchCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith({
+    expect(fetchCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith(expect.objectContaining({
       awaitPendingAuthResolutions: false,
-    });
+    }));
   });
 });
 
