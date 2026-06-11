@@ -286,7 +286,7 @@
     background-image: none;
   }
 
-  body:has([data-hexclave-purchase-page]) {
+  html:not(.dark) body:has([data-hexclave-purchase-page]) {
     background-color: white;
     background-image: none;
   }
@@ -295,7 +295,8 @@
     background-color: hsl(240 10% 3.9%);
   }
 
-  body:has([data-hexclave-purchase-page])::before {
+  html:not(.dark) body:has([data-hexclave-purchase-page])::before,
+  .dark body:has([data-hexclave-purchase-page])::before {
     opacity: 0;
     background-image: none;
   }
