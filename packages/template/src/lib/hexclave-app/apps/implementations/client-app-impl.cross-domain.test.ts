@@ -283,6 +283,12 @@ describe("StackClientApp cross-domain auth", () => {
     const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
     const refreshedRawRefreshTokens: string[] = [];
 
+    // Cookie-store writes queue a background trusted-parent-domain lookup. Without this stub, that
+    // lookup fetches the (unreachable) baseUrl with retries while holding the global store lock,
+    // which starves any later test that needs the write lock (e.g. signOut). Not restored on
+    // purpose: queued tasks can still run after this test body finishes.
+    vi.spyOn(clientApp as any, "_getTrustedParentDomain").mockResolvedValue(null);
+
     try {
       const getBrowserCookieTokenStore = Reflect.get(clientApp, "_getBrowserCookieTokenStore");
       if (typeof getBrowserCookieTokenStore !== "function") {
