@@ -68,7 +68,7 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
 ]);
 
 type ProgressLogger = {
-  stop: (finalMessage?: string) => void,
+  stop: (showDone?: boolean) => void,
 };
 
 type DashboardSessionState = {
@@ -162,8 +162,8 @@ function startProgressLog(message: string): ProgressLogger {
   if (!process.stderr.isTTY) {
     logDev(`${message}...`);
     return {
-      stop(finalMessage?: string) {
-        if (finalMessage != null) {
+      stop(showDone?: boolean) {
+        if (showDone) {
           logDev(`${message}... done!`);
         }
       },
@@ -181,12 +181,12 @@ function startProgressLog(message: string): ProgressLogger {
   timer.unref();
 
   return {
-    stop(finalMessage?: string) {
+    stop(showDone?: boolean) {
       if (stopped) return;
       stopped = true;
       clearInterval(timer);
       process.stderr.write("\r\x1b[2K");
-      if (finalMessage != null) {
+      if (showDone) {
         logDev(`${message}... done!`);
       }
     },
@@ -239,7 +239,12 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) {
-      replaceDashboardRuntimeSentinels(path, env);
+      try {
+        replaceDashboardRuntimeSentinels(path, env);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
       continue;
     }
     if (!entry.isFile()) {
@@ -518,7 +523,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
       if (await isDashboardReachable(url, options.secret)) {
-        progress.stop(`Started Hexclave dashboard`);
+        progress.stop(true);
         return;
       }
       await wait(500);
