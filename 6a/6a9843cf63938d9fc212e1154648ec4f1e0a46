@@ -1,0 +1,24 @@
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_815d09378f386f::t_71848d3337490b 1857-1860
+apps/dashboard/src/components/ui/simple-tooltip.tsx
+  s_815d09378f386f::t_60900fcbcf774a 27-30,35,39
+apps/dashboard/src/lib/hexclave-app-internals.ts
+  s_815d09378f386f::t_2dc16583b31807 92,96
+  s_815d09378f386f::t_44cdf30e8eb8c6 53-63,65-66,69-71,74-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "6a6a9843cf63938d9fc212e1154648ec4f1e0a46",
+  "prompts": {},
+  "sessions": {
+    "s_815d09378f386f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "423303be-fd43-4ccf-8dad-be641db2c559",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
