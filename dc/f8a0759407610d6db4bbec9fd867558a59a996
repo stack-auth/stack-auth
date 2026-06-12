@@ -1,0 +1,55 @@
+packages/shared-backend/.eslintrc.cjs
+  s_03b141480c78c0::t_1b95c561a57b7e 1-6
+apps/dashboard/package.json
+  s_03b141480c78c0::t_c8169b1608bc29 67
+pnpm-lock.yaml
+  s_e6c86189f79e56::t_7297504d20e5b6 392-394,774,1560,1563,1566,1584,1664,1667,1713,1763-1765,2365-2383,9365-9366,9369-9370,9376-9377,9380-9381,9389-9390,9393-9394,21606,21608,27876,27880,27886,27890,27895,27897,27900,27905,27907-27911,29190,29193,29195-29196,29198,29236,29243,29301,29305,29307,29377,29379,29383,32356,32358,32360,32362,32456,32458,32493,36167,36187,39676,39678-39679,39681-39682
+packages/shared-backend/package.json
+  s_03b141480c78c0::t_5458e47c11d322 2
+packages/cli/package.json
+  s_03b141480c78c0::t_b860a52c0fa131 33
+packages/cli/src/lib/claude-agent.ts
+  s_03b141480c78c0::t_f021bb07dd1916 1
+examples/demo/hexclave.config.ts
+  s_03b141480c78c0::t_9e2710287c5659 8
+packages/shared-backend/src/config-agent.ts
+  s_03b141480c78c0::t_1b95c561a57b7e 1-147
+packages/shared-backend/tsconfig.json
+  s_03b141480c78c0::t_1b95c561a57b7e 1-23
+packages/shared-backend/src/index.ts
+  s_03b141480c78c0::t_d8cbbf5aa96b34 77
+packages/shared-backend/src/index.test.ts
+  s_03b141480c78c0::t_1089cb22ceffaa 35-36
+apps/dashboard/next.config.mjs
+  s_03b141480c78c0::t_4984504e5e929a 7-8
+apps/dashboard/src/lib/remote-development-environment/config-file.ts
+  s_03b141480c78c0::t_b2a44921b6dfb7 11
+apps/dashboard/src/lib/remote-development-environment/config-file.test.ts
+  s_03b141480c78c0::t_de2555c7cc8898 10-11
+packages/cli/src/commands/config-file.ts
+  s_03b141480c78c0::t_e1bfa0aabcad09 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "dcf8a0759407610d6db4bbec9fd867558a59a996",
+  "prompts": {},
+  "sessions": {
+    "s_03b141480c78c0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8a3715d5-f681-441a-b8a7-117d2a33cd70",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_e6c86189f79e56": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1bffd318-4fe7-4a10-b5c5-de45b322560d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
