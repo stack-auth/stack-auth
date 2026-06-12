@@ -61,7 +61,14 @@ export type DefaultHandlerUrlTarget = { type: "hosted" | "handler-component" };
  */
 export type HandlerUrlOptions = Partial<HandlerUrls> & { default?: DefaultHandlerUrlTarget };
 export type ResolvedHandlerUrls = {
-  [K in keyof HandlerUrls]: string;
+  [K in Exclude<keyof HandlerUrls, "signOut">]: string;
+} & {
+  /**
+   * @deprecated `app.urls.signOut` is not a navigable URL. Navigating to it directly cannot clear
+   * your app's own session cookies and strands the user on the hosted domain when hosted auth pages
+   * are used. Call `await user.signOut()` instead, which works with every configuration.
+   */
+  signOut: string;
 };
 
 export {
