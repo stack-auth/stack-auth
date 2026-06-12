@@ -1,0 +1,54 @@
+apps/dashboard/src/lib/config-update.tsx
+  s_f1d693d711bbd2::t_9c60d9c2aae37c 7,9
+  s_f1d693d711bbd2::t_1dc2d92ca7f527 493-519
+  s_f1d693d711bbd2::t_0667966e025b58 579-582,608-609
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_f1d693d711bbd2::t_c04ace0bcb3c5a 262
+  s_f1d693d711bbd2::t_3a6595cc1b5d4d 387
+apps/dashboard/src/lib/env.tsx
+  s_f1d693d711bbd2::t_3af8da17c41f26 98-101
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/page-client.tsx
+  s_f1d693d711bbd2::t_16d20c36632a70 44
+  s_f1d693d711bbd2::t_c20265be3d5636 48
+  s_f1d693d711bbd2::t_9e2a859259c520 150-174,176-181,186
+  s_f1d693d711bbd2::t_2dacbea1c10c09 175
+  s_f1d693d711bbd2::t_38cb589f921fa0 233
+  s_f1d693d711bbd2::t_c7ab415ca98fb8 32
+  s_f1d693d711bbd2::t_31a38e39b5b137 112-115
+  s_f1d693d711bbd2::t_4b5ca85173704c 335
+  s_f1d693d711bbd2::t_3609be16a8ec36 109
+  s_f1d693d711bbd2::t_e4914d5baa80f9 215-216
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/providers.tsx
+  s_f1d693d711bbd2::t_e8835b690c097a 278-280
+  s_f1d693d711bbd2::t_2567bb1bf72a56 5
+  s_f1d693d711bbd2::t_d31b3fb73df511 239
+  s_f1d693d711bbd2::t_7cd8c2a7b46676 116
+  s_f1d693d711bbd2::t_92652f3d7bb314 359
+  s_f1d693d711bbd2::t_55bb94522e534c 26-27
+  s_f1d693d711bbd2::t_71a7f2c71a6061 117-119
+  s_f1d693d711bbd2::t_0f2e59f8109938 446
+  s_f1d693d711bbd2::t_8abe63015ef83f 281-295
+apps/dashboard/src/lib/dashboard-user.ts
+  s_f1d693d711bbd2::t_0940cc92fab4c2 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "a86de6b31546046a667f8b54ade1b92e841858f9",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_f1d693d711bbd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d03b9a2a-3afd-43e0-9cb6-8404a553b6f9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
