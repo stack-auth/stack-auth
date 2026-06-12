@@ -153,6 +153,17 @@ import.meta.vitest?.test("getInternalFeedbackRecipients()", ({ expect }) => {
     // eslint-disable-next-line no-restricted-syntax
     process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = ", ";
     expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
+
+    // legacy STACK_ name still resolves when the canonical name is unset or empty
+    // eslint-disable-next-line no-restricted-syntax
+    delete process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS;
+    // eslint-disable-next-line no-restricted-syntax
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "legacy@example.com";
+    expect(getInternalFeedbackRecipients()).toEqual(["legacy@example.com"]);
+
+    // eslint-disable-next-line no-restricted-syntax
+    process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = "";
+    expect(getInternalFeedbackRecipients()).toEqual(["legacy@example.com"]);
   } finally {
     if (previousValue === undefined) {
       // eslint-disable-next-line no-restricted-syntax

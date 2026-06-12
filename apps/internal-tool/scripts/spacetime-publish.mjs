@@ -37,7 +37,7 @@ if (!args) {
 }
 
 if (target === "prod" && !(process.env.HEXCLAVE_MCP_LOG_TOKEN || process.env.STACK_MCP_LOG_TOKEN)) {
-  console.error("Error: STACK_MCP_LOG_TOKEN must be set for prod publish");
+  console.error("Error: HEXCLAVE_MCP_LOG_TOKEN (or legacy STACK_MCP_LOG_TOKEN) must be set for prod publish");
   process.exit(1);
 }
 
