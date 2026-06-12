@@ -1,0 +1,179 @@
+apps/dev-launchpad/public/icons/clickhouse.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-7
+apps/dev-launchpad/public/icons/inbucket.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/convex.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/backend.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/package.json
+  s_dcf48e29c7e47b::t_8034ca11692045 7
+apps/internal-tool/src/lib/evals/chat-agent.ts
+  s_7137d5e98cbf8b::t_0c94ff69f660b7 34
+  s_7137d5e98cbf8b::t_0b8265c6d4a6c3 362
+apps/dev-launchpad/public/icons/demo-local.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/internal-tool/src/app/api/evals/chat/route.ts
+  s_7137d5e98cbf8b::t_9cf933a9a55f02 36
+  s_7137d5e98cbf8b::t_8f29ea88c83b79 2
+apps/dev-launchpad/public/icons/skills.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-4
+apps/dev-launchpad/public/icons/pghero.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-7
+apps/dev-launchpad/public/icons/e-commerce.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/svix.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-7
+apps/internal-tool/src/lib/evals/log-stream.ts
+  s_4336319b12525a::t_874dce28b294f8 1-42,46,48-51,53-54,62-133
+  s_4336319b12525a::t_4a1cd1e01adde8 43-45,47,52,55-61
+apps/internal-tool/src/lib/evals/sandbox.ts
+  s_4336319b12525a::t_80576ff2b3335c 53-64,76-83,85-97,100,102,106-118
+  s_4336319b12525a::t_5c6f6d9d267dd9 5,8
+apps/dev-launchpad/public/icons/react.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/public/icons/lovable.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-3
+apps/internal-tool/src/lib/evals/orchestrator.ts
+  s_7137d5e98cbf8b::t_0078c792e4d98a 414
+  s_7137d5e98cbf8b::t_0986b930cf739c 34
+  s_7137d5e98cbf8b::t_898b213d1fca13 271
+apps/internal-tool/src/app/api/evals/_lib.ts
+  s_7137d5e98cbf8b::t_e2e4004d498d98 3,14
+apps/dev-launchpad/public/icons/prisma.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-4
+apps/dev-launchpad/public/icons/docs-examples.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/public/icons/pgadmin.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-7
+apps/dev-launchpad/public/icons/bulldozer.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-8
+.gitignore
+  s_dcf48e29c7e47b::t_655a55a70e0f92 150
+apps/dev-launchpad/scripts/server.js
+  s_dcf48e29c7e47b::t_7cfbd423a5ac8f 1-86
+apps/dev-launchpad/public/icons/mintlify.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/backend/src/lib/ai/sanitize-reasoning.ts
+  s_479a4acb822001::t_22c603b255f89f 1-49,51-60,62-74,77-80,82-89,91-104
+  s_a75f9ff6136c44::t_b12e46be985069 50,61
+  s_a75f9ff6136c44::t_c969d8c255dccb 90
+  s_a75f9ff6136c44::t_c7807ad43d1044 75-76,81
+apps/internal-tool/src/lib/evals/default-workflow.ts
+  s_a75f9ff6136c44::t_61beb2b0707c65 161
+  s_a75f9ff6136c44::t_6a80bda6290805 91-124
+apps/dev-launchpad/public/icons/tanstack.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/drizzle.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/public/icons/jaeger.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-8
+apps/dev-launchpad/public/icons/wal.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-7
+apps/dev-launchpad/public/icons/internal-tool.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/oauth.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/public/icons/js.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/docs.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/internal-tool/src/lib/evals/types.ts
+  s_7137d5e98cbf8b::t_618f2e946e513f 53-83
+apps/backend/src/lib/ai/sanitize-reasoning.test.ts
+  s_479a4acb822001::t_22423dfdba55bc 1-156
+apps/dev-launchpad/public/index.html
+  s_dcf48e29c7e47b::t_06e10ef0319c8c 254-255,259-260,513,523,533,543,553,563,573,583,592,601,607,617,629,634,642,650,658,667,675,683,695,704,713,723,732,743,753,763,768,776,788,794,803,824
+  s_dcf48e29c7e47b::t_97a929657ac6b9 9,12-31,39,41,47,49-50,56,60-62,64-65,67-71,74-78,80,83-90,93-94,98,104-115,118-125,140-143,145,149-158,164-166,173-174,181-186,188-190,195-196,201-202,207-208,212-213,215-219,239-240,243-244,248-250,256-258,264-266,270-276,291,301-303,309-310,323-325,329-334,340,351,353-356,363-364,366-368,371-374,381-387,394-396,398,401,404-406,409-411,423,426-427,469-471,474-475,504
+  s_dcf48e29c7e47b::t_ec1ae1f6c042e8 278,280-281,288-289,294,297-299,304-306,315
+  s_dcf48e29c7e47b::t_402fd3b89aba56 823
+  s_dcf48e29c7e47b::t_fd7a3cba640965 832-865
+  s_dcf48e29c7e47b::t_577fca902c4c2c 103
+  s_dcf48e29c7e47b::t_a57c57a80de612 425
+  s_dcf48e29c7e47b::t_09d6d454314ad8 499-500
+  s_dcf48e29c7e47b::t_f3a01b180407ac 7-8,11,32-35,37-38,40,44-46,48,51-54,57-59,66,81-82,91-92,95,116-117,126,132-133,136,144,160-163,167-169,171-172,175-177,187,191-194,197-199,206,241-242,245-247,251,263,267,277,279,284-287,295,317-320,335,339,341-350,352,357-362,369-370,375-376,388-391,397,399-400,402-403,407-408,414-415,420-422,424,428-453,468,472-473,476,810-812,814,825
+  s_dcf48e29c7e47b::t_c1cc01d780a051 377-380
+  s_dcf48e29c7e47b::t_db25540b3be352 127-131
+  s_dcf48e29c7e47b::t_50f738eb9281d8 209,211,222-228,231-233,236-238
+  s_dcf48e29c7e47b::t_48cfccba04698c 55,63,72-73,79,99-100,134,148,159,200,205,214,290,296,300,311-314,316,336,365,392-393,467,503,822
+apps/internal-tool/src/lib/evals/log-stream.test.ts
+  s_4336319b12525a::t_391f40d0a042ae 1-102
+apps/dev-launchpad/public/icons/dashboard.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/dev-launchpad/public/icons/hosted-components.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-6
+apps/backend/src/app/api/latest/ai/query/[mode]/route.ts
+  s_479a4acb822001::t_d034803169adf0 9
+  s_479a4acb822001::t_5f2ff0d1124819 114-119
+apps/dev-launchpad/public/icons/supabase.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-4
+apps/dev-launchpad/public/icons/mcp.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-8
+apps/dev-launchpad/public/icons/demo.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-4
+apps/dev-launchpad/public/icons/node.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+apps/dev-launchpad/public/icons/middleware.svg
+  s_b39678d6aa4865::t_11038e3c9544ef 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "068388935b7fa0676325844656678a1e1e54d9e0",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_4336319b12525a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9dbecada-95c9-43ef-9855-7588133d6193",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_479a4acb822001": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c7dce35f-fd02-455b-94a4-1f201288a16d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7137d5e98cbf8b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "110cbb28-32ef-43f1-bfac-97f4d69672bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_a75f9ff6136c44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9ddcbd-cb01-47df-829c-88310f4f1220",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b39678d6aa4865": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb94f-5c2f-71b2-8137-4c8e68f3172b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_dcf48e29c7e47b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b3f9f687-4039-4680-950e-aa3edcc9dce3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
