@@ -718,8 +718,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     if (isBrowserLike()) {
+      // The OAuth callback resolution scheduled above synchronously strips `code` and `state`
+      // from the URL before its token exchange, so the nested handler must decide based on the
+      // URL the page was loaded with, not whatever is in the address bar when it runs.
+      const urlAtConstructionTime = new URL(window.location.href);
       this._trackPendingAuthResolution(async () => {
-        await this._maybeHandleNestedCrossDomainAuth();
+        await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
     }
 
@@ -890,11 +894,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return targetUrl.toString();
   }
 
-  protected async _maybeHandleNestedCrossDomainAuth(): Promise<boolean> {
+  protected async _maybeHandleNestedCrossDomainAuth(urlAtConstructionTime?: URL): Promise<boolean> {
     if (typeof window === "undefined") return false;
     const currentUrl = new URL(window.location.href);
     // A real OAuth callback wins over nested handoff detection on the final return to b.com.
+    // The OAuth callback resolution strips `code` and `state` from the live URL before this
+    // runs, so the check must also consult the URL captured at construction time — otherwise
+    // we'd re-bounce to the source domain while the token exchange is still in flight.
     if (currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")) return false;
+    if (urlAtConstructionTime != null && urlAtConstructionTime.searchParams.has("code") && urlAtConstructionTime.searchParams.has("state")) return false;
     const refreshTokenId = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.refreshTokenId);
     if (refreshTokenId == null) return false;
 
