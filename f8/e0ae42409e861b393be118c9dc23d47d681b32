@@ -1,0 +1,186 @@
+apps/backend/src/app/api/latest/internal/spacetimedb-enroll-reviewer/route.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-6
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,7-49
+apps/dashboard/src/components/commands/create-dashboard/dashboard-sandbox-host.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 284-289,293,298-309,348-380,437-443,560,639-640,644,651,663,698-703,709-711,750-751,753,761-776,780-817,824-825,827-828,835-836,844-865,893-898,910,923-925,941-942,1075-1076,1082-1083
+apps/backend/prisma/seed.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 541-553
+apps/internal-tool/src/module_bindings/update_qa_entry_with_publish_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-20
+apps/internal-tool/src/components/AddManualQa.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 1,6,14-15,22-25,27-28
+apps/internal-tool/src/module_bindings/add_operator_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-18
+apps/internal-tool/src/module_bindings/add_manual_qa_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 18-19
+apps/internal-tool/src/components/ConversationReplay.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 43,85,98,568-569
+apps/internal-tool/src/module_bindings/set_qa_published_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-17
+apps/e2e/tests/backend/endpoints/api/latest/internal/spacetimedb-enroll-reviewer.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-58
+apps/internal-tool/scripts/pre-dev.mjs
+  s_5ce45124be01bd::t_8a732982b5e7f6 3-6,9-10,27-79,81-97,100-118
+apps/internal-tool/src/components/KnowledgeBase.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 5,11-13,17,20,23,25,31-32,36-38,43-44,100-101,104-105,108-111,120-153,155,162,164-166,168-169,208,220,229,232,234,237-238,243,248,250,257,264,274-275,277-328
+  s_5ce45124be01bd::t_e86006c9cc86e8 1
+apps/internal-tool/src/module_bindings/unmark_human_reviewed_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-16
+apps/internal-tool/src/module_bindings/update_ai_query_cost_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-18
+apps/backend/src/lib/ai/loggers/ai-proxy-logger.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 4
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,5-78
+apps/e2e/tests/spacetimedb/published-qa-visibility.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-168
+apps/internal-tool/src/module_bindings/published_qa_table.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-18
+apps/e2e/tests/backend/endpoints/api/latest/internal/mcp-review.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-77
+apps/e2e/tests/backend/endpoints/api/v1/ai-query.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 247-250,278-281
+apps/internal-tool/src/components/UsageDetail.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-226
+apps/backend/src/lib/ai/loggers/ai-proxy-logger.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-69
+apps/backend/src/lib/ai/loggers/ai-query-logger.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-5
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,6-196
+apps/internal-tool/src/module_bindings/my_visible_ai_query_log_table.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-41
+apps/backend/src/lib/ai/spacetimedb-client.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-6,8-123
+  s_5ce45124be01bd::t_e86006c9cc86e8 7
+apps/backend/src/app/api/latest/internal/mcp-review/retry-review/route.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-4,6-48
+  s_5ce45124be01bd::t_e86006c9cc86e8 5
+apps/internal-tool/src/components/CallLogList.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 1,11,14-27,36,73-74,104-106,136-143,213,263,268,311-317,319,323-334,350-388
+apps/backend/src/app/api/latest/internal/mcp-review/update-qa-entry/route.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-5
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,6-52
+apps/dashboard/src/components/vibe-coding/dashboard-tool-components.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 20,40-80,159-273,523
+apps/backend/src/lib/ai/prompts.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 522,524-526,532,538-579,588-689,1098-1099,1101-1105,1128
+apps/internal-tool/src/module_bindings/upsert_qa_from_call_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-20
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_5ce45124be01bd::t_a177e63af26809 1381-1383,1396,1399-1406
+  s_5ce45124be01bd::t_6d24700d8407e3 1333-1334,1345-1347,1358,1361-1366
+apps/e2e/tests/spacetimedb/published-qa-projection.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-80
+apps/backend/src/lib/ai/loggers/mcp-call-logger.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-5
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,6-100
+apps/internal-tool/src/module_bindings/operators_table.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-18
+apps/backend/src/lib/ai/types.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1,3-47
+  s_5ce45124be01bd::t_e86006c9cc86e8 2
+apps/internal-tool/src/module_bindings/my_visible_mcp_call_log_table.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-45
+apps/backend/src/lib/ai/ai-proxy-handlers.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-137
+apps/internal-tool/src/module_bindings/remove_operator_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-16
+apps/dashboard/src/components/commands/ask-ai.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 85
+apps/backend/.env
+  s_5ce45124be01bd::t_8a732982b5e7f6 125,128
+apps/e2e/tests/spacetimedb/private-tables.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-150
+apps/backend/.env.development
+  s_5ce45124be01bd::t_8a732982b5e7f6 123,127-129
+apps/internal-tool/src/lib/env.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 1
+  s_5ce45124be01bd::t_8a732982b5e7f6 2-18
+apps/e2e/tests/spacetimedb/helpers.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-296
+apps/internal-tool/src/module_bindings/log_ai_query_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-39
+apps/internal-tool/src/module_bindings/my_visible_qa_entries_table.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-27
+apps/internal-tool/src/module_bindings/update_qa_entry_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-19
+packages/shared/src/known-errors.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 1875-1901,2051-2052
+apps/internal-tool/src/module_bindings/enroll_service_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-16
+apps/internal-tool/src/module_bindings/backfill_qa_entries_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-15
+apps/e2e/tests/spacetimedb/qa-entries-invariants.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-145
+apps/backend/src/lib/ai/ai-proxy-handlers.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 6
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-5,7-100
+apps/internal-tool/src/components/Usage.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-837
+apps/e2e/tests/spacetimedb/operators-rls.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-144
+packages/shared/src/ai/image-limits.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 18-25,29,33,40,44,52
+apps/backend/src/lib/ai/openrouter-usage.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,6-195
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-5
+apps/dashboard/src/components/vibe-coding/assistant-chat.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 35-36,69,98
+apps/internal-tool/src/app/questions/page.tsx
+  s_5ce45124be01bd::t_8a732982b5e7f6 7,12,15-19,51,54,57-61
+apps/backend/src/lib/ai/ai-query-handlers.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-183
+apps/backend/src/lib/ai/spacetimedb-bindings-sync.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-133
+apps/backend/src/app/api/latest/internal/mcp-review/unmark-reviewed/route.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-3,6-42
+  s_5ce45124be01bd::t_e86006c9cc86e8 4-5
+apps/backend/src/lib/ai/models.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 61-62,65-68
+apps/backend/src/lib/ai/tools/index.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-26
+apps/backend/src/lib/ai/tools/index.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 4,18,20-21,43,67-71,74,81-92
+  s_5ce45124be01bd::t_e86006c9cc86e8 2
+apps/backend/src/lib/ai/spacetimedb-client.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 3-142
+  s_5ce45124be01bd::t_e86006c9cc86e8 1-2
+apps/e2e/tests/backend/backend-helpers.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1604-1627
+apps/mcp/src/mcp-handler.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 167-171,174
+apps/internal-tool/src/module_bindings/delete_mcp_call_log_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-16
+apps/e2e/tests/spacetimedb/reducer-auth.test.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-120
+apps/backend/src/lib/ai/ai-query-handlers.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 6-7
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-5,8-181
+apps/backend/src/lib/ai/tools/sql-query.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 12-23
+apps/internal-tool/src/module_bindings/delete_ai_query_log_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 1-16
+apps/internal-tool/src/module_bindings/delete_qa_entry_reducer.ts
+  s_5ce45124be01bd::t_8a732982b5e7f6 15
+apps/internal-tool/src/components/CallLogDetail.tsx
+  s_5ce45124be01bd::t_e86006c9cc86e8 1-2
+  s_5ce45124be01bd::t_8a732982b5e7f6 8,36,39,43-44,46,48-81,96,98-102,109,115-122,139,142,274-323,326-331,337-357,501,503,506-512,518-520,538-539,541,543,553,557,564-565,567-568,570,667
+apps/backend/src/lib/ai/qa/reviewer-auth.ts
+  s_5ce45124be01bd::t_e86006c9cc86e8 1-2
+  s_5ce45124be01bd::t_8a732982b5e7f6 3-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "f8e0ae42409e861b393be118c9dc23d47d681b32",
+  "prompts": {},
+  "sessions": {
+    "s_5ce45124be01bd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb935-2950-7fd2-b692-971e83c68f8b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
