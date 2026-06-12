@@ -36,18 +36,30 @@ import {
 // Import all reducer arg schemas
 import AddEvalArtifactReducer from "./add_eval_artifact_reducer";
 import AddManualQaReducer from "./add_manual_qa_reducer";
+import AddOperatorReducer from "./add_operator_reducer";
 import AppendEvalWorklogReducer from "./append_eval_worklog_reducer";
+import BackfillQaEntriesReducer from "./backfill_qa_entries_reducer";
 import CreateEvalRunReducer from "./create_eval_run_reducer";
+import DeleteAiQueryLogReducer from "./delete_ai_query_log_reducer";
 import DeleteEvalRunReducer from "./delete_eval_run_reducer";
 import DeleteEvalWorkflowReducer from "./delete_eval_workflow_reducer";
+import DeleteMcpCallLogReducer from "./delete_mcp_call_log_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
+import EnrollServiceReducer from "./enroll_service_reducer";
+import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
+import RemoveOperatorReducer from "./remove_operator_reducer";
+import SetQaPublishedReducer from "./set_qa_published_reducer";
+import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
+import UpdateAiQueryCostReducer from "./update_ai_query_cost_reducer";
 import UpdateEvalRunReducer from "./update_eval_run_reducer";
-import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
+import UpdateQaEntryReducer from "./update_qa_entry_reducer";
+import UpdateQaEntryWithPublishReducer from "./update_qa_entry_with_publish_reducer";
 import UpsertEvalStepRunReducer from "./upsert_eval_step_run_reducer";
 import UpsertEvalWorkflowReducer from "./upsert_eval_workflow_reducer";
+import UpsertQaFromCallReducer from "./upsert_qa_from_call_reducer";
 
 // Import all procedure arg schemas
 
@@ -57,7 +69,11 @@ import EvalRunRow from "./eval_run_table";
 import EvalStepRunRow from "./eval_step_run_table";
 import EvalWorkflowRow from "./eval_workflow_table";
 import EvalWorklogRow from "./eval_worklog_table";
-import McpCallLogRow from "./mcp_call_log_table";
+import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
+import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
+import MyVisibleQaEntriesRow from "./my_visible_qa_entries_table";
+import OperatorsRow from "./operators_table";
+import PublishedQaRow from "./published_qa_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -118,35 +134,75 @@ const tablesSchema = __schema({
       { name: 'eval_worklog_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, EvalWorklogRow),
-  mcpCallLog: __table({
-    name: 'mcp_call_log',
+  operators: __table({
+    name: 'operators',
     indexes: [
-      { accessor: 'id', name: 'mcp_call_log_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
+      { accessor: 'identity', name: 'operators_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
       ] },
     ],
     constraints: [
-      { name: 'mcp_call_log_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'operators_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
-  }, McpCallLogRow),
+  }, OperatorsRow),
+  myVisibleAiQueryLog: __table({
+    name: 'my_visible_ai_query_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleAiQueryLogRow),
+  myVisibleMcpCallLog: __table({
+    name: 'my_visible_mcp_call_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleMcpCallLogRow),
+  myVisibleQaEntries: __table({
+    name: 'my_visible_qa_entries',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleQaEntriesRow),
+  publishedQa: __table({
+    name: 'published_qa',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, PublishedQaRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("add_eval_artifact", AddEvalArtifactReducer),
   __reducerSchema("add_manual_qa", AddManualQaReducer),
+  __reducerSchema("add_operator", AddOperatorReducer),
   __reducerSchema("append_eval_worklog", AppendEvalWorklogReducer),
+  __reducerSchema("backfill_qa_entries", BackfillQaEntriesReducer),
   __reducerSchema("create_eval_run", CreateEvalRunReducer),
+  __reducerSchema("delete_ai_query_log", DeleteAiQueryLogReducer),
   __reducerSchema("delete_eval_run", DeleteEvalRunReducer),
   __reducerSchema("delete_eval_workflow", DeleteEvalWorkflowReducer),
+  __reducerSchema("delete_mcp_call_log", DeleteMcpCallLogReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
+  __reducerSchema("enroll_service", EnrollServiceReducer),
+  __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
+  __reducerSchema("remove_operator", RemoveOperatorReducer),
+  __reducerSchema("set_qa_published", SetQaPublishedReducer),
+  __reducerSchema("unmark_human_reviewed", UnmarkHumanReviewedReducer),
+  __reducerSchema("update_ai_query_cost", UpdateAiQueryCostReducer),
   __reducerSchema("update_eval_run", UpdateEvalRunReducer),
-  __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
+  __reducerSchema("update_qa_entry", UpdateQaEntryReducer),
+  __reducerSchema("update_qa_entry_with_publish", UpdateQaEntryWithPublishReducer),
   __reducerSchema("upsert_eval_step_run", UpsertEvalStepRunReducer),
   __reducerSchema("upsert_eval_workflow", UpsertEvalWorkflowReducer),
+  __reducerSchema("upsert_qa_from_call", UpsertQaFromCallReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
@@ -202,4 +258,3 @@ export class DbConnection extends __DbConnectionImpl<typeof REMOTE_MODULE> {
     return new SubscriptionBuilder(this);
   };
 }
-

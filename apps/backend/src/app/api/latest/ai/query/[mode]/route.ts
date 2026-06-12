@@ -1,21 +1,44 @@
-import { logMcpCall } from "@/lib/ai/mcp-logger";
+import {
+  assertProjectAccess,
+  handleGenerateMode,
+  handleStreamMode,
+} from "@/lib/ai/ai-query-handlers";
+import type { CommonLogFields, ModeContext } from "@/lib/ai/types";
 import { selectModel } from "@/lib/ai/models";
-import { getFullSystemPrompt } from "@/lib/ai/prompts";
-import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
+import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools } from "@/lib/ai/tools";
-import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
-import { listManagedProjectIds } from "@/lib/projects";
+import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { validateImageAttachments } from "@hexclave/shared/dist/ai/image-limits";
-import { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
 import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { Json } from "@hexclave/shared/dist/utils/json";
-import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
+import type { ModelMessage } from "ai";
+
+function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
+  if (!hasTools) return 1;
+  if (systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai") return 50;
+  if (systemPromptId === "create-dashboard") return 12;
+  return 5;
+}
+
+async function buildSystemPrompt(systemPromptId: SystemPromptId): Promise<string> {
+  let systemPrompt = getFullSystemPrompt(systemPromptId);
+  const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+  if (isDocsOrSearch) {
+    // Stuffing the entire verified QA corpus into the system prompt on every
+    // request is intentionally naive — it grows monotonically with each new
+    // QA pair and re-fetches/re-sends content that's unchanged across
+    // requests. Once the corpus is large enough to matter we should swap to
+    // a retriever based system (maybe something like an embedding-based retriever
+    // (top-k by query similarity)) and/or cache the assembled context,
+    // but for the current corpus size this is fine and lets the model see everything
+    systemPrompt += await getVerifiedQaContext();
+  }
+  return systemPrompt;
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -34,19 +57,8 @@ export const POST = createSmartRouteHandler({
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
     if (projectId != null) {
-      if (fullReq.auth?.project.id !== "internal") {
-        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
-      }
-      const user = fullReq.auth.user;
-      if (user == null) {
-        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
-      }
-      const managedProjectIds = await listManagedProjectIds(user);
-      if (!managedProjectIds.includes(projectId)) {
-        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
-      }
+      await assertProjectAccess(projectId, fullReq.auth);
     }
-
     const imageValidationResult = validateImageAttachments(messages);
     if (!imageValidationResult.ok) {
       throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
@@ -56,122 +68,61 @@ export const POST = createSmartRouteHandler({
       ? getEnvVariable("STACK_OPENROUTER_AUTHENTICATED_API_KEY", "")
       : "";
     const model = selectModel(quality, speed, isAuthenticated, authenticatedApiKey || undefined);
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-    let systemPrompt = getFullSystemPrompt(systemPromptId);
-    if (isDocsOrSearch) {
-      systemPrompt += await getVerifiedQaContext();
-    }
+    const systemPrompt = await buildSystemPrompt(systemPromptId);
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isCreateDashboard = systemPromptId === "create-dashboard";
-    const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
-    const stepLimit = toolsArg == null
-      ? 1
-      : isDocsOrSearch
-        ? 50
-        : isCreateDashboard
-          ? 12
-          : isBuildAnalyticsQuery
-            ? 5
-            : 5;
+    const stepLimit = getStepLimit(systemPromptId, toolsArg != null);
 
+    const correlationId = crypto.randomUUID();
+    const conversationIdForLog = body.mcpCallMetadata
+      ? body.mcpCallMetadata.conversationId ?? crypto.randomUUID()
+      : undefined;
+    const common: CommonLogFields = {
+      correlationId,
+      mode,
+      systemPromptId,
+      quality,
+      speed,
+      modelId: String(model.modelId),
+      isAuthenticated,
+      projectId: projectId ?? undefined,
+      userId: fullReq.auth?.user?.id,
+      requestedToolsJson: JSON.stringify(toolNames),
+      messagesJson: JSON.stringify(messages),
+      conversationId: conversationIdForLog,
+    };
+    const startedAt = performance.now();
+
+    const isAnthropic = model.modelId.startsWith("anthropic/");
+    // Can be optimized: only opt into prompt caching for routes that are hit
+    // frequently enough to amortize the write.
+    const systemMessage: ModelMessage = {
+      role: "system",
+      content: systemPrompt,
+      ...(isAnthropic && {
+        providerOptions: {
+          openrouter: { cacheControl: { type: "ephemeral" } },
+        },
+      }),
+    };
     // Cast: the schema narrows role and leaves content as unknown, but the
     // AI SDK accepts a superset (role: "system" etc.). We've intentionally
     // excluded `system` at the schema layer to prevent prompt-injection via
     // client-supplied system messages — see schema.ts.
     const modelMessages = messages as unknown as ModelMessage[];
+    const cachedMessages: ModelMessage[] = [systemMessage, ...modelMessages];
+
+    const ctx: ModeContext = { model, cachedMessages, toolsArg, stepLimit, common, startedAt };
+    const extras = {
+      messages,
+      mcpCallMetadata: body.mcpCallMetadata ?? undefined,
+      correlationId,
+      conversationIdForLog,
+    };
 
     if (mode === "stream") {
-      const result = streamText({
-        model,
-        system: systemPrompt,
-        messages: modelMessages,
-        tools: toolsArg,
-        stopWhen: stepCountIs(stepLimit),
-      });
-      return {
-        statusCode: 200,
-        bodyType: "response" as const,
-        body: result.toUIMessageStreamResponse(),
-      };
-    } else {
-      const startedAt = Date.now();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000);
-      const result = await generateText({
-        model,
-        system: systemPrompt,
-        messages: modelMessages,
-        tools: toolsArg,
-        abortSignal: controller.signal,
-        stopWhen: stepCountIs(stepLimit),
-      }).finally(() => clearTimeout(timeoutId));
-
-      const content: ChatContent = result.steps.flatMap((step) => {
-        const blocks: ChatContent = [];
-        if (step.text) {
-          blocks.push({ type: "text", text: step.text });
-        }
-        const outById = new Map(step.toolResults.map((r) => [r.toolCallId, r.output as Json]));
-        for (const call of step.toolCalls) {
-          blocks.push({
-            type: "tool-call",
-            toolName: call.toolName,
-            toolCallId: call.toolCallId,
-            args: call.input as Json,
-            argsText: JSON.stringify(call.input),
-            result: outById.get(call.toolCallId) ?? null,
-          });
-        }
-        return blocks;
-      });
-
-      let responseConversationId: string | undefined;
-      if (body.mcpCallMetadata != null) {
-        const correlationId = crypto.randomUUID();
-        const conversationId = body.mcpCallMetadata.conversationId ?? crypto.randomUUID();
-        responseConversationId = conversationId;
-        const firstUserMessage = messages.find(m => m.role === "user");
-        const question = typeof firstUserMessage?.content === "string"
-          ? firstUserMessage.content
-          : JSON.stringify(firstUserMessage?.content ?? "");
-
-        const innerToolCallsJson = JSON.stringify(content.filter(b => b.type === "tool-call"));
-
-        const logPromise = logMcpCall({
-          correlationId,
-          toolName: body.mcpCallMetadata.toolName,
-          reason: body.mcpCallMetadata.reason,
-          userPrompt: body.mcpCallMetadata.userPrompt,
-          conversationId,
-          question,
-          response: result.text,
-          stepCount: result.steps.length,
-          innerToolCallsJson,
-          durationMs: BigInt(Date.now() - startedAt),
-          modelId: String(model.modelId),
-          errorMessage: undefined,
-        });
-        runAsynchronouslyAndWaitUntil(logPromise);
-
-        runAsynchronouslyAndWaitUntil(reviewMcpCall({
-          logPromise,
-          correlationId,
-          question,
-          reason: body.mcpCallMetadata.reason,
-          response: result.text,
-        }));
-      }
-
-      return {
-        statusCode: 200,
-        bodyType: "json" as const,
-        body: {
-          content,
-          finalText: result.text,
-          conversationId: responseConversationId ?? null,
-        },
-      };
+      return handleStreamMode({ ...ctx, ...extras });
     }
+    return await handleGenerateMode({ ...ctx, ...extras });
   },
 });

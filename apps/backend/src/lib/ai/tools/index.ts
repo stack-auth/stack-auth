@@ -1,6 +1,7 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { ToolSet } from "ai";
-import { updateDashboardTool } from "./create-dashboard";
+import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
 import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
@@ -14,8 +15,10 @@ export const TOOL_NAMES = [
   "create-email-template",
   "create-email-draft",
   "update-dashboard",
+  "patch-dashboard"
 ] as const;
-export type ToolName = typeof TOOL_NAMES[number];
+export type ToolName = typeof TOOL_NAMES[number]
+
 
 export type ToolContext = {
   auth: SmartRequestAuth | null,
@@ -37,10 +40,7 @@ export async function getTools(
       }
 
       case "sql-query": {
-        const sqlTool = createSqlQueryTool(context.auth, context.targetProjectId);
-        if (sqlTool != null) {
-          tools["queryAnalytics"] = sqlTool;
-        }
+        tools["queryAnalytics"] = createSqlQueryTool(context.auth, context.targetProjectId);
         break;
       }
 
@@ -64,13 +64,30 @@ export async function getTools(
         break;
       }
 
+      case "patch-dashboard": {
+        tools["patchDashboard"] = patchDashboardTool(context.auth);
+        break;
+      }
+
       default: {
-        // TypeScript will ensure this is unreachable if we handle all cases
         const _exhaustive: never = toolName;
-        console.warn(`Unknown tool name: ${_exhaustive}`);
+        captureError("ai-tools-getTools", new HexclaveAssertionError(`Unknown tool name: ${_exhaustive as string}`));
       }
     }
   }
 
   return tools;
+}
+
+/**
+ * Validates that all requested tool names are valid.
+ * Returns false if any tool name is not in `TOOL_NAMES`.
+ */
+export function validateToolNames(toolNames: unknown): toolNames is ToolName[] {
+  if (!Array.isArray(toolNames)) {
+    return false;
+  }
+  return toolNames.every((name): name is ToolName =>
+    typeof name === "string" && (TOOL_NAMES as readonly string[]).includes(name)
+  );
 }

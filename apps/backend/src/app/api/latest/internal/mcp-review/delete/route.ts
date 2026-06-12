@@ -1,8 +1,8 @@
-import { getConnectionOrThrow } from "@/lib/ai/mcp-logger";
+import { callReducerStrict } from "@/lib/ai/spacetimedb-client";
+import { assertIsAiChatReviewer } from "@/lib/ai/qa/reviewer-auth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -13,7 +13,7 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema,
     }).defined(),
     body: yupObject({
-      correlationId: yupString().defined(),
+      qaId: yupString().matches(/^\d+$/, "qaId must be a non-negative decimal integer").defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -25,20 +25,13 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    if (getNodeEnvironment() !== "development") {
-      const metadata = auth.user.client_read_only_metadata;
-      if (!(metadata && typeof metadata === "object" && "isAiChatReviewer" in metadata && metadata.isAiChatReviewer === true)) {
-        throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
-      }
-    }
-
-    const conn = await getConnectionOrThrow();
+    assertIsAiChatReviewer(auth);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await conn.reducers.deleteQaEntry({
+    await callReducerStrict("delete_qa_entry", [
       token,
-      correlationId: body.correlationId,
-    });
+      BigInt(body.qaId),
+    ]);
 
     return {
       statusCode: 200,

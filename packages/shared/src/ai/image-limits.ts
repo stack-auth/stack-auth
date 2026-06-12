@@ -15,24 +15,33 @@ export function estimateBase64ByteLength(dataUrl: string): number {
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
-type ValidationResult = { ok: true } | { ok: false, reason: string };
+export type ImageValidationFailure =
+  | { code: "too_many", maxImages: number }
+  | { code: "too_large", maxBytes: number, actualBytes: number };
+
+export type ImageValidationResult =
+  | { ok: true }
+  | { ok: false, failure: ImageValidationFailure, reason: string };
+
 type UnknownPart = { type?: unknown, image?: unknown };
 type MessageLike = { role?: unknown, content?: unknown };
 
-export function validateImageCount(imageCount: number): ValidationResult {
+export function validateImageCount(imageCount: number): ImageValidationResult {
   if (imageCount > MAX_IMAGES_PER_MESSAGE) {
     return {
       ok: false,
+      failure: { code: "too_many", maxImages: MAX_IMAGES_PER_MESSAGE },
       reason: `Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`,
     };
   }
   return { ok: true };
 }
 
-export function validateImageByteLength(bytes: number): ValidationResult {
+export function validateImageByteLength(bytes: number): ImageValidationResult {
   if (bytes > MAX_IMAGE_BYTES_PER_FILE) {
     return {
       ok: false,
+      failure: { code: "too_large", maxBytes: MAX_IMAGE_BYTES_PER_FILE, actualBytes: bytes },
       reason: `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit (${(bytes / 1024 / 1024).toFixed(2)}MB).`,
     };
   }
@@ -40,7 +49,7 @@ export function validateImageByteLength(bytes: number): ValidationResult {
 }
 
 /** Validates per-message image count and per-file size for user messages. */
-export function validateImageAttachments(messages: readonly MessageLike[]): ValidationResult {
+export function validateImageAttachments(messages: readonly MessageLike[]): ImageValidationResult {
   for (const msg of messages) {
     if (!Array.isArray(msg.content)) continue;
     let imageCount = 0;

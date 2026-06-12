@@ -15,5 +15,6 @@ export default {
   question: __t.string(),
   answer: __t.string(),
   publish: __t.bool(),
-  reviewedBy: __t.string(),
+  createdBy: __t.string(),
+  requestId: __t.string(),
 };

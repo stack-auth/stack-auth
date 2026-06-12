@@ -1330,6 +1330,8 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   // propagate naturally so we don't conflate it with "clickhouse missing".
   const replayResult = await replayPromise;
   const anonymousVisitorsResult = await anonymousVisitorsPromise;
+  const emptyAnalyticsSeries: DataPoints = [];
+  const emptyAnalyticsBreakdown: { name: string, visitors: number }[] = [];
 
   // daily_revenue is intentionally not populated here — it is owned by
   // payments_overview (real invoice data) and stitched into analytics_overview
@@ -1340,6 +1342,9 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       daily_page_views: [] as DataPoints,
       daily_clicks: [] as DataPoints,
       daily_visitors: [] as DataPoints,
+      hourly_page_views: emptyAnalyticsSeries,
+      hourly_active_users: emptyAnalyticsSeries,
+      hourly_visitors: emptyAnalyticsSeries,
       daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
@@ -1350,8 +1355,15 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       avg_session_seconds: replayResult.avgSessionSeconds,
       online_live: 0,
       revenue_per_visitor: 0,
+      bounce_rate: 0,
       top_referrers: [],
       top_region: null,
+      top_regions: [],
+      daily_bounce_rate: emptyAnalyticsSeries,
+      daily_avg_session_seconds: emptyAnalyticsSeries,
+      top_browsers: emptyAnalyticsBreakdown,
+      top_operating_systems: emptyAnalyticsBreakdown,
+      top_devices: emptyAnalyticsBreakdown,
     };
   }
 
@@ -1366,6 +1378,9 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     daily_page_views: clickhouseAggregates.dailyPageViews,
     daily_clicks: clickhouseAggregates.dailyClicks,
     daily_visitors: clickhouseAggregates.dailyVisitors,
+    hourly_page_views: emptyAnalyticsSeries,
+    hourly_active_users: emptyAnalyticsSeries,
+    hourly_visitors: emptyAnalyticsSeries,
     daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
     daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
     total_revenue_cents: replayResult.totalRevenueCents,
@@ -1378,8 +1393,17 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     revenue_per_visitor: effectiveVisitors > 0
       ? Number(((replayResult.totalRevenueCents / 100) / effectiveVisitors).toFixed(2))
       : 0,
+    bounce_rate: 0,
     top_referrers: clickhouseAggregates.topReferrers,
     top_region: clickhouseAggregates.topRegion,
+    top_regions: clickhouseAggregates.topRegion?.country_code
+      ? [{ country_code: clickhouseAggregates.topRegion.country_code, count: clickhouseAggregates.topRegion.count }]
+      : [],
+    daily_bounce_rate: emptyAnalyticsSeries,
+    daily_avg_session_seconds: emptyAnalyticsSeries,
+    top_browsers: emptyAnalyticsBreakdown,
+    top_operating_systems: emptyAnalyticsBreakdown,
+    top_devices: emptyAnalyticsBreakdown,
   };
 }
 

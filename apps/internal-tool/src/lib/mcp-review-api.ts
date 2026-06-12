@@ -1,23 +1,16 @@
-const IS_DEV = process.env.NODE_ENV === "development";
-const PLACEHOLDER = "REPLACE_ME";
-
-function envOrDevDefault(value: string | undefined, devDefault: string): string {
-  if (!value || value === PLACEHOLDER) {
-    return IS_DEV ? devDefault : "";
-  }
-  return value;
-}
+import { envOrDevDefault } from "./env";
 
 function publicEnv(hexclaveName: string, legacyStackName: string): string | undefined {
   return process.env[hexclaveName] ?? process.env[legacyStackName];
 }
 
 const PORT_PREFIX = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
-const API_URL = envOrDevDefault(publicEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "NEXT_PUBLIC_STACK_API_URL"), `http://localhost:${PORT_PREFIX}02`);
-const PROJECT_ID = envOrDevDefault(publicEnv("NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"), "internal");
+const API_URL = envOrDevDefault(publicEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "NEXT_PUBLIC_STACK_API_URL"), `http://localhost:${PORT_PREFIX}02`, "NEXT_PUBLIC_HEXCLAVE_API_URL");
+const PROJECT_ID = envOrDevDefault(publicEnv("NEXT_PUBLIC_HEXCLAVE_PROJECT_ID", "NEXT_PUBLIC_STACK_PROJECT_ID"), "internal", "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID");
 const PUBLISHABLE_CLIENT_KEY = envOrDevDefault(
   publicEnv("NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY", "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"),
   "this-publishable-client-key-is-for-local-development-only",
+  "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
 );
 
 async function post(path: string, body: unknown, authHeaders: Record<string, string>): Promise<void> {
@@ -43,6 +36,16 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
     markReviewed: (body: { correlationId: string }) =>
       post("mark-reviewed", body, authHeaders),
 
+    unmarkReviewed: (body: { correlationId: string }) =>
+      post("unmark-reviewed", body, authHeaders),
+
+    retryReview: (body: {
+      correlationId: string;
+      question: string;
+      reason: string;
+      response: string;
+    }) => post("retry-review", body, authHeaders),
+
     updateCorrection: (body: {
       correlationId: string;
       correctedQuestion: string;
@@ -54,9 +57,38 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
       question: string;
       answer: string;
       publish: boolean;
+      requestId: string;
     }) => post("add-manual", body, authHeaders),
 
-    delete: (body: { correlationId: string }) =>
+    updateQaEntry: (body: {
+      qaId: string;
+      question: string;
+      answer: string;
+      publish: boolean;
+    }) => post("update-qa-entry", body, authHeaders),
+
+    delete: (body: { qaId: string }) =>
       post("delete", body, authHeaders),
   };
+}
+
+export async function enrollSpacetimeReviewer(
+  body: { identity: string },
+  authHeaders: Record<string, string>,
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/latest/internal/spacetimedb-enroll-reviewer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-stack-access-type": "client",
+      "x-stack-project-id": PROJECT_ID,
+      "x-stack-publishable-client-key": PUBLISHABLE_CLIENT_KEY,
+      ...authHeaders,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SpacetimeDB enroll error (${res.status}): ${text}`);
+  }
 }

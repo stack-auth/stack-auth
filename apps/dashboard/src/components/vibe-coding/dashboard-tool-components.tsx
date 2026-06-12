@@ -17,6 +17,7 @@ import {
   CheckCircleIcon,
   EyeIcon,
   MagnifyingGlassIcon,
+  PencilSimpleIcon,
   WarningIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -34,6 +35,47 @@ function subscribe(listener: () => void) {
 
 function useCurrentCode() {
   return useSyncExternalStore(subscribe, () => currentCodeRef);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Patch snapshot registry. Each successful patchDashboard call stores the
+ * post-patch source under a stable key (the JSON-serialized edits array). The
+ * patch tool's chat row reads this to offer a "restore this version" action.
+ *
+ * Limitation: snapshots live in-memory and only cover patches applied during
+ * the current session. Patches loaded from saved chat history won't have a
+ * snapshot until the user re-runs them — the dialog still shows the edit text
+ * either way. Cross-reload restore would require persisting the result source
+ * with the tool call, which the inert-tool architecture doesn't currently do.
+ * ────────────────────────────────────────────────────────────────────────── */
+const patchSnapshots = new Map<string, string>();
+const patchSnapshotListeners: Set<() => void> = new Set();
+
+export function registerPatchSnapshot(editsKey: string, resultSource: string) {
+  patchSnapshots.set(editsKey, resultSource);
+  for (const l of patchSnapshotListeners) l();
+}
+
+function subscribePatchSnapshots(listener: () => void) {
+  patchSnapshotListeners.add(listener);
+  return () => {
+    patchSnapshotListeners.delete(listener);
+  };
+}
+
+function usePatchSnapshot(editsKey: string): string | undefined {
+  return useSyncExternalStore(
+    subscribePatchSnapshots,
+    () => patchSnapshots.get(editsKey),
+  );
+}
+
+export function patchSnapshotKey(edits: unknown): string {
+  try {
+    return JSON.stringify(edits);
+  } catch {
+    return "";
+  }
 }
 
 function ToolRender({ args, isRunning }: { args: { content: string }, isRunning: boolean }) {
@@ -112,6 +154,121 @@ const ToolUI = makeAssistantToolUI<
 >({
   toolName: "updateDashboard",
   render: (props) => <ToolRender args={props.args} isRunning={props.status.type === "running"} />,
+});
+
+type PatchEditArg = { oldText?: string, newText?: string, occurrenceIndex?: number };
+type PatchToolArgs = { edits?: PatchEditArg[] };
+
+function PatchToolRender({ args, isRunning }: { args: PatchToolArgs, isRunning: boolean }) {
+  const [open, setOpen] = useState(false);
+  const edits = Array.isArray(args.edits) ? args.edits : [];
+  const count = edits.length;
+  const currentCode = useCurrentCode();
+  const snapshot = usePatchSnapshot(patchSnapshotKey(edits));
+  // Snapshot may be missing for patches loaded from saved chat history (the in-memory
+  // map only covers the current session). When absent, hide the restore button rather
+  // than offering something we can't fulfill.
+  const canRestore = snapshot !== undefined && !isRunning;
+  const isActive = snapshot !== undefined && snapshot === currentCode;
+  const label = isRunning
+    ? "Editing dashboard..."
+    : count === 0
+      ? "Edited dashboard"
+      : `Edited dashboard · ${count} ${count === 1 ? "change" : "changes"}`;
+
+  return (
+    <>
+      <div className={cn(
+        "group flex items-stretch rounded-lg overflow-hidden",
+        "bg-foreground/[0.015] hover:bg-foreground/[0.035]",
+        "ring-1 ring-foreground/[0.05] hover:ring-foreground/[0.09]",
+        "transition-colors",
+        isActive && "ring-primary/30 bg-primary/[0.03]",
+      )}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex-1 flex items-center gap-3 py-2 pl-2.5 pr-2 text-left min-w-0"
+          aria-label="View edit details"
+        >
+          <div className={cn(
+            "size-6 shrink-0 rounded-md flex items-center justify-center",
+            isActive ? "bg-primary/10 text-primary" : "bg-foreground/[0.05] text-muted-foreground",
+          )}>
+            {isRunning ? (
+              <span className="size-1.5 rounded-full bg-current" style={{ animation: "pulse 1.2s ease-in-out infinite" }} />
+            ) : isActive ? (
+              <CheckCircleIcon className="size-3.5" weight="fill" />
+            ) : (
+              <PencilSimpleIcon className="size-3.5" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 font-medium">
+              {label}
+            </div>
+            <code className="block text-xs font-mono text-foreground/75 truncate">
+              {edits[0]?.oldText ? edits[0].oldText.replace(/\s+/g, " ").slice(0, 80) : "(pending)"}
+            </code>
+          </div>
+        </button>
+        {canRestore && !isActive && (
+          <SimpleTooltip tooltip="Restore this version">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-auto w-8 rounded-none text-muted-foreground hover:text-foreground"
+              onClick={() => setCurrentCodeRef?.(snapshot)}
+              aria-label="Restore this version"
+            >
+              <ArrowCounterClockwiseIcon className="size-4" />
+            </Button>
+          </SimpleTooltip>
+        )}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Dashboard edits</DialogTitle>
+            <DialogDescription>
+              {isRunning ? "Streaming edits from the model…" : `${count} ${count === 1 ? "edit" : "edits"} applied to the source.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="flex flex-col gap-3">
+              {edits.length === 0 && (
+                <div className="text-xs text-muted-foreground">Waiting for edits…</div>
+              )}
+              {edits.map((edit, i) => (
+                <div key={i} className="rounded-lg ring-1 ring-foreground/[0.06] overflow-hidden">
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 bg-foreground/[0.02] border-b border-foreground/[0.05]">
+                    Edit {i + 1}{typeof edit.occurrenceIndex === "number" ? ` · occurrence ${edit.occurrenceIndex}` : ""}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-foreground/[0.05]">
+                    <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-red-500/90 bg-red-500/[0.03] max-h-48 overflow-auto">
+                      {edit.oldText ?? ""}
+                    </pre>
+                    <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-emerald-600/90 bg-emerald-500/[0.03] max-h-48 overflow-auto">
+                      {edit.newText ?? ""}
+                    </pre>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+const PatchToolUI = makeAssistantToolUI<
+  PatchToolArgs,
+  "success"
+>({
+  toolName: "patchDashboard",
+  render: (props) => <PatchToolRender args={props.args} isRunning={props.status.type === "running"} />,
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -363,6 +520,7 @@ export const DashboardToolUI = ({ setCurrentCode, currentCode }: DashboardToolUI
   return (
     <>
       <ToolUI />
+      <PatchToolUI />
       <QueryAnalyticsToolUI />
     </>
   );
