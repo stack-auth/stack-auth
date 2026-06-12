@@ -1,4 +1,4 @@
-import { runHeadlessClaudeAgent } from "@hexclave/local-config-updater/config-agent";
+import { runHeadlessClaudeAgent } from "@hexclave/shared-backend/config-agent";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

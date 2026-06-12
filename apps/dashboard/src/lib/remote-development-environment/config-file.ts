@@ -8,4 +8,4 @@ export {
   resolveConfigFilePath,
   sha256String,
   updateConfigObject
-} from "@hexclave/local-config-updater";
+} from "@hexclave/shared-backend";

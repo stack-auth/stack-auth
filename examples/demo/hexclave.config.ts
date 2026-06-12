@@ -5,7 +5,7 @@
  * sign-up rules, API keys, and payment plans. The Hexclave CLI (`stack dev`)
  * bundles + executes this file and provisions the project to match.
  *
- * It's wrapped in `defineHexclaveConfig(...)`, so the local-config-updater takes
+ * It's wrapped in `defineHexclaveConfig(...)`, so the shared-backend config updater takes
  * its AI-agent path (not the deterministic regenerator): dashboard edits are
  * reconciled back here while preserving the comments and layout. `null` on any
  * value means "reset that key to its default".

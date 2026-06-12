@@ -32,8 +32,8 @@ vi.mock("./config-agent", async (importOriginal) => {
 
 function getTempDir(): string {
   if (tempDir == null) {
-    tempDir = mkdtempSync(path.join(process.cwd(), ".local-config-updater-test-"));
-    writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "local-config-updater-test" }), "utf-8");
+    tempDir = mkdtempSync(path.join(process.cwd(), ".shared-backend-test-"));
+    writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "shared-backend-test" }), "utf-8");
   }
   return tempDir;
 }

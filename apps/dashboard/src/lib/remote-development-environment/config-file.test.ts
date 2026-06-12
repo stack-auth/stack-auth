@@ -7,8 +7,8 @@ type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (fileP
 let mockAgentImpl: ((options: MockAgentOptions) => void | Promise<void>) | null = null;
 
 vi.mock("server-only", () => ({}));
-vi.mock("@hexclave/local-config-updater/config-agent", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hexclave/local-config-updater/config-agent")>();
+vi.mock("@hexclave/shared-backend/config-agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hexclave/shared-backend/config-agent")>();
   return {
     ...actual,
     runHeadlessClaudeAgent: async (options: { prompt: string, cwd: string, onPreToolUse?: (input: { hook_event_name: "PreToolUse", tool_name: string, tool_input: unknown }) => Promise<unknown> | unknown }) => {

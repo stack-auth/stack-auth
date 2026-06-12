@@ -1,4 +1,4 @@
-import { replaceConfigObject, updateConfigObject } from "@hexclave/local-config-updater";
+import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";

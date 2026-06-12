@@ -30,7 +30,7 @@
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
     "@sentry/node": "^10.42.0",
-    "@hexclave/local-config-updater": "workspace:*",
+    "@hexclave/shared-backend": "workspace:*",
     "@hexclave/js": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "commander": "^13.1.0",

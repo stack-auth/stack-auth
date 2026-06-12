@@ -74,7 +74,7 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
     // Capture the raw jiti/framework error for diagnostics, but don't attach it as `cause` on the thrown error:
     // dashboard error formatting renders causes recursively, which would leak framework internals into the
     // user-facing message we're deliberately replacing.
-    captureError("local-config-updater/readConfigFile", error);
+    captureError("shared-backend/readConfigFile", error);
     throw new Error(
       `Failed to load config file ${configFilePath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead, which doesn't load the framework runtime:\n\n  import { defineHexclaveConfig } from "@hexclave/next/config";\n`,
     );

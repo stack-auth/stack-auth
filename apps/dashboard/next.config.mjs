@@ -4,8 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const localConfigUpdaterRequire = createRequire(path.join(__dirname, "../../packages/local-config-updater/package.json"));
-const claudeAgentSdkDir = path.dirname(localConfigUpdaterRequire.resolve("@anthropic-ai/claude-agent-sdk"));
+const sharedBackendRequire = createRequire(path.join(__dirname, "../../packages/shared-backend/package.json"));
+const claudeAgentSdkDir = path.dirname(sharedBackendRequire.resolve("@anthropic-ai/claude-agent-sdk"));
 const claudeAgentSdkTraceDir = path.relative(__dirname, claudeAgentSdkDir);
 
 const withConfiguredSentryConfig = (nextConfig) =>

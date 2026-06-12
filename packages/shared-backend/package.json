@@ -1,5 +1,5 @@
 {
-  "name": "@hexclave/local-config-updater",
+  "name": "@hexclave/shared-backend",
   "version": "1.0.3",
   "private": true,
   "type": "module",
