@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkEvalAccess } from "@/lib/evals/config";
+import { describeError } from "@/lib/evals/types";
 
 export function guard(request: Request): NextResponse | null {
   const access = checkEvalAccess(request);
@@ -10,6 +11,5 @@ export function guard(request: Request): NextResponse | null {
 }
 
 export function errorResponse(error: unknown, status: number = 500): NextResponse {
-  const message = error instanceof Error ? error.message : String(error);
-  return NextResponse.json({ error: message }, { status });
+  return NextResponse.json({ error: describeError(error) }, { status });
 }

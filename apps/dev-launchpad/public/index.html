@@ -4,102 +4,453 @@
     <title>Hexclave Dev Launchpad</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <script src="./env-config.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: #e0f0e0;
-        padding-left: 16px;
-        padding-right: 16px;
+      :root {
+        --accent: #2fa872;
+        --accent-soft: rgba(47, 168, 114, 0.12);
+        --bg: #e6eaf0;
+        --shadow-dark: #c3c9d4;
+        --shadow-light: #ffffff;
+        --text: #3b4252;
+        --text-dim: #7a8294;
+        --text-faint: #a8aebc;
+        --raised:
+          7px 7px 14px var(--shadow-dark),
+          -7px -7px 14px var(--shadow-light);
+        --raised-lg:
+          10px 10px 22px var(--shadow-dark),
+          -10px -10px 22px var(--shadow-light);
+        --inset:
+          inset 4px 4px 8px var(--shadow-dark),
+          inset -4px -4px 8px var(--shadow-light);
+        --inset-soft:
+          inset 2px 2px 5px var(--shadow-dark),
+          inset -2px -2px 5px var(--shadow-light);
       }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Nunito", sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+      }
+
+      .wrap {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 56px 44px 96px;
+      }
+
+      .mono { font-family: "JetBrains Mono", monospace; }
+
+      /* ---------- header ---------- */
+
+      header {
+        margin-bottom: 64px;
+        animation: rise 0.5s ease-out both;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        padding: 8px 18px;
+        border-radius: 999px;
+        box-shadow: var(--inset-soft);
+        margin-bottom: 26px;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 6px var(--accent);
+      }
+
+      h1 {
+        font-size: clamp(40px, 6vw, 72px);
+        font-weight: 900;
+        line-height: 1.02;
+        margin: 0 0 26px;
+        letter-spacing: -0.02em;
+        color: var(--text);
+        text-shadow: 2px 2px 3px var(--shadow-dark), -2px -2px 3px var(--shadow-light);
+      }
+
+      h1 .soft { color: var(--accent); }
+
+      .statusline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .statusline > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 18px;
+        border-radius: 999px;
+        box-shadow: var(--raised);
+        color: var(--text-dim);
+      }
+
+      .statusline b {
+        color: var(--text);
+        font-weight: 800;
+      }
+
+      .statusline .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+        animation: pulse 2.4s ease-in-out infinite;
+      }
+
+      .statusline .dot.warn {
+        background: #d99a26;
+        box-shadow: 0 0 8px #d99a26;
+      }
+
+      /* ---------- sections ---------- */
+
+      section { margin-bottom: 64px; }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 26px;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+
+      .section-title .num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--accent);
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        box-shadow: var(--inset-soft);
+      }
+
+      .section-title::after {
+        content: "";
+        flex: 1;
+        height: 4px;
+        border-radius: 999px;
+        box-shadow: var(--inset-soft);
+      }
+
+      /* ---------- app cards ---------- */
 
       .apps-container {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 16px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+        gap: 26px;
       }
-      
+
       .apps-container > a {
-        border: 1px solid #8888;
-        background-color: #fff;
-        padding: 0px 4px 8px 4px;
-        width: 120px;
-
-        text-decoration: none;
-
+        position: relative;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        gap: 12px;
-
-        position: relative;
-      }
-
-      .apps-container > a.important {
-        background-color: #fee;
-      }
-
-      .apps-container > a.unimportant {
-        opacity: 0.2;
-      }
-
-      .apps-container > a.unimportant:hover {
-        opacity: 0.5;
+        gap: 16px;
+        padding: 20px;
+        min-height: 148px;
+        background: var(--bg);
+        border-radius: 22px;
+        box-shadow: var(--raised);
+        text-decoration: none;
+        color: var(--text);
+        transition: box-shadow 0.18s ease, transform 0.18s ease;
+        animation: rise 0.5s ease-out both;
+        animation-delay: var(--d, 0s);
       }
 
       .apps-container > a:hover {
-        border-color: #888;
-        transition: opacity 0.1s ease-in-out;
+        transform: translateY(-3px);
+        box-shadow: var(--raised-lg);
+        z-index: 10;
       }
 
-      .apps-container > a > div > img {
-        height: 68px;
+      .apps-container > a:active {
+        transform: translateY(0);
+        box-shadow: var(--inset);
       }
 
-      .apps-container > a > .description {
-        text-align: center;
-        font-size: 12px;
-        color: #888;
+      .apps-container > a .port {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-faint);
+        padding: 4px 9px;
+        border-radius: 999px;
+        box-shadow: var(--inset-soft);
+        transition: color 0.18s ease;
       }
 
-      .apps-container > a > .port {
-        padding-right: 0.5px;
-        padding-top: 1px;
-        align-self: flex-end;
-        font-size: 12px;
-        color: #888;
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-faint);
+        flex-shrink: 0;
+        transition: background 0.3s ease, box-shadow 0.3s ease;
       }
 
-      .apps-container > a > .hover-description {
+      .status-dot.up {
+        background: #2eb87c;
+        box-shadow: 0 0 6px rgba(46, 184, 124, 0.8);
+      }
+
+      .status-dot.down { background: #d96673; }
+
+      body.status-unavailable .status-dot { display: none; }
+
+      .apps-container > a:hover .port { color: var(--accent); }
+
+      .icon {
+        width: 56px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        box-shadow: var(--inset-soft);
+        background: var(--accent-soft);
+        flex-shrink: 0;
+      }
+
+      .icon i {
+        display: block;
+        width: 28px;
+        height: 28px;
+        background: var(--accent);
+        -webkit-mask: var(--mask) center / contain no-repeat;
+        mask: var(--mask) center / contain no-repeat;
+      }
+
+      .apps-container > a .name {
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.3;
+        margin-top: auto;
+      }
+
+      /* tier 1: tooling — smaller, neutral icon wells */
+      .apps-container.tier-1 { grid-template-columns: repeat(auto-fill, minmax(162px, 1fr)); gap: 22px; }
+      .apps-container.tier-1 > a { min-height: 128px; padding: 18px; }
+      .apps-container.tier-1 .icon { width: 46px; height: 46px; border-radius: 15px; background: transparent; }
+      .apps-container.tier-1 .icon i { width: 23px; height: 23px; background: var(--text-dim); }
+      .apps-container.tier-1 > a:hover .icon i { background: var(--accent); }
+      .apps-container.tier-1 > a .name { font-size: 13px; }
+
+      /* tier 0: examples — compact horizontal cards */
+      .apps-container.tier-0 {
+        grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+        gap: 18px;
+      }
+
+      .apps-container.tier-0 > a {
+        flex-direction: row;
+        align-items: center;
+        min-height: 0;
+        padding: 12px 16px;
+        border-radius: 16px;
+        gap: 12px;
+        color: var(--text-dim);
+      }
+
+      .apps-container.tier-0 > a:hover { color: var(--text); }
+
+      .apps-container.tier-0 .icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: transparent;
+      }
+
+      .apps-container.tier-0 .icon i {
+        width: 19px;
+        height: 19px;
+        background: var(--text-dim);
+      }
+
+      .apps-container.tier-0 > a:hover .icon i { background: var(--accent); }
+      .apps-container.tier-0 > a .name { margin-top: 0; font-size: 12.5px; font-weight: 700; }
+
+      .apps-container.tier-0 > a .port {
+        position: static;
+        margin-left: auto;
+        order: 10;
+      }
+
+      /* ---------- hover tooltip ---------- */
+
+      .hover-description {
         display: none;
         position: absolute;
-        top: 100%;
-        left: -1px;
+        top: calc(100% + 12px);
+        left: 0;
+        min-width: 100%;
         pointer-events: none;
         z-index: 1000;
         white-space: pre;
-        background-color: #ffc;
-        border: 1px solid #888;
-        padding: 2px;
-        color: #0008;
-        font-size: 12px;
+        background: var(--bg);
+        border-radius: 14px;
+        box-shadow: var(--raised-lg);
+        padding: 12px 16px;
+        color: var(--text-dim);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        line-height: 1.8;
       }
 
-      .apps-container > a:hover > .hover-description {
-        display: block;
+      .hover-description::before {
+        content: "▸ ";
+        color: var(--accent);
+      }
+
+      .apps-container > a:hover .hover-description { display: block; }
+
+      /* ---------- background services ---------- */
+
+      .background-services {
+        list-style: none;
+        margin: 0;
+        padding: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 12px;
+        border-radius: 26px;
+        box-shadow: var(--inset);
+      }
+
+      .background-services li {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 11px 16px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--text-dim);
+        border-radius: 999px;
+        transition: box-shadow 0.18s ease, color 0.18s ease;
+      }
+
+      .background-services li:hover {
+        box-shadow: var(--raised);
+        color: var(--text);
+      }
+
+      .background-services .bs-port {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--accent);
+        padding: 4px 10px;
+        border-radius: 999px;
+        box-shadow: var(--inset-soft);
+        min-width: 86px;
+        flex-shrink: 0;
+      }
+
+      footer {
+        margin-top: 80px;
+        display: inline-block;
+        padding: 10px 22px;
+        border-radius: 999px;
+        box-shadow: var(--inset-soft);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+      }
+
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
       }
     </style>
   </head>
   <body>
-    <h1>Hexclave Dev Launchpad</h1>
-    <div class="apps-container"></div>
-    <hr />
-    <div class="apps-container"></div>
-    <hr />
-    <div class="apps-container"></div>
+    <div class="wrap">
+      <header>
+        <div class="eyebrow">Hexclave · Local Environment</div>
+        <h1>Dev <span class="soft">Launchpad</span></h1>
+        <div class="statusline">
+          <span><i class="dot js-health-dot"></i> <span class="js-systems">Checking services…</span></span>
+          <span>Prefix&nbsp;<b class="js-prefix mono"></b></span>
+          <span><b class="js-count mono"></b>&nbsp;services</span>
+        </div>
+      </header>
 
-    <h2 style="margin-top: 64px;">Background services</h2>
-    <ul class="background-services"></ul>
+      <section>
+        <div class="section-title"><span class="num">01</span> Primary</div>
+        <div class="apps-container tier-2"></div>
+      </section>
+
+      <section>
+        <div class="section-title"><span class="num">02</span> Tooling &amp; Infra</div>
+        <div class="apps-container tier-1"></div>
+      </section>
+
+      <section>
+        <div class="section-title"><span class="num">03</span> Examples &amp; Misc</div>
+        <div class="apps-container tier-0"></div>
+      </section>
+
+      <section>
+        <div class="section-title"><span class="num">04</span> Background Services</div>
+        <ul class="background-services"></ul>
+      </section>
+
+      <footer>Hexclave dev launchpad — apps/dev-launchpad</footer>
+    </div>
+
     <noscript>
       This page requires JavaScript.
     </noscript>
@@ -113,13 +464,16 @@
       window.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX = hexclavePortPrefix;
       const withPrefix = (suffix) => `${hexclavePortPrefix}${suffix}`;
 
-      // Depending on the port prefix, set the color to light grey (port 91), light purple (port 92), papyrus yellow (port 93), or default otherwise
-      const color = {
-        "91": "#f8f8f8",
-        "92": "#fff8e0",
-        "93": "#e0e0ff",
-      }[hexclavePortPrefix] || undefined;
-      document.body.style.backgroundColor = color;
+      // Depending on the port prefix, swap the accent: blue (91), amber (92), violet (93), green otherwise
+      const accent = {
+        "91": ["#4a90c2", "rgba(74, 144, 194, 0.12)"],
+        "92": ["#d99a26", "rgba(217, 154, 38, 0.12)"],
+        "93": ["#8b78d8", "rgba(139, 120, 216, 0.12)"],
+      }[hexclavePortPrefix];
+      if (accent) {
+        document.documentElement.style.setProperty("--accent", accent[0]);
+        document.documentElement.style.setProperty("--accent-soft", accent[1]);
+      }
 
       const backgroundServices = [
         { suffix: "28", label: "PostgreSQL" },
@@ -142,9 +496,12 @@
         const portText = service.range
           ? `${withPrefix(service.range[0])}-${withPrefix(service.range[1])}`
           : withPrefix(service.suffix);
-        return `<li>${portText}: ${service.label}</li>`;
+        const dot = service.suffix ? `<i class="status-dot" data-port="${withPrefix(service.suffix)}"></i>` : "";
+        return `<li><span class="bs-port">${dot}:${portText}</span>${service.label}</li>`;
       }).join("");
 
+      // All icons live in ./icons/*.svg — monochrome, currentColor-based SVGs
+      // rendered via CSS mask so they tint to the theme accent (and prefix variants).
       const apps = [
         {
           name: "Dashboard",
@@ -153,7 +510,7 @@
             "Src: ./apps/dashboard",
             "Prod: https://app.hexclave.com",
           ],
-          img: "https://www.svgrepo.com/show/507260/dashboard.svg",
+          icon: "dashboard",
           importance: 2,
         },
         {
@@ -163,7 +520,7 @@
             "Src: ./apps/backend",
             "Prod: https://api.hexclave.com",
           ],
-          img: "https://www.svgrepo.com/show/340122/datastore.svg",
+          icon: "backend",
           importance: 2,
         },
         {
@@ -173,6 +530,7 @@
             "Src: ./apps/mcp",
             "Prod: https://mcp.hexclave.com/mcp",
           ],
+          icon: "mcp",
           importance: 2,
         },
         {
@@ -182,6 +540,7 @@
             "Src: ./apps/skills",
             "Prod: https://skill.hexclave.com",
           ],
+          icon: "skills",
           importance: 2,
         },
         {
@@ -191,6 +550,7 @@
             "Src: ./examples/demo",
             "Prod: https://demo.hexclave.com",
           ],
+          icon: "demo",
           importance: 2,
         },
         {
@@ -200,6 +560,7 @@
             "Src: ./examples/demo",
             "Prod: https://demo.hexclave.com",
           ],
+          icon: "demo-local",
           importance: 2,
         },
         {
@@ -209,7 +570,7 @@
             "Src: ./examples/tanstack-start-demo",
             "Alpha SDK integration demo",
           ],
-          img: "https://tanstack.com/favicon.ico",
+          icon: "tanstack",
           importance: 2,
         },
         {
@@ -219,7 +580,7 @@
             "Src: ./docs",
             "Prod: https://docs.hexclave.com",
           ],
-          img: "https://www.svgrepo.com/show/448400/docs.svg",
+          icon: "docs",
           importance: 2,
         },
         {
@@ -228,7 +589,7 @@
           description: [
             "Src: ./docs-mintlify",
           ],
-          img: "https://www.svgrepo.com/show/448400/docs.svg",
+          icon: "mintlify",
           importance: 2,
         },
         {
@@ -237,12 +598,13 @@
           description: [
             "Src: ./apps/hosted-components",
           ],
+          icon: "hosted-components",
           importance: 2,
         },
         {
           name: "Inbucket",
           portSuffix: "05",
-          img: "https://www.svgrepo.com/show/533176/at-sign.svg",
+          icon: "inbucket",
           importance: 1,
           description: [
             "Email mock",
@@ -252,7 +614,7 @@
           name: "Prisma Studio",
           portSuffix: "06",
           importance: 1,
-          img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS95TdAw63YPAPcUpvRl4imIf-VJ1sGHnEvbw&s",
+          icon: "prisma",
           description: [
             "Database interface",
           ],
@@ -264,11 +626,12 @@
             "Performance & tracing",
           ],
           importance: 1,
-          img: "https://www.jaegertracing.io/img/jaeger-icon-reverse-color.svg",
+          icon: "jaeger",
         },
         {
           name: "examples/docs-examples",
           portSuffix: "08",
+          icon: "docs-examples",
           description: [
             "Src: ./examples/docs-examples",
           ],
@@ -276,6 +639,7 @@
         {
           name: "examples/cjs-test",
           portSuffix: "10",
+          icon: "node",
           description: [
             "Src: ./examples/cjs-test",
           ],
@@ -283,6 +647,7 @@
         {
           name: "examples/e-commerce",
           portSuffix: "11",
+          icon: "e-commerce",
           description: [
             "Src: ./examples/e-commerce",
           ],
@@ -290,6 +655,7 @@
         {
           name: "examples/middleware",
           portSuffix: "12",
+          icon: "middleware",
           description: [
             "Src: ./examples/middleware",
           ],
@@ -298,7 +664,7 @@
           name: "Svix server",
           portSuffix: "13",
           importance: 1,
-          img: "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgZGF0YS1uYW1lPSJMYXllciAyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iODQuOSA4NC45IDM0NyAzNDciPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICNmZmY7CiAgICAgIH0KCiAgICAgIC5jbHMtMSwgLmNscy0yIHsKICAgICAgICBzdHJva2Utd2lkdGg6IDBweDsKICAgICAgfQoKICAgICAgLmNscy0yIHsKICAgICAgICBmaWxsOiAjMmM3MGZmOwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8ZyBpZD0iTGF5ZXJfMS0yIiBkYXRhLW5hbWU9IkxheWVyIDEtMiI+CiAgICA8Y2lyY2xlIGNsYXNzPSJjbHMtMSIgY3g9IjI1OC40IiBjeT0iMjU4LjQiIHI9IjE3My41Ii8+CiAgICA8Zz4KICAgICAgPHBhdGggY2xhc3M9ImNscy0yIiBkPSJNMzYwLjgsMjMyLjljLTI4LjgtMS40LTU1LjctMTcuMi02OC4yLTQ1LTUuNS0xMi4zLTE3LjgtMjAuNC0zMS4zLTIwLjgtMjguNi0uOC00Ni43LDM1LjEtMjguNyw1Ny42LDYuMiw3LjgsMTUuNCwxMi4xLDI3LjUsMTIuOWgwYzIzLjQsMS43LDQzLjUsMTEuOCw1Ni44LDI4LjUsMjQuNCwzMC43LDIwLjksNzcuMS03LjQsMTA0LTM0LjEsMzIuNS05MS4xLDI1LjgtMTE3LjEtMTMuMi0yLjMtMy41LTQuMy03LjEtNi4xLTEwLjktNS41LTEyLjMtMTcuOC0yMC40LTMxLjMtMjAuOC0xMy45LS40LTI3LDQuOS0zNS4zLDEzLjgsMjcuMyw0Ni45LDc3LjcsNzguNywxMzUuOSw3OS43LDg4LjYsMS41LDE2MS43LTY5LDE2My4yLTE1Ny42LjMtMTQuOS0xLjYtMjkuNC01LjEtNDMuMi43LDIuOS0yMi4zLDEwLjktMjQuOCwxMS42LTkuMiwyLjctMTguNywzLjctMjgsMy4zaDBaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMiIgZD0iTTE1NiwyODMuNmMyOS40LjcsNTYuMSwxOC41LDY4LjIsNDUuMyw1LjUsMTIuMywxNy44LDIwLjQsMzEuMywyMC44LDkuNC4zLDE4LjMtMy4yLDI1LjItOS43LDEyLjgtMTIuMSwxNC41LTM0LjEsMy41LTQ4LTYuMi03LjgtMTUuNC0xMi4xLTI3LjUtMTIuOWgwYy0yMy40LTEuNy00My41LTExLjgtNTYuOC0yOC41LTI5LjYtMzcuMi0xNy05Mi41LDIzLjctMTE1LjQsMTEuOC02LjYsMjUuMi0xMC4yLDM4LjctOS44LDI5LjQuNyw1Ni4xLDE4LjUsNjguMiw0NS4zLDUuNSwxMi4zLDE3LjgsMjAuNCwzMS4zLDIwLjgsMTQsLjQsMjctNC45LDM1LjMtMTMuOC0yNy4zLTQ2LjktNzcuNy03OC43LTEzNS45LTc5LjgtODguNi0xLjUtMTYxLjYsNjkuMS0xNjMuMiwxNTcuNi0uMywxNC45LDEuNiwyOS40LDUuMiw0My4yLDE0LjktMTAuMSwzMy4zLTE1LjYsNTIuOS0xNS4yaDBaIi8+CiAgICA8L2c+CiAgPC9nPgo8L3N2Zz4=",
+          icon: "svix",
           description: [
             "Webhooks",
           ],
@@ -306,6 +672,7 @@
         {
           name: "OAuth mock server",
           portSuffix: "14",
+          icon: "oauth",
           description: [
             "Src: ./apps/mock-oauth-server",
           ],
@@ -313,6 +680,7 @@
         {
           name: "examples/supabase",
           portSuffix: "15",
+          icon: "supabase",
           description: [
             "Src: ./examples/supabase",
           ],
@@ -324,7 +692,7 @@
             "For database performance analysis",
           ],
           importance: 1,
-          img: "https://pghero.dokkuapp.com/assets/pghero-88a0d052.png",
+          icon: "pghero",
         },
         {
           name: "PgHero (Replica)",
@@ -333,7 +701,7 @@
             "For replica database performance analysis",
           ],
           importance: 1,
-          img: "https://pghero.dokkuapp.com/assets/pghero-88a0d052.png",
+          icon: "pghero",
         },
         {
           name: "PgAdmin",
@@ -342,7 +710,7 @@
             "For database administration",
           ],
           importance: 1,
-          img: "https://www.w3schools.com/postgresql/screenshot_postgresql_pgadmin4_6.png",
+          icon: "pgadmin",
         },
         {
           name: "Supabase Studio",
@@ -352,7 +720,7 @@
             "For database administration",
           ],
           importance: 1,
-          img: "https://cdn.prod.website-files.com/655b60964be1a1b36c746790/655b60964be1a1b36c746d41_646dfce3b9c4849f6e401bff_supabase-logo-icon_1.png",
+          icon: "supabase",
         },
         {
           name: "Drizzle Gateway",
@@ -361,6 +729,7 @@
             "Manage Drizzle configs",
           ],
           importance: 1,
+          icon: "drizzle",
         },
         {
           name: "WAL Info",
@@ -371,7 +740,7 @@
             "Decodes WAL to SQL statements",
           ],
           importance: 1,
-          img: "https://www.svgrepo.com/show/374002/replication.svg",
+          icon: "wal",
         },
         {
           name: "Internal Tool",
@@ -381,6 +750,7 @@
             "MCP call review tool",
           ],
           importance: 1,
+          icon: "internal-tool",
         },
         {
           name: "Bulldozer Studio",
@@ -390,11 +760,12 @@
             "Includes raw storage debug browser",
           ],
           importance: 1,
-          img: "https://www.svgrepo.com/show/349299/database.svg",
+          icon: "bulldozer",
         },
         {
           name: "JS example",
           portSuffix: "19",
+          icon: "js",
           description: [
             "JavaScript example",
           ],
@@ -402,6 +773,7 @@
         {
           name: "React example",
           portSuffix: "20",
+          icon: "react",
           description: [
             "React example",
           ],
@@ -413,12 +785,13 @@
             "ClickHouse",
           ],
           importance: 1,
-          img: "https://thumbs.bfldr.com/at/qkjfv3nvsv4rbwn94zmtb4t/v/1197417003?expiry=1764357242&fit=bounds&height=800&sig=NjEwNzA0OThjZmJiZDQzZmUwNjIyY2UxYzZiNGYxNmQ3NjJiYjc0OA%3D%3D&width=1100",
+          icon: "clickhouse",
         },
         {
           name: "Convex example",
           portSuffix: "27",
           importance: 0,
+          icon: "convex",
           description: [
             "Convex example",
           ],
@@ -427,13 +800,18 @@
           name: "Lovable React 18 example",
           portSuffix: "32",
           importance: 0,
+          icon: "lovable",
           description: [
             "Lovable React 18 example",
           ],
         },
       ];
 
+      document.querySelector(".js-prefix").textContent = `:${hexclavePortPrefix}xx`;
+      document.querySelector(".js-count").textContent = apps.length + backgroundServices.length;
+
       const appsContainers = document.querySelectorAll(".apps-container");
+      let cardIndex = 0;
       for (let i = 0; i < appsContainers.length; i++) {
         const appContainer = appsContainers[i];
         const importance = appsContainers.length - i - 1;
@@ -441,18 +819,50 @@
           if ((app.importance ?? 0) === importance) {
             // TODO escape HTML
             appContainer.innerHTML += `
-              <a href="http://${app.portSuffix === "42" ? "127.0.0.1" : (`${hexclavePortPrefix}` === "81" ? "localhost" : `p${hexclavePortPrefix}.localhost`)}:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
-                <div class="port">:${withPrefix(app.portSuffix)}</div>
-                <div>
-                  <img src=${app.img || `//localhost:${withPrefix(app.portSuffix)}/favicon.ico`} />
-                </div>
-                <span class="description">${app.name}</span>
+              <a href="http://${app.portSuffix === "42" ? "127.0.0.1" : (`${hexclavePortPrefix}` === "81" ? "localhost" : `p${hexclavePortPrefix}.localhost`)}:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" style="--d: ${(cardIndex++ * 0.02).toFixed(3)}s">
+                <div class="port"><i class="status-dot" data-port="${withPrefix(app.portSuffix)}"></i>:${withPrefix(app.portSuffix)}</div>
+                <div class="icon"><i style="--mask: url('./icons/${app.icon}.svg')"></i></div>
+                <span class="name">${app.name}</span>
                 ${app.description ? `<div class="hover-description">${app.description.join("\n")}</div>` : ""}
               </a>
             `;
           }
         }
       }
+
+      // Live status checks via the launchpad server's /api/status endpoint,
+      // which TCP-probes each port (works for non-HTTP services like
+      // PostgreSQL/SMTP). Degrades gracefully if the endpoint is missing.
+      const statusPorts = [
+        ...apps.map((app) => withPrefix(app.portSuffix)),
+        ...backgroundServices.filter((s) => s.suffix).map((s) => withPrefix(s.suffix)),
+      ];
+      const refreshStatus = async () => {
+        try {
+          const res = await fetch(`/api/status?ports=${statusPorts.join(",")}`);
+          if (!res.ok || !(res.headers.get("content-type") ?? "").includes("application/json")) {
+            throw new Error("status endpoint unavailable");
+          }
+          const statusMap = await res.json();
+          document.body.classList.remove("status-unavailable");
+          document.querySelectorAll(".status-dot[data-port]").forEach((dot) => {
+            const isUp = statusMap[dot.dataset.port];
+            dot.classList.toggle("up", isUp === true);
+            dot.classList.toggle("down", isUp === false);
+          });
+          const upCount = statusPorts.filter((p) => statusMap[p]).length;
+          const allUp = upCount === statusPorts.length;
+          document.querySelector(".js-systems").textContent = allUp
+            ? "All systems nominal"
+            : `${upCount}/${statusPorts.length} services up`;
+          document.querySelector(".js-health-dot").classList.toggle("warn", !allUp);
+        } catch {
+          document.body.classList.add("status-unavailable");
+          document.querySelector(".js-systems").textContent = "All systems nominal";
+        }
+      };
+      refreshStatus();
+      setInterval(refreshStatus, 15000);
     </script>
   </body>
 </html>

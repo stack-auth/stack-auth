@@ -2,8 +2,10 @@
 // apps/backend/src/lib/js-execution.tsx (same credentials/env vars), with
 // streaming command execution added for long-running agent steps.
 
+import { setTimeout as delay } from "node:timers/promises";
 import { Command, Sandbox } from "@vercel/sandbox";
 import { getSandboxCredentials } from "./config";
+import { ResumableLogDemuxer, isTransientNetworkError } from "./log-stream";
 
 export const SANDBOX_CWD = "/vercel/sandbox";
 export const WORKSPACE_DIR = `${SANDBOX_CWD}/workspace`;
@@ -48,7 +50,18 @@ export type StreamedCommandParams = {
   onCommand?: (command: Command) => void,
 };
 
-// Runs a command detached and streams its output line-by-line.
+// A still-running command's log stream can drop transiently (e.g. ECONNRESET)
+// many times over a long step, so the budget counts *consecutive* failures
+// without forward progress; it resets whenever a reconnect delivers new output.
+const MAX_LOG_STREAM_RECONNECTS = 8;
+const MAX_WAIT_RETRIES = 8;
+const RECONNECT_BACKOFF_MS = 1000;
+const RECONNECT_BACKOFF_CAP_MS = 5000;
+
+// Runs a command detached and streams its output line-by-line. The log stream
+// is reconnected on transient network drops (see log-stream.ts) so a flaky
+// socket no longer fails an otherwise-healthy step; the authoritative pass/fail
+// always comes from the command's exit code via wait().
 export async function runStreamedCommand(sandbox: Sandbox, params: StreamedCommandParams): Promise<{ exitCode: number }> {
   const command = await sandbox.runCommand({
     cmd: params.cmd,
@@ -60,36 +73,49 @@ export async function runStreamedCommand(sandbox: Sandbox, params: StreamedComma
   });
   params.onCommand?.(command);
 
-  let stdoutBuffer = "";
-  let stderrBuffer = "";
-  try {
-    for await (const log of command.logs({ signal: params.signal })) {
-      if (log.stream === "stdout") {
-        stdoutBuffer += log.data;
-        const lines = stdoutBuffer.split("\n");
-        stdoutBuffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (line.trim() !== "") params.onStdoutLine?.(line);
-        }
-      } else {
-        stderrBuffer += log.data;
-        const lines = stderrBuffer.split("\n");
-        stderrBuffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (line.trim() !== "") params.onStderrLine?.(line);
-        }
+  const demuxer = new ResumableLogDemuxer(params.onStdoutLine, params.onStderrLine);
+  let reconnectAttempts = 0;
+  let deliveredAtLastFailure = -1;
+  while (true) {
+    demuxer.beginConnection();
+    try {
+      for await (const log of command.logs({ signal: params.signal })) {
+        demuxer.push(log.stream, log.data);
       }
+      break; // stream completed normally
+    } catch (error) {
+      // Cancellation: stop streaming; wait()/caller abort handling decides the outcome.
+      if (params.signal?.aborted) break;
+      if (!isTransientNetworkError(error)) throw error;
+      // Reset the reconnect budget whenever we've made progress since the last
+      // drop, so occasional blips over a long run don't accumulate to failure.
+      const delivered = demuxer.deliveredChars;
+      if (delivered > deliveredAtLastFailure) reconnectAttempts = 0;
+      deliveredAtLastFailure = delivered;
+      if (reconnectAttempts >= MAX_LOG_STREAM_RECONNECTS) throw error;
+      reconnectAttempts += 1;
+      await delay(Math.min(RECONNECT_BACKOFF_MS * reconnectAttempts, RECONNECT_BACKOFF_CAP_MS));
     }
-  } catch (error) {
-    // Log streaming aborts when the run is cancelled; the wait() below (or the
-    // caller's abort handling) decides the final outcome.
-    if (!params.signal?.aborted) throw error;
   }
-  if (stdoutBuffer.trim() !== "") params.onStdoutLine?.(stdoutBuffer);
-  if (stderrBuffer.trim() !== "") params.onStderrLine?.(stderrBuffer);
+  demuxer.flush();
 
-  const finished = await command.wait({ signal: params.signal });
+  const finished = await waitForExit(command, params.signal);
   return { exitCode: finished.exitCode };
+}
+
+// Waiting for the exit code is a long-poll that can also drop transiently;
+// retry it (it's idempotent — just reports the command's status).
+async function waitForExit(command: Command, signal?: AbortSignal): Promise<{ exitCode: number }> {
+  let attempts = 0;
+  while (true) {
+    try {
+      return await command.wait({ signal });
+    } catch (error) {
+      if (signal?.aborted || !isTransientNetworkError(error) || attempts >= MAX_WAIT_RETRIES) throw error;
+      attempts += 1;
+      await delay(Math.min(RECONNECT_BACKOFF_MS * attempts, RECONNECT_BACKOFF_CAP_MS));
+    }
+  }
 }
 
 const DEFAULT_CAPTURE_LIMIT = 200_000;

@@ -31,7 +31,7 @@ import {
   upsertEvalStepRun,
 } from "./stdb";
 import { FRAMEWORK_CHOICES } from "./default-workflow";
-import { ACTIVE_RUN_STATUSES, parseSteps, renderTemplate, type EvalRunConfig, type EvalStepDefinition, type RunStatus } from "./types";
+import { ACTIVE_RUN_STATUSES, describeError, parseSteps, renderTemplate, type EvalRunConfig, type EvalStepDefinition, type RunStatus } from "./types";
 
 // Runs are fully headless (`claude -p`), so any interactive turn — plan-mode
 // approval or a clarifying question — hangs forever with nobody to answer, and
@@ -268,7 +268,7 @@ async function executeRun(
     await updateEvalRun({ runId, status: "completed", currentStepIndex: steps.length, contextJson: JSON.stringify(context) });
   } catch (error) {
     const status: RunStatus = signal.aborted ? "cancelled" : "failed";
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeError(error);
     try {
       await updateEvalRun({ runId, status, currentStepIndex: 0, error: signal.aborted ? "Cancelled by user" : message });
       await markPendingStepsAs(runId, status === "cancelled" ? "cancelled" : "failed");
@@ -411,7 +411,7 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
   } catch (error) {
     active.currentCommand = null;
     await worklog.flush();
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeError(error);
     await upsertStep(signal.aborted ? "cancelled" : "failed", message);
     return { success: false, resultText, error: message };
   }

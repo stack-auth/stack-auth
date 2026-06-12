@@ -1,4 +1,5 @@
 import { runChatTurn } from "@/lib/evals/chat-agent";
+import { describeError } from "@/lib/evals/types";
 import { errorResponse, guard } from "../_lib";
 
 export const runtime = "nodejs";
@@ -32,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
           send(event);
         }
       } catch (error) {
-        send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        send({ type: "error", message: describeError(error) });
       } finally {
         send({ type: "done" });
         controller.close();

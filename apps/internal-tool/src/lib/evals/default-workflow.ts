@@ -88,30 +88,40 @@ Requirements:
 
 Finish with a summary of what you implemented, what works, what is stubbed, and the top 5 friction points from NOTES.md.`;
 
-const STEP_4_PROMPT = `You are the eval analyst. The directory /vercel/sandbox/.eval/worklogs/ contains the COMPLETE message traces of the previous agent steps as JSONL files (step-1.jsonl, step-2.jsonl, step-3.jsonl). Each line is a Claude Code stream-json message: system events, assistant messages (including reasoning and tool_use blocks), user messages carrying tool_results, and final result messages. The implemented repo is in /vercel/sandbox/workspace (NOTES.md and .env.example there are key inputs too).
+const STEP_4_PROMPT = `You are the eval analyst. The directory /vercel/sandbox/.eval/worklogs/ contains the COMPLETE message traces of the previous agent steps as JSONL files (step-1.jsonl, step-2.jsonl, step-3.jsonl). Each line is a Claude Code stream-json message: system events, assistant messages (including reasoning and tool_use blocks), user messages carrying tool_results, and final result messages (which carry duration_ms, duration_api_ms, total_cost_usd, usage and num_turns). The implemented repo is in /vercel/sandbox/workspace (NOTES.md and .env.example there are key inputs too).
 
-Produce a single, self-contained HTML report at /vercel/sandbox/.eval/report.html. The report has ONE job: surface the **Hexclave-specific friction** the agent hit while building on Hexclave (the auth/billing/platform service, formerly Stack Auth).
+Produce a single, self-contained HTML report at /vercel/sandbox/.eval/report.html: the **Hexclave Agent Experience Scorecard** — an assessment of how well Hexclave (the auth/billing/platform service, formerly Stack Auth) supports autonomous AI-agent onboarding, measured from this run's traces.
 
-CRITICAL SCOPE — only Hexclave blockers, from any step:
-- INCLUDE only issues caused by Hexclave itself: its docs / skill site (skill.hexclave.com), its SDK(s), its APIs, and integrating its capabilities (auth, teams, RBAC, payments, transactional emails, analytics, data vault, API keys, CLI auth, webhooks). Examples: confusing / missing / outdated / wrong docs, hallucinated or non-existent Hexclave APIs, SDK type or version mismatches, unclear setup/config, unexpected Hexclave errors, DX papercuts, having to work around a Hexclave limitation.
-- Scan the worklogs from ALL steps (step-1, step-2, step-3) AND NOTES.md. A Hexclave blocker can appear at ANY stage — ideation, scaffolding, or implementation — not just the implementation step. Attribute each blocker to the step where it actually occurred.
-- EXCLUDE everything not caused by Hexclave: generic TypeScript / framework / build / bundler / package-manager errors, Drizzle/SQLite issues, the agent's own mistakes or typos, and general tooling noise. The ONLY exception is when the issue was directly caused by Hexclave (e.g. a build break from a Hexclave SDK type, or a wrong import the agent copied from Hexclave docs) — then include it and say so. When in doubt, EXCLUDE. A short, high-signal report of real Hexclave friction is the goal; do not pad it with generic engineering blockers.
+CRITICAL SCOPE for findings — only Hexclave friction, from any step:
+- INCLUDE only issues caused by Hexclave itself: its docs / skill site (skill.hexclave.com), its SDK(s), its APIs, its CLI, and integrating its capabilities (auth, teams, RBAC, payments, transactional emails, analytics, data vault, API keys, CLI auth, webhooks). Examples: confusing / missing / outdated / wrong docs, hallucinated or non-existent Hexclave APIs, SDK type or version mismatches, unclear setup/config, unexpected Hexclave errors, DX papercuts, having to work around a Hexclave limitation.
+- Scan the worklogs from ALL steps (step-1, step-2, step-3) AND NOTES.md. A Hexclave blocker can appear at ANY stage — ideation, scaffolding, or implementation. Attribute each to the step where it actually occurred.
+- EXCLUDE everything not caused by Hexclave: generic TypeScript / framework / build / bundler / package-manager errors, Drizzle/SQLite issues, the agent's own mistakes or typos, and general tooling noise. The ONLY exception is when the issue was directly caused by Hexclave (e.g. a build break from a Hexclave SDK type, or a wrong import the agent copied from Hexclave docs) — then include it and say so. When in doubt, EXCLUDE.
 
-Analysis requirements (do this yourself, with judgment — you are the intelligence layer):
-1. Parse all worklogs + NOTES.md and pull out every Hexclave-caused friction point per the scope above.
-2. GROUP and DEDUPLICATE: merge repeated occurrences of the same underlying Hexclave issue, count occurrences, keep representative evidence snippets (trimmed tool calls / error output / doc quotes).
-3. Categorize each by Hexclave surface ("Docs / skill site", "SDK", "Auth", "Teams & RBAC", "Payments", "Emails", "Analytics", "Data vault", "API keys", "CLI auth", "Webhooks", "Other Hexclave") and assign severity (blocker / major / minor / info) plus which step it occurred in.
-4. Compute light summary stats scoped to context: number of distinct Hexclave blockers by severity and by step; messages/tool-calls per step for context; cost if present in result messages.
-5. Write a short executive summary: did the agent ship the product, and specifically where did Hexclave help vs. where did it hurt? If a step had no Hexclave friction, say so explicitly rather than inventing issues.
+Analysis requirements (do this yourself, with judgment — you are the intelligence layer). Every number in the report must be computed from the traces; where a metric is genuinely unavailable, show an em dash rather than inventing a value:
+1. Headline stats: active time (sum of duration_api_ms across step results) and wall time (sum of duration_ms); error count (tool_results with is_error across all steps); interruption count (times the run stalled waiting on a human, permission, or rate-limit/retry loop — usually 0); API cost (sum of total_cost_usd) with the model name and total tokens (sum input+output across all result messages).
+2. Score 5 dimensions 0-100, each with a 2-4 sentence justification grounded in trace evidence: Setup Friction (25%) — how much Hexclave-caused friction the agent hit; Speed (20%) — how quickly it moved through onboarding and integration; Efficiency (20%) — wasted tool calls, re-reads, retries, detours (only provider-caused waste should hurt the score; note agent-side waste but say it's agent-side); Error Recovery (15%) — how well errors could be diagnosed and recovered from given Hexclave's types/errors/docs; Doc Quality (20%) — accuracy and completeness of docs/skill site for what the agent actually needed.
+3. Compute the OVERALL SCORE as the weighted sum and show the arithmetic per dimension (score x weight = contribution, then the weighted total). The hero number must equal the computed total.
+4. Findings: extract every Hexclave-caused friction point, GROUP and DEDUPLICATE repeated occurrences of the same underlying issue, then number them F-01, F-02, ... ordered by severity (critical / major / minor / info). Each finding: severity tag, one-bold-line title, 1-3 sentence description, and which step it occurred in. If there was no Hexclave friction, say so explicitly rather than inventing issues.
+5. Session timeline: segment the run into chronological phases (e.g. RESEARCH, SETUP, CODING, FIX, VERIFY) by reading the traces; for each phase give a one-sentence description of what happened and an approximate duration (prefix with ~; apportion step durations across phases by message volume if exact timing is unavailable).
+6. AI discoverability checklist: Context7, llms.txt, MCP server, typed SDK, OpenAPI spec — mark each Available / Missing / Not verified based ONLY on what the traces show the agent actually found or used; report the resulting n/5.
+7. Tool call breakdown: count tool_use blocks by tool name across all steps.
+8. Recommendations to the Hexclave team, grouped by effort (LOW EFFORT / MEDIUM EFFORT / HIGH EFFORT): each has an action title, a 2-3 sentence concrete recommendation (name the exact API/doc page/config), and a closing one-line impact statement tying it back to this eval.
+9. Executive summary: 2-4 short paragraphs — did the agent ship the product, where did Hexclave help vs. hurt — followed by WHAT WENT WELL (one short paragraph), WHAT DIDN'T (one short paragraph), KEY FINDING (one sentence), and VERDICT (1-2 sentence overall judgment).
 
-Report requirements (single HTML file, no external network dependencies; inline CSS + vanilla JS):
-- Clean, modern, readable design; light theme; good typography.
-- Executive summary at top, then stat cards, then the Hexclave-friction issues table.
-- ADVANCED FILTERS implemented client-side in JS: free-text search, and filter chips/dropdowns for Hexclave surface (category), severity, and step; filters combine; show live result count.
-- Each issue row expands to show its evidence snippets and your suggested fix / recommendation to the Hexclave team.
-- A per-step timeline section noting, for each step, whether any Hexclave friction occurred and the key numbers.
+Report layout, top to bottom (single HTML file; inline CSS + vanilla JS only, no external network dependencies; clean modern light theme, strong typographic hierarchy, uppercase section/stat labels, generous whitespace):
+1. Intro blurb: "AI coding agents are becoming primary consumers of developer tools, docs, and APIs. This report measures how well a provider supports autonomous agent onboarding. An AI agent receives a task and a URL, then must discover docs, set up auth, and build working code without human help. Every interruption, error, and extra tool call is measured."
+2. Centered header: "Hexclave Agent Experience Scorecard", subtitle "AI Agent Onboarding Eval — <run date>", kicker "PROVIDER AX ASSESSMENT · AUTH & INFRA".
+3. Hero: the overall score as a large number with "OVERALL SCORE" beneath, then a 2x2 stat-card grid: ACTIVE TIME (wall time as subtext), ERRORS, INTERRUPTIONS, API COST (model name and total tokens as subtext).
+4. Executive Summary section: the paragraphs, then WHAT WENT WELL, WHAT DIDN'T, KEY FINDING (visually highlighted callout), VERDICT.
+5. Dimension Breakdown: one row per dimension — label with weight, horizontal score bar, numeric score, justification paragraph — followed by a "Weighted Formula Calculation" block showing the per-dimension arithmetic and the weighted total in monospace.
+6. Session Timeline: phase label, description, ~duration per row, plus a proportional horizontal segment bar of the phases.
+7. Findings: F-NN rows with colored severity chips (critical red, major orange, minor yellow, info gray), expandable to show evidence snippets (trimmed tool calls / error output / doc quotes).
+8. AI Discoverability (n/5): the five-item checklist with availability status.
+9. Tool Call Breakdown: horizontal bar chart (pure HTML/CSS) of tool call counts, sorted descending.
+10. Recommendations: effort-group headings, then one collapsible card per recommendation (with a Hide/Show toggle).
+11. Methodology footer: one short paragraph naming the product built, the surfaces exercised, and the stack, plus "Model: {model}".
 
-Write the file to /vercel/sandbox/.eval/report.html and verify it exists and is valid HTML. Finish with a 5-bullet TLDR focused on the top Hexclave friction points (or "no significant Hexclave friction" if that's the honest result).`;
+Write the file to /vercel/sandbox/.eval/report.html and verify it exists and is valid HTML. Finish with a 5-bullet TLDR: the overall score with its main driver, then the top Hexclave friction points (or "no significant Hexclave friction" if that's the honest result).`;
 
 export const DEFAULT_WORKFLOW_STEPS: EvalStepDefinition[] = [
   {
@@ -148,7 +158,7 @@ export async function ensureDefaultWorkflow(): Promise<void> {
   await upsertEvalWorkflow({
     workflowId: DEFAULT_WORKFLOW_ID,
     name: "Hexclave end-to-end eval",
-    description: "Invent a Hexclave-heavy product, scaffold a turborepo (random framework, SQLite + Drizzle), implement it prod-ready with Hexclave, then generate an HTML report of the Hexclave-specific friction hit across all steps.",
+    description: "Invent a Hexclave-heavy product, scaffold a turborepo (random framework, SQLite + Drizzle), implement it prod-ready with Hexclave, then generate an Agent Experience Scorecard HTML report: weighted 0-100 score, stat cards, session timeline, Hexclave friction findings, and recommendations.",
     stepsJson,
     defaultModel: DEFAULT_MODEL,
   });

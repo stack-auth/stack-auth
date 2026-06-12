@@ -31,7 +31,7 @@ import {
   upsertEvalWorkflow,
 } from "./stdb";
 import { DEFAULT_MODEL, ensureDefaultWorkflow } from "./default-workflow";
-import { parseSteps } from "./types";
+import { describeError, parseSteps } from "./types";
 
 // SpacetimeDB rows contain bigints and timestamp wrappers; make them JSON-able.
 function safeJson(value: unknown): string {
@@ -359,6 +359,6 @@ export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<Cha
       }
     }
   } catch (error) {
-    yield { type: "error", message: error instanceof Error ? error.message : String(error) };
+    yield { type: "error", message: describeError(error) };
   }
 }

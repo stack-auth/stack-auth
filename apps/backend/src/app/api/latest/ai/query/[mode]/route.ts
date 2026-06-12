@@ -6,6 +6,7 @@ import {
 import type { CommonLogFields, ModeContext } from "@/lib/ai/types";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
+import { sanitizeAnthropicReasoning } from "@/lib/ai/sanitize-reasoning";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
@@ -110,7 +111,12 @@ export const POST = createSmartRouteHandler({
     // excluded `system` at the schema layer to prevent prompt-injection via
     // client-supplied system messages — see schema.ts.
     const modelMessages = messages as unknown as ModelMessage[];
-    const cachedMessages: ModelMessage[] = [systemMessage, ...modelMessages];
+    // Anthropic 400s when a replayed thinking block has a missing/invalid
+    // signature, which @openrouter/ai-sdk-provider@2.2.3 drops during
+    // streaming. Strip unsigned reasoning before replay (no-op once the
+    // provider is upgraded past the fix). See sanitize-reasoning.ts.
+    const replayMessages = isAnthropic ? sanitizeAnthropicReasoning(modelMessages) : modelMessages;
+    const cachedMessages: ModelMessage[] = [systemMessage, ...replayMessages];
 
     const ctx: ModeContext = { model, cachedMessages, toolsArg, stepLimit, common, startedAt };
     const extras = {

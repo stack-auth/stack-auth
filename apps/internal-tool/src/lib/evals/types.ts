@@ -50,6 +50,37 @@ export function parseSteps(stepsJson: string): EvalStepDefinition[] {
   });
 }
 
+// Builds a detailed, human-readable description of an error INCLUDING its
+// `cause` chain. Node/undici's `fetch` (used internally by @vercel/sandbox)
+// throws a generic `TypeError: fetch failed` whose real reason — socket reset,
+// timeout, connection closed, DNS failure, HTTP status — lives in `error.cause`
+// (sometimes nested several levels deep). Surfacing only `error.message` throws
+// all of that away and leaves the UI showing a useless "fetch failed", so we
+// walk the chain and include each level's message plus its name/code.
+export function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const levels: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const message = current.message || current.name || "Unknown error";
+    const annotations: string[] = [];
+    if (current.name && current.name !== "Error" && !message.includes(current.name)) {
+      annotations.push(current.name);
+    }
+    const code = (current as { code?: unknown }).code;
+    if ((typeof code === "string" || typeof code === "number") && !message.includes(String(code))) {
+      annotations.push(`code ${code}`);
+    }
+    levels.push(annotations.length > 0 ? `${message} (${annotations.join(", ")})` : message);
+    current = (current as { cause?: unknown }).cause;
+  }
+  // Undici often wraps an error in an identical-message parent; collapse those.
+  const deduped = levels.filter((level, i) => i === 0 || level !== levels[i - 1]);
+  return deduped.join(" ← caused by: ");
+}
+
 // Replaces {key} placeholders for known context keys only, so JSON/code
 // braces inside prompts survive untouched.
 export function renderTemplate(template: string, context: Record<string, string>): string {
