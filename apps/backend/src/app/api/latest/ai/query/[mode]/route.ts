@@ -68,7 +68,7 @@ export const POST = createSmartRouteHandler({
     const stepLimit = toolsArg == null
       ? 1
       : isDocsOrSearch
-        ? 50
+        ? 75
         : isCreateDashboard
           ? 12
           : isBuildAnalyticsQuery
@@ -95,9 +95,9 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
-      const startedAt = Date.now();
+      const startedAt = performance.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000);
+      const timeoutId = setTimeout(() => controller.abort(), 180_000);
       const result = await generateText({
         model,
         system: systemPrompt,
@@ -148,7 +148,7 @@ export const POST = createSmartRouteHandler({
           response: result.text,
           stepCount: result.steps.length,
           innerToolCallsJson,
-          durationMs: BigInt(Date.now() - startedAt),
+          durationMs: BigInt(Math.round(performance.now() - startedAt)),
           modelId: String(model.modelId),
           errorMessage: undefined,
         });

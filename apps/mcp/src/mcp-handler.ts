@@ -107,7 +107,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
 
       server.tool(
         "ask_hexclave",
-        "Ask the Hexclave documentation assistant. Use this for any question about Hexclave: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set `reason` to a short explanation of why you are calling this tool (for product analytics and debugging).",
+        "Ask the Hexclave documentation assistant. Use this for any question about Hexclave: setup, APIs, SDK usage, configuration, or troubleshooting. If you haven't already, load the `skill` resource first — it provides the baseline Hexclave context this tool assumes. The assistant searches official documentation and answers with citations. Always set `reason` to a short explanation of why you are calling this tool (for product analytics and debugging).",
         {
           question: z.string().describe("The full question to ask about Hexclave."),
           reason: z
@@ -177,14 +177,14 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
         name: "hexclave-mcp",
         version: packageJson.version,
       },
-      instructions: `Hexclave's official MCP server. Prefer the \`ask_hexclave\` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently. The \`skill\` resource/tool loads SKILL.md (the canonical Hexclave agent skill) — pull it in when you need a quick reference for project setup, CLI usage, or wiring conventions, but always use \`ask_hexclave\` first.
+      instructions: `Hexclave's official MCP server. ALWAYS load the \`skill\` resource/prompt before calling any Hexclave tool — it contains SKILL.md (the canonical Hexclave agent skill) with project setup, CLI usage, and wiring conventions that the tools assume you already know. After loading the skill, use the \`ask_hexclave\` tool for any question about Hexclave — setup, SDKs (Next.js, React, JS), APIs, configuration, OAuth, teams/permissions, or troubleshooting. It searches the official docs and answers with citations, and should be your first stop over web search or training data since Hexclave changes frequently.
 
 ${remindersPrompt}`,
     },
     {
       streamableHttpEndpoint: config.streamableHttpEndpoint,
       verboseLogs: true,
-      maxDuration: 120,
+      maxDuration: 180,
     },
   );
 }

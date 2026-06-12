@@ -21,7 +21,7 @@ This guide mirrors the Vercel integration flow in the Hexclave dashboard app.
   </Step>
 
   <Step title="Generate keys from Hexclave">
-    In your Stack dashboard, open the **Vercel Integration** app and generate keys for your project.
+    In your Hexclave dashboard, open the **Vercel Integration** app and generate keys for your project.
 
     This produces a project ID plus API keys that you can paste into Vercel.
   </Step>
@@ -29,11 +29,11 @@ This guide mirrors the Vercel integration flow in the Hexclave dashboard app.
   <Step title="Add environment variables in Vercel">
     In Vercel, go to **Project -> Settings -> Environment Variables** and add:
 
-    - `NEXT_PUBLIC_STACK_PROJECT_ID`
-    - `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
-    - `STACK_SECRET_SERVER_KEY`
+    - `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID`
+    - `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY`
+    - `HEXCLAVE_SECRET_SERVER_KEY`
 
-    Add `NEXT_PUBLIC_STACK_API_URL` only if you are not using the default hosted Stack API.
+    Add `NEXT_PUBLIC_HEXCLAVE_API_URL` only if you are not using the default hosted Hexclave API.
   </Step>
 
   <Step title="Redeploy">

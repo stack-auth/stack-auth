@@ -18,9 +18,11 @@ export type {
   MetricsDataPoint,
   MetricsEmailOverview,
   MetricsLoginMethodEntry,
+  MetricsNamedCount,
   MetricsPaymentsOverview,
   MetricsRecentEmail,
   MetricsResponse,
+  MetricsTopCountry,
   MetricsTopReferrer,
   MetricsTopRegion,
   MetricsUserCounts,
@@ -35,18 +37,49 @@ export type {
  * Returns the typed `MetricsResponse` shape derived from the same yup schemas
  * the backend route uses, so dashboard call sites do not need `as ...` casts.
  */
-export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): MetricsResponse {
+export type AnalyticsOverviewFilters = {
+  country_code?: string,
+  referrer?: string,
+  browser?: string,
+  os?: string,
+  device?: string,
+  // ISO 8601 datetimes bounding the analytics top-N breakdowns server-side
+  // (top referrers / regions / browsers / OS / devices). The daily and hourly
+  // series stay full-window so previous-period deltas can be computed locally.
+  since?: string,
+  until?: string,
+};
+
+// The typed contract for the hooks the admin app exposes through the internals
+// symbol. The single `as` assertion in `getInternalsHookOrThrow` is the one
+// place the untyped internals object is narrowed to this contract — call sites
+// get inferred return types instead of casting each result.
+type AdminAppInternalsHooks = {
+  useMetrics: (includeAnonymous: boolean, filters?: AnalyticsOverviewFilters) => MetricsResponse,
+  useUserActivity: (userId: string) => UserActivityResponse,
+  useMetricsUserCounts: () => MetricsUserCounts,
+};
+
+function getInternalsHookOrThrow<K extends keyof AdminAppInternalsHooks>(adminApp: object, hookName: K): AdminAppInternalsHooks[K] {
   const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
-  if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetrics");
+  if (typeof internals !== "object" || internals == null || !(hookName in internals)) {
+    throw new HexclaveAssertionError(`Admin app internals are unavailable: missing ${hookName}`);
   }
 
-  const useMetrics = internals.useMetrics;
-  if (typeof useMetrics !== "function") {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetrics is not callable");
+  const hook = (internals as Record<string, unknown>)[hookName];
+  if (typeof hook !== "function") {
+    throw new HexclaveAssertionError(`Admin app internals are unavailable: ${hookName} is not callable`);
   }
 
-  return useMetrics(includeAnonymous) as MetricsResponse;
+  return hook as AdminAppInternalsHooks[K];
+}
+
+export function useMetricsOrThrow(
+  adminApp: object,
+  includeAnonymous: boolean,
+  filters?: AnalyticsOverviewFilters,
+): MetricsResponse {
+  return getInternalsHookOrThrow(adminApp, "useMetrics")(includeAnonymous, filters);
 }
 
 /**
@@ -56,29 +89,9 @@ export function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean): 
  * metrics endpoints use.
  */
 export function useUserActivityOrThrow(adminApp: object, userId: string): UserActivityResponse {
-  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
-  if (typeof internals !== "object" || internals == null || !("useUserActivity" in internals)) {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useUserActivity");
-  }
-
-  const useUserActivity = internals.useUserActivity;
-  if (typeof useUserActivity !== "function") {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: useUserActivity is not callable");
-  }
-
-  return useUserActivity(userId) as UserActivityResponse;
+  return getInternalsHookOrThrow(adminApp, "useUserActivity")(userId);
 }
 
 export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
-  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
-  if (typeof internals !== "object" || internals == null || !("useMetricsUserCounts" in internals)) {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
-  }
-
-  const useMetricsUserCounts = internals.useMetricsUserCounts;
-  if (typeof useMetricsUserCounts !== "function") {
-    throw new HexclaveAssertionError("Admin app internals are unavailable: useMetricsUserCounts is not callable");
-  }
-
-  return useMetricsUserCounts() as MetricsUserCounts;
+  return getInternalsHookOrThrow(adminApp, "useMetricsUserCounts")();
 }

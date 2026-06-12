@@ -53,7 +53,6 @@ import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { captureError, HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -115,7 +114,6 @@ function UserHeader({ user }: UserHeaderProps) {
   const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const hexclaveAdminApp = useAdminApp();
-  const router = useRouter();
 
   return (
     <div className="flex min-w-0 gap-4 items-center">
@@ -136,12 +134,6 @@ function UserHeader({ user }: UserHeaderProps) {
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={() => router.push(`${urlString`/projects/${hexclaveAdminApp.projectId}/conversations`}?userId=${encodeURIComponent(user.id)}`)}
-        >
-          Support
-        </Button>
         <DesignMenu
           variant="actions"
           trigger="icon"

@@ -1,8 +1,8 @@
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir, parseHexclaveConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
-import { getRelativeImportSpecifiers, hexclaveConfigFileExportsConfig, tryParseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { createJiti } from "jiti";
@@ -67,7 +67,18 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
     };
   }
 
-  const configModule = await jiti.import<unknown>(configFilePath);
+  let configModule: unknown;
+  try {
+    configModule = await jiti.import<unknown>(configFilePath);
+  } catch (error) {
+    // Capture the raw jiti/framework error for diagnostics, but don't attach it as `cause` on the thrown error:
+    // dashboard error formatting renders causes recursively, which would leak framework internals into the
+    // user-facing message we're deliberately replacing.
+    captureError("local-config-updater/readConfigFile", error);
+    throw new Error(
+      `Failed to load config file ${configFilePath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead, which doesn't load the framework runtime:\n\n  import { defineHexclaveConfig } from "@hexclave/next/config";\n`,
+    );
+  }
   if (!isConfigModule(configModule)) {
     throw new Error(`Invalid config in ${configFilePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }
@@ -121,7 +132,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   // Fast path: if the config is a plain static literal (no imports, no helpers),
   // apply the update deterministically without invoking the AI agent.
-  const staticConfig = tryParseHexclaveConfigFileContent(content, configFilePath);
+  const staticConfig = tryParseStaticConfigFileContent(content, configFilePath);
   if (staticConfig != null && isValidConfig(staticConfig)) {
     const merged = override(staticConfig, configUpdate);
     if (!isValidConfig(merged)) {
@@ -288,9 +299,44 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   }
 
   const content = readFileSync(configFilePath, "utf-8");
-  if (!hexclaveConfigFileExportsConfig(content, configFilePath)) {
+  if (!configFileExportsConfig(content, configFilePath)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
   }
+}
+
+function tryParseStaticConfigFileContent(content: string, configFilePath: string): Config | null {
+  try {
+    const parsed = parseHexclaveConfigFileContent(content, configFilePath);
+    return isValidConfig(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function configFileExportsConfig(content: string, configFilePath: string): boolean {
+  try {
+    parseHexclaveConfigFileContent(content, configFilePath);
+    return true;
+  } catch {
+    // Dynamic configs can be valid even when the static parser cannot evaluate
+    // them. For the structural fallback we only need to know that a runtime
+    // config binding still exists after the agent edited the file.
+    return /\bexport\s+const\s+config\b/.test(content);
+  }
+}
+
+function getRelativeImportSpecifiers(content: string): string[] {
+  const specifiers: string[] = [];
+  const importPattern = /\bimport\b(?:[^'"]*?\bfrom\s*)?["'](\.{1,2}\/[^"']+)["']/g;
+  let match: RegExpExecArray | null;
+  while ((match = importPattern.exec(content)) !== null) {
+    const specifier = match[1];
+    if (specifier == null) {
+      throw new Error("Import specifier regex matched without a capture group.");
+    }
+    specifiers.push(specifier);
+  }
+  return specifiers;
 }
 
 function snapshotsChangedOnDisk(snapshots: ConfigFileSnapshot[]): boolean {

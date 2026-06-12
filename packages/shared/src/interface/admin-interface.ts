@@ -361,11 +361,29 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async getMetrics(includeAnonymous: boolean = false): Promise<MetricsResponse> {
+  async getMetrics(
+    includeAnonymous: boolean = false,
+    filters?: {
+      country_code?: string,
+      referrer?: string,
+      browser?: string,
+      os?: string,
+      device?: string,
+      since?: string,
+      until?: string,
+    },
+  ): Promise<MetricsResponse> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
       params.append('include_anonymous', 'true');
     }
+    if (filters?.country_code) params.append('filter_country_code', filters.country_code);
+    if (filters?.referrer) params.append('filter_referrer', filters.referrer);
+    if (filters?.browser) params.append('filter_browser', filters.browser);
+    if (filters?.os) params.append('filter_os', filters.os);
+    if (filters?.device) params.append('filter_device', filters.device);
+    if (filters?.since) params.append('filter_since', filters.since);
+    if (filters?.until) params.append('filter_until', filters.until);
     const queryString = params.toString();
     const response = await this.sendAdminRequest(
       `/internal/metrics${queryString ? `?${queryString}` : ''}`,
@@ -374,7 +392,36 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       },
       null,
     );
-    return (await response.json()) as MetricsResponse;
+    const body = (await response.json()) as MetricsResponse;
+    // The yup schema's .optional().default(...) fallbacks only run during
+    // backend response validation, not on this client-side cast — apply them
+    // here too so the one-release-cycle tolerance for older servers that the
+    // schema comments promise actually holds for dashboard consumers. The
+    // Partial views widen the static type (which claims these are always
+    // defined) to match what an older server can actually send.
+    const rawBody: Partial<MetricsResponse> = body;
+    const rawAnalytics: Partial<MetricsResponse["analytics_overview"]> = body.analytics_overview;
+    return {
+      ...body,
+      live_users: rawBody.live_users ?? 0,
+      hourly_users: rawBody.hourly_users ?? [],
+      hourly_active_users: rawBody.hourly_active_users ?? [],
+      analytics_overview: {
+        ...body.analytics_overview,
+        hourly_page_views: rawAnalytics.hourly_page_views ?? [],
+        hourly_active_users: rawAnalytics.hourly_active_users ?? [],
+        hourly_visitors: rawAnalytics.hourly_visitors ?? [],
+        daily_anonymous_visitors_fallback: rawAnalytics.daily_anonymous_visitors_fallback ?? [],
+        anonymous_visitors_fallback: rawAnalytics.anonymous_visitors_fallback ?? 0,
+        top_regions: rawAnalytics.top_regions ?? [],
+        bounce_rate: rawAnalytics.bounce_rate ?? 0,
+        daily_bounce_rate: rawAnalytics.daily_bounce_rate ?? [],
+        daily_avg_session_seconds: rawAnalytics.daily_avg_session_seconds ?? [],
+        top_browsers: rawAnalytics.top_browsers ?? [],
+        top_operating_systems: rawAnalytics.top_operating_systems ?? [],
+        top_devices: rawAnalytics.top_devices ?? [],
+      },
+    };
   }
 
   async getUserActivity(userId: string): Promise<UserActivityResponse> {

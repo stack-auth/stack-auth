@@ -1,5 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type MockAgentOptions = { prompt: string, cwd: string, onFileWillChange?: (filePath: string) => void | Promise<void> };
@@ -30,18 +31,21 @@ vi.mock("@hexclave/local-config-updater/config-agent", async (importOriginal) =>
   };
 });
 
+// Root temp config files next to this test file (inside apps/dashboard) rather
+// than at process.cwd() (the repo root under vitest's workspace runner). This
+// lets jiti resolve workspace packages like `@hexclave/next/config` the same
+// way a real user project would — walking up to apps/dashboard/node_modules.
+const TEST_FILE_DIR = dirname(fileURLToPath(import.meta.url));
+
 let tempDir: string | undefined;
 
-function getTempDir(): string {
-  if (tempDir == null) {
-    tempDir = mkdtempSync(join(process.cwd(), ".stack-rde-config-test-"));
-    writeFileSync(join(tempDir, "package.json"), JSON.stringify({ name: "stack-rde-config-test" }), "utf-8");
-  }
+function createTempDir(): string {
+  tempDir ??= mkdtempSync(join(TEST_FILE_DIR, ".stack-rde-config-test-"));
   return tempDir;
 }
 
 function writeTempFile(name: string, content: string): string {
-  const filePath = join(getTempDir(), name);
+  const filePath = join(createTempDir(), name);
   writeFileSync(filePath, content, "utf-8");
   return filePath;
 }
@@ -191,6 +195,24 @@ describe("remote development environment config file", () => {
         "showOnboarding": true,
       }
     `);
+  });
+
+  it("throws a helpful error when the config file imports a module that fails to load", async () => {
+    // Simulate a heavy framework package (e.g. @stackframe/stack) that throws on import
+    const dir = createTempDir();
+    const heavyPackagePath = join(dir, "heavy-package.ts");
+    writeFileSync(heavyPackagePath, `throw new Error("Cannot load this in a Node.js context");`, "utf-8");
+    const configPath = join(dir, "stack.config.ts");
+    writeFileSync(configPath, `
+      import "${heavyPackagePath}";
+      export const config = {};
+    `, "utf-8");
+
+    const { readConfigFile } = await import("./config-file");
+
+    await expect(readConfigFile(configPath)).rejects.toThrow(
+      `Failed to load config file ${configPath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead`
+    );
   });
 
   it("rejects modules without a valid config export", async () => {

@@ -252,6 +252,42 @@ it("should reject public client secret sentinel when publishable keys are requir
   `);
 });
 
+it("should reject an empty code_challenge (PKCE cannot be disabled)", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge: "",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
+it("should reject a non-S256 code_challenge_method", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge_method: "plain",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
+it("should reject a code_challenge that is too short to be a real S256 challenge", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge: "too-short",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
 it("should fail if an invalid redirect URL is provided", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",

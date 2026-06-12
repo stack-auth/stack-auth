@@ -23,7 +23,7 @@ import { getConvexProvidersConfig } from "@hexclave/js/convex-auth.config";  // 
 
 export default {
   providers: getConvexProvidersConfig({
-    projectId: process.env.STACK_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+    projectId: process.env.HEXCLAVE_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID
   }),
 }
 ```

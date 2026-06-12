@@ -8,7 +8,7 @@ import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { createOAuthServer, getProvider } from "@/oauth";
-import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient, isPrismaError } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@hexclave/shared";
@@ -108,14 +108,19 @@ const handler = createSmartRouteHandler({
     const apiUrl = getApiUrlForRequest(fullReq);
     const innerState = query.state ?? (body as any)?.state ?? "";
 
-    const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
-      where: {
-        innerState: innerState,
-      },
-    });
-
-    if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
+    let outerInfoDB;
+    try {
+      outerInfoDB = await globalPrismaClient.oAuthOuterInfo.delete({
+        where: {
+          innerState: innerState,
+        },
+      });
+    } catch (e) {
+      if (isPrismaError(e, "DEPENDENT_RECORD_NOT_FOUND")) {
+        // No matching outer info (never existed, expired-and-swept, or already consumed by a concurrent/replayed callback).
+        throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
+      }
+      throw e;
     }
 
     let outerInfo: Awaited<ReturnType<typeof oauthCookieSchema.validate>>;

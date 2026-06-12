@@ -303,11 +303,15 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw new KnownErrors.RedirectUrlNotWhitelisted(code.redirectUri);
     }
 
+    if (!code.codeChallenge || code.codeChallengeMethod !== "S256") {
+      throw new HexclaveAssertionError("Refusing to persist an OAuth authorization code without a valid S256 PKCE challenge; this should have been rejected at the authorize endpoint.", { hasChallenge: !!code.codeChallenge, codeChallengeMethod: code.codeChallengeMethod });
+    }
+
     await globalPrismaClient.projectUserAuthorizationCode.create({
       data: {
         authorizationCode: code.authorizationCode,
-        codeChallenge: code.codeChallenge || "",
-        codeChallengeMethod: code.codeChallengeMethod || "",
+        codeChallenge: code.codeChallenge,
+        codeChallengeMethod: code.codeChallengeMethod,
         redirectUri: code.redirectUri,
         expiresAt: code.expiresAt,
         projectUserId: user.id,

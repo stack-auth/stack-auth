@@ -100,8 +100,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   private readonly _svixTokenCache = createCache(async () => {
     return await this._interface.getSvixToken();
   });
-  private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
-    return await this._interface.getMetrics(includeAnonymous);
+  // Cache key serializes filters via URLSearchParams (sorted keys) so
+  // DependenciesMap (identity-keyed per array slot) treats two equal
+  // filter objects as the same deterministic string entry.
+  private readonly _metricsCache = createCache(async ([includeAnonymous, filtersKey]: [boolean, string]) => {
+    const filters = filtersKey ? Object.fromEntries(new URLSearchParams(filtersKey)) : undefined;
+    return await this._interface.getMetrics(includeAnonymous, filters);
   });
   private readonly _userActivityCache = createCache(async ([userId]: [string]) => {
     return await this._interface.getUserActivity(userId);
@@ -568,8 +572,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   protected override async _refreshUsers() {
     await Promise.all([
       super._refreshUsers(),
-      this._metricsCache.refresh([false]),
-      this._metricsCache.refresh([true]),
+      this._metricsCache.refreshWhere(() => true),
       this._metricsUserCountsCache.refresh([]),
     ]);
   }
@@ -578,8 +581,20 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return {
       ...super[hexclaveAppInternalsSymbol],
       // IF_PLATFORM react-like
-      useMetrics: (includeAnonymous: boolean = false): MetricsResponse => {
-        return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()") as MetricsResponse;
+      useMetrics: (
+        includeAnonymous: boolean = false,
+        filters?: { country_code?: string, referrer?: string, browser?: string, os?: string, device?: string, since?: string, until?: string },
+      ): MetricsResponse => {
+        const filtersKey = (() => {
+          if (filters == null) return "";
+          const params = new URLSearchParams();
+          for (const key of ["browser", "country_code", "device", "os", "referrer", "since", "until"] as const) {
+            const v = filters[key];
+            if (v != null) params.set(key, v);
+          }
+          return params.toString();
+        })();
+        return useAsyncCache(this._metricsCache, [includeAnonymous, filtersKey] as const, "adminApp.useMetrics()") as MetricsResponse;
       },
       useUserActivity: (userId: string): UserActivityResponse => {
         return useAsyncCache(this._userActivityCache, [userId] as const, "adminApp.useUserActivity()") as UserActivityResponse;

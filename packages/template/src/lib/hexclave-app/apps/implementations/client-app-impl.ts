@@ -718,8 +718,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     if (isBrowserLike()) {
+      // The OAuth callback resolution scheduled above synchronously strips `code` and `state`
+      // from the URL before its token exchange, so the nested handler must decide based on the
+      // URL the page was loaded with, not whatever is in the address bar when it runs.
+      const urlAtConstructionTime = new URL(window.location.href);
       this._trackPendingAuthResolution(async () => {
-        await this._maybeHandleNestedCrossDomainAuth();
+        await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
     }
 
@@ -890,11 +894,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return targetUrl.toString();
   }
 
-  protected async _maybeHandleNestedCrossDomainAuth(): Promise<boolean> {
+  protected async _maybeHandleNestedCrossDomainAuth(urlAtConstructionTime?: URL): Promise<boolean> {
     if (typeof window === "undefined") return false;
     const currentUrl = new URL(window.location.href);
     // A real OAuth callback wins over nested handoff detection on the final return to b.com.
+    // The OAuth callback resolution strips `code` and `state` from the live URL before this
+    // runs, so the check must also consult the URL captured at construction time — otherwise
+    // we'd re-bounce to the source domain while the token exchange is still in flight.
     if (currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")) return false;
+    if (urlAtConstructionTime != null && urlAtConstructionTime.searchParams.has("code") && urlAtConstructionTime.searchParams.has("state")) return false;
     const refreshTokenId = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.refreshTokenId);
     if (refreshTokenId == null) return false;
 
@@ -1547,10 +1555,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
 
-    // Pre-fetch the current user for the new session so the cache is already
-    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
-    const newSession = this._getSessionFromTokenStore(tokenStore);
-    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
+    // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
+    // access token for the same access-only session), push the new token into it in place; constructing a new
+    // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
+    const session = this._getSessionFromTokenStore(tokenStore);
+    session.updateAccessToken(tokens);
+
+    // Pre-fetch the current user so the cache is warm when useUser() re-renders (write-only, so it never suspends).
+    runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {

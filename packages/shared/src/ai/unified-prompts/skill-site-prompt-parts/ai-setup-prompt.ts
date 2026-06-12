@@ -275,7 +275,7 @@ export const cliSetupPrompt = deindent`
     </Step>
 
     <Step title="Prompt the user to log in">
-      Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token.
+      Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token. The project ID is enough for most projects; only pass \`publishable_client_key\` if the project has \`requirePublishableClientKey\` enabled.
 
       \`\`\`py main.py
       from hexclave_cli_template import prompt_cli_login
@@ -283,7 +283,6 @@ export const cliSetupPrompt = deindent`
       refresh_token = prompt_cli_login(
         app_url="https://your-app-url.example.com",
         project_id="your-project-id-here",
-        publishable_client_key="your-publishable-client-key-here",
       )
 
       if refresh_token is None:
@@ -442,10 +441,12 @@ function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
             If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "@hexclave/js";
+            import type { HexclaveConfig } from "@hexclave/js/config";
 
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
+
+            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`@hexclave/js/config\` path (never from \`@hexclave/js\` directly, which would pull in the whole SDK and fail to load).
 
             Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
 
@@ -662,6 +663,10 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             },
           });
           \`\`\`
+
+          <Note>
+            The SDK auto-captures page-view and click analytics. To turn this off (and silence the \`ANALYTICS_NOT_ENABLED\` console warning that appears until you enable the Analytics app in your dashboard), pass \`analytics: { enabled: false }\`.
+          </Note>
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -719,11 +724,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "${packageName}";
+            import type { HexclaveConfig } from "${packageName}/config";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
+
+            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`${packageName}/config\` path (never from \`${packageName}\` directly, which would pull in the whole SDK and fail to load).
 
             To run your application with Hexclave, you can then start the dev environment and set environment variables expected by your application. Hexclave's CLI has a \`dev\` command does both of these, so let's install it as a dev dependency and wrap your existing \`dev\` script in your package.json:
 

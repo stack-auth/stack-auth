@@ -13,7 +13,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.0.12",
   "repository": "https://github.com/hexclave/hexclave",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -26,6 +26,15 @@
       },
       "require": {
         "default": "./dist/index.js"
+      }
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": {
+        "default": "./dist/esm/config.js"
+      },
+      "require": {
+        "default": "./dist/config.js"
       }
     },
     "//": "IF_PLATFORM tanstack-start",

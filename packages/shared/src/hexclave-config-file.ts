@@ -28,7 +28,13 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
     throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
   }
   const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
-  const importLine = `import type { HexclaveConfig } from "${pkg}";`;
+  // Import the `HexclaveConfig` type from the package's lightweight `/config`
+  // entrypoint, which is free of framework runtime code and therefore safe for
+  // tooling (e.g. the local dashboard) to load in a plain Node context. Only the
+  // Hexclave-branded packages expose this subpath; legacy `@stackframe/*`
+  // releases predate it, so fall back to their package root.
+  const importSpecifier = pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
+  const importLine = `import type { HexclaveConfig } from "${importSpecifier}";`;
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 

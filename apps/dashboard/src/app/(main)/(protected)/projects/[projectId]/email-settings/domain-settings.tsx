@@ -34,7 +34,7 @@ import {
 } from "@phosphor-icons/react";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { ActionDialog, Dialog, DialogContent, DialogTitle, Label, Popover, PopoverContent, PopoverTrigger, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Dialog, DialogContent, DialogTitle, Label, Popover, PopoverContent, PopoverTrigger, SimpleTooltip, Typography, useToast } from "@/components/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import Image from "next/image";
@@ -177,6 +177,8 @@ const PROVIDERS: ProviderMeta[] = [
     icon: HardDrives,
   },
 ];
+
+const REMOTE_DEVELOPMENT_ENVIRONMENT_EMAIL_PROVIDER_TOOLTIP = "These email server options are not supported when running dashboard locally.";
 
 function TestSendingDialog(props: { trigger: React.ReactNode }) {
   const hexclaveAdminApp = useAdminApp();
@@ -960,18 +962,21 @@ export function DomainSettings() {
               const isSelected = serverType === p.value;
               const isSaved = savedServerType === p.value;
               const isDraft = isSelected && !isSaved;
+              const isDisabledInDevelopmentEnvironment = project.isDevelopmentEnvironment && p.value !== "shared";
               const Icon = p.icon;
-              return (
+              const button = (
                 <button
                   key={p.value}
                   type="button"
+                  disabled={isDisabledInDevelopmentEnvironment}
                   onClick={() => handleSelectProvider(p.value)}
                   className={cn(
-                    "relative text-left rounded-xl border p-4 transition-all",
+                    "relative h-full w-full text-left rounded-xl border p-4 transition-all disabled:pointer-events-none",
                     isSaved && "border-green-500/40 bg-green-500/[0.04]",
                     isDraft && "border-amber-500/50 bg-amber-500/[0.04] ring-1 ring-amber-500/20 border-dashed",
                     !isSaved && !isDraft && "border-border/60 hover:border-foreground/20 hover:bg-foreground/[0.02]",
                     isSelected && !isDraft && !isSaved && "border-foreground/40 bg-foreground/[0.03] shadow-sm ring-1 ring-foreground/10",
+                    isDisabledInDevelopmentEnvironment && "cursor-not-allowed opacity-50 hover:border-border/60 hover:bg-transparent",
                   )}
                 >
                   <div className="absolute top-2 right-2 flex items-center gap-1">
@@ -994,6 +999,11 @@ export function DomainSettings() {
                   <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{p.tagline}</div>
                 </button>
               );
+              return isDisabledInDevelopmentEnvironment ? (
+                <SimpleTooltip key={p.value} tooltip={REMOTE_DEVELOPMENT_ENVIRONMENT_EMAIL_PROVIDER_TOOLTIP} inline className="block h-full">
+                  {button}
+                </SimpleTooltip>
+              ) : button;
             })}
           </div>
 

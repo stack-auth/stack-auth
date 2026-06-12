@@ -429,6 +429,71 @@ it("allows team admins to revoke invitations", async ({ expect }) => {
 });
 
 
+it("cannot revoke another team's invitation by passing a team_id the caller controls", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const { userId: attackerId } = await Auth.fastSignUp();
+
+  // Team A: attacker holds $remove_members here.
+  const { teamId: teamA } = await Team.create();
+  await niceBackendFetch(`/api/v1/team-permissions/${teamA}/${attackerId}/$remove_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+
+  // Team B: has a pending invitation. (Created by the same actor only so the test
+  // can read the invitation id; the attack is passing teamA as the team_id.)
+  const { teamId: teamB } = await Team.create();
+  await niceBackendFetch(`/api/v1/team-permissions/${teamB}/${attackerId}/$invite_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  const { sendTeamInvitationResponse } = await Team.sendInvitation("victim-invite@example.com", teamB);
+  const teamBInvitationId = sendTeamInvitationResponse.body.id;
+
+  // Revoke team B's invitation while authorizing against team A. Must fail: the
+  // invitation does not belong to team A, so the delete is not performed.
+  const revokeResponse = await niceBackendFetch(`/api/v1/team-invitations/${teamBInvitationId}?team_id=${teamA}`, {
+    accessType: "client",
+    method: "DELETE",
+  });
+  expect(revokeResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "VERIFICATION_CODE_NOT_FOUND",
+        "error": "The verification code does not exist for this project.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "VERIFICATION_CODE_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  // Team B's invitation must still exist.
+  const listInvitationsResponse = await niceBackendFetch(`/api/v1/team-invitations?team_id=${teamB}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listInvitationsResponse.status).toBe(200);
+  expect(listInvitationsResponse.body.items).toHaveLength(1);
+  expect(listInvitationsResponse.body.items[0].id).toBe(teamBInvitationId);
+
+  // And revoking with the correct team_id still works (no regression).
+  await niceBackendFetch(`/api/v1/team-permissions/${teamB}/${attackerId}/$remove_members`, {
+    accessType: "server",
+    method: "POST",
+    body: {},
+  });
+  const correctRevoke = await niceBackendFetch(`/api/v1/team-invitations/${teamBInvitationId}?team_id=${teamB}`, {
+    accessType: "client",
+    method: "DELETE",
+  });
+  expect(correctRevoke.status).toBe(200);
+});
+
 it("requires $remove_members permission to revoke invitations", async ({ expect }) => {
   const { userId: inviter } = await Auth.fastSignUp();
   const { teamId } = await createAndAddCurrentUserWithoutMemberPermission();
