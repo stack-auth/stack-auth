@@ -1,0 +1,20 @@
+apps/dashboard/src/lib/config-update.tsx
+  s_f1d693d711bbd2::t_6a458a98687019 505-507,510-512
+  s_f1d693d711bbd2::t_562a9ad2418205 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "995d113475e6b101f36c4dbf24d418728cec3f88",
+  "prompts": {},
+  "sessions": {
+    "s_f1d693d711bbd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d03b9a2a-3afd-43e0-9cb6-8404a553b6f9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
