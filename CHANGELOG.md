@@ -2,6 +2,14 @@
 
 ---
 
+## 6/12/26
+
+- Redesigned Payments checkout page with navigation and UI polish.
+- Dashboard light-mode consistency pass and hosted-components account navigation fix.
+- Improved PKCE support and fixed nested cross-domain auth redirect chain.
+- New analytics overview filters on the dashboard.
+- RDE stability fixes, higher SMTP password limit, and smarter local email-server options.
+
 ## 6/5/26
 
 - CLI improvements: local dashboard in remote SSH and Codespaces, auto-update via npx re-exec, and ~154 MB bundle reduction.
