@@ -15,4 +15,5 @@ export default __t.row({
   addedAt: __t.timestamp().name("added_at"),
   stackUserId: __t.string().name("stack_user_id"),
   displayName: __t.string().name("display_name"),
+  expiresAt: __t.option(__t.timestamp()).name("expires_at"),
 });

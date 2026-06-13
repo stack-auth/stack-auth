@@ -7,8 +7,8 @@ import { useRouter } from "@/components/router";
 import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, PaintBrush } from "@phosphor-icons/react";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import React, { useMemo } from "react";
 import { useAdminApp } from "../use-admin-app";
 
@@ -64,9 +64,9 @@ function ThemePreviewFrame({ children, className, active, activeLabel, style }: 
 
 export function ThemeSettings() {
   const router = useRouter();
-  const stackAdminApp = useAdminApp();
-  const config = stackAdminApp.useProject().useConfig();
-  const themes = stackAdminApp.useEmailThemes();
+  const hexclaveAdminApp = useAdminApp();
+  const config = hexclaveAdminApp.useProject().useConfig();
+  const themes = hexclaveAdminApp.useEmailThemes();
   const activeThemeId = config.emails.selectedThemeId;
   const activeTheme = themes.find(t => t.id === activeThemeId) ?? throwErr(`Unknown theme ${activeThemeId}`, { activeThemeId });
 

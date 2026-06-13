@@ -7,8 +7,8 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -252,12 +252,12 @@ function EmptyState({
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const emailConfig = config.emails.server;
   const router = useRouter();
-  const drafts = stackAdminApp.useEmailDrafts();
+  const drafts = hexclaveAdminApp.useEmailDrafts();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
   const [newDraftDialogOpen, setNewDraftDialogOpen] = useState(false);
   const [templateSelectDialogOpen, setTemplateSelectDialogOpen] = useState(false);
@@ -292,7 +292,7 @@ export default function PageClient() {
   };
 
   const handleDeleteDraft = async (draftId: string) => {
-    await stackAdminApp.deleteEmailDraft(draftId);
+    await hexclaveAdminApp.deleteEmailDraft(draftId);
   };
 
   return (
@@ -501,11 +501,11 @@ function NewDraftDialog({
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
   const handleCreateNewDraft = async (values: { name: string }) => {
-    const draft = await stackAdminApp.createEmailDraft({ displayName: values.name });
+    const draft = await hexclaveAdminApp.createEmailDraft({ displayName: values.name });
     router.push(urlString`email-drafts/${draft.id}`);
   };
 
@@ -542,9 +542,9 @@ function TemplateSelectDialog({
   open: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
-  const templates = stackAdminApp.useEmailTemplates();
+  const templates = hexclaveAdminApp.useEmailTemplates();
 
   const [step, setStep] = useState<TemplateDialogStep>("select");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string, displayName: string, tsxSource: string } | null>(null);
@@ -575,8 +575,8 @@ function TemplateSelectDialog({
     if (!selectedTemplate || !draftName.trim()) return;
     setIsCreating(true);
     try {
-      const rewritten = await stackAdminApp.rewriteTemplateSourceWithAI(selectedTemplate.tsxSource);
-      const draft = await stackAdminApp.createEmailDraft({
+      const rewritten = await hexclaveAdminApp.rewriteTemplateSourceWithAI(selectedTemplate.tsxSource);
+      const draft = await hexclaveAdminApp.createEmailDraft({
         displayName: draftName.trim(),
         tsxSource: rewritten.tsxSource,
       });

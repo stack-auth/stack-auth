@@ -1,6 +1,6 @@
 import { getBranchConfigOverrideSource, unlinkBranchConfigOverrideSource } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const GET = createSmartRouteHandler({
   metadata: {

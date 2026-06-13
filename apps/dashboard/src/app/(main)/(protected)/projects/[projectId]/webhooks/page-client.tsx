@@ -5,7 +5,7 @@ import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { DesignAlert, DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { getPublicEnvVar } from '@/lib/env';
-import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema } from "@hexclave/shared/dist/schema-fields";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { ActionCell, ActionDialog, Form, Typography } from "@/components/ui";
 import { useMemo, useState } from "react";
@@ -16,7 +16,7 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useTheme } from "@/lib/theme";
 import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
@@ -25,12 +25,12 @@ import {
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const svixToken = stackAdminApp.useSvixToken();
+  const hexclaveAdminApp = useAdminApp();
+  const svixToken = hexclaveAdminApp.useSvixToken();
   const { resolvedTheme } = useTheme();
   const [updateCounter, setUpdateCounter] = useState(0);
   const [testDialogEndpoint, setTestDialogEndpoint] = useState<Endpoint | null>(null);
@@ -56,7 +56,7 @@ export default function PageClient() {
           <SvixProvider
             key={updateCounter}
             token={svixToken.token}
-            appId={stackAdminApp.projectId}
+            appId={hexclaveAdminApp.projectId}
             options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
           >
             <Endpoints
@@ -280,14 +280,14 @@ function DeleteDialog(props: {
 }
 
 function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenChange: (open: boolean) => void }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const previewPayload = useMemo(() => JSON.stringify({
     type: "stack.test",
     data: {
-      message: "Stack webhook test event triggered from the Stack dashboard.",
+      message: "Hexclave webhook test event triggered from the Hexclave dashboard.",
       endpointUrl: props.endpoint.url,
     },
   }, null, 2), [props.endpoint.url]);
@@ -301,7 +301,7 @@ function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenCh
     setStatus('sending');
     setErrorMessage(null);
 
-    const result = await stackAdminApp.sendTestWebhook({ endpointId: props.endpoint.id });
+    const result = await hexclaveAdminApp.sendTestWebhook({ endpointId: props.endpoint.id });
     if (result.status === 'ok') {
       setStatus('success');
       return;

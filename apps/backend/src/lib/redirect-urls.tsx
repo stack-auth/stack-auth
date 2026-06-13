@@ -1,5 +1,5 @@
-import { getEnvVariable, getProcessEnv } from "@stackframe/stack-shared/dist/utils/env";
-import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@stackframe/stack-shared/dist/utils/redirect-urls";
+import { getEnvVariable, getProcessEnv } from "@hexclave/shared/dist/utils/env";
+import { getHostedHandlerTrustedDomain as getHostedHandlerTrustedDomainFromConfig, isAcceptedNativeAppUrl, validateRedirectUrl as validateRedirectUrlAgainstTrustedDomains } from "@hexclave/shared/dist/utils/redirect-urls";
 import { Tenancy } from "./tenancies";
 
 export { isAcceptedNativeAppUrl };
@@ -9,7 +9,7 @@ export function getHostedHandlerTrustedDomain(projectId: string): string {
     projectId,
     hostedHandlerDomainSuffix: getProcessEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX"),
     hostedHandlerUrlTemplate: getProcessEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE"),
-    stackPortPrefix: getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81"),
+    hexclavePortPrefix: getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81"),
   });
 }
 

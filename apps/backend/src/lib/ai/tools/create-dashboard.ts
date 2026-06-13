@@ -10,7 +10,7 @@ import { z } from "zod";
  */
 export function updateDashboardTool(auth: SmartRequestAuth | null) {
   return tool({
-    description: "Replace the entire dashboard source. Use ONLY for initial creation or large structural rewrites that touch most of the file. For any change smaller than ~30% of the file, use patchDashboard instead. The source must define a React functional component named 'Dashboard' (no props). Runs in a sandboxed iframe with React, Recharts, DashboardUI, and stackServerApp as globals. No imports, exports, or require statements.",
+    description: "Replace the entire dashboard source. Use ONLY for initial creation or large structural rewrites that touch most of the file. For any change smaller than ~30% of the file, use patchDashboard instead. The source must define a React functional component named 'Dashboard' (no props). Runs in a sandboxed iframe with React, Recharts, DashboardUI, and hexclaveServerApp as globals. No imports, exports, or require statements.",
     inputSchema: z.object({
       content: z.string().describe("The complete updated JSX source code for the Dashboard component"),
     }),

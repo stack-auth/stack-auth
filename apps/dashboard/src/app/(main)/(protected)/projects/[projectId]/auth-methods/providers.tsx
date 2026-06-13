@@ -9,17 +9,18 @@ import {
   DesignCardTint,
   DesignInput,
   DesignPillToggle,
-} from "@stackframe/dashboard-ui-components";
-import { getPublicEnvVar } from '@/lib/env';
+} from "@hexclave/dashboard-ui-components";
 import { ArrowRightIcon, InfoIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { AdminProject } from "@stackframe/stack";
-import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { AdminProject } from "@hexclave/next";
+import { yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useState, type ReactNode } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import * as yup from "yup";
+import { useAdminApp } from "../use-admin-app";
+import { resolveProviderCallbackUrl } from "./oauth-callback-url";
 
 export function ProviderIcon(props: { id: string, size?: "sm" | "md" | "lg" }) {
   const size = props.size ?? "md";
@@ -80,9 +81,6 @@ export const providerFormSchema = yupObject({
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
-/** Modal chrome — "Floating soft" (variant G). */
-const PROVIDER_DIALOG_CHROME_CLASS = "border-0 rounded-3xl bg-background shadow-2xl shadow-black/30 dark:shadow-black/60";
-
 function ProviderHeader({ providerId }: { providerId: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -139,11 +137,13 @@ function PillToggleControl({
 }
 
 function RedirectInline({ providerId }: { providerId: string }) {
+  const config = useAdminApp().useProject().useConfig();
+  const redirectUrl = resolveProviderCallbackUrl(providerId, config.auth.oauth.providers[providerId]);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
       <Typography type="footnote" className="break-all">
-        <InlineCode>{`${getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? ''}${urlString`/api/v1/auth/oauth/callback/${providerId}`}`}</InlineCode>
+        <InlineCode>{redirectUrl}</InlineCode>
       </Typography>
     </div>
   );
@@ -329,7 +329,6 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       title={`${toTitle(props.id)} OAuth provider`}
       cancelButton
       okButton={{ label: 'Save' }}
-      contentClassName={PROVIDER_DIALOG_CHROME_CLASS}
       render={(form) => (
         <OAuthProviderSettingsForm
           form={form}

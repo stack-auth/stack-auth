@@ -1,21 +1,37 @@
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState, useRef } from "react";
-import type { Identity } from "spacetimedb";
-import { envOrDevDefault } from "../lib/env";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
-export type EnsureEnrolled = (identity: Identity) => Promise<void>;
+export type SpacetimeBrowserSession = {
+  host: string,
+  dbName: string,
+  identity: string,
+  token: string,
+  scopeKey: string,
+};
 
-let cachedConfig: { host: string, dbName: string, tokenKey: string } | null = null;
+export type GetSpacetimeBrowserSession = (options?: { refresh?: boolean }) => Promise<SpacetimeBrowserSession>;
+
+const PLACEHOLDER_ENV_VALUE = "REPLACE_ME";
+
+function requireEnv(value: string | undefined, name: string): string {
+  if (value == null || value === "" || value === PLACEHOLDER_ENV_VALUE) {
+    throw new Error(`${name} is not configured. Set it in apps/internal-tool/.env.development or your local env.`);
+  }
+  return value;
+}
+
+let cachedConfig: { host: string, dbName: string } | null = null;
 function getConfig() {
   if (cachedConfig) return cachedConfig;
-  const host = envOrDevDefault(process.env.NEXT_PUBLIC_SPACETIMEDB_HOST, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
+  const host = requireEnv(process.env.NEXT_PUBLIC_SPACETIMEDB_HOST, "NEXT_PUBLIC_SPACETIMEDB_HOST");
   if (process.env.NODE_ENV !== "development" && !host.startsWith("wss://")) {
     throw new Error("NEXT_PUBLIC_SPACETIMEDB_HOST must use wss:// in production");
   }
-  const dbName = envOrDevDefault(process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
-  cachedConfig = { host, dbName, tokenKey: `spacetimedb_${host}/${dbName}/auth_token` };
+  const dbName = requireEnv(process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME, "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
+  cachedConfig = { host, dbName };
   return cachedConfig;
 }
 
@@ -24,6 +40,51 @@ const RETRY_DELAY_MS = 2000;
 const ENROLL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 type ConnectionState = "connecting" | "connected" | "error";
+
+function formatUnknownError(value: unknown, fallback: string, depth = 0): string {
+  if (value instanceof Error) {
+    return value.message !== "" ? value.message : value.name;
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value == null) return fallback;
+  if (typeof value !== "object") return fallback;
+
+  for (const property of ["message", "error", "reason", "statusText"]) {
+    const propertyValue = Reflect.get(value, property);
+    if (typeof propertyValue === "string" && propertyValue !== "") {
+      return propertyValue;
+    }
+  }
+
+  if (depth < 2) {
+    for (const property of ["error", "cause", "event"]) {
+      const propertyValue: unknown = Reflect.get(value, property);
+      if (propertyValue != null && propertyValue !== value) {
+        const nestedMessage = formatUnknownError(propertyValue, "", depth + 1);
+        if (nestedMessage !== "") {
+          return nestedMessage;
+        }
+      }
+    }
+  }
+
+  try {
+    const serialized = JSON.stringify(value, (_key, nestedValue: unknown) => (
+      typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue
+    ));
+    if (serialized !== "{}") {
+      return serialized;
+    }
+  } catch {
+    // Fall through to the best generic representation below.
+  }
+
+  const stringified = String(value);
+  return stringified !== "[object Object]" ? stringified : fallback;
+}
 
 type TableBinding<Row extends { id: bigint }> = {
   tableName: string,
@@ -35,51 +96,73 @@ type TableBinding<Row extends { id: bigint }> = {
 
 function useTableSubscription<Row extends { id: bigint }>(
   binding: TableBinding<Row>,
-  ensureEnrolled?: EnsureEnrolled,
+  getBrowserSession?: GetSpacetimeBrowserSession,
+  requireBrowserSession = false,
 ) {
   const [rows, setRows] = useState<Row[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const [connectionErrorMessage, setConnectionErrorMessage] = useState<string | null>(null);
   const connRef = useRef<DbConnection | null>(null);
-  const ensureEnrolledRef = useRef(ensureEnrolled);
-  useEffect(() => {
-    ensureEnrolledRef.current = ensureEnrolled;
-  }, [ensureEnrolled]);
 
   useEffect(() => {
+    if (requireBrowserSession && !getBrowserSession) {
+      setRows([]);
+      setConnectionState("connecting");
+      return;
+    }
+
     let cancelled = false;
     let retryCount = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
-    let currentIdentity: Identity | null = null;
+    let lastConnectionErrorMessage: string | null = null;
     const query = `SELECT * FROM ${binding.tableName}`;
 
-    function retry() {
+    function retry(refreshBrowserSession: boolean) {
       if (cancelled) return;
       retryCount++;
       if (retryCount > MAX_RETRIES) {
-        captureError("spacetimedb-connect-max-retries", new Error(`Gave up connecting to ${binding.tableName} after ${MAX_RETRIES} retries`));
+        const message = lastConnectionErrorMessage == null
+          ? `Gave up connecting to ${binding.tableName} after ${MAX_RETRIES} retries`
+          : `Gave up connecting to ${binding.tableName} after ${MAX_RETRIES} retries. Last error: ${lastConnectionErrorMessage}`;
+        captureError("spacetimedb-connect-max-retries", new Error(message));
+        setConnectionErrorMessage(message);
         setConnectionState("error");
         return;
       }
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (!cancelled) {
-          connect();
+          runAsynchronously(() => connect(refreshBrowserSession));
         }
       }, RETRY_DELAY_MS);
     }
 
-    function connect() {
+    async function connect(refreshBrowserSession = false) {
       const config = getConfig();
-      const conn = DbConnection.builder()
-        .withUri(config.host)
-        .withDatabaseName(config.dbName)
-        .withToken(localStorage.getItem(config.tokenKey) || undefined)
-        .onConnect((connInstance: DbConnection, identity: Identity, token: string) => {
+      let browserSession: SpacetimeBrowserSession | null = null;
+      if (getBrowserSession) {
+        try {
+          browserSession = await getBrowserSession({ refresh: refreshBrowserSession });
+        } catch (err) {
+          if (cancelled) return;
+          lastConnectionErrorMessage = formatUnknownError(err, "Failed to get SpacetimeDB browser session");
+          setConnectionErrorMessage(lastConnectionErrorMessage);
+          captureError("spacetimedb-browser-session", err);
+          retry(true);
+          return;
+        }
+      }
+      if (cancelled) return;
+
+      const builder = DbConnection.builder()
+        .withUri(browserSession?.host ?? config.host)
+        .withDatabaseName(browserSession?.dbName ?? config.dbName)
+        .onConnect((connInstance: DbConnection, _identity, _token) => {
           if (cancelled) return;
           retryCount = 0;
-          localStorage.setItem(config.tokenKey, token);
           connRef.current = connInstance;
+          setConnectionErrorMessage(null);
 
           const startSubscription = () => {
             if (cancelled) return;
@@ -96,36 +179,30 @@ function useTableSubscription<Row extends { id: bigint }>(
               })
               .onError((ctx: ErrorContext) => {
                 if (cancelled) return;
+                const message = formatUnknownError(ctx, "SpacetimeDB subscription error");
+                lastConnectionErrorMessage = message;
                 captureError("spacetimedb-subscription", ctx);
+                setConnectionErrorMessage(message);
                 setConnectionState("error");
               })
               .subscribe(query);
           };
 
-          const enrollFn = ensureEnrolledRef.current;
-          if (enrollFn) {
-            currentIdentity = identity;
-            enrollFn(identity).then(
-              () => startSubscription(),
-              (err) => {
-                captureError("spacetimedb-enroll", err);
-                setConnectionState("error");
-              },
-            );
+          if (getBrowserSession) {
             if (refreshTimer == null) {
               refreshTimer = setInterval(() => {
                 if (cancelled) return;
-                const fn = ensureEnrolledRef.current;
-                const id = currentIdentity;
-                if (!fn || !id) return;
-                fn(id).catch((err) => {
-                  captureError("spacetimedb-enroll-refresh", err);
+                runAsynchronously(async () => {
+                  await getBrowserSession();
+                }, {
+                  onError: (err) => {
+                    captureError("spacetimedb-browser-session-refresh", err);
+                  },
                 });
               }, ENROLL_REFRESH_INTERVAL_MS);
             }
-          } else {
-            startSubscription();
           }
+          startSubscription();
 
           binding.onInsert(connInstance, (row) => {
             if (cancelled) return;
@@ -158,19 +235,21 @@ function useTableSubscription<Row extends { id: bigint }>(
         })
         .onConnectError((_ctx: unknown, err: unknown) => {
           if (cancelled) return;
-          const message = err instanceof Error ? err.message : "";
-          const looksLikeAuthFailure = /unauthor|verify token|401/i.test(message);
-          if (looksLikeAuthFailure) {
-            localStorage.removeItem(config.tokenKey);
-          }
-          retry();
-        })
-        .build();
+          const message = formatUnknownError(err, "SpacetimeDB connection error");
+          lastConnectionErrorMessage = message;
+          setConnectionErrorMessage(message);
+          captureError("spacetimedb-connect", err);
+          retry(true);
+        });
+      if (browserSession) {
+        builder.withToken(browserSession.token);
+      }
+      const conn = builder.build();
 
       connRef.current = conn;
     }
 
-    connect();
+    runAsynchronously(() => connect());
 
     return () => {
       cancelled = true;
@@ -182,15 +261,14 @@ function useTableSubscription<Row extends { id: bigint }>(
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
-      currentIdentity = null;
       if (connRef.current) {
         connRef.current.disconnect();
         connRef.current = null;
       }
     };
-  }, [binding]);
+  }, [binding, getBrowserSession, requireBrowserSession]);
 
-  return { rows, connectionState };
+  return { rows, connectionState, connectionErrorMessage };
 }
 
 const mcpBinding: TableBinding<McpCallLogRow> = {
@@ -246,12 +324,12 @@ const qaEntriesBinding: TableBinding<QaEntriesRow> = {
   },
 };
 
-export function useMcpCallLogs(ensureEnrolled?: EnsureEnrolled) {
-  return useTableSubscription(mcpBinding, ensureEnrolled);
+export function useMcpCallLogs(getBrowserSession?: GetSpacetimeBrowserSession) {
+  return useTableSubscription(mcpBinding, getBrowserSession, true);
 }
 
-export function useAiQueryLogs(ensureEnrolled?: EnsureEnrolled) {
-  return useTableSubscription(aiQueryBinding, ensureEnrolled);
+export function useAiQueryLogs(getBrowserSession?: GetSpacetimeBrowserSession) {
+  return useTableSubscription(aiQueryBinding, getBrowserSession, true);
 }
 
 /**
@@ -269,6 +347,6 @@ export function usePublishedQa() {
  * here is a Q&A pair, either tied to a real MCP call (sourceMcpCorrelationId
  * non-null) or a manual entry (null).
  */
-export function useQaEntries(ensureEnrolled?: EnsureEnrolled) {
-  return useTableSubscription(qaEntriesBinding, ensureEnrolled);
+export function useQaEntries(getBrowserSession?: GetSpacetimeBrowserSession) {
+  return useTableSubscription(qaEntriesBinding, getBrowserSession, true);
 }

@@ -9,10 +9,10 @@ import {
 } from "@/components/design-components";
 import { Avatar, AvatarFallback, AvatarImage, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { WarningCircleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { ServerTeam, ServerUser } from "@stackframe/stack";
-import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { ServerTeam, ServerUser } from "@hexclave/next";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useState } from "react";
 import {
   Area,
@@ -258,7 +258,7 @@ function densifyDau(dau: DauRow[], range: { startUtc: Date, endUtcInclusive: Dat
 }
 
 export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const members = team.useUsers();
   const memberIds = useMemo(() => members.map((m) => m.id), [members]);
   const memberIdsKey = useMemo(() => memberIds.join(","), [memberIds]);
@@ -302,7 +302,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     };
 
     const runQuery = (query: string, params: Record<string, unknown>) =>
-      stackAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
+      hexclaveAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     const emptySummary: SummaryRow = {
       total_events: 0,
@@ -368,7 +368,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
       token.cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dependency on serialized member IDs, not referential equality
-  }, [stackAdminApp, team.id, memberIdsKey]);
+  }, [hexclaveAdminApp, team.id, memberIdsKey]);
 
   return (
     <div className="flex flex-col gap-4">

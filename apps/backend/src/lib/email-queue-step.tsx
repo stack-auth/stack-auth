@@ -4,18 +4,18 @@ import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/em
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
-import { getStackServerApp } from "@/stack";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
+import { getHexclaveServerApp } from "@/hexclave";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { withTraceSpan } from "@/utils/telemetry";
-import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, errorToNiceString, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { groupBy } from "@hexclave/shared/dist/utils/arrays";
+import { getEnvBoolean, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, errorToNiceString, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Json } from "@hexclave/shared/dist/utils/json";
+import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "node:crypto";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
@@ -695,7 +695,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
     }
 
     if (context.billingTeamId != null && row.sendRetries === 0 && arePlanLimitsEnforced()) {
-      const app = getStackServerApp();
+      const app = getHexclaveServerApp();
       const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
       const isDebited = await emailItem.tryDecreaseQuantity(1);
       if (!isDebited) {

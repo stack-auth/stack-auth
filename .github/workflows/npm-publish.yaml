@@ -36,12 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Clean
-        run: pnpm run clean
-
-      - name: Install dependencies (after clean)
-        run: pnpm install --frozen-lockfile
-
       - name: Build packages
         run: pnpm build:packages
 
@@ -68,7 +62,7 @@ jobs:
           CHANGESET_FILE=".changeset/update-package-versions-${GITHUB_RUN_ID}.md"
           cat > "$CHANGESET_FILE" <<'EOF'
           ---
-          "@stackframe/stack": patch
+          "@hexclave/next": patch
           ---
 
           Update package versions.

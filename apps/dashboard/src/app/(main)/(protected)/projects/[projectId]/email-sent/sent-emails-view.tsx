@@ -5,14 +5,14 @@ import { DesignCard } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
-import { AdminEmailOutbox } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailOutbox } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
@@ -74,7 +74,7 @@ type SentEmailsViewProps = {
 };
 
 export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const projectId = useProjectId();
   const router = useRouter();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
@@ -89,12 +89,12 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   const refreshEmails = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await stackAdminApp.listOutboxEmails();
+      const result = await hexclaveAdminApp.listOutboxEmails();
       setEmails(result.items);
     } finally {
       setLoading(false);
     }
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   useEffect(() => {
     let cancelled = false;

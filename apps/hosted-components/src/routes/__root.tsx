@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
-import { StackClientApp, StackProvider, StackTheme } from '@stackframe/react';
+import { HexclaveClientApp, HexclaveProvider, HexclaveTheme } from '@hexclave/react';
+import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { validateRedirectUrl } from '@hexclave/shared/dist/utils/redirect-urls';
+import { isRelative } from '@hexclave/shared/dist/utils/urls';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import {
   HeadContent,
   Outlet,
@@ -8,7 +13,7 @@ import {
   useNavigate
 } from '@tanstack/react-router';
 import type { ErrorInfo, ReactNode } from 'react';
-import { Component, useEffect, useMemo, useState } from 'react';
+import { Component, useMemo, useSyncExternalStore } from 'react';
 
 
 export function getProjectId(): string | null {
@@ -23,12 +28,82 @@ export function getProjectId(): string | null {
   return null;
 }
 
+function getProjectIdSnapshot(): string | null | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return getProjectId();
+}
+
+function subscribeToProjectIdSnapshot(onStoreChange: () => void) {
+  const timeoutId = window.setTimeout(onStoreChange, 0);
+  return () => window.clearTimeout(timeoutId);
+}
+
+function useProjectIdFromHostname(): string | null | undefined {
+  return useSyncExternalStore(
+    subscribeToProjectIdSnapshot,
+    getProjectIdSnapshot,
+    () => undefined,
+  );
+}
+
+function getApiBaseUrlFromEnv(): string | undefined {
+  return import.meta.env.VITE_HEXCLAVE_API_URL ?? import.meta.env.VITE_STACK_API_URL ?? undefined;
+}
+
+function isTrustedNavigationTarget(to: string): boolean {
+  return isRelative(to) || validateRedirectUrl(to, { trustedDomains: [window.location.origin] });
+}
+
+function useHostedComponentsNavigate() {
+  const navigate = useNavigate();
+
+  return useMemo(() => (to: string) => {
+    runAsynchronously(async () => {
+      if (to.startsWith("#")) {
+        await navigate({ hash: to.slice(1) });
+      } else {
+        if (!isTrustedNavigationTarget(to)) {
+          throw new Error("Refusing to navigate to an untrusted URL");
+        }
+        await navigate({ href: to });
+      }
+    });
+  }, [navigate]);
+}
+
 function FullPageError({ title, message }: { title: string, message: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
       <div style={{ textAlign: 'center', maxWidth: 480, padding: 24 }}>
         <h1 style={{ fontSize: 24, marginBottom: 8 }}>{title}</h1>
         <p style={{ color: '#666' }}>{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function FullPageLoadingSkeleton() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 24 }}>
+      <div
+        aria-label="Loading"
+        aria-busy="true"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 16,
+          width: '100%',
+          maxWidth: 380,
+        }}
+      >
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f0f0' }} />
+        <div style={{ width: '60%', height: 20, borderRadius: 999, background: '#f0f0f0' }} />
+        <div style={{ width: '82%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
+        <div style={{ width: '70%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
       </div>
     </div>
   );
@@ -86,20 +161,17 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const [projectId, setProjectId] = useState<string | null | undefined>("internal");
-
-  useEffect(() => {
-    setProjectId(getProjectId());
-  }, []);
+  const projectId = useProjectIdFromHostname();
 
   const isValidProjectId = projectId ? (projectId === "internal" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) : false;
 
-  const stackApp = useMemo(() => {
+  const hexclaveApp = useMemo(() => {
     if (!projectId || !isValidProjectId) return null;
-    return new StackClientApp({
+    return new HexclaveClientApp({
       projectId,
+      publishableClientKey: publishableClientKeyNotNecessarySentinel,
       tokenStore: "cookie",
-      baseUrl: import.meta.env.VITE_STACK_API_URL || undefined,
+      baseUrl: getApiBaseUrlFromEnv(),
       urls: {
         handler: "/handler",
         signIn: "/handler/sign-in",
@@ -108,12 +180,12 @@ function RootComponent() {
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",
       },
-      redirectMethod: { useNavigate: useNavigate as any }
+      redirectMethod: { useNavigate: useHostedComponentsNavigate },
     });
-  }, [projectId]);
+  }, [isValidProjectId, projectId]);
 
   if (projectId === undefined) {
-    return <></>;
+    return <FullPageLoadingSkeleton />;
   }
 
   if (!projectId) {
@@ -124,14 +196,15 @@ function RootComponent() {
     return <FullPageError title="Something went wrong" message={`Invalid project ID: ${projectId}. Project IDs must be UUIDs.`} />;
   }
 
+  const app = hexclaveApp ?? throwErr("RootComponent expected a HexclaveClientApp after project ID validation.");
+
   return (
     <ErrorBoundary>
-      <StackProvider app={stackApp!}>
-        <StackTheme>
+      <HexclaveProvider app={app}>
+        <HexclaveTheme>
           <Outlet />
-        </StackTheme>
-      </StackProvider>
+        </HexclaveTheme>
+      </HexclaveProvider>
     </ErrorBoundary>
   );
 }
-

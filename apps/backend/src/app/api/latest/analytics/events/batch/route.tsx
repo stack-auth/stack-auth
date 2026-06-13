@@ -1,13 +1,13 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { getStackServerApp } from "@/stack";
+import { getHexclaveServerApp } from "@/hexclave";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import * as zlib from "node:zlib";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -118,7 +118,7 @@ export const POST = createSmartRouteHandler({
     const refreshTokenId = auth.refreshTokenId;
     const tenancyId = auth.tenancy.id;
 
-    const app = getStackServerApp();
+    const app = getHexclaveServerApp();
 
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {

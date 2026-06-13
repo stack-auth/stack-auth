@@ -1,7 +1,7 @@
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import type { SignUpRule, SignUpRuleAction } from "@hexclave/shared/dist/interface/crud/sign-up-rules";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { CelEvaluationError, evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
 import { logEvent, SystemEventTypes } from "./events";
 import { getBillingTeamId } from "./plan-entitlements";

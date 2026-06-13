@@ -20,7 +20,7 @@ import {
   type DataGridDataSource,
   type DataGridState,
   type DataGridToolbarContext,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import {
   forwardRef,
   useCallback,
@@ -637,7 +637,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
         )}
 
         {!showEmptyError && (
-          <div className={fillHeight ? "flex-1 min-h-0 pr-0 lg:pr-8" : "pr-0 lg:pr-8"}>
+          <div className={fillHeight ? "flex-1 min-h-0" : undefined}>
             <DataGrid<RowData>
               columns={columns}
               rows={gridData.rows}

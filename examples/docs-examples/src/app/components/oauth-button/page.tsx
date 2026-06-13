@@ -1,4 +1,4 @@
-import { OAuthButton } from '@stackframe/stack';
+import { OAuthButton } from '@hexclave/next';
 
 export default function Page() {
   return (

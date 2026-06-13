@@ -1,7 +1,6 @@
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Identity } from "spacetimedb";
 import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
@@ -9,13 +8,21 @@ import { CallLogList } from "../components/CallLogList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
-import { useAiQueryLogs, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
-import { enrollSpacetimeReviewer, makeMcpReviewApi } from "../lib/mcp-review-api";
+import { type GetSpacetimeBrowserSession, type SpacetimeBrowserSession, useAiQueryLogs, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
+import { makeMcpReviewApi, requestSpacetimeBrowserSession } from "../lib/mcp-review-api";
 import type { AiQueryLogRow, McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "usage";
 const TAB_STORAGE_KEY = "internal-tool-active-tab";
 const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "usage"];
+const dashboardUrl = process.env.NEXT_PUBLIC_HEXCLAVE_DASHBOARD_URL ?? process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
+const SPACETIME_BROWSER_SESSION_INDEX_PREFIX = "internal-tool-spacetimedb-browser-session";
+
+type StoredSpacetimeBrowserSession = {
+  identity: string,
+  token: string,
+  scopeKey: string,
+};
 
 function readInitialTab(): Tab {
   // sessionStorage is per-tab: reload preserves the active tab, but a brand-new
@@ -26,6 +33,51 @@ function readInitialTab(): Tab {
     return saved as Tab;
   }
   return "calls";
+}
+
+function tokenIndexKey(stackUserId: string): string {
+  return `${SPACETIME_BROWSER_SESSION_INDEX_PREFIX}:${stackUserId}`;
+}
+
+function readStringProperty(value: unknown, property: string): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const propertyValue = Reflect.get(value, property);
+  return typeof propertyValue === "string" ? propertyValue : undefined;
+}
+
+function readStoredSpacetimeBrowserSession(stackUserId: string): StoredSpacetimeBrowserSession | null {
+  const scopeKey = window.localStorage.getItem(tokenIndexKey(stackUserId));
+  if (scopeKey == null) return null;
+  const raw = window.localStorage.getItem(scopeKey);
+  if (raw == null) return null;
+  const parsed: unknown = JSON.parse(raw);
+  const identity = readStringProperty(parsed, "identity");
+  const token = readStringProperty(parsed, "token");
+  const storedScopeKey = readStringProperty(parsed, "scopeKey");
+  if (identity == null || token == null || storedScopeKey !== scopeKey) {
+    window.localStorage.removeItem(scopeKey);
+    window.localStorage.removeItem(tokenIndexKey(stackUserId));
+    return null;
+  }
+  return { identity, token, scopeKey };
+}
+
+function writeStoredSpacetimeBrowserSession(stackUserId: string, session: SpacetimeBrowserSession): void {
+  window.localStorage.setItem(session.scopeKey, JSON.stringify({
+    identity: session.identity,
+    token: session.token,
+    scopeKey: session.scopeKey,
+  }));
+  window.localStorage.setItem(tokenIndexKey(stackUserId), session.scopeKey);
+  window.localStorage.removeItem(`spacetimedb_${session.host}/${session.dbName}/auth_token`);
+}
+
+function clearStoredSpacetimeBrowserSession(stackUserId: string): void {
+  const scopeKey = window.localStorage.getItem(tokenIndexKey(stackUserId));
+  if (scopeKey != null) {
+    window.localStorage.removeItem(scopeKey);
+  }
+  window.localStorage.removeItem(tokenIndexKey(stackUserId));
 }
 
 export default function App() {
@@ -39,45 +91,80 @@ export default function App() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(TAB_STORAGE_KEY, tab);
   }, [tab]);
-  const ENROLL_REFRESH_MS = 15 * 60 * 1000;
-  const enrolledRef = useRef<Map<string, { promise: Promise<void>, enrolledAt: number }>>(new Map());
-  const ensureEnrolled = useCallback(async (identity: Identity) => {
+  const browserSessionRequestRef = useRef<{ promise: Promise<SpacetimeBrowserSession>, refresh: boolean } | null>(null);
+  const getAuthHeaders = useCallback(async () => {
     if (!user) throw new Error("Not authenticated");
-    const key = identity.toHexString();
-    const existing = enrolledRef.current.get(key);
-    if (existing && Date.now() - existing.enrolledAt < ENROLL_REFRESH_MS) {
-      return await existing.promise;
+    const { accessToken, refreshToken } = await user.getAuthJson();
+    const authHeaders: Record<string, string> = {};
+    if (accessToken) authHeaders["x-hexclave-access-token"] = accessToken;
+    if (refreshToken) authHeaders["x-hexclave-refresh-token"] = refreshToken;
+    return authHeaders;
+  }, [user]);
+  const getSpacetimeBrowserSession = useCallback<GetSpacetimeBrowserSession>(async (options) => {
+    if (!user) throw new Error("Not authenticated");
+    const refresh = options?.refresh ?? false;
+    const existingRequest = browserSessionRequestRef.current;
+    if (existingRequest && (!refresh || existingRequest.refresh)) {
+      return await existingRequest.promise;
     }
-    const startedAt = Date.now();
+
     const promise = (async () => {
-      const { accessToken, refreshToken } = await user.getAuthJson();
-      const authHeaders: Record<string, string> = {};
-      if (accessToken) authHeaders["x-stack-access-token"] = accessToken;
-      if (refreshToken) authHeaders["x-stack-refresh-token"] = refreshToken;
-      try {
-        await enrollSpacetimeReviewer({ identity: key }, authHeaders);
-      } catch (err) {
-        const cached = enrolledRef.current.get(key);
-        if (cached && cached.enrolledAt === startedAt) {
-          enrolledRef.current.delete(key);
-        }
-        throw err;
+      const authHeaders = await getAuthHeaders();
+      if (refresh) {
+        clearStoredSpacetimeBrowserSession(user.id);
       }
+
+      const stored = refresh ? null : readStoredSpacetimeBrowserSession(user.id);
+      if (stored != null) {
+        const cachedSession = await requestSpacetimeBrowserSession({ cachedIdentity: stored.identity }, authHeaders);
+        if (cachedSession.scopeKey === stored.scopeKey) {
+          return {
+            host: cachedSession.host,
+            dbName: cachedSession.dbName,
+            identity: stored.identity,
+            token: stored.token,
+            scopeKey: stored.scopeKey,
+          };
+        }
+        clearStoredSpacetimeBrowserSession(user.id);
+      }
+
+      const minted = await requestSpacetimeBrowserSession({}, authHeaders);
+      if (minted.token == null) {
+        throw new Error("SpacetimeDB browser session API did not return a token for a fresh session");
+      }
+      const session = {
+        host: minted.host,
+        dbName: minted.dbName,
+        identity: minted.identity,
+        token: minted.token,
+        scopeKey: minted.scopeKey,
+      };
+      writeStoredSpacetimeBrowserSession(user.id, session);
+      return session;
     })();
-    enrolledRef.current.set(key, { promise, enrolledAt: startedAt });
-    return await promise;
-  }, [ENROLL_REFRESH_MS, user]);
+
+    const request = { promise, refresh };
+    browserSessionRequestRef.current = request;
+    try {
+      return await promise;
+    } finally {
+      if (browserSessionRequestRef.current === request) {
+        browserSessionRequestRef.current = null;
+      }
+    }
+  }, [getAuthHeaders, user]);
   const isAiChatReviewer = Boolean(
     (user?.clientReadOnlyMetadata as Record<string, unknown> | null)?.isAiChatReviewer,
   );
-  const memoizedEnsureEnrolled = useMemo(
-    () => (user && isAiChatReviewer) ? ensureEnrolled : undefined,
-    [user, isAiChatReviewer, ensureEnrolled],
+  const memoizedGetSpacetimeBrowserSession = useMemo(
+    () => (user && isAiChatReviewer) ? getSpacetimeBrowserSession : undefined,
+    [user, isAiChatReviewer, getSpacetimeBrowserSession],
   );
 
-  const { rows, connectionState } = useMcpCallLogs(memoizedEnsureEnrolled);
-  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(memoizedEnsureEnrolled);
-  const { rows: qaRows } = useQaEntries(memoizedEnsureEnrolled);
+  const { rows, connectionState, connectionErrorMessage } = useMcpCallLogs(memoizedGetSpacetimeBrowserSession);
+  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(memoizedGetSpacetimeBrowserSession);
+  const { rows: qaRows } = useQaEntries(memoizedGetSpacetimeBrowserSession);
 
   if (!user) {
     return (
@@ -86,8 +173,8 @@ export default function App() {
           <h1 className="text-lg font-semibold text-gray-900 mb-2">MCP Review Tool</h1>
           <p className="text-sm text-gray-500 mb-4">
             Sign in to the{" "}
-            <a href={process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL} className="text-blue-600 underline" target="_blank" rel="noreferrer">
-              Stack Dashboard
+            <a href={dashboardUrl} className="text-blue-600 underline" target="_blank" rel="noreferrer">
+              Hexclave Dashboard
             </a>
             {" "}first, then reload this page.
           </p>
@@ -119,14 +206,8 @@ export default function App() {
     ? rows.find(r => r.id === selectedRow.id) ?? selectedRow
     : null;
 
-  const currentUser = user;
-
   async function getApi() {
-    const { accessToken, refreshToken } = await currentUser.getAuthJson();
-    const authHeaders: Record<string, string> = {};
-    if (accessToken) authHeaders["x-stack-access-token"] = accessToken;
-    if (refreshToken) authHeaders["x-stack-refresh-token"] = refreshToken;
-    return makeMcpReviewApi(authHeaders);
+    return makeMcpReviewApi(await getAuthHeaders());
   }
 
   return (
@@ -203,10 +284,11 @@ export default function App() {
         {tab === "calls" && (
           <>
             <main className="flex-1 overflow-y-auto p-6 space-y-6">
-              <Analytics rows={rows} />
+              <Analytics rows={rows} qaEntries={qaRows} />
               <CallLogList
                 rows={rows}
                 connectionState={connectionState}
+                connectionErrorMessage={connectionErrorMessage}
                 onSelect={setSelectedRow}
                 selectedId={selectedRow?.id}
               />

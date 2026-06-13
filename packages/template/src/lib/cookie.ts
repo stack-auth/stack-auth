@@ -1,7 +1,7 @@
-import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
-import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
-import { HexclaveAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import { cookies as rscCookies, headers as rscHeaders } from '@hexclave/sc/force-react-server'; // THIS_LINE_PLATFORM next
+import { isBrowserLike } from '@hexclave/shared/dist/utils/env';
+import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 
@@ -96,19 +96,6 @@ function getTanStackStartServerContext() {
     setCookie,
   };
 }
-
-declare global {
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface ImportMetaEnv {
-    SSR: boolean,
-  }
-
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface ImportMeta {
-    readonly env: ImportMetaEnv,
-  }
-}
-
 // END_PLATFORM
 
 function ensureClient() {
@@ -159,7 +146,7 @@ export async function createCookieHelper(): Promise<CookieHelper> {
       await rscHeaders(),
     );
     // ELSE_IF_PLATFORM tanstack-start
-    if (import.meta.env.SSR) {
+    if (import.meta.env?.SSR) {
       const cookieHelperPromise = tanStackStartCookieHelperPromise
         ?? Promise.resolve(createTanStackStartCookieHelper(getTanStackStartServerContext()));
       tanStackStartCookieHelperPromise = cookieHelperPromise;
@@ -377,7 +364,7 @@ export async function isSecure(): Promise<boolean> {
   // IF_PLATFORM next
   return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
   // ELSE_IF_PLATFORM tanstack-start
-  if (import.meta.env.SSR) {
+  if (import.meta.env?.SSR) {
     return determineSecureFromTanStackStartContext(getTanStackStartServerContext());
   }
   // END_PLATFORM

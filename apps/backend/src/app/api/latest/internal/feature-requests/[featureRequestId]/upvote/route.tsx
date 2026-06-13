@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
-import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 // POST /api/latest/internal/feature-requests/[featureRequestId]/upvote
 export const POST = createSmartRouteHandler({

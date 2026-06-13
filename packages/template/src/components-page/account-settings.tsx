@@ -1,7 +1,7 @@
 'use client';
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Skeleton, Typography } from '@stackframe/stack-ui';
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Skeleton, Typography } from '@hexclave/ui';
 import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus, CreditCard } from 'lucide-react';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp, useUser } from '..';
@@ -77,8 +77,8 @@ export function AccountSettings(props: {
 }) {
   const { t } = useTranslation();
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
-  const stackApp = useStackApp();
-  const projectFromHook = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const projectFromHook = hexclaveApp.useProject();
 
   // Use mock data if provided, otherwise use real data
   const user = props.mockUser ? {

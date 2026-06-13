@@ -2,8 +2,8 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { getPublicEnvVar } from "@/lib/env";
-import { StackAdminApp } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAdminApp } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import {
   ConnectComponentsProvider,

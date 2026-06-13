@@ -2,16 +2,17 @@
 
 import Loading from "@/app/loading";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { useStackApp } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
+import { useStackApp } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "./remote-development-environment-browser-secret-client";
 
 const RDE_ACCESS_TOKEN_MIN_EXPIRATION_MS = 30_000;
 const RDE_ACCESS_TOKEN_MAX_AGE_MS = 60_000;
 const RDE_ACCESS_TOKEN_MIN_REFRESH_MS = 1_000;
 
-type StackAppTokenInternals = {
+type HexclaveAppTokenInternals = {
   signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void>,
 };
 
@@ -22,7 +23,7 @@ type RemoteDevelopmentEnvironmentAccessTokenResponse = {
   userId: string,
 };
 
-function isStackAppTokenInternals(value: unknown): value is StackAppTokenInternals {
+function isHexclaveAppTokenInternals(value: unknown): value is HexclaveAppTokenInternals {
   return (
     value != null &&
     typeof value === "object" &&
@@ -31,13 +32,13 @@ function isStackAppTokenInternals(value: unknown): value is StackAppTokenInterna
   );
 }
 
-function getStackAppTokenInternals(appValue: unknown): StackAppTokenInternals {
+function getHexclaveAppTokenInternals(appValue: unknown): HexclaveAppTokenInternals {
   if (appValue == null || typeof appValue !== "object") {
     throw new Error("The Stack app instance is unavailable.");
   }
 
-  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
-  if (!isStackAppTokenInternals(internals)) {
+  const internals = Reflect.get(appValue, hexclaveAppInternalsSymbol);
+  if (!isHexclaveAppTokenInternals(internals)) {
     throw new Error("The Stack client app cannot install remote development environment tokens.");
   }
 
@@ -88,7 +89,7 @@ function shouldRefreshAccessToken(token: RemoteDevelopmentEnvironmentAccessToken
 }
 
 async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevelopmentEnvironmentAccessTokenResponse> {
-  const response = await fetch("/api/remote-development-environment/auth", {
+  const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/remote-development-environment/auth", {
     headers: {
       Accept: "application/json",
     },
@@ -102,7 +103,7 @@ async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<RemoteDevel
 
 async function installRemoteDevelopmentEnvironmentAccessToken(app: unknown): Promise<RemoteDevelopmentEnvironmentAccessTokenResponse> {
   const token = await getRemoteDevelopmentEnvironmentAccessToken();
-  await getStackAppTokenInternals(app).signInWithTokens({
+  await getHexclaveAppTokenInternals(app).signInWithTokens({
     accessToken: token.accessToken,
     refreshToken: "",
   });
@@ -120,21 +121,28 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
     let currentToken: RemoteDevelopmentEnvironmentAccessTokenResponse | undefined;
 
     const refreshAccessToken = async (): Promise<void> => {
-      const token = await installRemoteDevelopmentEnvironmentAccessToken(app);
-      const currentUser = await app.getUser({
-        or: "anonymous-if-exists[deprecated]",
-      });
-      if (currentUser?.id !== token.userId) {
-        throw new Error("Installed remote development environment token did not match the expected anonymous user.");
-      }
-      if (cancelled) return;
-      currentToken = token;
-      setAccessTokenInstalled(true);
+      try {
+        const token = await installRemoteDevelopmentEnvironmentAccessToken(app);
+        const currentUser = await app.getUser({
+          or: "anonymous-if-exists[deprecated]",
+        });
+        if (currentUser?.id !== token.userId) {
+          throw new Error("Installed remote development environment token did not match the expected anonymous user.");
+        }
+        if (cancelled) return;
+        currentToken = token;
+        setAccessTokenInstalled(true);
 
-      refreshTimeout = setTimeout(() => {
-        refreshPromise = undefined;
-        requestRefresh();
-      }, getRefreshInMillis(token));
+        refreshTimeout = setTimeout(() => {
+          refreshPromise = undefined;
+          requestRefresh();
+        }, getRefreshInMillis(token));
+      } catch (e) {
+        if (e instanceof RemoteDevelopmentEnvironmentBrowserSecretRedirectingError) {
+          return;
+        }
+        throw e;
+      }
     };
 
     const requestRefresh = (options?: { force?: boolean }) => {
@@ -177,9 +185,9 @@ function RemoteDevelopmentEnvironmentAuthGateInner(props: { children: React.Reac
   return props.children;
 }
 
-export function RemoteDevelopmentEnvironmentAuthGate(props: { children: React.ReactNode }) {
+export function RemoteDevelopmentEnvironmentAuthGate(props: { children: React.ReactNode, disabled?: boolean }) {
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  if (!isRemoteDevelopmentEnvironment) {
+  if (!isRemoteDevelopmentEnvironment || props.disabled === true) {
     return props.children;
   }
 

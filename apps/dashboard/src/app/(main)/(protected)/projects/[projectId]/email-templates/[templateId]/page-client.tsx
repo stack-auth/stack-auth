@@ -17,9 +17,9 @@ import {
 import { applyWysiwygEdit, ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const BUILDER_STATUS_MESSAGES = [
@@ -37,10 +37,10 @@ import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient(props: { templateId: string }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const currentUser = useDashboardUser();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
-  const templates = stackAdminApp.useEmailTemplates();
+  const templates = hexclaveAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
   const templateFromHook = templates.find((t) => t.id === props.templateId);
 
@@ -78,7 +78,7 @@ export default function PageClient(props: { templateId: string }) {
 
     const fetchTemplate = async () => {
       try {
-        const allTemplates = await stackAdminApp.listEmailTemplates();
+        const allTemplates = await hexclaveAdminApp.listEmailTemplates();
 
         if (cancelled) return;
 
@@ -106,7 +106,7 @@ export default function PageClient(props: { templateId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [templateFromHook, fetchedTemplate, stackAdminApp, props.templateId]);
+  }, [templateFromHook, fetchedTemplate, hexclaveAdminApp, props.templateId]);
 
   const hasSyncedTemplateFromHook = useRef(false);
 
@@ -138,7 +138,7 @@ export default function PageClient(props: { templateId: string }) {
   const handleSaveTemplate = async () => {
     setSaveAlert(null);
     try {
-      await stackAdminApp.updateEmailTemplate(props.templateId, currentCode, selectedThemeId === undefined ? null : selectedThemeId);
+      await hexclaveAdminApp.updateEmailTemplate(props.templateId, currentCode, selectedThemeId === undefined ? null : selectedThemeId);
       setSaveAlert({ variant: "success", title: "Template saved" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
@@ -206,7 +206,7 @@ export default function PageClient(props: { templateId: string }) {
                   setIsLoading(true);
                   const fetchTemplate = async () => {
                     try {
-                      const allTemplates = await stackAdminApp.listEmailTemplates();
+                      const allTemplates = await hexclaveAdminApp.listEmailTemplates();
                       const found = allTemplates.find((t) => t.id === props.templateId);
                       if (found) {
                         setFetchedTemplate(found);
@@ -292,7 +292,7 @@ export default function PageClient(props: { templateId: string }) {
             chatComponent={
               <AssistantChat
                 chatAdapter={createChatAdapter(backendBaseUrl, "email-template", handleCodeUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
-                historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
+                historyAdapter={createHistoryAdapter(hexclaveAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
                 runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}

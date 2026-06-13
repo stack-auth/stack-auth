@@ -1,8 +1,8 @@
 import { reviewMcpCall } from "@/lib/ai/qa/qa-reviewer";
 import type { McpCallMetadata, MessageLike } from "@/lib/ai/types";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { Json } from "@hexclave/shared/dist/utils/json";
 import { type StepResult, type ToolSet } from "ai";
 import { callReducer, opt } from "../spacetimedb-client";
 

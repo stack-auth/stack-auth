@@ -3,25 +3,29 @@
 import { DevErrorNotifier } from "@/components/dev-error-notifier";
 import { RouterProvider } from "@/components/router";
 import { SiteLoadingIndicatorDisplay } from "@/components/site-loading-indicator";
-import { Toaster } from "@/components/ui";
+import { Toaster, TooltipProvider } from "@/components/ui";
 import { VersionAlerter } from "@/components/version-alerter";
 import { getPublicEnvVar } from "@/lib/env";
-import { stackClientApp } from "@/stack/client";
-import { StackProvider, StackTheme } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { hexclaveClientApp } from "@/hexclave/client";
+import { StackProvider, StackTheme } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { usePathname } from "next/navigation";
 import React, { useSyncExternalStore } from "react";
 import { BackgroundShine } from "./background-shine";
 import { ClientPolyfill } from "./client-polyfill";
 import { DevelopmentPortDisplay } from "./development-port-display";
 import Loading from "./loading";
 import { UserIdentity } from "./providers";
+import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "./remote-development-environment-browser-secret-client";
 import { RemoteDevelopmentEnvironmentAuthGate } from "./remote-development-environment-auth-gate";
+import { WrongAddressScreen } from "./wrong-address-screen";
 
 const DEV_ENVIRONMENT_HEALTHCHECK_INTERVAL_MS = 2_000;
 
 type DevEnvironmentHealthSnapshot =
   | { status: "checking" | "healthy" }
-  | { status: "unhealthy", restartCommand: string };
+  | { status: "unhealthy", restartCommand: string }
+  | { status: "wrong_address", suggestedUrl: string };
 
 const CHECKING_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "checking" };
 const HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT: DevEnvironmentHealthSnapshot = { status: "healthy" };
@@ -58,13 +62,25 @@ async function refreshDevEnvironmentHealth() {
   };
 
   try {
-    const response = await fetch("/api/development-environment/health", {
+    const response = await fetchWithRemoteDevelopmentEnvironmentBrowserSecret("/api/development-environment/health", {
       cache: "no-store",
       headers: {
         Accept: "application/json",
       },
     });
     const body: unknown = await response.json();
+
+    // If the health endpoint returns a 403, the user is likely accessing via
+    // an unsupported address (e.g. localhost instead of 127.0.0.1). Extract
+    // the suggested URL from the error and show a dedicated screen.
+    if (response.status === 403 && body != null && typeof body === "object" && "error" in body && typeof body.error === "string") {
+      const match = body.error.match(/http:\/\/127\.0\.0\.1(?::\d+)?/);
+      if (match != null) {
+        setSnapshotIfCurrent({ status: "wrong_address", suggestedUrl: match[0] });
+        return;
+      }
+    }
+
     if (!isDevEnvironmentHealthResponse(body)) {
       throw new Error("Development environment health endpoint returned an invalid response.");
     }
@@ -72,7 +88,10 @@ async function refreshDevEnvironmentHealth() {
     setSnapshotIfCurrent(body.ok && response.ok
       ? HEALTHY_DEV_ENVIRONMENT_HEALTH_SNAPSHOT
       : { status: "unhealthy", restartCommand: body.restart_command });
-  } catch {
+  } catch (error) {
+    if (error instanceof RemoteDevelopmentEnvironmentBrowserSecretRedirectingError) {
+      return;
+    }
     setSnapshotIfCurrent({
       status: "unhealthy",
       restartCommand: "stack dev --config-file <path-to-stack.config.ts> -- <your app command>",
@@ -135,10 +154,10 @@ function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
   );
 }
 
-function DevEnvironmentHealthGate(props: { children: React.ReactNode }) {
+function DevEnvironmentHealthGate(props: { children: React.ReactNode, disabled?: boolean }) {
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const shouldCheckHealth = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const shouldCheckHealth = props.disabled !== true && (isLocalEmulator || isRemoteDevelopmentEnvironment);
   const health = useSyncExternalStore(
     shouldCheckHealth ? subscribeDevEnvironmentHealth : subscribeHealthyDevEnvironment,
     shouldCheckHealth ? getDevEnvironmentHealthSnapshot : getHealthyDevEnvironmentSnapshot,
@@ -147,6 +166,10 @@ function DevEnvironmentHealthGate(props: { children: React.ReactNode }) {
 
   if (!shouldCheckHealth) {
     return props.children;
+  }
+
+  if (health.status === "wrong_address") {
+    return <WrongAddressScreen suggestedUrl={health.suggestedUrl} />;
   }
 
   if (health.status === "unhealthy") {
@@ -164,22 +187,27 @@ export function LayoutClient(props: {
   children: React.ReactNode,
   translationLocale?: string,
 }) {
+  const pathname = usePathname();
+  const isBrowserSecretAuthorizationPage = pathname === "/development-environment/browser-secret";
+
   return (
     <>
-      <StackProvider app={stackClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
+      <StackProvider app={hexclaveClientApp} lang={props.translationLocale as React.ComponentProps<typeof StackProvider>["lang"]}>
         <StackTheme>
-          <ClientPolyfill />
-          <DevEnvironmentHealthGate>
-            <RemoteDevelopmentEnvironmentAuthGate>
-              <RouterProvider>
-                <UserIdentity />
-                <VersionAlerter />
-                <BackgroundShine />
-                {props.children}
-                <DevelopmentPortDisplay />
-              </RouterProvider>
-            </RemoteDevelopmentEnvironmentAuthGate>
-          </DevEnvironmentHealthGate>
+          <TooltipProvider>
+            <ClientPolyfill />
+            <DevEnvironmentHealthGate disabled={isBrowserSecretAuthorizationPage}>
+              <RemoteDevelopmentEnvironmentAuthGate disabled={isBrowserSecretAuthorizationPage}>
+                <RouterProvider>
+                  <UserIdentity />
+                  <VersionAlerter />
+                  <BackgroundShine />
+                  {props.children}
+                  <DevelopmentPortDisplay />
+                </RouterProvider>
+              </RemoteDevelopmentEnvironmentAuthGate>
+            </DevEnvironmentHealthGate>
+          </TooltipProvider>
         </StackTheme>
       </StackProvider>
       <DevErrorNotifier />

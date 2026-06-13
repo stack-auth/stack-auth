@@ -3,8 +3,8 @@ import { logIfMcpToolCall } from "@/lib/ai/loggers/mcp-call-logger";
 import type { ContentBlock, McpCallMetadata, MessageLike, ModeContext } from "@/lib/ai/types";
 import { listManagedProjectIds } from "@/lib/projects";
 import type { SmartRequestAuth } from "@/route-handlers/smart-request";
-import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
+import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { Json } from "@hexclave/shared/dist/utils/json";
 import { generateText, stepCountIs, streamText, type StepResult, type ToolSet } from "ai";
 
 export const USER_FACING_ERROR_MESSAGE = "The AI service is temporarily unavailable. Please try again later.";

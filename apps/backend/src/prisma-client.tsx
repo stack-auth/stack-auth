@@ -1,16 +1,16 @@
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { yupObject, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
-import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { yupObject, yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { globalVar } from "@hexclave/shared/dist/utils/globals";
+import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@hexclave/shared/dist/utils/objects";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { throwingProxy } from "@hexclave/shared/dist/utils/proxies";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
@@ -62,8 +62,8 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
 }
 
 // Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
-if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
-  globalVar.__stack_prisma_sigterm_registered = true;
+if (!getEnvVariable("VERCEL", "") && !globalVar.__hexclave_prisma_sigterm_registered) {
+  globalVar.__hexclave_prisma_sigterm_registered = true;
   process.on("SIGTERM", () => {
     const keepAlive = setTimeout(() => {}, 10_000);
     runAsynchronously(async () => {
@@ -121,8 +121,8 @@ async function resolveConnectionStringWithOrbStack(connectionString: string): Pr
   return connectionString;
 }
 
-let actualGlobalConnectionString: string = globalVar.__stack_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
-let actualReplicaConnectionString: string = globalVar.__stack_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
+let actualGlobalConnectionString: string = globalVar.__hexclave_actual_global_connection_string ??= await resolveConnectionStringWithOrbStack(originalGlobalConnectionString);
+let actualReplicaConnectionString: string = globalVar.__hexclave_actual_replica_connection_string ??= await resolveConnectionStringWithOrbStack(originalReplicaConnectionString);
 
 export type PrismaClientWithReplica<T extends PrismaClient = PrismaClient> = Omit<T, "$on"> & {
   $replica: () => Omit<T, "$on">,
@@ -629,6 +629,9 @@ export const PRISMA_ERROR_CODES = {
   UNIQUE_CONSTRAINT_VIOLATION: "P2002",
   FOREIGN_CONSTRAINT_VIOLATION: "P2003",
   GENERIC_CONSTRAINT_VIOLATION: "P2004",
+  // Thrown by `delete`/`update` (and relation requirements) when the targeted row
+  // doesn't exist — e.g. when two requests race to consume the same single-use row.
+  DEPENDENT_RECORD_NOT_FOUND: "P2025",
 } as const;
 
 export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {

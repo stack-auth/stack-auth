@@ -24,22 +24,24 @@ const publish = spawnSync("pnpm", ["spacetime:publish:local"], {
 });
 
 if (publish.status !== 0) {
-  console.warn(`[internal-tool] spacetime publish failed (status ${publish.status}); exiting`);                                                                                                                                                                                                                                                                                                                                         
-  process.exit(publish.status ?? 1);
+  console.warn(`[internal-tool] spacetime publish failed (status ${publish.status}); skipping token provisioning.`);
+  process.exit(0);
 }
 
 await provisionServiceToken();
 
 async function provisionServiceToken() {
-  const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
   const spacetimeHttpUrl = `http://127.0.0.1:${portPrefix}39`;
   const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "stack-auth-llm";
-  const backendEnvLocal = resolve("../backend/.env.development.local");
+  const backendEnvLocal = resolve("../backend/.env.local");
+  const backendEnvDevelopmentLocal = resolve("../backend/.env.development.local");
   const backendEnvDev = resolve("../backend/.env.development");
-
+  const backendEnvWriteTarget = existsSync(backendEnvLocal) ? backendEnvLocal : backendEnvDevelopmentLocal;
 
   const existingToken =
     readEnvVar(backendEnvLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN") ||
+    readEnvVar(backendEnvDevelopmentLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN") ||
     readEnvVar(backendEnvDev, "STACK_SPACETIMEDB_SERVICE_TOKEN");
 
   if (existingToken) {
@@ -49,6 +51,7 @@ async function provisionServiceToken() {
     }
     console.log("[internal-tool] Existing STACK_SPACETIMEDB_SERVICE_TOKEN is stale; re-minting...");
     removeEnvVar(backendEnvLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN");
+    removeEnvVar(backendEnvDevelopmentLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN");
   } else {
     console.log("[internal-tool] Minting SpacetimeDB service token for backend...");
   }
@@ -68,17 +71,17 @@ async function provisionServiceToken() {
   }
 
   if (typeof token !== "string" || token.trim() === "") {
-    console.warn("[internal-tool] /v1/identity returned no usable token field; skipping write to .env.development.local. Backend SpacetimeDB features will error until STACK_SPACETIMEDB_SERVICE_TOKEN is set manually.");
+    console.warn(`[internal-tool] /v1/identity returned no usable token field; skipping write to ${backendEnvWriteTarget}. Backend SpacetimeDB features will error until STACK_SPACETIMEDB_SERVICE_TOKEN is set manually.`);
     return;
   }
 
-  const existingContent = existsSync(backendEnvLocal) ? readFileSync(backendEnvLocal, "utf8") : "";
+  const existingContent = existsSync(backendEnvWriteTarget) ? readFileSync(backendEnvWriteTarget, "utf8") : "";
   const prefix = existingContent && !existingContent.endsWith("\n") ? "\n" : "";
   appendFileSync(
-    backendEnvLocal,
+    backendEnvWriteTarget,
     `${prefix}# Auto-provisioned by apps/internal-tool/scripts/pre-dev.mjs\nSTACK_SPACETIMEDB_SERVICE_TOKEN=${token}\n`,
   );
-  console.log(`[internal-tool] Wrote STACK_SPACETIMEDB_SERVICE_TOKEN to ${backendEnvLocal}`);
+  console.log(`[internal-tool] Wrote STACK_SPACETIMEDB_SERVICE_TOKEN to ${backendEnvWriteTarget}`);
   console.log("[internal-tool] Restart the backend dev server if already running to pick up the new env var.");
 }
 

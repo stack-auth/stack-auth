@@ -14,13 +14,13 @@ import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/project
 import { seedDummyProject } from '@/lib/seed-dummy-data';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
-import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
-import { AdminUserProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
-import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
-import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
+import { ALL_APPS } from '@hexclave/shared/dist/apps/apps-config';
+import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
+import { AdminUserProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
+import { ITEM_IDS, PLAN_LIMITS } from '@hexclave/shared/dist/plans';
+import { DayInterval } from '@hexclave/shared/dist/utils/dates';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
+import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
 
 const MONTHLY_REPEAT: DayInterval = [1, "month"];
 

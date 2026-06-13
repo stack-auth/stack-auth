@@ -21,7 +21,7 @@ describe("GET /api/v1/internal/payments/method-configs", () => {
             "error": deindent\`
               The x-hexclave-access-type header was 'client', but the x-hexclave-project-id header was not provided. (The legacy x-stack-access-type and x-stack-project-id headers are also accepted.)
               
-              For more information, see the docs on REST API authentication: https://docs.hexclave.com/rest-api/overview#authentication
+              For more information, see the docs on REST API authentication: https://docs.hexclave.com/api/overview#authentication
             \`,
           },
           "headers": Headers {

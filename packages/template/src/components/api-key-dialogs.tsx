@@ -1,16 +1,16 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { ActionDialog, Button, CopyField, Input, Label, Typography } from '@stackframe/stack-ui';
+import { yupObject, yupString } from '@hexclave/shared/dist/schema-fields';
+import { captureError } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { ActionDialog, Button, CopyField, Input, Label, Typography } from '@hexclave/ui';
 import { useState } from "react";
 import { useForm } from 'react-hook-form';
 import * as yup from "yup";
 import { useUser } from '..';
 import { FormWarningText } from '../components/elements/form-warning';
-import { ApiKey, ApiKeyCreationOptions, ApiKeyType } from "../lib/stack-app/api-keys";
+import { ApiKey, ApiKeyCreationOptions, ApiKeyType } from "../lib/hexclave-app/api-keys";
 import { useTranslation } from "../lib/translations";
 
 // Constants for expiration options

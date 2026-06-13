@@ -20,6 +20,8 @@ export {
   DesignDialogRoot,
   DesignDialogTitle,
   DesignDialogTrigger,
+  designDialogGlassmorphicOverlayClass,
+  designDialogGlassmorphicSurfaceClass,
 } from "./components/dialog";
 export type { DesignDialogProps, DesignDialogSize, DesignDialogVariant } from "./components/dialog";
 

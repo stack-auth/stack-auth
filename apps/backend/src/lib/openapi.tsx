@@ -1,12 +1,16 @@
 import { SmartRouteHandler } from '@/route-handlers/smart-route-handler';
-import { CrudlOperation, EndpointDocumentation } from '@stackframe/stack-shared/dist/crud';
-import { WebhookEvent } from '@stackframe/stack-shared/dist/interface/webhooks';
-import { yupNumber, yupObject, yupString } from '@stackframe/stack-shared/dist/schema-fields';
-import { HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { HttpMethod } from '@stackframe/stack-shared/dist/utils/http';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
-import { deindent, stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
+import { CrudlOperation, EndpointDocumentation } from '@hexclave/shared/dist/crud';
+import { WebhookEvent } from '@hexclave/shared/dist/interface/webhooks';
+import { yupNumber, yupObject, yupString } from '@hexclave/shared/dist/schema-fields';
+import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
+import { HttpMethod } from '@hexclave/shared/dist/utils/http';
+import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
+import { deindent, stringCompare } from '@hexclave/shared/dist/utils/strings';
 import * as yup from 'yup';
+
+function isInternalApiPath(path: string) {
+  return path === '/internal' || path.startsWith('/internal/');
+}
 
 export function parseOpenAPI(options: {
   endpoints: Map<string, Map<HttpMethod, SmartRouteHandler>>,
@@ -25,6 +29,11 @@ export function parseOpenAPI(options: {
     }],
     paths: Object.fromEntries(
       [...options.endpoints]
+        // `/internal/*` routes are scoped to the internal Hexclave project (project.id === "internal")
+        // and are not part of the public API. Many of them use a permissive auth.type (e.g. adaptSchema),
+        // so the per-audience heuristic below does not exclude them; filter them out explicitly here so
+        // they never leak into the public API reference, regardless of their individual route metadata.
+        .filter(([path]) => !isInternalApiPath(path))
         .map(([path, handlersByMethod]) => (
           [path, Object.fromEntries(
             [...handlersByMethod]
@@ -156,7 +165,7 @@ function parseRouteHandler(options: {
       `);
     }
 
-    const responseSchemaInfo = overload.response.meta()?.stackSchemaInfo;
+    const responseSchemaInfo = overload.response.meta()?.hexclaveSchemaInfo;
     const responseSchemas: yup.AnySchema[] = responseSchemaInfo?.type === "union" ? responseSchemaInfo.items : [overload.response];
 
     result = parseOverload({

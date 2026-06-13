@@ -92,48 +92,31 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     async ({ expect }) => {
       const targetA = await mintIdentity();
       scope.trackIdentity(targetA.identity);
-      await AiChatReviewer.createReviewer();
-      const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-        method: "POST",
-        accessType: "client",
-        body: { identity: targetA.identity },
-      });
-      expect(enrollA.status).toBe(200);
-
       const targetB = await mintIdentity();
       scope.trackIdentity(targetB.identity);
-      const enrollB = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-        method: "POST",
-        accessType: "client",
-        body: { identity: targetB.identity },
-      });
-      expect(enrollB.status).toBe(200);
+      const stackUserId = `e2e-target-${targetA.identity}`;
+
+      const enrollA = await callReducer(targetA.token, "add_operator", [
+        logToken!,
+        [`0x${targetA.identity}`],
+        stackUserId,
+        "E2E Target A",
+      ]);
+      expect(enrollA.ok).toBe(true);
+      const enrollB = await callReducer(targetB.token, "add_operator", [
+        logToken!,
+        [`0x${targetB.identity}`],
+        stackUserId,
+        "E2E Target B",
+      ]);
+      expect(enrollB.ok).toBe(true);
 
       expect((await sqlQuery(targetA.token, "SELECT * FROM operators")).rows.length).toBe(1);
       expect((await sqlQuery(targetB.token, "SELECT * FROM operators")).rows.length).toBe(1);
 
-      const adminEnroll = await mintIdentity();
-      await callReducer(adminEnroll.token, "add_operator", [
+      const removed = await callReducer(targetA.token, "remove_operators_for_user", [
         logToken!,
-        [`0x${adminEnroll.identity}`],
-        `e2e-admin-${adminEnroll.identity}`,
-        "E2E Admin",
-      ]);
-      scope.trackIdentity(adminEnroll.identity);
-      const allOps = await sqlQuery(adminEnroll.token, "SELECT * FROM operators");
-      const targetRowJson = JSON.stringify(allOps.rows.find(r =>
-        JSON.stringify(r).toLowerCase().includes(targetA.identity.toLowerCase())
-      ) ?? {});
-      expect(targetRowJson).toContain("0x" + targetA.identity.toLowerCase().slice(0, 8));
-      const stackUserId = (allOps.rows.find(r =>
-        JSON.stringify(r).toLowerCase().includes(targetA.identity.toLowerCase())
-      ) as { stack_user_id?: string, stackUserId?: string } | undefined);
-      const sUid = stackUserId?.stack_user_id ?? stackUserId?.stackUserId;
-      expect(typeof sUid).toBe("string");
-
-      const removed = await callReducer(adminEnroll.token, "remove_operators_for_user", [
-        logToken!,
-        sUid!,
+        stackUserId,
       ]);
       expect(removed.ok).toBe(true);
 

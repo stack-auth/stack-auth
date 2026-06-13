@@ -1,5 +1,5 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
-import { HexclaveAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { ToolSet } from "ai";
 import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";

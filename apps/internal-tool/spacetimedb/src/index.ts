@@ -1,5 +1,5 @@
 import { schema, t, table, SenderError } from 'spacetimedb/server';
-import { Timestamp } from 'spacetimedb';
+import { Timestamp, type Identity } from 'spacetimedb';
 
 const OPERATOR_TTL_MILLIS = 60n * 60n * 1000n;
 const OPERATOR_TTL_MICROS = OPERATOR_TTL_MILLIS * 1000n;
@@ -7,6 +7,42 @@ const OPERATOR_TTL_MICROS = OPERATOR_TTL_MILLIS * 1000n;
 // Injected at publish time by the spacetime:inject-token pnpm script from STACK_MCP_LOG_TOKEN env var.
 // Must match STACK_MCP_LOG_TOKEN in the backend .env.
 const EXPECTED_LOG_TOKEN = '__SPACETIMEDB_LOG_TOKEN__';
+
+function isExpiredOperator(now: Timestamp, row: { expiresAt: Timestamp | undefined }): boolean {
+  return row.expiresAt != null && row.expiresAt.microsSinceUnixEpoch <= now.microsSinceUnixEpoch;
+}
+
+function removeExpiredOperators(ctx: {
+  timestamp: Timestamp,
+  db: {
+    operators: {
+      iter: () => Iterable<{ identity: Identity, expiresAt: Timestamp | undefined }>,
+      identity: { delete: (identity: Identity) => void },
+    },
+  },
+}): void {
+  const expiredIdentities = new Array<Identity>();
+  for (const row of ctx.db.operators.iter()) {
+    if (isExpiredOperator(ctx.timestamp, row)) {
+      expiredIdentities.push(row.identity);
+    }
+  }
+  for (const identity of expiredIdentities) {
+    ctx.db.operators.identity.delete(identity);
+  }
+}
+
+function hasActiveOperator(ctx: {
+  sender: Identity,
+  db: {
+    operators: {
+      identity: { find: (identity: Identity) => { expiresAt: Timestamp | undefined } | null },
+    },
+  },
+}): boolean {
+  const operator = ctx.db.operators.identity.find(ctx.sender);
+  return operator != null;
+}
 
 const mcpCallLog = table(
   { name: 'mcp_call_log', public: false },
@@ -117,7 +153,7 @@ export const myVisibleMcpCallLog = spacetimedb.view(
   { name: 'my_visible_mcp_call_log', public: true },
   t.array(mcpCallLog.rowType),
   (ctx) => {
-    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    if (!hasActiveOperator(ctx)) return [];
     return Array.from(ctx.db.mcpCallLog.shard.filter(0));
   }
 );
@@ -125,7 +161,7 @@ export const myVisibleAiQueryLog = spacetimedb.view(
   { name: 'my_visible_ai_query_log', public: true },
   t.array(aiQueryLog.rowType),
   (ctx) => {
-    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    if (!hasActiveOperator(ctx)) return [];
     return Array.from(ctx.db.aiQueryLog.shard.filter(0));
   }
 );
@@ -133,7 +169,7 @@ export const myVisibleQaEntries = spacetimedb.view(
   { name: 'my_visible_qa_entries', public: true },
   t.array(qaEntries.rowType),
   (ctx) => {
-    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    if (!hasActiveOperator(ctx)) return [];
     return Array.from(ctx.db.qaEntries.shard.filter(0));
   }
 );
@@ -186,23 +222,12 @@ export const add_operator = spacetimedb.reducer(
     if (/^__.*__$/.test(args.stackUserId)) {
       throw new SenderError('stackUserId pattern __*__ is reserved');
     }
-    const nowMicros = ctx.timestamp.microsSinceUnixEpoch;
-    const expired = [];
-    for (const row of ctx.db.operators.iter()) {
-      if (row.expiresAt != null && row.expiresAt.microsSinceUnixEpoch <= nowMicros) {
-        expired.push(row);
-      }
-    }
-    for (const row of expired) {
-      ctx.db.operators.identity.delete(row.identity);
-    }
+    removeExpiredOperators(ctx);
 
+    const nowMicros = ctx.timestamp.microsSinceUnixEpoch;
     const expiresAt = new Timestamp(nowMicros + OPERATOR_TTL_MICROS);
     const existing = ctx.db.operators.identity.find(args.identity);
     if (existing != null) {
-      if (existing.stackUserId !== args.stackUserId) {
-        throw new SenderError('Identity is bound to a different Stack user');
-      }
       ctx.db.operators.identity.update({
         identity: args.identity,
         addedAt: existing.addedAt,
@@ -222,6 +247,19 @@ export const add_operator = spacetimedb.reducer(
   }
 );
 
+export const remove_operator = spacetimedb.reducer(
+  {
+    token: t.string(),
+    identity: t.identity(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    ctx.db.operators.identity.delete(args.identity);
+  }
+);
+
 export const remove_operators_for_user = spacetimedb.reducer(
   {
     token: t.string(),
@@ -232,14 +270,17 @@ export const remove_operators_for_user = spacetimedb.reducer(
       throw new SenderError('Invalid log token');
     }
     if (/^__.*__$/.test(args.stackUserId)) {
-      throw new SenderError('Refusing to remove reserved __*__ identities');
+      throw new SenderError('stackUserId pattern __*__ is reserved');
     }
-    const matches = [];
+
+    const identities = new Array<Identity>();
     for (const row of ctx.db.operators.iter()) {
-      if (row.stackUserId === args.stackUserId) matches.push(row);
+      if (row.stackUserId === args.stackUserId) {
+        identities.push(row.identity);
+      }
     }
-    for (const row of matches) {
-      ctx.db.operators.identity.delete(row.identity);
+    for (const identity of identities) {
+      ctx.db.operators.identity.delete(identity);
     }
   }
 );
@@ -253,6 +294,8 @@ export const enroll_service = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
+
     const existing = ctx.db.operators.identity.find(ctx.sender);
     if (existing != null) return;
     ctx.db.operators.insert({
@@ -359,7 +402,7 @@ export const clear_mcp_qa_review = spacetimedb.reducer(
     }
     ctx.db.mcpCallLog.id.update({
       ...row,
-      qaReviewedAt: ctx.timestamp,
+      qaReviewedAt: undefined,
       qaNeedsHumanReview: undefined,
       qaAnswerCorrect: undefined,
       qaAnswerRelevant: undefined,

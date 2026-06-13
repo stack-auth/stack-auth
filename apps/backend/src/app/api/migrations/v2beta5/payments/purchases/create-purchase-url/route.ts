@@ -1,6 +1,6 @@
 import { POST as latestHandler } from "@/app/api/latest/payments/purchases/create-purchase-url/route";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { ensureObjectSchema, inlineProductSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { ensureObjectSchema, inlineProductSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { normalizePurchaseBody } from "../offers-compat";
 
 const latestInit = latestHandler.initArgs[0];

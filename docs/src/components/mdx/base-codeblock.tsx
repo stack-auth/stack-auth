@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
 import { Check, Copy } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { codeToHtml } from 'shiki';
@@ -21,7 +21,7 @@ export type BaseCodeblockProps = {
   /** Custom key to force re-render when theme changes externally */
   themeKey?: string,
   /** Ref to attach to the code container div for measuring line positions */
-  codeContainerRef?: React.RefObject<HTMLDivElement>,
+  codeContainerRef?: React.RefObject<HTMLDivElement | null>,
 };
 
 /**
@@ -192,4 +192,3 @@ export function BaseCodeblock({
     </div>
   );
 }
-

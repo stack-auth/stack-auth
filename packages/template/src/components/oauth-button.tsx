@@ -1,7 +1,8 @@
 'use client';
 
-import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
+import { BrandIcons, Button, SimpleTooltip } from '@hexclave/ui';
 import Color, { ColorInstance } from 'color';
+import type { ReactElement } from 'react';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '../lib/hooks';
 import { useTranslation } from '../lib/translations';
@@ -28,7 +29,7 @@ export function OAuthButton({
   onAuthenticate?: () => Promise<void>,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const styleId = useId().replaceAll(':', '-');
   const isIframe = useInIframe();
 
@@ -42,7 +43,7 @@ export function OAuthButton({
     backgroundColor?: string,
     textColor?: string,
     name: string,
-    icon: JSX.Element | null,
+    icon: ReactElement | null,
     border?: string,
   };
   switch (provider) {
@@ -190,7 +191,7 @@ export function OAuthButton({
           onClick={async () => {
             // Hexclave rebrand: UI hint key — straight rename (dot delimiter preserved).
             localStorage.setItem('_HEXCLAVE.lastUsed', provider);
-            await (onAuthenticate ? onAuthenticate() : stackApp.signInWithOAuth(provider));
+            await (onAuthenticate ? onAuthenticate() : hexclaveApp.signInWithOAuth(provider));
           }}
           className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
           disabled={isIframe}

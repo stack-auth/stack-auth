@@ -1,7 +1,7 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Card, CardContent, CardHeader, Typography } from '@stackframe/stack-ui';
+import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { Card, CardContent, CardHeader, Typography } from '@hexclave/ui';
 import { useCallback, useEffect, useState } from 'react';
 
 type ServiceResult = {

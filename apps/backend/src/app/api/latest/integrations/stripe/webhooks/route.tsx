@@ -1,19 +1,19 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
 import { listPermissions } from "@/lib/permissions";
-import { getStackStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
+import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
-import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
+import { DEFAULT_TEMPLATE_IDS } from "@hexclave/shared/dist/helpers/emails";
+import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
+import { typedIncludes } from '@hexclave/shared/dist/utils/arrays';
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
+import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import Stripe from "stripe";
 
 const subscriptionChangedEvents = [
@@ -111,7 +111,7 @@ const buildChargebackMessage = (options: {
 };
 
 async function getTenancyForStripeAccountId(accountId: string, mockData?: StripeOverridesMap) {
-  const stripe = getStackStripe(mockData);
+  const stripe = getHexclaveStripe(mockData);
   const account = await stripe.accounts.retrieve(accountId);
   const tenancyId = account.metadata?.tenancyId;
   if (!tenancyId) {
@@ -452,7 +452,7 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
   }),
   handler: async (req, fullReq) => {
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     let event: Stripe.Event;
     try {
       const signature = req.headers["stripe-signature"][0];

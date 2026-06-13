@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { HexclaveClientInterface } from "@stackframe/stack-shared";
+import { HexclaveClientInterface } from "@hexclave/shared";
 import { describe, expect, it, vi } from "vitest";
 import { getNewOAuthProviderOrScopeUrl } from "./auth";
 

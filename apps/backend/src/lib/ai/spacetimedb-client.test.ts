@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@stackframe/stack-shared/dist/utils/env", async (importOriginal) => {
+vi.mock("@hexclave/shared/dist/utils/env", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
     ...original,

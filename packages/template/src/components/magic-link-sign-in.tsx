@@ -1,10 +1,10 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography } from "@stackframe/stack-ui";
+import { KnownErrors } from "@hexclave/shared";
+import { strictEmailSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography } from "@hexclave/ui";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -19,14 +19,14 @@ function OTP(props: {
   const { t } = useTranslation();
   const [otp, setOtp] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (otp.length === 6 && !submitting) {
       setSubmitting(true);
       // eslint-disable-next-line no-restricted-syntax
-      stackApp.signInWithMagicLink(otp + props.nonce)
+      hexclaveApp.signInWithMagicLink(otp + props.nonce)
         .then(result => {
           if (result.status === 'error') {
             if (KnownErrors.VerificationCodeError.isInstance(result.error)) {

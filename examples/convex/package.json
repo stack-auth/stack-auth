@@ -1,6 +1,6 @@
 {
-  "name": "@stackframe/convex-example",
-  "version": "2.8.109",
+  "name": "@hexclave/convex-example",
+  "version": "1.0.12",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -18,8 +18,8 @@
     "clean": "rimraf .next && rimraf node_modules"
   },
   "dependencies": {
-    "@stackframe/stack": "workspace:*",
-    "@stackframe/stack-shared": "workspace:*",
+    "@hexclave/next": "workspace:*",
+    "@hexclave/shared": "workspace:*",
     "convex": "^1.27.0",
     "next": "15.5.10",
     "react": "^19.0.1",
@@ -41,5 +41,5 @@
     "typescript": "5.9.3",
     "wait-on": "^8.0.1"
   },
-  "packageManager": "pnpm@10.23.0"
+  "packageManager": "pnpm@11.5.0"
 }

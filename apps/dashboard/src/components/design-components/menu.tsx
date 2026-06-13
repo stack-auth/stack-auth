@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { DotsThree } from "@phosphor-icons/react";
-import { DesignButton } from "@stackframe/dashboard-ui-components";
+import { DesignButton } from "@hexclave/dashboard-ui-components";
 
 type DesignMenuTrigger = "button" | "icon";
 type DesignMenuItemVariant = "default" | "destructive";
@@ -71,7 +71,8 @@ export type DesignMenuProps =
   | DesignMenuSelectorProps
   | DesignMenuTogglesProps;
 
-const destructiveItemClasses = "text-red-600 dark:text-red-400 focus:bg-red-500/10";
+const destructiveItemClasses =
+  "text-red-600 dark:text-red-400 focus:bg-red-500/10 data-[highlighted]:bg-red-500/10 dark:focus:bg-red-500/15 dark:data-[highlighted]:bg-red-500/15";
 
 export function DesignMenu(props: DesignMenuProps) {
   const align = props.align ?? (props.variant === "toggles" ? "end" : "start");

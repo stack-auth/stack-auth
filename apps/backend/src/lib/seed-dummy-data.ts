@@ -8,14 +8,14 @@ import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/project
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
-import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
-import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
-import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
-import { type Config } from '@stackframe/stack-shared/dist/config/format';
-import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
+import { ALL_APPS } from '@hexclave/shared/dist/apps/apps-config';
+import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
+import { type AdminUserProjectsCrud, type ProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
+import { type Config } from '@hexclave/shared/dist/config/format';
+import { DayInterval } from '@hexclave/shared/dist/utils/dates';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { throwErr } from '@hexclave/shared/dist/utils/errors';
+import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
 import { createHash, randomUUID } from 'node:crypto';
 
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';

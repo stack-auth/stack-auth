@@ -8,7 +8,7 @@ This is the documentation site for Stack Auth, built with [Next.js](https://next
 pnpm dev
 ```
 
-The docs server runs on port `8104` by default (or `${NEXT_PUBLIC_STACK_PORT_PREFIX}04`).
+The docs server runs on port `8104` by default (or `${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX}04`).
 
 ## Project Structure
 

@@ -12,11 +12,11 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { yupResolver } from '@hookform/resolvers/yup';
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
-import { ServerTeam } from '@stackframe/stack';
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { strictEmailSchema, yupObject } from '@stackframe/stack-shared/dist/schema-fields';
-import { HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { ServerTeam } from '@hexclave/next';
+import { AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { strictEmailSchema, yupObject } from '@hexclave/shared/dist/schema-fields';
+import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from '@hexclave/shared/dist/utils/promises';
 import { notFound, usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -27,7 +27,7 @@ import { useAdminApp } from '../../use-admin-app';
 import { TeamAnalyticsSection } from './team-analytics';
 import { TeamPaymentsSection } from './team-payments';
 
-const teamMetadataDocsUrl = "https://docs.hexclave.com/docs/concepts/teams";
+const teamMetadataDocsUrl = "https://docs.hexclave.com/guides/apps/teams/overview";
 
 const inviteFormSchema = yupObject({
   email: strictEmailSchema("Please enter a valid email address").defined(),
@@ -113,8 +113,8 @@ export function AddUserDialog(props: {
 }
 
 export default function PageClient(props: { teamId: string }) {
-  const stackAdminApp = useAdminApp();
-  const team = stackAdminApp.useTeam(props.teamId);
+  const hexclaveAdminApp = useAdminApp();
+  const team = hexclaveAdminApp.useTeam(props.teamId);
 
   if (!team) {
     return notFound();
@@ -193,8 +193,8 @@ function TabContentSkeleton({ sections }: { sections: number }) {
 const TEAM_PAGE_TAB_PARAM = "tab";
 
 function TeamPage({ team }: { team: ServerTeam }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const router = useRouter();
   const pathname = usePathname();
@@ -252,7 +252,7 @@ function TeamPage({ team }: { team: ServerTeam }) {
                 className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
               >
                 <Link
-                  href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                  href={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/apps`}
                   className="inline-flex items-center justify-center"
                 >
                   <PlusIcon className="h-3.5 w-3.5" />

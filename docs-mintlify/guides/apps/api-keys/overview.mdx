@@ -42,10 +42,10 @@ User API keys are associated with individual users and allow them to authenticat
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/create-api-key.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CreateApiKey() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
 
       const apiKey = await user.createApiKey({
         description: "Admin-provisioned API key",
@@ -208,10 +208,10 @@ Team API keys are associated with teams and can be used to provide access to tea
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/create-team-api-key.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CreateTeamApiKey({ teamId }: { teamId: string }) {
-      const team = await stackServerApp.getTeam(teamId);
+      const team = await hexclaveServerApp.getTeam(teamId);
 
       if (!team) {
         return <div>Team not found</div>;
@@ -442,10 +442,10 @@ Users with appropriate permissions can manage team API keys directly from the te
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/create-api-key.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CreateApiKey() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
 
       const apiKey = await user.createApiKey({
         description: "Admin-provisioned API key",
@@ -606,10 +606,10 @@ Users with appropriate permissions can manage team API keys directly from the te
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/create-team-api-key.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CreateTeamApiKey({ teamId }: { teamId: string }) {
-      const team = await stackServerApp.getTeam(teamId);
+      const team = await hexclaveServerApp.getTeam(teamId);
 
       if (!team) {
         return <div>Team not found</div>;
@@ -778,10 +778,10 @@ Users with appropriate permissions can manage team API keys directly from the te
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/api-keys-list.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function ApiKeysList() {
-      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
       const apiKeys = await user.listApiKeys();
 
       return (
@@ -935,10 +935,10 @@ API keys can be revoked when they are no longer needed or if they have been comp
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="lib/api-keys.ts"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export async function revokeApiKey(userId: string, apiKeyId: string) {
-      const user = await stackServerApp.getUser(userId);
+      const user = await hexclaveServerApp.getUser(userId);
       if (!user) return;
 
       const apiKeys = await user.listApiKeys();
@@ -1095,7 +1095,7 @@ You can check if an API key is still valid:
   </Tab>
   <Tab title="Next.js Server">
     ```typescript title="app/components/check-api-key.tsx"
-    import { stackServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/stack/server";
 
     export default async function CheckApiKeyValidity({
       userId,
@@ -1104,7 +1104,7 @@ You can check if an API key is still valid:
       userId: string,
       apiKeyId: string
     }) {
-      const user = await stackServerApp.getUser(userId);
+      const user = await hexclaveServerApp.getUser(userId);
       if (!user) return <div>User not found</div>;
 
       const apiKeys = await user.listApiKeys();

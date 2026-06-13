@@ -15,10 +15,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists
 
 ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+ENV PATH=$PNPM_HOME:$PNPM_HOME/bin:$PATH
 
 RUN corepack enable
-RUN corepack prepare pnpm@10.23.0 --activate
+RUN corepack prepare pnpm@11.5.0 --activate
 RUN pnpm add -g turbo
 RUN pnpm add -g tsx
 
@@ -30,10 +30,13 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-RUN turbo prune --scope=@stackframe/backend --scope=@stackframe/dashboard --docker
+RUN turbo prune --scope=@hexclave/backend --scope=@hexclave/dashboard --scope=@hexclave/template --docker
 
 
 FROM node-base AS builder
+
+# Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
+ENV HEXCLAVE_SKIP_TEMPLATE_GENERATION=true
 
 # copy over package.json files and install dependencies
 COPY --from=pruner /app/out/json/ .
@@ -43,7 +46,7 @@ COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
 COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # copy over the rest of the code for the build
 COPY --from=pruner /app/out/full/ .
@@ -56,7 +59,7 @@ ENV NEXT_CONFIG_OUTPUT=standalone
 ENV NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@stackframe/backend... --filter=@stackframe/dashboard...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script.
 # tsdown -> rolldown is multi-threaded Rust; under qemu-user (cross-arch
@@ -135,7 +138,7 @@ RUN npm install
 FROM node-base AS mock-oauth-builder
 WORKDIR /mock-oauth
 COPY apps/mock-oauth-server/package.json .
-RUN pnpm install && pnpm add esbuild --save-dev
+RUN printf 'allowBuilds:\n  esbuild: true\n' > pnpm-workspace.yaml && pnpm install && pnpm add esbuild --save-dev
 COPY apps/mock-oauth-server/src ./src
 RUN npx esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.cjs
 

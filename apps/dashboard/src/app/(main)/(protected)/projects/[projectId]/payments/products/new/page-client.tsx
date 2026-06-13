@@ -27,10 +27,10 @@ import {
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
@@ -265,8 +265,8 @@ export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
@@ -426,7 +426,7 @@ export default function PageClient() {
   const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: {
           [`payments.productLines.${productLine.id}`]: {
             displayName: productLine.displayName || null,
@@ -496,7 +496,7 @@ export default function PageClient() {
       };
 
       const success = await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { [`payments.products.${productId}`]: product },
         pushable: true,
       });
@@ -1142,7 +1142,7 @@ ${Object.entries(prices).map(([id, price]) => {
         onSave={async (item) => {
           try {
             const success = await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
               pushable: true,
             });

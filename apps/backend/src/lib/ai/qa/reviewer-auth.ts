@@ -1,5 +1,5 @@
-import { KnownErrors } from "@stackframe/stack-shared";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export function assertIsAiChatReviewer(auth: {
   project: { id: string },

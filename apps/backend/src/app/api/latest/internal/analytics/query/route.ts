@@ -2,12 +2,12 @@ import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getStackServerApp } from "@/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
-import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { getHexclaveServerApp } from "@/hexclave";
+import { KnownErrors } from "@hexclave/shared";
+import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
+import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
 const MAX_QUERY_TIMEOUT_MS = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
@@ -43,7 +43,7 @@ export const POST = createSmartRouteHandler({
     let effectiveTimeoutMs = body.timeout_ms;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const app = getStackServerApp();
+      const app = getHexclaveServerApp();
       const timeoutItem = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
       // clickHouse treats max_execution_time=0 as
       // "unlimited", so a customer with zero timeout entitlement (no active

@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { ignoreUnhandledRejection, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 // Tracked for SIGTERM drain on non-Vercel runtimes (e.g. Cloud Run).
 const inFlightPromises = new Set<Promise<unknown>>();

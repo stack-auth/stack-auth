@@ -1,5 +1,5 @@
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { clsx } from "clsx";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState, useEffect } from "react";

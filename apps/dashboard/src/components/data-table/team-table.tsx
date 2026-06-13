@@ -2,14 +2,14 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { ActionCell, ActionDialog, Typography } from "@/components/ui";
-import { ServerTeam } from '@stackframe/stack';
+import { ServerTeam } from '@hexclave/next';
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import React, { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
@@ -153,7 +153,7 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
 
 export function TeamTable() {
   const router = useRouter();
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
 
   const [gridState, setGridState] = useDataGridUrlState(columns, {
     paramPrefix: "teams",
@@ -172,7 +172,7 @@ export function TeamTable() {
       const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
         ? params.quickSearch.trim()
         : undefined;
-      const result = await stackAdminApp.listTeams({
+      const result = await hexclaveAdminApp.listTeams({
         limit: PAGE_SIZE,
         orderBy: "createdAt",
         desc: sortDesc,
@@ -185,7 +185,7 @@ export function TeamTable() {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [stackAdminApp],
+    [hexclaveAdminApp],
   );
 
   const getRowId = useCallback((row: ServerTeam) => row.id, []);
@@ -218,7 +218,7 @@ export function TeamTable() {
       footer={false}
       fillHeight={false}
       onRowClick={(row) => {
-        router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
+        router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
       }}
     />
   );

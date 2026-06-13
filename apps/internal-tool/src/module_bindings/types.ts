@@ -90,6 +90,7 @@ export const Operators = __t.object("Operators", {
   addedAt: __t.timestamp(),
   stackUserId: __t.string(),
   displayName: __t.string(),
+  expiresAt: __t.option(__t.timestamp()),
 });
 export type Operators = __Infer<typeof Operators>;
 
@@ -120,4 +121,3 @@ export const QaEntries = __t.object("QaEntries", {
   lastPublishedAt: __t.option(__t.timestamp()),
 });
 export type QaEntries = __Infer<typeof QaEntries>;
-

@@ -17,13 +17,13 @@ npx @hexclave/cli@latest init
 Next, update or create a file in `convex/auth.config.ts`:
 
 ```ts
-import { getConvexProvidersConfig } from "@stackframe/js/convex-auth.config";  // Vanilla JS
-// or: import { getConvexProvidersConfig } from "@stackframe/react/convex-auth.config";  // React
-// or: import { getConvexProvidersConfig } from "@stackframe/stack/convex-auth.config";  // Next.js
+import { getConvexProvidersConfig } from "@hexclave/js/convex-auth.config";  // Vanilla JS
+// or: import { getConvexProvidersConfig } from "@hexclave/react/convex-auth.config";  // React
+// or: import { getConvexProvidersConfig } from "@hexclave/next/convex-auth.config";  // Next.js
 
 export default {
   providers: getConvexProvidersConfig({
-    projectId: process.env.STACK_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_STACK_PROJECT_ID
+    projectId: process.env.HEXCLAVE_PROJECT_ID,  // or: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID
   }),
 }
 ```
@@ -32,9 +32,9 @@ Next, update or create a file in `convex/convex.config.ts`:
 
 ```ts
 import { defineApp } from "convex/server";
-import stackAuthComponent from "@stackframe/js/convex.config";  // Vanilla JS
-// or: import stackAuthComponent from "@stackframe/react/convex.config";  // React
-// or: import stackAuthComponent from "@stackframe/stack/convex.config";  // Next.js
+import stackAuthComponent from "@hexclave/js/convex.config";  // Vanilla JS
+// or: import stackAuthComponent from "@hexclave/react/convex.config";  // React
+// or: import stackAuthComponent from "@hexclave/next/convex.config";  // Next.js
 
 
 const app = defineApp();
@@ -46,9 +46,9 @@ export default app;
 Then, update your Convex client to use Hexclave:
 
 ```ts
-convexClient.setAuth(stackClientApp.getConvexClientAuth({}));  // browser JS
-convexReactClient.setAuth(stackClientApp.getConvexClientAuth({}));  // React
-convexHttpClient.setAuth(stackClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Hexclave docs for more information on tokenStore
+convexClient.setAuth(hexclaveClientApp.getConvexClientAuth({}));  // browser JS
+convexReactClient.setAuth(hexclaveClientApp.getConvexClientAuth({}));  // React
+convexHttpClient.setAuth(hexclaveClientApp.getConvexHttpClientAuth({ tokenStore: requestObject }));  // HTTP, see Hexclave docs for more information on tokenStore
 ```
 
 Now, you'll be able to access Hexclave's functionality from your frontend & backend:
@@ -65,7 +65,7 @@ export function MyPage() {
 export const myQuery = query({
   handler: async (ctx, args) => {
     // In queries & mutations, use the special `getPartialUser` function to get user info
-    const obj = await stackServerApp.getPartialUser({ from: "convex", ctx });
+    const obj = await hexclaveServerApp.getPartialUser({ from: "convex", ctx });
     return JSON.stringify(obj);
   },
 });

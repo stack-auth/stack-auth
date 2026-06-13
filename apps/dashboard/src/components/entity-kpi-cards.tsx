@@ -1,8 +1,8 @@
 "use client";
 
 import { Skeleton } from "@/components/ui";
-import { useMetricsOrThrow } from "@/lib/stack-app-internals";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { useMetricsOrThrow } from "@/lib/hexclave-app-internals";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense } from "react";
 import { useAdminApp } from "../app/(main)/(protected)/projects/[projectId]/use-admin-app";
@@ -60,8 +60,8 @@ function formatCompact(n: number): string {
 }
 
 function KpiGridContent({ source, labels }: { source: EntityKpiCardsProps["source"], labels: EntityKpiLabels }) {
-  const stackAdminApp = useAdminApp();
-  const metrics = useMetricsOrThrow(stackAdminApp, false);
+  const hexclaveAdminApp = useAdminApp();
+  const metrics = useMetricsOrThrow(hexclaveAdminApp, false);
   const { dailyNew, splitTotal, splitNew, totalCount } = source(metrics);
 
   const new7 = sumLast(dailyNew, 7);

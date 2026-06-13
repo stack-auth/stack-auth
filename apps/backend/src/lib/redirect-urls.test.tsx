@@ -7,7 +7,7 @@ describe('validateRedirectUrl', () => {
     values: {
       hostedHandlerUrlTemplate?: string,
       hostedHandlerDomainSuffix?: string,
-      stackPortPrefix?: string,
+      hexclavePortPrefix?: string,
     },
     callback: () => T,
   ): T => {
@@ -20,7 +20,7 @@ describe('validateRedirectUrl', () => {
     const stackKeys = [
       "NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE",
       "NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX",
-      "NEXT_PUBLIC_STACK_PORT_PREFIX",
+      "NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX",
     ] as const;
     const hexclaveOf = (name: string) => name.replace("STACK_", "HEXCLAVE_");
     const allKeys = [...stackKeys, ...stackKeys.map(hexclaveOf)];
@@ -28,7 +28,7 @@ describe('validateRedirectUrl', () => {
     const newValues: Record<string, string | undefined> = {
       NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE: values.hostedHandlerUrlTemplate,
       NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX: values.hostedHandlerDomainSuffix,
-      NEXT_PUBLIC_STACK_PORT_PREFIX: values.stackPortPrefix,
+      NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: values.hexclavePortPrefix,
     };
     for (const stackKey of stackKeys) {
       newValues[hexclaveOf(stackKey)] = newValues[stackKey];
@@ -69,8 +69,8 @@ describe('validateRedirectUrl', () => {
   describe('exact domain matching', () => {
     it('should implicitly validate hosted handler domains for the project', () => {
       withHostedHandlerEnv({
-        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09/{hostedPath}",
-        stackPortPrefix: "92",
+        hostedHandlerUrlTemplate: "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}",
+        hexclavePortPrefix: "92",
       }, () => {
         const tenancy = createMockTenancy({
           domains: {
@@ -612,6 +612,9 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://success', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://error', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://success', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://error', tenancy)).toBe(false);
+      expect(validateRedirectUrl('hexclave-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
     });
 
     it('should not accept other custom schemes without trusted domain config', () => {
@@ -631,15 +634,23 @@ describe('validateRedirectUrl', () => {
 });
 
 describe('isAcceptedNativeAppUrl', () => {
-  it('should accept the native app OAuth URL scheme', () => {
+  it('should accept the legacy native app OAuth URL scheme', () => {
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://success')).toBe(true);
     expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://error')).toBe(true);
+  });
+
+  it('should accept the canonical Hexclave native app OAuth URL scheme', () => {
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://success')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://error')).toBe(true);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url://oauth-callback')).toBe(true);
   });
 
   it('should reject other custom schemes', () => {
     expect(isAcceptedNativeAppUrl('myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stackauth-myapp://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('stack-auth://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('hexclave-mobile-oauth-url-extra://callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('https://example.com/callback')).toBe(false);
     expect(isAcceptedNativeAppUrl('http://localhost:3000/callback')).toBe(false);
   });

@@ -1,5 +1,5 @@
-import { MAX_IMAGE_BYTES_PER_FILE, MAX_IMAGES_PER_MESSAGE } from "@stackframe/stack-shared/dist/ai/image-limits";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { MAX_IMAGE_BYTES_PER_FILE, MAX_IMAGES_PER_MESSAGE } from "@hexclave/shared/dist/ai/image-limits";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project } from "../../../backend-helpers";

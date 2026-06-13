@@ -10,8 +10,8 @@ import {
 import { Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { WarningCircle } from "@phosphor-icons/react";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -138,8 +138,8 @@ function EnableEmailVerificationDialog({
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -151,7 +151,7 @@ export default function PageClient() {
     try {
       if (checked && !projectConfig.onboarding.requireEmailVerification) {
         // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
-        const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+        const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
           { requireEmailVerification: true },
           10,
         );
@@ -162,7 +162,7 @@ export default function PageClient() {
             totalAffectedCount: preview.totalAffectedCount,
             onConfirm: async () => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: { "onboarding.requireEmailVerification": true },
                 pushable: true,
               });
@@ -174,7 +174,7 @@ export default function PageClient() {
       }
 
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { "onboarding.requireEmailVerification": checked },
         pushable: true,
       });

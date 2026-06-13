@@ -6,8 +6,8 @@ import Foundation
 struct OAuthTests {
     
     // Default test URLs (must be absolute URLs)
-    let testRedirectUrl = "stack-auth-mobile-oauth-url://success"
-    let testErrorRedirectUrl = "stack-auth-mobile-oauth-url://error"
+    let testRedirectUrl = "hexclave-mobile-oauth-url://success"
+    let testErrorRedirectUrl = "hexclave-mobile-oauth-url://error"
     
     // MARK: - OAuth URL Generation Tests
     

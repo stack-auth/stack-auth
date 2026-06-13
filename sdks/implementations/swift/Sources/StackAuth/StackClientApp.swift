@@ -131,10 +131,10 @@ public actor StackClientApp {
     ) async throws -> OAuthUrlResult {
         // Validate that URLs are absolute URLs (panic if not - these are programmer errors)
         guard redirectUrl.contains("://") else {
-            fatalError("redirectUrl must be an absolute URL (e.g., 'stack-auth-mobile-oauth-url://success')")
+            fatalError("redirectUrl must be an absolute URL (e.g., 'hexclave-mobile-oauth-url://success')")
         }
         guard errorRedirectUrl.contains("://") else {
-            fatalError("errorRedirectUrl must be an absolute URL (e.g., 'stack-auth-mobile-oauth-url://error')")
+            fatalError("errorRedirectUrl must be an absolute URL (e.g., 'hexclave-mobile-oauth-url://error')")
         }
         
         let actualState = state ?? generateRandomString(length: 32)
@@ -186,7 +186,7 @@ public actor StackClientApp {
             return
         }
         
-        let callbackScheme = "stack-auth-mobile-oauth-url"
+        let callbackScheme = "hexclave-mobile-oauth-url"
         let oauth = try await getOAuthUrl(
             provider: provider,
             redirectUrl: callbackScheme + "://success",

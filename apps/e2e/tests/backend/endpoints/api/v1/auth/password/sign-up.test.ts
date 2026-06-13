@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -114,6 +114,7 @@ it("should not sign up new users if verification callback url is not valid", asy
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "http://invalid-domain.com" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {

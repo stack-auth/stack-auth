@@ -15,7 +15,7 @@ export default function PageClient() {
       return <SetupPage toMetrics={() => setPage('metrics')} />;
     }
     case 'metrics': {
-      return <MetricsPage toSetup={() => setPage('setup')} />;
+      return <MetricsPage />;
     }
   }
 }

@@ -10,7 +10,7 @@ import {
   DesignCard,
   DesignCardTint,
   DesignInput,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { DesignMenu, type DesignMenuActionItem } from "@/components/design-components/menu";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import {
@@ -28,18 +28,19 @@ import {
   UserCircleIcon,
   UserPlusIcon,
 } from "@phosphor-icons/react";
-import { AdminProject, AuthPage } from "@stackframe/stack";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { AdminProject, AuthPage } from "@hexclave/next";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { allProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { getNewProviderCallbackUrl } from "./oauth-callback-url";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
 type AdminOAuthProviderConfig = AdminProject['config']['oauthProviders'][number];
@@ -102,7 +103,10 @@ function ConfirmSignUpDisabledDialog(props: {
   );
 }
 
-function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): CompleteConfig['auth']['oauth']['providers'][string] {
+function adminProviderToConfigProvider(
+  provider: AdminOAuthProviderConfig,
+  existing: CompleteConfig['auth']['oauth']['providers'][string] | undefined,
+): CompleteConfig['auth']['oauth']['providers'][string] {
   switch (provider.type) {
     case 'shared': {
       return {
@@ -110,6 +114,9 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         isShared: true,
         clientId: undefined,
         clientSecret: undefined,
+        // Shared providers always use Stack's shared OAuth app; customCallbackUrl
+        // is forbidden by the schema for them.
+        customCallbackUrl: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
         appleBundles: undefined,
@@ -123,6 +130,13 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         isShared: false,
         clientId: provider.clientId,
         clientSecret: provider.clientSecret,
+        // Setting up a standard provider (brand-new, or converting shared ->
+        // standard) means registering a fresh OAuth app, so it gets the
+        // hexclave-branded callback URL. A provider that was already standard
+        // keeps whatever it had — legacy ones without a customCallbackUrl keep
+        // falling back to the stack-auth callback so edits never silently change
+        // an already-registered redirect URL.
+        customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
         facebookConfigId: provider.facebookConfigId,
         microsoftTenantId: provider.microsoftTenantId,
         appleBundles: provider.appleBundleIds?.length
@@ -139,9 +153,10 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
+  const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
@@ -162,7 +177,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
       placeholder="Search for a provider..."
       value={providerSearch}
       onChange={(e) => setProviderSearch(e.target.value)}
-      leadingIcon={<MagnifyingGlassIcon size={14} />}
+      leadingIcon={<MagnifyingGlassIcon className="h-3.5 w-3.5" />}
     />
     <div className="flex gap-2 flex-wrap justify-center">
       {filteredProviders
@@ -173,16 +188,16 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             provider={provider}
             updateProvider={async (provider) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
-                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
                 },
                 pushable: false,
               });
             }}
             deleteProvider={async (id) => {
               await updateConfig({
-                adminApp: stackAdminApp,
+                adminApp: hexclaveAdminApp,
                 configUpdate: {
                   [`auth.oauth.providers.${id}`]: null,
                 },
@@ -203,16 +218,17 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 // ─── Provider action menu (dots) ──────────────────────────────────────────
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
+  const completeConfig = hexclaveAdminApp.useProject().useConfig();
   const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
 
   const updateProvider = async (provider: AdminOAuthProviderConfig) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
-        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider),
+        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
       },
       pushable: false,
     });
@@ -220,7 +236,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
 
   const deleteProvider = async (id: string) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.oauth.providers.${id}`]: null,
       },
@@ -401,8 +417,8 @@ type PendingChange = {
 };
 
 function useEmailVerificationToggle() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -412,7 +428,7 @@ function useEmailVerificationToggle() {
   const handleChange = async (next: boolean) => {
     if (next && !projectConfig.onboarding.requireEmailVerification) {
       // any cast needed: previewAffectedUsersByOnboardingChange is a dynamically-typed admin API method
-      const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+      const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
       );
@@ -422,7 +438,7 @@ function useEmailVerificationToggle() {
           totalAffectedCount: preview.totalAffectedCount,
           onConfirm: async () => {
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "onboarding.requireEmailVerification": true },
               pushable: true,
             });
@@ -433,7 +449,7 @@ function useEmailVerificationToggle() {
       }
     }
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "onboarding.requireEmailVerification": next },
       pushable: true,
     });
@@ -448,6 +464,7 @@ function useEmailVerificationToggle() {
       open={!!pendingChange}
       onClose={() => setPendingChange(null)}
       title="Enable email verification requirement"
+      size="2xl"
       danger
       okButton={{
         label: "Apply Change",
@@ -468,35 +485,50 @@ function useEmailVerificationToggle() {
             <Typography variant="secondary" type="label">
               Affected users
             </Typography>
-            <div className="rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06] overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-foreground/[0.04]">
+            <div className="overflow-hidden rounded-xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[22%]" />
+                  <col />
+                  <col className="w-[7.5rem]" />
+                </colgroup>
+                <thead className="bg-zinc-50 dark:bg-background">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">User</th>
                     <th className="px-3 py-2 text-left font-medium">Email</th>
-                    <th className="px-3 py-2 text-left font-medium">Reason</th>
+                    <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Reason</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pendingChange.affectedUsers.map((user) => (
-                    <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06]">
-                      <td className="px-3 py-2">
-                        {user.displayName || <span className="text-muted-foreground italic">No name</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <DesignBadge
-                          label={user.restrictedReason.type === "email_not_verified" ? "Email not verified" : "Anonymous user"}
-                          color="orange"
-                          size="sm"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              <div className="max-h-52 overflow-y-auto border-t border-black/[0.06] dark:border-white/[0.06]">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col />
+                    <col className="w-[7.5rem]" />
+                  </colgroup>
+                  <tbody>
+                    {pendingChange.affectedUsers.map((user) => (
+                      <tr key={user.id} className="border-t border-black/[0.06] dark:border-white/[0.06] first:border-t-0">
+                        <td className="px-3 py-2 align-middle">
+                          {user.displayName || <span className="text-muted-foreground italic">No name</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle truncate" title={user.primaryEmail ?? undefined}>
+                          {user.primaryEmail || <span className="text-muted-foreground italic">No email</span>}
+                        </td>
+                        <td className="px-3 py-2 align-middle">
+                          <DesignBadge
+                            label={user.restrictedReason.type === "email_not_verified" ? "Not verified" : "Anonymous"}
+                            color="orange"
+                            size="sm"
+                            contentMode="text"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             {pendingChange.totalAffectedCount > pendingChange.affectedUsers.length && (
               <Typography variant="secondary" type="footnote">
@@ -515,8 +547,8 @@ function useEmailVerificationToggle() {
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const oauthProviders = project.config.oauthProviders;
   const updateConfig = useUpdateConfig();
@@ -550,7 +582,7 @@ export default function PageClient() {
     if (localPasskeyEnabled !== undefined) {
       configUpdate['auth.passkey.allowSignIn'] = localPasskeyEnabled;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalPasswordEnabled(undefined);
     setLocalOtpEnabled(undefined);
     setLocalPasskeyEnabled(undefined);
@@ -585,7 +617,7 @@ export default function PageClient() {
 
     if (localMergeStrategy !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'auth.oauth.accountMergeStrategy': localMergeStrategy },
         pushable: true,
       });
@@ -604,7 +636,7 @@ export default function PageClient() {
     if (localMergeStrategy !== undefined) {
       configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
     }
-    await updateConfig({ adminApp: stackAdminApp, configUpdate, pushable: true });
+    await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalAllowSignUp(undefined);
     setLocalMergeStrategy(undefined);
   };
@@ -617,7 +649,7 @@ export default function PageClient() {
   const handleUserDeletionSave = async () => {
     if (localAllowClientDeletion !== undefined) {
       await updateConfig({
-        adminApp: stackAdminApp,
+        adminApp: hexclaveAdminApp,
         configUpdate: { 'users.allowClientUserDeletion': localAllowClientDeletion },
         pushable: true,
       });

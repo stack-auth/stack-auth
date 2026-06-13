@@ -1,29 +1,29 @@
 import * as Sentry from "@sentry/nextjs";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError, registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import * as util from "util";
 import { runAsynchronouslyAndWaitUntil } from "./utils/background-tasks";
 
-function expandStackPortPrefix(value?: string | null) {
+function expandHexclavePortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 
-const sentryErrorSink = (location: string, error: unknown) => {
+const sentryErrorSink = (location: string, error: unknown, level: "error" | "warning") => {
   if (!("captureException" in Sentry)) {
     // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just log and ignore
     console.log("Attempted to capture Sentry error outside of Next.js script, ignoring");
     return;
   }
-  Sentry.captureException(error, { extra: { location } });
+  Sentry.captureException(error, { extra: { location }, level });
   runAsynchronouslyAndWaitUntil(Sentry.flush());
 };
 
 export function ensurePolyfilled() {
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-      const replaced = expandStackPortPrefix(value ?? undefined);
+      const replaced = expandHexclavePortPrefix(value ?? undefined);
       if (replaced !== undefined) {
         // eslint-disable-next-line no-restricted-syntax
         process.env[key] = replaced;

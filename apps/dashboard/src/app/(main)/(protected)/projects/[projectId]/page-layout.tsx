@@ -9,6 +9,7 @@ export function PageLayout(props: {
   fillWidth?: boolean,
   noPadding?: boolean,
   allowContentOverflow?: boolean,
+  containedHeight?: boolean,
   fullBleed?: boolean,
   wrapHeaderInCard?: boolean,
 } & ({
@@ -19,6 +20,7 @@ export function PageLayout(props: {
   return (
     <div
       className={cn("flex flex-1 min-h-0 flex-col", !props.noPadding && "py-4 px-4 sm:py-6 sm:px-6")}
+      data-contained-height={props.containedHeight ? "true" : undefined}
       data-full-bleed={props.fullBleed ? "true" : undefined}
     >
       <div
@@ -37,6 +39,7 @@ export function PageLayout(props: {
           <div
             className={cn(
               "mb-6",
+              props.noPadding && "px-4 pt-4 sm:px-6 sm:pt-6",
               props.wrapHeaderInCard && "rounded-2xl border border-black/[0.06] bg-white/90 px-4 py-3 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl sm:px-5 sm:py-4 dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none dark:rounded-none dark:px-0 dark:py-0 dark:sm:px-0 dark:sm:py-0"
             )}
           >

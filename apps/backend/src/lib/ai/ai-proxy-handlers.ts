@@ -3,7 +3,7 @@ import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { extractOpenRouterUsage, scanSseForUsage, type UsageFields } from "@/lib/ai/openrouter-usage";
 import { preprocessProxyBody } from "@/private";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 

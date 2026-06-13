@@ -2,14 +2,14 @@
 
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@hexclave/next";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import { StatsBar, StatsBarData } from "./stats-bar";
@@ -179,14 +179,14 @@ const groupedEmailGridColumns: DataGridColumnDef<GroupedEmailRow>[] = [
 ];
 
 export function GroupedEmailTable() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch drafts and templates for display names
-  const drafts = stackAdminApp.useEmailDrafts();
-  const templates = stackAdminApp.useEmailTemplates();
+  const drafts = hexclaveAdminApp.useEmailDrafts();
+  const templates = hexclaveAdminApp.useEmailTemplates();
 
   // Create maps for quick lookup
   const draftsMap = useMemo(() => {
@@ -215,7 +215,7 @@ export function GroupedEmailTable() {
     runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
-        const result = await stackAdminApp.listOutboxEmails();
+        const result = await hexclaveAdminApp.listOutboxEmails();
         if (cancelled) return;
         setEmails(result.items);
       } finally {
@@ -225,7 +225,7 @@ export function GroupedEmailTable() {
     return () => {
       cancelled = true;
     };
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   // Group emails by template/draft
   const groupedRows = useMemo(

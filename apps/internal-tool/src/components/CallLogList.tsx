@@ -41,11 +41,13 @@ function getSortValue(row: McpCallLogRow, field: SortField): number | string {
 export function CallLogList({
   rows,
   connectionState,
+  connectionErrorMessage,
   onSelect,
   selectedId,
 }: {
   rows: McpCallLogRow[];
   connectionState: string;
+  connectionErrorMessage: string | null;
   onSelect: (row: McpCallLogRow) => void;
   selectedId?: bigint;
 }) {
@@ -148,8 +150,15 @@ export function CallLogList({
   if (connectionState === "error") {
     return (
       <div className="text-red-600 text-sm p-4">
-        Failed to connect to SpacetimeDB. Check that <code>NEXT_PUBLIC_SPACETIMEDB_HOST</code> and{" "}
-        <code>NEXT_PUBLIC_SPACETIMEDB_DB_NAME</code> are set correctly.
+        <p>
+          Failed to connect to SpacetimeDB. Check the browser session response below, then verify the{" "}
+          <code>stack-auth-llm</code> module is published and the local SpacetimeDB container is reachable.
+        </p>
+        {connectionErrorMessage != null && connectionErrorMessage !== "" && (
+          <pre className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 font-mono text-xs text-red-800">
+            {connectionErrorMessage}
+          </pre>
+        )}
       </div>
     );
   }

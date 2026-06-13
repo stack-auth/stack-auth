@@ -1,4 +1,4 @@
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { clsx } from "clsx";

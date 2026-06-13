@@ -1,5 +1,5 @@
 "use client";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@hexclave/next";
 import { useEffect, useState } from "react";
 
 export default function Test() {

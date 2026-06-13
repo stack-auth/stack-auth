@@ -5,7 +5,7 @@ import { DesignCard } from "@/components/design-components";
 import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Gauge } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 
@@ -215,8 +215,8 @@ function BoostCountdownTimer({ expiresAt, onExpire }: { expiresAt: Date, onExpir
 }
 
 export function DomainReputationCard() {
-  const stackAdminApp = useAdminApp();
-  const deliveryInfo = stackAdminApp.useEmailDeliveryStats();
+  const hexclaveAdminApp = useAdminApp();
+  const deliveryInfo = hexclaveAdminApp.useEmailDeliveryStats();
 
   const isBoostActive = deliveryInfo.capacity.is_boost_active;
   const boostExpiresAt = deliveryInfo.capacity.boost_expires_at
@@ -240,7 +240,7 @@ export function DomainReputationCard() {
   const maxSpamRate = 0.1; // 0.1% max acceptable
 
   const handleActivateBoost = async () => {
-    await stackAdminApp.activateEmailCapacityBoost();
+    await hexclaveAdminApp.activateEmailCapacityBoost();
   };
 
   // Capacity label with strikethrough when boosted
@@ -270,7 +270,7 @@ export function DomainReputationCard() {
     <DesignCard
       gradient="default"
       glassmorphic
-      className="w-full lg:w-72"
+      className="w-full xl:w-72"
     >
       <div className="flex items-center gap-2 mb-3">
         <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
@@ -295,7 +295,7 @@ export function DomainReputationCard() {
           {isBoostActive && boostExpiresAt ? (
             <BoostCountdownTimer
               expiresAt={boostExpiresAt}
-              onExpire={() => runAsynchronouslyWithAlert(stackAdminApp.getEmailDeliveryStats())}
+              onExpire={() => runAsynchronouslyWithAlert(hexclaveAdminApp.getEmailDeliveryStats())}
             />
           ) : (
             <div className="flex justify-center mt-3">

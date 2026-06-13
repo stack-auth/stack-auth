@@ -1,13 +1,13 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
-import { passwordSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { use } from "@stackframe/stack-shared/dist/utils/react";
-import { Button, Label, PasswordInput, Typography, cn } from "@stackframe/stack-ui";
+import { KnownErrors } from "@hexclave/shared";
+import { getPasswordError } from "@hexclave/shared/dist/helpers/password";
+import { passwordSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { cacheFunction } from "@hexclave/shared/dist/utils/caches";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { use } from "@hexclave/shared/dist/utils/react";
+import { Button, Label, PasswordInput, Typography, cn } from "@hexclave/ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -42,7 +42,7 @@ export default function PasswordResetForm(props: {
   const { register, handleSubmit, formState: { errors }, clearErrors } = useForm({
     resolver: yupResolver(schema)
   });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [finished, setFinished] = useState(false);
   const [resetError, setResetError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -51,7 +51,7 @@ export default function PasswordResetForm(props: {
     setLoading(true);
     try {
       const { password } = data;
-      const result = await stackApp.resetPassword({ password, code: props.code });
+      const result = await hexclaveApp.resetPassword({ password, code: props.code });
       if (result.status === 'error') {
         setResetError(true);
         return;
@@ -125,8 +125,8 @@ export default function PasswordResetForm(props: {
 }
 
 
-const cachedVerifyPasswordResetCode = cacheFunction(async (stackApp: StackClientApp<true>, code: string) => {
-  return await stackApp.verifyPasswordResetCode(code);
+const cachedVerifyPasswordResetCode = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+  return await hexclaveApp.verifyPasswordResetCode(code);
 });
 
 export function PasswordReset({
@@ -137,7 +137,7 @@ export function PasswordReset({
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
 
   const invalidJsx = (
     <MessageCard title={t("Invalid Password Reset Link")} fullPage={fullPage}>
@@ -162,7 +162,7 @@ export function PasswordReset({
     return invalidJsx;
   }
 
-  const result = use(cachedVerifyPasswordResetCode(stackApp, code));
+  const result = use(cachedVerifyPasswordResetCode(hexclaveApp, code));
 
   if (result.status === 'error') {
     if (KnownErrors.VerificationCodeNotFound.isInstance(result.error)) {

@@ -12,8 +12,8 @@ import {
 } from "@/lib/conversation-types";
 import { internalDashboardAuthSchema, parseConversationListLimit, parseConversationListOffset } from "@/lib/conversations-api";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { projectIdSchema, userIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { KnownErrors } from "@stackframe/stack-shared";
+import { projectIdSchema, userIdSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { KnownErrors } from "@hexclave/shared";
 import { globalPrismaClient } from "@/prisma-client";
 
 const conversationEntryPointBySource = {

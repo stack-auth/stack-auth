@@ -1,5 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

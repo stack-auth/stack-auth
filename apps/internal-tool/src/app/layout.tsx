@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense } from "react";
-import { StackProvider, StackTheme } from "@stackframe/stack";
-import { stackClientApp } from "../stack";
+import { HexclaveProvider, HexclaveTheme } from "@hexclave/next";
+import { hexclaveClientApp } from "../hexclave";
 import Loading from "./loading";
 import "./globals.css";
 
@@ -13,13 +13,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <title>Hexclave — MCP Review Tool</title>
       </head>
       <body>
-        <StackProvider app={stackClientApp}>
-          <StackTheme>
+        <HexclaveProvider app={hexclaveClientApp}>
+          <HexclaveTheme>
             <Suspense fallback={<Loading />}>
               {children}
             </Suspense>
-          </StackTheme>
-        </StackProvider>
+          </HexclaveTheme>
+        </HexclaveProvider>
       </body>
     </html>
   );

@@ -1,18 +1,18 @@
 import { CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
-import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
-import type { OwnedProductsRow, SubscriptionRow } from "@/lib/payments/schema/types";
+import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
+import type { OwnedProductsRow } from "@/lib/payments/schema/types";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
-import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
-import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { KnownErrors } from "@hexclave/shared";
+import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@hexclave/shared/dist/schema-fields";
+import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
+import { addInterval } from "@hexclave/shared/dist/utils/dates";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@hexclave/shared/dist/utils/objects";
+import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import Stripe from "stripe";
 import * as yup from "yup";
 import { getStripeForAccount, useStripeMock } from "./stripe";
@@ -325,7 +325,7 @@ export async function validatePurchaseSession(options: {
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
-  conflictingSubscriptions: SubscriptionRow[],
+  conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null }>,
 }> {
   const { prisma, tenancyId, customerType, customerId, product, productId, priceId, quantity } = options;
 
@@ -369,32 +369,69 @@ export async function validatePurchaseSession(options: {
   //   - Stackable same-product: a second purchase of a stackable product is
   //     additive, not a replacement — don't treat the existing holding as a
   //     conflict.
-  let conflictingSubscriptions: SubscriptionRow[] = [];
+  // TODO: swap this for bulldozer read when it's consistent
+  // Read subs from Prisma (not the bulldozer view) — the view can lag, so a duplicate request would otherwise miss the just-granted sub.
+  let conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null }> = [];
   const productLineId = product.productLineId;
   const addOnBaseProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   const isStackableSelfMatch = (pid: string) =>
     productId != null && pid === productId && product.stackable === true;
-  const hasConflictingProductLine = productLineId && Object.entries(ownedProducts).some(
-    ([pid, p]) =>
-      p.productLineId === productLineId
-      && p.quantity > 0
-      && !addOnBaseProductIds.includes(pid)
-      && !isStackableSelfMatch(pid),
-  );
-  if (hasConflictingProductLine) {
-    // Find active subscriptions in this product line that can be canceled/replaced
-    const subMap = await getSubscriptionMapForCustomer({ prisma, tenancyId, customerType, customerId });
-    conflictingSubscriptions = Object.values(subMap).filter(s =>
-      isActiveSubscription(s)
-      && (s.product as Product).productLineId === productLineId
-      && !addOnBaseProductIds.includes(s.productId ?? "")
-      && !isStackableSelfMatch(s.productId ?? ""),
-    );
 
-    // If no cancelable subscriptions found, the customer owns via OTP — block the purchase.
-    // TODO: reconsider the coupling here between products and purchases. OTPs can be
-    // refunded, so this check conflates product ownership with purchase type.
-    if (conflictingSubscriptions.length === 0) {
+  // Same-product duplicate guards. Step 4 reads bulldozer's lagged ownedProducts;
+  // a duplicate request during lag would slip past it and silently re-grant.
+  // We query Prisma directly so the sub guard is symmetric with the OTP guard
+  // and works for products with no productLineId.
+  const activeSubs = await prisma.subscription.findMany({
+    where: {
+      tenancyId,
+      customerType: typedToUppercase(customerType),
+      customerId,
+      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+    },
+    select: { id: true, stripeSubscriptionId: true, productId: true, product: true },
+  });
+  if (productId != null && product.stackable !== true) {
+    const activeOtp = await prisma.oneTimePurchase.findFirst({
+      where: {
+        tenancyId,
+        customerType: typedToUppercase(customerType),
+        customerId,
+        productId,
+        revokedAt: null,
+        refundedAt: null,
+      },
+      select: { id: true },
+    });
+    if (activeOtp || activeSubs.some(s => s.productId === productId)) {
+      throw new KnownErrors.ProductAlreadyGranted(productId, customerId);
+    }
+  }
+
+  if (productLineId) {
+    conflictingSubscriptions = activeSubs
+      .filter(s =>
+        (s.product as Product).productLineId === productLineId
+        && !addOnBaseProductIds.includes(s.productId ?? "")
+        && !isStackableSelfMatch(s.productId ?? ""),
+      )
+      .map(s => ({ id: s.id, stripeSubscriptionId: s.stripeSubscriptionId }));
+
+    // If ownedProducts shows a same-line holding but there's no active subscription
+    // backing it, the customer owns via OTP — which can't be replaced by a switch.
+    // (We still rely on bulldozer here because OTPs aren't part of the duplicate-
+    // request race we're guarding above and OTP propagation lag is low-stakes.)
+    const activeSubProductIds = new Set(activeSubs.map(s => s.productId ?? "__null__"));
+    const otpInProductLine = Object.entries(ownedProducts).some(
+      ([pid, p]) =>
+        p.productLineId === productLineId
+        && p.quantity > 0
+        && !addOnBaseProductIds.includes(pid)
+        && !isStackableSelfMatch(pid)
+        && !activeSubProductIds.has(pid),
+    );
+    if (otpInProductLine && conflictingSubscriptions.length === 0) {
+      // TODO: reconsider the coupling here between products and purchases. OTPs can
+      // be refunded, so this check conflates product ownership with purchase type.
       throw new StatusError(400, "Customer already has a one-time purchase in this product line");
     }
   }

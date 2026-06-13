@@ -2,7 +2,7 @@ import "server-only";
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { stackDevEnvStatePath } from "@stackframe/stack-shared/dist/utils/dev-env-state-path";
+import { hexclaveDevEnvStatePath } from "@hexclave/shared/dist/utils/dev-env-state-path";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 
 export type RemoteDevelopmentEnvironmentProject = {
@@ -15,22 +15,31 @@ export type RemoteDevelopmentEnvironmentProject = {
   updatedAtMillis: number,
 };
 
+export type LocalDashboardState = {
+  port: number,
+  secret: string,
+  pid: number,
+  startedAtMillis: number,
+  logPath?: string,
+};
+
+export type PendingBrowserSecretConfirmationCode = {
+  code: string,
+  expiresAtMillis: number,
+  updatedAtMillis: number,
+};
+
 export type RemoteDevelopmentEnvironmentState = {
   version: 1,
   anonymousRefreshToken?: string,
-  localDashboard?: {
-    port: number,
-    secret: string,
-    pid: number,
-    startedAtMillis: number,
-    logPath?: string,
-  },
+  localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
+  pendingBrowserSecretConfirmationCodesByPort?: Partial<Record<string, PendingBrowserSecretConfirmationCode>>,
   anonymousApiBaseUrl?: string,
   projectsByConfigPath: Partial<Record<string, RemoteDevelopmentEnvironmentProject>>,
 };
 
 export function devEnvsStatePath(): string {
-  return stackDevEnvStatePath();
+  return hexclaveDevEnvStatePath();
 }
 
 export function emptyRemoteDevelopmentEnvironmentState(): RemoteDevelopmentEnvironmentState {
@@ -57,7 +66,8 @@ export function readRemoteDevelopmentEnvironmentState(): RemoteDevelopmentEnviro
     version: 1,
     anonymousRefreshToken: typeof parsed.anonymousRefreshToken === "string" ? parsed.anonymousRefreshToken : undefined,
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
-    localDashboard: parsed.localDashboard,
+    localDashboardsByPort: parsed.localDashboardsByPort,
+    pendingBrowserSecretConfirmationCodesByPort: parsed.pendingBrowserSecretConfirmationCodesByPort,
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }

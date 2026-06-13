@@ -255,7 +255,7 @@ it("should include conflicting_products when switching within the same group", a
       "status": 200,
       "body": {
         "already_bought_non_stackable": false,
-        "charges_enabled": false,
+        "charges_enabled": null,
         "conflicting_products": [
           {
             "display_name": "Product A",
@@ -283,7 +283,7 @@ it("should include conflicting_products when switching within the same group", a
         },
         "project_id": "<stripped UUID>",
         "project_logo_url": null,
-        "stripe_account_id": <stripped field 'stripe_account_id'>,
+        "stripe_account_id": null,
         "test_mode": true,
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -296,6 +296,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
   await Payments.setup();
   await Project.updateConfig({
     payments: {
+      testMode: false,
       products: {
         "test-product": {
           displayName: "Test Product",
@@ -337,6 +338,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "https://malicious.com/callback" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
@@ -380,7 +382,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
         "project_id": "<stripped UUID>",
         "project_logo_url": null,
         "stripe_account_id": <stripped field 'stripe_account_id'>,
-        "test_mode": true,
+        "test_mode": false,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

@@ -1,7 +1,7 @@
-import { ITEM_IDS, PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { ITEM_IDS, PLAN_LIMITS, PlanId } from "@hexclave/shared/dist/plans";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { it } from "../../../../helpers";
 import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";

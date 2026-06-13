@@ -2,7 +2,7 @@
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
 import { CopyButton } from "@/components/ui";
-import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { CaretLeftIcon, CaretRightIcon, InfoIcon, KeyIcon, LinkIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
@@ -182,14 +182,14 @@ function MessageTable(props: { endpointId: string }) {
 }
 
 export default function PageClient(props: { endpointId: string }) {
-  const stackAdminApp = useAdminApp();
-  const svixToken = stackAdminApp.useSvixToken();
+  const hexclaveAdminApp = useAdminApp();
+  const svixToken = hexclaveAdminApp.useSvixToken();
 
   return (
     <AppEnabledGuard appId="webhooks">
       <SvixProvider
         token={svixToken.token}
-        appId={stackAdminApp.projectId}
+        appId={hexclaveAdminApp.projectId}
         options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
       >
         <PageInner endpointId={props.endpointId} />

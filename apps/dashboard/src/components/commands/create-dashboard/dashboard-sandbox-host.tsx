@@ -4,8 +4,8 @@ import { DashboardRuntimeCodegen } from "@/lib/ai-dashboard/contracts";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { useTheme } from "@/lib/theme";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { memo, useEffect, useMemo, useRef } from "react";
 import packageJson from "../../../../package.json";
 
@@ -80,19 +80,19 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
 
         // Stack SDK may not be published at the current version — try with fallback
         try {
-          const StackSDK = await import('https://esm.sh/@stackframe/js@${esmVersion}');
+          const StackSDK = await import('https://esm.sh/@hexclave/js@${esmVersion}');
           window.StackAdminApp = StackSDK.StackAdminApp;
           window.StackServerApp = StackSDK.StackServerApp;
           window.StackSDK = StackSDK;
         } catch (e) {
-          reportDependencyError('[sandbox] @stackframe/js failed at version ${esmVersion}; trying fallback ${esmFallbackVersion}: ' + formatDependencyError(e), e);
+          reportDependencyError('[sandbox] @hexclave/js failed at version ${esmVersion}; trying fallback ${esmFallbackVersion}: ' + formatDependencyError(e), e);
           try {
-            const StackSDK = await import('https://esm.sh/@stackframe/js@${esmFallbackVersion}');
+            const StackSDK = await import('https://esm.sh/@hexclave/js@${esmFallbackVersion}');
             window.StackAdminApp = StackSDK.StackAdminApp;
             window.StackServerApp = StackSDK.StackServerApp;
             window.StackSDK = StackSDK;
           } catch (e2) {
-            failDependencyLoad('[sandbox] @stackframe/js fallback failed at version ${esmFallbackVersion}: ' + formatDependencyError(e2), e2);
+            failDependencyLoad('[sandbox] @hexclave/js fallback failed at version ${esmFallbackVersion}: ' + formatDependencyError(e2), e2);
           }
         }
         window.generateUuid = () => crypto.randomUUID();
@@ -105,7 +105,7 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
           window.dispatchEvent(new Event('deps-ready'));
         };
         script.onerror = (e) => {
-          const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @stackframe/dashboard-ui-components dev or pnpm --filter @stackframe/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
+          const message = '[sandbox] Failed to load local dashboard-ui-components IIFE bundle. Run pnpm --filter @hexclave/dashboard-ui-components dev or pnpm --filter @hexclave/dashboard-ui-components build so apps/dashboard/public/dashboard-ui-components.iife.js exists.';
           failDependencyLoad(message, e instanceof Error ? e : new Error(message));
         };
         document.head.appendChild(script);
@@ -151,15 +151,15 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
       let DashboardUIComponents, StackSDK;
       try {
         [DashboardUIComponents, StackSDK] = await Promise.all([
-          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@19.2.3,react-dom@19.2.3'),
-          import('https://esm.sh/@stackframe/js@${esmVersion}'),
+          import('https://esm.sh/@hexclave/dashboard-ui-components@${esmVersion}?deps=react@19.2.3,react-dom@19.2.3'),
+          import('https://esm.sh/@hexclave/js@${esmVersion}'),
         ]);
       } catch (e) {
         reportDependencyError('[sandbox] Custom dashboard packages failed at version ${esmVersion}; trying fallback ${esmFallbackVersion}: ' + formatDependencyError(e), e);
         try {
           [DashboardUIComponents, StackSDK] = await Promise.all([
-            import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
-            import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
+            import('https://esm.sh/@hexclave/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
+            import('https://esm.sh/@hexclave/js@${esmFallbackVersion}'),
           ]);
         } catch (e2) {
           failDependencyLoad('[sandbox] Custom dashboard package fallback failed at version ${esmFallbackVersion}: ' + formatDependencyError(e2), e2);
@@ -514,7 +514,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
         }
 
-        const stackServerApp = new window.StackAdminApp({
+        const hexclaveServerApp = new window.StackAdminApp({
           projectId: STACK_CONFIG.projectId,
           baseUrl: STACK_CONFIG.baseUrl,
           projectOwnerSession: async () => {
@@ -525,10 +525,10 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         // Expose under both names. AI-generated dashboards (post-PR2 prompt)
         // reference hexclaveServerApp; pre-rebrand saved dashboards still
         // reference stackServerApp. Both must resolve at runtime.
-        window.stackServerApp = stackServerApp;
-        window.hexclaveServerApp = stackServerApp;
+        window.hexclaveServerApp = hexclaveServerApp;
+        window.stackServerApp = hexclaveServerApp;
 
-        return stackServerApp;
+        return hexclaveServerApp;
       }
 
       // Uncaught runtime errors and unhandled rejections are forwarded by the
@@ -633,8 +633,8 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           return;
         }
         // eslint-disable-next-line no-new-func
-        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'stackServerApp', compiledSource + '\\nreturn Dashboard;')(
-          React, ReactDOM, DashboardUI, Recharts, window.stackServerApp,
+        const Dashboard = new Function('React', 'ReactDOM', 'DashboardUI', 'Recharts', 'hexclaveServerApp', compiledSource + '\\nreturn Dashboard;')(
+          React, ReactDOM, DashboardUI, Recharts, window.hexclaveServerApp,
         );
 
 

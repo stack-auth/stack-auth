@@ -3,14 +3,14 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { ActionCell, ActionDialog, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
-import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { branchPaymentsSchema } from "@hexclave/shared/dist/config/schema";
+import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
-} from "@stackframe/dashboard-ui-components";
+} from "@hexclave/dashboard-ui-components";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -115,8 +115,8 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
 function ActionsCell({ product }: { product: PaymentProduct }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const updateConfig = useUpdateConfig();
 
   return (
@@ -158,7 +158,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
                 .filter(([productId]) => productId !== product.id)
             );
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "payments.products": updatedProducts },
               pushable: true,
             });

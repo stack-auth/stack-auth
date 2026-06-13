@@ -7,10 +7,10 @@ import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getStripeOneTimeMinAmount } from "@stackframe/stack-shared/dist/payments/stripe-limits";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
+import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -63,6 +63,9 @@ export const POST = createSmartRouteHandler({
     }
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
+    }
+    if (data.stripeAccountId == null || data.stripeCustomerId == null) {
+      throw new StatusError(400, "This purchase link is no longer valid. Please request a new one and try again.");
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);

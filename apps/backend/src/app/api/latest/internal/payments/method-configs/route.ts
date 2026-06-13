@@ -1,12 +1,12 @@
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
-import { getStackStripe } from "@/lib/stripe";
+import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { getAllPaymentMethodIds, getAllPaymentMethodNames, getPaymentMethodName, isKnownPaymentMethod } from "@stackframe/stack-shared/dist/payments/payment-methods";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownErrors } from "@hexclave/shared";
+import { getAllPaymentMethodIds, getAllPaymentMethodNames, getPaymentMethodName, isKnownPaymentMethod } from "@hexclave/shared/dist/payments/payment-methods";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 const METADATA_FIELDS = new Set([
   'id', 'object', 'active', 'application', 'is_default', 'livemode', 'name', 'parent'
@@ -62,7 +62,7 @@ export const GET = createSmartRouteHandler({
       };
     }
 
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     const configs = await stripe.paymentMethodConfigurations.list({}, {
       stripeAccount: project.stripeAccountId,
     });
@@ -155,7 +155,7 @@ export const PATCH = createSmartRouteHandler({
       };
     }
 
-    const stripe = getStackStripe();
+    const stripe = getHexclaveStripe();
     await stripe.paymentMethodConfigurations.update(
       body.config_id,
       stripeUpdates,

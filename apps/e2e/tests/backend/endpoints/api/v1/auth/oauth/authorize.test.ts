@@ -115,6 +115,56 @@ it("should be able to fetch the inner callback URL by following the OAuth provid
   expect(innerCallbackUrl.pathname).toBe("/api/v1/auth/oauth/callback/spotify");
 });
 
+it("sends the original (default) redirect_uri for a provider configured before customCallbackUrl existed, and the configured one when set", async ({ expect }) => {
+  // Simulate an "old customer": a standard provider whose stored config predates
+  // this feature and therefore has no customCallbackUrl. Alongside it, a provider
+  // that opted into the new behavior with an explicit (different-brand) callback.
+  await Project.createAndSwitch();
+  await Project.updateConfig({
+    "auth.oauth.providers.github": {
+      type: "github",
+      isShared: false,
+      clientId: "legacy-client-id",
+      clientSecret: "legacy-client-secret",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      isShared: false,
+      clientId: "new-client-id",
+      clientSecret: "new-client-secret",
+      customCallbackUrl: "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+
+  // The redirect_uri we hand the provider is carried as a query param on the
+  // authorize redirect; read it without following the redirect to the provider.
+  const redirectUriFor = async (provider: string) => {
+    const response = await niceBackendFetch(`/api/v1/auth/oauth/authorize/${provider}`, {
+      redirect: "manual",
+      query: await Auth.OAuth.getAuthorizeQuery(),
+    });
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    return new URL(location!).searchParams.get("redirect_uri");
+  };
+
+  // Old customer: still gets the default deployment callback (locally the
+  // localhost API URL) — exactly what they already registered with the provider,
+  // and NOT the new hexclave-branded URL.
+  const githubRedirectUri = await redirectUriFor("github");
+  expect(new URL(githubRedirectUri!).origin).toBe(localhostUrl("02"));
+  expect(new URL(githubRedirectUri!).pathname).toBe("/api/v1/auth/oauth/callback/github");
+  expect(githubRedirectUri).not.toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/github");
+
+  // Provider that opted in: the configured customCallbackUrl is sent verbatim.
+  expect(await redirectUriFor("spotify")).toBe("https://api.hexclave.com/api/v1/auth/oauth/callback/spotify");
+});
+
 it("should fail if an invalid client_id is provided", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",
@@ -202,6 +252,42 @@ it("should reject public client secret sentinel when publishable keys are requir
   `);
 });
 
+it("should reject an empty code_challenge (PKCE cannot be disabled)", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge: "",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
+it("should reject a non-S256 code_challenge_method", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge_method: "plain",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
+it("should reject a code_challenge that is too short to be a real S256 challenge", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      code_challenge: "too-short",
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("SCHEMA_ERROR");
+});
+
 it("should fail if an invalid redirect URL is provided", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",
@@ -281,6 +367,7 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
       "status": 400,
       "body": {
         "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "details": { "redirect_url": "https://evil.example.com/post-auth" },
         "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Hexclave dashboard?",
       },
       "headers": Headers {
@@ -308,7 +395,7 @@ it("should reject provider_scope on shared provider for plain sign-in (no link t
       "status": 400,
       "body": {
         "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use extra scopes.",
       },
       "headers": Headers {
         "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
@@ -333,7 +420,7 @@ it("should reject provider_scope on shared provider for account-link flow", asyn
       "status": 400,
       "body": {
         "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Hexclave dashboard to use extra scopes.",
       },
       "headers": Headers {
         "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",

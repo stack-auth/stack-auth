@@ -1,9 +1,9 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Typography } from "@stackframe/stack-ui";
+import { strictEmailSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input, Typography } from "@hexclave/ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -16,20 +16,20 @@ export function Onboarding(props: {
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser({ or: "return-null", includeRestricted: true });
 
   // If user is not restricted anymore, redirect to the intended destination
   // redirectToAfterSignIn automatically checks for after_auth_return_to in the URL
   if (user && !user.isRestricted) {
-    runAsynchronously(stackApp.redirectToAfterSignIn());
+    runAsynchronously(hexclaveApp.redirectToAfterSignIn());
     // TODO: This should return a loading indicator, not just null
     return null;
   }
 
   // If user is anonymous or not logged in, redirect to sign-in
   if (!user || user.isAnonymous) {
-    runAsynchronously(stackApp.redirectToSignIn());
+    runAsynchronously(hexclaveApp.redirectToSignIn());
     // TODO: This should return a loading indicator, not just null
     return null;
   }
@@ -71,7 +71,7 @@ function AddEmailForm(props: {
 }) {
   const { t } = useTranslation();
   const user = useUser({ or: "throw", includeRestricted: true });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [loading, setLoading] = useState(false);
 
   const emailSchema = yupObject({

@@ -2,13 +2,13 @@ import { CustomerType } from "@/generated/prisma/client";
 import { customerOwnsProduct, ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
-import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
+import { getHexclaveStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -83,7 +83,6 @@ export const POST = createSmartRouteHandler({
       });
     }
 
-    const stripe = await getStripeForAccount({ tenancy });
     const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, req.body.product_inline);
     const customerType = productConfig.customerType;
     if (req.body.customer_type !== customerType) {
@@ -103,26 +102,37 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const stripeCustomerSearch = await stripe.customers.search({
-      query: `metadata['customerId']:'${req.body.customer_id}'`,
-    });
-    let stripeCustomer = stripeCustomerSearch.data.length ? stripeCustomerSearch.data[0] : undefined;
-    if (!stripeCustomer) {
-      stripeCustomer = await stripe.customers.create({
-        metadata: {
-          customerId: req.body.customer_id,
-          customerType: customerType === "user" ? CustomerType.USER : CustomerType.TEAM,
-        }
+    const testMode = tenancy.config.payments.testMode === true;
+    let stripeCustomerId: string | undefined;
+    let stripeAccountId: string | undefined;
+    let chargesEnabled: boolean | undefined;
+
+    if (!testMode) {
+      const stripe = await getStripeForAccount({ tenancy });
+      const stripeCustomerSearch = await stripe.customers.search({
+        query: `metadata['customerId']:'${req.body.customer_id}'`,
       });
+      let stripeCustomer = stripeCustomerSearch.data.length ? stripeCustomerSearch.data[0] : undefined;
+      if (!stripeCustomer) {
+        stripeCustomer = await stripe.customers.create({
+          metadata: {
+            customerId: req.body.customer_id,
+            customerType: customerType === "user" ? CustomerType.USER : CustomerType.TEAM,
+          }
+        });
+      }
+
+      const project = await globalPrismaClient.project.findUnique({
+        where: { id: tenancy.project.id },
+        select: { stripeAccountId: true },
+      });
+      stripeAccountId = project?.stripeAccountId ?? throwErr("Stripe account not configured");
+      const stackStripe = getHexclaveStripe();
+      const connectedAccount = await stackStripe.accounts.retrieve(stripeAccountId);
+      stripeCustomerId = stripeCustomer.id;
+      chargesEnabled = connectedAccount.charges_enabled;
     }
 
-    const project = await globalPrismaClient.project.findUnique({
-      where: { id: tenancy.project.id },
-      select: { stripeAccountId: true },
-    });
-    const stripeAccountId = project?.stripeAccountId ?? throwErr("Stripe account not configured");
-    const stackStripe = getStackStripe();
-    const connectedAccount = await stackStripe.accounts.retrieve(stripeAccountId);
     const { code } = await purchaseUrlVerificationCodeHandler.createCode({
       tenancy,
       expiresInMs: 1000 * 60 * 60 * 24,
@@ -131,9 +141,9 @@ export const POST = createSmartRouteHandler({
         customerId: req.body.customer_id,
         productId: req.body.product_id,
         product: productConfig,
-        stripeCustomerId: stripeCustomer.id,
+        stripeCustomerId,
         stripeAccountId,
-        chargesEnabled: connectedAccount.charges_enabled,
+        chargesEnabled,
       },
       method: {},
       callbackUrl: undefined,
@@ -143,7 +153,7 @@ export const POST = createSmartRouteHandler({
     const url = new URL(`/purchase/${fullCode}`, getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL"));
     if (req.body.return_url) {
       if (!validateRedirectUrl(req.body.return_url, tenancy)) {
-        throw new KnownErrors.RedirectUrlNotWhitelisted();
+        throw new KnownErrors.RedirectUrlNotWhitelisted(req.body.return_url);
       }
       url.searchParams.set("return_url", req.body.return_url);
     }

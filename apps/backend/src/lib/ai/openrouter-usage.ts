@@ -1,8 +1,8 @@
 import { getOpenRouterProxyBaseUrl } from "@/lib/ai/models";
 import { callReducer, opt } from "@/lib/ai/spacetimedb-client";
 import type { OpenRouterUsageAccounting } from "@openrouter/ai-sdk-provider";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import type { LanguageModelUsage } from "ai";
 
 export type UsageFields = {

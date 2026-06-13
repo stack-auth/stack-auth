@@ -45,7 +45,7 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { useUpdateConfig } from "@/lib/config-update";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -69,15 +69,15 @@ import {
   XCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import type { SignUpRule, SignUpRuleAction } from "@hexclave/shared/dist/interface/crud/sign-up-rules";
+import { isValidCountryCode, normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { standardProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import React, { useMemo, useRef, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -85,6 +85,11 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { validateRiskScore } from "@/lib/risk-score-utils";
 import { parseClickHouseDate } from "../analytics/shared";
+
+const ruleCardSurfaceClass =
+  "bg-white/90 dark:bg-background/60 backdrop-blur-xl shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]";
+const ruleCardMutedSurfaceClass =
+  "bg-white/90 dark:bg-background/60 shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -196,8 +201,8 @@ const ACTION_BADGE_COLOR: Record<ActionType, "green" | "red" | "orange" | "blue"
 
 function ActionBadge({ type, dim = false, size = "sm" }: { type: ActionType, dim?: boolean, size?: "sm" | "md" }) {
   return (
-    <span className={cn(dim && "opacity-50")}>
-      <DesignBadge label={ACTION_LABELS[type]} color={ACTION_BADGE_COLOR[type]} size={size} />
+    <span className={cn("inline-flex items-center", dim && "opacity-50")}>
+      <DesignBadge label={ACTION_LABELS[type]} color={ACTION_BADGE_COLOR[type]} size={size} contentMode="text" />
     </span>
   );
 }
@@ -286,7 +291,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
 
 function TriggerStatTile({ label, value, hint }: { label: string, value: React.ReactNode, hint?: string }) {
   return (
-    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2.5 min-w-0">
+    <div className={cn("rounded-xl px-3 py-2.5 min-w-0", ruleCardMutedSurfaceClass)}>
       <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
         {label}
       </div>
@@ -304,7 +309,7 @@ function TriggerHistoryChart({ data }: { data: { hour: string, count: number }[]
   const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
   const maxCount = Math.max(1, ...chartData.map(d => d.count));
   return (
-    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2 h-full flex flex-col justify-between min-w-0">
+    <div className={cn("rounded-xl px-3 py-2 h-full flex flex-col justify-between min-w-0", ruleCardMutedSurfaceClass)}>
       <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         <span>Activity</span>
         <PulseIcon className="h-3 w-3 text-muted-foreground/70" />
@@ -398,7 +403,7 @@ function RuleTriggerHistoryDialog({
   timespanHours: number,
   isSparklineLoading: boolean,
 }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [open, setOpen] = useState(false);
   const [triggers, setTriggers] = useState<RuleTriggerListItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -425,7 +430,7 @@ function RuleTriggerHistoryDialog({
     }
 
     try {
-      const response = await stackAdminApp.queryAnalytics({
+      const response = await hexclaveAdminApp.queryAnalytics({
         query: RULE_TRIGGER_EVENTS_QUERY,
         params: {
           rule_id: ruleId,
@@ -498,17 +503,20 @@ function RuleTriggerHistoryDialog({
         </button>
       )}
       headerContent={(
-        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+        <div className={cn("rounded-xl p-3 space-y-3", ruleCardMutedSurfaceClass)}>
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <Typography type="div" className="text-sm font-semibold leading-none truncate min-w-0" title={ruleDisplayName}>
               {ruleDisplayName}
             </Typography>
-            <ActionBadge type={ruleActionType} />
-            <DesignBadge
-              label={ruleEnabled ? "Enabled" : "Disabled"}
-              color={ruleEnabled ? "green" : "orange"}
-              size="sm"
-            />
+            <div className="flex items-center gap-2 shrink-0">
+              <ActionBadge type={ruleActionType} />
+              <DesignBadge
+                label={ruleEnabled ? "Enabled" : "Disabled"}
+                color={ruleEnabled ? "green" : "orange"}
+                size="sm"
+                contentMode="text"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <TriggerStatTile
@@ -548,7 +556,7 @@ function RuleTriggerHistoryDialog({
         ) : null}
 
         <div
-          className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+          className={cn("max-h-[360px] overflow-auto rounded-xl", ruleCardMutedSurfaceClass)}
           onScroll={handleScroll}
         >
           {isInitialLoading ? (
@@ -734,7 +742,7 @@ function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, siz
 
 function ConditionsPanel({ state }: { state: RuleEditorState }) {
   return (
-    <div className="p-3 rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.04]">
+    <div className={cn("p-3 rounded-xl", ruleCardMutedSurfaceClass)}>
       <ConditionBuilder value={state.conditionTree} onChange={state.setConditionTree} />
     </div>
   );
@@ -764,7 +772,7 @@ function RuleEditor(props: {
   const state = useRuleEditorState(props);
 
   return (
-    <div className="rounded-2xl bg-background/70 backdrop-blur-xl ring-2 ring-primary/40 shadow-sm transition-all duration-150 hover:transition-none p-4 space-y-4">
+    <div className={cn("rounded-2xl ring-2 ring-primary/40 transition-all duration-150 hover:transition-none p-4 space-y-4", ruleCardSurfaceClass)}>
       <NumberedStep n={1} title="Name this rule">
         <div className="flex items-center gap-3">
           <DesignInput
@@ -868,7 +876,8 @@ function SortableRuleRow(props: RuleRowProps) {
     <div
       {...dragBindings}
       className={cn(
-        "rounded-2xl bg-background/70 backdrop-blur-xl ring-1 ring-foreground/[0.06] shadow-sm",
+        "rounded-2xl",
+        ruleCardSurfaceClass,
         "flex items-center gap-3 p-4 cursor-grab active:cursor-grabbing",
         !isDragging && "transition-all duration-150 hover:transition-none",
         isDragging && "opacity-50 shadow-lg z-10",
@@ -943,7 +952,7 @@ function DefaultActionRow({
   onChange: (value: 'allow' | 'reject') => void,
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl ring-1 ring-foreground/[0.06] bg-background/40 px-4 py-3">
+    <div className={cn("flex items-center justify-between gap-3 rounded-xl px-4 py-3", ruleCardMutedSurfaceClass)}>
       <div className="flex items-center gap-2">
         <ShieldCheckIcon className="h-4 w-4 text-muted-foreground" />
         <Typography className="text-sm">
@@ -999,7 +1008,7 @@ const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
 // Shared hook used by every TestRulesCard variant - encapsulates all the state
 // and the API call so the variants can focus purely on the UI.
-function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
+function useTestRulesState(hexclaveAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -1027,7 +1036,7 @@ function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
       throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
     }
 
-    const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+    const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
@@ -1061,7 +1070,7 @@ function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
+  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, hexclaveAdminApp, turnstileResultOverride]);
 
   return {
     email, setEmail,
@@ -1146,14 +1155,14 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
   );
 
   const subCard = (children: React.ReactNode, className?: string) => (
-    <div className={cn("rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2", className)}>
+    <div className={cn("rounded-xl p-3 space-y-2", ruleCardMutedSurfaceClass, className)}>
       {children}
     </div>
   );
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-      <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-4 space-y-4">
+      <div className={cn("rounded-xl p-4 space-y-4", ruleCardMutedSurfaceClass)}>
         <div className="space-y-3">
           {sectionHeader(
             <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />,
@@ -1284,7 +1293,7 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
 
       <div className="space-y-3">
         {!result ? (
-          <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 h-full min-h-[260px] flex items-center justify-center">
+          <div className={cn("rounded-xl h-full min-h-[260px] flex items-center justify-center", ruleCardMutedSurfaceClass)}>
             <DesignEmptyState
               icon={FlaskIcon}
               title="No simulation yet"
@@ -1352,7 +1361,7 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
                     {matchedEvaluations.map((evaluation) => (
                       <div
                         key={evaluation.rule_id}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
+                        className={cn("flex items-center justify-between gap-2 rounded-lg px-2.5 py-2", ruleCardMutedSurfaceClass)}
                       >
                         <div className="min-w-0">
                           <Typography className="text-xs font-medium truncate">
@@ -1462,13 +1471,13 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
 }
 
 function TestRulesDialog({
-  stackAdminApp,
+  hexclaveAdminApp,
   trigger,
 }: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
   trigger: React.ReactElement,
 }) {
-  const state = useTestRulesState(stackAdminApp);
+  const state = useTestRulesState(hexclaveAdminApp);
 
   return (
     <DesignDialog
@@ -1488,7 +1497,7 @@ function TestRulesDialog({
   );
 }
 
-function TestRulesPanel({ stackAdminApp }: { stackAdminApp: ReturnType<typeof useAdminApp> }) {
+function TestRulesPanel({ hexclaveAdminApp }: { hexclaveAdminApp: ReturnType<typeof useAdminApp> }) {
   const triggerButton = (
     <DesignButton size="sm" variant="secondary">
       <FlaskIcon className="h-4 w-4 mr-1.5" />
@@ -1502,7 +1511,7 @@ function TestRulesPanel({ stackAdminApp }: { stackAdminApp: ReturnType<typeof us
         <Typography variant="secondary" className="text-xs">
           Run a simulated sign-up against your current ruleset and see the outcome.
         </Typography>
-        <TestRulesDialog stackAdminApp={stackAdminApp} trigger={triggerButton} />
+        <TestRulesDialog hexclaveAdminApp={hexclaveAdminApp} trigger={triggerButton} />
       </div>
     </DesignCard>
   );
@@ -1547,7 +1556,7 @@ function DeleteRuleDialog({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function useSignUpRulesAnalytics() {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
   const [timespanHours, setTimespanHours] = useState(48);
   const [isLoading, setIsLoading] = useState(true);
@@ -1558,7 +1567,7 @@ function useSignUpRulesAnalytics() {
 
     const fetchAnalytics = async () => {
       try {
-        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+        const response = await (hexclaveAdminApp as any)[hexclaveAppInternalsSymbol].sendRequest(
           '/internal/sign-up-rules-stats',
           { method: 'GET' },
           'admin'
@@ -1594,7 +1603,7 @@ function useSignUpRulesAnalytics() {
     return () => {
       cancelled = true;
     };
-  }, [stackAdminApp]);
+  }, [hexclaveAdminApp]);
 
   return { analytics, timespanHours, isLoading };
 }
@@ -1624,7 +1633,7 @@ type PageBodyProps = {
   onDragEnd: (event: DragEndEvent) => void,
   onSaveOrder: () => Promise<void>,
   onDiscardOrder: () => void,
-  stackAdminApp: ReturnType<typeof useAdminApp>,
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
 };
 
 function PageBody(props: PageBodyProps) {
@@ -1708,7 +1717,7 @@ function PageBody(props: PageBodyProps) {
         />
 
         <div className="pt-10">
-          <TestRulesPanel stackAdminApp={props.stackAdminApp} />
+          <TestRulesPanel hexclaveAdminApp={props.hexclaveAdminApp} />
         </div>
 
         <div className="pt-5" aria-hidden />
@@ -1758,8 +1767,8 @@ function OrderChangeActions({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
@@ -1825,7 +1834,7 @@ export default function PageClient() {
       : rule;
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleId}`]: ruleToSave,
       },
@@ -1845,7 +1854,7 @@ export default function PageClient() {
   const handleDeleteRule = async () => {
     if (!ruleToDelete) return;
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleToDelete.id}`]: null,
       },
@@ -1860,7 +1869,7 @@ export default function PageClient() {
 
   const handleToggleEnabled = async (ruleId: string, enabled: boolean) => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         [`auth.signUpRules.${ruleId}.enabled`]: enabled,
       },
@@ -1870,7 +1879,7 @@ export default function PageClient() {
 
   const handleDefaultActionChange = async (value: 'allow' | 'reject') => {
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: {
         'auth.signUpRulesDefaultAction': value,
       },
@@ -1887,7 +1896,7 @@ export default function PageClient() {
     });
 
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate,
       pushable: true,
     });
@@ -1943,7 +1952,7 @@ export default function PageClient() {
           onDragEnd={handleDragEnd}
           onSaveOrder={handleSaveOrderAsync}
           onDiscardOrder={handleDiscardOrder}
-          stackAdminApp={stackAdminApp}
+          hexclaveAdminApp={hexclaveAdminApp}
         />
 
         <DeleteRuleDialog

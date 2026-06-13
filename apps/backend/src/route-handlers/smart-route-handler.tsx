@@ -2,13 +2,13 @@ import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
 import * as Sentry from "@sentry/nextjs";
-import { EndpointDocumentation } from "@stackframe/stack-shared/dist/crud";
-import { KnownError, KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
+import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
+import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
@@ -88,8 +88,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           headers: Object.fromEntries(req.headers),
         });
 
-        // During development, don't trash the console with logs from E2E tests
-        const disableExtendedLogging = getNodeEnvironment().includes('dev') && !!req.headers.get("x-stack-development-disable-extended-logging");
+        // During development, don't trash the console with logs
+        const disableExtendedLogging = getNodeEnvironment().includes('dev');
 
         let hasRequestFinished = false;
         try {
@@ -126,7 +126,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             }
           });
 
-          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
+          if (!disableExtendedLogging) console.log(`[API REQ] [${requestId} @ ${req.headers.get("x-stack-project-id") ?? "<none>"}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();
           const res = await handler(req, options, requestId);
           const time = (performance.now() - timeStart);

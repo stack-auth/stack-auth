@@ -1,4 +1,4 @@
-import { Button, Typography } from "@stackframe/stack-ui";
+import { Button, Typography } from "@hexclave/ui";
 import { useState } from "react";
 import { useStackApp } from "../../..";
 import { useUser } from "../../../lib/hooks";
@@ -26,8 +26,8 @@ export function PasskeySection(props?: {
   if (!user) {
     return null; // This shouldn't happen in non-mock mode due to throw
   }
-  const stackApp = useStackApp();
-  const project = stackApp.useProject();
+  const hexclaveApp = useStackApp();
+  const project = hexclaveApp.useProject();
   const contactChannels = user.useContactChannels();
 
 

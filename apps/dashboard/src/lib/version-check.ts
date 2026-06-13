@@ -1,5 +1,5 @@
 import { getPublicEnvVar } from '@/lib/env';
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import packageJson from "../../package.json";
 
 export type VersionCheckResult = {
@@ -39,7 +39,7 @@ export function shouldDisplayVersionResult(
 
 /**
  * Common utility function for checking version against Hexclave API
- * Used by both VersionAlerter and StackCompanion components
+ * Used by both VersionAlerter and HexclaveCompanion components
  */
 export function checkVersion(
   onResult: (result: VersionCheckResult) => void,
@@ -65,7 +65,10 @@ export function checkVersion(
 
       const res = await fetch(`https://api.hexclave.com/api/v1/check-version`, {
         method: "POST",
-        body: JSON.stringify({ clientVersion: packageJson.version }),
+        body: JSON.stringify({
+          clientPackageName: packageJson.name,
+          clientVersion: packageJson.version,
+        }),
         headers: {
           "Content-Type": "application/json",
         },

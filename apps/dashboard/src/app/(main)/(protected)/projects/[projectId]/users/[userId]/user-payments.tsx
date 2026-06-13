@@ -8,10 +8,10 @@ import {
 import { cn, Skeleton } from "@/components/ui";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
-import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import type { ServerUser } from "@stackframe/stack";
-import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import type { ServerUser } from "@hexclave/next";
+import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 import { UserPageMetricCard } from "./user-page-metric-card";
@@ -104,11 +104,11 @@ function UserPaymentsLoading() {
 }
 
 function UserPaymentsContent({ user }: { user: ServerUser }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
 
-  const { transactions: userTransactions } = stackAdminApp.useTransactions({
+  const { transactions: userTransactions } = hexclaveAdminApp.useTransactions({
     limit: TRANSACTIONS_PAGE_SIZE,
     customerType: "user",
     customerId: user.id,
@@ -503,8 +503,8 @@ function ItemsCard({ userId, itemIds }: { userId: string, itemIds: string[] }) {
 }
 
 function ItemBalanceRow({ userId, itemId }: { userId: string, itemId: string }) {
-  const stackAdminApp = useAdminApp();
-  const item = stackAdminApp.useItem({ userId, itemId });
+  const hexclaveAdminApp = useAdminApp();
+  const item = hexclaveAdminApp.useItem({ userId, itemId });
   const isNegative = item.quantity < 0;
 
   return (

@@ -1,5 +1,5 @@
 import type { selectModel } from "@/lib/ai/models";
-import type { Json } from "@stackframe/stack-shared/dist/utils/json";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import type { ModelMessage, ToolSet } from "ai";
 
 export type ContentBlock =

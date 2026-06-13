@@ -1,16 +1,16 @@
 'use client';
 
-import { KnownErrors } from "@stackframe/stack-shared";
-import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { cacheFunction } from "@hexclave/shared/dist/utils/caches";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import React from "react";
 import { StackClientApp, useStackApp, useUser } from "..";
 import { MessageCard } from "../components/message-cards/message-card";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 import { useTranslation } from "../lib/translations";
 
-const cacheSignInWithMagicLink = cacheFunction(async (stackApp: StackClientApp<true>, code: string) => {
-  return await stackApp.signInWithMagicLink(code);
+const cacheSignInWithMagicLink = cacheFunction(async (hexclaveApp: StackClientApp<true>, code: string) => {
+  return await hexclaveApp.signInWithMagicLink(code);
 });
 
 export function MagicLinkCallback(props: {
@@ -18,9 +18,9 @@ export function MagicLinkCallback(props: {
   fullPage?: boolean,
 }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser();
-  const [result, setResult] = React.useState<Awaited<ReturnType<typeof stackApp.signInWithMagicLink>> | null>(null);
+  const [result, setResult] = React.useState<Awaited<ReturnType<typeof hexclaveApp.signInWithMagicLink>> | null>(null);
 
   if (user) {
     return <PredefinedMessageCard type='signedIn' fullPage={!!props.fullPage} />;
@@ -54,12 +54,12 @@ export function MagicLinkCallback(props: {
       fullPage={!!props.fullPage}
       primaryButtonText={t("Sign in")}
       primaryAction={async () => {
-        const result = await stackApp.signInWithMagicLink(props.searchParams?.code || throwErr("No magic link provided"));
+        const result = await hexclaveApp.signInWithMagicLink(props.searchParams?.code || throwErr("No magic link provided"));
         setResult(result);
       }}
       secondaryButtonText={t("Cancel")}
       secondaryAction={async () => {
-        await stackApp.redirectToHome();
+        await hexclaveApp.redirectToHome();
       }}
     />;
   } else {
@@ -80,7 +80,7 @@ export function MagicLinkCallback(props: {
       fullPage={!!props.fullPage}
       primaryButtonText={t("Go home")}
       primaryAction={async () => {
-        await stackApp.redirectToHome();
+        await hexclaveApp.redirectToHome();
       }}
     />;
   }

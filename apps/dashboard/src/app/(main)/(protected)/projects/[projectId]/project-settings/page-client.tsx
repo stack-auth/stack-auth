@@ -13,10 +13,10 @@ import {
 import { ActionDialog, Avatar, AvatarFallback, AvatarImage, SimpleTooltip, Switch, useToast } from "@/components/ui";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
-import type { PushedConfigSource } from "@stackframe/stack";
-import { TeamSwitcher } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { PushedConfigSource } from "@hexclave/next";
+import { TeamSwitcher } from "@hexclave/next";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -53,8 +53,8 @@ function TeamMemberItem({ member }: { member: any }) {
 }
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const productionModeErrors = project.useProductionModeErrors();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
@@ -177,8 +177,8 @@ export default function PageClient() {
   // Memoize project delete callback
   const handleProjectDelete = useCallback(async () => {
     await project.delete();
-    await stackAdminApp.redirectToHome();
-  }, [project, stackAdminApp]);
+    await hexclaveAdminApp.redirectToHome();
+  }, [project, hexclaveAdminApp]);
 
   const productionModeItems: DesignEditableGridItem[] = [
     {

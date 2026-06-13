@@ -9,9 +9,9 @@ import {
   type ExportedMessageRepository,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
-import { StackAdminApp } from "@stackframe/stack";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import { StackAdminApp } from "@hexclave/next";
+import { ChatContent } from "@hexclave/shared/dist/interface/admin-interface";
+import type { EditableMetadata } from "@hexclave/shared/dist/utils/jsx-editable-transpiler";
 import {
   parseJsonEventStream,
   readUIMessageStream,
@@ -19,7 +19,6 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from "ai";
-
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
 const isToolCall = (content: { type: string }): content is ToolCallContent => {
@@ -539,16 +538,21 @@ export function createDashboardChatAdapter(
               : "";
             return `[Error: The dashboard crashed at runtime — please diagnose and fix.]\nMessage: ${c.message}${stackSlice}${componentStackSlice}`;
           }).join("\n\n");
+          const chipPart = { type: "text" as const, text: chipBlock };
+          let chipAttached = false;
 
           for (let i = formattedMessages.length - 1; i >= 0; i--) {
             if (formattedMessages[i].role !== "user") continue;
             const orig = formattedMessages[i].content;
-            const chipPart = { type: "text" as const, text: chipBlock };
             formattedMessages[i] = {
               ...formattedMessages[i],
               content: Array.isArray(orig) ? [chipPart, ...orig] : [chipPart],
             };
+            chipAttached = true;
             break;
+          }
+          if (!chipAttached) {
+            formattedMessages.push({ role: "user", content: [chipPart] });
           }
         }
 
@@ -590,11 +594,13 @@ export function createDashboardChatAdapter(
             const edits = parsePatchEdits(item.args);
             if (!edits) continue;
             const result = applyDashboardPatches(runningSource, edits);
-            runningSource = result.updatedSource;
-            anyPatchApplied = true;
-            snapshots.push({ edits, resultSource: runningSource });
             for (const f of result.failures) {
               aggregatedFailures.push(f);
+            }
+            if (result.failures.length === 0 && result.applied > 0) {
+              runningSource = result.updatedSource;
+              anyPatchApplied = true;
+              snapshots.push({ edits, resultSource: runningSource });
             }
           }
         }

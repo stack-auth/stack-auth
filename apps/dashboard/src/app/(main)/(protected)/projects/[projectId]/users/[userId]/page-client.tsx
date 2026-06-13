@@ -42,18 +42,17 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
-import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
+import { useUserActivityOrThrow } from "@/lib/hexclave-app-internals";
 import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, PlusIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
-import { type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, HexclaveAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
+import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@hexclave/next";
+import { KnownErrors } from "@hexclave/shared";
+import { AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { captureError, HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -81,11 +80,11 @@ const SessionReplaysPageClient = dynamic(
   },
 );
 
-const userMetadataDocsUrl = "https://docs.hexclave.com/docs/concepts/custom-user-data";
+const userMetadataDocsUrl = "https://docs.hexclave.com/guides/getting-started/user-fundamentals#custom-metadata";
 
 export default function PageClient({ userId }: { userId: string }) {
-  const stackAdminApp = useAdminApp();
-  const user = stackAdminApp.useUser(userId);
+  const hexclaveAdminApp = useAdminApp();
+  const user = hexclaveAdminApp.useUser(userId);
 
   if (user === null) {
     return (
@@ -114,8 +113,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
-  const stackAdminApp = useAdminApp();
-  const router = useRouter();
+  const hexclaveAdminApp = useAdminApp();
 
   return (
     <div className="flex min-w-0 gap-4 items-center">
@@ -136,12 +134,6 @@ function UserHeader({ user }: UserHeaderProps) {
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={() => router.push(`${urlString`/projects/${stackAdminApp.projectId}/conversations`}?userId=${encodeURIComponent(user.id)}`)}
-        >
-          Support
-        </Button>
         <DesignMenu
           variant="actions"
           trigger="icon"
@@ -158,7 +150,7 @@ function UserHeader({ user }: UserHeaderProps) {
                   const session = await user.createSession({ expiresInMillis });
                   const tokens = await session.getTokens();
                   setImpersonateSnippet(deindent`
-                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
+                    document.cookie = 'stack-refresh-${hexclaveAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
                     window.location.reload();
                   `);
                 });
@@ -187,7 +179,7 @@ function UserHeader({ user }: UserHeaderProps) {
           ]}
         />
         <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
-        <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
+        <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${hexclaveAdminApp.projectId}/users`} />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
     </div>
@@ -735,8 +727,8 @@ function SendEmailWithDomainDialog({
   endpointPath,
   onSubmit
 }: SendEmailWithDomainDialogProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const domains = project.config.domains;
 
   return (
@@ -797,7 +789,7 @@ function SendVerificationEmailDialog({ channel, open, onOpenChange }: SendVerifi
 }
 
 function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendResetPasswordEmailDialogProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
 
   return (
     <SendEmailWithDomainDialog
@@ -807,14 +799,14 @@ function SendResetPasswordEmailDialog({ channel, open, onOpenChange }: SendReset
       onOpenChange={onOpenChange}
       endpointPath="/password-reset"
       onSubmit={async (callbackUrl) => {
-        await stackAdminApp.sendForgotPasswordEmail(channel.value, { callbackUrl });
+        await hexclaveAdminApp.sendForgotPasswordEmail(channel.value, { callbackUrl });
       }}
     />
   );
 }
 
 function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInInvitationDialogProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
 
   return (
     <SendEmailWithDomainDialog
@@ -824,15 +816,15 @@ function SendSignInInvitationDialog({ channel, open, onOpenChange }: SendSignInI
       onOpenChange={onOpenChange}
       endpointPath="/sign-in"
       onSubmit={async (callbackUrl) => {
-        await stackAdminApp.sendSignInInvitationEmail(channel.value, callbackUrl);
+        await hexclaveAdminApp.sendSignInInvitationEmail(channel.value, callbackUrl);
       }}
     />
   );
 }
 
 function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const contactChannels = user.useContactChannels();
   const [isAddEmailDialogOpen, setIsAddEmailDialogOpen] = useState(false);
   const [sendVerificationEmailDialog, setSendVerificationEmailDialog] = useState<{
@@ -1097,7 +1089,7 @@ function TeamMembersAvatars({ team, onMemberClick }: { team: ServerTeam, onMembe
 }
 
 function UserTeamsSection({ user }: { user: ServerUser }) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [sortDesc, setSortDesc] = useState<boolean | undefined>(undefined);
   const teams = user.useTeams(sortDesc === undefined ? undefined : { orderBy: 'createdAt', desc: sortDesc });
@@ -1105,12 +1097,12 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
   const [teamToRemove, setTeamToRemove] = useState<ServerTeam | null>(null);
 
   const navigateToTeam = useCallback((teamId: string) => {
-    router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(teamId)}`);
-  }, [router, stackAdminApp.projectId]);
+    router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/teams/${encodeURIComponent(teamId)}`);
+  }, [router, hexclaveAdminApp.projectId]);
 
   const navigateToUser = useCallback((targetUserId: string) => {
-    router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(targetUserId)}`);
-  }, [router, stackAdminApp.projectId]);
+    router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(targetUserId)}`);
+  }, [router, hexclaveAdminApp.projectId]);
 
   const teamColumns = useMemo<DataGridColumnDef<ServerTeam>[]>(() => [
     {
@@ -1284,8 +1276,8 @@ type OAuthProviderDialogProps = {
 });
 
 function OAuthProviderDialog(props: OAuthProviderDialogProps) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const { toast } = useToast();
 
   // Get available OAuth providers from project config
@@ -1378,7 +1370,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
         throw new HexclaveAssertionError(`Provider config not found for ${values.providerId}`);
       }
 
-      result = await stackAdminApp.createOAuthProvider({
+      result = await hexclaveAdminApp.createOAuthProvider({
         userId: props.user.id,
         providerConfigId: providerConfig.id,
         accountId: values.accountId.trim(),
@@ -1744,8 +1736,8 @@ function ActivityGraph({
   userId: string,
   onCellClick: (isoDate: string) => void,
 }) {
-  const stackAdminApp = useAdminApp();
-  const { data_points: dataPoints } = useUserActivityOrThrow(stackAdminApp, userId);
+  const hexclaveAdminApp = useAdminApp();
+  const { data_points: dataPoints } = useUserActivityOrThrow(hexclaveAdminApp, userId);
 
   const activityByDate = useMemo(
     () => new Map(dataPoints.map((point) => [point.date, point.activity])),
@@ -1909,8 +1901,8 @@ function TabContentSkeleton({ sections }: { sections: number }) {
 const USER_PAGE_TAB_PARAM = "tab";
 
 function UserPage({ user }: { user: ServerUser }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const router = useRouter();
   const pathname = usePathname();
@@ -1978,7 +1970,7 @@ function UserPage({ user }: { user: ServerUser }) {
                   className="h-8 justify-center gap-1.5 rounded-lg bg-transparent px-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none"
                 >
                   <Link
-                    href={`/projects/${encodeURIComponent(stackAdminApp.projectId)}/apps`}
+                    href={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/apps`}
                     className="inline-flex items-center justify-center"
                   >
                     <PlusIcon className="h-3.5 w-3.5" />

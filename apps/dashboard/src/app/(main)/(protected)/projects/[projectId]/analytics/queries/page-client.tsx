@@ -28,8 +28,8 @@ import {
   SpinnerGapIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -612,7 +612,7 @@ function QueriesContent() {
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
                 placeholder="SELECT * FROM default.events ORDER BY event_at DESC LIMIT 100"
-                className="font-mono text-sm min-h-[80px] resize-y bg-background/60"
+                className="min-h-[80px] resize-y border-black/[0.08] bg-white/95 font-mono text-sm shadow-sm ring-1 ring-black/[0.06] dark:border-border/40 dark:bg-background/60 dark:ring-white/[0.06]"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !loading) {
                     e.preventDefault();

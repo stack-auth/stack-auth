@@ -73,7 +73,7 @@ ${stripComments(file.content)}
 
   return `
 Complete Hexclave SDK Type Definitions (Selected Files):
-These files show the available methods, types, and interfaces for the Stack SDK.
+These files show the available methods, types, and interfaces for the Hexclave SDK.
 ${fileContents.join('\n')}
   `.trim();
 }
@@ -99,7 +99,7 @@ export function buildDashboardMessages(
     "bare type signatures are NOT enough to use the components correctly.",
   ].join("\n");
 
-  const cachedText = `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}`;
+  const cachedText = `Here are the type definitions for the Hexclave SDK:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}`;
   const contextMessages: DashboardMessage[] = [];
 
   contextMessages.push({

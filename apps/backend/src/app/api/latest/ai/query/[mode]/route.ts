@@ -11,10 +11,10 @@ import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { validateImageAttachments } from "@hexclave/shared/dist/ai/image-limits";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { ModelMessage } from "ai";
 
 function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {

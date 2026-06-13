@@ -9,24 +9,10 @@
  * names are not transmitted on the wire, so a missing or misordered field in
  * a binding silently shifts every subsequent field in deserialization.
  *
- * Concrete impact on this PR:
- *   - `qa_entries.requestId` (4th column on the server) is missing from
- *     `my_visible_qa_entries_table.ts`. Once the new schema is published,
- *     `my_visible_qa_entries` subscriptions will deserialize `requestId`
- *     bytes as `question`, `question` bytes as `answer`, etc. The Knowledge
- *     Base tab in the internal-tool would render garbage.
- *   - `add_manual_qa.requestId` (6th arg on the server) is missing from
- *     `add_manual_qa_reducer.ts`. The backend currently calls this reducer
- *     over HTTP (`callReducerStrict`) with all six args, so the production
- *     code path is unaffected — but any direct WebSocket reducer call
- *     would be rejected for arg-count mismatch, and the binding type drift
- *     hides the requirement from future contributors.
- *
  * These tests parse both the server schema source and the generated
  * bindings as text, extract the field/arg order, and assert they match.
- * They will FAIL on the current (drifted) state and PASS once the
- * bindings are regenerated (via `pnpm -C apps/internal-tool spacetime:generate`)
- * or hand-patched to match.
+ * They fail if a schema change is made without regenerating or otherwise
+ * keeping the checked-in bindings in sync.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -109,6 +95,33 @@ function extractClientFields(source: string, blockStartRe: RegExp): string[] {
 
 describe("SpacetimeDB bindings stay in sync with server schema", () => {
   const serverSchema = read("apps/internal-tool/spacetimedb/src/index.ts");
+
+  it("server reducers match generated client reducer list", () => {
+    const serverReducerNames = Array.from(
+      serverSchema.matchAll(/export const ([a-z_]+) = spacetimedb\.reducer/g),
+      m => m[1],
+    ).sort();
+    const clientSource = read("apps/internal-tool/src/module_bindings/index.ts");
+    const clientReducerNames = Array.from(
+      clientSource.matchAll(/__reducerSchema\("([a-z_]+)"/g),
+      m => m[1],
+    ).sort();
+    expect(clientReducerNames).toEqual(serverReducerNames);
+  });
+
+  it("operators server columns match operators client row binding", () => {
+    const serverFields = extractServerFields(serverSchema, /name:\s*'operators',\s*public:\s*true\s*\},\s*/);
+    const clientSource = read("apps/internal-tool/src/module_bindings/operators_table.ts");
+    const clientFields = extractClientFields(clientSource, /__t\.row\(/);
+    expect(clientFields).toEqual(serverFields);
+  });
+
+  it("operators server columns match Operators algebraic type in types.ts", () => {
+    const serverFields = extractServerFields(serverSchema, /name:\s*'operators',\s*public:\s*true\s*\},\s*/);
+    const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
+    const clientFields = extractClientFields(typesSource, /export const Operators = __t\.object\("Operators",\s*/);
+    expect(clientFields).toEqual(serverFields);
+  });
 
   it("qa_entries server columns match my_visible_qa_entries client row binding", () => {
     const serverFields = extractServerFields(serverSchema, /name:\s*'qa_entries',\s*public:\s*false\s*\},\s*/);

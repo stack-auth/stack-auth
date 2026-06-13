@@ -23,8 +23,8 @@ import {
 import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, ImageIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle, XIcon } from "@phosphor-icons/react";
 import {
   MAX_IMAGES_PER_MESSAGE,
-} from "@stackframe/stack-shared/dist/ai/image-limits";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+} from "@hexclave/shared/dist/ai/image-limits";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type FC, type ReactNode } from "react";
 
 type AssistantContentComponents = ComponentProps<typeof MessagePrimitive.Content>["components"];

@@ -1,9 +1,9 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Input, Label, Typography, cn } from "@stackframe/stack-ui";
+import { strictEmailSchema, yupObject } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Button, Input, Label, Typography, cn } from "@hexclave/ui";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -24,14 +24,14 @@ export function ForgotPasswordForm({ onSent }: { onSent?: () => void }) {
   const { register, handleSubmit, formState: { errors }, clearErrors } = useForm({
     resolver: yupResolver(schema)
   });
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
     try {
       const { email } = data;
-      await stackApp.sendForgotPasswordEmail(email);
+      await hexclaveApp.sendForgotPasswordEmail(email);
     onSent?.();
     } finally {
       setLoading(false);
@@ -64,7 +64,7 @@ export function ForgotPasswordForm({ onSent }: { onSent?: () => void }) {
 
 export function ForgotPassword(props: { fullPage?: boolean }) {
   const { t } = useTranslation();
-  const stackApp = useStackApp();
+  const hexclaveApp = useStackApp();
   const user = useUser();
   const [sent, setSent] = useState(false);
 
@@ -86,7 +86,7 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
           <Typography type='h2'>{t("Reset Your Password")}</Typography>
           <Typography>
             {t("Don't need to reset?")}{" "}
-            <StyledLink href={stackApp.urls['signIn']}>
+            <StyledLink href={hexclaveApp.urls['signIn']}>
               {t("Sign in")}
             </StyledLink>
           </Typography>

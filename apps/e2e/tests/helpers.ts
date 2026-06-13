@@ -1,9 +1,9 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Nicifiable } from "@stackframe/stack-shared/dist/utils/strings";
+import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
+import { ignoreUnhandledRejection, wait } from "@hexclave/shared/dist/utils/promises";
+import { Nicifiable } from "@hexclave/shared/dist/utils/strings";
 import { AsyncLocalStorage } from "node:async_hooks";
 // eslint-disable-next-line no-restricted-imports
 import { afterEach, beforeEach, onTestFailed, test as vitestTest } from "vitest";
@@ -293,14 +293,14 @@ export class MailboxMessage {
 }
 
 
-function expandStackPortPrefix(value?: string | null) {
+function expandHexclavePortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
   const prefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 for (const [key, value] of Object.entries(process.env)) {
   if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
-    const replaced = expandStackPortPrefix(value ?? undefined);
+    const replaced = expandHexclavePortPrefix(value ?? undefined);
     if (replaced !== undefined) {
       // eslint-disable-next-line no-restricted-syntax
       process.env[key] = replaced;

@@ -10,8 +10,8 @@ import {
   SparkleIcon,
   UserIcon,
 } from "@phosphor-icons/react";
-import { type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCmdKCommands, type CmdKCommand } from "./cmdk-commands";

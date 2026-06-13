@@ -4,16 +4,17 @@ import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/si
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
-import { getProvider, oauthServer } from "@/oauth";
-import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { createOAuthServer, getProvider } from "@/oauth";
+import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient, isPrismaError } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
-import { KnownError, KnownErrors } from "@stackframe/stack-shared";
-import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent, extractScopes, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { KnownError, KnownErrors } from "@hexclave/shared";
+import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { deindent, extractScopes, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
@@ -69,6 +70,16 @@ const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
   redirect(url.toString());
 };
 
+function getFirstQueryString(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value) && typeof value[0] === "string") {
+    return value[0];
+  }
+  return undefined;
+}
+
 const shouldRedirectOAuthCallbackKnownError = (error: KnownError) => (
   KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
   || KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
@@ -94,16 +105,22 @@ const handler = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler({ params, query, body }, fullReq) {
+    const apiUrl = getApiUrlForRequest(fullReq);
     const innerState = query.state ?? (body as any)?.state ?? "";
 
-    const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
-      where: {
-        innerState: innerState,
-      },
-    });
-
-    if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
+    let outerInfoDB;
+    try {
+      outerInfoDB = await globalPrismaClient.oAuthOuterInfo.delete({
+        where: {
+          innerState: innerState,
+        },
+      });
+    } catch (e) {
+      if (isPrismaError(e, "DEPENDENT_RECORD_NOT_FOUND")) {
+        // No matching outer info (never existed, expired-and-swept, or already consumed by a concurrent/replayed callback).
+        throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
+      }
+      throw e;
     }
 
     let outerInfo: Awaited<ReturnType<typeof oauthCookieSchema.validate>>;
@@ -113,9 +130,19 @@ const handler = createSmartRouteHandler({
       throw new HexclaveAssertionError("Invalid outer info");
     }
 
+    // The inner CSRF cookie is host-scoped to the host that served /authorize.
+    // The OAuth redirect_uri (and thus this callback's host) is config-derived
+    // and can be a sibling brand (e.g. authorize on api.hexclave.com, callback
+    // on api.stack-auth.com for a legacy/shared provider). Cookies can't span
+    // those hosts, so when the landing host legitimately differs from the
+    // authorize host we skip the cookie check and rely on the single-use,
+    // server-side outer info plus the outer flow's PKCE — the same protection
+    // JSON mode already uses.
+    const isCrossHostCallback = !!outerInfo.authorizeApiUrl && outerInfo.authorizeApiUrl !== apiUrl;
+
     // JSON-mode requests use PKCE for CSRF protection and don't set a cookie.
-    // Only check the CSRF cookie for browser-redirect mode requests.
-    if (outerInfo.responseMode !== 'json') {
+    // Only check the CSRF cookie for same-host browser-redirect mode requests.
+    if (outerInfo.responseMode !== 'json' && !isCrossHostCallback) {
       // Hexclave rebrand: read whichever inner-OAuth cookie name is present (prefer the new name), and delete both.
       const cookieStore = await cookies();
       const cookieInfo = cookieStore.get("hexclave-oauth-inner-" + innerState)
@@ -168,6 +195,7 @@ const handler = createSmartRouteHandler({
         callbackResult = await providerObj.getCallback({
           codeVerifier: innerCodeVerifier,
           state: innerState,
+          extraScope: providerScope,
           callbackParams: {
             ...query,
             ...body,
@@ -248,6 +276,7 @@ const handler = createSmartRouteHandler({
       };
 
       const oauthResponse = new OAuthResponse();
+      const oauthServer = createOAuthServer({ apiUrl });
       try {
         await oauthServer.authorize(
           oauthRequest,
@@ -402,7 +431,7 @@ const handler = createSmartRouteHandler({
         if (error instanceof InvalidClientError) {
           if (error.message.includes("redirect_uri") || error.message.includes("redirectUri")) {
             console.log("User is trying to authorize OAuth with an invalid redirect URI", error, { redirectUri: oauthRequest.query?.redirect_uri, clientId: oauthRequest.query?.client_id });
-            throw new KnownErrors.RedirectUrlNotWhitelisted();
+            throw new KnownErrors.RedirectUrlNotWhitelisted(getFirstQueryString(oauthRequest.query?.redirect_uri));
           }
         } else if (error instanceof InvalidScopeError) {
           // which scopes are being requested, and by whom?

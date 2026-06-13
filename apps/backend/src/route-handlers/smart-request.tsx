@@ -6,19 +6,19 @@ import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
 import { decodeAccessToken } from "@/lib/tokens";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
-import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { KnownErrors } from "@hexclave/shared";
+import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
+import { HexclaveAdaptSentinel, yupValidate } from "@hexclave/shared/dist/schema-fields";
+import { groupBy, typedIncludes } from "@hexclave/shared/dist/utils/arrays";
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
+import { traceSpan, withTraceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 
-const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
+const allowedMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
 
 export type SmartRequestAuth = {
   project: Omit<ProjectsCrud["Admin"]["Read"], "config">,
@@ -31,7 +31,7 @@ export type SmartRequestAuth = {
 
 export type DeepPartialSmartRequestWithSentinel<T = SmartRequest> = (T extends object ? {
   [P in keyof T]?: DeepPartialSmartRequestWithSentinel<T[P]>
-} : T) | StackAdaptSentinel;
+} : T) | HexclaveAdaptSentinel;
 
 export type SmartRequest = {
   auth: SmartRequestAuth | null,
@@ -50,8 +50,8 @@ export type SmartRequest = {
 };
 
 export type MergeSmartRequest<T, MSQ = SmartRequest> =
-  StackAdaptSentinel extends T
-  ? NonNullable<MSQ> | (MSQ & Exclude<T, StackAdaptSentinel>)
+  HexclaveAdaptSentinel extends T
+  ? NonNullable<MSQ> | (MSQ & Exclude<T, HexclaveAdaptSentinel>)
   : (
     T extends (infer U)[]
     ? (
@@ -115,7 +115,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 
 
 async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
-  const contentType = req.method === "GET" ? undefined : req.headers.get("content-type")?.split(";")[0];
+  const contentType = req.method === "GET" || req.method === "HEAD" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
   const getText = () => {
     try {

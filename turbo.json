@@ -86,18 +86,42 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/backend#build": {
+    "@hexclave/backend#build": {
       "dependsOn": [
         "codegen"
       ]
     },
-    "@stackframe/stack-cli#build": {
+    "@hexclave/cli#build": {
       "dependsOn": [
         "^build",
-        "@stackframe/dashboard#build:rde-standalone"
+        "@hexclave/dashboard#build:rde-standalone"
       ],
       "outputs": [
         "dist/**"
+      ]
+    },
+    "@hexclave/next#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/react#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/tanstack-start#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
+      ]
+    },
+    "@hexclave/js#build": {
+      "dependsOn": [
+        "^build",
+        "@hexclave/template#build"
       ]
     },
     "clean": {

@@ -4,9 +4,9 @@ import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared";
-import { inlineProductSchema, urlSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared";
+import { inlineProductSchema, urlSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       product: inlineProductSchema,
-      stripe_account_id: yupString().defined(),
+      stripe_account_id: yupString().nullable().defined(),
       project_id: yupString().defined(),
       project_logo_url: yupString().nullable().defined(),
       already_bought_non_stackable: yupBoolean().defined(),
@@ -46,7 +46,7 @@ export const POST = createSmartRouteHandler({
         display_name: yupString().defined(),
       }).defined()).defined(),
       test_mode: yupBoolean().defined(),
-      charges_enabled: yupBoolean().defined(),
+      charges_enabled: yupBoolean().nullable().defined(),
     }).defined(),
   }),
   async handler({ body }) {
@@ -56,7 +56,7 @@ export const POST = createSmartRouteHandler({
       throw new HexclaveAssertionError(`No tenancy found for given tenancyId`);
     }
     if (body.return_url && !validateRedirectUrl(body.return_url, tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(body.return_url);
     }
     const product = verificationCode.data.product;
 
@@ -98,13 +98,13 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         product: productToInlineProduct(product),
-        stripe_account_id: verificationCode.data.stripeAccountId,
+        stripe_account_id: verificationCode.data.stripeAccountId ?? null,
         project_id: tenancy.project.id,
         project_logo_url: tenancy.project.logo_url ?? null,
         already_bought_non_stackable: alreadyBoughtNonStackable,
         conflicting_products: conflictingProductLineProducts,
         test_mode: tenancy.config.payments.testMode === true,
-        charges_enabled: verificationCode.data.chargesEnabled,
+        charges_enabled: verificationCode.data.chargesEnabled ?? null,
       },
     };
   },
@@ -138,7 +138,7 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.VerificationCodeNotFound();
     }
     if (query.return_url && !validateRedirectUrl(query.return_url, tenancy)) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(query.return_url);
     }
     return {
       statusCode: 200,

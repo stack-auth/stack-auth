@@ -2,9 +2,9 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/nextjs";
-import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { registerOTel } from '@vercel/otel';
 import { initPerfStats } from "./lib/dev-perf-stats";
 import "./polyfills";

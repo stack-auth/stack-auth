@@ -1,4 +1,4 @@
-import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
 
@@ -9,7 +9,7 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
+        default: "border-black/[0.08] bg-white/90 text-foreground shadow-sm ring-1 ring-black/[0.06] dark:border-border dark:bg-background dark:shadow-none dark:ring-0",
         destructive: "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive bg-destructive/5",
         success: "border-success/50 text-success dark:border-success [&>svg]:text-success bg-success/5",
       },

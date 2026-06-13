@@ -1,5 +1,5 @@
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { callSql } from "../spacetimedb-client";
 
 type VerifiedRow = {

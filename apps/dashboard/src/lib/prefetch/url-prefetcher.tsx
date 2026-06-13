@@ -2,9 +2,9 @@
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { stackAppInternalsSymbol } from "@stackframe/stack";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
-import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
+import { hexclaveAppInternalsSymbol } from "@hexclave/next";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
+import { createCachedRegex } from "@hexclave/shared/dist/utils/regex";
 import { memo, useEffect, useMemo, useState } from "react";
 import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 
@@ -13,7 +13,7 @@ import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearchParams, hash: string) => void | HookPrefetcherCallback[])[]> = {
   "/projects/*": [
     ([_, projectId]) => {
-      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false);
+      (useAdminApp(projectId) as any)[hexclaveAppInternalsSymbol].useMetrics(false);
     },
     ([_, projectId]) => {
       useAdminApp(projectId).useUsers({ limit: 1 });
@@ -26,7 +26,7 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
   ],
   "/projects/*/users": [
     ([_, projectId]) => {
-      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetricsUserCounts();
+      (useAdminApp(projectId) as any)[hexclaveAppInternalsSymbol].useMetricsUserCounts();
     },
     ([_, projectId]) => {
       useAdminApp(projectId).useUsers({ limit: 1 });

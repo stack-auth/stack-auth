@@ -1,6 +1,6 @@
 import { getPublicEnvVar } from "@/lib/env";
+import { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 import { NextRequest, NextResponse } from "next/server";
-import { createUrlIfValid, isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 
 export const runtime = "nodejs";
 
@@ -10,33 +10,6 @@ type HealthResponse = {
   ok: boolean,
   restart_command: string,
 };
-
-function requestHostIsLoopback(req: NextRequest): boolean {
-  const host = req.headers.get("host");
-  if (host == null) return false;
-  return isLocalhost(`http://${host}`);
-}
-
-function urlOrigin(value: string | undefined): string | null {
-  if (value == null || value.length === 0) return null;
-  return createUrlIfValid(value)?.origin ?? null;
-}
-
-function expectedDashboardOrigins(): Set<string> {
-  return new Set([
-    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL")),
-    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL")),
-    urlOrigin(getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL")),
-    "http://127.0.0.1:26700",
-  ].filter((origin): origin is string => typeof origin === "string"));
-}
-
-function originIsAllowed(req: NextRequest): boolean {
-  const origin = req.headers.get("origin");
-  if (origin == null) return true;
-  const parsedOrigin = urlOrigin(origin);
-  return parsedOrigin != null && expectedDashboardOrigins().has(parsedOrigin);
-}
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -78,12 +51,13 @@ async function localEmulatorIsHealthy(): Promise<boolean> {
 }
 
 export async function GET(req: NextRequest) {
-  if (!requestHostIsLoopback(req) || !originIsAllowed(req)) {
-    return NextResponse.json({ error: "Development environment health checks only accept loopback requests." }, { status: 403 });
-  }
-
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   if (isRemoteDevelopmentEnvironment) {
+    const securityResponse = req.headers.has("authorization")
+      ? assertRemoteDevelopmentEnvironmentRequest(req)
+      : assertRemoteDevelopmentEnvironmentBrowserRequest(req);
+    if (securityResponse != null) return securityResponse;
+
     const { getRemoteDevelopmentEnvironmentHealth } = await import("@/lib/remote-development-environment/manager");
     const health = getRemoteDevelopmentEnvironmentHealth();
     return healthResponse({

@@ -3,12 +3,12 @@ import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
-import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { captureError, HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { DEFAULT_DB_SYNC_MAPPINGS } from "@hexclave/shared/dist/config/db-sync-mappings";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { omit } from "@hexclave/shared/dist/utils/objects";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import type { ClickHouseClient } from "@clickhouse/client";
 import { Client } from 'pg';
 

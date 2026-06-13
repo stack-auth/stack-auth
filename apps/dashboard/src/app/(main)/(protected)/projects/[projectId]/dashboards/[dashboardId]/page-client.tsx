@@ -30,11 +30,11 @@ import {
   WarningIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -135,7 +135,7 @@ function DashboardDetailContent({
   const [pendingCode, setPendingCode] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(hasSource);
   const [codePhase, setCodePhase] = useState<"typing" | "loading" | "done">("done");
-  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
@@ -217,6 +217,11 @@ function DashboardDetailContent({
         ...prev,
         { kind: "widget", id: generateUuid(), name, selectorPath, outerHTMLSnippet },
       ]);
+
+      const api = composerApiRef.current;
+      if (api && api.getText().trim().length === 0) {
+        api.setText("please update this widget");
+      }
     },
     [],
   );
@@ -227,6 +232,11 @@ function DashboardDetailContent({
       if (prev.some((c) => c.kind === "action-add-component")) return prev;
       return [...prev, { kind: "action-add-component", id: generateUuid() }];
     });
+
+    const api = composerApiRef.current;
+    if (api && api.getText().trim().length === 0) {
+      api.setText("please add a component");
+    }
   }, []);
 
   useEffect(() => {
@@ -267,7 +277,7 @@ function DashboardDetailContent({
       const stamped = stampEsmVersion(toolCall.args.content, packageJson.version);
       setPendingCode(stamped);
       setCurrentTsxSource(stamped);
-      clearTimeout(codePhaseTimerRef.current);
+      if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
       setCodePhase("typing");
       codePhaseTimerRef.current = setTimeout(() => {
         setCodePhase("loading");
@@ -281,7 +291,7 @@ function DashboardDetailContent({
   const handlePatchApplied = useCallback((updatedSource: string, failures: DashboardPatchFailure[], snapshots: DashboardPatchSnapshot[]) => {
     setPendingCode(updatedSource);
     setCurrentTsxSource(updatedSource);
-    clearTimeout(codePhaseTimerRef.current);
+    if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
     setCodePhase("typing");
     codePhaseTimerRef.current = setTimeout(() => {
       setCodePhase("loading");
@@ -310,7 +320,7 @@ function DashboardDetailContent({
     setPendingCode(null);
     setIframeReady(false);
     setCodePhase("typing");
-    clearTimeout(codePhaseTimerRef.current);
+    if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
   }, []);
 
   const handleRunEnd = useCallback(() => {

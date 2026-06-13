@@ -5,8 +5,8 @@ import { SettingSwitch } from "@/components/settings";
 import { ActionDialog, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useState } from "react";
 
 type AffectedUser = {
@@ -28,8 +28,8 @@ export function EmailVerificationSetting(props: {
   showIcon?: boolean,
   hint?: string,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const projectConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
@@ -37,7 +37,7 @@ export function EmailVerificationSetting(props: {
   const handleEmailVerificationChange = async (checked: boolean) => {
     // If enabling email verification, check for affected users
     if (checked && !projectConfig.onboarding.requireEmailVerification) {
-      const preview = await (stackAdminApp as any).previewAffectedUsersByOnboardingChange(
+      const preview = await (hexclaveAdminApp as any).previewAffectedUsersByOnboardingChange(
         { requireEmailVerification: true },
         10,
       );
@@ -51,7 +51,7 @@ export function EmailVerificationSetting(props: {
           totalAffectedCount: preview.totalAffectedCount,
           onConfirm: async () => {
             await updateConfig({
-              adminApp: stackAdminApp,
+              adminApp: hexclaveAdminApp,
               configUpdate: { "onboarding.requireEmailVerification": true },
               pushable: true,
             });
@@ -64,7 +64,7 @@ export function EmailVerificationSetting(props: {
 
     // No affected users or disabling the feature - apply directly
     await updateConfig({
-      adminApp: stackAdminApp,
+      adminApp: hexclaveAdminApp,
       configUpdate: { "onboarding.requireEmailVerification": checked },
       pushable: true,
     });

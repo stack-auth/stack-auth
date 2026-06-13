@@ -22,17 +22,17 @@ import {
   toast,
 } from "@/components/ui";
 import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
-import type { ServerUser } from "@stackframe/stack";
+import type { ServerUser } from "@hexclave/next";
 import {
   DataGrid,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
-} from "@stackframe/dashboard-ui-components";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+} from "@hexclave/dashboard-ui-components";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "../link";
@@ -192,7 +192,7 @@ function UserTableBody(props: {
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
 }) {
   const { filters, setFilters } = props;
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
   const [gridState, setGridState] = useDataGridUrlState(USER_TABLE_COLUMNS, {
@@ -241,7 +241,7 @@ function UserTableBody(props: {
       const sortDesc = activeSort?.direction !== "asc";
       const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
       const result = filters.onlyAnonymous
-        ? await stackAdminApp.listUsers({
+        ? await hexclaveAdminApp.listUsers({
           limit: PAGE_SIZE,
           orderBy,
           desc: sortDesc,
@@ -251,7 +251,7 @@ function UserTableBody(props: {
           onlyAnonymous: true,
           cursor,
         })
-        : await stackAdminApp.listUsers({
+        : await hexclaveAdminApp.listUsers({
           limit: PAGE_SIZE,
           orderBy,
           desc: sortDesc,
@@ -266,7 +266,7 @@ function UserTableBody(props: {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [stackAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous],
+    [hexclaveAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous],
   );
 
   const getRowId = useCallback((row: ExtendedServerUser) => row.id, []);
@@ -337,7 +337,7 @@ function UserTableBody(props: {
         </Select>
       }
       onRowClick={(row) => {
-        router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
+        router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
       }}
       emptyState={
         <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-8">
@@ -362,7 +362,7 @@ function UserTableBody(props: {
 
 function UserActions(props: { user: ExtendedServerUser }) {
   const { user } = props;
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -382,7 +382,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem
             onClick={() =>
-              router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
+              router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
             }
           >
             View details
@@ -396,7 +396,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
                 const tokens = await session.getTokens();
                 setImpersonateSnippet(
                   deindent`
-                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
+                    document.cookie = 'stack-refresh-${hexclaveAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
                     window.location.reload();
                   `,
                 );
@@ -429,8 +429,8 @@ function UserActions(props: { user: ExtendedServerUser }) {
 
 function UserIdentityCell(props: { user: ExtendedServerUser }) {
   const { user } = props;
-  const stackAdminApp = useAdminApp();
-  const profileUrl = `/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
+  const hexclaveAdminApp = useAdminApp();
+  const profileUrl = `/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
   const fallback = user.displayName?.charAt(0) ?? user.primaryEmail?.charAt(0) ?? "?";
   const displayName = user.displayName ?? user.primaryEmail ?? "Unnamed user";
 

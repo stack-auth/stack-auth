@@ -1,14 +1,14 @@
 'use client';
 
-import { KnownError } from "@stackframe/stack-shared";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Spinner, cn } from "@stackframe/stack-ui";
+import { KnownError } from "@hexclave/shared";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Spinner, cn } from "@hexclave/ui";
 import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
-import { stackAppInternalsSymbol } from "../lib/stack-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
 import { useTranslation } from "../lib/translations";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
@@ -23,11 +23,11 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
     called.current = true;
     const redirectToError = async (url: URL) => {
       const urlString = url.toString();
-      if (app[stackAppInternalsSymbol].getRedirectMethod() === "none") {
+      if (app[hexclaveAppInternalsSymbol].getRedirectMethod() === "none") {
         setRedirectUrl(urlString);
         return;
       }
-      await app[stackAppInternalsSymbol].redirectToUrl(urlString, { replace: true });
+      await app[hexclaveAppInternalsSymbol].redirectToUrl(urlString, { replace: true });
     };
     try {
       const hasRedirected = await app.callOAuthCallback();

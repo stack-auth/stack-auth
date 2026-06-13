@@ -16,9 +16,9 @@ type CreateDialogProps = {
 };
 
 export default function PageClient() {
-  const stackAdminApp = useAdminApp();
-  const teams = stackAdminApp.useTeams({ limit: 1 });
-  const project = stackAdminApp.useProject();
+  const hexclaveAdminApp = useAdminApp();
+  const teams = hexclaveAdminApp.useTeams({ limit: 1 });
+  const project = hexclaveAdminApp.useProject();
 
   const [createTeamsOpen, setCreateTeamsOpen] = React.useState(false);
   const hasTeams = teams.length > 0;
@@ -53,7 +53,7 @@ export default function PageClient() {
 }
 
 function CreateDialog({ open, onOpenChange }: CreateDialogProps) {
-  const stackAdminApp = useAdminApp();
+  const hexclaveAdminApp = useAdminApp();
   const formSchema = yup.object({
     displayName: yup.string().defined().label("Display Name"),
   });
@@ -66,7 +66,7 @@ function CreateDialog({ open, onOpenChange }: CreateDialogProps) {
       formSchema={formSchema}
       okButton={{ label: "Create" }}
       onSubmit={async (values) => {
-        await stackAdminApp.createTeam({
+        await hexclaveAdminApp.createTeam({
           displayName: values.displayName,
         });
       }}

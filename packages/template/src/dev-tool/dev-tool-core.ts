@@ -1,14 +1,14 @@
 // IF_PLATFORM js-like
 
-import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
-import type { StackClientApp } from "../lib/stack-app";
-import { envVars } from "../lib/env";
-import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
-import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import { getPagePrompt } from "../lib/stack-app/url-targets";
+import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
+import type { StackClientApp } from "../lib/hexclave-app";
+import { envVars } from "../generated/env";
+import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
+import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
+import { getPagePrompt } from "../lib/hexclave-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 import type { TriggerCorner, TriggerPlacement } from "./dev-tool-trigger-position";
 import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";
@@ -75,7 +75,10 @@ const DEFAULT_STATE: DevToolState = {
   panelHeight: 520,
 };
 
-const STACK_LOGO_SVG = '<svg width="14" height="17" viewBox="0 0 131 156" fill="currentColor"><path d="M124.447 28.6459L70.1382 1.75616C67.3472 0.374284 64.0715 0.372197 61.279 1.75051L0.740967 31.6281V87.6369L65.7101 119.91L117.56 93.675V112.414L65.7101 138.44L0.740967 106.584V119.655C0.740967 122.359 2.28151 124.827 4.71097 126.015L62.282 154.161C65.0966 155.538 68.3938 155.515 71.1888 154.099L130.47 124.074V79.7105C130.47 74.8003 125.34 71.5769 120.915 73.7077L79.4531 93.675V75.9771L130.47 50.1589V38.3485C130.47 34.2325 128.137 30.4724 124.447 28.6459Z"/></svg>';
+// Hexclave mark — hexagon outline with three radial bars, monochrome via currentColor
+// so it inherits the trigger logo's color. Sourced from apps/dashboard/public/hexclave-icon.svg
+// (gradient + glow stripped; this is a tiny trigger glyph, not the full brand mark).
+const HEXCLAVE_LOGO_SVG = '<svg width="16" height="16" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter"><path d="M 24 4 L 41.32 14 L 41.32 34 L 24 44 L 6.68 34 L 6.68 14 Z"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(120 24 24)"/><path d="M 11 16.87 L 14 15.13 L 14 32.87 L 11 31.13 Z" fill="currentColor" stroke="none" transform="rotate(240 24 24)"/></svg>';
 
 // ---------------------------------------------------------------------------
 // State management
@@ -200,12 +203,12 @@ function nextId() {
 }
 
 function resolveApiBaseUrl(app: StackClientApp<true>): string {
-  const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+  const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
   return getBaseUrl(opts.baseUrl);
 }
 
 function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
-  return envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+  return envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
 }
 
 function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {
@@ -454,7 +457,7 @@ function createTrigger(onClick: () => void): { element: HTMLElement; cleanup: ()
     title: 'Hexclave Dev Tools',
   });
   const logoSpan = h('span', { className: 'sdt-trigger-logo' });
-  setHtml(logoSpan, STACK_LOGO_SVG);
+  setHtml(logoSpan, HEXCLAVE_LOGO_SVG);
   btn.appendChild(logoSpan);
 
   let placement = loadPlacement() ?? { corner: 'bottom-right' as TriggerCorner };
@@ -1117,7 +1120,7 @@ function createConsoleTab(logStore: LogStore): TabResult {
   exportBtn.addEventListener('click', () => {
     const blob = new Blob([formatLogsForExport()], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = h('a', { href: url, download: `stack-auth-dev-tool-logs-${new Date().toISOString()}.txt` });
+    const link = h('a', { href: url, download: `hexclave-dev-tool-logs-${new Date().toISOString()}.txt` });
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1181,7 +1184,7 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   ];
 
   function getHeaders(): Record<string, string> {
-    const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+    const opts = app[hexclaveAppInternalsSymbol].getConstructorOptions();
     // Hexclave rebrand: emit x-hexclave-* request headers (backend dual-accepts).
     const headers: Record<string, string> = {
       'X-Hexclave-Access-Type': 'client',
@@ -1927,7 +1930,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
   const urls = app.urls;
-  const urlOptions: HandlerUrlOptions = app[stackAppInternalsSymbol].getConstructorOptions().urls ?? {};
+  const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
     { key: 'signIn' as any, label: 'Sign-in' },
@@ -2072,7 +2075,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     }
     header.appendChild(headerTop);
 
-    const redirectMethod = `stackApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
+    const redirectMethod = `hexclaveApp.redirectTo${(page.key as string).charAt(0).toUpperCase()}${(page.key as string).slice(1)}()`;
     const codeRow = h('div', { className: 'sdt-pg-code-inline' });
     codeRow.appendChild(h('code', { className: 'sdt-pg-code' }, redirectMethod));
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
@@ -2359,7 +2362,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   root.id = ROOT_ID;
   body.appendChild(root);
 
-  const wrapper = h('div', { className: 'stack-devtool' });
+  const wrapper = h('div', { className: 'hexclave-devtool' });
   root.appendChild(wrapper);
 
   const style = document.createElement('style');
@@ -2411,7 +2414,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     openPanel();
   }
 
-  const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
+  const removeRequestListener = app[hexclaveAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
     const timestamp = Date.now();
     logStore.addApiLog({
       id: nextId(),

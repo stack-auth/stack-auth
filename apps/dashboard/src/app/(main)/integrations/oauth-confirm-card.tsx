@@ -2,7 +2,7 @@
 
 import { Logo } from "@/components/logo";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { AdminProject } from "@stackframe/stack";
+import { AdminProject } from "@hexclave/next";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";

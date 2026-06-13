@@ -1,8 +1,8 @@
 import { extractCachedTokens, extractCostFromUsage, extractOpenRouterCost, refineGenerationCost } from "@/lib/ai/openrouter-usage";
 import type { CommonLogFields } from "@/lib/ai/types";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { type LanguageModelUsage, type StepResult, type ToolSet } from "ai";
 import { callReducer, opt } from "../spacetimedb-client";
 
@@ -26,8 +26,14 @@ function sanitizeRequiredNumber(name: string, n: number): number {
 }
 
 function truncateLargeToolResult(toolName: string, output: unknown): unknown {
-  const serialized = JSON.stringify(output);
-  if (serialized.length <= MAX_TOOL_RESULT_CHARS) return output;
+  const serializableOutput = output === undefined || typeof output === "function" || typeof output === "symbol"
+    ? {
+      _nonJsonResult: true,
+      valueType: typeof output,
+    }
+    : output;
+  const serialized = JSON.stringify(serializableOutput);
+  if (serialized.length <= MAX_TOOL_RESULT_CHARS) return serializableOutput;
   captureError(
     "ai-query-tool-result-truncated",
     new HexclaveAssertionError(

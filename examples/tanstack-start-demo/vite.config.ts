@@ -73,15 +73,15 @@ export default defineConfig(({ mode }) => {
       dedupe: ["react", "react-dom"],
     },
     ssr: {
-      noExternal: [/^@stackframe\//, /^@radix-ui\//],
+      noExternal: [/^@hexclave\//, /^@radix-ui\//],
     },
     optimizeDeps: {
-      include: ["@stackframe/stack-shared", "@stackframe/stack-shared/config"],
+      include: ["@hexclave/shared", "@hexclave/shared/config"],
     },
     plugins: [
       ...(isVitest ? [] : [
-        waitForWorkspacePackages(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
-        watchNodeModules(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
+        waitForWorkspacePackages(["@hexclave/tanstack-start", "@hexclave/shared", "@hexclave/ui"]),
+        watchNodeModules(["@hexclave/tanstack-start", "@hexclave/shared", "@hexclave/ui"]),
       ]),
       tsConfigPaths(),
       ...(isVitest ? [] : [

@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const TELEGRAM_HOSTNAME = "api.telegram.org";
 const TELEGRAM_ENDPOINT_PATH = "/sendMessage";

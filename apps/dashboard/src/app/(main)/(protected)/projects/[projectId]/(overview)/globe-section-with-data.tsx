@@ -1,8 +1,8 @@
 'use client';
 
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { cn } from "@/lib/utils";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';
@@ -17,10 +17,10 @@ function captureGlobeErrorOnce(error: Error) {
   captureError("metrics-globe-error-boundary", error);
 }
 
-export function GlobeSectionWithData({ includeAnonymous }: { includeAnonymous: boolean }) {
+export function GlobeSectionWithData({ includeAnonymous, interactive }: { includeAnonymous: boolean, interactive?: boolean }) {
   return (
     <ErrorBoundary errorComponent={GlobeErrorComponent}>
-      <GlobeSectionWithMetrics includeAnonymous={includeAnonymous} />
+      <GlobeSectionWithMetrics includeAnonymous={includeAnonymous} interactive={interactive} />
     </ErrorBoundary>
   );
 }
@@ -30,9 +30,9 @@ function GlobeErrorComponent(props: { error: Error }) {
   return <div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>;
 }
 
-function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boolean }) {
+function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAnonymous: boolean, interactive?: boolean }) {
   const adminApp = useAdminApp();
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
+  const data = (adminApp as any)[hexclaveAppInternalsSymbol].useMetrics(includeAnonymous);
 
   return (
     <>
@@ -41,6 +41,7 @@ function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boole
         countryData={data.users_by_country}
         totalUsers={data.total_users}
         activeUsersByCountry={data.active_users_by_country ?? {}}
+        interactive={interactive}
       />
     </>
   );

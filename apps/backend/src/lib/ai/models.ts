@@ -1,7 +1,7 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;

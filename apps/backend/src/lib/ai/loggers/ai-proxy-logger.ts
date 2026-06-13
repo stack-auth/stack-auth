@@ -1,7 +1,7 @@
 import { logAiQuery, type AiQueryLogEntry } from "@/lib/ai/loggers/ai-query-logger";
 import { refineGenerationCost, type UsageFields } from "@/lib/ai/openrouter-usage";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export type ProxyLogFields = {
   correlationId: string,

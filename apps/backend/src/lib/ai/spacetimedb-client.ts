@@ -1,5 +1,5 @@
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { HexclaveAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 
 function httpBase(): string | null {
   return getEnvVariable("STACK_SPACETIMEDB_URL", "") || null;
@@ -9,11 +9,35 @@ function httpBase(): string | null {
 const SPACETIMEDB_FETCH_TIMEOUT_MS = 10_000;
 
 let enrollmentPromise: Promise<void> | null = null;
+let serviceTokenOverride: string | null = null;
+
+async function mintServiceToken(base: string): Promise<string> {
+  const res = await fetch(`${base}/v1/identity`, {
+    method: "POST",
+    signal: AbortSignal.timeout(SPACETIMEDB_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const preview = (await res.text()).slice(0, 200);
+    throw spacetimeDbError("Mint service token failed", res.status, preview);
+  }
+  const body = await res.json();
+  if (typeof body.token !== "string" || body.token.trim() === "") {
+    throw new HexclaveAssertionError("SpacetimeDB /v1/identity returned no usable token");
+  }
+  return body.token;
+}
+
+async function refreshServiceTokenAfterAuthFailure(): Promise<void> {
+  const base = httpBase();
+  if (!base) return;
+  serviceTokenOverride = await mintServiceToken(base);
+  enrollmentPromise = null;
+}
 
 async function getServiceToken(): Promise<string | null> {
   const base = httpBase();
   if (!base) return null;
-  const token = getEnvVariable("STACK_SPACETIMEDB_SERVICE_TOKEN", "");
+  const token = serviceTokenOverride ?? getEnvVariable("STACK_SPACETIMEDB_SERVICE_TOKEN", "");
   if (!token) return null;
   const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
   if (!logToken) return null;
@@ -68,13 +92,20 @@ function spacetimeDbError(label: string, status: number, preview: string): Error
 }
 
 async function withEnrollmentRetry<T>(op: (token: string) => Promise<T>): Promise<T | null> {
-  const token = await getServiceToken();
+  let token;
+  try {
+    token = await getServiceToken();
+  } catch (err) {
+    if (!(err instanceof StatusError) || err.statusCode !== 401) throw err;
+    await refreshServiceTokenAfterAuthFailure();
+    token = await getServiceToken();
+  }
   if (!token) return null;
   try {
     return await op(token);
   } catch (err) {
     if (!(err instanceof StatusError) || err.statusCode !== 401) throw err;
-    enrollmentPromise = null;
+    await refreshServiceTokenAfterAuthFailure();
     const fresh = await getServiceToken();
     if (!fresh) throw err;
     return await op(fresh);

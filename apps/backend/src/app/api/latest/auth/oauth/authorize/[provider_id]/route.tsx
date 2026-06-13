@@ -1,5 +1,6 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
+import { getApiUrlForRequest } from "@/lib/request-api-url";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
@@ -7,10 +8,10 @@ import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import type { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
@@ -56,8 +57,8 @@ export const GET = createSmartRouteHandler({
       scope: yupString().defined(),
       state: yupString().defined(),
       grant_type: yupString().oneOf(["authorization_code"]).defined(),
-      code_challenge: yupString().defined(),
-      code_challenge_method: yupString().defined(),
+      code_challenge: yupString().matches(/^[A-Za-z0-9._~-]{43,128}$/).defined(),
+      code_challenge_method: yupString().oneOf(["S256"]).defined(),
       response_type: yupString().defined(),
     }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
@@ -106,7 +107,7 @@ export const GET = createSmartRouteHandler({
       && !validateRedirectUrl(query.after_callback_redirect_url, tenancy)
       && !isAcceptedNativeAppUrl(query.after_callback_redirect_url)
     ) {
-      throw new KnownErrors.RedirectUrlNotWhitelisted();
+      throw new KnownErrors.RedirectUrlNotWhitelisted(query.after_callback_redirect_url);
     }
 
     const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);
@@ -168,6 +169,11 @@ export const GET = createSmartRouteHandler({
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
           responseMode,
+          // Record the host that received /authorize so the callback can detect a
+          // legitimate cross-host landing (the redirect_uri/callback host is
+          // config-derived and may be a sibling brand) and not fail the
+          // host-scoped CSRF cookie check.
+          authorizeApiUrl: getApiUrlForRequest(fullReq),
         } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

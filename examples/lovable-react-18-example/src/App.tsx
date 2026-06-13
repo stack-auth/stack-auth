@@ -1,12 +1,12 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+import { StackHandler, StackProvider, StackTheme } from "@hexclave/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { stackClientApp } from "./stack/client";
+import { hexclaveClientApp } from "./hexclave/client";
 
 
 const queryClient = new QueryClient();
@@ -14,7 +14,7 @@ const queryClient = new QueryClient();
 function HandlerRoutes() {
   const location = useLocation();
   return (
-    <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+    <StackHandler app={hexclaveClientApp} location={location.pathname} fullPage />
   );
 }
 
@@ -25,7 +25,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <StackProvider app={stackClientApp}>
+        <StackProvider app={hexclaveClientApp}>
           <StackTheme>
             <Routes>
             <Route path="/handler/*" element={<HandlerRoutes />} />

@@ -1,4 +1,4 @@
-import { HexclaveAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 export function Google({ iconSize }: { iconSize: number }) {
   return (

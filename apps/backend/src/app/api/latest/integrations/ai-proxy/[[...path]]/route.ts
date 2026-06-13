@@ -1,7 +1,7 @@
 import { observeAndLog, sanitizeBody } from "@/lib/ai/ai-proxy-handlers";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";

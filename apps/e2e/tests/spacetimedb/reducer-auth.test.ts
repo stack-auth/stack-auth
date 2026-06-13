@@ -57,12 +57,18 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
 
     const cases = [
       { name: "add_operator", args: [wrong, [hexId], "some-user", "Some Name"] },
+      { name: "remove_operator", args: [wrong, [hexId]] },
       { name: "remove_operators_for_user", args: [wrong, "some-user"] },
       { name: "enroll_service", args: [wrong, "Some Service"] },
       { name: "mark_human_reviewed", args: [wrong, "corr", "reviewer"] },
       { name: "unmark_human_reviewed", args: [wrong, "corr"] },
+      { name: "clear_mcp_qa_review", args: [wrong, "corr"] },
       {
         name: "upsert_qa_from_call",
+        args: [wrong, "corr", "q", "a", false, "reviewer"],
+      },
+      {
+        name: "upsert_qa_from_call_and_mark_reviewed",
         args: [wrong, "corr", "q", "a", false, "reviewer"],
       },
       { name: "add_manual_qa", args: [wrong, "q", "a", false, "reviewer", "req-id"] },
@@ -78,8 +84,11 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
       },
       {
         name: "log_ai_query",
-        args: [wrong, "corr", "chat", "sys", "q", "s", "model", false, opt(null), opt(null), "[]", "[]", "[]", "text", opt(null), opt(null), opt(null), opt(null), 0, 0n, opt(null), opt(null), opt(null)],
+        args: [wrong, "corr", "chat", "sys", "q", "s", "model", false, opt(null), opt(null), "[]", "[]", "[]", "text", opt(null), opt(null), opt(null), opt(null), opt(null), opt(null), opt(null), 0, 0n, opt(null), opt(null)],
       },
+      { name: "update_ai_query_cost", args: [wrong, "corr", opt(null), opt(null)] },
+      { name: "delete_mcp_call_log", args: [wrong, "corr"] },
+      { name: "delete_ai_query_log", args: [wrong, "corr"] },
     ];
 
     for (const { name, args } of cases) {
