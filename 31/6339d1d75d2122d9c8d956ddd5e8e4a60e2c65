@@ -1,0 +1,34 @@
+pnpm-lock.yaml
+  s_775a2c9e15f297::t_4c11c1d3a5ea67 774,1560,1563,1566,1584,1664,1667,1713,9365-9366,9369-9370,9376-9377,9380-9381,9389-9390,9393-9394,21606,21608,27876,27880,27886,27890,27895,27897,27900,27905,27907-27911,29190,29193,29195-29196,29198,29236,29243,29301,29305,29307,29377,29379,29383,32356,32358,32360,32362,32456,32458,32493,36167,39675,39677-39678,39680-39681
+turbo.json
+  s_0c52e51ba12dc6::t_51afcddc639b1f 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "316339d1d75d2122d9c8d956ddd5e8e4a60e2c65",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_0c52e51ba12dc6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26026540-f984-4a33-a8cd-7c34ced3b471",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_775a2c9e15f297": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "04732d03-7dd9-4725-af9d-0b768babefa4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
