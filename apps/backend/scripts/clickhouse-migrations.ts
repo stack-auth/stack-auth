@@ -44,10 +44,6 @@ export async function runClickhouseMigrations() {
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
 
-  // Backfill recent $click rows that pre-date the MV, capped to the dashboard's
-  // 30-day clickmap window so this doesn't scan unbounded production history.
-  await client.command({ query: CLICKMAP_EVENTS_BACKFILL_SQL });
-
   // Create all views in parallel
   await Promise.all([
     client.command({ query: EVENTS_VIEW_SQL }),
@@ -712,9 +708,8 @@ ADD COLUMN IF NOT EXISTS is_dead UInt8 DEFAULT 0;
 `;
 
 // Materialized view that auto-populates clickmap_events on every $click insert.
-// No POPULATE clause: existing rows are not backfilled (they remain queryable
-// via the existing /api/.../analytics/clickmap route which still reads from
-// analytics_internal.events). New click rows flow into both tables.
+// No POPULATE clause: existing rows stay in analytics_internal.events. New
+// click rows flow into both tables.
 //
 // All field accesses use the toFloat64OrZero(toString(...)) pattern that the
 // existing analytics queries use, so JSON-Variant nullability is handled the
@@ -758,52 +753,3 @@ SELECT
 FROM analytics_internal.events
 WHERE event_type = '$click';
 `;
-
-// Idempotent backfill: insert recent pre-MV $click rows into clickmap_events.
-// The dashboard only exposes 30d/7d/1d clickmap filters, so scanning older
-// history adds migration risk without improving the product surface. After the
-// first run, min(event_at) in clickmap_events corresponds to the MV-capture
-// start (or the 30d boundary, once recent rows land), so re-runs are cheap.
-const CLICKMAP_EVENTS_BACKFILL_SQL = `
-INSERT INTO analytics_internal.clickmap_events
-SELECT
-    project_id,
-    branch_id,
-    event_at,
-    user_id,
-    session_replay_id,
-    toString(data.url) AS url,
-    toString(data.path) AS path,
-    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_width)))))) AS viewport_width,
-    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_height)))))) AS viewport_height,
-    toUInt16(least(65535, greatest(0, toUInt32(
-        coalesce(toFloat64OrNull(toString(data.x_scaled)), toFloat64OrZero(toString(data.page_x)) / 16, toFloat64OrZero(toString(data.x)) / 16)
-    )))) AS pointer_x,
-    toUInt16(least(65535, greatest(0, toUInt32(
-        coalesce(toFloat64OrNull(toString(data.y_scaled)), toFloat64OrZero(toString(data.page_y)) / 16, toFloat64OrZero(toString(data.y)) / 16)
-    )))) AS pointer_y,
-    toUInt16(least(65535, greatest(0, toUInt32(
-        coalesce(toFloat64OrNull(toString(data.client_y_scaled)), toFloat64OrZero(toString(data.y)) / 16)
-    )))) AS client_y,
-    toFloat32(coalesce(
-        toFloat64OrNull(toString(data.pointer_relative_x)),
-        if(toFloat64OrZero(toString(data.viewport_width)) > 0,
-           toFloat64OrZero(toString(data.x)) / toFloat64OrZero(toString(data.viewport_width)),
-           0)
-    )) AS pointer_relative_x,
-    toUInt8(coalesce(toUInt8OrNull(toString(data.pointer_target_fixed)), 0)) AS pointer_target_fixed,
-    toString(data.elements_chain) AS elements_chain,
-    toString(data.selector) AS selector,
-    toString(data.text) AS elements_text,
-    toString(data.tag_name) AS tag_name,
-    nullIf(toString(data.href), '') AS href,
-    toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
-FROM analytics_internal.events
-WHERE event_type = '$click'
-  AND event_at >= now64(3, 'UTC') - INTERVAL 30 DAY
-  AND event_at < coalesce(
-    (SELECT min(event_at) FROM analytics_internal.clickmap_events),
-    toDateTime64('2999-01-01 00:00:00', 3, 'UTC')
-  );
-`;
-
