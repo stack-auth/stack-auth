@@ -5,6 +5,7 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { cn } from "@/lib/utils";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { UsersIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import type { ComponentType, SVGProps } from "react";
@@ -164,29 +165,6 @@ function getOverageRows(rows: UsageRow[]): UsageRow[] {
   return rows.filter((row) => (row.overage ?? 0) > 0);
 }
 
-function getAuthUsersOverQuotaPlanUsage(planUsage: PlanUsageData): PlanUsageData {
-  return {
-    ...planUsage,
-    rows: planUsage.rows.map((row) => {
-      if (row.itemId !== AUTH_USERS_ITEM_ID) {
-        return row;
-      }
-
-      const limit = row.limit ?? 10000;
-      const used = Math.max(row.used ?? 0, limit + 1);
-
-      return {
-        ...row,
-        used,
-        limit,
-        remaining: 0,
-        overage: used - limit,
-        isUnlimited: false,
-      };
-    }),
-  };
-}
-
 function getUsageSectionInfo(row: UsageRow): UsageSectionInfo {
   return USAGE_SECTION_INFO_BY_ITEM_ID.get(row.itemId) ?? DEFAULT_USAGE_SECTION_INFO;
 }
@@ -313,7 +291,7 @@ function UsageBody({
 }: {
   planUsage: PlanUsageData,
   analyticsTimeoutRow: UsageRow | undefined,
-  onUpgrade: (() => Promise<void>) | undefined,
+  onUpgrade: (() => void) | undefined,
 }) {
   const overageRows = getOverageRows(planUsage.rows);
 
@@ -349,32 +327,6 @@ function UsageBody({
   );
 }
 
-function UsageRoidsPreview({
-  planUsage,
-  analyticsTimeoutRow,
-  onUpgrade,
-}: {
-  planUsage: PlanUsageData,
-  analyticsTimeoutRow: UsageRow | undefined,
-  onUpgrade: (() => Promise<void>) | undefined,
-}) {
-  const authUsersOverQuotaPlanUsage = getAuthUsersOverQuotaPlanUsage(planUsage);
-
-  return (
-    <>
-      <section data-roid-tool="Usage quota states">
-        <article data-roid-option="A — Current usage">
-          <UsageBody planUsage={planUsage} analyticsTimeoutRow={analyticsTimeoutRow} onUpgrade={onUpgrade} />
-        </article>
-        <article data-roid-option="B — Auth users over quota">
-          <UsageBody planUsage={authUsersOverQuotaPlanUsage} analyticsTimeoutRow={analyticsTimeoutRow} onUpgrade={onUpgrade} />
-        </article>
-      </section>
-      <script src="https://tryroids.com/roid-tool.js" async />
-    </>
-  );
-}
-
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -398,15 +350,14 @@ export default function PageClient() {
     [planUsage, visibleRows],
   );
 
-  const handleUpgrade = async () => {
-    if (planUsage.nextPlanId == null) {
-      return;
-    }
-    const checkoutUrl = await ownerTeam.createCheckoutUrl({
-      productId: planUsage.nextPlanId,
-      returnUrl: window.location.href,
+  const handleUpgrade = planUsage.nextPlanId == null ? undefined : () => {
+    runAsynchronouslyWithAlert(async () => {
+      const checkoutUrl = await ownerTeam.createCheckoutUrl({
+        productId: planUsage.nextPlanId ?? throwErr("nextPlanId became null unexpectedly"),
+        returnUrl: window.location.href,
+      });
+      window.location.assign(checkoutUrl);
     });
-    window.location.assign(checkoutUrl);
   };
 
   return (
@@ -415,10 +366,10 @@ export default function PageClient() {
       description={`Usage for ${planUsage.ownerTeamDisplayName} across all projects owned by this team.`}
       width={1050}
     >
-      <UsageRoidsPreview
+      <UsageBody
         planUsage={planUsageForDisplay}
         analyticsTimeoutRow={analyticsTimeoutRow}
-        onUpgrade={planUsage.nextPlanId == null ? undefined : handleUpgrade}
+        onUpgrade={handleUpgrade}
       />
     </PageLayout>
   );

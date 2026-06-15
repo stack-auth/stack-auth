@@ -1,6 +1,6 @@
 import { ITEM_IDS, UNLIMITED } from "@hexclave/shared/dist/plans";
 import type { SubscriptionRow } from "./payments/schema/types";
-import { buildUsageRow, getCurrentCalendarMonthPeriod, getNextPlanId, getPlanUsagePeriod } from "./plan-usage";
+import { buildUsageRow, getNextPlanId, getPlanUsagePeriod } from "./plan-usage";
 import { describe, expect, it } from "vitest";
 
 function createSubscriptionPeriod(startMillis: number, endMillis: number): SubscriptionRow {
@@ -155,9 +155,11 @@ describe("billing period selection", () => {
     expect({
       start: period.start.toISOString(),
       end: period.end.toISOString(),
-    }).toEqual({
-      start: getCurrentCalendarMonthPeriod(new Date(Date.UTC(2026, 5, 11, 12))).start.toISOString(),
-      end: getCurrentCalendarMonthPeriod(new Date(Date.UTC(2026, 5, 11, 12))).end.toISOString(),
-    });
+    }).toMatchInlineSnapshot(`
+      {
+        "end": "2026-07-01T00:00:00.000Z",
+        "start": "2026-06-01T00:00:00.000Z",
+      }
+    `);
   });
 });

@@ -114,12 +114,11 @@ describe("Usage settings page", () => {
     expect(screen.getAllByText("Authentication").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Auth users").length).toBeGreaterThan(0);
     expect(screen.getByText("45 users · Unlimited")).toBeTruthy();
-    expect(screen.getByText("100% · 1 over")).toBeTruthy();
+    expect(screen.getByText("100% · 20 over")).toBeTruthy();
     expect(screen.getAllByLabelText("Auth users usage").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Analytics").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Analytics events").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Session replays").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/20 over/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Analytics events")).toBeTruthy();
+    expect(screen.getByText("Session replays")).toBeTruthy();
     expect(screen.getAllByText("Analytics query timeout").length).toBeGreaterThan(0);
     expect(screen.getAllByText("10s").length).toBeGreaterThan(0);
     expect(screen.getAllByText("You exceeded your limits. Upgrade to the Team or Growth plan to get higher quotas.").length).toBeGreaterThan(0);

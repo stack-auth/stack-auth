@@ -160,7 +160,7 @@ async function getInternalBillingTenancy(): Promise<Tenancy> {
   return tenancy;
 }
 
-async function countDashboardAdmins(internalTenancy: Tenancy, ownerTeamId: string): Promise<number> {
+async function countDashboardAdmins(internalTenancy: Tenancy, ownerTeamId: string, now: Date): Promise<number> {
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
   const [acceptedMembers, pendingInvitations] = await Promise.all([
     internalPrisma.teamMember.count({
@@ -175,7 +175,7 @@ async function countDashboardAdmins(internalTenancy: Tenancy, ownerTeamId: strin
         branchId: internalTenancy.branchId,
         type: VerificationCodeType.TEAM_INVITATION,
         usedAt: null,
-        expiresAt: { gt: new Date() },
+        expiresAt: { gt: now },
         data: {
           path: ["team_id"],
           equals: ownerTeamId,
@@ -232,11 +232,8 @@ async function countSessionReplaysForTenancy(tenancyId: string, period: UsagePer
 }
 
 async function sumTenancyUsage(tenancyIds: string[], counter: (tenancyId: string) => Promise<number>): Promise<number> {
-  let total = 0;
-  for (const tenancyId of tenancyIds) {
-    total += await counter(tenancyId);
-  }
-  return total;
+  const counts = await Promise.all(tenancyIds.map(counter));
+  return counts.reduce((sum, count) => sum + count, 0);
 }
 
 async function countAnalyticsEventsForProjects(projectIds: string[], period: UsagePeriod): Promise<number> {
@@ -343,7 +340,7 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
     getOwnerTeamDisplayName(internalTenancy, ownerTeamId),
     getOwnedProjectIdsForBillingTeam(ownerTeamId),
     getOwnedTenancyIdsForBillingTeam(ownerTeamId),
-    countDashboardAdmins(internalTenancy, ownerTeamId),
+    countDashboardAdmins(internalTenancy, ownerTeamId, now),
     getTeamWideNonAnonymousUserCount(ownerTeamId),
   ]);
 
