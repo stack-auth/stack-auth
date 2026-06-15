@@ -134,6 +134,7 @@ export function UserDialog(props: {
         alert("Email already used for authentication. This email is already used for sign-in by another account. Please choose a different email address.");
         return 'prevent-close';
       }
+      throw error;
     }
   }
 
