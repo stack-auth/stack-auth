@@ -330,11 +330,7 @@ function getRelativeImportSpecifiers(content: string): string[] {
   const importPattern = /\bimport\b(?:[^'"]*?\bfrom\s*)?["'](\.{1,2}\/[^"']+)["']/g;
   let match: RegExpExecArray | null;
   while ((match = importPattern.exec(content)) !== null) {
-    const specifier = match[1];
-    if (specifier == null) {
-      throw new Error("Import specifier regex matched without a capture group.");
-    }
-    specifiers.push(specifier);
+    specifiers.push(match[1]);
   }
   return specifiers;
 }
