@@ -40,7 +40,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     // refresh and access-token-validity methods; neither uses `redirect_uri`.
     // `getProvider` resolves the callback URL from the provider's own config, so
     // this flow doesn't need to supply one.
-    const providerInstance = await getProvider(provider);
+    const providerInstance = await getProvider(provider, provider.id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     // Legacy endpoint: search tokens across ALL accounts for this provider and user

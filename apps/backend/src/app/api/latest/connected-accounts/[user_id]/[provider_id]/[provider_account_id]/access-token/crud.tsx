@@ -41,7 +41,7 @@ export const connectedAccountAccessTokenByAccountCrudHandlers = createLazyProxy(
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
-    const providerInstance = await getProvider(provider);
+    const providerInstance = await getProvider(provider, provider.id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     const oauthAccount = await prisma.projectUserOAuthAccount.findFirst({
