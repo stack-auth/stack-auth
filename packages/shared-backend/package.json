@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/shared-backend",
-  "version": "1.0.3",
+  "version": "1.0.16",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
