@@ -1,0 +1,28 @@
+packages/shared-backend/src/index.ts
+  s_010400bfca1a64::t_fa6559c9d1f908 333
+packages/shared-backend/package.json
+  s_010400bfca1a64::t_c535e41138d23e 4-6,8-21,24-26,31-36
+packages/shared-backend/tsdown.config.ts
+  s_010400bfca1a64::t_e7d7209c4c4bff 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "ff0c5cf6f4ee7267be7e58868f2db52cd588ec87",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_010400bfca1a64": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ceb677fe-a7a4-4962-a8fe-b6542e71cb3e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
