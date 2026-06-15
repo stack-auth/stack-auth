@@ -1,0 +1,27 @@
+{
+  "name": "@hexclave/shared-backend",
+  "version": "1.0.3",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./config-agent": "./src/config-agent.ts"
+  },
+  "scripts": {
+    "lint": "eslint --ext .tsx,.ts .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.73",
+    "@hexclave/shared": "workspace:*",
+    "jiti": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.5.0"
+}

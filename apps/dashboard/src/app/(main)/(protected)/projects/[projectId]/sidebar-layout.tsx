@@ -188,7 +188,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex h-8 w-full items-center justify-between rounded-lg pl-3 pr-0.5 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
+    "group flex h-8 w-full items-center justify-between rounded-lg pl-2 pr-0.5 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted ? (isSection ? activeSectionClasses : activeItemClasses) : inactiveClasses,
     "cursor-pointer"
   );

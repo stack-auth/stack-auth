@@ -10,6 +10,7 @@ export function CopyField(props: {
   helper?: React.ReactNode,
   monospace?: boolean,
   fixedSize?: boolean,
+  initialCopied?: boolean,
 } & ({
   type: "textarea",
   height?: number,
@@ -36,7 +37,7 @@ export function CopyField(props: {
               resize: props.fixedSize ? "none" : "vertical"
             }}
           />
-          <CopyButton content={props.value} className="absolute right-4 top-2" />
+          <CopyButton content={props.value} initialCopied={props.initialCopied} className="absolute right-4 top-2" />
         </div>
       ) : (
         <div className="flex items-center gap-2">
@@ -47,7 +48,7 @@ export function CopyField(props: {
               fontFamily: props.monospace ? "ui-monospace, monospace" : "inherit",
             }}
           />
-          <CopyButton content={props.value} />
+          <CopyButton content={props.value} initialCopied={props.initialCopied} />
         </div>
       )}
     </div>

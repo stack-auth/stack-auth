@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.15",
   "repository": "https://github.com/hexclave/hexclave",
   "type": "module",
   "scripts": {

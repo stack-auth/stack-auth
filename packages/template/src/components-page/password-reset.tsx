@@ -95,11 +95,10 @@ export default function PasswordResetForm(props: {
           <PasswordInput
             id="password"
             autoComplete="new-password"
-            {...register('password')}
-            onChange={() => {
+            {...register('password', { onChange: () => {
               clearErrors('password');
               clearErrors('passwordRepeat');
-            }}
+            } })}
           />
           <FormWarningText text={errors.password?.message?.toString()} />
 
@@ -107,11 +106,10 @@ export default function PasswordResetForm(props: {
           <PasswordInput
             id="repeat-password"
             autoComplete="new-password"
-            {...register('passwordRepeat')}
-            onChange={() => {
+            {...register('passwordRepeat', { onChange: () => {
               clearErrors('password');
               clearErrors('passwordRepeat');
-            }}
+            } })}
           />
           <FormWarningText text={errors.passwordRepeat?.message?.toString()} />
 
