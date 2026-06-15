@@ -1649,9 +1649,8 @@ async function loadAnalyticsOverview(
       }),
       // User-Agent buckets pulled from the same `$page-view` event stream so
       // visitor counts line up with the referrer / region cards on the overview.
-      // `data.user_agent` is captured client-side (navigator.userAgent) only —
-      // there is no server-side fallback — so older rows that pre-date capture
-      // simply return empty here.
+      // `data.user_agent` is captured client-side (navigator.userAgent), so
+      // older rows that pre-date capture simply return empty here.
       clickhouseClient.query({
         query: `
           SELECT

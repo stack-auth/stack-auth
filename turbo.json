@@ -4,6 +4,8 @@
     "STACK_*",
     "HEXCLAVE_*",
     "CRON_SECRET",
+    "CRON_SECRET_OLD",
+    "BLOB_READ_WRITE_TOKEN",
     "NEXT_PUBLIC_*",
     "VITE_*",
     "NEXT_PUBLIC_SENTRY_*",

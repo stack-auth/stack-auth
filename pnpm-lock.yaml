@@ -389,6 +389,9 @@ importers:
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@hexclave/shared-backend':
+        specifier: workspace:*
+        version: link:../../packages/shared-backend
       '@hexclave/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -1850,15 +1853,15 @@ importers:
 
   packages/cli:
     dependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.73
-        version: 0.2.73(zod@4.3.6)
       '@hexclave/js':
         specifier: workspace:*
         version: link:../js
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../shared
+      '@hexclave/shared-backend':
+        specifier: workspace:*
+        version: link:../shared-backend
       '@inquirer/prompts':
         specifier: ^7.0.0
         version: 7.10.1(@types/node@20.17.6)
@@ -2457,6 +2460,25 @@ importers:
       rimraf:
         specifier: ^6.1.2
         version: 6.1.2
+
+  packages/shared-backend:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.73
+        version: 0.2.73(zod@4.3.6)
+      '@hexclave/shared':
+        specifier: workspace:*
+        version: link:../shared
+      jiti:
+        specifier: ^2.4.2
+        version: 2.6.1
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.6
+        version: 20.17.6
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   packages/tanstack-start:
     dependencies:

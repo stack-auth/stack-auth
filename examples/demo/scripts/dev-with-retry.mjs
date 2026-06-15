@@ -47,7 +47,7 @@ function runCliDev() {
       "exec", "tsx", "packages/cli/src/index.ts",
       "dev",
       "--no-auto-update",
-      "--config-file=./hexclave.config.ts",
+      `--config-file=${join(demoRoot, "hexclave.config.ts")}`,
       "--",
       "pnpm", "--dir", "examples/demo", "run", "dev:inner",
     ], {

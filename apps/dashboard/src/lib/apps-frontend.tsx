@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -395,6 +395,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
       { displayName: "Replays", href: "../session-replays" },
+      { displayName: "Clickmaps", href: "./clickmaps" },
       { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],
@@ -402,6 +403,18 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
         <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+      </>
+    ),
+  },
+  clickmaps: {
+    icon: CursorClickIcon,
+    href: "analytics/clickmaps",
+    parentAppId: "analytics",
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Clickmaps show where users interact with each page so you can spot attention patterns, missed affordances, and dead clicks.</p>
+        <p>They run on the same analytics event pipeline and are launched from trusted domains with a short-lived overlay token.</p>
       </>
     ),
   },

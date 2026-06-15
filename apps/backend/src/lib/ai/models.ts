@@ -1,7 +1,7 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -33,7 +33,7 @@ const MODEL_SELECTION_MATRIX: Record<
     },
     fast: {
       authenticated: { modelId: "x-ai/grok-build-0.1" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
+      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b:nitro" },
     },
   },
   smartest: {

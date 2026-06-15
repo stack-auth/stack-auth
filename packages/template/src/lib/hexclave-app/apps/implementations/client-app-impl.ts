@@ -71,6 +71,7 @@ import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsO
 import { useAsyncCache } from "./common";
 // END_PLATFORM
 // IF_PLATFORM js-like
+import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
@@ -730,6 +731,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
       mountDevTool(this as any);
+    }
+    if (isBrowserLike()) {
+      // Independent of the dev tool: the clickmap overlay only ever renders
+      // when a dashboard-minted token is handed over, so the listener is
+      // mounted unconditionally (the heavy UI is lazy-loaded on demand).
+      mountClickmapOverlay(this as any);
     }
     // END_PLATFORM
   }

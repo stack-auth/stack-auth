@@ -64,6 +64,7 @@
     "@react-hook/resize-observer": "^2.0.2",
     "@sentry/nextjs": "^10.11.0",
     "@hexclave/dashboard-ui-components": "workspace:*",
+    "@hexclave/shared-backend": "workspace:*",
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "@hexclave/ui": "workspace:*",
