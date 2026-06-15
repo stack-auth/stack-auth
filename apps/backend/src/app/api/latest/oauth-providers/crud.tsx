@@ -386,6 +386,8 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
   async onCreate({ auth, data }) {
     const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
     const providerConfig = getProviderConfig(auth.tenancy, data.provider_config_id);
+    const providerType = resolveProviderType(auth.tenancy, data.provider_config_id)
+      ?? throwErr(new StatusError(StatusError.NotFound, `OAuth provider ${data.provider_config_id} not found or not configured`));
 
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });
 
@@ -436,7 +438,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
       email: data.email,
       id: created.id,
       provider_config_id: data.provider_config_id,
-      type: providerConfig.type as any,
+      type: providerType,
       allow_sign_in: data.allow_sign_in,
       allow_connected_accounts: data.allow_connected_accounts,
       account_id: data.account_id,
