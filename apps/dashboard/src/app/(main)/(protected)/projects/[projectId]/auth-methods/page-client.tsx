@@ -219,7 +219,7 @@ function AddCustomOidcButtonDisabled({ onClick, isTeamPlanOrAbove }: { onClick: 
       >
         <GlobeIcon size={16} className="mr-1.5" />
         Add Custom OIDC
-        {!isTeamPlanOrAbove && <DesignBadge label="Team+" color="blue" size="sm" className="ml-1.5" />}
+        {!isTeamPlanOrAbove && <span className="ml-1.5"><DesignBadge label="Team+" color="blue" size="sm" /></span>}
       </DesignButton>
     </SimpleTooltip>
   );
