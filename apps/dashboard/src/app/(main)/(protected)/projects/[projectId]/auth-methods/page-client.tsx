@@ -257,6 +257,10 @@ const customOidcFormSchema = yupObject({
   providerId: yupString().defined().nonEmpty().matches(
     /^[a-z0-9_-]+$/,
     "Provider ID must only contain lowercase letters, numbers, hyphens, and underscores"
+  ).test(
+    "not-reserved",
+    "This ID is reserved for a standard provider. Choose a different name.",
+    (v) => !allProviders.includes(v as any),
   ),
   displayName: yupString().defined().nonEmpty(),
   issuerUrl: yupString().defined().nonEmpty().url("Must be a valid URL"),

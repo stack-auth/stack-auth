@@ -271,8 +271,8 @@ const KNOWN_TITLES: Record<string, string> = {
   twitch: "Twitch",
 };
 
-export function toTitle(id: string) {
-  return KNOWN_TITLES[id] ?? throwErr(`Unknown provider: ${id}`);
+export function toTitle(id: string): string {
+  return KNOWN_TITLES[id] ?? id;
 }
 
 export const BRAND_COLORS: Record<string, string> = {
