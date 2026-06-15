@@ -7,6 +7,7 @@ import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
+import type { PlanUsageResponse } from "./plan-usage";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -26,6 +27,8 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, HexclaveServerInterface } from "./server-interface";
+
+export type { PlanUsageResponse } from "./plan-usage";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -422,6 +425,17 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
         top_devices: rawAnalytics.top_devices ?? [],
       },
     };
+  }
+
+  async getPlanUsage(): Promise<PlanUsageResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/plan-usage",
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
   }
 
   async getUserActivity(userId: string): Promise<UserActivityResponse> {
