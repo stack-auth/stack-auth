@@ -30,7 +30,7 @@
   },
   "files": [
     "dist",
-    "src",
+    "!dist/**/*.test.*",
     "CHANGELOG.md",
     "LICENSE"
   ],
