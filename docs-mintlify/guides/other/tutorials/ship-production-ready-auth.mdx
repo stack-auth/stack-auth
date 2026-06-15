@@ -106,16 +106,16 @@ Read the full discussion in [User fundamentals — Protecting a page](/guides/ge
 ## 2. Secrets, keys, and environments
 
 <Warning>
-  **`STACK_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See the [HexclaveApp SDK reference](/sdk/objects/hexclave-app) and the [REST API overview](/api/overview).
+  **`HEXCLAVE_SECRET_SERVER_KEY`** (or `ssk_...`) must **only** exist in server-side environments (SSR, route handlers, server actions, your backend). Never prefix it with `NEXT_PUBLIC_`, never import it from code that runs in the browser, and never log it. See the [HexclaveApp SDK reference](/sdk/objects/hexclave-app) and the [REST API overview](/api/overview).
 </Warning>
 
 Practical split:
 
 | Variable | Typical exposure | Use |
 |----------|------------------|-----|
-| `NEXT_PUBLIC_STACK_PROJECT_ID` | Browser + server | Identifies the project to the hosted UI and client SDK. |
-| `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` (if used) | Browser + server | Client-safe key where your project uses publishable keys. |
-| `STACK_SECRET_SERVER_KEY` | **Server only** | Elevated server SDK and REST **server** API. |
+| `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID` | Browser + server | Identifies the project to the hosted UI and client SDK. |
+| `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY` (if used) | Browser + server | Client-safe key where your project uses publishable keys. |
+| `HEXCLAVE_SECRET_SERVER_KEY` | **Server only** | Elevated server SDK and REST **server** API. |
 
 Use **separate** Stack projects or at least **separate** env values for production vs staging when possible. Rotate keys from the dashboard if a secret is exposed.
 

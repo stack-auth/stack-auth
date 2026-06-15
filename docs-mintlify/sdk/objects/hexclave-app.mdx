@@ -59,7 +59,7 @@ This object is not usually constructed directly. More commonly, you would constr
 
 The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Hexclave.
 
-If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you can construct a `HexclaveClientApp` directly.
+If you're building a client-only app and don't have a `HEXCLAVE_SECRET_SERVER_KEY`, you can construct a `HexclaveClientApp` directly.
 
 </Info>
 
@@ -75,11 +75,11 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
       </ParamField>
 
       <ParamField body="projectId" type="string">
-        Project ID. Defaults to the `NEXT_PUBLIC_STACK_PROJECT_ID` environment variable.
+        Project ID. Defaults to the `NEXT_PUBLIC_HEXCLAVE_PROJECT_ID` environment variable.
       </ParamField>
 
       <ParamField body="publishableClientKey" type="string">
-        Publishable client key. Defaults to the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable.
+        Publishable client key. Defaults to the `NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY` environment variable.
       </ParamField>
 
       <ParamField body="urls" type="object">
@@ -505,11 +505,11 @@ Like `HexclaveClientApp`, but with server permissions. Has full read and write a
 
 <Warning>
   Since this functionality should only be available in environments you trust
-  (ie. your own server), it requires a `SECRET_SERVER_KEY`. In some cases, you
+  (ie. your own server), it requires a `HEXCLAVE_SECRET_SERVER_KEY`. In some cases, you
   may want to use a `HexclaveServerApp` on the client; an example for this is an
   internal dashboard that only your own employees have access to. We generally
   recommend against doing this unless you are aware of and protected against the
-  (potentially severe) security implications of exposing `SECRET_SERVER_KEY` on
+  (potentially severe) security implications of exposing `HEXCLAVE_SECRET_SERVER_KEY` on
   the client.
 </Warning>
 
@@ -563,7 +563,7 @@ Creates a new `HexclaveServerApp` instance.
       </ParamField>
 
       <ParamField body="secretServerKey" type="string">
-        Secret server key. Defaults to the `SECRET_SERVER_KEY` environment variable.
+        Secret server key. Defaults to the `HEXCLAVE_SECRET_SERVER_KEY` environment variable.
       </ParamField>
 
       <ParamField body="urls" type="object">

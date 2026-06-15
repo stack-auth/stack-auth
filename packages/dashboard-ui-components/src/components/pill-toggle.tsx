@@ -143,9 +143,6 @@ export function DesignPillToggle({
       {sliderMetrics != null && (
         <div
           className={cn(
-            // `bg-white dark:bg-background` (instead of plain `bg-background`) is ported from
-            // dev's light-mode consistency pass; the glassmorphic dark override below still
-            // wins via tailwind-merge.
             "pointer-events-none absolute inset-y-1 left-0 z-0 rounded-lg bg-white dark:bg-background shadow-sm ring-1",
             glassmorphic
               ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:ring-[hsl(240,71%,70%)]/20"

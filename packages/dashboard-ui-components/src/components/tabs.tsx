@@ -241,9 +241,6 @@ export function DesignCategoryTabs({
                 sizeClass.button,
                 glassmorphic ? "rounded-lg" : "",
                 isActive
-                  // The active background lives on the animated slider div above (HEAD's
-                  // redesign); dev's per-button active bg is intentionally dropped to avoid
-                  // double backgrounds, while its inactive glassmorphic hover is kept.
                   ? gradientClass.activeText
                   : cn(
                     "text-gray-700 dark:text-gray-400",

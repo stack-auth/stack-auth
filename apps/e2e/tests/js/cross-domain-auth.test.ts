@@ -293,8 +293,8 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
   await withHostedDomainSuffix(async () => {
     const projectId = "13131313-1313-4313-8313-131313131313";
     const clientApp = createClientApp(projectId);
-    const getCurrentRefreshTokenIdIfSignedInSpy = vi
-      .spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn")
+    const fetchCurrentRefreshTokenIdIfSignedInSpy = vi
+      .spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn")
       .mockResolvedValue(null);
 
     const previousWindow = globalThis.window;
@@ -310,8 +310,10 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
     } as any;
 
     try {
+      // accountSettings (unlike afterSignIn & co, which resolve to local URLs) still lives on the
+      // hosted domain, so it exercises the nested cross-domain auth params path.
       await expect((clientApp as any)._redirectToHandler(
-        "afterSignIn",
+        "accountSettings",
         { replace: true },
         { awaitPendingAuthResolutions: false },
       )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
@@ -320,9 +322,9 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
       globalThis.document = previousDocument;
     }
 
-    expect(getCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith({
+    expect(fetchCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith(expect.objectContaining({
       awaitPendingAuthResolutions: false,
-    });
+    }));
   });
 });
 
@@ -446,7 +448,7 @@ it("adds nested cross-domain auth params when redirecting signed-in users to hos
     const currentHref = `${localRedirectUrl}/dashboard?tab=settings`;
     const clientApp = createClientApp(projectId);
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
@@ -484,7 +486,7 @@ it("adds nested cross-domain auth params for other cross-domain handler redirect
     const currentHref = `${localRedirectUrl}/private-page`;
     const clientApp = createClientApp(projectId);
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
@@ -524,7 +526,7 @@ it("starts nested cross-domain auth from the target domain", async ({ expect }) 
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "nested-state",
       codeChallenge: "nested-code-challenge",
@@ -588,7 +590,7 @@ it("carries hosted sign-in return state on the nested OAuth redirect URI", async
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "nested-state",
       codeChallenge: "nested-code-challenge",
@@ -649,7 +651,7 @@ it("continues nested cross-domain auth on the source domain", async ({ expect })
     const createCrossDomainAuthRedirectUrlSpy = vi
       .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
       .mockResolvedValue(crossDomainRedirect);
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
 
     globalThis.document = createMockDocument();
     globalThis.window = {
@@ -721,7 +723,7 @@ it("rejects nested cross-domain auth when the callback URL is untrusted", async 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
 
     globalThis.document = createMockDocument();
@@ -753,7 +755,7 @@ it("rejects nested cross-domain auth when the source session does not match", as
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
 
     globalThis.document = createMockDocument();
     globalThis.window = {

@@ -275,7 +275,7 @@ export const cliSetupPrompt = deindent`
     </Step>
 
     <Step title="Prompt the user to log in">
-      Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token.
+      Import and call \`prompt_cli_login\`. It opens the browser, lets the user authenticate, and returns a refresh token. The project ID is enough for most projects; only pass \`publishable_client_key\` if the project has \`requirePublishableClientKey\` enabled.
 
       \`\`\`py main.py
       from hexclave_cli_template import prompt_cli_login
@@ -283,7 +283,6 @@ export const cliSetupPrompt = deindent`
       refresh_token = prompt_cli_login(
         app_url="https://your-app-url.example.com",
         project_id="your-project-id-here",
-        publishable_client_key="your-publishable-client-key-here",
       )
 
       if refresh_token is None:

@@ -2390,7 +2390,10 @@
             "name": "code_challenge_method",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "S256"
+              ]
             },
             "required": true
           },

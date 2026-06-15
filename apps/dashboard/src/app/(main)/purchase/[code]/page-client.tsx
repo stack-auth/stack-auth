@@ -168,7 +168,7 @@ export default function PageClient({ code }: { code: string }) {
 
   if (showInvalidPurchaseCode) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
+      <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
         <div className="w-full max-w-md text-center">
           <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
             <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
@@ -189,7 +189,7 @@ export default function PageClient({ code }: { code: string }) {
   }
 
   return (
-    <div className="relative min-h-screen bg-white dark:bg-zinc-950">
+    <div data-hexclave-purchase-page className="relative min-h-screen bg-white dark:bg-zinc-950">
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
         {/* Left Panel: Product & Pricing Selection */}
         <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">

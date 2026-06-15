@@ -89,8 +89,8 @@ Session replay recording is disabled by default. To enable it, pass `analytics.r
 import { HexclaveClientApp } from "@hexclave/next";
 
 export const hexclaveClientApp = new HexclaveClientApp({
-  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
-  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
+  projectId: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID!,
+  publishableClientKey: process.env.NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY!,
   tokenStore: "nextjs-cookie",
   analytics: {
     replays: {
