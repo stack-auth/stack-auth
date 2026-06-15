@@ -130,6 +130,8 @@ function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
 function resolveProviderType(tenancy: Tenancy, configOAuthProviderId: string): ProviderType | null {
   const config = findProviderConfig(tenancy, configOAuthProviderId);
   if (config?.type != null) {
+    // Custom OIDC providers don't have a standard ProviderType
+    if (config.type === "custom_oidc") return null;
     return config.type;
   }
   if ((allProviders as readonly string[]).includes(configOAuthProviderId)) {

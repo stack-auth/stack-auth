@@ -256,23 +256,23 @@ function DefaultOidcIcon({ iconSize }: { iconSize: number }) {
   );
 }
 
-const KNOWN_TITLES: Record<string, string> = {
-  github: "GitHub",
-  google: "Google",
-  facebook: "Facebook",
-  microsoft: "Microsoft",
-  spotify: "Spotify",
-  discord: "Discord",
-  gitlab: "GitLab",
-  apple: "Apple",
-  bitbucket: "Bitbucket",
-  linkedin: "LinkedIn",
-  x: "X",
-  twitch: "Twitch",
-};
+const KNOWN_TITLES = new Map<string, string>([
+  ["github", "GitHub"],
+  ["google", "Google"],
+  ["facebook", "Facebook"],
+  ["microsoft", "Microsoft"],
+  ["spotify", "Spotify"],
+  ["discord", "Discord"],
+  ["gitlab", "GitLab"],
+  ["apple", "Apple"],
+  ["bitbucket", "Bitbucket"],
+  ["linkedin", "LinkedIn"],
+  ["x", "X"],
+  ["twitch", "Twitch"],
+]);
 
 export function toTitle(id: string): string {
-  return KNOWN_TITLES[id] ?? id;
+  return KNOWN_TITLES.get(id) ?? id;
 }
 
 export const BRAND_COLORS: Record<string, string> = {

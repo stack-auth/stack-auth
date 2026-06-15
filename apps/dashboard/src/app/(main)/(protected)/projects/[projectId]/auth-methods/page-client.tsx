@@ -36,7 +36,7 @@ import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
 import { typedFromEntries, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { resolvePlanId } from "@hexclave/shared/dist/plans";
@@ -244,9 +244,9 @@ function getCustomOidcProviders(config: CompleteConfig): CustomOidcConfigEntry[]
     .map(([id, p]) => ({
       id,
       type: "custom_oidc" as const,
-      issuerUrl: p.issuerUrl ?? "",
-      clientId: p.clientId ?? "",
-      clientSecret: p.clientSecret ?? "",
+      issuerUrl: p.issuerUrl ?? throwErr(`Custom OIDC provider "${id}" is missing issuerUrl`),
+      clientId: p.clientId ?? throwErr(`Custom OIDC provider "${id}" is missing clientId`),
+      clientSecret: p.clientSecret ?? throwErr(`Custom OIDC provider "${id}" is missing clientSecret`),
       scope: p.scope,
       displayName: p.displayName,
       customCallbackUrl: p.customCallbackUrl,
@@ -304,6 +304,9 @@ function CustomOidcProviderDialog({
 
   const onSubmit = async (values: CustomOidcFormValues) => {
     const providerId = isEditing ? existing.id : values.providerId;
+    if (!isEditing && providerId in config.auth.oauth.providers) {
+      throw new HexclaveAssertionError(`OAuth provider ID "${providerId}" already exists`);
+    }
     // `as any` — same rationale as adminProviderToConfigProvider
     const configEntry: CompleteConfig['auth']['oauth']['providers'][string] = {
       type: "custom_oidc" as any,
