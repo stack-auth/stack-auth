@@ -40,8 +40,13 @@ export class CustomOidcProvider extends OAuthBaseProvider {
     try {
       const response = await this.oauthClient.userinfo(accessToken);
       return !!response.sub;
-    } catch (error) {
-      return false;
+    } catch (error: any) {
+      // Only treat definitive auth failures (401/403) as "invalid token".
+      // Rethrow network/transient errors so callers don't persist false-negative validity.
+      if (error?.status === 401 || error?.status === 403 || error?.code === "invalid_token") {
+        return false;
+      }
+      throw error;
     }
   }
 }
