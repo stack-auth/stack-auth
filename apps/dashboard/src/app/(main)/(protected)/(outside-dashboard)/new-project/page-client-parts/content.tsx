@@ -34,6 +34,7 @@ import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
+  isProjectOnboardingState,
   type OnboardingProgressUpdate,
   type ProjectOnboardingState,
   type ProjectOnboardingStatus,
@@ -134,7 +135,14 @@ function PageClientInner() {
     if (projectOnboardingStates.has(selectedProjectId)) {
       return projectOnboardingStates.get(selectedProjectId) ?? null;
     }
-    return selectedProject.onboardingState ?? null;
+    const onboardingState = selectedProject.onboardingState;
+    if (onboardingState == null) {
+      return null;
+    }
+    if (!isProjectOnboardingState(onboardingState)) {
+      throw new Error(`Project ${selectedProject.id} returned an invalid onboarding state.`);
+    }
+    return onboardingState;
   }, [projectOnboardingStates, selectedProject, selectedProjectId]);
 
   useEffect(() => {
