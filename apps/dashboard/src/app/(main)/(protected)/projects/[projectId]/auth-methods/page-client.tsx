@@ -34,7 +34,7 @@ import {
 import { AdminProject, AuthPage } from "@hexclave/next";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
-import { yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
@@ -263,7 +263,7 @@ const customOidcFormSchema = yupObject({
     (v) => !allProviders.includes(v as any),
   ),
   displayName: yupString().defined().nonEmpty(),
-  issuerUrl: yupString().defined().nonEmpty().url("Must be a valid URL"),
+  issuerUrl: urlSchema.defined().nonEmpty(),
   clientId: yupString().defined().nonEmpty(),
   clientSecret: yupString().defined().nonEmpty(),
   scope: yupString().optional(),
@@ -369,7 +369,7 @@ function CustomOidcProviderDialog({
                 <FormItem className="space-y-1.5">
                   <FormLabel className="text-xs font-medium text-muted-foreground">Provider ID</FormLabel>
                   <FormControl>
-                    <DesignInput {...field} value={field.value ?? ""} placeholder="my-oidc-provider" size="sm" autoComplete="off" />
+                    <DesignInput {...field} value={field.value} placeholder="my-oidc-provider" size="sm" autoComplete="off" />
                   </FormControl>
                   <FormMessage />
                   <span className="text-[10px] text-muted-foreground">Unique identifier — lowercase letters, numbers, hyphens, underscores only.</span>
@@ -385,7 +385,7 @@ function CustomOidcProviderDialog({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Display Name</FormLabel>
                 <FormControl>
-                  <DesignInput {...field} value={field.value ?? ""} placeholder="My Identity Provider" size="sm" autoComplete="off" />
+                  <DesignInput {...field} value={field.value} placeholder="My Identity Provider" size="sm" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -399,7 +399,7 @@ function CustomOidcProviderDialog({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Issuer URL</FormLabel>
                 <FormControl>
-                  <DesignInput {...field} value={field.value ?? ""} placeholder="https://your-idp.example.com" size="sm" autoComplete="off" />
+                  <DesignInput {...field} value={field.value} placeholder="https://your-idp.example.com" size="sm" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
                 <span className="text-[10px] text-muted-foreground">Must support OIDC discovery (/.well-known/openid-configuration).</span>
@@ -414,7 +414,7 @@ function CustomOidcProviderDialog({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Client ID</FormLabel>
                 <FormControl>
-                  <DesignInput {...field} value={field.value ?? ""} placeholder="Client ID" size="sm" autoComplete="off" />
+                  <DesignInput {...field} value={field.value} placeholder="Client ID" size="sm" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -428,7 +428,7 @@ function CustomOidcProviderDialog({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
                 <FormControl>
-                  <DesignInput {...field} value={field.value ?? ""} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
+                  <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
