@@ -1,0 +1,19 @@
+packages/shared/src/ai/unified-prompts/skill-site-prompt.ts
+  s_11c2b0c9cd54fc::t_136139aca9f41c 22-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7d5de50179872b70fc449b440d535e98d1b79413",
+  "prompts": {},
+  "sessions": {
+    "s_11c2b0c9cd54fc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eccd6-f52b-7533-8b8c-0aec74f2936d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
