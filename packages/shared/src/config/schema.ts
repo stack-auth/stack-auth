@@ -23,6 +23,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+const providerIdRegex = /^[a-z0-9_-]+$/;
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -376,7 +377,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
-        yupString().matches(permissionRegex),
+        yupString().matches(providerIdRegex),
         yupObject({
           type: yupString().oneOf(allProviderTypes).optional(),
           isShared: yupBoolean(),
