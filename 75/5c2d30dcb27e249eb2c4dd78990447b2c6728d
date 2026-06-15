@@ -1,0 +1,49 @@
+packages/shared/src/interface/admin-metrics.ts
+  s_b03998e19b2a46::t_2140b5ef620994 240-242
+  s_b03998e19b2a46::t_90225faed58c1e 143-145
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_b03998e19b2a46::t_6bfdbc3edd6371 1652-1653
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_b03998e19b2a46::t_9c5541b10289cf 104,137-148
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_a20ca17d78d2b2::t_2935db279cb0ce 3,409-417
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/page-client.tsx
+  s_a20ca17d78d2b2::t_e56671640516fb 163
+apps/backend/scripts/clickhouse-migrations.ts
+  s_b03998e19b2a46::t_1b615cdc05e557 38-39,709-711
+  s_b03998e19b2a46::t_a0917700f01645 47-48
+  s_b03998e19b2a46::t_59c20fc3f722ea 762-766,803
+packages/shared/src/apps/apps-config.ts
+  s_a20ca17d78d2b2::t_6e7ef56db553aa 171-176
+packages/template/src/clickmap/clickmap-core.ts
+  s_b03998e19b2a46::t_c9f6780e704813 1230-1234,1430,1487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "755c2d30dcb27e249eb2c4dd78990447b2c6728d",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_a20ca17d78d2b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d3cb5b08-9fd0-4c80-8902-1aaf9ddf524c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_b03998e19b2a46": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "66f531f2-99ea-4f39-a5bf-cea4dad061fc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
