@@ -160,7 +160,7 @@ export default function PageClient() {
   }
 
   return (
-    <AppEnabledGuard appId="analytics">
+    <AppEnabledGuard appId="clickmaps">
       <PageLayout
         title="Clickmaps"
         description="Launch the clickmap toolbar on a trusted domain."

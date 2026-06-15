@@ -168,6 +168,12 @@ export const ALL_APPS = {
     tags: ["developers", "operations"],
     stage: "stable",
   },
+  "clickmaps": {
+    displayName: "Clickmaps",
+    subtitle: "Visualize where users click across your app",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+  },
   "session-replays": {
     displayName: "Session Replays",
     subtitle: "Watch real user sessions to understand how people use your app",

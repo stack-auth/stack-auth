@@ -1227,6 +1227,11 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     return filters.showDead ? group.count : Math.max(0, group.count - group.deadCount);
   }
 
+  function getDeadClickPercentage(group: ClickmapClickGroup): number {
+    if (group.count <= 0) return 100;
+    return Math.min(100, Math.round((group.deadCount / group.count) * 100));
+  }
+
   function scheduleRender() {
     cancelAnimationFrame(renderFrame);
     renderFrame = requestAnimationFrame(render);
@@ -1422,7 +1427,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
     }
     rowElement.label.textContent = group.label;
     if (filters.showDead && group.deadCount > 0) {
-      const deadPct = group.count > 0 ? Math.round((group.deadCount / group.count) * 100) : 100;
+      const deadPct = getDeadClickPercentage(group);
       rowElement.dead.textContent = `${deadPct}% dead`;
       rowElement.dead.title = `${formatClickmapCount(group.deadCount)} of ${formatClickmapCount(group.count)} clicks had no visible effect`;
       rowElement.dead.classList.add('sdt-hm-row-dead-visible');
@@ -1479,7 +1484,7 @@ function createClickmapPanel(app: StackClientApp<true>, onClose: () => void): Cl
       }
       const { marker, outline } = overlayElement;
       const deadSuffix = filters.showDead && group.deadCount > 0 && group.count > 0
-        ? ` (${Math.round((group.deadCount / group.count) * 100)}% dead)`
+        ? ` (${getDeadClickPercentage(group)}% dead)`
         : '';
       marker.title = muted ? `Unmute ${group.selector}` : `Mute ${displayCount} clicks${deadSuffix} on ${group.selector}`;
       marker.setAttribute('aria-label', marker.title);

@@ -140,9 +140,9 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_bounce_rate: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_avg_session_seconds: yupArray(MetricsDataPointSchema).optional().default([]),
   // User-Agent-derived breakdowns for the analytics overview. Computed from the
-  // `data.user_agent` blob on `$page-view` events (captured client-side, with a
-  // server-side header fallback). Optional + default-[] for one release cycle
-  // so older clients / servers without UA capture don't fail validation.
+  // `data.user_agent` blob on `$page-view` events, captured client-side.
+  // Optional + default-[] for one release cycle so older clients / servers
+  // without UA capture don't fail validation.
   top_browsers: yupArray(MetricsNamedCountSchema).optional().default([]),
   top_operating_systems: yupArray(MetricsNamedCountSchema).optional().default([]),
   top_devices: yupArray(MetricsNamedCountSchema).optional().default([]),
@@ -237,7 +237,9 @@ export const AnalyticsClickmapResponseBodySchema = yupObject({
     tag_name: yupString().defined(),
     href: yupString().nullable().defined(),
     clicks: yupNumber().integer().defined(),
-    dead_clicks: yupNumber().integer().defined(),
+    // Optional for one release cycle so new overlay clients can validate
+    // responses from older servers that only returned aggregate click counts.
+    dead_clicks: yupNumber().integer().optional().default(0),
   }).defined()).optional().default([]),
 }).defined();
 

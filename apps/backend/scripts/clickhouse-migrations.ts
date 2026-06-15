@@ -35,6 +35,8 @@ export async function runClickhouseMigrations() {
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
   ]);
 
+  await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
+
   // Alter events table (must come before views that reference new columns)
   await client.command({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
 
@@ -42,9 +44,8 @@ export async function runClickhouseMigrations() {
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
 
-  // Backfill historical $click rows that pre-date the MV. Predicate picks rows
-  // older than the earliest MV-captured row, so re-runs are no-ops once the
-  // first backfill completes.
+  // Backfill recent $click rows that pre-date the MV, capped to the dashboard's
+  // 30-day clickmap window so this doesn't scan unbounded production history.
   await client.command({ query: CLICKMAP_EVENTS_BACKFILL_SQL });
 
   // Create all views in parallel
@@ -62,7 +63,6 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_VIEW_SQL }),
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
-    client.command({ query: CLICKMAP_EVENTS_VIEW_SQL }),
   ]);
 
   // Data migrations (mutations)
@@ -77,7 +77,6 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
-    "clickmap_events",
   ];
   await Promise.all(tables.map(table =>
     client.command({
@@ -707,6 +706,11 @@ PARTITION BY toYYYYMM(event_at)
 ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
 `;
 
+const CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL = `
+ALTER TABLE analytics_internal.clickmap_events
+ADD COLUMN IF NOT EXISTS is_dead UInt8 DEFAULT 0;
+`;
+
 // Materialized view that auto-populates clickmap_events on every $click insert.
 // No POPULATE clause: existing rows are not backfilled (they remain queryable
 // via the existing /api/.../analytics/clickmap route which still reads from
@@ -755,10 +759,11 @@ FROM analytics_internal.events
 WHERE event_type = '$click';
 `;
 
-// Idempotent backfill: insert pre-MV $click rows into clickmap_events. After
-// the first run, min(event_at) in clickmap_events corresponds to the MV-capture
-// start (or earlier, once historical rows land), so this predicate returns no
-// new rows and the migration is a cheap no-op.
+// Idempotent backfill: insert recent pre-MV $click rows into clickmap_events.
+// The dashboard only exposes 30d/7d/1d clickmap filters, so scanning older
+// history adds migration risk without improving the product surface. After the
+// first run, min(event_at) in clickmap_events corresponds to the MV-capture
+// start (or the 30d boundary, once recent rows land), so re-runs are cheap.
 const CLICKMAP_EVENTS_BACKFILL_SQL = `
 INSERT INTO analytics_internal.clickmap_events
 SELECT
@@ -795,36 +800,10 @@ SELECT
     toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
 FROM analytics_internal.events
 WHERE event_type = '$click'
+  AND event_at >= now64(3, 'UTC') - INTERVAL 30 DAY
   AND event_at < coalesce(
     (SELECT min(event_at) FROM analytics_internal.clickmap_events),
     toDateTime64('2999-01-01 00:00:00', 3, 'UTC')
   );
 `;
 
-const CLICKMAP_EVENTS_VIEW_SQL = `
-CREATE OR REPLACE VIEW default.clickmap_events
-SQL SECURITY DEFINER
-AS
-SELECT
-  project_id,
-  branch_id,
-  event_at,
-  user_id,
-  session_replay_id,
-  url,
-  path,
-  viewport_width,
-  viewport_height,
-  pointer_x,
-  pointer_y,
-  client_y,
-  pointer_relative_x,
-  pointer_target_fixed,
-  elements_chain,
-  selector,
-  elements_text,
-  tag_name,
-  href,
-  is_dead
-FROM analytics_internal.clickmap_events;
-`;

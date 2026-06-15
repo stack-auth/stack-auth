@@ -588,7 +588,6 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON SQLite FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON URL FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON default.* TO limited_user" },
-          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.clickmap_events TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.connected_accounts TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.contact_channels TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.email_outboxes TO limited_user" },
@@ -638,10 +637,6 @@ it("can see only some tables", async ({ expect }) => {
       "status": 200,
       "body": {
         "result": [
-          {
-            "database": "default",
-            "name": "clickmap_events",
-          },
           {
             "database": "default",
             "name": "connected_accounts",
@@ -707,7 +702,6 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
       "status": 200,
       "body": {
         "result": [
-          { "name": "clickmap_events" },
           { "name": "connected_accounts" },
           { "name": "contact_channels" },
           { "name": "email_outboxes" },
@@ -1200,7 +1194,6 @@ it("shows grants", async ({ expect }) => {
       "status": 200,
       "body": {
         "result": [
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.clickmap_events TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.connected_accounts TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.contact_channels TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.email_outboxes TO limited_user" },
