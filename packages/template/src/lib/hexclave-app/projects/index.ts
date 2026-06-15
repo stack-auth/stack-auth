@@ -38,6 +38,7 @@ export type AdminProject = {
   readonly isDevelopmentEnvironment: boolean,
   readonly ownerTeamId: string | null,
   readonly onboardingStatus: ProjectOnboardingStatus,
+  readonly onboardingState: NonNullable<ProjectsCrud["Admin"]["Read"]["onboarding_state"]> | null,
   readonly logoUrl: string | null | undefined,
   readonly logoFullUrl: string | null | undefined,
   readonly logoDarkModeUrl: string | null | undefined,

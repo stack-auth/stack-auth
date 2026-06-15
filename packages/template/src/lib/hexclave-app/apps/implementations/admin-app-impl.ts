@@ -192,6 +192,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       isDevelopmentEnvironment: data.is_development_environment,
       ownerTeamId: data.owner_team_id,
       onboardingStatus: data.onboarding_status,
+      onboardingState: data.onboarding_state ?? null,
       logoUrl: data.logo_url,
       logoFullUrl: data.logo_full_url,
       logoDarkModeUrl: data.logo_dark_mode_url,
@@ -1161,7 +1162,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   // END_PLATFORM
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
-    return await this._interface.getStripeAccountInfo();
+    return Result.orThrow(await this._stripeAccountInfoCache.getOrWait([], "write-only"));
   }
 
   // IF_PLATFORM react-like
