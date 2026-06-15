@@ -29,19 +29,15 @@ import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/pr
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
-  isProjectOnboardingState,
+  type OnboardingProgressUpdate,
   type ProjectOnboardingState,
+  type ProjectOnboardingStatus,
 } from "./shared";
-
-type ProjectOnboardingProgressUpdate =
-  | { status: ProjectOnboardingStatus, onboardingState?: ProjectOnboardingState | null }
-  | { status?: ProjectOnboardingStatus, onboardingState: ProjectOnboardingState | null };
 
 export default function PageClient() {
   return (
@@ -138,15 +134,7 @@ function PageClientInner() {
     if (projectOnboardingStates.has(selectedProjectId)) {
       return projectOnboardingStates.get(selectedProjectId) ?? null;
     }
-
-    const onboardingState = Reflect.get(selectedProject, "onboardingState");
-    if (onboardingState == null) {
-      return null;
-    }
-    if (!isProjectOnboardingState(onboardingState)) {
-      throw new Error(`Project ${selectedProject.id} returned an invalid onboarding state.`);
-    }
-    return onboardingState;
+    return selectedProject.onboardingState ?? null;
   }, [projectOnboardingStates, selectedProject, selectedProjectId]);
 
   useEffect(() => {
@@ -157,7 +145,7 @@ function PageClientInner() {
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
   }, [router, selectedProject, selectedProjectStatus]);
 
-  const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: ProjectOnboardingProgressUpdate) => {
+  const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
     const body: Record<string, unknown> = {};
     if (update.status !== undefined) {

@@ -2,7 +2,8 @@
 
 import type { ButtonHTMLAttributes } from "react";
 import { readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -77,12 +78,13 @@ describe("beginPendingAction", () => {
 
 describe("new project page data loading", () => {
   it("does not manually refetch the internal projects list for onboarding status", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(
-      process.cwd(),
-      "apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/content.tsx",
+      testDir,
+      "page-client-parts/content.tsx",
     ), "utf-8");
 
-    expect(source).not.toContain("sendRequest(\"/internal/projects\"");
+    expect(source).not.toMatch(/sendRequest\(\s*["'`]\/internal\/projects["'`]/);
   });
 });
 

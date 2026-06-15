@@ -33,7 +33,6 @@ import {
 import { AuthPage, type AdminOwnedProject } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import { type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -56,20 +55,18 @@ import {
   OAUTH_SIGN_IN_METHODS,
   type OnboardingConfigChoice,
   type OnboardingPaymentsCountry,
+  type OnboardingProgressUpdate,
   orderedAppIds,
   PAYMENT_COUNTRY_OPTIONS,
   PRIMARY_APP_IDS,
   type ProjectOnboardingState,
+  type ProjectOnboardingStatus,
   REQUIRED_APP_IDS,
   SHARED_OAUTH_SIGN_IN_METHODS,
   SIGN_IN_METHODS,
   type SignInMethod,
 } from "./shared";
 import { LinkExistingOnboarding } from "./link-existing-onboarding";
-
-type OnboardingProgressUpdate =
-  | { status: ProjectOnboardingStatus, onboardingState?: ProjectOnboardingState | null }
-  | { status?: ProjectOnboardingStatus, onboardingState: ProjectOnboardingState | null };
 
 export function ProjectOnboardingWizard(props: {
   project: AdminOwnedProject,
@@ -190,7 +187,7 @@ export function ProjectOnboardingWizard(props: {
 
     runAsynchronously(async () => {
       await project.app.listEmailThemes();
-    });
+    }, { noErrorLogging: true });
   }, [isLinkExistingMode, project.app, status]);
 
   useEffect(() => {
@@ -200,7 +197,7 @@ export function ProjectOnboardingWizard(props: {
 
     runAsynchronously(async () => {
       await project.app.getStripeAccountInfo();
-    });
+    }, { noErrorLogging: true });
   }, [includePayments, project.app, status]);
 
   const handleTimelineStepClick = useCallback((step: ProjectOnboardingStatus) => {
@@ -407,9 +404,15 @@ export function ProjectOnboardingWizard(props: {
   const finalizeOnboarding = useCallback(async () => {
     await runWithSaving(async () => {
       const backgroundConfigSave = finalConfigSavePromiseRef.current;
-      let configSaved = backgroundConfigSave != null
-        ? await backgroundConfigSave
-        : await saveFinalConfig();
+      let configSaved: boolean;
+      try {
+        configSaved = backgroundConfigSave != null
+          ? await backgroundConfigSave
+          : await saveFinalConfig();
+      } catch {
+        finalConfigSavePromiseRef.current = null;
+        configSaved = false;
+      }
 
       if (!configSaved) {
         finalConfigSavePromiseRef.current = null;
@@ -417,7 +420,7 @@ export function ProjectOnboardingWizard(props: {
       }
 
       if (!configSaved) {
-        return;
+        throw new Error("Failed to save project configuration. Please try again.");
       }
 
       await saveOnboardingProgress({ status: "completed", onboardingState: null });
