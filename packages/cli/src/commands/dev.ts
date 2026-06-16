@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
+import { type DevEnvState, devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
 import { cliVersion } from "../lib/own-package.js";
 import { maybeReexecToLatest } from "../lib/self-update.js";
@@ -903,6 +903,27 @@ async function closeSession(sessionId: string, secret: string, port: number): Pr
   }
 }
 
+// Construct env vars from cached project data stored in the shared dev-env state
+// file. Must be kept in sync with the dashboard's envVarsForProject in
+// apps/dashboard/src/lib/remote-development-environment/manager.ts.
+function envVarsForCachedProject(project: NonNullable<DevEnvState["projectsByConfigPath"][string]>): Record<string, string> {
+  return {
+    STACK_PROJECT_ID: project.projectId,
+    NEXT_PUBLIC_STACK_PROJECT_ID: project.projectId,
+    VITE_STACK_PROJECT_ID: project.projectId,
+    EXPO_PUBLIC_STACK_PROJECT_ID: project.projectId,
+    STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    VITE_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    STACK_SECRET_SERVER_KEY: project.secretServerKey,
+    STACK_API_URL: project.apiBaseUrl,
+    NEXT_PUBLIC_STACK_API_URL: project.apiBaseUrl,
+    VITE_STACK_API_URL: project.apiBaseUrl,
+    EXPO_PUBLIC_STACK_API_URL: project.apiBaseUrl,
+  };
+}
+
 export function registerDevCommand(program: Command) {
   program
     .command("dev")
@@ -933,40 +954,84 @@ export function registerDevCommand(program: Command) {
       const apiBaseUrl = normalizeApiBaseUrl(config.apiUrl || DEFAULT_API_URL);
       const configFilePath = resolveConfigFilePathOption(opts.configFile, { mustExist: false });
       await startDashboardIfNeeded({ apiBaseUrl, secret, port });
-      const sessionState: DashboardSessionState = {
-        session: await createRemoteDevelopmentEnvironmentSession({
+
+      // Optimistic fast path: when the dev-env state already has cached project
+      // credentials for this config file, start the child process immediately
+      // instead of blocking on session creation (~30s of network round-trips and
+      // config sync). The session is still registered in the background so
+      // heartbeats, config sync, and onboarding checks proceed normally.
+      const cachedProject = readDevEnvState().projectsByConfigPath[configFilePath];
+      const cachedEnv = cachedProject != null && cachedProject.apiBaseUrl === apiBaseUrl
+        ? envVarsForCachedProject(cachedProject)
+        : null;
+
+      let envForChild: Record<string, string>;
+      let sessionPromise: Promise<SessionResponse | null>;
+
+      if (cachedEnv != null) {
+        // Fast path: use cached env vars, create session in background
+        envForChild = cachedEnv;
+        sessionPromise = createRemoteDevelopmentEnvironmentSession({
+          apiBaseUrl, configFilePath, port, secret,
+        }).catch((error) => {
+          logDev(`Background session registration failed: ${errorMessage(error)}`);
+          return null;
+        });
+        logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
+      } else {
+        // Slow path (first run or API URL changed): wait for session to get env vars
+        const session = await createRemoteDevelopmentEnvironmentSession({
+          apiBaseUrl, configFilePath, port, secret,
+        });
+        envForChild = session.env;
+        sessionPromise = Promise.resolve(session);
+        logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
+        maybeOpenOnboardingPage(session, port);
+      }
+
+      let stopped = false;
+      const shouldStop = () => stopped;
+
+      // Start heartbeats once the session is available. On the fast path this
+      // runs concurrently with the child process; on the slow path the session
+      // is already resolved so the heartbeat starts immediately. Returns the
+      // final session state so it can be cleaned up after the child exits.
+      const heartbeatPromise = (async (): Promise<DashboardSessionState | null> => {
+        const session = await sessionPromise;
+        if (session == null || shouldStop()) return null;
+        if (cachedEnv != null) {
+          maybeOpenOnboardingPage(session, port);
+        }
+        const sessionState: DashboardSessionState = {
+          session,
+          dashboardReachableSinceMs: performance.now(),
+        };
+        await heartbeatUntilStopped(sessionState, {
           apiBaseUrl,
           configFilePath,
           port,
           secret,
-        }),
-        dashboardReachableSinceMs: performance.now(),
-      };
-      logDev(`Hexclave dashboard running at ${localDashboardUrl}`);
-      maybeOpenOnboardingPage(sessionState.session, port);
+          shouldStop,
+        });
+        return sessionState;
+      })();
 
-      let stopped = false;
-      const heartbeat = heartbeatUntilStopped(sessionState, {
-        apiBaseUrl,
-        configFilePath,
-        port,
-        secret,
-        shouldStop: () => stopped,
-      });
       const browserSecretCodePolling = logPendingBrowserSecretConfirmationCodesUntilStopped({
         port,
-        shouldStop: () => stopped,
+        shouldStop,
       });
       let exitCode = 1;
       try {
         exitCode = await runChildProcess(childCommand, {
           ...process.env,
-          ...sessionState.session.env,
+          ...envForChild,
         });
       } finally {
         stopped = true;
-        await Promise.all([heartbeat, browserSecretCodePolling]);
-        await closeSession(sessionState.session.session_id, secret, port);
+        const [finalSessionState] = await Promise.all([heartbeatPromise, browserSecretCodePolling]);
+        if (finalSessionState != null) {
+          await closeSession(finalSessionState.session.session_id, secret, port);
+        }
       }
       process.exit(exitCode);
     });
