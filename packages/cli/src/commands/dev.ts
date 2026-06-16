@@ -254,7 +254,9 @@ function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   assertBundledDashboardExists();
   const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
-  rmSync(runtimeRoot, { recursive: true, force: true });
+  // maxRetries handles transient ENOTEMPTY/EBUSY from concurrent CLI processes
+  // writing into the same directory (e.g. parallel `hexclave dev` invocations).
+  rmSync(runtimeRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 });
   cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
