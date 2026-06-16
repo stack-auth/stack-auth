@@ -385,4 +385,45 @@ describe("EventTracker", () => {
       tracker.stop();
     }
   });
+
+  it("silently disables when server responds with ANALYTICS_NOT_ENABLED", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button>Click me</button>";
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response(
+          JSON.stringify({ code: "ANALYTICS_NOT_ENABLED", error: "Analytics is not enabled for this project." }),
+          {
+            status: 400,
+            headers: { "x-stack-known-error": "ANALYTICS_NOT_ENABLED" },
+          },
+        ));
+      },
+    });
+
+    try {
+      tracker.start();
+
+      // First flush sends the initial page-view event; server rejects it.
+      await advancePastFlush();
+      expect(sentBodies).toHaveLength(1);
+
+      // No console.warn should have been emitted.
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      // After disabling, new events should not accumulate or trigger further
+      // flushes.
+      document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await advancePastFlush();
+      expect(sentBodies).toHaveLength(1);
+    } finally {
+      tracker.stop();
+      warnSpy.mockRestore();
+    }
+  });
 });
