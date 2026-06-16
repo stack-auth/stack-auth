@@ -586,13 +586,19 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
     const state = readRemoteDevelopmentEnvironmentState();
     // Start config file reading in parallel with project creation/lookup to
     // avoid serialising jiti.import (which compiles TypeScript) behind the
-    // network round-trips in getOrCreateProject.
-    const configReadPromise = readConfigFile(configFilePath);
-    const { project, adminOwnedProject } = await getOrCreateProject({
+    // network round-trips in getOrCreateProject. Both promises are awaited
+    // together via Promise.all so neither can produce an unhandled rejection.
+    const configReadPromise = readConfigFile(configFilePath)
+      .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
+    const projectPromise = getOrCreateProject({
       apiBaseUrl: options.apiBaseUrl,
       configFilePath,
       anonymousRefreshToken: state.anonymousRefreshToken,
     }).catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
+    const [{ project, adminOwnedProject }, configRead] = await Promise.all([
+      projectPromise,
+      configReadPromise,
+    ]);
     ensureWatcher(configFilePath);
     // Reuse the AdminOwnedProject from getOrCreateProject to avoid duplicate
     // getUser + listOwnedProjects network calls that syncConfigToRemote would
@@ -602,8 +608,6 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
       clearTimeout(pendingSyncTimer);
       getGlobals().syncTimers.delete(configFilePath);
     }
-    const configRead = await configReadPromise
-      .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     const onboardingStatus = await syncConfigCore({
       configFilePath,
       project,
