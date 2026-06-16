@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -250,21 +250,57 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   }
 }
 
-function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string | null {
+const DASHBOARD_RUNTIME_LOCK_STALE_MS = 120_000;
+
+// Attempt to acquire a filesystem lock for the dashboard runtime directory.
+// Uses mkdirSync (without recursive) as an atomic cross-process lock: the call
+// fails with EEXIST if another process already holds the lock. Returns true if
+// the lock was acquired, false if another process holds it.
+function tryAcquireDashboardRuntimeLock(port: number): boolean {
+  const lockDir = `${dashboardRuntimeRoot(port)}.lock`;
+  mkdirSync(dirname(lockDir), { recursive: true });
+  try {
+    mkdirSync(lockDir);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    // Lock exists — check if it's stale (holder crashed without releasing).
+    try {
+      const age = Date.now() - statSync(lockDir).mtimeMs;
+      if (age > DASHBOARD_RUNTIME_LOCK_STALE_MS) {
+        rmSync(lockDir, { recursive: true, force: true });
+        try {
+          mkdirSync(lockDir);
+          return true;
+        } catch (retryError) {
+          if ((retryError as NodeJS.ErrnoException).code !== "EEXIST") throw retryError;
+        }
+      }
+    } catch (statError) {
+      // Lock disappeared between EEXIST and stat — retry once.
+      if ((statError as NodeJS.ErrnoException).code === "ENOENT") {
+        try {
+          mkdirSync(lockDir);
+          return true;
+        } catch (retryError) {
+          if ((retryError as NodeJS.ErrnoException).code !== "EEXIST") throw retryError;
+        }
+      }
+    }
+    return false;
+  }
+}
+
+function releaseDashboardRuntimeLock(port: number): void {
+  const lockDir = `${dashboardRuntimeRoot(port)}.lock`;
+  rmSync(lockDir, { recursive: true, force: true });
+}
+
+function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   assertBundledDashboardExists();
   const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
-  try {
-    rmSync(runtimeRoot, { recursive: true, force: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY") {
-      // Another process is concurrently writing into this directory (e.g.
-      // a parallel `hexclave dev` invocation running cpSync). Bail out and
-      // let the caller poll for the dashboard that process will start.
-      return null;
-    }
-    throw error;
-  }
+  rmSync(runtimeRoot, { recursive: true, force: true });
   cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
@@ -376,7 +412,7 @@ function startDashboardProcess(options: {
   dashboardEnv: NodeJS.ProcessEnv,
   logFd: number,
   port: number,
-}): ChildProcess | null {
+}): ChildProcess {
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   if (devDashboardCommand != null) {
     writeSync(options.logFd, `Using ${DEV_DASHBOARD_COMMAND_ENV_VAR}: ${devDashboardCommand}\n`);
@@ -390,10 +426,6 @@ function startDashboardProcess(options: {
   }
 
   const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
-  if (dashboardServerPath == null) {
-    // Another process is concurrently preparing the runtime directory.
-    return null;
-  }
   return spawn(process.execPath, [dashboardServerPath], {
     cwd: resolve(dirname(dashboardServerPath), "../.."),
     detached: true,
@@ -493,24 +525,30 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const logFd = openSync(logPath, "a", 0o600);
     chmodSync(logPath, 0o600);
     writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
-    const child = (() => {
-      try {
-        return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
-      } finally {
-        closeSync(logFd);
-      }
-    })();
-    if (child == null) {
-      // Another CLI process is concurrently preparing the dashboard runtime
-      // directory. Skip spawning and wait for their server to come up.
+    const lockAcquired = tryAcquireDashboardRuntimeLock(options.port);
+    if (!lockAcquired) {
+      // Another CLI process is preparing the dashboard runtime. Skip
+      // spawning and wait for their server to come up via the poll below.
+      closeSync(logFd);
       logDev("Another process is starting the dashboard; waiting for it...");
     } else {
-      if (child.pid == null) {
-        throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+      try {
+        const child = (() => {
+          try {
+            return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
+          } finally {
+            closeSync(logFd);
+          }
+        })();
+        if (child.pid == null) {
+          throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+        }
+        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+        logDev(`Dashboard logs: ${logPath}`);
+        child.unref();
+      } finally {
+        releaseDashboardRuntimeLock(options.port);
       }
-      recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
-      logDev(`Dashboard logs: ${logPath}`);
-      child.unref();
     }
 
     const startedAt = performance.now();
