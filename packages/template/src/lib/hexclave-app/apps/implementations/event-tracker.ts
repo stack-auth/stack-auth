@@ -509,7 +509,11 @@ export class EventTracker {
       const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
       if (knownError === "ANALYTICS_NOT_ENABLED") {
         this._disabled = true;
-        this.clearBuffer();
+        if (this._flushTimer !== null) {
+          clearInterval(this._flushTimer);
+          this._flushTimer = null;
+        }
+        this._teardown();
         return;
       }
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());

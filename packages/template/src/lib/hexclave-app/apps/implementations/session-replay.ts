@@ -275,6 +275,10 @@ export class SessionRecorder {
         const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
         if (knownError === "ANALYTICS_NOT_ENABLED") {
           this._disabled = true;
+          if (this._flushTimer !== null) {
+            clearInterval(this._flushTimer);
+            this._flushTimer = null;
+          }
           this._stopCurrentRecording();
           return;
         }
