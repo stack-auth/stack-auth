@@ -43,10 +43,9 @@ import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
 import EnrollServiceReducer from "./enroll_service_reducer";
 import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
-import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
 import RemoveOperatorReducer from "./remove_operator_reducer";
 import RemoveOperatorsForUserReducer from "./remove_operators_for_user_reducer";
-import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
+import SetHumanReviewedReducer from "./set_human_reviewed_reducer";
 import UpdateAiQueryCostReducer from "./update_ai_query_cost_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 import UpdateQaEntryWithPublishReducer from "./update_qa_entry_with_publish_reducer";
@@ -118,10 +117,9 @@ const reducersSchema = __reducers(
   __reducerSchema("enroll_service", EnrollServiceReducer),
   __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
-  __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
   __reducerSchema("remove_operator", RemoveOperatorReducer),
   __reducerSchema("remove_operators_for_user", RemoveOperatorsForUserReducer),
-  __reducerSchema("unmark_human_reviewed", UnmarkHumanReviewedReducer),
+  __reducerSchema("set_human_reviewed", SetHumanReviewedReducer),
   __reducerSchema("update_ai_query_cost", UpdateAiQueryCostReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
   __reducerSchema("update_qa_entry_with_publish", UpdateQaEntryWithPublishReducer),

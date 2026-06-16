@@ -13,4 +13,6 @@ import {
 export default {
   token: __t.string(),
   correlationId: __t.string(),
+  reviewed: __t.bool(),
+  reviewedBy: __t.string(),
 };

@@ -256,6 +256,7 @@ export const remove_operator = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     ctx.db.operators.identity.delete(args.identity);
   }
 );
@@ -272,6 +273,7 @@ export const remove_operators_for_user = spacetimedb.reducer(
     if (/^__.*__$/.test(args.stackUserId)) {
       throw new SenderError('stackUserId pattern __*__ is reserved');
     }
+    removeExpiredOperators(ctx);
 
     const identities = new Array<Identity>();
     for (const row of ctx.db.operators.iter()) {
@@ -328,6 +330,7 @@ export const log_mcp_call = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     ctx.db.mcpCallLog.insert({
       id: 0n,
       shard: 0,
@@ -367,6 +370,7 @@ export const update_mcp_qa_review = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
@@ -396,6 +400,7 @@ export const clear_mcp_qa_review = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
@@ -416,45 +421,26 @@ export const clear_mcp_qa_review = spacetimedb.reducer(
   }
 );
 
-export const mark_human_reviewed = spacetimedb.reducer(
+export const set_human_reviewed = spacetimedb.reducer(
   {
     token: t.string(),
     correlationId: t.string(),
+    reviewed: t.bool(),
     reviewedBy: t.string(),
   },
   (ctx, args) => {
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
     ctx.db.mcpCallLog.id.update({
       ...row,
-      humanReviewedAt: ctx.timestamp,
-      humanReviewedBy: args.reviewedBy,
-    });
-  }
-);
-
-export const unmark_human_reviewed = spacetimedb.reducer(
-  {
-    token: t.string(),
-    correlationId: t.string(),
-  },
-  (ctx, args) => {
-    if (args.token !== EXPECTED_LOG_TOKEN) {
-      throw new SenderError('Invalid log token');
-    }
-    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
-    if (row == null) {
-      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
-    }
-    ctx.db.mcpCallLog.id.update({
-      ...row,
-      humanReviewedAt: undefined,
-      humanReviewedBy: undefined,
+      humanReviewedAt: args.reviewed ? ctx.timestamp : undefined,
+      humanReviewedBy: args.reviewed ? args.reviewedBy : undefined,
     });
   }
 );
@@ -472,6 +458,7 @@ export const upsert_qa_from_call = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     if (ctx.db.mcpCallLog.correlationId.find(args.correlationId) == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
@@ -526,6 +513,7 @@ export const upsert_qa_from_call_and_mark_reviewed = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const callLogRow = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
     if (callLogRow == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
@@ -588,6 +576,7 @@ export const add_manual_qa = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     if (args.requestId !== '') {
       for (const existing of ctx.db.qaEntries.iter()) {
         if (existing.requestId === args.requestId) return;
@@ -620,6 +609,7 @@ export const delete_qa_entry = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.qaEntries.id.find(args.qaId);
     if (row == null) {
       throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
@@ -641,6 +631,7 @@ export const update_qa_entry_with_publish = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.qaEntries.id.find(args.qaId);
     if (row == null) {
       throw new SenderError('QA entry not found for qaId: ' + args.qaId.toString());
@@ -690,6 +681,7 @@ export const log_ai_query = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     ctx.db.aiQueryLog.insert({
       id: 0n,
       shard: 0,
@@ -733,6 +725,7 @@ export const update_ai_query_cost = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.aiQueryLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('AI query log not found for correlationId: ' + args.correlationId);
@@ -754,6 +747,7 @@ export const delete_mcp_call_log = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
@@ -771,6 +765,7 @@ export const delete_ai_query_log = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
+    removeExpiredOperators(ctx);
     const row = ctx.db.aiQueryLog.correlationId.find(args.correlationId);
     if (row == null) {
       throw new SenderError('Log entry not found for correlationId: ' + args.correlationId);

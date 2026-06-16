@@ -303,11 +303,8 @@ export default function App() {
                   onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
                     getApi().then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
                   }
-                  onMarkReviewed={(correlationId) =>
-                    getApi().then(api => api.markReviewed({ correlationId }))
-                  }
-                  onUnmarkReviewed={(correlationId) =>
-                    getApi().then(api => api.unmarkReviewed({ correlationId }))
+                  onSetReviewed={(correlationId, reviewed) =>
+                    getApi().then(api => api.setReviewed({ correlationId, reviewed }))
                   }
                   onRetryReview={(correlationId, payload) =>
                     getApi().then(api => api.retryReview({ correlationId, ...payload }))

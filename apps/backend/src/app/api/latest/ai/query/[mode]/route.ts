@@ -1,44 +1,20 @@
 import {
   assertProjectAccess,
+  getStepLimit,
   handleGenerateMode,
   handleStreamMode,
 } from "@/lib/ai/ai-query-handlers";
 import type { CommonLogFields, ModeContext } from "@/lib/ai/types";
 import { selectModel } from "@/lib/ai/models";
-import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
+import { buildSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools } from "@/lib/ai/tools";
-import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@hexclave/shared/dist/ai/image-limits";
-import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { ModelMessage } from "ai";
-
-function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
-  if (!hasTools) return 1;
-  if (systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai") return 50;
-  if (systemPromptId === "create-dashboard") return 12;
-  return 5;
-}
-
-async function buildSystemPrompt(systemPromptId: SystemPromptId): Promise<string> {
-  let systemPrompt = getFullSystemPrompt(systemPromptId);
-  const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-  if (isDocsOrSearch) {
-    // Stuffing the entire verified QA corpus into the system prompt on every
-    // request is intentionally naive — it grows monotonically with each new
-    // QA pair and re-fetches/re-sends content that's unchanged across
-    // requests. Once the corpus is large enough to matter we should swap to
-    // a retriever based system (maybe something like an embedding-based retriever
-    // (top-k by query similarity)) and/or cache the assembled context,
-    // but for the current corpus size this is fine and lets the model see everything
-    systemPrompt += await getVerifiedQaContext();
-  }
-  return systemPrompt;
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -59,18 +35,7 @@ export const POST = createSmartRouteHandler({
     if (projectId != null) {
       await assertProjectAccess(projectId, fullReq.auth);
     }
-    const imageValidationResult = validateImageAttachments(messages);
-    if (!imageValidationResult.ok) {
-      const { failure } = imageValidationResult;
-      switch (failure.code) {
-        case "too_many": {
-          throw new KnownErrors.TooManyImageAttachments(failure.maxImages);
-        }
-        case "too_large": {
-          throw new KnownErrors.ImageAttachmentTooLarge(failure.maxBytes, failure.actualBytes);
-        }
-      }
-    }
+    validateImageAttachments(messages);
 
     const authenticatedApiKey = isAuthenticated
       ? getEnvVariable("STACK_OPENROUTER_AUTHENTICATED_API_KEY", "")

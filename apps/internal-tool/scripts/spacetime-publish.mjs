@@ -5,6 +5,7 @@
 import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
+const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
 
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
@@ -18,7 +19,7 @@ function localPublishServerUrl() {
 const configs = {
   local: [
     "publish",
-    "stack-auth-llm",
+    dbName,
     "--server",
     localPublishServerUrl(),
     "-p",
@@ -27,7 +28,7 @@ const configs = {
     "--no-config",
     "--delete-data=on-conflict",
   ],
-  prod: ["publish", "stack-auth-llm", "--server", "maincloud", "-p", "spacetimedb", "--yes", "--no-config"],
+  prod: ["publish", dbName, "--server", "maincloud", "-p", "spacetimedb", "--yes", "--no-config"],
 };
 
 const args = configs[target];

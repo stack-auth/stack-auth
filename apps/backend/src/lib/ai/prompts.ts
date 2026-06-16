@@ -1,3 +1,4 @@
+import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SQL_QUERY_RESULT_MAX_CHARS } from "@/lib/ai/tools/sql-query";
 
 /**
@@ -1465,4 +1466,20 @@ Requirements:
  */
 export function getFullSystemPrompt(promptId: SystemPromptId): string {
   return `${BASE_PROMPT}\n\n${SYSTEM_PROMPTS[promptId]}`;
+}
+
+export async function buildSystemPrompt(promptId: SystemPromptId): Promise<string> {
+  let systemPrompt = getFullSystemPrompt(promptId);
+  const isDocsOrSearch = promptId === "docs-ask-ai" || promptId === "command-center-ask-ai";
+  if (isDocsOrSearch) {
+    // Stuffing the entire verified QA corpus into the system prompt on every
+    // request is intentionally naive — it grows monotonically with each new
+    // QA pair and re-fetches/re-sends content that's unchanged across
+    // requests. Once the corpus is large enough to matter we should swap to
+    // a retriever based system (maybe something like an embedding-based retriever
+    // (top-k by query similarity)) and/or cache the assembled context,
+    // but for the current corpus size this is fine and lets the model see everything
+    systemPrompt += await getVerifiedQaContext();
+  }
+  return systemPrompt;
 }

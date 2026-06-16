@@ -60,8 +60,7 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
       { name: "remove_operator", args: [wrong, [hexId]] },
       { name: "remove_operators_for_user", args: [wrong, "some-user"] },
       { name: "enroll_service", args: [wrong, "Some Service"] },
-      { name: "mark_human_reviewed", args: [wrong, "corr", "reviewer"] },
-      { name: "unmark_human_reviewed", args: [wrong, "corr"] },
+      { name: "set_human_reviewed", args: [wrong, "corr", true, "reviewer"] },
       { name: "clear_mcp_qa_review", args: [wrong, "corr"] },
       {
         name: "upsert_qa_from_call",

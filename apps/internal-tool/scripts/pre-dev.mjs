@@ -28,21 +28,37 @@ if (publish.status !== 0) {
   process.exit(0);
 }
 
-await provisionServiceToken();
+try {
+  await provisionServiceToken();
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.warn(`[internal-tool] Token provisioning failed unexpectedly: ${message}`);
+  console.warn("[internal-tool] Continuing dev startup; backend SpacetimeDB features may error until STACK_SPACETIMEDB_SERVICE_TOKEN is set manually.");
+}
 
 async function provisionServiceToken() {
   const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
   const spacetimeHttpUrl = `http://127.0.0.1:${portPrefix}39`;
-  const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "stack-auth-llm";
+  const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
   const backendEnvLocal = resolve("../backend/.env.local");
   const backendEnvDevelopmentLocal = resolve("../backend/.env.development.local");
   const backendEnvDev = resolve("../backend/.env.development");
+  const backendDevEnvReadOrder = [
+    backendEnvDevelopmentLocal,
+    backendEnvLocal,
+    backendEnvDev,
+  ];
+  // This script only runs before `next dev`. If a developer already uses
+  // .env.local, keep all local-only overrides there so `next build`/`next start`
+  // repros see the same token. Otherwise, avoid creating .env.local and keep the
+  // auto-minted dev token scoped to development.
   const backendEnvWriteTarget = existsSync(backendEnvLocal) ? backendEnvLocal : backendEnvDevelopmentLocal;
 
-  const existingToken =
-    readEnvVar(backendEnvLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN") ||
-    readEnvVar(backendEnvDevelopmentLocal, "STACK_SPACETIMEDB_SERVICE_TOKEN") ||
-    readEnvVar(backendEnvDev, "STACK_SPACETIMEDB_SERVICE_TOKEN");
+  let existingToken = null;
+  for (const filePath of backendDevEnvReadOrder) {
+    existingToken = readEnvVar(filePath, "STACK_SPACETIMEDB_SERVICE_TOKEN");
+    if (existingToken) break;
+  }
 
   if (existingToken) {
     const stillValid = await probeToken(spacetimeHttpUrl, dbName, existingToken);
@@ -82,6 +98,9 @@ async function provisionServiceToken() {
     `${prefix}# Auto-provisioned by apps/internal-tool/scripts/pre-dev.mjs\nSTACK_SPACETIMEDB_SERVICE_TOKEN=${token}\n`,
   );
   console.log(`[internal-tool] Wrote STACK_SPACETIMEDB_SERVICE_TOKEN to ${backendEnvWriteTarget}`);
+  if (backendEnvWriteTarget === backendEnvDevelopmentLocal) {
+    console.log("[internal-tool] For local `next build`/`next start` repros, move this token to apps/backend/.env.local.");
+  }
   console.log("[internal-tool] Restart the backend dev server if already running to pick up the new env var.");
 }
 

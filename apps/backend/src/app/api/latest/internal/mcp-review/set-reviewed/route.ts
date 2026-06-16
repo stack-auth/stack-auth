@@ -14,6 +14,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       correlationId: yupString().defined(),
+      reviewed: yupBoolean().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -26,11 +27,14 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     assertIsAiChatReviewer(auth);
+    const user = auth.user;
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducerStrict("unmark_human_reviewed", [
+    await callReducerStrict("set_human_reviewed", [
       token,
       body.correlationId,
+      body.reviewed,
+      user.display_name ?? user.primary_email ?? user.id,
     ]);
 
     return {

@@ -67,11 +67,8 @@ async function post(path: string, body: unknown, authHeaders: Record<string, str
 
 export function makeMcpReviewApi(authHeaders: Record<string, string>) {
   return {
-    markReviewed: (body: { correlationId: string }) =>
-      post("mark-reviewed", body, authHeaders),
-
-    unmarkReviewed: (body: { correlationId: string }) =>
-      post("unmark-reviewed", body, authHeaders),
+    setReviewed: (body: { correlationId: string, reviewed: boolean }) =>
+      post("set-reviewed", body, authHeaders),
 
     retryReview: (body: {
       correlationId: string;

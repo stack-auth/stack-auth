@@ -19,7 +19,7 @@ export type SpacetimedbConfig = {
 export function getSpacetimedbConfig(): SpacetimedbConfig {
   return {
     baseUrl: process.env.STACK_SPACETIMEDB_URL ?? "",
-    dbName: process.env.STACK_SPACETIMEDB_DB_NAME ?? "stack-auth-llm",
+    dbName: process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics",
     logToken: process.env.STACK_MCP_LOG_TOKEN ?? null,
   };
 }

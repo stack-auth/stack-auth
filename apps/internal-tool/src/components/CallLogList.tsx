@@ -152,7 +152,7 @@ export function CallLogList({
       <div className="text-red-600 text-sm p-4">
         <p>
           Failed to connect to SpacetimeDB. Check the browser session response below, then verify the{" "}
-          <code>stack-auth-llm</code> module is published and the local SpacetimeDB container is reachable.
+          <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
         </p>
         {connectionErrorMessage != null && connectionErrorMessage !== "" && (
           <pre className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 font-mono text-xs text-red-800">

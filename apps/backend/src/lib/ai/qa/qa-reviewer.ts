@@ -1,6 +1,6 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError} from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
 import { createOpenRouterProvider } from "../models";
 import { callReducer, opt } from "../spacetimedb-client";

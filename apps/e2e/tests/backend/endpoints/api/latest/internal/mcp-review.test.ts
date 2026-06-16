@@ -6,14 +6,9 @@ import { AiChatReviewer, niceBackendFetch } from "../../../../backend-helpers";
 // the first three.
 const endpoints = [
   {
-    path: "/api/latest/internal/mcp-review/mark-reviewed",
-    validBody: { correlationId: "abc123" },
-    invalidBody: {},
-  },
-  {
-    path: "/api/latest/internal/mcp-review/unmark-reviewed",
-    validBody: { correlationId: "abc123" },
-    invalidBody: {},
+    path: "/api/latest/internal/mcp-review/set-reviewed",
+    validBody: { correlationId: "abc123", reviewed: true },
+    invalidBody: { correlationId: "abc123" },
   },
   {
     path: "/api/latest/internal/mcp-review/update-correction",

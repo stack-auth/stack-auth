@@ -1,5 +1,6 @@
 import { logAiQueryFailure, logAiQuerySuccess } from "@/lib/ai/loggers/ai-query-logger";
 import { logIfMcpToolCall } from "@/lib/ai/loggers/mcp-call-logger";
+import type { SystemPromptId } from "@/lib/ai/prompts";
 import type { ContentBlock, McpCallMetadata, MessageLike, ModeContext } from "@/lib/ai/types";
 import { listManagedProjectIds } from "@/lib/projects";
 import type { SmartRequestAuth } from "@/route-handlers/smart-request";
@@ -13,6 +14,13 @@ export const OPENROUTER_PROVIDER_OPTIONS = {
   usage: { include: true },
   stream_options: { include_usage: true },
 } as const;
+
+export function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
+  if (!hasTools) return 1;
+  if (systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai") return 50;
+  if (systemPromptId === "create-dashboard") return 12;
+  return 5;
+}
 
 export async function assertProjectAccess(projectId: string, auth: SmartRequestAuth | null): Promise<void> {
   if (auth == null || auth.project.id !== "internal" || auth.user == null) {

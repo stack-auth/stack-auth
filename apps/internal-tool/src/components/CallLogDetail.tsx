@@ -33,19 +33,18 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed, onRetryReview }: {
+export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrection, onSetReviewed, onRetryReview }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
   qaEntries: QaEntriesRow[];
   onClose: () => void;
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
-  onMarkReviewed?: (correlationId: string) => Promise<void> | void;
-  onUnmarkReviewed?: (correlationId: string) => Promise<void> | void;
+  onSetReviewed?: (correlationId: string, reviewed: boolean) => Promise<void> | void;
   onRetryReview?: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
 }) {
   const linkedQa = qaEntries.find(q => q.sourceMcpCorrelationId === row.correlationId);
   const [showReplay, setShowReplay] = useState(false);
-  // Optimistic override while the mark/unmark roundtrip is in flight. Cleared
+  // Optimistic override while the reviewed-state roundtrip is in flight. Cleared
   // once the real subscription update catches up.
   const [optimisticReviewed, setOptimisticReviewed] = useState<boolean | null>(null);
   useEffect(() => {
@@ -56,25 +55,14 @@ export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrecti
   }, [row.humanReviewedAt, optimisticReviewed]);
   const isReviewed = optimisticReviewed ?? (row.humanReviewedAt != null);
 
-  const handleMark = () => {
+  const handleSetReviewed = (reviewed: boolean) => {
     const previous = optimisticReviewed;
-    setOptimisticReviewed(true);
+    setOptimisticReviewed(reviewed);
     runAsynchronouslyWithAlert(
-      Promise.resolve(onMarkReviewed?.(row.correlationId)).catch(err => {
+      Promise.resolve(onSetReviewed?.(row.correlationId, reviewed)).catch(err => {
         // Revert the optimistic override so the UI reflects the database's real state.
         setOptimisticReviewed(previous);
-        captureError("call-log-mark-reviewed", err);
-        throw err;
-      })
-    );
-  };
-  const handleUnmark = () => {
-    const previous = optimisticReviewed;
-    setOptimisticReviewed(false);
-    runAsynchronouslyWithAlert(
-      Promise.resolve(onUnmarkReviewed?.(row.correlationId)).catch(err => {
-        setOptimisticReviewed(previous);
-        captureError("call-log-unmark-reviewed", err);
+        captureError("call-log-set-reviewed", err);
         throw err;
       })
     );
@@ -104,17 +92,17 @@ export function CallLogDetail({ row, allRows, qaEntries, onClose, onSaveCorrecti
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isReviewed && onMarkReviewed && (
+          {!isReviewed && onSetReviewed && (
             <button
-              onClick={handleMark}
+              onClick={() => handleSetReviewed(true)}
               className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 border border-green-200"
             >
               Mark as reviewed
             </button>
           )}
-          {isReviewed && onUnmarkReviewed && (
+          {isReviewed && onSetReviewed && (
             <button
-              onClick={handleUnmark}
+              onClick={() => handleSetReviewed(false)}
               className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200"
             >
               Unmark
