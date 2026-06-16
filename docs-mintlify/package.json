@@ -8,7 +8,8 @@
     "lint": "mint validate",
     "clean": "node -e \"require('node:fs').rmSync('.mintlify', { recursive: true, force: true })\"",
     "login": "mint login",
-    "status": "mint status"
+    "status": "mint status",
+    "generate-api-redirects": "node scripts/generate-api-redirects.mjs"
   },
   "devDependencies": {
     "mint": "^4.2.487"

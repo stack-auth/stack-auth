@@ -1,0 +1,1008 @@
+[
+  {
+    "old": "/api/client/anonymous/auth/anonymous/sign-up",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/anonymous/sign-up"
+  },
+  {
+    "old": "/api/client/api-keys/team-api-keys/api_key_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/client/api-keys/team-api-keys/api_key_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/team-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/client/api-keys/team-api-keys/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-api-keys"
+  },
+  {
+    "old": "/api/client/api-keys/team-api-keys/post",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-api-keys"
+  },
+  {
+    "old": "/api/client/api-keys/user-api-keys/api_key_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/user-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/client/api-keys/user-api-keys/api_key_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/user-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/client/api-keys/user-api-keys/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/user-api-keys"
+  },
+  {
+    "old": "/api/client/api-keys/user-api-keys/post",
+    "group": "client",
+    "method": "POST",
+    "route": "/user-api-keys"
+  },
+  {
+    "old": "/api/client/cli-authentication/auth/cli",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/cli"
+  },
+  {
+    "old": "/api/client/cli-authentication/auth/cli/complete",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/cli/complete"
+  },
+  {
+    "old": "/api/client/cli-authentication/auth/cli/poll",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/cli/poll"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/contact-channels"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/post",
+    "group": "client",
+    "method": "POST",
+    "route": "/contact-channels"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/delete",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}/send-verification-code"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/verify",
+    "group": "client",
+    "method": "POST",
+    "route": "/contact-channels/verify"
+  },
+  {
+    "old": "/api/client/contact-channels/contact-channels/verify/check-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/contact-channels/verify/check-code"
+  },
+  {
+    "old": "/api/client/emails/emails/notification-preference/user_id",
+    "group": "client",
+    "method": "GET",
+    "route": "/emails/notification-preference/{user_id}"
+  },
+  {
+    "old": "/api/client/emails/emails/notification-preference/user_id/notification_category_id",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/emails/notification-preference/{user_id}/{notification_category_id}"
+  },
+  {
+    "old": "/api/client/oauth/auth/oauth/authorize/provider_id",
+    "group": "client",
+    "method": "GET",
+    "route": "/auth/oauth/authorize/{provider_id}"
+  },
+  {
+    "old": "/api/client/oauth/auth/oauth/cross-domain/authorize",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/oauth/cross-domain/authorize"
+  },
+  {
+    "old": "/api/client/oauth/auth/oauth/token",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/oauth/token"
+  },
+  {
+    "old": "/api/client/oauth/oauth-providers",
+    "group": "client",
+    "method": "GET",
+    "route": "/oauth-providers"
+  },
+  {
+    "old": "/api/client/oauth/oauth-providers/user_id/provider_id/delete",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/client/oauth/oauth-providers/user_id/provider_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/client/oauth/oauth-providers/user_id/provider_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/client/otp/auth/mfa/sign-in",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/mfa/sign-in"
+  },
+  {
+    "old": "/api/client/otp/auth/otp/send-sign-in-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/otp/send-sign-in-code"
+  },
+  {
+    "old": "/api/client/otp/auth/otp/sign-in",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/otp/sign-in"
+  },
+  {
+    "old": "/api/client/otp/auth/otp/sign-in/check-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/otp/sign-in/check-code"
+  },
+  {
+    "old": "/api/client/password/auth/password/reset",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/reset"
+  },
+  {
+    "old": "/api/client/password/auth/password/reset/check-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/reset/check-code"
+  },
+  {
+    "old": "/api/client/password/auth/password/send-reset-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/send-reset-code"
+  },
+  {
+    "old": "/api/client/password/auth/password/set",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/set"
+  },
+  {
+    "old": "/api/client/password/auth/password/sign-in",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/sign-in"
+  },
+  {
+    "old": "/api/client/password/auth/password/sign-up",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/sign-up"
+  },
+  {
+    "old": "/api/client/password/auth/password/update",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/password/update"
+  },
+  {
+    "old": "/api/client/payments/payments/items/customer_type/customer_id/item_id",
+    "group": "client",
+    "method": "GET",
+    "route": "/payments/items/{customer_type}/{customer_id}/{item_id}"
+  },
+  {
+    "old": "/api/client/payments/payments/purchases/create-purchase-url",
+    "group": "client",
+    "method": "POST",
+    "route": "/payments/purchases/create-purchase-url"
+  },
+  {
+    "old": "/api/client/payments/payments/purchases/purchase-session",
+    "group": "client",
+    "method": "POST",
+    "route": "/payments/purchases/purchase-session"
+  },
+  {
+    "old": "/api/client/payments/payments/purchases/validate-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/payments/purchases/validate-code"
+  },
+  {
+    "old": "/api/client/permissions/project-permissions",
+    "group": "client",
+    "method": "GET",
+    "route": "/project-permissions"
+  },
+  {
+    "old": "/api/client/permissions/team-permissions",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-permissions"
+  },
+  {
+    "old": "/api/client/projects/projects/current",
+    "group": "client",
+    "method": "GET",
+    "route": "/projects/current"
+  },
+  {
+    "old": "/api/client/sessions/auth/sessions",
+    "group": "client",
+    "method": "GET",
+    "route": "/auth/sessions"
+  },
+  {
+    "old": "/api/client/sessions/auth/sessions/current",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/auth/sessions/current"
+  },
+  {
+    "old": "/api/client/sessions/auth/sessions/current/refresh",
+    "group": "client",
+    "method": "POST",
+    "route": "/auth/sessions/current/refresh"
+  },
+  {
+    "old": "/api/client/sessions/auth/sessions/id",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/auth/sessions/{id}"
+  },
+  {
+    "old": "/api/client/teams/team-invitations",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-invitations"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/accept",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-invitations/accept"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/accept/check-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-invitations/accept/check-code"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/accept/details",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-invitations/accept/details"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/id",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/team-invitations/{id}"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/id/accept",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-invitations/{id}/accept"
+  },
+  {
+    "old": "/api/client/teams/team-invitations/send-code",
+    "group": "client",
+    "method": "POST",
+    "route": "/team-invitations/send-code"
+  },
+  {
+    "old": "/api/client/teams/team-member-profiles",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-member-profiles"
+  },
+  {
+    "old": "/api/client/teams/team-member-profiles/team_id/user_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/team-member-profiles/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/client/teams/team-member-profiles/team_id/user_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/team-member-profiles/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/client/teams/team-memberships/team_id/user_id",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/team-memberships/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/client/teams/teams/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/teams"
+  },
+  {
+    "old": "/api/client/teams/teams/post",
+    "group": "client",
+    "method": "POST",
+    "route": "/teams"
+  },
+  {
+    "old": "/api/client/teams/teams/team_id/delete",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/client/teams/teams/team_id/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/client/teams/teams/team_id/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/client/users/users/me/delete",
+    "group": "client",
+    "method": "DELETE",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/client/users/users/me/get",
+    "group": "client",
+    "method": "GET",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/client/users/users/me/patch",
+    "group": "client",
+    "method": "PATCH",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/server/anonymous/auth/anonymous/sign-up",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/anonymous/sign-up"
+  },
+  {
+    "old": "/api/server/api-keys/team-api-keys/api_key_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/server/api-keys/team-api-keys/api_key_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/team-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/server/api-keys/team-api-keys/check",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-api-keys/check"
+  },
+  {
+    "old": "/api/server/api-keys/team-api-keys/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-api-keys"
+  },
+  {
+    "old": "/api/server/api-keys/team-api-keys/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-api-keys"
+  },
+  {
+    "old": "/api/server/api-keys/user-api-keys/api_key_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/user-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/server/api-keys/user-api-keys/api_key_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/user-api-keys/{api_key_id}"
+  },
+  {
+    "old": "/api/server/api-keys/user-api-keys/check",
+    "group": "server",
+    "method": "POST",
+    "route": "/user-api-keys/check"
+  },
+  {
+    "old": "/api/server/api-keys/user-api-keys/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/user-api-keys"
+  },
+  {
+    "old": "/api/server/api-keys/user-api-keys/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/user-api-keys"
+  },
+  {
+    "old": "/api/server/cli-authentication/auth/cli",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/cli"
+  },
+  {
+    "old": "/api/server/cli-authentication/auth/cli/complete",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/cli/complete"
+  },
+  {
+    "old": "/api/server/cli-authentication/auth/cli/poll",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/cli/poll"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/contact-channels"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/contact-channels"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/user_id/contact_channel_id/send-verification-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/contact-channels/{user_id}/{contact_channel_id}/send-verification-code"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/verify",
+    "group": "server",
+    "method": "POST",
+    "route": "/contact-channels/verify"
+  },
+  {
+    "old": "/api/server/contact-channels/contact-channels/verify/check-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/contact-channels/verify/check-code"
+  },
+  {
+    "old": "/api/server/emails/emails/capacity-boost",
+    "group": "server",
+    "method": "POST",
+    "route": "/emails/capacity-boost"
+  },
+  {
+    "old": "/api/server/emails/emails/delivery-info",
+    "group": "server",
+    "method": "GET",
+    "route": "/emails/delivery-info"
+  },
+  {
+    "old": "/api/server/emails/emails/notification-preference/user_id",
+    "group": "server",
+    "method": "GET",
+    "route": "/emails/notification-preference/{user_id}"
+  },
+  {
+    "old": "/api/server/emails/emails/notification-preference/user_id/notification_category_id",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/emails/notification-preference/{user_id}/{notification_category_id}"
+  },
+  {
+    "old": "/api/server/emails/emails/outbox",
+    "group": "server",
+    "method": "GET",
+    "route": "/emails/outbox"
+  },
+  {
+    "old": "/api/server/emails/emails/outbox/id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/emails/outbox/{id}"
+  },
+  {
+    "old": "/api/server/emails/emails/outbox/id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/emails/outbox/{id}"
+  },
+  {
+    "old": "/api/server/emails/emails/send-email",
+    "group": "server",
+    "method": "POST",
+    "route": "/emails/send-email"
+  },
+  {
+    "old": "/api/server/oauth/auth/oauth/authorize/provider_id",
+    "group": "server",
+    "method": "GET",
+    "route": "/auth/oauth/authorize/{provider_id}"
+  },
+  {
+    "old": "/api/server/oauth/auth/oauth/cross-domain/authorize",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/oauth/cross-domain/authorize"
+  },
+  {
+    "old": "/api/server/oauth/auth/oauth/token",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/oauth/token"
+  },
+  {
+    "old": "/api/server/oauth/oauth-providers/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/oauth-providers"
+  },
+  {
+    "old": "/api/server/oauth/oauth-providers/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/oauth-providers"
+  },
+  {
+    "old": "/api/server/oauth/oauth-providers/user_id/provider_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/server/oauth/oauth-providers/user_id/provider_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/server/oauth/oauth-providers/user_id/provider_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/oauth-providers/{user_id}/{provider_id}"
+  },
+  {
+    "old": "/api/server/otp/auth/mfa/sign-in",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/mfa/sign-in"
+  },
+  {
+    "old": "/api/server/otp/auth/otp/send-sign-in-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/otp/send-sign-in-code"
+  },
+  {
+    "old": "/api/server/otp/auth/otp/sign-in",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/otp/sign-in"
+  },
+  {
+    "old": "/api/server/otp/auth/otp/sign-in/check-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/otp/sign-in/check-code"
+  },
+  {
+    "old": "/api/server/password/auth/password/reset",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/reset"
+  },
+  {
+    "old": "/api/server/password/auth/password/reset/check-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/reset/check-code"
+  },
+  {
+    "old": "/api/server/password/auth/password/send-reset-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/send-reset-code"
+  },
+  {
+    "old": "/api/server/password/auth/password/set",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/set"
+  },
+  {
+    "old": "/api/server/password/auth/password/sign-in",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/sign-in"
+  },
+  {
+    "old": "/api/server/password/auth/password/sign-up",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/sign-up"
+  },
+  {
+    "old": "/api/server/password/auth/password/update",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/password/update"
+  },
+  {
+    "old": "/api/server/payments/payments/items/customer_type/customer_id/item_id",
+    "group": "server",
+    "method": "GET",
+    "route": "/payments/items/{customer_type}/{customer_id}/{item_id}"
+  },
+  {
+    "old": "/api/server/payments/payments/items/customer_type/customer_id/item_id/update-quantity",
+    "group": "server",
+    "method": "POST",
+    "route": "/payments/items/{customer_type}/{customer_id}/{item_id}/update-quantity"
+  },
+  {
+    "old": "/api/server/payments/payments/purchases/create-purchase-url",
+    "group": "server",
+    "method": "POST",
+    "route": "/payments/purchases/create-purchase-url"
+  },
+  {
+    "old": "/api/server/payments/payments/purchases/purchase-session",
+    "group": "server",
+    "method": "POST",
+    "route": "/payments/purchases/purchase-session"
+  },
+  {
+    "old": "/api/server/payments/payments/purchases/validate-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/payments/purchases/validate-code"
+  },
+  {
+    "old": "/api/server/permissions/project-permissions",
+    "group": "server",
+    "method": "GET",
+    "route": "/project-permissions"
+  },
+  {
+    "old": "/api/server/permissions/project-permissions/user_id/permission_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/project-permissions/{user_id}/{permission_id}"
+  },
+  {
+    "old": "/api/server/permissions/project-permissions/user_id/permission_id/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/project-permissions/{user_id}/{permission_id}"
+  },
+  {
+    "old": "/api/server/permissions/team-permissions",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-permissions"
+  },
+  {
+    "old": "/api/server/permissions/team-permissions/team_id/user_id/permission_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/team-permissions/{team_id}/{user_id}/{permission_id}"
+  },
+  {
+    "old": "/api/server/permissions/team-permissions/team_id/user_id/permission_id/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-permissions/{team_id}/{user_id}/{permission_id}"
+  },
+  {
+    "old": "/api/server/projects/projects/current",
+    "group": "server",
+    "method": "GET",
+    "route": "/projects/current"
+  },
+  {
+    "old": "/api/server/sessions/auth/sessions/current",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/auth/sessions/current"
+  },
+  {
+    "old": "/api/server/sessions/auth/sessions/current/refresh",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/sessions/current/refresh"
+  },
+  {
+    "old": "/api/server/sessions/auth/sessions/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/auth/sessions"
+  },
+  {
+    "old": "/api/server/sessions/auth/sessions/id",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/auth/sessions/{id}"
+  },
+  {
+    "old": "/api/server/sessions/auth/sessions/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/auth/sessions"
+  },
+  {
+    "old": "/api/server/teams/team-invitations",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-invitations"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/accept",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-invitations/accept"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/accept/check-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-invitations/accept/check-code"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/accept/details",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-invitations/accept/details"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/id",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/team-invitations/{id}"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/id/accept",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-invitations/{id}/accept"
+  },
+  {
+    "old": "/api/server/teams/team-invitations/send-code",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-invitations/send-code"
+  },
+  {
+    "old": "/api/server/teams/team-member-profiles",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-member-profiles"
+  },
+  {
+    "old": "/api/server/teams/team-member-profiles/team_id/user_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/team-member-profiles/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/server/teams/team-member-profiles/team_id/user_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/team-member-profiles/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/server/teams/team-memberships/team_id/user_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/team-memberships/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/server/teams/team-memberships/team_id/user_id/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/team-memberships/{team_id}/{user_id}"
+  },
+  {
+    "old": "/api/server/teams/teams/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/teams"
+  },
+  {
+    "old": "/api/server/teams/teams/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/teams"
+  },
+  {
+    "old": "/api/server/teams/teams/team_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/server/teams/teams/team_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/server/teams/teams/team_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/teams/{team_id}"
+  },
+  {
+    "old": "/api/server/users/users/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/users"
+  },
+  {
+    "old": "/api/server/users/users/me/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/server/users/users/me/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/server/users/users/me/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/users/me"
+  },
+  {
+    "old": "/api/server/users/users/post",
+    "group": "server",
+    "method": "POST",
+    "route": "/users"
+  },
+  {
+    "old": "/api/server/users/users/user_id/delete",
+    "group": "server",
+    "method": "DELETE",
+    "route": "/users/{user_id}"
+  },
+  {
+    "old": "/api/server/users/users/user_id/get",
+    "group": "server",
+    "method": "GET",
+    "route": "/users/{user_id}"
+  },
+  {
+    "old": "/api/server/users/users/user_id/patch",
+    "group": "server",
+    "method": "PATCH",
+    "route": "/users/{user_id}"
+  },
+  {
+    "old": "/api/webhooks/teams/team.created",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team.deleted",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team.updated",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team_membership.created",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team_membership.deleted",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team_permission.created",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/teams/team_permission.deleted",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/users/user.created",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/users/user.deleted",
+    "group": "webhooks"
+  },
+  {
+    "old": "/api/webhooks/users/user.updated",
+    "group": "webhooks"
+  }
+]
