@@ -29,18 +29,16 @@ import {
   UserPlusIcon,
 } from "@phosphor-icons/react";
 import { AdminProject, AuthPage } from "@hexclave/next";
-import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
-import { typedFromEntries } from "@hexclave/shared/dist/utils/objects";
-import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
-import { useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getNewProviderCallbackUrl } from "./oauth-callback-url";
+import { envConfigIsWritable, providerEnvKey, splitProviderConfig } from "./provider-config";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
 type AdminOAuthProviderConfig = AdminProject['config']['oauthProviders'][number];
@@ -103,61 +101,84 @@ function ConfirmSignUpDisabledDialog(props: {
   );
 }
 
-function adminProviderToConfigProvider(
-  provider: AdminOAuthProviderConfig,
-  existing: CompleteConfig['auth']['oauth']['providers'][string] | undefined,
-): CompleteConfig['auth']['oauth']['providers'][string] {
-  switch (provider.type) {
-    case 'shared': {
-      return {
-        type: provider.id as any,
-        isShared: true,
-        clientId: undefined,
-        clientSecret: undefined,
-        // Shared providers always use Stack's shared OAuth app; customCallbackUrl
-        // is forbidden by the schema for them.
-        customCallbackUrl: undefined,
-        facebookConfigId: undefined,
-        microsoftTenantId: undefined,
-        appleBundles: undefined,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      };
+/**
+ * The single source of truth for adding/editing/removing an OAuth provider from
+ * the dashboard. Saves are split across the two config layers the provider
+ * actually spans (see `splitProviderConfig`):
+ *
+ *   1. Enable fields go to the BRANCH layer (`pushable: true`). Branch writes
+ *      are always allowed, including in development environments, and may route
+ *      through the GitHub/CLI push dialog.
+ *   2. Credentials go to the ENVIRONMENT layer (`pushable: false`), which is
+ *      production-only.
+ *
+ * A pre-check rejects custom-credential saves in development environments
+ * BEFORE the branch write, so we never leave a half-applied "enabled but no
+ * credentials" provider. Because the two writes aren't transactional, branch
+ * always goes first and we bail if it's cancelled — a leftover enabled-shared
+ * provider is a benign state, whereas orphaned credentials are not.
+ */
+function useOAuthProviderConfigActions() {
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
+  const completeConfig = project.useConfig();
+  const updateConfig = useUpdateConfig();
+  const envWritable = envConfigIsWritable(project);
+
+  const updateProvider = useCallback(async (provider: AdminOAuthProviderConfig) => {
+    const existing = completeConfig.auth.oauth.providers[provider.id];
+    const { branchUpdate, envWrite } = splitProviderConfig(provider, existing, getNewProviderCallbackUrl(provider.id));
+
+    // Pre-check: custom credentials require an environment write, impossible in
+    // a development environment. Abort before any write (UI gating should
+    // normally prevent reaching this; this is the safety backstop).
+    if (envWrite && !envWritable) {
+      alert("Custom OAuth credentials can only be set in your production deployment. Use shared keys here, or switch to production to configure your own keys.");
+      return;
     }
-    case 'standard': {
-      return {
-        type: provider.id as any,
-        isShared: false,
-        clientId: provider.clientId,
-        clientSecret: provider.clientSecret,
-        // Setting up a standard provider (brand-new, or converting shared ->
-        // standard) means registering a fresh OAuth app, so it gets the
-        // hexclave-branded callback URL. A provider that was already standard
-        // keeps whatever it had — legacy ones without a customCallbackUrl keep
-        // falling back to the stack-auth callback so edits never silently change
-        // an already-registered redirect URL.
-        customCallbackUrl: (existing && !existing.isShared) ? existing.customCallbackUrl : getNewProviderCallbackUrl(provider.id),
-        facebookConfigId: provider.facebookConfigId,
-        microsoftTenantId: provider.microsoftTenantId,
-        appleBundles: provider.appleBundleIds?.length
-          ? typedFromEntries(provider.appleBundleIds.map((bundleId: string) => [generateUuid(), { bundleId }] as const))
-          : undefined,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      };
+
+    // Stage 1 — enable (branch). `updateConfig` returns false if the user
+    // cancels the push/CLI dialog; abort so the environment layer is untouched.
+    const branchApplied = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: branchUpdate, pushable: true });
+    if (!branchApplied) return;
+
+    // Stage 2 — credentials (environment, production only). Reset the WHOLE
+    // provider env subtree first so any prior/removed/migrated credential is
+    // cleared (robust to future credential fields and old whole-object env
+    // entries), then write the fresh credential leaf keys. For shared providers
+    // there is no `envWrite`, so the reset alone drops the provider back to the
+    // default `isShared: true`.
+    if (envWritable) {
+      const adminProject = await hexclaveAdminApp.getProject();
+      await adminProject.resetConfigOverrideKeys("environment", [providerEnvKey(provider.id)]);
+      if (envWrite) {
+        await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: envWrite, pushable: false });
+      }
     }
-    default: {
-      throw new HexclaveAssertionError(`Unknown provider type: ${(provider as { type: unknown }).type}`);
+  }, [hexclaveAdminApp, completeConfig, updateConfig, envWritable]);
+
+  const deleteProvider = useCallback(async (id: string) => {
+    // Removing the enable fields from the branch layer drops `type`, so the
+    // provider is filtered out at render. Branch writes are always allowed.
+    const branchApplied = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: { [providerEnvKey(id)]: null }, pushable: true });
+    if (!branchApplied) return;
+    // Clear any environment credentials (incl. migrated whole-object entries) in
+    // production. In development environments the env layer holds nothing for
+    // this provider and the reset route is blocked anyway, so skip it.
+    if (envWritable) {
+      const adminProject = await hexclaveAdminApp.getProject();
+      await adminProject.resetConfigOverrideKeys("environment", [providerEnvKey(id)]);
     }
-  }
+  }, [hexclaveAdminApp, updateConfig, envWritable]);
+
+  return { updateProvider, deleteProvider };
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
   const hexclaveAdminApp = useAdminApp();
   const project = hexclaveAdminApp.useProject();
   const oauthProviders = project.config.oauthProviders;
-  const config = project.useConfig();
-  const updateConfig = useUpdateConfig();
+  const { updateProvider, deleteProvider } = useOAuthProviderConfigActions();
   const [providerSearch, setProviderSearch] = useState("");
   const filteredProviders = allProviders
     .filter((id) => id.toLowerCase().includes(providerSearch.toLowerCase()))
@@ -186,24 +207,8 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             key={id}
             id={id}
             provider={provider}
-            updateProvider={async (provider) => {
-              await updateConfig({
-                adminApp: hexclaveAdminApp,
-                configUpdate: {
-                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
-                },
-                pushable: false,
-              });
-            }}
-            deleteProvider={async (id) => {
-              await updateConfig({
-                adminApp: hexclaveAdminApp,
-                configUpdate: {
-                  [`auth.oauth.providers.${id}`]: null,
-                },
-                pushable: false,
-              });
-            }}
+            updateProvider={updateProvider}
+            deleteProvider={deleteProvider}
           />;
         })}
 
@@ -218,31 +223,9 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 // ─── Provider action menu (dots) ──────────────────────────────────────────
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
-  const hexclaveAdminApp = useAdminApp();
-  const completeConfig = hexclaveAdminApp.useProject().useConfig();
-  const updateConfig = useUpdateConfig();
+  const { updateProvider, deleteProvider } = useOAuthProviderConfigActions();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
-
-  const updateProvider = async (provider: AdminOAuthProviderConfig) => {
-    await updateConfig({
-      adminApp: hexclaveAdminApp,
-      configUpdate: {
-        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
-      },
-      pushable: false,
-    });
-  };
-
-  const deleteProvider = async (id: string) => {
-    await updateConfig({
-      adminApp: hexclaveAdminApp,
-      configUpdate: {
-        [`auth.oauth.providers.${id}`]: null,
-      },
-      pushable: false,
-    });
-  };
 
   const items: DesignMenuActionItem[] = [
     {
