@@ -1,0 +1,19 @@
+packages/shared-backend/package.json
+  s_010400bfca1a64::t_73df8fb66a4879 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "9f18bc019ae452099b719241dd0d4051cad92d09",
+  "prompts": {},
+  "sessions": {
+    "s_010400bfca1a64": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ceb677fe-a7a4-4962-a8fe-b6542e71cb3e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
