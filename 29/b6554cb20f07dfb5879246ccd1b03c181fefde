@@ -1,0 +1,23 @@
+apps/backend/src/app/api/latest/ai/query/[mode]/route.ts
+  s_e29fef6e477fe6::t_8dc9143547d211 6,65
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_e29fef6e477fe6::t_8dc9143547d211 1-30
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_e29fef6e477fe6::t_8dc9143547d211 1-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "29b6554cb20f07dfb5879246ccd1b03c181fefde",
+  "prompts": {},
+  "sessions": {
+    "s_e29fef6e477fe6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed1b2-e08f-7990-a1ce-3394a02a395e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
