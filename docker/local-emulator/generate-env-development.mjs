@@ -47,9 +47,16 @@ const dashboardEnv = parseEnvFile(dashboardEnvPath);
 const toCanonicalKey = (key) => key.includes("STACK_") ? key.replace("STACK_", "HEXCLAVE_") : key;
 
 const getRequiredEnvValue = (sourceName, envMap, key) => {
-  const value = envMap.get(toCanonicalKey(key)) ?? envMap.get(key);
+  const canonicalKey = toCanonicalKey(key);
+  const canonicalValue = envMap.get(canonicalKey);
+  const legacyValue = canonicalKey === key ? undefined : envMap.get(key);
+  if (canonicalValue && legacyValue && canonicalValue !== legacyValue) {
+    throw new Error(`${sourceName} defines both ${canonicalKey} and ${key} with different non-empty values. Remove one of them or set them to the same value.`);
+  }
+  const nonEmptyValue = canonicalValue || legacyValue;
+  const value = nonEmptyValue !== undefined ? nonEmptyValue : canonicalValue ?? legacyValue;
   if (value == null) {
-    throw new Error(`Missing ${toCanonicalKey(key)} in ${sourceName}; update the generator or source env file.`);
+    throw new Error(`Missing ${canonicalKey} in ${sourceName}; update the generator or source env file.`);
   }
   return value;
 };

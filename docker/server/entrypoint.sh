@@ -28,6 +28,10 @@ mirror_hexclave_stack_env() {
       *STACK_*) _twin=${_name/STACK_/HEXCLAVE_} ;;
       *) continue ;;
     esac
+    if [ -n "${!_name:-}" ] && [ -n "${!_twin:-}" ] && [ "${!_name}" != "${!_twin}" ]; then
+      echo "ERROR: $_name and $_twin are both set to different non-empty values. Remove one of them or set them to the same value." >&2
+      exit 1
+    fi
     if [ -z "${!_twin:-}" ] && [ -n "${!_name:-}" ]; then
       export "$_twin=${!_name}"
     fi
