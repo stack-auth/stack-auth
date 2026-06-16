@@ -15,7 +15,7 @@ export const DISABLE_AUTO_UPDATE_ENV = "STACK_CLI_NO_AUTO_UPDATE";
 // exited nonzero) from an npx/install failure where our CLI never ran at all
 // (e.g. npm "Lock compromised" on sandboxed/networked filesystems). Set by the
 // parent on the child's env; read back by the parent after the child exits.
-export const REEXEC_MARKER_ENV = "STACK_CLI_REEXEC_MARKER";
+export const REEXEC_MARKER_ENV = "HEXCLAVE_CLI_REEXEC_MARKER";
 
 const LOG_PREFIX = "[Hexclave] ";
 

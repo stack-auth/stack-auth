@@ -694,7 +694,7 @@ delete childEnv.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID;
 delete childEnv.HEXCLAVE_DEV_APP_COMMAND;
 delete childEnv.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON;
 // Internal to the npx auto-update handshake; never meant for the user's command.
-delete childEnv.STACK_CLI_REEXEC_MARKER;
+delete childEnv.HEXCLAVE_CLI_REEXEC_MARKER;
 
 const child = spawn(command, args, {
   env: childEnv,
