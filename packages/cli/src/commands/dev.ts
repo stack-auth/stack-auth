@@ -9,7 +9,7 @@ import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
 import { cliVersion } from "../lib/own-package.js";
-import { maybeReexecToLatest } from "../lib/self-update.js";
+import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -693,8 +693,6 @@ const childEnv = { ...process.env };
 delete childEnv.HEXCLAVE_DEV_APP_COMMAND_PARENT_PID;
 delete childEnv.HEXCLAVE_DEV_APP_COMMAND;
 delete childEnv.HEXCLAVE_DEV_APP_COMMAND_ARGS_JSON;
-// Internal to the npx auto-update handshake; never meant for the user's command.
-delete childEnv.HEXCLAVE_CLI_REEXEC_MARKER;
 
 const child = spawn(command, args, {
   env: childEnv,
@@ -751,14 +749,20 @@ child.on("error", (error) => {
 `;
 
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+  // The npx auto-update handshake marker is internal to the parent<->child
+  // re-exec; never leak it into the user's command. Scrub it here (rather than in
+  // the wrapper script) so it uses the exported constant and covers both the
+  // Windows-direct and POSIX-wrapper spawn paths.
+  const childEnv = { ...env };
+  delete childEnv[REEXEC_MARKER_ENV];
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      ? spawn(command.command, command.args, { stdio: "inherit", env: childEnv })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
         env: {
-          ...env,
+          ...childEnv,
           [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
           [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
           [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),

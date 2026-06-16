@@ -138,11 +138,16 @@ function runReexec(invocation: NpxInvocation, markerFile: string | null): Promis
     child.on("close", (code, signal) => {
       cleanup();
       if (signal != null) {
-        // Killed by a signal we forwarded (e.g. Ctrl-C). Report it with the
-        // conventional 128 + signal-number exit code so the caller can both
-        // recognize the abort and propagate a sensible code.
-        const signalNumber = osConstants.signals[signal];
-        resolvePromise({ exited: true, code: 128 + signalNumber, signal });
+        // Killed by a signal (a Ctrl-C we forwarded, or an external kill). Report
+        // the conventional 128 + signal-number exit code so the caller can both
+        // recognize the abort and propagate a sensible code. `os.constants.signals`
+        // doesn't list every NodeJS.Signals name on every platform, so the lookup
+        // can be undefined at runtime (the type says otherwise) — `128 + undefined`
+        // is NaN and `process.exit(NaN)` coerces to 0, masking the abort as
+        // success. Fall back to a generic nonzero code in that case.
+        const signalNumber = osConstants.signals[signal] as number | undefined;
+        const code = signalNumber != null ? 128 + signalNumber : 1;
+        resolvePromise({ exited: true, code, signal });
         return;
       }
       resolvePromise({ exited: true, code: code ?? 1, signal: null });

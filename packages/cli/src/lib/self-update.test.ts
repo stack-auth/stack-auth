@@ -336,4 +336,24 @@ describe("maybeReexecToLatest fallback wiring", () => {
     await promise;
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it("propagates a nonzero, non-NaN code when killed by a signal missing from os.constants", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((() => {
+      throw new Error("__exit__");
+    }) as never));
+    const child = mockNpxChild({ writeMarker: false });
+
+    const promise = maybeReexecToLatest({ forwardArgs: ["dev"] });
+    // SIGSTKFLT is absent from os.constants.signals on macOS (present on Linux).
+    // Either way the abort must surface as a real nonzero code — never NaN (which
+    // process.exit coerces to 0, masking the abort as success).
+    child.emit("close", null, "SIGSTKFLT");
+
+    await promise;
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    const code = exitSpy.mock.calls[0][0];
+    expect(typeof code).toBe("number");
+    expect(Number.isNaN(code as number)).toBe(false);
+    expect(code as number).toBeGreaterThan(0);
+  });
 });
