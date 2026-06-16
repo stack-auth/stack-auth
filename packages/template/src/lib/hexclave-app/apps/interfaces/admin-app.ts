@@ -1,3 +1,4 @@
+import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
@@ -155,6 +156,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       endAction?: "now" | "at-period-end",
     }): Promise<{ refundTransactionId: string }>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
+    getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse>,
+    createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
     getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,

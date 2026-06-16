@@ -1,4 +1,5 @@
 import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFromOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
+import { isAppleEmailVerified } from "@/oauth/utils";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { getDisabledBotChallengeAssessment, isBotChallengeDisabled } from "@/lib/turnstile";
@@ -34,7 +35,7 @@ async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): 
     return {
       sub: payload.sub ?? throwErr("No sub claim in Apple ID token"),
       email: typeof payload.email === "string" ? payload.email : null,
-      emailVerified: payload.email_verified === true || payload.email_verified === "true",
+      emailVerified: isAppleEmailVerified(payload.email_verified),
     };
   } catch (error) {
     captureError("apple-native-sign-in-token-verification-failed", error);

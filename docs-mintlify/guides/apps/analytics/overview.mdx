@@ -86,12 +86,11 @@ Use replays when metrics alone are not enough to explain user behavior.
 Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
 
 ```ts
-import { HexclaveClientApp } from "@hexclave/next";
+import { HexclaveClientApp } from "@hexclave/js";
 
 export const hexclaveClientApp = new HexclaveClientApp({
-  projectId: process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID!,
-  publishableClientKey: process.env.NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY!,
-  tokenStore: "nextjs-cookie",
+  // ...your existing client app options
+  tokenStore: "cookie", // use "nextjs-cookie" in Next.js
   analytics: {
     replays: {
       enabled: true,
@@ -106,20 +105,19 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 ### Disabling Analytics Capture in the SDK
 
-SDK-managed analytics capture is enabled by default. If you don't want the SDK to collect any analytics, pass `analytics: { enabled: false }` when creating your client app:
+SDK-managed analytics capture is enabled by default. You can disable it by disabling the Analytics app in the config or dashboard. If you don't want the SDK to collect any analytics data at all but would like to keep the Analytics app enabled, you can also pass `analytics: { enabled: false }` when creating your client app:
 
 ```ts
-import { HexclaveClientApp } from "@hexclave/next";
+import { HexclaveClientApp } from "@hexclave/js";
 
 export const hexclaveClientApp = new HexclaveClientApp({
-  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
-  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
-  tokenStore: "nextjs-cookie",
+  // ...your existing client app options
+  tokenStore: "cookie", // use "nextjs-cookie" in Next.js
   analytics: { enabled: false },
 });
 ```
 
-This stops the SDK from sending `$page-view` and `$click` events. It also resolves the `ANALYTICS_NOT_ENABLED` warning the SDK logs to the browser console when it tries to send events to a project that hasn't enabled the Analytics app — with capture disabled, the SDK never makes those requests. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
+This stops the SDK from sending `$page-view` and `$click` events. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
 
 ## Best Practices
 

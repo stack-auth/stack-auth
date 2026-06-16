@@ -2,7 +2,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ServerUser } from "@hexclave/next";
 import { KnownErrors } from "@hexclave/shared";
 import { countryCodeSchema, emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@hexclave/shared/dist/schema-fields";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography, useToast } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography } from "@/components/ui";
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
 import { CountryCodeField } from "./country-code-select";
@@ -22,7 +22,6 @@ export function UserDialog(props: {
   type: 'edit',
   user: ServerUser,
 })) {
-  const { toast } = useToast();
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
 
@@ -128,13 +127,14 @@ export function UserDialog(props: {
       }
     } catch (error) {
       if (KnownErrors.UserWithEmailAlreadyExists.isInstance(error)) {
-        toast({
-          title: "Email already exists",
-          description: "Please choose a different email address",
-          variant: "destructive",
-        });
+        alert("Email already exists. Please choose a different email address.");
         return 'prevent-close';
       }
+      if (KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)) {
+        alert("Email already used for authentication. This email is already used for sign-in by another account. Please choose a different email address.");
+        return 'prevent-close';
+      }
+      throw error;
     }
   }
 

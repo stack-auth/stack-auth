@@ -15,9 +15,10 @@ import { peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } f
 import {
   ensureConfigFileExists,
   readConfigFile,
+  replaceConfigObject,
   resolveConfigFilePath,
   sha256String,
-  writeConfigObject,
+  updateConfigObject,
 } from "./config-file";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
@@ -758,14 +759,14 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
-      writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      const currentConfig = (await readConfigFile(configFilePath)).config;
+      await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);
     } else {
       state.synchronouslyUpdatingConfigFiles.add(configFilePath);
       try {
-        writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+        await updateConfigObject(configFilePath, options.configUpdate);
       } finally {
         setTimeout(() => {
           state.synchronouslyUpdatingConfigFiles.delete(configFilePath);

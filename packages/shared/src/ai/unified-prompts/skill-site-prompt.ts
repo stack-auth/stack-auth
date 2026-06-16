@@ -13,7 +13,7 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
   return deindent`
     # Hexclave
 
-    This is the LLM-optimized documentation & skill site for Hexclave. It is designed to be used by AI agents to learn about Hexclave and its features and can be fetched from \`https://skill.hexclave.com\`.
+    This is the full LLM-optimized documentation & skill site for Hexclave. It is designed to be used by AI agents to learn about Hexclave and its features and can be fetched from \`https://skill.hexclave.com/full\`. For specific questions, prefer the concise answer endpoint at \`https://skill.hexclave.com/ask\` or the equivalent \`ask_hexclave\` MCP tool.
 
     ${remindersPrompt}
 

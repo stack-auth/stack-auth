@@ -2,9 +2,9 @@
 
 import { AppIcon } from "@/components/app-square";
 import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
-import { ALL_APPS_FRONTEND, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getDocumentationHref, type AppId } from "@/lib/apps-frontend";
 import { ArrowRightIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
-import { ALL_APPS, ALL_APP_TAGS } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, ALL_APP_TAGS, getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
 import Image from "next/image";
 import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";
 
@@ -26,7 +26,7 @@ export function AppStoreEntry({
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
   const isDocumentationBackedApp = getDocumentationHref(appFrontend) != null;
-  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppId = getParentAppId(appId);
   const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
   const screenshotContainerRef = useRef<HTMLDivElement>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
