@@ -70,7 +70,7 @@ export function oauthProviderConfigPrefix(id: string): string {
 
 /**
  * Splits a single OAuth provider into its branch enable object and environment
- * credential leaf keys. See the module doc for why env writes are leaf keys.
+ * credential leaf keys.
  */
 export function splitOAuthProvider(spec: OAuthProviderSpec): OAuthProviderConfigSplit {
   const branchEnable: OAuthProviderBranchEnable = {

@@ -31,7 +31,9 @@ import {
 } from "@phosphor-icons/react";
 import { AdminOwnedProject, AuthPage } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { splitOAuthProvider } from "@hexclave/shared/dist/config/oauth-providers";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { allProviders } from "@hexclave/shared/dist/utils/oauth";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -300,38 +302,19 @@ export function ProjectOnboardingWizard(props: {
     for (const appId of ALL_APP_IDS) {
       configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
     }
-    if (isDevelopmentEnvironment) {
-      configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
-        type: "google",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
-      configUpdate["auth.oauth.providers.github"] = signInMethods.has("github") ? {
-        type: "github",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
-      configUpdate["auth.oauth.providers.microsoft"] = signInMethods.has("microsoft") ? {
-        type: "microsoft",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
-    }
-    return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
-
-  const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
-    const configUpdate: EnvironmentConfigOverrideOverride = {};
+    // The provider roster + enabled state lives in the branch layer (always
+    // writable, even in development environments). These are all SHARED providers,
+    // which have no environment credentials, so this branch write is all that's
+    // needed — there is nothing to write to the environment layer.
     for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
-      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
-        type: providerId,
-        isShared: true,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
+      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId)
+        // `providerId` is a shared provider id, which is always a member of
+        // `allProviders`; the structural string can't be narrowed here.
+        ? splitOAuthProvider({ id: providerId as (typeof allProviders)[number], shared: true }).branchEnable
+        : null;
     }
     return configUpdate;
-  }, [signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const finalizeOnboarding = useCallback(async () => {
     await runWithSaving(async () => {
@@ -346,17 +329,6 @@ export function ProjectOnboardingWizard(props: {
         if (!branchConfigUpdated) {
           return;
         }
-
-        if (!isDevelopmentEnvironment) {
-          const providersUpdated = await updateConfig({
-            adminApp: props.project.app,
-            configUpdate: buildEnvironmentOAuthConfigUpdate(),
-            pushable: false,
-          });
-          if (!providersUpdated) {
-            return;
-          }
-        }
       }
 
       await setProjectOnboardingStatus("completed");
@@ -365,10 +337,8 @@ export function ProjectOnboardingWizard(props: {
     });
   }, [
     buildBranchConfigUpdate,
-    buildEnvironmentOAuthConfigUpdate,
     finishProjectOnboarding,
     isLinkExistingMode,
-    isDevelopmentEnvironment,
     persistOnboardingState,
     props.project.app,
     clearOnboardingState,
