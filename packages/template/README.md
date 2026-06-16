@@ -1,10 +1,21 @@
-# This package has been renamed.
+# Hexclave SDK
 
-Stack Auth is now Hexclave! The new packages are:
+The official SDK for [Hexclave](https://hexclave.com) — open-source authentication and user management.
 
-- @hexclave/next
-- @hexclave/react
-- @hexclave/js
-- @hexclave/cli
+## Packages
 
-See the [migration guide](https://docs.hexclave.com/migration) for more information.
+- [`@hexclave/next`](https://www.npmjs.com/package/@hexclave/next) — Next.js SDK
+- [`@hexclave/react`](https://www.npmjs.com/package/@hexclave/react) — React SDK
+- [`@hexclave/js`](https://www.npmjs.com/package/@hexclave/js) — JavaScript SDK
+- [`@hexclave/tanstack-start`](https://www.npmjs.com/package/@hexclave/tanstack-start) — TanStack Start SDK
+- [`@hexclave/cli`](https://www.npmjs.com/package/@hexclave/cli) — CLI
+
+## Documentation
+
+Full documentation is available at [docs.hexclave.com](https://docs.hexclave.com).
+
+## Links
+
+- [Hexclave](https://hexclave.com)
+- [Documentation](https://docs.hexclave.com)
+- [GitHub](https://github.com/hexclave/hexclave)
