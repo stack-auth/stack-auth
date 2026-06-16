@@ -2,7 +2,6 @@ import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import useResizeObserver from '@react-hook/resize-observer';
 import { UserAvatar } from '@hexclave/next';
 import type { MetricsRecentUser } from '@hexclave/shared/dist/interface/admin-metrics';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
@@ -22,6 +21,7 @@ import {
   Group,
   Mesh,
   MeshLambertMaterial,
+  PerspectiveCamera,
   SphereGeometry,
   Vector3,
 } from 'three';
@@ -35,32 +35,24 @@ export const globeImages = {
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 const countriesPromise = import('./country-data.geo.json');
 
-function useSize(target: RefObject<HTMLDivElement | null>) {
-  const [size, setSize] = useState<DOMRectReadOnly>();
-
-  useLayoutEffect(() => {
-    setSize(target.current?.getBoundingClientRect());
-  }, [target]);
-
-  // Where the magic happens
-  useResizeObserver(target, (entry) => setSize(entry.contentRect));
-  return size;
-}
-
 function calculateGlobeVisualDiameter(globeRef: RefObject<GlobeMethods | undefined>): number {
   if (!globeRef.current) return 0;
 
   const current = globeRef.current;
   const globeRadius = current.getGlobeRadius();
   const camera = current.camera();
+  if (!(camera instanceof PerspectiveCamera)) {
+    throwErr("Expected react-globe.gl to use a PerspectiveCamera for globe sizing");
+  }
   const renderer = current.renderer();
   const centerWorld = new Vector3(0, 0, 0);
   const cameraPosition = camera.position;
   const distanceToCenter = centerWorld.distanceTo(cameraPosition);
-  const fov = (camera as any).fov * (Math.PI / 180);
-  const screenHeight = renderer.domElement.height;
-  const visualRadius = (globeRadius / distanceToCenter) * (screenHeight / (2 * Math.tan(fov / 2)));
-  return visualRadius * 1.065; // Return diameter
+  const fov = camera.fov * (Math.PI / 180);
+  const cssHeight = renderer.domElement.getBoundingClientRect().height;
+  if (cssHeight <= 0) return 0;
+  const visualRadius = (globeRadius / distanceToCenter) * (cssHeight / (2 * Math.tan(fov / 2)));
+  return visualRadius * 2 * 1.065;
 }
 
 // --- Country point-in-polygon (used by the orbiting satellites to detect
@@ -408,8 +400,8 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   });
 
   return (
-    <div className={cn("w-full aspect-square flex items-center justify-center", props.className)}>
-      <div className="relative w-[70%] aspect-square">
+    <div className={cn("w-full h-full flex items-center justify-center", props.className)}>
+      <div className="relative aspect-square h-[70%] max-w-[70%]">
         {/* Main globe circle with gradient */}
         <div
           className="absolute inset-0 rounded-full bg-gradient-to-br from-sky-500/[0.09] via-sky-400/[0.05] to-transparent animate-pulse dark:from-sky-400/[0.12] dark:via-sky-500/[0.06]"
@@ -487,12 +479,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     [activeUsersByCountry, countryVizData],
   );
 
-  // Only `globeContainerSize` is actually consumed (drives zoom / border math
-  // further down). The other refs/useSize calls were leftovers from an earlier
-  // layout and each spawned a live ResizeObserver subscription for no reason.
-  const globeContainerRef = useRef<HTMLDivElement>(null);
-  const globeContainerSize = useSize(globeContainerRef);
-
   // Measure the parent element so the root can size itself to min(w, h) of
   // the available space (container queries misfire here on initial layout).
   const rootRef = useRef<HTMLDivElement>(null);
@@ -502,7 +488,8 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     if (!parent) return;
     const update = () => {
       const r = parent.getBoundingClientRect();
-      setParentBox({ w: r.width, h: r.height });
+      const nextBox = { w: Math.floor(r.width), h: Math.floor(r.height) };
+      setParentBox((current) => current.w === nextBox.w && current.h === nextBox.h ? current : nextBox);
     };
     update();
     const ro = new ResizeObserver(update);
@@ -510,9 +497,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     return () => ro.disconnect();
   }, []);
   const squareSize = Math.min(parentBox.w, parentBox.h);
-
-  // Simplified sizing for the new layout - only use width
-  const globeSize = globeContainerSize?.width ?? 400;
 
   // Calculate camera distance (zoom) based on canvas width
   // Linear interpolation: zoom decreases as width increases (less aggressive slope)
@@ -523,10 +507,10 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   // - Canvas width >= 500: zoom stays at 309 so the globe keeps a constant
   //   visual fill ratio on widescreens instead of growing without bound and
   //   overflowing the canvas.
-  const canvasWidth = globeContainerSize?.width ?? 0;
+  const canvasWidth = squareSize;
   const GLOBE_MIN_WIDTH = 350;
 
-  const shouldShowGlobe = canvasWidth >= GLOBE_MIN_WIDTH;
+  const shouldShowGlobe = squareSize > 0 && canvasWidth >= GLOBE_MIN_WIDTH;
 
   // Calculate zoom based on width
   // For widths >= 355, use linear formula clamped to a minimum distance.
@@ -535,19 +519,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   const cameraDistance = canvasWidth >= 355
     ? Math.max(MIN_CAMERA_DISTANCE, 436 - 0.35 * canvasWidth)
     : 325; // For 350-355 range
-
-  // Calculate border size using exact same formula structure as cameraDistance
-  // Uses same scale factor (0.35) but inverted direction (increases as width increases)
-  // - Canvas width 350: Hide border
-  // - Canvas width 355: borderSize = BORDER_BASE_SIZE
-  // - Canvas width 500: borderSize = BORDER_BASE_SIZE + 0.35 * (500 - 355)
-  // Formula: borderSize = BORDER_BASE_SIZE + 0.35 * (width - 355) for width >= 355
-  const BORDER_BASE_SIZE = 180; // Only variable to change - base size at 355px
-  const borderSize = canvasWidth >= 355
-    ? BORDER_BASE_SIZE + 0.35 * (canvasWidth - 355)
-    : canvasWidth >= GLOBE_MIN_WIDTH
-      ? BORDER_BASE_SIZE
-      : 0;
 
   const [selectedCountry, setSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [previousSelectedCountry, setPreviousSelectedCountry] = useState<{ code: string, name: string } | null>(null);
@@ -704,7 +675,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     const visualDiameter = calculateGlobeVisualDiameter(globeRef);
     setBorderSizeFromGlobe(visualDiameter);
     resumeRender();
-  }, [cameraDistance, shouldShowGlobe, globeSize, interactive]);
+  }, [cameraDistance, shouldShowGlobe, squareSize, interactive]);
 
 
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
@@ -1068,7 +1039,14 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   }, []);
 
   return (
-    <div ref={rootRef} className='relative mx-auto overflow-hidden' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
+    <div
+      ref={rootRef}
+      className='relative mx-auto overflow-hidden'
+      style={{
+        width: squareSize > 0 ? squareSize : '100%',
+        height: squareSize > 0 ? squareSize : '100%',
+      }}
+    >
       <div inert className='absolute inset-0 pointer-events-none'>
         <GlobeLoading
           devReason="not ready"
@@ -1084,9 +1062,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
           globeReady ? 'opacity-100' : 'opacity-0',
         )}
       >
-        {/* Hidden measurement div - always rendered to track size */}
-        <div ref={globeContainerRef} className='absolute inset-0 pointer-events-none' aria-hidden="true" />
-
         {/* Globe Container - Premium 3D */}
         {shouldShowGlobe && (
           <div className='relative w-full h-full overflow-hidden flex items-center justify-center'>
@@ -1157,10 +1132,10 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                     backgroundColor='rgba(0,0,0,0)'
                     // globeImageUrl={globeImages[theme]}
                     globeMaterial={globeMaterial}
-                    width={globeSize}
+                    width={squareSize}
                     showGraticules={theme === 'dark'}
                     showAtmosphere={false}
-                    height={globeSize}
+                    height={squareSize}
                     onGlobeReady={() => {
                       setGlobeReady(true);
 
