@@ -18,14 +18,13 @@ import {
   Typography,
 } from "@/components/ui";
 import { DesignAnalyticsCard } from "@/components/design-components/analytics-card";
-import { DesignAlert } from "@/components/design-components/alert";
 import { useRouter } from "@/components/router";
 import type { AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import {
   CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
 } from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
-import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
+import { ArrowRight, GlobeHemisphereWest, InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { getClickmapOriginOptions, normalizeClickmapOrigin, type ClickmapOrigin } from "./clickmap-origins";
 
@@ -150,6 +149,14 @@ export default function PageClient() {
                 Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
               </Typography>
               <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
+              {wildcardDomains.length > 0 && (
+                <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                  <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    {wildcardDomains.map((d) => d.baseUrl).join(", ")} can match real pages, but cannot be opened directly as a clickmap target.
+                  </span>
+                </div>
+              )}
             </div>
             <Button
               className="gap-1.5"
@@ -208,14 +215,6 @@ export default function PageClient() {
               </div>
             ))}
           </DesignAnalyticsCard>
-        )}
-
-        {wildcardDomains.length > 0 && (
-          <DesignAlert
-            variant="info"
-            title="Wildcard domains need an exact origin"
-            description={`Enter the concrete site origin above. ${wildcardDomains.map((domain) => domain.baseUrl).join(", ")} can match real pages, but cannot be opened directly as a clickmap target.`}
-          />
         )}
 
         <ClickmapTokenDialog
