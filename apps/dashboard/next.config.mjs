@@ -131,7 +131,7 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          ...process.env.NEXT_PUBLIC_STACK_IS_PREVIEW === "true" ? [] : [{
+          ...resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true" ? [] : [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
           }],

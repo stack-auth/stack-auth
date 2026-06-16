@@ -31,13 +31,13 @@ export type ProjectAuth = (ProjectAuthWithRefreshToken | ProjectAuthWithSecretSe
 };
 
 function resolveApiUrl(): string {
-  return process.env.STACK_API_URL
+  return resolveHexclaveStackEnvVar("HEXCLAVE_API_URL", "STACK_API_URL")
     ?? readConfigValue("STACK_API_URL")
     ?? DEFAULT_API_URL;
 }
 
 function resolveDashboardUrl(): string {
-  return process.env.STACK_DASHBOARD_URL
+  return resolveHexclaveStackEnvVar("HEXCLAVE_DASHBOARD_URL", "STACK_DASHBOARD_URL")
     ?? readConfigValue("STACK_DASHBOARD_URL")
     ?? DEFAULT_DASHBOARD_URL;
 }

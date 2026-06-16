@@ -219,6 +219,21 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
   return {
+    // Canonical Hexclave names (preferred by SDKs/examples post-rebrand)...
+    HEXCLAVE_PROJECT_ID: project.projectId,
+    NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
+    VITE_HEXCLAVE_PROJECT_ID: project.projectId,
+    EXPO_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
+    HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    EXPO_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    HEXCLAVE_SECRET_SERVER_KEY: project.secretServerKey,
+    HEXCLAVE_API_URL: project.apiBaseUrl,
+    NEXT_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
+    VITE_HEXCLAVE_API_URL: project.apiBaseUrl,
+    EXPO_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
+    // ...plus the legacy Stack names so existing/copied setups keep working.
     STACK_PROJECT_ID: project.projectId,
     NEXT_PUBLIC_STACK_PROJECT_ID: project.projectId,
     VITE_STACK_PROJECT_ID: project.projectId,

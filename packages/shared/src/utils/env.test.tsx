@@ -40,4 +40,19 @@ describe("Hexclave/Stack env var dual-read", () => {
   it("returns undefined when both names are empty", () => {
     expect(resolveHexclaveStackEnvVarValue("HEXCLAVE_FOO", "STACK_FOO", "", "")).toBeUndefined();
   });
+
+  it("falls back to the legacy Stack name when a canonical Hexclave name is looked up", () => {
+    vi.stubEnv("NEXT_PUBLIC_STACK_API_URL", "https://stack.example.test");
+
+    // Caller passes the canonical HEXCLAVE_ name but only the legacy value is set.
+    expect(getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL")).toBe("https://stack.example.test");
+    expect(getProcessEnv("NEXT_PUBLIC_HEXCLAVE_API_URL")).toBe("https://stack.example.test");
+  });
+
+  it("throws on a conflict when a canonical Hexclave name is looked up", () => {
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_API_URL", "https://hexclave.example.test");
+    vi.stubEnv("NEXT_PUBLIC_STACK_API_URL", "https://stack.example.test");
+
+    expect(() => getEnvVariable("NEXT_PUBLIC_HEXCLAVE_API_URL")).toThrow(/NEXT_PUBLIC_HEXCLAVE_API_URL.*NEXT_PUBLIC_STACK_API_URL.*different values/);
+  });
 });

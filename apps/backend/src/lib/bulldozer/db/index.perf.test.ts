@@ -2,6 +2,7 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Table } from "./index";
+import { resolveTestDatabaseConnectionString } from "./test-db-env";
 import type { RowData } from "./utilities";
 import {
   createBulldozerExecutionContext,
@@ -112,11 +113,7 @@ const LOAD_REDUCE_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
 const LOAD_REDUCE_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 
 function getTestDbUrls(): TestDb {
-  const env = Reflect.get(import.meta, "env");
-  const connectionString = Reflect.get(env, "STACK_DATABASE_CONNECTION_STRING");
-  if (typeof connectionString !== "string" || connectionString.length === 0) {
-    throw new Error("Missing STACK_DATABASE_CONNECTION_STRING");
-  }
+  const connectionString = resolveTestDatabaseConnectionString();
   const base = connectionString.replace(/\/[^/]*(\?.*)?$/, "");
   const query = connectionString.split("?")[1] ?? "";
   const dbName = `${TEST_DB_PREFIX}_${Math.random().toString(16).slice(2, 12)}`;
