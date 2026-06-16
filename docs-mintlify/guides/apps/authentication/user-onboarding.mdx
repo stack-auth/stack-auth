@@ -57,7 +57,7 @@ Next, we can create a hook/function to check if the user has completed onboardin
     ```jsx
     'use client';
     import { useEffect } from 'react';
-    import { useUser } from '@hexclave/next';
+    import { useUser } from '@hexclave/next';  // replace `next` with the correct framework SDK package
     import { useRouter } from 'next/navigation';
 
     export function useOnboarding() {
@@ -93,7 +93,7 @@ You can then use these functions wherever onboarding is required:
   <Tab title="Client Component">
     ```jsx
     import { useOnboarding } from '@/app/onboarding-hooks';
-    import { useUser } from '@hexclave/next';
+    import { useUser } from '@hexclave/next';  // replace `next` with the correct framework SDK package
 
     export default function HomePage() {
       useOnboarding();

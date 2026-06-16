@@ -1,11 +1,11 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
-import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getDocumentationHref, isSubApp } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getDocumentationHref } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
-import { ALL_APPS, AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, AppId, getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@hexclave/shared/dist/apps/apps-ui";
 import { useState } from "react";
 import { AppWarningModal } from "./app-warning-modal";
@@ -64,7 +64,7 @@ export function AppSquare({
   const isEnabled = isAppEnabled(config.apps.installed, appId);
   const appDetailsPath = `/projects/${projectId}/apps/${appId}`;
   const appFrontend = ALL_APPS_FRONTEND[appId];
-  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppId = getParentAppId(appId);
   const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
   const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
   const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
@@ -223,7 +223,7 @@ export function AppListItem({
   const appDestinationPath = getDocumentationHref(appFrontend) ?? appPath;
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
   const router = useRouter();
-  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppId = getParentAppId(appId);
   const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
   const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
   const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);

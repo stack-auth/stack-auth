@@ -27,8 +27,8 @@ import { UserPageMetricCard } from "../../users/[userId]/user-page-metric-card";
 import { UserPageTableSection } from "../../users/[userId]/user-page-table-section";
 
 const ANALYTICS_WINDOW_DAYS = 30;
-const HEATMAP_WINDOW_DAYS = 28; // 4 full weeks — clean weekly average
-const HEATMAP_WEEKS = HEATMAP_WINDOW_DAYS / 7;
+const CLICKMAP_WINDOW_DAYS = 28; // 4 full weeks — clean weekly average
+const CLICKMAP_WEEKS = CLICKMAP_WINDOW_DAYS / 7;
 const TOP_CONTRIBUTORS_LIMIT = 10;
 
 function toClickhouseDateTimeParam(date: Date): string {
@@ -65,7 +65,7 @@ type DauRow = {
   events: number,
 };
 
-type HeatmapRow = {
+type ClickmapRow = {
   // ClickHouse `toDayOfWeek` returns 1=Mon..7=Sun
   dow: number,
   hour: number,
@@ -82,7 +82,7 @@ type ContributorRow = {
 type AnalyticsData = {
   summary: SummaryRow,
   dau: DauRow[],
-  heatmap: HeatmapRow[],
+  clickmap: ClickmapRow[],
   contributors: ContributorRow[],
 };
 
@@ -118,18 +118,6 @@ const DAU_QUERY = `
     AND event_at < {until:DateTime}
   GROUP BY day
   ORDER BY day ASC
-`;
-
-const HEATMAP_QUERY = `
-  SELECT
-    toDayOfWeek(event_at) AS dow,
-    toHour(event_at) AS hour,
-    toString(uniqExact(user_id)) AS active_users
-  FROM events
-  WHERE user_id IN {memberIds:Array(String)}
-    AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
-  GROUP BY dow, hour
 `;
 
 const TOP_CONTRIBUTORS_QUERY = `
@@ -168,17 +156,6 @@ function parseDau(rows: Record<string, unknown>[]): DauRow[] {
       events: toNumber(row.events),
     }))
     .filter((r) => r.day.length > 0);
-}
-
-function parseHeatmap(rows: Record<string, unknown>[]): HeatmapRow[] {
-  const result: HeatmapRow[] = [];
-  for (const row of rows) {
-    const dow = toNumber(row.dow);
-    const hour = toNumber(row.hour);
-    if (dow < 1 || dow > 7 || hour < 0 || hour > 23) continue;
-    result.push({ dow, hour, active_users: toNumber(row.active_users) });
-  }
-  return result;
 }
 
 function parseContributors(rows: Record<string, unknown>[]): ContributorRow[] {
@@ -282,7 +259,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
             prev_active_users_7d: 0,
           },
           dau: [],
-          heatmap: [],
+          clickmap: [],
           contributors: [],
         },
       });
@@ -292,7 +269,7 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
     const now = new Date();
     const since = new Date(now.getTime() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const heatmapSince = new Date(now.getTime() - HEATMAP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const clickmapSince = new Date(now.getTime() - CLICKMAP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const prevSince = new Date(since.getTime() - ANALYTICS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const prev7dSince = new Date(since7d.getTime() - 7 * 24 * 60 * 60 * 1000);
     const baseParams = {
@@ -323,17 +300,18 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
           prev7dSince: toClickhouseDateTimeParam(prev7dSince),
         }),
         runQuery(DAU_QUERY, baseParams),
-        runQuery(HEATMAP_QUERY, {
-          memberIds,
-          since: toClickhouseDateTimeParam(heatmapSince),
-          until: toClickhouseDateTimeParam(now),
+        hexclaveAdminApp.getAnalyticsClickmap({
+          kind: "team_user_hour_of_week",
+          memberUserIds: memberIds,
+          since: clickmapSince.toISOString(),
+          until: now.toISOString(),
         }),
         runQuery(TOP_CONTRIBUTORS_QUERY, { ...baseParams, limit: TOP_CONTRIBUTORS_LIMIT }),
       ]);
 
       if (token.cancelled) return;
 
-      const queryNames = ["summary", "dau", "heatmap", "contributors"] as const;
+      const queryNames = ["summary", "dau", "clickmap", "contributors"] as const;
       for (const [i, res] of results.entries()) {
         if (res.status === "rejected") {
           captureError(`team-analytics-query:${queryNames[i]}`, res.reason);
@@ -344,14 +322,16 @@ export function TeamAnalyticsSection({ team }: { team: ServerTeam }) {
         return;
       }
 
-      const [summaryRes, dauRes, heatmapRes, contributorsRes] = results;
+      const [summaryRes, dauRes, clickmapRes, contributorsRes] = results;
 
       setState({
         status: "ready",
         data: {
           summary: summaryRes.status === "fulfilled" ? parseSummary(summaryRes.value.result) : emptySummary,
           dau: dauRes.status === "fulfilled" ? parseDau(dauRes.value.result) : [],
-          heatmap: heatmapRes.status === "fulfilled" ? parseHeatmap(heatmapRes.value.result) : [],
+          clickmap: clickmapRes.status === "fulfilled"
+            ? clickmapRes.value.cells.map((cell) => ({ dow: cell.weekday, hour: cell.hour, active_users: cell.value }))
+            : [],
           contributors: contributorsRes.status === "fulfilled" ? parseContributors(contributorsRes.value.result) : [],
         },
       });
@@ -475,7 +455,7 @@ function TeamAnalyticsLoaded({ data, members }: { data: AnalyticsData, members: 
         />
       </div>
 
-      <HourOfWeekHeatmap rows={data.heatmap} hasAnyEvent={hasAnyEvent} />
+      <HourOfWeekClickmap rows={data.clickmap} hasAnyEvent={hasAnyEvent} />
 
       <DauChart dau={dense} hasAnyEvent={hasAnyEvent} />
 
@@ -487,7 +467,7 @@ function TeamAnalyticsLoaded({ data, members }: { data: AnalyticsData, members: 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const HOUR_AXIS_TICKS = [0, 4, 8, 12, 16, 20] as const;
 
-function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEvent: boolean }) {
+function HourOfWeekClickmap({ rows, hasAnyEvent }: { rows: ClickmapRow[], hasAnyEvent: boolean }) {
   const { grid, max } = useMemo(() => {
     const g: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
     let m = 0;
@@ -505,7 +485,7 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
     <DesignChartCard
       gradient="green"
       title="Active users by hour of week"
-      description={`Distinct active users per hour over the last ${HEATMAP_WEEKS} weeks (UTC)`}
+      description={`Distinct active users per hour over the last ${CLICKMAP_WEEKS} weeks (UTC)`}
     >
       {!hasAnyEvent ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
@@ -553,7 +533,7 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
                             <div className="text-muted-foreground">
                               {value === 0
                                 ? "No active users"
-                                : `${value.toFixed(value < 10 ? 1 : 0)} active users over ${HEATMAP_WEEKS} weeks`}
+                                : `${value.toFixed(value < 10 ? 1 : 0)} active users over ${CLICKMAP_WEEKS} weeks`}
                             </div>
                           </TooltipContent>
                         </Tooltip>
@@ -564,14 +544,14 @@ function HourOfWeekHeatmap({ rows, hasAnyEvent }: { rows: HeatmapRow[], hasAnyEv
               </div>
             </div>
           </div>
-          <HeatmapLegend max={max} />
+          <ClickmapLegend max={max} />
         </div>
       )}
     </DesignChartCard>
   );
 }
 
-function HeatmapLegend({ max }: { max: number }) {
+function ClickmapLegend({ max }: { max: number }) {
   if (max <= 0) return null;
   const stops = [0.0, 0.25, 0.5, 0.75, 1.0];
   return (
