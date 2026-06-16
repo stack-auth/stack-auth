@@ -63,9 +63,12 @@ function newSlugIndex() {
       for (const [method, op] of Object.entries(methods)) {
         if (!['get', 'post', 'put', 'delete', 'patch'].includes(method)) { continue; }
         if (!op || typeof op !== 'object') { continue; }
-        const tag = op.tags?.[0] ?? 'Other';
-        const summary = op.summary || op.operationId || '';
-        index.set(`${group} ${method.toUpperCase()} ${path}`, `/api/${group}/${kebab(tag)}/${kebab(summary)}`);
+        const tagSlug = kebab(op.tags?.[0] ?? 'Other');
+        const leaf = kebab(op.summary || op.operationId || '');
+        // Without a usable tag + summary the slug would be malformed (empty
+        // segment); skip indexing so the snapshot lookup misses and falls back.
+        if (!tagSlug || !leaf) { continue; }
+        index.set(`${group} ${method.toUpperCase()} ${path}`, `/api/${group}/${tagSlug}/${leaf}`);
       }
     }
   }
@@ -81,6 +84,11 @@ function generate() {
   for (const entry of snapshot) {
     let destination;
     if (entry.group === 'webhooks') {
+      // NOTE: unlike client/server, webhook destinations are derived from the (frozen)
+      // legacy URL, not re-derived from the live spec — so they do NOT auto-track a
+      // future change in how Mintlify slugifies webhook pages. There are only 10; if
+      // Mintlify's webhook slug rule changes, re-verify against `mint dev` and update
+      // webhookLeaf. `mint broken-links` would also catch a regression.
       const slash = entry.old.lastIndexOf('/');
       destination = `${entry.old.slice(0, slash)}/${webhookLeaf(entry.old.slice(slash + 1))}`;
     } else {
@@ -136,6 +144,10 @@ if (fellBack.length) {
 }
 
 if (check) {
+  if (fellBack.length) {
+    console.error(`${fellBack.length} snapshot operation(s) degrade to ${OVERVIEW}; refusing --check while redirects are not endpoint-accurate.`);
+    process.exit(1);
+  }
   if (before !== after) {
     console.error('docs.json /api redirects are out of date. Run: node docs-mintlify/scripts/generate-api-redirects.mjs');
     process.exit(1);
