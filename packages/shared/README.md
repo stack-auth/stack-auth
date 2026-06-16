@@ -6,8 +6,13 @@ Internal shared utilities and types for the [Hexclave](https://hexclave.com) SDK
 
 Full documentation is available at [docs.hexclave.com](https://docs.hexclave.com).
 
+## AI Agents
+
+`curl -sSL https://skill.hexclave.com`
+
 ## Links
 
 - [Hexclave](https://hexclave.com)
 - [Documentation](https://docs.hexclave.com)
+- [Skill](https://skill.hexclave.com)
 - [GitHub](https://github.com/hexclave/hexclave)

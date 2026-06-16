@@ -18,8 +18,13 @@ Full documentation is available at [docs.hexclave.com](https://docs.hexclave.com
 
 If you're migrating from `@stackframe/stack`, see the [migration guide](https://docs.hexclave.com/migration).
 
+## AI Agents
+
+`curl -sSL https://skill.hexclave.com`
+
 ## Links
 
 - [Hexclave](https://hexclave.com)
 - [Documentation](https://docs.hexclave.com)
+- [Skill](https://skill.hexclave.com)
 - [GitHub](https://github.com/hexclave/hexclave)
