@@ -31,4 +31,9 @@ describe("clickmap origin options", () => {
     expect(normalizeClickmapOrigin("https://app.dev.stack-auth.com/dashboard")).toMatchInlineSnapshot(`"https://app.dev.stack-auth.com"`);
     expect(normalizeClickmapOrigin("javascript:alert(1)")).toMatchInlineSnapshot(`null`);
   });
+
+  it("rejects wildcard origins to prevent percent-encoded URLs", () => {
+    expect(normalizeClickmapOrigin("https://**.example.com")).toMatchInlineSnapshot(`null`);
+    expect(normalizeClickmapOrigin("https://*.stack-auth.com")).toMatchInlineSnapshot(`null`);
+  });
 });

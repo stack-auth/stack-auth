@@ -1,3 +1,5 @@
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+
 export type ClickmapOrigin = {
   id: string,
   origin: string,
@@ -9,6 +11,10 @@ export type ClickmapWildcardDomain = {
 };
 
 export function normalizeClickmapOrigin(baseUrl: string): string | null {
+  if (baseUrl.includes("*")) {
+    return null;
+  }
+
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -25,16 +31,6 @@ export function normalizeClickmapOrigin(baseUrl: string): string | null {
 
 function isWildcardDomain(baseUrl: string): boolean {
   return baseUrl.includes("*");
-}
-
-function compareStrings(a: string, b: string): number {
-  if (a < b) {
-    return -1;
-  }
-  if (a > b) {
-    return 1;
-  }
-  return 0;
 }
 
 export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUrl?: string | null }>): {
@@ -63,7 +59,7 @@ export function getClickmapOriginOptions(trustedDomains: Record<string, { baseUr
   }
 
   return {
-    origins: Array.from(byOrigin.values()).sort((a, b) => compareStrings(a.origin, b.origin)),
-    wildcardDomains: wildcardDomains.sort((a, b) => compareStrings(a.baseUrl, b.baseUrl)),
+    origins: Array.from(byOrigin.values()).sort((a, b) => stringCompare(a.origin, b.origin)),
+    wildcardDomains: wildcardDomains.sort((a, b) => stringCompare(a.baseUrl, b.baseUrl)),
   };
 }
