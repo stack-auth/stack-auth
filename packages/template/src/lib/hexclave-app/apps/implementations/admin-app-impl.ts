@@ -1,7 +1,7 @@
 import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
 import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
+import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
@@ -1173,6 +1173,28 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
     return await this._interface.queryAnalytics(options);
+  }
+
+  async getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse> {
+    return await this._interface.getAnalyticsClickmap({
+      kind: options.kind,
+      member_user_ids: options.memberUserIds,
+      route_path: options.routePath,
+      route_regex: options.routeRegex,
+      url_pattern: options.urlPattern,
+      user_id: options.userId,
+      replay_id: options.replayId,
+      device: options.device,
+      viewport_width_min: options.viewportWidthMin,
+      viewport_width_max: options.viewportWidthMax,
+      sampling: options.sampling,
+      since: options.since,
+      until: options.until,
+    });
+  }
+
+  async createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse> {
+    return await this._interface.createAnalyticsClickmapToken(options);
   }
 
   async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {

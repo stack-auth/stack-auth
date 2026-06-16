@@ -105,6 +105,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           // request duration warning
           const allowedLongRequestPaths = [
             "/api/latest/internal/email-queue-step",
+            "/api/latest/analytics/clickmap",
+            "/api/latest/internal/analytics/clickmap",
             "/api/latest/internal/analytics/query",
             "/api/latest/ai/query/stream",
             "/api/latest/ai/query/generate",

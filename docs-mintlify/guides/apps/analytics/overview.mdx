@@ -106,7 +106,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
 
 ### Disabling Analytics Capture in the SDK
 
-SDK-managed analytics capture is enabled by default. If you don't want the SDK to collect any analytics, pass `analytics: { enabled: false }` when creating your client app:
+SDK-managed analytics capture is enabled by default. You can disable it by disabling the Analytics app in the config or dashboard. If you don't want the SDK to collect any analytics data at all but would like to keep the Analytics app enabled, you can also pass `analytics: { enabled: false }` when creating your client app:
 
 ```ts
 import { HexclaveClientApp } from "@hexclave/next";
@@ -119,7 +119,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
 });
 ```
 
-This stops the SDK from sending `$page-view` and `$click` events. It also resolves the `ANALYTICS_NOT_ENABLED` warning the SDK logs to the browser console when it tries to send events to a project that hasn't enabled the Analytics app — with capture disabled, the SDK never makes those requests. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
+This stops the SDK from sending `$page-view` and `$click` events. If you'd rather keep analytics, enable the Analytics app in your dashboard (**Apps -> Analytics**) instead.
 
 ## Best Practices
 

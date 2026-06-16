@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-router';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component, useMemo, useSyncExternalStore } from 'react';
+import '../styles.css';
 
 
 export function getProjectId(): string | null {
@@ -87,7 +88,7 @@ function FullPageError({ title, message }: { title: string, message: string }) {
 
 function FullPageLoadingSkeleton() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 24 }}>
+    <div className="hexclave-hosted-loading-skeleton">
       <div
         aria-label="Loading"
         aria-busy="true"
@@ -100,11 +101,50 @@ function FullPageLoadingSkeleton() {
           maxWidth: 380,
         }}
       >
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f0f0' }} />
-        <div style={{ width: '60%', height: 20, borderRadius: 999, background: '#f0f0f0' }} />
-        <div style={{ width: '82%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
-        <div style={{ width: '70%', height: 14, borderRadius: 999, background: '#f4f4f5' }} />
+        <div className="hexclave-hosted-loading-block" style={{ width: 48, height: 48, borderRadius: 12 }} />
+        <div className="hexclave-hosted-loading-block" style={{ width: '60%', height: 20, borderRadius: 999 }} />
+        <div className="hexclave-hosted-loading-block hexclave-hosted-loading-block-subtle" style={{ width: '82%', height: 14, borderRadius: 999 }} />
+        <div className="hexclave-hosted-loading-block hexclave-hosted-loading-block-subtle" style={{ width: '70%', height: 14, borderRadius: 999 }} />
       </div>
+      <style>{`
+        .hexclave-hosted-loading-skeleton {
+          align-items: center;
+          background: #ffffff;
+          display: flex;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 24px;
+        }
+
+        .hexclave-hosted-loading-block {
+          animation: hexclave-hosted-loading-pulse 1.5s ease-in-out infinite;
+          background: rgba(228, 228, 231, 0.72);
+        }
+
+        .hexclave-hosted-loading-block-subtle {
+          background: rgba(244, 244, 245, 0.86);
+        }
+
+        @media (prefers-color-scheme: dark) {
+          .hexclave-hosted-loading-skeleton {
+            background: #09090b;
+          }
+
+          .hexclave-hosted-loading-block {
+            background: rgba(39, 39, 42, 0.72);
+          }
+
+          .hexclave-hosted-loading-block-subtle {
+            background: rgba(39, 39, 42, 0.48);
+          }
+        }
+
+        @keyframes hexclave-hosted-loading-pulse {
+          50% {
+            opacity: 0.58;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -145,7 +185,7 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -176,6 +216,15 @@ function RootComponent() {
         handler: "/handler",
         signIn: "/handler/sign-in",
         signUp: "/handler/sign-up",
+        forgotPassword: "/handler/forgot-password",
+        passwordReset: "/handler/password-reset",
+        emailVerification: "/handler/email-verification",
+        accountSettings: "/handler/account-settings",
+        mfa: { type: "custom", url: "/handler/mfa", version: 1 },
+        error: { type: "custom", url: "/handler/error", version: 1 },
+        teamInvitation: { type: "custom", url: "/handler/team-invitation", version: 1 },
+        cliAuthConfirm: { type: "custom", url: "/handler/cli-auth-confirm", version: 1 },
+        onboarding: { type: "custom", url: "/handler/onboarding", version: 1 },
         afterSignIn: "/",
         afterSignUp: "/",
         afterSignOut: "/handler/sign-in",

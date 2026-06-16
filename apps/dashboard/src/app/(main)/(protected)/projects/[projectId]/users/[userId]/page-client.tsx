@@ -1613,7 +1613,7 @@ const ACTIVITY_WEEKDAY_LABELS = [
   { label: "", ariaLabel: null },
 ] as const;
 
-// Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
+// Activity clickmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
 // log-scaled intensity based on the user's own max activity over the window.
 // Tailwind needs the exact class strings at build time, so we keep them
 // enumerated here rather than building them dynamically.

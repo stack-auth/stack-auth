@@ -723,7 +723,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     return Math.max(0, Math.log(100 * likelihoodRatio));
   };
 
-  // Heatmap-style coloring: population-normalized user concentration, with a
+  // Clickmap-style coloring: population-normalized user concentration, with a
   // confidence lower bound so tiny samples don't make a country look too strong.
   const numericColorValues = countries.features
     .map((country) => {

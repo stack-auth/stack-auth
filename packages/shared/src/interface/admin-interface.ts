@@ -6,7 +6,7 @@ import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -433,6 +433,48 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return (await response.json()) as UserActivityResponse;
+  }
+
+  async getAnalyticsClickmap(options: {
+    kind: AnalyticsClickmapKind,
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    url_pattern?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsClickmapDevice,
+    viewport_width_min?: number,
+    viewport_width_max?: number,
+    sampling?: number,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsClickmapResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapResponse;
+  }
+
+  async createAnalyticsClickmapToken(options: {
+    origin: string,
+  }): Promise<AnalyticsClickmapTokenResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap-token",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapTokenResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {

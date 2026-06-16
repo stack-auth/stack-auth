@@ -143,7 +143,7 @@ export function DesignPillToggle({
       {sliderMetrics != null && (
         <div
           className={cn(
-            "pointer-events-none absolute inset-y-1 left-0 z-0 rounded-lg bg-background shadow-sm ring-1",
+            "pointer-events-none absolute inset-y-1 left-0 z-0 rounded-lg bg-white dark:bg-background shadow-sm ring-1",
             glassmorphic
               ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:ring-[hsl(240,71%,70%)]/20"
               : activeRingClass

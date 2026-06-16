@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
+import { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
+
+describe("session replay options", () => {
+  it("enables replays by default", () => {
+    expect(getSessionReplayOptions(undefined).enabled).toBe(true);
+    expect(getSessionReplayOptions({}).enabled).toBe(true);
+    expect(getSessionReplayOptions({ replays: {} }).enabled).toBe(true);
+  });
+
+  it("preserves explicit replay opt-out", () => {
+    expect(getSessionReplayOptions({ replays: { enabled: false } }).enabled).toBe(false);
+  });
+});
 
 describe("analytics option JSON conversion", () => {
   it("preserves top-level analytics options when serializing replay block classes", () => {

@@ -191,27 +191,18 @@ export function MFA(props: {
   const headerText = t("Multi-Factor Authentication");
   const instructionText = t("Enter the six-digit code from your authenticator app");
 
-  if (props.fullPage) {
-    return (
-      <MaybeFullPage fullPage={true}>
-        <div
-          className="stack-scope flex flex-col items-stretch"
-          style={{ maxWidth: "380px", flexBasis: "380px", padding: "1rem" }}
-        >
-          <div className="text-center mb-6">
-            <Typography type="h2">{headerText}</Typography>
-            <Typography className="mt-2">{instructionText}</Typography>
-          </div>
-          <MfaForm onSuccess={props.onSuccess} onCancel={props.onCancel} />
-        </div>
-      </MaybeFullPage>
-    );
-  }
-
   return (
-    <div className="flex flex-col items-stretch stack-scope">
-      <Typography className="mb-4 text-center">{instructionText}</Typography>
-      <MfaForm onSuccess={props.onSuccess} onCancel={props.onCancel} />
-    </div>
+    <MaybeFullPage fullPage={!!props.fullPage}>
+      <div className={cn(
+        "stack-scope max-w-[380px] flex-basis-[380px]",
+        props.fullPage ? "p-4" : "p-0"
+      )}>
+        <div className="text-center mb-6">
+          <Typography type="h2">{headerText}</Typography>
+          <Typography className="mt-2 text-sm text-muted-foreground">{instructionText}</Typography>
+        </div>
+        <MfaForm onSuccess={props.onSuccess} onCancel={props.onCancel} />
+      </div>
+    </MaybeFullPage>
   );
 }

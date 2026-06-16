@@ -7,7 +7,7 @@ export type AnalyticsReplayOptions = {
   /**
    * Whether session replays are enabled.
    *
-   * @default false
+   * @default true
    */
   enabled?: boolean,
   /**
@@ -40,11 +40,18 @@ export type AnalyticsOptions = {
    */
   enabled?: boolean,
   /**
-   * Options for session replay recording. Replays are disabled by default;
-   * set `enabled: true` to opt in.
+   * Options for session replay recording. Replays are enabled by default;
+   * set `enabled: false` to opt out.
    */
   replays?: AnalyticsReplayOptions,
 };
+
+export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {
+  return {
+    ...analyticsOptions?.replays,
+    enabled: analyticsOptions?.replays?.enabled ?? true,
+  };
+}
 
 /**
  * Converts AnalyticsOptions to a JSON-safe representation.

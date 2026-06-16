@@ -8,7 +8,7 @@ import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 // When that constant changes, bump this one too.
 const USER_ACTIVITY_WINDOW_DAYS = 22 * 16;
 
-it("should return an empty activity heatmap for an unknown user", async ({ expect }) => {
+it("should return an empty activity clickmap for an unknown user", async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       magic_link_enabled: true,

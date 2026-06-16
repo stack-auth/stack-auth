@@ -65,12 +65,13 @@ import { EventTracker } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
-import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
+import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
 // IF_PLATFORM js-like
+import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
@@ -685,13 +686,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     const analyticsEnabled = this._analyticsOptions?.enabled !== false;
 
-    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
+    const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && sessionReplayOptions.enabled) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
-      }, this._analyticsOptions.replays);
+      }, sessionReplayOptions);
       this._sessionRecorder.start();
     }
 
@@ -718,14 +720,24 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
 
     if (isBrowserLike()) {
+      // The OAuth callback resolution scheduled above synchronously strips `code` and `state`
+      // from the URL before its token exchange, so the nested handler must decide based on the
+      // URL the page was loaded with, not whatever is in the address bar when it runs.
+      const urlAtConstructionTime = new URL(window.location.href);
       this._trackPendingAuthResolution(async () => {
-        await this._maybeHandleNestedCrossDomainAuth();
+        await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
     }
 
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
       mountDevTool(this as any);
+    }
+    if (isBrowserLike()) {
+      // Independent of the dev tool: the clickmap overlay only ever renders
+      // when a dashboard-minted token is handed over, so the listener is
+      // mounted unconditionally (the heavy UI is lazy-loaded on demand).
+      mountClickmapOverlay(this as any);
     }
     // END_PLATFORM
   }
@@ -890,11 +902,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return targetUrl.toString();
   }
 
-  protected async _maybeHandleNestedCrossDomainAuth(): Promise<boolean> {
+  protected async _maybeHandleNestedCrossDomainAuth(urlAtConstructionTime?: URL): Promise<boolean> {
     if (typeof window === "undefined") return false;
     const currentUrl = new URL(window.location.href);
     // A real OAuth callback wins over nested handoff detection on the final return to b.com.
+    // The OAuth callback resolution strips `code` and `state` from the live URL before this
+    // runs, so the check must also consult the URL captured at construction time — otherwise
+    // we'd re-bounce to the source domain while the token exchange is still in flight.
     if (currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")) return false;
+    if (urlAtConstructionTime != null && urlAtConstructionTime.searchParams.has("code") && urlAtConstructionTime.searchParams.has("state")) return false;
     const refreshTokenId = currentUrl.searchParams.get(nestedCrossDomainAuthQueryParams.refreshTokenId);
     if (refreshTokenId == null) return false;
 

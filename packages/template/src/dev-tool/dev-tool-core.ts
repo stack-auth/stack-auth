@@ -1,10 +1,12 @@
 // IF_PLATFORM js-like
 
 import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
+import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
 import { envVars } from "../generated/env";
+import { getGlobalUiInstance, h, hasAppendChild, setGlobalUiInstance, setHtml, type UiGlobalInstance } from "../in-page-ui/dom";
 import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
 import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
@@ -52,7 +54,7 @@ type DevToolState = {
 // Hexclave rebrand: UI-only local prefs — straight rename (one-time reset is harmless)
 const STORAGE_KEY = '__hexclave-dev-tool-state';
 const TRIGGER_POS_KEY = 'hexclave-devtool-trigger-position';
-const ROOT_ID = '__hexclave-dev-tool-root';
+const ROOT_ID = DEV_TOOL_ROOT_ID;
 const GLOBAL_INSTANCE_KEY = '__hexclave-dev-tool-instance';
 const MAX_LOG_ENTRIES = 500;
 const CONSOLE_LOG_BATCH_SIZE = 100;
@@ -67,6 +69,10 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>' },
   { id: 'support', label: 'Support', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
 ];
+
+// Clickmaps is intentionally NOT a dev tool tab or feature. It's a fully
+// independent module (see src/clickmap) with its own mount, root element, and
+// styles, so the dev tool can be changed or removed without affecting it.
 
 const DEFAULT_STATE: DevToolState = {
   isOpen: false,
@@ -138,29 +144,6 @@ type LogStore = {
   clear(): void;
   subscribe(fn: () => void): () => void;
 };
-
-type DevToolGlobalInstance = {
-  cleanup: () => void;
-};
-
-function isDevToolGlobalInstance(value: unknown): value is DevToolGlobalInstance {
-  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'cleanup') === 'function';
-}
-
-function getGlobalDevToolInstance(): DevToolGlobalInstance | null {
-  if (typeof window === 'undefined') return null;
-  const value: unknown = Reflect.get(window, GLOBAL_INSTANCE_KEY);
-  return isDevToolGlobalInstance(value) ? value : null;
-}
-
-function setGlobalDevToolInstance(instance: DevToolGlobalInstance | null) {
-  if (typeof window === 'undefined') return;
-  if (instance === null) {
-    Reflect.deleteProperty(window, GLOBAL_INSTANCE_KEY);
-  } else {
-    Reflect.set(window, GLOBAL_INSTANCE_KEY, instance);
-  }
-}
 
 function getGlobalLogStore(): LogStore {
   const g = globalThis as any;
@@ -268,41 +251,6 @@ function generateRandomEmail(): string {
 // ---------------------------------------------------------------------------
 // DOM helpers
 // ---------------------------------------------------------------------------
-
-function h<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs?: Record<string, any> | null,
-  ...children: (string | Node | null | undefined)[]
-): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
-  if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (v == null) continue;
-      if (k === 'className') {
-        el.className = v;
-      } else if (k === 'style' && typeof v === 'object') {
-        Object.assign(el.style, v);
-      } else if (k.startsWith('on') && typeof v === 'function') {
-        el.addEventListener(k.slice(2).toLowerCase(), v);
-      } else {
-        el.setAttribute(k, String(v));
-      }
-    }
-  }
-  for (const child of children) {
-    if (child == null) continue;
-    el.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
-  }
-  return el;
-}
-
-function setHtml(el: HTMLElement, html: string) {
-  el.innerHTML = html;
-}
-
-function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
-  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';
-}
 
 function parseMarkdownImage(line: string): { alt: string, src: string } | null {
   const match = line.trim().match(/^!\[([^\]]*)\]\((.+)\)$/);
@@ -663,8 +611,13 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 // Overview tab
 // ---------------------------------------------------------------------------
 
+function hasPersistentTokenStoreForDevTool(app: StackClientApp<boolean>): boolean {
+  return app[hexclaveAppInternalsSymbol].getConstructorOptions().tokenStore !== null;
+}
+
 function createOverviewTab(app: StackClientApp<true>): TabResult {
   const container = h('div', { className: 'sdt-ov' });
+  const hasPersistentTokenStore = hasPersistentTokenStoreForDevTool(app);
 
   // ── Identity card ──────────────────────────────────────────────────────────
   const heroCard = h('div', { className: 'sdt-ov-card sdt-ov-card-hero' });
@@ -718,6 +671,12 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 
   function rebuildActions() {
     actions.innerHTML = '';
+    if (!hasPersistentTokenStore) {
+      userName.textContent = 'Current user unavailable';
+      userEmail.textContent = 'This app was initialized without a token store';
+      actions.appendChild(h('button', { className: 'sdt-ov-btn sdt-ov-btn-wide', disabled: 'true' }, 'Session actions unavailable'));
+      return;
+    }
     if (currentUser) {
       const signOutBtn = h('button', { className: 'sdt-ov-btn sdt-ov-btn-danger' }, 'Sign Out');
       signOutBtn.disabled = loading;
@@ -892,10 +851,13 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 
   function buildChecklist() {
     checksCard.innerHTML = '';
+    const currentUserCheck = hasPersistentTokenStore
+      ? { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' }
+      : { ok: true, label: 'Current-user tools unavailable', hint: null };
     const checks = [
       { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
       { ok: hasActiveAuthMethod === true, label: 'Auth method active', hint: hasActiveAuthMethod === null ? 'Still checking project config' : null },
-      { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' },
+      currentUserCheck,
     ];
     const passCount = checks.filter((c) => c.ok).length;
     const allGood = passCount === checks.length;
@@ -937,6 +899,17 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   }
 
   async function refreshUser() {
+    if (!hasPersistentTokenStore) {
+      avatar.className = 'sdt-ov-avatar';
+      avatar.textContent = '?';
+      userName.textContent = 'Current user unavailable';
+      userEmail.textContent = 'This app was initialized without a token store';
+      authIndicator.style.display = 'none';
+      currentUser = null;
+      rebuildActions();
+      buildChecklist();
+      return;
+    }
     try {
       currentUser = await app.getUser();
 
@@ -2351,7 +2324,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const body = Reflect.get(document, 'body');
   if (!hasAppendChild(body)) return () => {};
 
-  getGlobalDevToolInstance()?.cleanup();
+  getGlobalUiInstance(GLOBAL_INSTANCE_KEY)?.cleanup();
   let existingRoot = document.getElementById(ROOT_ID);
   while (existingRoot !== null) {
     existingRoot.remove();
@@ -2433,12 +2406,12 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   });
 
   let didCleanup = false;
-  const instance: DevToolGlobalInstance = {
+  const instance: UiGlobalInstance = {
     cleanup: () => {
       if (didCleanup) return;
       didCleanup = true;
-      if (getGlobalDevToolInstance() === instance) {
-        setGlobalDevToolInstance(null);
+      if (getGlobalUiInstance(GLOBAL_INSTANCE_KEY) === instance) {
+        setGlobalUiInstance(GLOBAL_INSTANCE_KEY, null);
       }
       trigger.cleanup();
       removeRequestListener();
@@ -2448,7 +2421,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
       }
     },
   };
-  setGlobalDevToolInstance(instance);
+  setGlobalUiInstance(GLOBAL_INSTANCE_KEY, instance);
 
   return () => {
     instance.cleanup();
