@@ -998,7 +998,14 @@ export function registerDevCommand(program: Command) {
       // final session state so it can be cleaned up after the child exits.
       const heartbeatPromise = (async (): Promise<DashboardSessionState | null> => {
         const session = await sessionPromise;
-        if (session == null || shouldStop()) return null;
+        if (session == null) return null;
+        if (shouldStop()) {
+          // Child already exited while session was registering in the background;
+          // close it so the dashboard shuts down promptly instead of waiting for
+          // the FIRST_HEARTBEAT_TTL to expire.
+          await closeSession(session.session_id, secret, port);
+          return null;
+        }
         if (cachedEnv != null) {
           maybeOpenOnboardingPage(session, port);
         }

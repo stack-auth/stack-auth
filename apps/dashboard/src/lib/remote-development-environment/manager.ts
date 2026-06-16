@@ -240,7 +240,7 @@ async function getOrCreateProject(options: {
   apiBaseUrl: string,
   configFilePath: string,
   anonymousRefreshToken?: string,
-}): Promise<{ anonymousRefreshToken: string, project: RemoteDevelopmentEnvironmentProject }> {
+}): Promise<{ anonymousRefreshToken: string, project: RemoteDevelopmentEnvironmentProject, adminOwnedProject: AdminOwnedProject }> {
   logRemoteDevelopmentEnvironment("Ensuring development-environment project exists", {
     apiBaseUrl: options.apiBaseUrl,
     configFilePath: options.configFilePath,
@@ -279,7 +279,7 @@ async function getOrCreateProject(options: {
       teamId: updatedProject.teamId,
       configFilePath: options.configFilePath,
     });
-    return { anonymousRefreshToken, project: updatedProject };
+    return { anonymousRefreshToken, project: updatedProject, adminOwnedProject: existingProject };
   }
 
   const label = basename(dirname(options.configFilePath)) || "Project";
@@ -330,7 +330,7 @@ async function getOrCreateProject(options: {
       [options.configFilePath]: mappedProject,
     },
   }));
-  return { anonymousRefreshToken, project: mappedProject };
+  return { anonymousRefreshToken, project: mappedProject, adminOwnedProject: project };
 }
 
 export async function getRemoteDevelopmentEnvironmentAccessToken(): Promise<{ accessToken: string, expiresAtMillis: number, issuedAtMillis: number, userId: string }> {
@@ -392,6 +392,48 @@ async function syncRemoteDevelopmentEnvironmentOnboardingStatus(
   return onboardingStatus;
 }
 
+// Core sync logic shared by the standalone watcher path (which re-authenticates)
+// and the fast session-registration path (which reuses an existing AdminOwnedProject).
+async function syncConfigCore(options: {
+  configFilePath: string,
+  project: RemoteDevelopmentEnvironmentProject,
+  ownedProject: AdminOwnedProject,
+  configRead: { config: Config, showOnboarding: boolean },
+}): Promise<ProjectOnboardingStatus> {
+  const { config, showOnboarding } = options.configRead;
+  const configHash = sha256String(JSON.stringify({ config, showOnboarding, syncFormatVersion: CONFIG_SYNC_FORMAT_VERSION }));
+  const onboardingStatus = await syncRemoteDevelopmentEnvironmentOnboardingStatus(options.ownedProject, showOnboarding);
+  if (options.project.lastSyncedConfigHash === configHash) {
+    return onboardingStatus;
+  }
+
+  logRemoteDevelopmentEnvironment("Syncing config to development-environment project", {
+    projectId: options.project.projectId,
+    configFilePath: options.configFilePath,
+    showOnboarding,
+  });
+  await options.ownedProject.replaceConfigOverride("branch", config);
+
+  updateRemoteDevelopmentEnvironmentState((current) => ({
+    ...current,
+    projectsByConfigPath: {
+      ...current.projectsByConfigPath,
+      [options.configFilePath]: {
+        ...options.project,
+        lastSyncedConfigHash: configHash,
+        updatedAtMillis: Date.now(),
+      },
+    },
+  }));
+  logRemoteDevelopmentEnvironment("Synced config to development-environment project", {
+    projectId: options.project.projectId,
+    configFilePath: options.configFilePath,
+    showOnboarding,
+    onboardingStatus,
+  });
+  return onboardingStatus;
+}
+
 async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboardingStatus | undefined> {
   const state = readRemoteDevelopmentEnvironmentState();
   const project = state.projectsByConfigPath[configFilePath];
@@ -404,8 +446,7 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     return undefined;
   }
 
-  const { config, showOnboarding } = await readConfigFile(configFilePath);
-  const configHash = sha256String(JSON.stringify({ config, showOnboarding, syncFormatVersion: CONFIG_SYNC_FORMAT_VERSION }));
+  const configRead = await readConfigFile(configFilePath);
   const app = createInternalApp(project.apiBaseUrl, state.anonymousRefreshToken);
   const user = await app.getUser({ or: "anonymous" });
   const ownedProject = (await user.listOwnedProjects()).find((p) => p.id === project.projectId);
@@ -416,36 +457,7 @@ async function syncConfigToRemote(configFilePath: string): Promise<ProjectOnboar
     });
     return undefined;
   }
-  const onboardingStatus = await syncRemoteDevelopmentEnvironmentOnboardingStatus(ownedProject, showOnboarding);
-  if (project.lastSyncedConfigHash === configHash) {
-    return onboardingStatus;
-  }
-
-  logRemoteDevelopmentEnvironment("Syncing config to development-environment project", {
-    projectId: project.projectId,
-    configFilePath,
-    showOnboarding,
-  });
-  await ownedProject.replaceConfigOverride("branch", config);
-
-  updateRemoteDevelopmentEnvironmentState((current) => ({
-    ...current,
-    projectsByConfigPath: {
-      ...current.projectsByConfigPath,
-      [configFilePath]: {
-        ...project,
-        lastSyncedConfigHash: configHash,
-        updatedAtMillis: Date.now(),
-      },
-    },
-  }));
-  logRemoteDevelopmentEnvironment("Synced config to development-environment project", {
-    projectId: project.projectId,
-    configFilePath,
-    showOnboarding,
-    onboardingStatus,
-  });
-  return onboardingStatus;
+  return await syncConfigCore({ configFilePath, project, ownedProject, configRead });
 }
 
 function scheduleSync(configFilePath: string): void {
@@ -572,14 +584,33 @@ export async function registerRemoteDevelopmentEnvironmentSession(options: {
     });
     ensureConfigFileExists(configFilePath);
     const state = readRemoteDevelopmentEnvironmentState();
-    const { project } = await getOrCreateProject({
+    // Start config file reading in parallel with project creation/lookup to
+    // avoid serialising jiti.import (which compiles TypeScript) behind the
+    // network round-trips in getOrCreateProject.
+    const configReadPromise = readConfigFile(configFilePath);
+    const { project, adminOwnedProject } = await getOrCreateProject({
       apiBaseUrl: options.apiBaseUrl,
       configFilePath,
       anonymousRefreshToken: state.anonymousRefreshToken,
     }).catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
     ensureWatcher(configFilePath);
-    const onboardingStatus = await syncConfigToRemoteNow(configFilePath)
+    // Reuse the AdminOwnedProject from getOrCreateProject to avoid duplicate
+    // getUser + listOwnedProjects network calls that syncConfigToRemote would
+    // otherwise make independently.
+    const pendingSyncTimer = getGlobals().syncTimers.get(configFilePath);
+    if (pendingSyncTimer != null) {
+      clearTimeout(pendingSyncTimer);
+      getGlobals().syncTimers.delete(configFilePath);
+    }
+    const configRead = await configReadPromise
       .catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
+    const onboardingStatus = await syncConfigCore({
+      configFilePath,
+      project,
+      ownedProject: adminOwnedProject,
+      configRead,
+    }).catch((error: unknown) => throwApiUnavailableIfConnectionFailure(options.apiBaseUrl, error));
+    getGlobals().syncErrors.delete(configFilePath);
     const sessionId = randomUUID();
     getGlobals().sessions.set(sessionId, {
       configFilePath,
