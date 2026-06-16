@@ -302,11 +302,14 @@ export const devToolCSS = getInPageUiBaseCSS('.hexclave-devtool') + `
   .hexclave-devtool .sdt-tab-pane {
     position: absolute;
     inset: 0;
+    display: none;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px;
-    visibility: hidden;
+    background: var(--sdt-bg);
+    opacity: 0;
     pointer-events: none;
+    z-index: 0;
   }
 
   .hexclave-devtool .sdt-tab-pane-iframe {
@@ -315,20 +318,10 @@ export const devToolCSS = getInPageUiBaseCSS('.hexclave-devtool') + `
   }
 
   .hexclave-devtool .sdt-tab-pane-active {
-    visibility: visible;
+    display: block;
+    opacity: 1;
     pointer-events: auto;
-    animation: sdt-tab-fade-in 0.15s ease-out;
-  }
-
-  @keyframes sdt-tab-fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    z-index: 1;
   }
 
   /* ===== Overview tab — single column ===== */
