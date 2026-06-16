@@ -110,6 +110,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Ensure **aggressively** that all code has low coupling and high cohesion. This is really important as it makes sure our code remains consistent and maintainable. Eagerly refactor things into better abstractions and look out for them actively.
 - Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 - Whenever you change the URL of a page in the docs (or remove one), add a redirect in the docs-mintlify/docs.json file to make sure we don't lose any SEO juice.
+- In Mintlify docs, when a code example imports from a framework SDK package such as `@hexclave/next`, `@hexclave/react`, or `@hexclave/js` but the snippet is not specific to that framework, add an inline comment like `// replace \`next\` with the correct framework SDK package`.
 - When you made frontend (or docs, dashboard, demo, etc.) changes, and you have a browser MCP in your list of MCP tools, make sure to test the changes in the browser MCP.
 - If you're using the browser to test the dashboard and need to sign in, use GitHub OAuth to sign in (by default it should redirect you to the mock OAuth provider page, where you can sign in with admin@example.com).
 - NEVER INSTALL A NEW PACKAGE (or anything else) WITHOUT EXPLICIT APPROVAL FROM THE USER.

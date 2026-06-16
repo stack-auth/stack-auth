@@ -1,7 +1,7 @@
 "use client";
 
-import { ALL_APPS_FRONTEND, hasNavigationItems, isSubApp } from "@/lib/apps-frontend";
-import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS_FRONTEND, hasNavigationItems } from "@/lib/apps-frontend";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 type InstalledAppConfig = {
   enabled?: boolean,
@@ -29,9 +29,9 @@ export function getAllAvailableAppIds(): AppId[] {
  * - Sub-apps are enabled when their parent app is enabled.
  */
 export function isAppEnabled(installedApps: InstalledAppsMap, appId: AppId): boolean {
-  const appFrontend = ALL_APPS_FRONTEND[appId];
-  if (isSubApp(appFrontend)) {
-    return installedApps[appFrontend.parentAppId]?.enabled ?? false;
+  const parentAppId = getParentAppId(appId);
+  if (parentAppId != null) {
+    return installedApps[parentAppId]?.enabled ?? false;
   }
   return installedApps[appId]?.enabled ?? false;
 }

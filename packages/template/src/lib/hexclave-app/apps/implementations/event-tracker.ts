@@ -108,6 +108,7 @@ type TrackedEvent = {
 export class EventTracker {
   private _started = false;
   private _cancelled = false;
+  private _disabled = false;
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
@@ -173,6 +174,7 @@ export class EventTracker {
   }
 
   private _pushEvent(event: TrackedEvent) {
+    if (this._disabled) return;
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
@@ -464,6 +466,8 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    if (this._disabled) return;
+
     // A keepalive flush means the page is unloading — a click still awaiting
     // dead-click classification led to that unload, so it is alive by
     // definition and ships unmarked.
@@ -500,6 +504,18 @@ export class EventTracker {
     }
 
     if (!res.data.ok) {
+      // If the server tells us analytics is not enabled for this project,
+      // silently disable the tracker — no point retrying or warning the user.
+      const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
+      if (knownError === "ANALYTICS_NOT_ENABLED") {
+        this._disabled = true;
+        if (this._flushTimer !== null) {
+          clearInterval(this._flushTimer);
+          this._flushTimer = null;
+        }
+        this._teardown();
+        return;
+      }
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
     }
   }

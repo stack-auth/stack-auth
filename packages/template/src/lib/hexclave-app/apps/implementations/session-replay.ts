@@ -164,6 +164,7 @@ export type SessionRecorderDeps = {
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
+  private _disabled = false;
   private _stopRecording: (() => void) | null = null;
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -231,6 +232,7 @@ export class SessionRecorder {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    if (this._disabled) return;
     if (this._events.length === 0) return;
     // Prevent concurrent in-flight HTTP requests. When a flush is already
     // in-flight, a second batch could race on the server (both call
@@ -268,6 +270,18 @@ export class SessionRecorder {
       }
 
       if (!res.data.ok) {
+        // If the server tells us analytics is not enabled for this project,
+        // silently disable the recorder — no point retrying or warning the user.
+        const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
+        if (knownError === "ANALYTICS_NOT_ENABLED") {
+          this._disabled = true;
+          if (this._flushTimer !== null) {
+            clearInterval(this._flushTimer);
+            this._flushTimer = null;
+          }
+          this._stopCurrentRecording();
+          return;
+        }
         captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
       }
     } finally {
