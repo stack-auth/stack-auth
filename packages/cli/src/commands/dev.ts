@@ -250,13 +250,21 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   }
 }
 
-function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
+function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string | null {
   assertBundledDashboardExists();
   const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
-  // maxRetries handles transient ENOTEMPTY/EBUSY from concurrent CLI processes
-  // writing into the same directory (e.g. parallel `hexclave dev` invocations).
-  rmSync(runtimeRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 });
+  try {
+    rmSync(runtimeRoot, { recursive: true, force: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY") {
+      // Another process is concurrently writing into this directory (e.g.
+      // a parallel `hexclave dev` invocation running cpSync). Bail out and
+      // let the caller poll for the dashboard that process will start.
+      return null;
+    }
+    throw error;
+  }
   cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
@@ -368,7 +376,7 @@ function startDashboardProcess(options: {
   dashboardEnv: NodeJS.ProcessEnv,
   logFd: number,
   port: number,
-}): ChildProcess {
+}): ChildProcess | null {
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   if (devDashboardCommand != null) {
     writeSync(options.logFd, `Using ${DEV_DASHBOARD_COMMAND_ENV_VAR}: ${devDashboardCommand}\n`);
@@ -382,6 +390,10 @@ function startDashboardProcess(options: {
   }
 
   const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
+  if (dashboardServerPath == null) {
+    // Another process is concurrently preparing the runtime directory.
+    return null;
+  }
   return spawn(process.execPath, [dashboardServerPath], {
     cwd: resolve(dirname(dashboardServerPath), "../.."),
     detached: true,
@@ -488,12 +500,18 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
         closeSync(logFd);
       }
     })();
-    if (child.pid == null) {
-      throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+    if (child == null) {
+      // Another CLI process is concurrently preparing the dashboard runtime
+      // directory. Skip spawning and wait for their server to come up.
+      logDev("Another process is starting the dashboard; waiting for it...");
+    } else {
+      if (child.pid == null) {
+        throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+      }
+      recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+      logDev(`Dashboard logs: ${logPath}`);
+      child.unref();
     }
-    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
-    logDev(`Dashboard logs: ${logPath}`);
-    child.unref();
 
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
