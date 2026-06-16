@@ -1,18 +1,22 @@
-// Eval run orchestrator. Each run gets one Vercel Sandbox; steps execute
-// sequentially inside it as headless Claude Code sessions whose inference is
-// routed through OpenRouter. All progress (run/step status, worklog message
+// Eval run orchestrator. Each run gets one Freestyle VM; steps execute
+// sequentially inside it as headless AI SDK harness sessions whose inference
+// is routed through OpenRouter. All progress (run/step status, worklog message
 // traces, artifacts) is persisted to SpacetimeDB so the UI updates live.
 
+import { HarnessAgent, type HarnessAgentSession } from "@ai-sdk/harness/agent";
+import { createClaudeCode } from "@ai-sdk/harness-claude-code";
 import { randomUUID } from "node:crypto";
-import type { Command, Sandbox } from "@vercel/sandbox";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import type { EvalRunRow } from "@/types";
-import { assertOpenRouterKeyValid, claudeCodeOpenRouterEnv, computeOpenRouterCostUsd } from "./openrouter";
+import type { EvalRunRow, EvalStepRunRow } from "@/types";
+import { assertOpenRouterKeyValid, computeOpenRouterCostUsd, openRouterAnthropicAuth } from "./openrouter";
 import { StreamUsageAccumulator } from "./usage";
 import {
   DEFAULT_RUN_TIMEOUT_MINUTES,
   EVAL_DIR,
+  type EvalSandbox,
   WORKSPACE_DIR,
+  type RunningCommand,
+  createFreestyleHarnessSandboxProvider,
   createEvalSandbox,
   getEvalSandbox,
   readSandboxFile,
@@ -25,7 +29,9 @@ import {
   appendEvalWorklog,
   createEvalRun,
   getRun,
+  getStepRun,
   getWorkflow,
+  listWorklog,
   listStepRuns,
   updateEvalRun,
   upsertEvalStepRun,
@@ -33,10 +39,10 @@ import {
 import { FRAMEWORK_CHOICES } from "./default-workflow";
 import { ACTIVE_RUN_STATUSES, describeError, parseSteps, renderTemplate, type EvalRunConfig, type EvalStepDefinition, type RunStatus } from "./types";
 
-// Runs are fully headless (`claude -p`), so any interactive turn — plan-mode
+// Runs are fully headless, so any interactive turn — plan-mode
 // approval or a clarifying question — hangs forever with nobody to answer, and
-// the step ends having written no code. This preamble is prepended to every
-// step prompt, and the matching tools are hard-disabled on the CLI below.
+// the step ends having written no code. This preamble is applied to every
+// HarnessAgent session and also persisted beside the prompt for later analysis.
 const AUTONOMY_PREAMBLE = `<execution_mode>
 You are running FULLY AUTONOMOUSLY and HEADLESS. There is NO human available to approve plans, answer questions, or confirm anything — any attempt to wait for a person will hang the run and the step will fail with no work done.
 
@@ -59,8 +65,9 @@ const WORKLOG_FLUSH_BYTES = 256 * 1024;
 
 type ActiveRun = {
   abortController: AbortController,
-  sandbox: Sandbox | null,
-  currentCommand: Command | null,
+  sandbox: EvalSandbox | null,
+  currentCommand: RunningCommand | null,
+  currentHarnessSession: HarnessAgentSession | null,
 };
 
 const globalStore = globalThis as unknown as { __hexclaveEvalActiveRuns?: Map<string, ActiveRun> };
@@ -78,7 +85,9 @@ class WorklogWriter {
   // for the report step to analyze.
   readonly rawLines: string[] = [];
 
-  constructor(private readonly runId: string, private readonly stepRunId: string) {}
+  constructor(private readonly runId: string, private readonly stepRunId: string, initialSeq = 0) {
+    this.seq = initialSeq;
+  }
 
   nextSeq(): number {
     return this.seq;
@@ -144,7 +153,7 @@ export async function startEvalRun(options: StartRunOptions): Promise<string> {
     configJson: JSON.stringify(config),
   });
 
-  const active: ActiveRun = { abortController: new AbortController(), sandbox: null, currentCommand: null };
+  const active: ActiveRun = { abortController: new AbortController(), sandbox: null, currentCommand: null, currentHarnessSession: null };
   activeRuns().set(runId, active);
   // Fire and forget; progress is observable via SpacetimeDB.
   runAsynchronously(async () => {
@@ -167,6 +176,8 @@ export type BatchRunOptions = {
   variables?: Record<string, string>,
   labelPrefix?: string,
 };
+
+export type ResumeRunMode = "continue" | "restart-step";
 
 export async function startEvalBatch(options: BatchRunOptions): Promise<string[]> {
   const runsPerModel = Math.max(1, Math.min(options.runsPerModel ?? 1, 10));
@@ -222,10 +233,25 @@ async function executeRun(
     await updateEvalRun({ runId, status: "booting", sandboxId: sandbox.sandboxId, currentStepIndex: 0 });
 
     const setupLog = new WorklogWriter(runId, setupStepRunId);
-    setupLog.add("meta", `Sandbox ${sandbox.sandboxId} created (timeout ${config.timeoutMinutes}m). Installing Claude Code, pnpm and turbo…`, { raw: false });
+    setupLog.add("meta", `Freestyle VM ${sandbox.sandboxId} created (timeout ${config.timeoutMinutes}m). Installing pnpm and turbo...`, { raw: false });
+    await setupLog.flush();
     const setup = await runStreamedCommand(sandbox, {
       cmd: "bash",
-      args: ["-lc", `mkdir -p ${WORKSPACE_DIR} ${EVAL_DIR}/worklogs && npm install -g @anthropic-ai/claude-code pnpm turbo 2>&1 && claude --version`],
+      // The Freestyle base image installs Node via nvm and exposes node/npm only
+      // by symlinking them into /usr/local/bin; the nvm bin dir itself is NOT on
+      // PATH. So `npm install -g` succeeds but the resulting pnpm/turbo binaries
+      // land in an off-PATH directory and every later shell hits "command not
+      // found" (exit 127). Symlink the freshly installed global bins into
+      // /usr/local/bin (on PATH for both login and non-login shells, including the
+      // ones the agent spawns) so pnpm/turbo are reachable for the whole run.
+      // Pin pnpm to v9: the claude-code harness bootstrap runs
+      // `pnpm install --frozen-lockfile` against a v9.0-format lockfile, and
+      // pnpm v10+ turns "Ignored build scripts" into a hard error
+      // (ERR_PNPM_IGNORED_BUILDS, exit 1) for @anthropic-ai/claude-code. The
+      // harness already runs that package's install.cjs itself, so the build
+      // script never needs to run during install — pnpm v9 only warns, so the
+      // bootstrap succeeds. turbo stays latest.
+      args: ["-lc", `set -e && mkdir -p ${WORKSPACE_DIR} ${EVAL_DIR}/worklogs && npm install -g pnpm@9 turbo 2>&1 && NPM_BIN="$(npm prefix -g)/bin" && for b in pnpm pnpx turbo; do [ -e "$NPM_BIN/$b" ] && ln -sf "$NPM_BIN/$b" "/usr/local/bin/$b"; done && pnpm --version && turbo --version`],
       signal,
       onStdoutLine: line => setupLog.add("stdout", line, { raw: false }),
       onStderrLine: line => setupLog.add("stderr", line, { raw: false }),
@@ -242,28 +268,20 @@ async function executeRun(
     }
     await upsertEvalStepRun({
       stepRunId: setupStepRunId, runId, stepIndex: 0, stepName: "Sandbox setup", model: "-",
-      status: "completed", resultText: `Sandbox ${sandbox.sandboxId} ready`, numMessages: 0,
+      status: "completed", resultText: `Freestyle VM ${sandbox.sandboxId} ready`, numMessages: 0,
     });
 
-    for (let i = 0; i < steps.length; i++) {
-      throwIfAborted(signal);
-      const step = steps[i];
-      const stepIndex = i + 1;
-      const stepRunId = `${runId}-step-${stepIndex}`;
-      const stepModel = config.stepModels?.[stepIndex] ?? step.model ?? runModel;
-
-      await updateEvalRun({ runId, status: "running", currentStepIndex: stepIndex, contextJson: JSON.stringify(context) });
-      const result = await executeStep({
-        runId, stepRunId, stepIndex, step, model: stepModel, sandbox, signal, active, context,
-      });
-
-      context[step.outputKey ?? `step${stepIndex}`] = result.resultText;
-      await updateEvalRun({ runId, status: "running", currentStepIndex: stepIndex, contextJson: JSON.stringify(context) });
-      if (!result.success) {
-        failed = true;
-        throw new Error(`Step ${stepIndex} (${step.name}) failed: ${result.error ?? "unknown error"}`);
-      }
-    }
+    await executeStepsFrom({
+      runId,
+      runModel,
+      steps,
+      config,
+      active,
+      sandbox,
+      signal,
+      context,
+      startStepIndex: 1,
+    });
 
     await updateEvalRun({ runId, status: "completed", currentStepIndex: steps.length, contextJson: JSON.stringify(context) });
   } catch (error) {
@@ -277,13 +295,13 @@ async function executeRun(
     }
     failed = status === "failed";
   } finally {
-    // Keep failed sandboxes alive (until their timeout) for post-mortem exec;
-    // stop the rest to save resources.
-    if (active.sandbox && !failed) {
+    // Keep failed VMs alive (until their idle timeout) for post-mortem exec;
+    // delete the rest to save resources.
+    if (active.sandbox && !failed && !signal.aborted) {
       try {
-        await active.sandbox.stop();
+        await active.sandbox.delete();
       } catch (stopError) {
-        console.error(`[evals] failed to stop sandbox for ${runId}:`, stopError);
+        console.error(`[evals] failed to delete Freestyle VM for ${runId}:`, stopError);
       }
     }
   }
@@ -295,15 +313,18 @@ type ExecuteStepParams = {
   stepIndex: number,
   step: EvalStepDefinition,
   model: string,
-  sandbox: Sandbox,
+  sandbox: EvalSandbox,
   signal: AbortSignal,
   active: ActiveRun,
   context: Record<string, string>,
+  attemptMode?: ResumeRunMode,
+  resumeFrom?: EvalStepRunRow,
 };
 
 async function executeStep(params: ExecuteStepParams): Promise<{ success: boolean, resultText: string, error?: string }> {
-  const { runId, stepRunId, stepIndex, step, model, sandbox, signal, active, context } = params;
-  const worklog = new WorklogWriter(runId, stepRunId);
+  const { runId, stepRunId, stepIndex, step, model, sandbox, signal, active, context, attemptMode, resumeFrom } = params;
+  const nextSeq = await nextWorklogSeq(stepRunId);
+  const worklog = new WorklogWriter(runId, stepRunId, nextSeq);
 
   let numMessages = 0;
   let resultText = "";
@@ -331,60 +352,91 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
 
   await upsertStep("running");
 
-  const prompt = AUTONOMY_PREAMBLE + renderTemplate(step.prompt, context);
+  const prompt = buildStepPrompt({
+    step,
+    context,
+    attemptMode,
+    resumeFrom,
+  });
   const promptPath = `${EVAL_DIR}/step-${stepIndex}-prompt.md`;
-  await writeSandboxFile(sandbox, promptPath, prompt);
-  worklog.add("meta", JSON.stringify({ type: "eval_step_started", stepIndex, stepName: step.name, model, prompt }), { raw: false });
+  await writeSandboxFile(sandbox, promptPath, AUTONOMY_PREAMBLE + prompt);
+  worklog.add("meta", JSON.stringify({
+    type: "eval_step_started",
+    stepIndex,
+    stepName: step.name,
+    model,
+    attemptMode: attemptMode ?? "initial",
+    previousStatus: resumeFrom?.status,
+    previousError: resumeFrom?.error,
+    prompt,
+  }), { raw: false });
+  // The next long-running call may hang before Claude Code emits its first
+  // stream part. Persist the start marker immediately so the run detail panel
+  // is never blank while a step is already running.
+  await worklog.flush();
 
-  const handleStreamLine = (line: string) => {
-    let kind = "meta";
-    try {
-      const message = JSON.parse(line) as { type?: string, result?: unknown, total_cost_usd?: unknown, usage?: unknown, session_id?: unknown, is_error?: unknown };
-      kind = typeof message.type === "string" ? message.type : "meta";
-      numMessages += 1;
-      usage.addMessage(message);
-      if (message.type === "result") {
-        resultText = typeof message.result === "string" ? message.result : JSON.stringify(message.result ?? "");
-        if (typeof message.total_cost_usd === "number") costUsd = message.total_cost_usd.toFixed(6);
-        if (typeof message.session_id === "string") sessionId = message.session_id;
-        if (message.is_error === true) isError = true;
-      } else if (typeof (message as { session_id?: unknown }).session_id === "string" && !sessionId) {
-        sessionId = (message as { session_id: string }).session_id;
-      }
-    } catch {
-      kind = "stdout";
-    }
-    worklog.add(kind, line);
+  const handleStreamPart = (part: unknown) => {
+    const kind = typeof part === "object" && part !== null && typeof (part as { type?: unknown }).type === "string"
+      ? (part as { type: string }).type
+      : "meta";
+    numMessages += 1;
+    worklog.add(kind, JSON.stringify(part));
     const now = Date.now();
     if (now - lastStepUpsert > 2000) {
       lastStepUpsert = now;
-      void upsertStep("running").catch(() => {});
+      runAsynchronously(() => upsertStep("running"));
     }
   };
 
   try {
-    // Hard guard: even if the model tries, these interactive tools can't be used
-    // headless. Disabling them forces it to implement instead of stalling.
-    const claudeCommand = `claude -p --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools "ExitPlanMode,AskUserQuestion" < ${shellQuote(promptPath)}`;
-    const { exitCode } = await runStreamedCommand(sandbox, {
-      cmd: "bash",
-      args: ["-lc", claudeCommand],
-      cwd: WORKSPACE_DIR,
-      env: {
-        ...claudeCodeOpenRouterEnv(model),
-        IS_SANDBOX: "1",
+    const auth = openRouterAnthropicAuth(model);
+    const agent = new HarnessAgent({
+      harness: createClaudeCode({
+        model: auth.model,
+        auth: {
+          anthropic: {
+            authToken: auth.authToken,
+            baseUrl: auth.baseUrl,
+          },
+        },
+      }),
+      sandbox: createFreestyleHarnessSandboxProvider(sandbox),
+      instructions: AUTONOMY_PREAMBLE,
+      permissionMode: "allow-all",
+      onSandboxSession: async ({ session, sessionWorkDir, abortSignal }) => {
+        await session.run({
+          command: `rm -rf ${shellQuote(sessionWorkDir)} && ln -s ${shellQuote(WORKSPACE_DIR)} ${shellQuote(sessionWorkDir)}`,
+          abortSignal,
+        });
       },
-      signal,
-      onStdoutLine: handleStreamLine,
-      onStderrLine: line => worklog.add("stderr", line, { raw: false }),
-      onCommand: cmd => { active.currentCommand = cmd; },
     });
+    const session = await agent.createSession({ sessionId: stepRunId, abortSignal: signal });
+    active.currentHarnessSession = session;
+    sessionId = session.sessionId;
+
+    const result = await agent.stream({
+      session,
+      prompt,
+      abortSignal: signal,
+    });
+
+    for await (const part of result.stream) {
+      handleStreamPart(part);
+      if (part.type === "text-delta") {
+        resultText += part.text;
+      } else if (part.type === "error") {
+        isError = true;
+      }
+    }
+
+    resultText = await result.text;
+    usage.addAiSdkUsage(await result.usage);
+    await session.destroy();
+    active.currentHarnessSession = null;
     active.currentCommand = null;
     await worklog.flush();
 
-    // Reprice from the model's actual OpenRouter rates; the stream's
-    // total_cost_usd (kept as fallback) is Claude Code pricing tokens against
-    // its built-in Anthropic table, which is wrong for OpenRouter models.
+    // Reprice from the model's actual OpenRouter rates.
     costUsd = await computeOpenRouterCostUsd(model, usage.totals()) ?? costUsd;
 
     // Persist the raw trace into the sandbox so later steps (the report step)
@@ -401,14 +453,16 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
       await upsertStep("cancelled", "Cancelled by user");
       return { success: false, resultText, error: "Cancelled by user" };
     }
-    if (exitCode !== 0 || isError) {
-      const error = exitCode !== 0 ? `Claude Code exited with code ${exitCode}` : "Claude Code reported an error result";
+    if (isError) {
+      const error = "Harness agent reported an error result";
       await upsertStep("failed", error);
       return { success: false, resultText, error };
     }
     await upsertStep("completed");
     return { success: true, resultText };
   } catch (error) {
+    await active.currentHarnessSession?.destroy();
+    active.currentHarnessSession = null;
     active.currentCommand = null;
     await worklog.flush();
     const message = describeError(error);
@@ -417,7 +471,7 @@ async function executeStep(params: ExecuteStepParams): Promise<{ success: boolea
   }
 }
 
-async function collectArtifacts(params: { runId: string, stepRunId: string, sandbox: Sandbox, paths: string[] }): Promise<void> {
+async function collectArtifacts(params: { runId: string, stepRunId: string, sandbox: EvalSandbox, paths: string[] }): Promise<void> {
   for (const path of params.paths) {
     try {
       const absolutePath = path.startsWith("/") ? path : `${WORKSPACE_DIR}/${path}`;
@@ -478,45 +532,251 @@ export async function cancelEvalRun(runId: string): Promise<void> {
   if (active) {
     active.abortController.abort();
     try {
+      await active.currentHarnessSession?.destroy();
       await active.currentCommand?.kill();
     } catch {
       // Command may have already exited.
-    }
-    try {
-      await active.sandbox?.stop();
-    } catch {
-      // Sandbox may have already stopped.
     }
     return; // executeRun's catch records the cancelled status.
   }
   // Stale run (e.g. dev server restarted while a run row stayed active).
   if (ACTIVE_RUN_STATUSES.includes(run.status as RunStatus)) {
-    if (run.sandboxId) {
-      try {
-        const sandbox = await getEvalSandbox(run.sandboxId);
-        await sandbox.stop();
-      } catch {
-        // Sandbox already gone.
-      }
-    }
     await updateEvalRun({ runId, status: "cancelled", currentStepIndex: run.currentStepIndex, error: "Cancelled by user" });
     await markPendingStepsAs(runId, "cancelled");
   }
 }
 
-// Resolves the live sandbox for a run, reattaching via Sandbox.get when the
+export async function resumeEvalRun(runId: string, mode: ResumeRunMode): Promise<void> {
+  const run = await getRun(runId);
+  if (!run) throw new Error(`Run not found: ${runId}`);
+  if (run.status === "completed") {
+    throw new Error(`Run ${runId} is already completed`);
+  }
+  const workflow = await getWorkflow(run.workflowId);
+  if (!workflow) throw new Error(`Workflow not found: ${run.workflowId}`);
+  const steps = parseSteps(workflow.stepsJson);
+  const stepRuns = await listStepRuns(runId);
+  const failedOrCancelled = stepRuns.find(s => s.status === "failed" || s.status === "cancelled");
+  const resumeStepIndex = failedOrCancelled?.stepIndex ?? Math.max(1, Math.min(run.currentStepIndex, steps.length));
+  await launchRunFromStep(runId, resumeStepIndex, mode, failedOrCancelled);
+}
+
+// Re-run a specific workflow step (and every step after it, since downstream
+// outputs depend on it) inside the run's existing sandbox. "continue" injects
+// the prior partial attempt; "restart-step" runs the step from scratch.
+export async function runStepFromIndex(runId: string, stepIndex: number, mode: ResumeRunMode): Promise<void> {
+  const resumeFrom = mode === "continue" ? await getStepRun(`${runId}-step-${stepIndex}`) : undefined;
+  await launchRunFromStep(runId, stepIndex, mode, resumeFrom);
+}
+
+// Mark a step back to "pending" and clear its prior result/error/usage so it
+// reads as not-yet-run in the UI. Does NOT execute anything — pair with
+// runStepFromIndex to re-run, or with the run-level resume buttons.
+export async function resetStep(runId: string, stepIndex: number): Promise<void> {
+  const run = await getRun(runId);
+  if (!run) throw new Error(`Run not found: ${runId}`);
+  if (ACTIVE_RUN_STATUSES.includes(run.status as RunStatus) || activeRuns().has(runId)) {
+    throw new Error(`Run ${runId} is active; stop it before resetting a step`);
+  }
+  if (stepIndex < 1) throw new Error("The sandbox setup step cannot be reset; start a new run instead");
+  const stepRun = await getStepRun(`${runId}-step-${stepIndex}`);
+  if (!stepRun) throw new Error(`Run ${runId} has no step ${stepIndex}`);
+  await upsertEvalStepRun({
+    stepRunId: stepRun.stepRunId, runId, stepIndex: stepRun.stepIndex, stepName: stepRun.stepName,
+    model: stepRun.model, status: "pending", resultText: "", error: undefined, numMessages: 0,
+    costUsd: undefined, inputTokens: undefined, outputTokens: undefined,
+    cacheReadTokens: undefined, cacheCreationTokens: undefined, sessionId: undefined,
+  });
+}
+
+// Shared launcher for resume / per-step re-runs. Validates the run is idle and
+// has a live sandbox, then runs the workflow forward from `startStepIndex`.
+async function launchRunFromStep(runId: string, startStepIndex: number, mode: ResumeRunMode, resumeFrom: EvalStepRunRow | undefined): Promise<void> {
+  const run = await getRun(runId);
+  if (!run) throw new Error(`Run not found: ${runId}`);
+  if (ACTIVE_RUN_STATUSES.includes(run.status as RunStatus) || activeRuns().has(runId)) {
+    throw new Error(`Run ${runId} is already active`);
+  }
+  if (!run.sandboxId) {
+    throw new Error(`Run ${runId} has no sandbox to resume; start a new run instead`);
+  }
+
+  const workflow = await getWorkflow(run.workflowId);
+  if (!workflow) throw new Error(`Workflow not found: ${run.workflowId}`);
+  const steps = parseSteps(workflow.stepsJson);
+  const config = parseRunConfig(run.configJson);
+  const context = parseRunContext(run.contextJson);
+  if (startStepIndex === 0) {
+    throw new Error("Sandbox setup cannot be resumed; start a new run instead");
+  }
+  if (startStepIndex < 1 || startStepIndex > steps.length) {
+    throw new Error(`Run ${runId} has no workflow step ${startStepIndex}`);
+  }
+
+  const active: ActiveRun = {
+    abortController: new AbortController(),
+    sandbox: await getEvalSandbox(run.sandboxId),
+    currentCommand: null,
+    currentHarnessSession: null,
+  };
+  activeRuns().set(runId, active);
+  runAsynchronously(async () => {
+    let failed = false;
+    try {
+      await updateEvalRun({
+        runId,
+        status: "running",
+        currentStepIndex: startStepIndex,
+        contextJson: JSON.stringify(context),
+        error: undefined,
+      });
+      await executeStepsFrom({
+        runId,
+        runModel: run.model,
+        steps,
+        config,
+        active,
+        sandbox: active.sandbox ?? throwErr("Resume active run lost its sandbox before execution"),
+        signal: active.abortController.signal,
+        context,
+        startStepIndex,
+        resumeMode: mode,
+        resumeFrom,
+      });
+      await updateEvalRun({ runId, status: "completed", currentStepIndex: steps.length, contextJson: JSON.stringify(context), error: undefined });
+    } catch (error) {
+      const status: RunStatus = active.abortController.signal.aborted ? "cancelled" : "failed";
+      const message = describeError(error);
+      failed = status === "failed";
+      try {
+        await updateEvalRun({ runId, status, currentStepIndex: startStepIndex, contextJson: JSON.stringify(context), error: status === "cancelled" ? "Cancelled by user" : message });
+        await markPendingStepsAs(runId, status === "cancelled" ? "cancelled" : "failed");
+      } catch (updateError) {
+        console.error(`[evals] failed to record resumed terminal status for ${runId}:`, updateError);
+      }
+    } finally {
+      activeRuns().delete(runId);
+      if (active.sandbox && !failed && !active.abortController.signal.aborted) {
+        try {
+          await active.sandbox.delete();
+        } catch (stopError) {
+          console.error(`[evals] failed to delete Freestyle VM for resumed run ${runId}:`, stopError);
+        }
+      }
+    }
+  });
+}
+
+async function executeStepsFrom(params: {
+  runId: string,
+  runModel: string,
+  steps: EvalStepDefinition[],
+  config: EvalRunConfig,
+  active: ActiveRun,
+  sandbox: EvalSandbox,
+  signal: AbortSignal,
+  context: Record<string, string>,
+  startStepIndex: number,
+  resumeMode?: ResumeRunMode,
+  resumeFrom?: EvalStepRunRow,
+}): Promise<void> {
+  for (let stepIndex = params.startStepIndex; stepIndex <= params.steps.length; stepIndex++) {
+    throwIfAborted(params.signal);
+    const step = params.steps[stepIndex - 1] ?? throwErr(`Workflow is missing step ${stepIndex}`);
+    const stepRunId = `${params.runId}-step-${stepIndex}`;
+    const stepModel = params.config.stepModels?.[stepIndex] ?? step.model ?? params.runModel;
+    const resumeFrom = stepIndex === params.startStepIndex ? params.resumeFrom : undefined;
+
+    await updateEvalRun({
+      runId: params.runId,
+      status: "running",
+      currentStepIndex: stepIndex,
+      contextJson: JSON.stringify(params.context),
+    });
+    const result = await executeStep({
+      runId: params.runId,
+      stepRunId,
+      stepIndex,
+      step,
+      model: stepModel,
+      sandbox: params.sandbox,
+      signal: params.signal,
+      active: params.active,
+      context: params.context,
+      attemptMode: stepIndex === params.startStepIndex ? params.resumeMode : undefined,
+      resumeFrom,
+    });
+
+    params.context[step.outputKey ?? `step${stepIndex}`] = result.resultText;
+    await updateEvalRun({
+      runId: params.runId,
+      status: "running",
+      currentStepIndex: stepIndex,
+      contextJson: JSON.stringify(params.context),
+    });
+    if (!result.success) {
+      throw new Error(`Step ${stepIndex} (${step.name}) failed: ${result.error ?? "unknown error"}`);
+    }
+  }
+}
+
+function buildStepPrompt(params: {
+  step: EvalStepDefinition,
+  context: Record<string, string>,
+  attemptMode?: ResumeRunMode,
+  resumeFrom?: EvalStepRunRow,
+}): string {
+  const basePrompt = renderTemplate(params.step.prompt, params.context);
+  if (params.attemptMode !== "continue" || !params.resumeFrom) return basePrompt;
+  return `<resume_previous_attempt>
+The previous attempt of this same workflow step stopped with status "${params.resumeFrom.status}".
+Error: ${params.resumeFrom.error ?? "none recorded"}
+
+Partial assistant output from the previous attempt:
+${params.resumeFrom.resultText || "(no partial output was recorded)"}
+
+Continue from that point in the existing sandbox. Preserve useful existing files and state. If the previous attempt left a bad partial change, repair it before proceeding.
+</resume_previous_attempt>
+
+${basePrompt}`;
+}
+
+async function nextWorklogSeq(stepRunId: string): Promise<number> {
+  const rows = await listWorklog(stepRunId);
+  return rows.reduce((max, row) => Math.max(max, row.seq + 1), 0);
+}
+
+function parseRunContext(contextJson: string): Record<string, string> {
+  const parsed = JSON.parse(contextJson) as Record<string, unknown>;
+  const context: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === "string") context[key] = value;
+  }
+  return context;
+}
+
+function parseRunConfig(configJson: string): EvalRunConfig {
+  const parsed = JSON.parse(configJson) as Partial<EvalRunConfig>;
+  return {
+    timeoutMinutes: typeof parsed.timeoutMinutes === "number" ? parsed.timeoutMinutes : DEFAULT_RUN_TIMEOUT_MINUTES,
+    variables: parsed.variables,
+    stepModels: parsed.stepModels,
+  };
+}
+
+function throwErr(message: string): never {
+  throw new Error(message);
+}
+
+// Resolves the live sandbox for a run, reattaching via Freestyle when the
 // run isn't tracked in this process (e.g. after an HMR reload).
-export async function getRunSandbox(runId: string): Promise<Sandbox> {
+export async function getRunSandbox(runId: string): Promise<EvalSandbox> {
   const active = activeRuns().get(runId);
   if (active?.sandbox) return active.sandbox;
   const run = await getRun(runId);
   if (!run) throw new Error(`Run not found: ${runId}`);
   if (!run.sandboxId) throw new Error(`Run ${runId} has no sandbox (status: ${run.status})`);
-  const sandbox = await getEvalSandbox(run.sandboxId);
-  if (sandbox.status !== "running" && sandbox.status !== "pending") {
-    throw new Error(`Sandbox for run ${runId} is not running (status: ${sandbox.status})`);
-  }
-  return sandbox;
+  return await getEvalSandbox(run.sandboxId);
 }
 
 export async function execInRun(runId: string, command: string): Promise<{ exitCode: number, stdout: string, stderr: string, truncated: boolean }> {

@@ -33,38 +33,14 @@ export function getOpenRouterApiKey(): string {
   return key;
 }
 
-export type SandboxCredentials = {
-  teamId: string | undefined,
-  projectId: string | undefined,
-  token: string | undefined,
-};
-
-export function getSandboxCredentials(): SandboxCredentials {
-  const token = readEnv("STACK_VERCEL_SANDBOX_TOKEN");
-  if (!token || token === "vercel_sandbox_disabled_for_local_development") {
+export function getFreestyleApiKey(): string {
+  const apiKey = readEnv("HEXCLAVE_FREESTYLE_API_KEY");
+  if (!apiKey) {
     throw new Error(
-      "Vercel Sandbox is not configured. Set STACK_VERCEL_SANDBOX_TOKEN, STACK_VERCEL_SANDBOX_TEAM_ID and " +
-      "STACK_VERCEL_SANDBOX_PROJECT_ID in apps/internal-tool (same values as apps/backend) to run evals."
+      "Freestyle VMs are not configured. Set HEXCLAVE_FREESTYLE_API_KEY in apps/internal-tool to run evals."
     );
   }
-  const teamId = readEnv("STACK_VERCEL_SANDBOX_TEAM_ID");
-  const projectId = readEnv("STACK_VERCEL_SANDBOX_PROJECT_ID");
-  // Vercel uses opaque, prefixed identifiers. A project *name* or *slug*
-  // (e.g. "internal-tool") is silently accepted by the SDK but the Sandbox API
-  // then returns a bare "Status code 404" — surface the real cause here instead.
-  if (teamId && !teamId.startsWith("team_")) {
-    throw new Error(
-      `STACK_VERCEL_SANDBOX_TEAM_ID must be a Vercel team ID (starts with "team_"), got "${teamId}". ` +
-      "Find it in Vercel → Team Settings → General."
-    );
-  }
-  if (projectId && !projectId.startsWith("prj_")) {
-    throw new Error(
-      `STACK_VERCEL_SANDBOX_PROJECT_ID must be a Vercel project ID (starts with "prj_"), got "${projectId}". ` +
-      "This is the project's ID — not its name/slug — found in Vercel → Project → Settings → General."
-    );
-  }
-  return { teamId, projectId, token };
+  return apiKey;
 }
 
 export function getSpacetimeHost(): string {

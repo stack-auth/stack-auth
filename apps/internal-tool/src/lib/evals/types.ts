@@ -51,9 +51,9 @@ export function parseSteps(stepsJson: string): EvalStepDefinition[] {
 }
 
 // Builds a detailed, human-readable description of an error INCLUDING its
-// `cause` chain. Node/undici's `fetch` (used internally by @vercel/sandbox)
-// throws a generic `TypeError: fetch failed` whose real reason — socket reset,
-// timeout, connection closed, DNS failure, HTTP status — lives in `error.cause`
+// `cause` chain. Network SDKs often throw a generic `TypeError: fetch failed`
+// whose real reason — socket reset, timeout, connection closed, DNS failure,
+// HTTP status — lives in `error.cause`
 // (sometimes nested several levels deep). Surfacing only `error.message` throws
 // all of that away and leaves the UI showing a useless "fetch failed", so we
 // walk the chain and include each level's message plus its name/code.

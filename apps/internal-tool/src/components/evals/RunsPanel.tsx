@@ -94,7 +94,7 @@ export function RunsPanel({
   };
 
   const cancelRun = async (runId: string) => {
-    if (!window.confirm("Cancel this run? The sandbox will be stopped.")) return;
+    if (!window.confirm("Cancel this run? The current step will stop, and the sandbox will stay available for exec/resume until idle timeout.")) return;
     setActionError(null);
     const err = await requestCancel(runId);
     if (err) setActionError(err);
@@ -132,7 +132,7 @@ export function RunsPanel({
   const bulkCancel = async () => {
     const ids = cancellableChecked.map(r => r.runId);
     if (ids.length === 0) return;
-    if (!window.confirm(`Cancel ${ids.length} running run${ids.length === 1 ? "" : "s"}? Their sandboxes will be stopped.`)) return;
+    if (!window.confirm(`Cancel ${ids.length} running run${ids.length === 1 ? "" : "s"}? Their current steps will stop, and their sandboxes will stay available for exec/resume until idle timeout.`)) return;
     await runBulk(ids, "cancels", requestCancel);
   };
 

@@ -1,6 +1,4 @@
-// OpenRouter helpers: model catalog (for the run launcher / chat agent) and
-// the env shared by sandboxed Claude Code processes so all inference goes
-// through OpenRouter.
+// OpenRouter helpers: model catalog for launchers and usage repricing.
 
 import { getOpenRouterApiKey } from "./config";
 
@@ -122,23 +120,11 @@ export async function assertOpenRouterKeyValid(): Promise<void> {
   }
 }
 
-// Environment for a `claude` CLI process (inside a sandbox or locally for the
-// control agent) so the Anthropic-compatible API surface is served by
-// OpenRouter and any OpenRouter model slug can be used.
-export function claudeCodeOpenRouterEnv(model: string): Record<string, string> {
+export function openRouterAnthropicAuth(model: string): { authToken: string, baseUrl: string, model: string } {
   const apiKey = getOpenRouterApiKey();
   return {
-    ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
-    ANTHROPIC_AUTH_TOKEN: apiKey,
-    ANTHROPIC_MODEL: model,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
-    ANTHROPIC_SMALL_FAST_MODEL: model,
-    CLAUDE_CODE_SUBAGENT_MODEL: model,
-    DISABLE_TELEMETRY: "1",
-    DISABLE_ERROR_REPORTING: "1",
-    DISABLE_AUTOUPDATER: "1",
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    authToken: apiKey,
+    baseUrl: "https://openrouter.ai/api",
+    model,
   };
 }

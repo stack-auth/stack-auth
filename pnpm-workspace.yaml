@@ -12,6 +12,7 @@ minimumReleaseAge: 10080
 blockExoticSubdeps: true
 
 overrides:
+  '@ai-sdk/harness-claude-code>zod': ^4.3.6
   '@types/react': 19.2.7
   '@types/react-dom': 19.2.3
   sharp: ^0.34.5

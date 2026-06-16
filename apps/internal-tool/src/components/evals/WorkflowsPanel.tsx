@@ -91,7 +91,7 @@ function StepEditor({
               const artifacts = e.target.value.split(",").map(s => s.trim()).filter(s => s !== "");
               onChange({ ...step, artifacts: artifacts.length > 0 ? artifacts : undefined });
             }}
-            placeholder="/vercel/sandbox/.eval/report.html"
+            placeholder="/freestyle/sandbox/.eval/report.html"
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

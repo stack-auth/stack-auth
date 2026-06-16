@@ -1,4 +1,3 @@
-import { StreamError } from "@vercel/sandbox";
 import { describe, expect, it } from "vitest";
 import { ResumableLogDemuxer, isTransientNetworkError } from "./log-stream";
 
@@ -82,16 +81,6 @@ describe("isTransientNetworkError", () => {
 
   it("treats a generic 'fetch failed' as transient", () => {
     expect(isTransientNetworkError(new TypeError("fetch failed"))).toBe(true);
-  });
-
-  it("does not retry a server-side StreamError", () => {
-    expect(isTransientNetworkError(new StreamError("sandbox_stopped", "Sandbox was stopped", "sbx_1"))).toBe(false);
-  });
-
-  it("does not retry a StreamError nested in a cause chain", () => {
-    const streamError = new StreamError("sandbox_stopped", "stopped", "sbx_1");
-    const wrapper = Object.assign(new Error("terminated"), { cause: streamError });
-    expect(isTransientNetworkError(wrapper)).toBe(false);
   });
 
   it("returns false for unrelated errors and non-Error values", () => {

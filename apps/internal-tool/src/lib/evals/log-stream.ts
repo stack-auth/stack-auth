@@ -1,17 +1,8 @@
-// Resilient consumption of a Vercel Sandbox command log stream.
+// Resilient consumption of replayed command log streams.
 //
-// `command.logs()` is a long-lived NDJSON HTTP stream. On long agent steps the
-// underlying socket can drop mid-stream (surfaced by undici/Node as a generic
-// `TypeError` — often message "terminated" — whose real reason lives in
-// `.cause` with a code like ECONNRESET) even though the command keeps running
-// inside the sandbox. The SDK's built-in retry only covers establishing the
-// connection, not a drop while the body is streaming, so we must reconnect
-// ourselves. The logs endpoint always replays output from the *start* (there is
-// no offset parameter), so to deliver each line exactly once across reconnects
-// we track how many raw characters of each stream we've already delivered and
-// skip them on replay.
-
-import { StreamError } from "@vercel/sandbox";
+// Some providers replay output from the start after reconnects. To deliver each
+// line exactly once across reconnects, we track how many raw characters of each
+// stream we've already delivered and skip them on replay.
 
 const TRANSIENT_NETWORK_CODES = new Set([
   "ECONNRESET",
@@ -39,10 +30,7 @@ const TRANSIENT_MESSAGE_FRAGMENTS = [
   "premature close",
 ];
 
-// True for connection-level failures that are worth reconnecting on. A
-// server-side `StreamError` (e.g. the sandbox was stopped) anywhere in the
-// cause chain is deliberately excluded: replaying would just hit the same
-// terminal error, so it must propagate.
+// True for connection-level failures that are worth reconnecting on.
 export function isTransientNetworkError(error: unknown): boolean {
   const chain: Error[] = [];
   const seen = new Set<unknown>();
@@ -52,7 +40,6 @@ export function isTransientNetworkError(error: unknown): boolean {
     chain.push(current);
     current = (current as { cause?: unknown }).cause;
   }
-  if (chain.some(level => level instanceof StreamError)) return false;
   return chain.some(level => {
     const code = (level as { code?: unknown }).code;
     if (typeof code === "string" && TRANSIENT_NETWORK_CODES.has(code)) return true;

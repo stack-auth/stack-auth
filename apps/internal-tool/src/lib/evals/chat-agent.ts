@@ -1,20 +1,21 @@
-// The eval control agent: a Claude Code (agent SDK) session with an in-process
-// MCP server exposing full workflow/run management, worklog access and direct
-// exec inside any live run's sandbox. Inference is routed through OpenRouter.
+// The eval control agent: a Claude Code harness session with host-executed AI
+// SDK tools exposing workflow/run management, worklog access, and direct exec
+// inside live Freestyle VMs. Inference is routed through OpenRouter.
 
-import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { HarnessAgent, type HarnessAgentSession } from "@ai-sdk/harness/agent";
+import { createClaudeCode } from "@ai-sdk/harness-claude-code";
+import type { ToolSet } from "ai";
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
-import { claudeCodeOpenRouterEnv, computeOpenRouterCostUsd, searchOpenRouterModels } from "./openrouter";
+import { computeOpenRouterCostUsd, openRouterAnthropicAuth, searchOpenRouterModels } from "./openrouter";
+import { createEvalSandbox, createFreestyleHarnessSandboxProvider, type EvalSandbox } from "./sandbox";
 import { StreamUsageAccumulator } from "./usage";
 import {
   cancelEvalRun,
   execInRun,
   isRunActiveInProcess,
   readRunFile,
+  resumeEvalRun,
   startEvalBatch,
   startEvalRun,
 } from "./orchestrator";
@@ -45,8 +46,12 @@ function safeJson(value: unknown): string {
   }, 2);
 }
 
-function textResult(text: string) {
-  return { content: [{ type: "text" as const, text }] };
+function textResult(text: string): string {
+  return text;
+}
+
+function evalTool<TSchema extends z.ZodType>(description: string, inputSchema: TSchema, execute: (args: z.infer<TSchema>) => Promise<string>) {
+  return { description, inputSchema, execute };
 }
 
 const stepSchema = z.object({
@@ -57,8 +62,8 @@ const stepSchema = z.object({
   artifacts: z.array(z.string()).optional(),
 });
 
-const evalTools = [
-  tool("list_workflows", "List all eval workflows (id, name, description, default model, step names).", {}, async () => {
+const evalTools = {
+  list_workflows: evalTool("List all eval workflows (id, name, description, default model, step names).", z.object({}), async () => {
     await ensureDefaultWorkflow();
     const workflows = await listWorkflows();
     return textResult(safeJson(workflows.map(w => ({
@@ -70,20 +75,20 @@ const evalTools = [
     }))));
   }),
 
-  tool("get_workflow", "Get a workflow's full definition, including every step's prompt.", {
+  get_workflow: evalTool("Get a workflow's full definition, including every step's prompt.", z.object({
     workflowId: z.string(),
-  }, async args => {
+  }), async args => {
     const workflow = await getWorkflow(args.workflowId);
     if (!workflow) return textResult(`Workflow not found: ${args.workflowId}`);
     return textResult(safeJson({ ...workflow, steps: parseSteps(workflow.stepsJson) }));
   }),
 
-  tool("create_workflow", "Create a new eval workflow. Steps execute in order; each step is a Claude Code agent in the run's shared sandbox. Step prompts may reference {variables} produced by earlier steps' outputKey.", {
+  create_workflow: evalTool("Create a new eval workflow. Steps execute in order; each step is an AI SDK harness agent in the run's shared Freestyle VM. Step prompts may reference {variables} produced by earlier steps' outputKey.", z.object({
     name: z.string(),
     description: z.string().default(""),
     steps: z.array(stepSchema).min(1),
     defaultModel: z.string().default(DEFAULT_MODEL),
-  }, async args => {
+  }), async args => {
     const workflowId = randomUUID();
     await upsertEvalWorkflow({
       workflowId,
@@ -95,13 +100,13 @@ const evalTools = [
     return textResult(`Created workflow ${workflowId} (${args.name})`);
   }),
 
-  tool("update_workflow", "Update an existing workflow. Omitted fields keep their current value.", {
+  update_workflow: evalTool("Update an existing workflow. Omitted fields keep their current value.", z.object({
     workflowId: z.string(),
     name: z.string().optional(),
     description: z.string().optional(),
     steps: z.array(stepSchema).min(1).optional(),
     defaultModel: z.string().optional(),
-  }, async args => {
+  }), async args => {
     const existing = await getWorkflow(args.workflowId);
     if (!existing) return textResult(`Workflow not found: ${args.workflowId}`);
     await upsertEvalWorkflow({
@@ -114,16 +119,16 @@ const evalTools = [
     return textResult(`Updated workflow ${args.workflowId}`);
   }),
 
-  tool("delete_workflow", "Delete a workflow (runs and their logs are kept).", {
+  delete_workflow: evalTool("Delete a workflow (runs and their logs are kept).", z.object({
     workflowId: z.string(),
-  }, async args => {
+  }), async args => {
     await deleteEvalWorkflow(args.workflowId);
     return textResult(`Deleted workflow ${args.workflowId}`);
   }),
 
-  tool("list_runs", "List eval runs, newest first.", {
+  list_runs: evalTool("List eval runs, newest first.", z.object({
     limit: z.number().int().min(1).max(200).default(30),
-  }, async args => {
+  }), async args => {
     const runs = await listRuns();
     return textResult(safeJson(runs.slice(0, args.limit).map(r => ({
       runId: r.runId,
@@ -140,9 +145,9 @@ const evalTools = [
     }))));
   }),
 
-  tool("get_run", "Get a run with its per-step status, results, costs and artifact list.", {
+  get_run: evalTool("Get a run with its per-step status, results, costs and artifact list.", z.object({
     runId: z.string(),
-  }, async args => {
+  }), async args => {
     const run = await getRun(args.runId);
     if (!run) return textResult(`Run not found: ${args.runId}`);
     const stepRuns = await listStepRuns(args.runId);
@@ -164,38 +169,46 @@ const evalTools = [
     }));
   }),
 
-  tool("start_run", "Start a single eval run of a workflow. Returns the runId; progress can be polled with get_run / read_worklog.", {
+  start_run: evalTool("Start a single eval run of a workflow. Returns the runId; progress can be polled with get_run / read_worklog.", z.object({
     workflowId: z.string(),
     model: z.string().optional().describe("OpenRouter model slug, e.g. anthropic/claude-sonnet-4.6; defaults to the workflow's default model"),
     label: z.string().optional(),
     timeoutMinutes: z.number().int().min(5).max(300).optional(),
     variables: z.record(z.string(), z.string()).optional().describe("Extra {placeholder} variables for step prompts"),
-  }, async args => {
+  }), async args => {
     const runId = await startEvalRun(args);
     return textResult(`Started run ${runId}`);
   }),
 
-  tool("batch_run", "Start a batch of runs across one or more models (optionally several runs per model).", {
+  batch_run: evalTool("Start a batch of runs across one or more models (optionally several runs per model).", z.object({
     workflowId: z.string(),
     models: z.array(z.string()).min(1),
     runsPerModel: z.number().int().min(1).max(10).default(1),
     timeoutMinutes: z.number().int().min(5).max(300).optional(),
     labelPrefix: z.string().optional(),
-  }, async args => {
+  }), async args => {
     const runIds = await startEvalBatch(args);
     return textResult(`Started ${runIds.length} runs:\n${runIds.join("\n")}`);
   }),
 
-  tool("cancel_run", "Cancel an in-flight run (kills the current agent step and stops the sandbox).", {
+  cancel_run: evalTool("Cancel an in-flight run (kills the current agent step; the Freestyle VM stays alive until idle timeout so it can be inspected or resumed).", z.object({
     runId: z.string(),
-  }, async args => {
+  }), async args => {
     await cancelEvalRun(args.runId);
     return textResult(`Cancellation requested for run ${args.runId}`);
   }),
 
-  tool("delete_run", "Permanently delete a run and all of its step runs, worklogs and artifacts.", {
+  resume_run: evalTool("Resume a failed or cancelled run from its failed/stopped step. Use mode 'continue' to continue from prior partial output/error context, or 'restart-step' to rerun that step's original prompt in the same VM.", z.object({
     runId: z.string(),
-  }, async args => {
+    mode: z.enum(["continue", "restart-step"]).default("continue"),
+  }), async args => {
+    await resumeEvalRun(args.runId, args.mode);
+    return textResult(`Resumed run ${args.runId} with mode ${args.mode}`);
+  }),
+
+  delete_run: evalTool("Permanently delete a run and all of its step runs, worklogs and artifacts.", z.object({
+    runId: z.string(),
+  }), async args => {
     const run = await getRun(args.runId);
     if (run && ["queued", "booting", "running"].includes(run.status)) {
       await cancelEvalRun(args.runId);
@@ -204,70 +217,66 @@ const evalTools = [
     return textResult(`Deleted run ${args.runId}`);
   }),
 
-  tool("read_worklog", "Read the message trace of a step run. stepRunId format is '<runId>-step-<index>' (index 0 is sandbox setup). Entries are Claude Code stream-json messages plus stderr lines.", {
+  read_worklog: evalTool("Read the message trace of a step run. stepRunId format is '<runId>-step-<index>' (index 0 is sandbox setup). Entries are AI SDK harness stream parts plus setup stdout/stderr.", z.object({
     stepRunId: z.string(),
     offset: z.number().int().min(0).default(0),
     limit: z.number().int().min(1).max(200).default(50),
-    kinds: z.array(z.string()).optional().describe("Filter by entry kind: system, assistant, user, result, stdout, stderr, meta"),
-  }, async args => {
+    kinds: z.array(z.string()).optional().describe("Filter by entry kind: text-delta, tool-call, tool-result, finish, stdout, stderr, meta"),
+  }), async args => {
     const all = await listWorklog(args.stepRunId);
-    const filtered = args.kinds && args.kinds.length > 0 ? all.filter(e => args.kinds!.includes(e.kind)) : all;
+    const kinds = args.kinds;
+    const filtered = kinds && kinds.length > 0 ? all.filter(e => kinds.includes(e.kind)) : all;
     const page = filtered.slice(args.offset, args.offset + args.limit);
     const header = `${filtered.length} entries total (showing ${args.offset}..${args.offset + page.length})`;
     const body = page.map(e => `[${e.seq}] (${e.kind}) ${e.content.slice(0, 3000)}`).join("\n");
     return textResult(`${header}\n${body}`);
   }),
 
-  tool("exec_in_run", "Execute a shell command inside a run's sandbox (cwd: /vercel/sandbox/workspace). Works while the sandbox is alive — during the run, and after failure until the sandbox times out.", {
+  exec_in_run: evalTool("Execute a shell command inside a run's Freestyle VM (cwd: /freestyle/sandbox/workspace). Works while the VM is alive during the run and after failure until the VM idles out.", z.object({
     runId: z.string(),
     command: z.string(),
-  }, async args => {
+  }), async args => {
     const result = await execInRun(args.runId, args.command);
     return textResult(`exit code: ${result.exitCode}${result.truncated ? " (output truncated)" : ""}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`);
   }),
 
-  tool("read_run_file", "Read a file from a run's sandbox. Relative paths resolve against /vercel/sandbox/workspace.", {
+  read_run_file: evalTool("Read a file from a run's Freestyle VM. Relative paths resolve against /freestyle/sandbox/workspace.", z.object({
     runId: z.string(),
     path: z.string(),
-  }, async args => {
+  }), async args => {
     const content = await readRunFile(args.runId, args.path);
     if (content === null) return textResult(`File not found: ${args.path}`);
     return textResult(content.slice(0, 100_000));
   }),
 
-  tool("get_artifact", "Read a stored artifact (e.g. the HTML report) collected from a finished run.", {
+  get_artifact: evalTool("Read a stored artifact (e.g. the HTML report) collected from a finished run.", z.object({
     runId: z.string(),
     path: z.string().describe("Artifact path as listed by get_run"),
-  }, async args => {
+  }), async args => {
     const artifacts = await listArtifacts(args.runId);
     const artifact = artifacts.find(a => a.path === args.path);
     if (!artifact) return textResult(`Artifact not found: ${args.path}`);
     return textResult(artifact.content.slice(0, 200_000));
   }),
 
-  tool("list_models", "Search the live OpenRouter model catalog.", {
+  list_models: evalTool("Search the live OpenRouter model catalog.", z.object({
     search: z.string().default(""),
     limit: z.number().int().min(1).max(100).default(30),
-  }, async args => {
+  }), async args => {
     const models = await searchOpenRouterModels(args.search, args.limit);
     return textResult(safeJson(models.map(m => ({ id: m.id, name: m.name, contextLength: m.contextLength, pricing: m.pricing }))));
   }),
-];
+} satisfies ToolSet;
 
-const TOOL_NAMES = [
-  "list_workflows", "get_workflow", "create_workflow", "update_workflow", "delete_workflow",
-  "list_runs", "get_run", "start_run", "batch_run", "cancel_run", "delete_run",
-  "read_worklog", "exec_in_run", "read_run_file", "get_artifact", "list_models",
-].map(name => `mcp__evals__${name}`);
+const SYSTEM_PROMPT = `You are the Hexclave eval-suite control agent inside an internal tool. You manage eval workflows (ordered queues of steps, each step an AI SDK harness agent that runs in a shared Freestyle VM per run) and their runs.
 
-const SYSTEM_PROMPT = `You are the Hexclave eval-suite control agent inside an internal tool. You manage eval workflows (ordered queues of steps, each step a Claude Code agent that runs in a shared Vercel Sandbox per run) and their runs.
-
-Capabilities via your tools: create/modify/delete workflows, start single or batch runs (any OpenRouter model), cancel or delete runs, analyze runs by reading their worklogs (full Claude Code stream-json traces) and artifacts (e.g. the generated HTML report), exec shell commands directly inside a run's sandbox, and read files from sandboxes.
+Capabilities via your tools: create/modify/delete workflows, start single or batch runs (any OpenRouter model), cancel, resume, retry, or delete runs, analyze runs by reading worklogs (AI SDK harness stream parts plus setup logs) and artifacts (e.g. the generated HTML report), exec shell commands directly inside a run's Freestyle VM, and read files from Freestyle VMs.
 
 Guidelines:
 - Be action-oriented: when asked to do something, do it with tools and report what happened, including ids (runId, workflowId) the user may need.
-- When analyzing a run, prefer reading the result/assistant entries of worklogs first, then drill into tool calls or stderr as needed; worklogs can be long, so page through them.
-- exec_in_run only works while the run's sandbox is alive (running, or failed-but-not-timed-out). Completed/cancelled runs have stopped sandboxes.
+- When analyzing a run, prefer reading result/text/tool entries of worklogs first, then drill into stderr as needed; worklogs can be long, so page through them.
+- exec_in_run only works while the run's Freestyle VM is alive (running, failed/cancelled-but-not-idled-out). Completed runs stop their VMs.
+- For failed or cancelled runs, use resume_run: mode "continue" keeps prior attempt context, while "restart-step" reruns the failed/stopped step in the same VM.
 - For batch comparisons across models, start the batch, then use list_runs/get_run to track progress when asked.
 - Destructive actions (delete_run, delete_workflow): confirm with the user first unless they explicitly asked for the deletion.`;
 
@@ -285,79 +294,93 @@ export type ChatTurnOptions = {
   model?: string,
 };
 
+type ActiveChatSession = {
+  model: string,
+  sandbox: EvalSandbox,
+  session: HarnessAgentSession,
+  agent: ReturnType<typeof createControlAgent>,
+};
+
+const globalStore = globalThis as unknown as { __hexclaveEvalChatSessions?: Map<string, ActiveChatSession> };
+function chatSessions(): Map<string, ActiveChatSession> {
+  globalStore.__hexclaveEvalChatSessions = globalStore.__hexclaveEvalChatSessions ?? new Map();
+  return globalStore.__hexclaveEvalChatSessions;
+}
+
+function createControlAgent(model: string, sandbox: EvalSandbox) {
+  const auth = openRouterAnthropicAuth(model);
+  return new HarnessAgent({
+    harness: createClaudeCode({
+      model: auth.model,
+      auth: {
+        anthropic: {
+          authToken: auth.authToken,
+          baseUrl: auth.baseUrl,
+        },
+      },
+    }),
+    sandbox: createFreestyleHarnessSandboxProvider(sandbox),
+    instructions: SYSTEM_PROMPT,
+    permissionMode: "allow-all",
+    tools: evalTools,
+  });
+}
+
+async function createChatSession(model: string): Promise<ActiveChatSession> {
+  const sandbox = await createEvalSandbox({ timeoutMinutes: 45 });
+  const agent = createControlAgent(model, sandbox);
+  const session = await agent.createSession();
+  const active = { model, sandbox, session, agent };
+  chatSessions().set(session.sessionId, active);
+  return active;
+}
+
+async function getChatSession(options: ChatTurnOptions): Promise<ActiveChatSession> {
+  const model = options.model ?? DEFAULT_MODEL;
+  const existing = options.sessionId ? chatSessions().get(options.sessionId) : undefined;
+  if (existing && existing.model === model) return existing;
+  return await createChatSession(model);
+}
+
+function resultContent(output: unknown): string {
+  return typeof output === "string" ? output : safeJson(output);
+}
+
 export async function* runChatTurn(options: ChatTurnOptions): AsyncGenerator<ChatStreamEvent> {
   await ensureDefaultWorkflow();
   const model = options.model ?? DEFAULT_MODEL;
-  const cwd = join(tmpdir(), "hexclave-eval-chat");
-  mkdirSync(cwd, { recursive: true });
-
-  const mcpServer = createSdkMcpServer({ name: "evals", tools: evalTools });
-
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !key.startsWith("ANTHROPIC_") && !key.startsWith("CLAUDE_")) {
-      env[key] = value;
-    }
-  }
-  Object.assign(env, claudeCodeOpenRouterEnv(model));
-  // Sums usage across every API call of the turn; the result message's own
-  // usage only covers the final call.
   const usage = new StreamUsageAccumulator();
 
   try {
-    for await (const message of query({
+    const active = await getChatSession(options);
+    yield { type: "session", sessionId: active.session.sessionId };
+
+    const result = await active.agent.stream({
+      session: active.session,
       prompt: options.message,
-      options: {
-        cwd,
-        env,
-        resume: options.sessionId,
-        systemPrompt: SYSTEM_PROMPT,
-        mcpServers: { evals: mcpServer },
-        allowedTools: TOOL_NAMES,
-        disallowedTools: ["Bash", "Write", "Edit", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "Task"],
-        permissionMode: "dontAsk",
-      },
-    })) {
-      usage.addMessage(message);
-      if (message.type === "system" && "subtype" in message && message.subtype === "init") {
-        yield { type: "session", sessionId: (message as { session_id: string }).session_id };
-      } else if (message.type === "assistant") {
-        for (const block of message.message.content) {
-          if (block.type === "text" && block.text.trim() !== "") {
-            yield { type: "assistant_text", text: block.text };
-          } else if (block.type === "tool_use") {
-            yield { type: "tool_use", name: block.name, input: block.input };
-          }
-        }
-      } else if (message.type === "user") {
-        const content = (message as { message?: { content?: unknown } }).message?.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            const b = block as { type?: string, content?: unknown };
-            if (b.type === "tool_result") {
-              const text = typeof b.content === "string"
-                ? b.content
-                : Array.isArray(b.content)
-                  ? b.content.map(part => (part as { text?: string }).text ?? "").join("")
-                  : "";
-              yield { type: "tool_result", content: text.slice(0, 2000) };
-            }
-          }
-        }
-      } else if (message.type === "result") {
-        const resultMessage = message as unknown as { result?: string, total_cost_usd?: number };
-        // Reprice from OpenRouter rates; total_cost_usd (the fallback) uses
-        // Claude Code's built-in Anthropic table, wrong for OpenRouter slugs.
-        const repriced = await computeOpenRouterCostUsd(model, usage.totals());
-        yield {
-          type: "result",
-          result: resultMessage.result ?? "",
-          costUsd: repriced !== undefined
-            ? Number.parseFloat(repriced)
-            : typeof resultMessage.total_cost_usd === "number" ? resultMessage.total_cost_usd : null,
-        };
+    });
+
+    let resultText = "";
+    for await (const part of result.stream) {
+      if (part.type === "text-delta") {
+        resultText += part.text;
+        yield { type: "assistant_text", text: part.text };
+      } else if (part.type === "tool-call") {
+        yield { type: "tool_use", name: part.toolName, input: part.input };
+      } else if (part.type === "tool-result") {
+        yield { type: "tool_result", content: resultContent(part.output).slice(0, 2000) };
+      } else if (part.type === "tool-error") {
+        yield { type: "tool_result", content: resultContent(part.error).slice(0, 2000) };
       }
     }
+
+    usage.addAiSdkUsage(await result.usage);
+    const repriced = await computeOpenRouterCostUsd(model, usage.totals());
+    yield {
+      type: "result",
+      result: resultText || await result.text,
+      costUsd: repriced !== undefined ? Number.parseFloat(repriced) : null,
+    };
   } catch (error) {
     yield { type: "error", message: describeError(error) };
   }

@@ -10,6 +10,10 @@ import { useWorklog } from "../../hooks/useEvalsDB";
 import { StatusBadge, statusBadgeClass } from "./status";
 import { WorklogViewer } from "./WorklogViewer";
 
+type StepAction = "continue" | "restart" | "reset" | "stop";
+
+const ACTIVE_RUN_STATUSES = ["queued", "booting", "running"];
+
 function formatDuration(start: unknown, end: unknown): string | null {
   if (!start) return null;
   const startMs = toDate(start).getTime();
@@ -114,7 +118,7 @@ function ExecConsole({ runId }: { runId: string }) {
           value={command}
           onChange={e => setCommand(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") runAsynchronously(run); }}
-          placeholder="Shell command (cwd: /vercel/sandbox/workspace)"
+          placeholder="Shell command (cwd: /freestyle/sandbox/workspace)"
           className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -148,6 +152,10 @@ export function RunDetail({
   const tokens = sumStepTokens(steps);
   const [selectedStepRunId, setSelectedStepRunId] = useState<string | null>(null);
   const [viewedArtifact, setViewedArtifact] = useState<EvalArtifactRow | null>(null);
+  const [resumeBusy, setResumeBusy] = useState<"continue" | "restart-step" | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [stepBusy, setStepBusy] = useState<StepAction | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   // Default selection: the running step, else the last step.
   useEffect(() => {
@@ -159,7 +167,49 @@ export function RunDetail({
 
   const selectedStep = steps.find(s => s.stepRunId === selectedStepRunId) ?? null;
   const worklog = useWorklog(conn, selectedStepRunId);
-  const sandboxAlive = ["booting", "running", "failed"].includes(run.status);
+  const sandboxAlive = ["booting", "running", "failed", "cancelled"].includes(run.status);
+  const runActive = ACTIVE_RUN_STATUSES.includes(run.status);
+  const canResume = ["failed", "cancelled"].includes(run.status) && run.sandboxId != null;
+
+  const resumeRun = async (mode: "continue" | "restart-step") => {
+    setResumeBusy(mode);
+    setResumeError(null);
+    try {
+      const res = await fetch(`/api/evals/runs/${encodeURIComponent(run.runId)}/resume`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `Resume failed (${res.status})`);
+      }
+    } catch (error) {
+      setResumeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setResumeBusy(null);
+    }
+  };
+
+  const runStepAction = async (stepIndex: number, action: StepAction) => {
+    setStepBusy(action);
+    setStepError(null);
+    try {
+      const res = await fetch(`/api/evals/runs/${encodeURIComponent(run.runId)}/steps/${stepIndex}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `Step ${action} failed (${res.status})`);
+      }
+    } catch (error) {
+      setStepError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStepBusy(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -172,7 +222,7 @@ export function RunDetail({
           <div className="mt-1 text-xs text-gray-500 flex items-center gap-3 flex-wrap">
             <span>{run.workflowName}</span>
             <span className="font-mono">{run.model}</span>
-            {run.sandboxId && <span className="font-mono text-[10px] text-gray-400">sandbox {run.sandboxId}</span>}
+            {run.sandboxId && <span className="font-mono text-[10px] text-gray-400">vm {run.sandboxId}</span>}
             <span>{formatDuration(run.startedAt, run.finishedAt) ?? "not started"}</span>
             {totalCost > 0 && (
               <span className="font-mono font-medium text-emerald-700">{formatUsd(totalCost)}</span>
@@ -180,8 +230,29 @@ export function RunDetail({
           </div>
           {run.error && <div className="mt-1 text-xs text-red-600">{run.error}</div>}
         </div>
-        <button onClick={onClose} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 shrink-0">✕ close</button>
+        <div className="flex items-center gap-2 shrink-0">
+          {canResume && (
+            <>
+              <button
+                onClick={() => void resumeRun("continue")}
+                disabled={resumeBusy !== null}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {resumeBusy === "continue" ? "Continuing..." : "Continue"}
+              </button>
+              <button
+                onClick={() => void resumeRun("restart-step")}
+                disabled={resumeBusy !== null}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+              >
+                {resumeBusy === "restart-step" ? "Restarting..." : "Restart step"}
+              </button>
+            </>
+          )}
+          <button onClick={onClose} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600">✕ close</button>
+        </div>
       </div>
+      {resumeError && <div className="px-3 py-2 bg-red-50 ring-1 ring-red-200 rounded-md text-xs text-red-700">{resumeError}</div>}
 
       {/* Token + cost stats */}
       {(tokens.total > 0 || totalCost > 0) && (
@@ -218,7 +289,7 @@ export function RunDetail({
           <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
             <span className="font-medium text-gray-700">{selectedStep.stepName}</span>
             {selectedStep.model !== "-" && <span className="font-mono">{selectedStep.model}</span>}
-            <span>{selectedStep.numMessages} messages</span>
+            <span>{selectedStep.numMessages} events</span>
             {(() => {
               const t = sumStepTokens([selectedStep]);
               if (t.total === 0) return null;
@@ -235,6 +306,49 @@ export function RunDetail({
             <span>{formatDuration(selectedStep.startedAt, selectedStep.finishedAt) ?? ""}</span>
             {selectedStep.error && <span className="text-red-600">{selectedStep.error}</span>}
           </div>
+          {selectedStep.stepIndex >= 1 && (runActive ? selectedStep.status === "running" : run.sandboxId != null) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {runActive ? (
+                selectedStep.status === "running" && (
+                  <button
+                    onClick={() => void runStepAction(selectedStep.stepIndex, "stop")}
+                    disabled={stepBusy !== null}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {stepBusy === "stop" ? "Stopping…" : "Stop"}
+                  </button>
+                )
+              ) : (
+                <>
+                  <button
+                    onClick={() => void runStepAction(selectedStep.stepIndex, "continue")}
+                    disabled={stepBusy !== null}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    title="Continue this step from its previous partial attempt, then run the rest"
+                  >
+                    {stepBusy === "continue" ? "Continuing…" : "Continue"}
+                  </button>
+                  <button
+                    onClick={() => void runStepAction(selectedStep.stepIndex, "restart")}
+                    disabled={stepBusy !== null}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                    title="Re-run this step from scratch, then run the rest"
+                  >
+                    {stepBusy === "restart" ? "Restarting…" : "Restart"}
+                  </button>
+                  <button
+                    onClick={() => void runStepAction(selectedStep.stepIndex, "reset")}
+                    disabled={stepBusy !== null}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                    title="Mark this step as not-yet-run without executing it"
+                  >
+                    {stepBusy === "reset" ? "Resetting…" : "Reset"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {stepError && <div className="px-3 py-2 bg-red-50 ring-1 ring-red-200 rounded-md text-xs text-red-700">{stepError}</div>}
           <WorklogViewer rows={worklog} />
         </div>
       )}
@@ -266,8 +380,8 @@ export function RunDetail({
       {sandboxAlive && (
         <div>
           <h3 className="text-xs font-semibold text-gray-700 mb-2">
-            Sandbox exec
-            {run.status === "failed" && <span className="ml-2 font-normal text-gray-400">(failed runs keep their sandbox alive until timeout)</span>}
+            VM exec
+            {["failed", "cancelled"].includes(run.status) && <span className="ml-2 font-normal text-gray-400">(stopped runs keep their VM alive until idle timeout)</span>}
           </h3>
           <ExecConsole runId={run.runId} />
         </div>

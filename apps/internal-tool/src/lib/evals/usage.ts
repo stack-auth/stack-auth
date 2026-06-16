@@ -1,14 +1,9 @@
-// Token accounting for Claude Code stream-json traces.
+// Token accounting for agent traces.
 //
-// The final `result` message's `usage` cannot be trusted as a step total: in
-// practice it often reflects only the last API call of the session (observed
-// directly — multi-turn agentic steps stored e.g. 6 input tokens), which made
-// costs undercount by orders of magnitude versus actual OpenRouter billing.
-// Every `assistant` message carries that API call's own usage, so the real
-// total is the sum across all calls, deduplicated by message id (stream-json
-// repeats the same message id once per content block). The result message's
-// `usage` and per-model `modelUsage` are still folded in as a floor in case a
-// trace is missing assistant lines.
+// Older Claude stream-json traces exposed usage on assistant/result messages,
+// while AI SDK HarnessAgent exposes turn usage on the stream result. Keep both
+// paths so historical worklogs and newly completed harness runs can be priced
+// through the same OpenRouter repricing code.
 
 type UsageCounts = {
   input: number,
@@ -105,6 +100,30 @@ export class StreamUsageAccumulator {
         }
       }
     }
+  }
+
+  addAiSdkUsage(usage: unknown): void {
+    if (typeof usage !== "object" || usage === null) return;
+    const record = usage as Record<string, unknown>;
+    const inputTokens = record.inputTokens;
+    const outputTokens = record.outputTokens;
+    const counts: UsageCounts = {
+      input: typeof inputTokens === "object" && inputTokens !== null
+        ? toCount((inputTokens as Record<string, unknown>).total)
+        : toCount(inputTokens),
+      output: typeof outputTokens === "object" && outputTokens !== null
+        ? toCount((outputTokens as Record<string, unknown>).total)
+        : toCount(outputTokens),
+      cacheRead: typeof inputTokens === "object" && inputTokens !== null
+        ? toCount((inputTokens as Record<string, unknown>).cacheRead)
+        : toCount(record.cachedInputTokens),
+      cacheCreation: typeof inputTokens === "object" && inputTokens !== null
+        ? toCount((inputTokens as Record<string, unknown>).cacheWrite)
+        : toCount(record.cacheCreationInputTokens),
+    };
+    if (counts.input + counts.output + counts.cacheRead + counts.cacheCreation === 0) return;
+    this.seenUsage = true;
+    this.resultFloor = fieldMax(this.resultFloor, counts);
   }
 
   totals(): StreamUsageTotals {
