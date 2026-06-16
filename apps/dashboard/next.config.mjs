@@ -43,6 +43,15 @@ const withConfiguredSentryConfig = (nextConfig) =>
     }
   );
 
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // optionally set output to "standalone" for Docker builds
@@ -100,7 +109,7 @@ const nextConfig = {
   },
 
   async headers() {
-    const isLocalEmulator = (process.env.NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR || process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR) === "true";
+    const isLocalEmulator = resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR", "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
     return [
       {
         source: "/(.*)",

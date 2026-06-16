@@ -6,7 +6,7 @@ export function isBrowserLike() {
 }
 
 // newName: oldName
-const ENV_VAR_RENAME: Record<string, string[]> = {
+const ENV_VAR_RENAME: Record<string, string[] | undefined> = {
   NEXT_PUBLIC_STACK_API_URL: ['STACK_BASE_URL', 'NEXT_PUBLIC_STACK_URL'],
 };
 
@@ -22,6 +22,21 @@ function getHexclaveEnvVarName(name: string): string | undefined {
     return undefined;
   }
   return name.replace("STACK_", "HEXCLAVE_");
+}
+
+export function resolveHexclaveStackEnvVarValue(hexclaveName: string, stackName: string, hexclaveValue: string | undefined, stackValue: string | undefined): string | undefined {
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
+function getEnvVarWithHexclaveFallback(name: string): string | undefined {
+  const hexclaveName = getHexclaveEnvVarName(name);
+  if (hexclaveName == null) {
+    return process.env[name];
+  }
+  return resolveHexclaveStackEnvVarValue(hexclaveName, name, process.env[hexclaveName], process.env[name]);
 }
 
 /**
@@ -45,7 +60,7 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
 
   // throw error if the old name is used as the retrieve key
   for (const [newName, oldNames] of Object.entries(ENV_VAR_RENAME)) {
-    if (oldNames.includes(name)) {
+    if (oldNames?.includes(name)) {
       throwErr(`Environment variable ${name} has been renamed to ${newName}. Please update your configuration to use the new name.`);
     }
   }
@@ -53,15 +68,13 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
   // Hexclave rebrand: prefer the HEXCLAVE_*-prefixed equivalent, fall back to the STACK_* name.
   // Treat the empty string as unset — the checked-in .env templates define empty
   // HEXCLAVE_* placeholders, which must not shadow a real value under the legacy name.
-  const hexclaveName = getHexclaveEnvVarName(name);
-  let value = (hexclaveName ? process.env[hexclaveName] : undefined) || process.env[name];
+  let value = getEnvVarWithHexclaveFallback(name);
 
   // check the key under the old name if the new name is not found
-  if (!value && ENV_VAR_RENAME[name] as any) {
-    for (const oldName of ENV_VAR_RENAME[name]) {
-      // Hexclave rebrand: also accept the HEXCLAVE_*-prefixed equivalent of each old alias.
-      const hexclaveOldName = getHexclaveEnvVarName(oldName);
-      value = (hexclaveOldName ? process.env[hexclaveOldName] : undefined) || process.env[oldName];
+  const renamedNames = ENV_VAR_RENAME[name];
+  if (!value && renamedNames != null) {
+    for (const oldName of renamedNames) {
+      value = getEnvVarWithHexclaveFallback(oldName);
       if (value) break;
     }
   }
@@ -116,6 +129,5 @@ export function getProcessEnv(name: string): string | undefined {
   // Hexclave rebrand: prefer the HEXCLAVE_*-prefixed equivalent, fall back to the STACK_* name.
   // Empty counts as unset — the checked-in .env templates define empty HEXCLAVE_* placeholders,
   // which must not shadow a real value under the legacy name.
-  const hexclaveName = getHexclaveEnvVarName(name);
-  return (hexclaveName ? process.env[hexclaveName] : undefined) || process.env[name];
+  return getEnvVarWithHexclaveFallback(name);
 }

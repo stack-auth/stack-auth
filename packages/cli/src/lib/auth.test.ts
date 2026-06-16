@@ -93,8 +93,25 @@ describe("resolveProjectId", () => {
     expect(resolveProjectId(undefined)).toBe("proj_from_env");
   });
 
+  it("uses the HEXCLAVE_PROJECT_ID env var", () => {
+    process.env.HEXCLAVE_PROJECT_ID = "proj_from_hexclave_env";
+    expect(resolveProjectId(undefined)).toBe("proj_from_hexclave_env");
+  });
+
+  it("throws when the Hexclave and Stack env vars disagree", () => {
+    process.env.HEXCLAVE_PROJECT_ID = "proj_from_hexclave_env";
+    process.env.STACK_PROJECT_ID = "proj_from_stack_env";
+    expect(() => resolveProjectId(undefined)).toThrow(/HEXCLAVE_PROJECT_ID.*STACK_PROJECT_ID.*different values/);
+  });
+
   it("prefers the option over the env var", () => {
     process.env.STACK_PROJECT_ID = "proj_from_env";
+    expect(resolveProjectId("proj_from_flag")).toBe("proj_from_flag");
+  });
+
+  it("does not inspect conflicting env vars when the option is present", () => {
+    process.env.HEXCLAVE_PROJECT_ID = "proj_from_hexclave_env";
+    process.env.STACK_PROJECT_ID = "proj_from_stack_env";
     expect(resolveProjectId("proj_from_flag")).toBe("proj_from_flag");
   });
 
