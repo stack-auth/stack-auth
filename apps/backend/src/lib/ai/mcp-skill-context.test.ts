@@ -1,15 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getMcpSkillContextPrompt } from "./mcp-skill-context";
+import { _clearSkillCache, getMcpSkillContextPrompt } from "./mcp-skill-context";
 
 describe("getMcpSkillContextPrompt", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    _clearSkillCache();
   });
 
-  it("does not fetch skill context for non-ask_hexclave requests", async () => {
+  it("returns empty string for non-ask_hexclave tool names", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     await expect(getMcpSkillContextPrompt("other_tool")).resolves.toMatchInlineSnapshot(`""`);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns empty string for null toolName", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(getMcpSkillContextPrompt(null)).resolves.toMatchInlineSnapshot(`""`);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns empty string for undefined toolName", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(getMcpSkillContextPrompt(undefined)).resolves.toMatchInlineSnapshot(`""`);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -34,9 +49,10 @@ describe("getMcpSkillContextPrompt", () => {
       Use Hexclave docs.
       "
     `);
-    expect(fetchSpy).toHaveBeenCalledWith("https://skill.hexclave.com", {
+    expect(fetchSpy).toHaveBeenCalledWith("https://skill.hexclave.com", expect.objectContaining({
       headers: { Accept: "text/markdown" },
-    });
+      signal: expect.any(AbortSignal),
+    }));
   });
 
   it("fails loudly when the canonical skill cannot be fetched", async () => {
@@ -47,5 +63,28 @@ describe("getMcpSkillContextPrompt", () => {
     await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(
       `[Error: Failed to fetch skill from https://skill.hexclave.com: 503 Service Unavailable]`,
     );
+  });
+
+  it("throws a descriptive error when the fetch times out", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      const err = new DOMException("The operation was aborted", "AbortError");
+      return Promise.reject(err);
+    });
+
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(
+      `[Error: Skill fetch from https://skill.hexclave.com timed out after 5000ms]`,
+    );
+  });
+
+  it("returns cached skill on subsequent calls within TTL", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("# Cached Skill"),
+    );
+
+    const first = await getMcpSkillContextPrompt("ask_hexclave");
+    const second = await getMcpSkillContextPrompt("ask_hexclave");
+
+    expect(first).toBe(second);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
