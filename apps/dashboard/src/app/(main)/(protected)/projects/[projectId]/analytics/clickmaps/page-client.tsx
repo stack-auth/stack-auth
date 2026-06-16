@@ -142,37 +142,37 @@ export default function PageClient() {
         fillWidth
       >
         <DesignAnalyticsCard gradient="slate" className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-1">
-              <Typography className="font-medium">Exact page origin</Typography>
-              <Typography type="p" variant="secondary" className="text-xs">
-                Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
-              </Typography>
-              <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
-              {wildcardDomains.length > 0 && (
-                <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-                  <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>
-                    {wildcardDomains.map((d) => d.baseUrl).join(", ")} can match real pages, but cannot be opened directly as a clickmap target.
-                  </span>
-                </div>
-              )}
+          <div className="space-y-1">
+            <Typography className="font-medium">Exact page origin</Typography>
+            <Typography type="p" variant="secondary" className="text-xs">
+              Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
+            </Typography>
+            <div className="flex items-center gap-2">
+              <Input className="flex-1" value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
+              <Button
+                className="shrink-0 gap-1.5"
+                disabled={customOrigin.trim() === ""}
+                onClick={async () => {
+                  const origin = normalizeClickmapOrigin(customOrigin);
+                  if (origin == null) {
+                    window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
+                    return;
+                  }
+                  await showClickmap({ id: "exact-origin", origin });
+                }}
+              >
+                Show clickmap
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              className="gap-1.5"
-              disabled={customOrigin.trim() === ""}
-              onClick={async () => {
-                const origin = normalizeClickmapOrigin(customOrigin);
-                if (origin == null) {
-                  window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
-                  return;
-                }
-                await showClickmap({ id: "exact-origin", origin });
-              }}
-            >
-              Show clickmap
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            {wildcardDomains.length > 0 && (
+              <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  {wildcardDomains.map((d) => d.baseUrl).join(", ")} can match real pages, but cannot be opened directly as a clickmap target.
+                </span>
+              </div>
+            )}
           </div>
         </DesignAnalyticsCard>
 
