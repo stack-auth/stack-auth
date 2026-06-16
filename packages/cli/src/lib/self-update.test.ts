@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   buildNpxInvocation,
+  decidePostReexec,
   decideReexec,
   DISABLE_AUTO_UPDATE_ENV,
   isEnvFlagEnabled,
   maybeReexecToLatest,
+  REEXEC_MARKER_ENV,
   shouldAutoUpdate,
+  signalReexecStartedIfChild,
   SKIP_AUTO_UPDATE_ENV,
 } from "./self-update.js";
 import type { OwnPackage } from "./own-package.js";
@@ -177,5 +183,62 @@ describe("maybeReexecToLatest", () => {
     // hanging proves we did not re-exec into `npx @latest`.
     process.env[DISABLE_AUTO_UPDATE_ENV] = "1";
     await expect(maybeReexecToLatest({ forwardArgs: ["dev"] })).resolves.toBeUndefined();
+  });
+});
+
+describe("decidePostReexec", () => {
+  it("propagates the exit code when the CLI ran to completion (code 0)", () => {
+    expect(decidePostReexec({ result: { exited: true, code: 0 }, started: true }))
+      .toEqual({ kind: "exit", code: 0 });
+  });
+
+  it("propagates a nonzero exit code when the CLI actually started (real command failure)", () => {
+    // The re-exec'd CLI ran (marker present) and the wrapped command failed — we
+    // must surface that failure, not silently re-run it.
+    expect(decidePostReexec({ result: { exited: true, code: 1 }, started: true }))
+      .toEqual({ kind: "exit", code: 1 });
+  });
+
+  it("falls back when npx exits nonzero before the CLI starts (e.g. Lock compromised)", () => {
+    // npm errored during install/lock; our CLI never ran. Don't take down dev —
+    // run the installed CLI instead.
+    const action = decidePostReexec({ result: { exited: true, code: 1 }, started: false });
+    expect(action.kind).toBe("fallback");
+  });
+
+  it("falls back when npx cannot be spawned at all", () => {
+    const action = decidePostReexec({ result: { exited: false, error: "spawn npx ENOENT" }, started: false });
+    expect(action.kind).toBe("fallback");
+  });
+});
+
+describe("signalReexecStartedIfChild", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hexclave-reexec-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes the marker file when the marker env var is set (we are the child)", () => {
+    const marker = join(dir, "started");
+    signalReexecStartedIfChild({ [REEXEC_MARKER_ENV]: marker });
+    expect(existsSync(marker)).toBe(true);
+    expect(readFileSync(marker, "utf8")).toBe("1");
+  });
+
+  it("does nothing when no marker env var is set (normal top-level run)", () => {
+    const marker = join(dir, "started");
+    signalReexecStartedIfChild({});
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("does not throw when the marker path is unwritable (best-effort)", () => {
+    const marker = join(dir, "nonexistent-subdir", "started");
+    expect(() => signalReexecStartedIfChild({ [REEXEC_MARKER_ENV]: marker })).not.toThrow();
+    expect(existsSync(marker)).toBe(false);
   });
 });

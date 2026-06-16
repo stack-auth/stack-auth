@@ -1,4 +1,7 @@
 import { spawn } from "child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { forwardSignals } from "./child-process.js";
 import { getOwnPackage, type OwnPackage } from "./own-package.js";
 
@@ -7,6 +10,12 @@ import { getOwnPackage, type OwnPackage } from "./own-package.js";
 export const SKIP_AUTO_UPDATE_ENV = "STACK_CLI_SKIP_AUTO_UPDATE";
 // User-facing opt-out. Set to a truthy value to never auto-update.
 export const DISABLE_AUTO_UPDATE_ENV = "STACK_CLI_NO_AUTO_UPDATE";
+// Path to a marker file the re-exec'd child touches the instant it starts. The
+// parent uses its presence to tell a genuine command failure (our CLI ran and
+// exited nonzero) from an npx/install failure where our CLI never ran at all
+// (e.g. npm "Lock compromised" on sandboxed/networked filesystems). Set by the
+// parent on the child's env; read back by the parent after the child exits.
+export const REEXEC_MARKER_ENV = "STACK_CLI_REEXEC_MARKER";
 
 const LOG_PREFIX = "[Hexclave] ";
 
@@ -96,7 +105,7 @@ export function decideReexec(opts: {
   };
 }
 
-type ReexecResult =
+export type ReexecResult =
   | { exited: true, code: number }
   | { exited: false, error: string };
 
@@ -110,12 +119,14 @@ function quoteShellArg(arg: string): string {
   return `"${arg.replace(/"/g, '\\"')}"`;
 }
 
-function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
+function runReexec(invocation: NpxInvocation, markerFile: string | null): Promise<ReexecResult> {
   return new Promise((resolvePromise) => {
     const args = invocation.shell ? invocation.args.map(quoteShellArg) : invocation.args;
+    const env: NodeJS.ProcessEnv = { ...process.env, [SKIP_AUTO_UPDATE_ENV]: "1" };
+    if (markerFile != null) env[REEXEC_MARKER_ENV] = markerFile;
     const child = spawn(invocation.command, args, {
       stdio: "inherit",
-      env: { ...process.env, [SKIP_AUTO_UPDATE_ENV]: "1" },
+      env,
       shell: invocation.shell,
     });
     const cleanup = forwardSignals(child);
@@ -133,13 +144,83 @@ function runReexec(invocation: NpxInvocation): Promise<ReexecResult> {
   });
 }
 
+// What the parent should do once the re-exec'd npx process is done. Kept pure so
+// the fallback branching can be unit-tested without spawning anything.
+//   - exit:     propagate the child's exit code (it ran our CLI to completion)
+//   - fallback: the update attempt failed before our CLI ran — run the installed
+//               CLI inline instead of taking down `hexclave dev`
+export type PostReexecAction =
+  | { kind: "exit", code: number }
+  | { kind: "fallback", detail: string };
+
+// `started` is whether the re-exec'd CLI actually began running (its startup
+// marker appeared). A nonzero exit *with* the CLI started is a real command
+// failure and must propagate. A nonzero exit *without* it — or npx not being
+// spawnable at all — means the auto-update failed before our CLI ran (e.g. npm
+// "Lock compromised" on Replit/Docker/WSL/NFS filesystems, ETARGET, registry or
+// network errors); auto-update is best-effort, so we fall back.
+export function decidePostReexec(opts: { result: ReexecResult, started: boolean }): PostReexecAction {
+  const { result, started } = opts;
+  if (!result.exited) {
+    return { kind: "fallback", detail: `could not run npx (${result.error})` };
+  }
+  if (result.code !== 0 && !started) {
+    return { kind: "fallback", detail: `npx exited with code ${result.code} before the CLI started` };
+  }
+  return { kind: "exit", code: result.code };
+}
+
+// Create a unique, empty marker directory; the child writes a file inside it on
+// startup. Returns null if the temp dir can't be created, in which case the
+// caller treats every exit as "the CLI started" (i.e. preserves the old
+// always-propagate behavior rather than risk a spurious fallback).
+function createReexecMarker(): { dir: string, file: string } | null {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "hexclave-reexec-"));
+    return { dir, file: join(dir, "started") };
+  } catch {
+    return null;
+  }
+}
+
+function cleanupReexecMarker(marker: { dir: string } | null): void {
+  if (marker == null) return;
+  try {
+    rmSync(marker.dir, { recursive: true, force: true });
+  } catch {
+    // best-effort temp cleanup
+  }
+}
+
+// Called at the very start of the (potential) re-exec. When we are the
+// npx-spawned child — identified by the marker path the parent put on our env —
+// touch the marker so the parent knows the latest CLI actually started. No-op in
+// the normal top-level invocation, where no marker env var is set.
+export function signalReexecStartedIfChild(env: NodeJS.ProcessEnv): void {
+  const markerFile = env[REEXEC_MARKER_ENV];
+  if (markerFile == null || markerFile === "") return;
+  try {
+    writeFileSync(markerFile, "1");
+  } catch {
+    // best-effort; if we can't write it the parent simply propagates the exit
+    // code as before — no worse than the pre-fallback behavior.
+  }
+}
+
 // Re-runs the requested command through `npx <pkg>@latest` so the user always
 // gets the latest CLI + dashboard without reinstalling, then exits with the
 // child's code. The re-exec'd child carries SKIP_AUTO_UPDATE_ENV so it runs the
-// freshly downloaded CLI directly instead of recursing. Best-effort: if npx
-// can't be spawned (or auto-update is off / opted out) we silently fall through
-// to the installed CLI.
+// freshly downloaded CLI directly instead of recursing, and a marker path so it
+// can signal that it started. Best-effort: if the update fails before our CLI
+// runs — npx not spawnable, or npx/npm itself erroring (e.g. "Lock compromised"
+// on sandboxed filesystems) — we fall back to the installed CLI instead of
+// failing `hexclave dev`.
 export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Promise<void> {
+  // If npx already re-exec'd us to the latest CLI, record that we started so the
+  // parent can tell a real command failure apart from an npx/install failure.
+  signalReexecStartedIfChild(process.env);
+
+  let marker: { dir: string, file: string } | null = null;
   try {
     const decision = decideReexec({
       env: process.env,
@@ -148,13 +229,25 @@ export async function maybeReexecToLatest(opts: { forwardArgs: string[] }): Prom
     });
     if (!decision.reexec) return;
 
-    const result = await runReexec(decision.invocation);
-    if (result.exited) {
-      process.exit(result.code);
+    marker = createReexecMarker();
+    const result = await runReexec(decision.invocation, marker?.file ?? null);
+    // No marker means we couldn't create one; treat that as "started" so we keep
+    // the old always-propagate behavior rather than fall back spuriously.
+    const started = marker == null || existsSync(marker.file);
+    cleanupReexecMarker(marker);
+    marker = null;
+
+    const action = decidePostReexec({ result, started });
+    if (action.kind === "exit") {
+      process.exit(action.code);
     }
-    logUpdate(`Could not run npx (${result.error}); continuing with the installed CLI.`);
+    logUpdate(`Auto-update skipped: ${action.detail}; continuing with the installed CLI.`);
   } catch {
     // Fail open: any unexpected error must not block the installed CLI from
     // running.
+  } finally {
+    // Covers the early-return / throw / opt-out paths; the success path already
+    // cleaned up before process.exit (which would skip finally).
+    cleanupReexecMarker(marker);
   }
 }
