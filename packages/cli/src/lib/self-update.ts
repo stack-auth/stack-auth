@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { constants as osConstants, tmpdir } from "os";
 import { join } from "path";
 import { forwardSignals } from "./child-process.js";
 import { getOwnPackage, type OwnPackage } from "./own-package.js";
@@ -106,7 +106,11 @@ export function decideReexec(opts: {
 }
 
 export type ReexecResult =
-  | { exited: true, code: number }
+  // `signal` is the terminating signal when the child was killed by one (e.g. a
+  // Ctrl-C we forwarded), else null. It disambiguates "user/system aborted us"
+  // from "npx failed", which a bare exit code can't (a signal death surfaces as
+  // code null -> would otherwise look like a generic failure).
+  | { exited: true, code: number, signal: NodeJS.Signals | null }
   | { exited: false, error: string };
 
 // Quote an argument for the single cmd.exe command line that Node builds when
@@ -131,9 +135,17 @@ function runReexec(invocation: NpxInvocation, markerFile: string | null): Promis
     });
     const cleanup = forwardSignals(child);
 
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       cleanup();
-      resolvePromise({ exited: true, code: code ?? 1 });
+      if (signal != null) {
+        // Killed by a signal we forwarded (e.g. Ctrl-C). Report it with the
+        // conventional 128 + signal-number exit code so the caller can both
+        // recognize the abort and propagate a sensible code.
+        const signalNumber = osConstants.signals[signal];
+        resolvePromise({ exited: true, code: 128 + signalNumber, signal });
+        return;
+      }
+      resolvePromise({ exited: true, code: code ?? 1, signal: null });
     });
     // npx missing / not spawnable: report so the caller can fall back to the
     // installed CLI instead of failing the whole `hexclave dev`.
@@ -163,6 +175,12 @@ export function decidePostReexec(opts: { result: ReexecResult, started: boolean 
   const { result, started } = opts;
   if (!result.exited) {
     return { kind: "fallback", detail: `could not run npx (${result.error})` };
+  }
+  // Killed by a forwarded signal (e.g. the user pressed Ctrl-C, possibly mid
+  // download before our CLI started): they want to abort, not silently relaunch
+  // dev on the installed CLI. Propagate the termination instead of falling back.
+  if (result.signal != null) {
+    return { kind: "exit", code: result.code };
   }
   if (result.code !== 0 && !started) {
     return { kind: "fallback", detail: `npx exited with code ${result.code} before the CLI started` };
