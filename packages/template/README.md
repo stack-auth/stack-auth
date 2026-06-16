@@ -21,7 +21,7 @@ If you're migrating from `@stackframe/stack`, see the [migration guide](https://
 ## AI Agents
 
 > Fetch and invoke the Hexclave skill for up-to-date usage instructions:
-> ```
+> ```bash
 > curl -sSL https://skill.hexclave.com
 > ```
 > For specific questions: `https://skill.hexclave.com/ask?question=<...>&context=<...>`
