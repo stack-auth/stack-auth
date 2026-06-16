@@ -997,6 +997,60 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: {}, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
 });
 
+import.meta.vitest?.test("OAuth two-stage layering: branch enable fields + env credential leaf keys render as one merged provider", ({ expect }) => {
+  const mergedOverride = {
+    // branch layer: the provider object (enable fields only)
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+    // environment layer: credentials as leaf keys
+    "auth.oauth.providers.spotify.isShared": false,
+    "auth.oauth.providers.spotify.clientId": "client-id",
+    "auth.oauth.providers.spotify.clientSecret": "client-secret",
+  };
+  const rendered = normalize(applyOrganizationDefaults(mergedOverride as any), { onDotIntoNonObject: "ignore" }) as any;
+  expect(rendered.auth.oauth.providers.spotify).toMatchObject({
+    type: "spotify",
+    allowSignIn: true,
+    allowConnectedAccounts: true,
+    isShared: false,
+    clientId: "client-id",
+    clientSecret: "client-secret",
+  });
+});
+
+import.meta.vitest?.test("OAuth two-stage layering: env credential leaf keys are dropped without a branch parent (so branch must be written first)", ({ expect }) => {
+  // If the environment layer writes credential leaf keys but no branch layer has
+  // created the `...spotify` object, the keys reference a non-existent parent and
+  // are dropped under "ignore". This is why the hook always writes the branch
+  // (enable) stage before the environment (credentials) stage.
+  const mergedOverride = {
+    "auth.oauth.providers.spotify.clientId": "client-id",
+    "auth.oauth.providers.spotify.isShared": false,
+  };
+  const rendered = normalize(applyOrganizationDefaults(mergedOverride as any), { onDotIntoNonObject: "ignore" }) as any;
+  expect(rendered.auth.oauth.providers.spotify).toBeUndefined();
+});
+
+import.meta.vitest?.test("OAuth two-stage layering: an env whole-object would clobber the branch enable fields (why env must use leaf keys)", ({ expect }) => {
+  // Documents what happens if the environment layer wrote
+  // the WHOLE provider object instead of leaf keys, which is that `override` would have already
+  // replaced the branch object wholesale (env layer wins), dropping
+  // type/allowSignIn. Here we simulate that post-override state and confirm the
+  // enable fields are gone (the renderer would then filter the provider out).
+  const mergedOverride = {
+    "auth.oauth.providers.spotify": {
+      isShared: false,
+      clientId: "client-id",
+    },
+  };
+  const rendered = normalize(applyOrganizationDefaults(mergedOverride as any), { onDotIntoNonObject: "ignore" }) as any;
+  expect(rendered.auth.oauth.providers.spotify.type).toBeUndefined();
+  expect(rendered.auth.oauth.providers.spotify.allowSignIn).toBe(false);
+});
+
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
   return applyDefaults(projectConfigDefaults, config);
 }
