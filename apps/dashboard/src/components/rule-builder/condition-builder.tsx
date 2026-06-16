@@ -136,7 +136,8 @@ function ChipsInput({
     const pasted = e.clipboardData.getData('text');
     if (pasted.includes(',')) {
       e.preventDefault();
-      const items = pasted.split(',').map(s => s.trim()).filter(Boolean);
+      const combined = inputValue + pasted;
+      const items = combined.split(',').map(s => s.trim()).filter(Boolean);
       const uniqueNew = items.filter(item => !values.includes(item));
       if (uniqueNew.length > 0) {
         onChange([...values, ...uniqueNew]);
@@ -165,6 +166,7 @@ function ChipsInput({
           <button
             type="button"
             onClick={() => removeChip(index)}
+            aria-label={`Remove ${chip}`}
             className="rounded-full p-0.5 hover:bg-secondary-foreground/20 transition-colors hover:transition-none"
           >
             <XIcon className="h-3 w-3" />
@@ -239,7 +241,7 @@ function ConditionRow({
   const handleOperatorChange = (operator: ConditionOperator) => {
     let value = condition.value;
     if (operator === 'in_list' && !Array.isArray(value)) {
-      value = value ? [String(value)] : [''];
+      value = value ? [String(value)] : [];
     } else if (operator !== 'in_list' && Array.isArray(value)) {
       value = value[0] ?? '';
     }
