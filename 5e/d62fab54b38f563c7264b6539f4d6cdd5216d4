@@ -1,0 +1,185 @@
+apps/internal-tool/src/lib/evals/sandbox.ts
+  s_f7843575a406ec::t_72e29a24c4a5fc 77,94,303-304
+  s_f7843575a406ec::t_7552ada58048bd 87-88
+  s_00da82b02fe13e::t_84581f52bf647b 235
+  s_7f9c75dfc52d67::t_b67e3d4fb5eeb2 237
+  s_f7843575a406ec::t_b73e9f09d99466 81
+  s_00da82b02fe13e::t_0f60ff1f3b9c84 133-144
+  s_f7843575a406ec::t_c4d87ed47d84e7 282,301
+  s_f7843575a406ec::t_04e644e8cbae2e 448-449
+  s_f3fbc4358c87b2::t_0dd6dc84424a82 1-2,8-10,12,19-34,36-38,40,43-45,317,320-321,323-326,333-342,345,347-359,361-363,365-366,368-382,384-386,390-391,403,407-410,412-415,417,419-420,423,430-431,434-437,440,460-485
+  s_00da82b02fe13e::t_1a6e751114cd17 162
+  s_7f9c75dfc52d67::t_f844f47a2e93d2 123-132,164
+  s_00da82b02fe13e::t_d578d31ea9403f 411
+  s_f3fbc4358c87b2::t_128b786164c30e 7,328,331-332,343-344,346
+  s_f7843575a406ec::t_ccb69606397767 441-447,450-459
+  s_f7843575a406ec::t_fcfe8f79125227 3,5,46-76,78-80,82-86,89-93,95-122,145-161,163,165-234,236,238-281,283-300,302,305
+  s_f3fbc4358c87b2::t_28d92a9d86bfd7 329-330
+apps/internal-tool/src/lib/evals/orchestrator.ts
+  s_f7843575a406ec::t_67e6838ff7937b 236
+  s_f3fbc4358c87b2::t_eb963a9b0f858e 1,16,18,68-69,271,316,474,771,773,779
+  s_f7843575a406ec::t_b4bc8be20dae21 2-3,6-7,11,19,70
+  s_f7843575a406ec::t_742e985696d5d1 156
+  s_f7843575a406ec::t_eb31be04bf4b3d 42,44-45
+  s_176d73abf72760::t_9fbe37ba30bae0 34,88-90,180,274-284,320-321,325-327,355-360,363-372,544-553,599-608,610-611,614-628,630-641,643,645-650,653-664,667-753,755,758-768
+  s_f7843575a406ec::t_bb685579bc0b33 362,378-383,387,392-410,413-422,424-435,439,456-457,464-465
+  s_00da82b02fe13e::t_3c5bd132fe697e 554-598,609,612-613,629,642,644,652
+  s_176d73abf72760::t_396f1a4f43d6fb 10,300
+  s_f3fbc4358c87b2::t_000c9c1bfc5124 298-299,302,304
+  s_00da82b02fe13e::t_c0c03c5a95e88b 32
+  s_23a11dc1c8b373::t_9a8336065de95a 237,373-376
+  s_f7843575a406ec::t_43f2d7f66a274a 423,535
+apps/internal-tool/next.config.mjs
+  s_7f9c75dfc52d67::t_05ad38bf1d809e 4-7
+apps/internal-tool/src/app/api/evals/runs/[runId]/steps/[stepIndex]/route.ts
+  s_00da82b02fe13e::t_a16e244b061a3a 1-30,47-52
+  s_00da82b02fe13e::t_fcaf13b755474d 31-46
+apps/internal-tool/src/components/evals/WorklogViewer.tsx
+  s_8dccc3776c5995::t_28efa269b10bd2 211-215
+  s_8dccc3776c5995::t_7139631cb81da6 140-144
+  s_8dccc3776c5995::t_f69f71560457e8 395
+  s_8dccc3776c5995::t_fcd557aa675527 157-161
+  s_8dccc3776c5995::t_f52820bcd61bd1 198-202
+  s_8dccc3776c5995::t_b9617a7860d574 113-114
+  s_8dccc3776c5995::t_0a84619e286840 462,464
+  s_8dccc3776c5995::t_899b79ffbcbc41 180-184,188-192
+  s_8dccc3776c5995::t_4b86d58fade7e5 4,10,12-16,18-40,42,44,46-112,115-139,145-156,162-179,185-187,193-197,203-210,216-232,234-241,243-244,246,248,250,252,254,256-274,278-340,347,354,362-363,366-369,372,376-377,390,396,398,401,403-405,409-411,417-422,425,430-432,436-442,444,449-457,463,473-485,489-490,505-509,513,515,521,524
+apps/internal-tool/src/lib/evals/log-stream.ts
+  s_f3fbc4358c87b2::t_345c31d0fe4a9c 1,3-5,33
+apps/internal-tool/src/lib/evals/openrouter.ts
+  s_f7843575a406ec::t_22a0ddfafbd165 1,123,126-128
+apps/internal-tool/src/components/evals/RunsPanel.tsx
+  s_176d73abf72760::t_d2d66748521288 97,135
+apps/internal-tool/src/lib/evals/chat-agent.ts
+  s_f7843575a406ec::t_6fe1bd6f289208 1-3,5-7,10-11,49-54,65-66,78,80,86,91,103,109,122,124,129,131,148,150,172,178,183,189,196,209,211,220,224-225,227-228,235,238,243,246,252,255,262,265,269,271,277,297-300,302-309,311,313-326,332-338,340-343,345-347,349-351,355-359,361-373,376-383
+  s_176d73abf72760::t_e82c5a3f6f6967 18,201-208,273,278-279
+  s_176d73abf72760::t_ad43444ebba8fe 194
+  s_f7843575a406ec::t_d7e203031c10e7 301,310,312,327-331
+apps/internal-tool/src/components/evals/WorkflowsPanel.tsx
+  s_f3fbc4358c87b2::t_9c84b77e82b288 94
+apps/internal-tool/src/lib/evals/types.ts
+  s_f3fbc4358c87b2::t_55ea169b27874e 55-56
+  s_f3fbc4358c87b2::t_5b9beb4c54334b 54
+apps/internal-tool/src/lib/evals/usage.ts
+  s_f7843575a406ec::t_37b68c124adabe 105-128
+  s_f7843575a406ec::t_405c83a5a2bd19 1,3-6
+apps/internal-tool/src/lib/evals/config.ts
+  s_f3fbc4358c87b2::t_fb44fdac69acc2 36-38,40,43
+apps/internal-tool/src/lib/evals/default-workflow.ts
+  s_4e0741705dbb36::t_84124a6da21b70 54,56-58,60
+  s_0d5d9285a40d29::t_b32234295e5f98 31,34-35
+  s_e6993399789949::t_9d963307c51a69 48
+  s_f3fbc4358c87b2::t_c7239036292b17 74,116,133
+  s_0d5d9285a40d29::t_e91255fed824c0 1-11,33,37,39-42,44,46,50,62-66,68,70,76-78,80,82,84-100,102-103,105-115,120,125,127,130,141-143,148
+  s_f7843575a406ec::t_f7faa6fd99cda0 72
+apps/internal-tool/package.json
+  s_f7843575a406ec::t_752c908db010b1 35-36
+  s_f7843575a406ec::t_4829dafb310282 20-21,26
+  s_f3fbc4358c87b2::t_4a644f23226d40 33
+apps/internal-tool/src/app/api/evals/runs/[runId]/resume/route.ts
+  s_176d73abf72760::t_4f43190def4628 1-23
+pnpm-workspace.yaml
+  s_f7843575a406ec::t_0016a40e02ae06 15
+apps/internal-tool/src/components/evals/RunDetail.tsx
+  s_00da82b02fe13e::t_ae09b94e66536c 13-16
+  s_8dccc3776c5995::t_66d7eabfba8d8f 292
+  s_f3fbc4358c87b2::t_982815a2b0600c 121,225,383
+  s_00da82b02fe13e::t_0ce095a9ca3042 194-212
+  s_00da82b02fe13e::t_eb19cf8b40b75b 171
+  s_00da82b02fe13e::t_9d24d9e7d42dd3 157-158
+  s_00da82b02fe13e::t_ae56b57f2de91e 309-351
+  s_176d73abf72760::t_ade4b6cbf350b1 155-156,170,172-193,233-253,255,384
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "5ed62fab54b38f563c7264b6539f4d6cdd5216d4",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_00da82b02fe13e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e47c18e9-bd69-4ff8-9a13-3539f46351e9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_0d5d9285a40d29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af63e00b-4ca9-4634-8218-0cd526e535ec",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_176d73abf72760": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ecd61-a6c8-72a1-8174-b36767532443",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_23a11dc1c8b373": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed195-beb4-7e10-a1e8-94c3dae4b5ac",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_4e0741705dbb36": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "047d6cd2-08b0-4c91-8fd2-005ff9860cb5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7f9c75dfc52d67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95c6cb4b-0a19-44ac-833a-34a1587433e3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_8dccc3776c5995": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22c757e7-3b6d-4716-be3e-4d027d84bae7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_e6993399789949": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ae21e7a-8a1c-4bd0-bbe1-fbb742cbbb44",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f3fbc4358c87b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ecd04-4918-7dd1-8ad2-e81f5b170d25",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f7843575a406ec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ecd04-587e-76e1-bf08-97b2d27b1246",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
