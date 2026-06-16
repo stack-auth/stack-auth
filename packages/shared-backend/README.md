@@ -1,12 +1,6 @@
 # @hexclave/shared-backend
 
-Shared backend utilities for [Hexclave](https://hexclave.com) — open-source authentication and user management.
-
-## Installation
-
-```bash
-npm install @hexclave/shared-backend
-```
+Internal shared backend utilities for the [Hexclave](https://hexclave.com) SDK. This package is not intended for direct consumption — it is used internally by other `@hexclave/*` packages.
 
 ## Documentation
 

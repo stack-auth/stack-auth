@@ -14,6 +14,10 @@ The official SDK for [Hexclave](https://hexclave.com) — open-source authentica
 
 Full documentation is available at [docs.hexclave.com](https://docs.hexclave.com).
 
+## Migrating from Stack Auth
+
+If you're migrating from `@stackframe/stack`, see the [migration guide](https://docs.hexclave.com/migration).
+
 ## Links
 
 - [Hexclave](https://hexclave.com)

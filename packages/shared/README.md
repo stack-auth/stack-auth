@@ -1,12 +1,6 @@
 # @hexclave/shared
 
-Shared utilities and types for [Hexclave](https://hexclave.com) — open-source authentication and user management.
-
-## Installation
-
-```bash
-npm install @hexclave/shared
-```
+Internal shared utilities and types for the [Hexclave](https://hexclave.com) SDK. This package is not intended for direct consumption — it is used internally by other `@hexclave/*` packages.
 
 ## Documentation
 
