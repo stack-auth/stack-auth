@@ -3,10 +3,11 @@ import { localhostUrl } from "../../../../../../helpers/ports";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 const enableSharedSpotifyProvider = async () => {
-  await Project.updateConfig({
+  // The provider roster + enabled state lives in the branch layer; a shared provider
+  // has no env credentials, so this is a branch-only write.
+  await Project.updatePushedConfig({
     "auth.oauth.providers.spotify": {
       type: "spotify",
-      isShared: true,
       allowSignIn: true,
       allowConnectedAccounts: true,
     },
@@ -120,24 +121,20 @@ it("sends the original (default) redirect_uri for a provider configured before c
   // this feature and therefore has no customCallbackUrl. Alongside it, a provider
   // that opted into the new behavior with an explicit (different-brand) callback.
   await Project.createAndSwitch();
+  // Roster + enabled state on the branch layer...
+  await Project.updatePushedConfig({
+    "auth.oauth.providers.github": { type: "github", allowSignIn: true, allowConnectedAccounts: true },
+    "auth.oauth.providers.spotify": { type: "spotify", allowSignIn: true, allowConnectedAccounts: true },
+  });
+  // ...credentials on the environment layer (as leaf keys).
   await Project.updateConfig({
-    "auth.oauth.providers.github": {
-      type: "github",
-      isShared: false,
-      clientId: "legacy-client-id",
-      clientSecret: "legacy-client-secret",
-      allowSignIn: true,
-      allowConnectedAccounts: true,
-    },
-    "auth.oauth.providers.spotify": {
-      type: "spotify",
-      isShared: false,
-      clientId: "new-client-id",
-      clientSecret: "new-client-secret",
-      customCallbackUrl: "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
-      allowSignIn: true,
-      allowConnectedAccounts: true,
-    },
+    "auth.oauth.providers.github.isShared": false,
+    "auth.oauth.providers.github.clientId": "legacy-client-id",
+    "auth.oauth.providers.github.clientSecret": "legacy-client-secret",
+    "auth.oauth.providers.spotify.isShared": false,
+    "auth.oauth.providers.spotify.clientId": "new-client-id",
+    "auth.oauth.providers.spotify.clientSecret": "new-client-secret",
+    "auth.oauth.providers.spotify.customCallbackUrl": "https://api.hexclave.com/api/v1/auth/oauth/callback/spotify",
   });
 
   // The redirect_uri we hand the provider is carried as a query param on the

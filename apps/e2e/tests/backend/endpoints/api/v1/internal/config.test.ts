@@ -282,8 +282,9 @@ describe("oauth config", () => {
     const initialConfig = JSON.parse(initialResponse.body.config_string);
     expect(initialConfig.auth.oauth.providers).toEqual({});
 
-    // Add a Google OAuth provider
-    const addGoogleResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+    // Add a Google OAuth provider. The roster + enabled state goes to BRANCH; the
+    // credentials go to ENVIRONMENT (as leaf keys). This is the two-layer model.
+    const addGoogleBranchResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
@@ -291,20 +292,30 @@ describe("oauth config", () => {
         config_override_string: JSON.stringify({
           'auth.oauth.providers.google': {
             type: 'google',
-            isShared: false,
-            clientId: 'google-client-id',
-            clientSecret: 'google-client-secret',
             allowSignIn: true,
             allowConnectedAccounts: true,
           },
         }),
       },
     });
+    expect(addGoogleBranchResponse.status).toBe(200);
 
-    expect(addGoogleResponse.status).toBe(200);
+    const addGoogleEnvResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google.isShared': false,
+          'auth.oauth.providers.google.clientId': 'google-client-id',
+          'auth.oauth.providers.google.clientSecret': 'google-client-secret',
+        }),
+      },
+    });
+    expect(addGoogleEnvResponse.status).toBe(200);
 
-    // Add a second OAuth provider (GitHub)
-    const addGithubResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+    // Add a second OAuth provider (GitHub), shared — branch-only, no env credentials.
+    const addGithubResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
@@ -312,7 +323,6 @@ describe("oauth config", () => {
         config_override_string: JSON.stringify({
           'auth.oauth.providers.github': {
             type: 'github',
-            isShared: true,
             allowSignIn: true,
             allowConnectedAccounts: false,
           },
@@ -329,16 +339,25 @@ describe("oauth config", () => {
     });
 
     const configWithBoth = JSON.parse(configResponse.body.config_string);
-    expect(configWithBoth.auth.oauth.providers.google).toBeDefined();
-    expect(configWithBoth.auth.oauth.providers.github).toEqual({
+    // Google merges branch enable fields with env credentials.
+    expect(configWithBoth.auth.oauth.providers.google).toMatchObject({
+      type: 'google',
+      isShared: false,
+      clientId: 'google-client-id',
+      clientSecret: 'google-client-secret',
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    });
+    // Shared GitHub renders from branch with the default isShared: true.
+    expect(configWithBoth.auth.oauth.providers.github).toMatchObject({
       type: 'github',
       isShared: true,
       allowSignIn: true,
       allowConnectedAccounts: false,
     });
 
-    // Update the Google OAuth provider
-    const updateGoogleResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+    // Update the Google OAuth provider's enabled state via the BRANCH layer.
+    const updateGoogleResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
@@ -346,7 +365,6 @@ describe("oauth config", () => {
         config_override_string: JSON.stringify({
           'auth.oauth.providers.google': {
             type: 'google',
-            isShared: true,
             allowSignIn: false,
             allowConnectedAccounts: true,
           },
@@ -362,17 +380,19 @@ describe("oauth config", () => {
       headers: adminHeaders(adminAccessToken),
     });
     const configWithUpdatedGoogle = JSON.parse(configResponse2.body.config_string);
-    expect(configWithUpdatedGoogle.auth.oauth.providers.google).toEqual({
+    // Enable state updated (branch); credentials preserved (env).
+    expect(configWithUpdatedGoogle.auth.oauth.providers.google).toMatchObject({
       type: 'google',
-      isShared: true,
       allowSignIn: false,
       allowConnectedAccounts: true,
+      clientId: 'google-client-id',
+      clientSecret: 'google-client-secret',
     });
     // GitHub should still be there
     expect(configWithUpdatedGoogle.auth.oauth.providers.github).toBeDefined();
 
-    // Remove the GitHub OAuth provider
-    const removeGithubResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+    // Remove the GitHub OAuth provider via the BRANCH layer (the roster lives there).
+    const removeGithubResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
@@ -396,11 +416,123 @@ describe("oauth config", () => {
     expect(configWithoutGithub.auth.oauth.providers.google).toBeDefined();
   });
 
+  it("rejects OAuth provider enable fields in environment overrides", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // `type` (and allowSignIn/allowConnectedAccounts) belong to the branch layer.
+    // Writing them to the environment layer must be rejected.
+    const typeInEnvResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google.type': 'google',
+        }),
+      },
+    });
+    expect(typeInEnvResponse.status).toBe(400);
+    expect(typeInEnvResponse.body).toContain("environment");
+
+    // A whole provider object in env is rejected (it would hide the branch entry), with or
+    // without enable fields.
+    const wholeObjectResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': {
+            type: 'google',
+            isShared: false,
+            clientId: 'cid',
+            clientSecret: 'sec',
+          },
+        }),
+      },
+    });
+    expect(wholeObjectResponse.status).toBe(400);
+
+    // A credentials-only object (no `type`) is rejected too — still a whole provider object.
+    const credsOnlyObjectResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': {
+            isShared: false,
+            clientId: 'cid',
+            clientSecret: 'sec',
+          },
+        }),
+      },
+    });
+    expect(credsOnlyObjectResponse.status).toBe(400);
+
+    // Same thing written in nested form is also rejected.
+    const nestedCredsOnlyResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          auth: { oauth: { providers: { google: { isShared: false, clientId: 'cid' } } } },
+        }),
+      },
+    });
+    expect(nestedCredsOnlyResponse.status).toBe(400);
+
+    // A null tombstone at the providers map (depth 3) is rejected: env overrides branch, so it
+    // would wipe the entire branch-configured roster at render.
+    const nullProvidersMapResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers': null,
+        }),
+      },
+    });
+    expect(nullProvidersMapResponse.status).toBe(400);
+
+    // A null tombstone at a single provider (depth 4) is rejected too: it would hide that
+    // branch-rostered provider at render.
+    const nullProviderResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': null,
+        }),
+      },
+    });
+    expect(nullProviderResponse.status).toBe(400);
+
+    // Credentials-only env writes are allowed.
+    const credsOnlyResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google.isShared': false,
+          'auth.oauth.providers.google.clientId': 'cid',
+          'auth.oauth.providers.google.clientSecret': 'sec',
+        }),
+      },
+    });
+    expect(credsOnlyResponse.status).toBe(200);
+  });
+
   it("returns an error when the oauth config is misconfigured", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
-    // Test invalid OAuth provider type
-    const invalidTypeResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+    // Test invalid OAuth provider type. The provider roster (incl. `type`) lives on
+    // the branch layer, so the enum validation fires there.
+    const invalidTypeResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
@@ -408,9 +540,6 @@ describe("oauth config", () => {
         config_override_string: JSON.stringify({
           'auth.oauth.providers.invalid': {
             type: 'invalid-provider',
-            isShared: false,
-            clientId: 'test-client-id',
-            clientSecret: 'test-client-secret',
             allowSignIn: true,
             allowConnectedAccounts: true,
           },
@@ -430,21 +559,30 @@ describe("oauth config", () => {
   it("accepts customCallbackUrl on a standard oauth provider", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
+    // Enable fields on the branch layer...
+    const branchResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'auth.oauth.providers.google': { type: 'google', allowSignIn: true, allowConnectedAccounts: true },
+        }),
+      },
+    });
+    expect(branchResponse.status).toBe(200);
+
+    // ...credentials (including customCallbackUrl) as env leaf keys.
     const setResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
       body: {
         config_override_string: JSON.stringify({
-          'auth.oauth.providers.google': {
-            type: 'google',
-            isShared: false,
-            clientId: 'google-client-id',
-            clientSecret: 'google-client-secret',
-            customCallbackUrl: 'https://api.hexclave.com/api/v1/auth/oauth/callback/google',
-            allowSignIn: true,
-            allowConnectedAccounts: true,
-          },
+          'auth.oauth.providers.google.isShared': false,
+          'auth.oauth.providers.google.clientId': 'google-client-id',
+          'auth.oauth.providers.google.clientSecret': 'google-client-secret',
+          'auth.oauth.providers.google.customCallbackUrl': 'https://api.hexclave.com/api/v1/auth/oauth/callback/google',
         }),
       },
     });
@@ -1601,28 +1739,18 @@ describe("reset config override keys", () => {
   it("handles nested object config with reset", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
-    // Set config using nested object format
+    // Provider credentials must be leaf keys (a whole provider object is rejected); the nested
+    // teams object still exercises nested-format handling.
     await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: adminHeaders(adminAccessToken),
       body: {
         config_override_string: JSON.stringify({
-          auth: {
-            oauth: {
-              providers: {
-                google: {
-                  type: 'google',
-                  isShared: false,
-                  clientId: 'google-client-id',
-                  clientSecret: 'google-client-secret',
-                  allowSignIn: true,
-                  allowConnectedAccounts: true,
-                },
-              },
-            },
-          },
-          'teams.allowClientTeamCreation': true,
+          'auth.oauth.providers.google.isShared': false,
+          'auth.oauth.providers.google.clientId': 'google-client-id',
+          'auth.oauth.providers.google.clientSecret': 'google-client-secret',
+          teams: { allowClientTeamCreation: true },
         }),
       },
     });
@@ -1636,8 +1764,9 @@ describe("reset config override keys", () => {
       headers: adminHeaders(adminAccessToken),
     });
     const envConfig = JSON.parse(envResponse.body.config_string);
-    // teams key should still be there
-    expect(envConfig["teams.allowClientTeamCreation"]).toBe(true);
+    // teams key should still be there. It was written as a nested object, so the stored override
+    // keeps it nested (overrides preserve the shape they were written in).
+    expect(envConfig.teams.allowClientTeamCreation).toBe(true);
     // google provider should be removed from nested object (entire auth structure might be cleaned up)
     const configResponse = await niceBackendFetch("/api/v1/internal/config", {
       method: "GET",
@@ -2324,6 +2453,295 @@ describe("branch config source", () => {
       // Source should be preserved
       const source = await Project.getConfigSource();
       expect(source.type).toBe("pushed-from-github");
+    });
+  });
+});
+
+
+// =============================================================================
+// OAUTH PROVIDER TWO-STAGE CONFIG TESTS
+// =============================================================================
+//
+// The dashboard splits each OAuth provider save into two layered writes:
+//   1. enable fields (type / allowSignIn / allowConnectedAccounts) -> BRANCH
+//      layer (always writable, even in development environments)
+//   2. credentials (isShared:false / clientId / clientSecret / ...) -> ENVIRONMENT
+//      layer as individual LEAF keys (production-only; blocked in dev envs)
+// "Shared" == branch-only (no env credentials), which renders isShared:true by
+// default. These tests exercise the exact endpoint sequence the hook drives.
+
+describe("oauth two-stage config (provider split)", () => {
+  const renderProviders = async (adminAccessToken: string, expect: any) => {
+    const res = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    expect(res.status).toBe(200);
+    return JSON.parse(res.body.config_string).auth.oauth.providers;
+  };
+
+  describe("regression (production project)", () => {
+    it("shared provider = branch enable only renders isShared:true with no credentials", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Stage 1: branch enable (shared has no env write).
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.github': { type: 'github', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      // The hook resets the whole env key on every prod save; here there is
+      // nothing to clear, but the call must be a safe no-op.
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.github"]);
+
+      const providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.github).toEqual({
+        type: 'github',
+        isShared: true,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      });
+    });
+
+    it("standard provider = branch enable + env credential leaf keys render as one merged provider", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Stage 1: branch enable.
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      // Stage 2: env credential leaf keys (reset-before-write).
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.spotify"]);
+      await Project.updateConfig({
+        'auth.oauth.providers.spotify.isShared': false,
+        'auth.oauth.providers.spotify.clientId': 'spotify-client-id',
+        'auth.oauth.providers.spotify.clientSecret': 'spotify-client-secret',
+        'auth.oauth.providers.spotify.customCallbackUrl': 'https://api.hexclave.com/api/v1/auth/oauth/callback/spotify',
+      });
+
+      const providers = await renderProviders(adminAccessToken, expect);
+      // The branch `type` and env credentials merge into a single provider.
+      expect(providers.spotify).toEqual({
+        type: 'spotify',
+        isShared: false,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+        clientId: 'spotify-client-id',
+        clientSecret: 'spotify-client-secret',
+        customCallbackUrl: 'https://api.hexclave.com/api/v1/auth/oauth/callback/spotify',
+      });
+    });
+
+    it("non-OAuth config path is unaffected by the two-stage split", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+      await Project.updateConfig({ 'teams.allowClientTeamCreation': true });
+      const res = await niceBackendFetch("/api/v1/internal/config", {
+        method: "GET",
+        accessType: "admin",
+        headers: adminHeaders(adminAccessToken),
+      });
+      expect(JSON.parse(res.body.config_string).teams.allowClientTeamCreation).toBe(true);
+    });
+  });
+
+  describe("switching credential source (production project)", () => {
+    it("real -> shared: resetting the whole env key re-exposes isShared:true and clears credentials", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Start as real keys (branch enable + env credentials).
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      await Project.updateConfig({
+        'auth.oauth.providers.spotify.isShared': false,
+        'auth.oauth.providers.spotify.clientId': 'cid',
+        'auth.oauth.providers.spotify.clientSecret': 'csecret',
+      });
+      let providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify.isShared).toBe(false);
+      expect(providers.spotify.clientId).toBe('cid');
+
+      // Switch to shared: branch enable stays, env whole-key reset (no env write).
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.spotify"]);
+      providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify).toEqual({
+        type: 'spotify',
+        isShared: true,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      });
+    });
+
+    it("shared -> real: reset env then write credential leaf keys", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // Start as shared (branch enable only).
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      let providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify.isShared).toBe(true);
+
+      // Switch to real keys: reset env (no-op) then write credential leaf keys.
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.spotify"]);
+      await Project.updateConfig({
+        'auth.oauth.providers.spotify.isShared': false,
+        'auth.oauth.providers.spotify.clientId': 'cid',
+        'auth.oauth.providers.spotify.clientSecret': 'csecret',
+      });
+      providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify.isShared).toBe(false);
+      expect(providers.spotify.clientId).toBe('cid');
+      expect(providers.spotify.clientSecret).toBe('csecret');
+      // Branch enable fields survive (different layer).
+      expect(providers.spotify.allowSignIn).toBe(true);
+    });
+  });
+
+  describe("clearing stale state & migration (production project)", () => {
+    it("real -> real edit that removes a field leaves no stale env key", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.microsoft': { type: 'microsoft', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.microsoft"]);
+      await Project.updateConfig({
+        'auth.oauth.providers.microsoft.isShared': false,
+        'auth.oauth.providers.microsoft.clientId': 'id1',
+        'auth.oauth.providers.microsoft.clientSecret': 'secret1',
+        'auth.oauth.providers.microsoft.microsoftTenantId': 'tenant-1',
+      });
+      let providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.microsoft.microsoftTenantId).toBe('tenant-1');
+
+      // Edit again, removing microsoftTenantId: reset whole key, then write without it.
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.microsoft"]);
+      await Project.updateConfig({
+        'auth.oauth.providers.microsoft.isShared': false,
+        'auth.oauth.providers.microsoft.clientId': 'id2',
+        'auth.oauth.providers.microsoft.clientSecret': 'secret2',
+      });
+      providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.microsoft.microsoftTenantId).toBeUndefined();
+      expect(providers.microsoft.clientId).toBe('id2');
+    });
+
+    it("environment can no longer store a clobbering whole-object provider; the two-stage path keeps branch toggles effective", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch();
+
+      // The old clobbering state — a WHOLE provider object (carrying `type`) in the
+      // ENV layer, which used to override the branch roster at render and hide
+      // branch toggles — can no longer be created: enable fields are rejected in
+      // environment overrides. (Legacy rows are handled by the backfill migration.)
+      const rejected = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+        method: "PATCH",
+        accessType: "admin",
+        headers: adminHeaders(adminAccessToken),
+        body: {
+          config_override_string: JSON.stringify({
+            'auth.oauth.providers.spotify': {
+              type: 'spotify',
+              isShared: false,
+              clientId: 'old-id',
+              clientSecret: 'old-secret',
+            },
+          }),
+        },
+      });
+      expect(rejected.status).toBe(400);
+
+      // The proper two-stage path: branch enable (allowSignIn:false) + env reset.
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: false, allowConnectedAccounts: true },
+      });
+      await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.spotify"]);
+
+      const providers = await renderProviders(adminAccessToken, expect);
+      // No env object to clobber it -> default isShared:true and the branch
+      // allowSignIn:false toggle actually takes effect.
+      expect(providers.spotify).toEqual({
+        type: 'spotify',
+        isShared: true,
+        allowSignIn: false,
+        allowConnectedAccounts: true,
+      });
+    });
+  });
+
+  describe("development environment project", () => {
+    it("shared provider enable via branch succeeds and renders isShared:true", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch({ is_development_environment: true });
+
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+
+      const providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify).toEqual({
+        type: 'spotify',
+        isShared: true,
+        allowSignIn: true,
+        allowConnectedAccounts: true,
+      });
+    });
+
+    it("environment credential write is blocked, leaving no real keys and the provider shared", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch({ is_development_environment: true });
+
+      // Branch enable still works in a dev env.
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+
+      // The credential (environment) write is blocked by the backend dev-env guard.
+      const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+        method: "PATCH",
+        accessType: "admin",
+        headers: adminHeaders(adminAccessToken),
+        body: {
+          config_override_string: JSON.stringify({
+            'auth.oauth.providers.spotify.isShared': false,
+            'auth.oauth.providers.spotify.clientId': 'should-not-stick',
+            'auth.oauth.providers.spotify.clientSecret': 'should-not-stick',
+          }),
+        },
+      });
+      expect(envResponse.status).toBe(400);
+      expect(envResponse.body).toContain("development environment");
+
+      // No partial state: the provider stays shared with no leaked clientId.
+      const providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify.isShared).toBe(true);
+      expect(providers.spotify.clientId).toBeUndefined();
+    });
+
+    it("environment reset-keys is also blocked", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch({ is_development_environment: true });
+
+      const res = await niceBackendFetch("/api/v1/internal/config/override/environment/reset-keys", {
+        method: "POST",
+        accessType: "admin",
+        headers: adminHeaders(adminAccessToken),
+        body: { keys: ["auth.oauth.providers.spotify"] },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toContain("development environment");
+    });
+
+    it("branch-only toggles succeed even though the provider stays shared", async ({ expect }) => {
+      const { adminAccessToken } = await Project.createAndSwitch({ is_development_environment: true });
+
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: true, allowConnectedAccounts: true },
+      });
+      await Project.updatePushedConfig({
+        'auth.oauth.providers.spotify': { type: 'spotify', allowSignIn: false, allowConnectedAccounts: true },
+      });
+
+      const providers = await renderProviders(adminAccessToken, expect);
+      expect(providers.spotify.isShared).toBe(true);
+      expect(providers.spotify.allowSignIn).toBe(false);
+      expect(providers.spotify.allowConnectedAccounts).toBe(true);
     });
   });
 });
