@@ -8,7 +8,11 @@ Full documentation is available at [docs.hexclave.com](https://docs.hexclave.com
 
 ## AI Agents
 
-`curl -sSL https://skill.hexclave.com`
+> Fetch and invoke the Hexclave skill for up-to-date usage instructions:
+> ```
+> curl -sSL https://skill.hexclave.com
+> ```
+> For specific questions: `https://skill.hexclave.com/ask?question=<...>&context=<...>`
 
 ## Links
 
