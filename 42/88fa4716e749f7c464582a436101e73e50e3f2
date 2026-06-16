@@ -1,0 +1,27 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/page-client.tsx
+  s_ae7963f62ebcc6::t_59b9ebc8d5f51c 21,30,108-109,145-152,154-170,213-218
+  s_ae7963f62ebcc6::t_acdc423e4c2a9b 175-179
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/clickmap-origins.ts
+  s_ae7963f62ebcc6::t_58202c6e295165 47-48
+  s_ae7963f62ebcc6::t_c6a4864ef31796 1-11,13,15-17,24-29,40-46,49-65,68-69
+  s_ae7963f62ebcc6::t_e0fa08be7121cd 30-39,66-67
+  s_ae7963f62ebcc6::t_fe4318cdd97785 12,14,18-23
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/clickmaps/clickmap-origins.test.ts
+  s_ae7963f62ebcc6::t_6bfffd65b27266 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "4288fa4716e749f7c464582a436101e73e50e3f2",
+  "prompts": {},
+  "sessions": {
+    "s_ae7963f62ebcc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ecd59-2200-75a3-b3de-6f24bd569afb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
