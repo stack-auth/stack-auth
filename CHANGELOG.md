@@ -9,6 +9,7 @@
 - Improved PKCE support and fixed nested cross-domain auth redirect chain.
 - New analytics overview filters on the dashboard.
 - RDE stability fixes, higher SMTP password limit, and smarter local email-server options.
+![Payments checkout page redesign](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-checkout.png)
 
 ## 6/5/26
 
