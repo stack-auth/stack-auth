@@ -22,7 +22,13 @@ function resolveInlineRenamedEnvVar(hexclaveName: string, stackName: string, hex
   ) {
     throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
   }
-  return usableHexclaveValue || usableStackValue || hexclaveValue || stackValue || undefined;
+  // Prefer a real (non-sentinel) Hexclave value, then a real Stack value. When
+  // neither is "real", fall back to the raw value with `??` so an empty-string
+  // placeholder or an unreplaced sentinel is passed through unchanged (matching
+  // the pre-rename `process.env.X ?? process.env.Y` inline behavior) instead of
+  // collapsing to `undefined` — downstream readers use `?? throwErr(...)`, which
+  // treats `undefined` (but not `""`) as "missing" and would crash the build.
+  return usableHexclaveValue || usableStackValue || (hexclaveValue ?? stackValue);
 }
 
 // Hexclave rebrand: each entry prefers the NEXT_PUBLIC_HEXCLAVE_* literal, falling back
