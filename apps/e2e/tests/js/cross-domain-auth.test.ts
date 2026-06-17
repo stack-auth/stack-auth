@@ -111,7 +111,7 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
   });
 });
 
-it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
+it("throws when app.urls.signIn is read for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "44444444-4444-4444-8444-444444444444";
     const currentHref = `${localRedirectUrl}/private-page?foo=bar`;
@@ -124,17 +124,13 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
         href: currentHref,
         assign: () => { throw new Error("INTENTIONAL_TEST_ABORT"); },
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     try {
       const clientApp = createClientApp(projectId);
-      const signInUrl = new URL(clientApp.urls.signIn);
-      expect(signInUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
-      expect(signInUrl.pathname).toBe("/handler/sign-in");
-      expect(signInUrl.searchParams.get("after_auth_return_to")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_state")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBeNull();
+      expect(() => clientApp.urls.signIn).toThrowError(/app\.urls\.signIn cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignIn\(\) instead/s);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -142,7 +138,7 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
   });
 });
 
-it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
+it("throws when app.urls.signOut is read for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "55555555-5555-4555-8555-555555555555";
     const currentHref = `${localRedirectUrl}/signed-in-page?foo=bar`;
@@ -155,14 +151,13 @@ it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
         href: currentHref,
         assign: () => { throw new Error("INTENTIONAL_TEST_ABORT"); },
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     try {
       const clientApp = createClientApp(projectId);
-      const signOutUrl = new URL(clientApp.urls.signOut);
-      expect(signOutUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
-      expect(signOutUrl.pathname).toBe("/handler/sign-out");
-      expect(signOutUrl.searchParams.get("after_auth_return_to")).toBeNull();
+      expect(() => clientApp.urls.signOut).toThrowError(/app\.urls\.signOut cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignOut\(\) instead/s);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

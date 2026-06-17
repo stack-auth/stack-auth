@@ -15,7 +15,7 @@ import { useHexclaveApp } from "@hexclave/next";  // replace `next` with the cor
 
 function MyComponent() {
   const hexclaveApp = useHexclaveApp();
-  return <div>Sign In URL: {hexclaveApp.urls.signIn}</div>;
+  return <button onClick={async () => await hexclaveApp.redirectToSignIn()}>Sign in</button>;
 }
 ```
 

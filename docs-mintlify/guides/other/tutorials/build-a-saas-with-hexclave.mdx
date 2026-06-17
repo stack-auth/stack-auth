@@ -114,12 +114,11 @@ After setup, open the hosted auth UI (for example `/handler/sign-up`), create a 
 
 ### Marketing header: sign in / sign out
 
-Use `useHexclaveApp()` so you do not hard-code handler URLs (they can be customized in the project):
+Use `useHexclaveApp()` so navigation goes through Hexclave's redirect helpers:
 
 ```tsx title="components/auth-header.tsx"
 "use client";
 
-import Link from "next/link";
 import { useHexclaveApp, useUser } from "@hexclave/next";
 
 export function AuthHeader() {
@@ -131,13 +130,13 @@ export function AuthHeader() {
       {user ? (
         <>
           <span>{user.displayName ?? user.primaryEmail ?? user.id}</span>
-          <Link href={app.urls.accountSettings}>Account</Link>
-          <Link href={app.urls.signOut}>Sign out</Link>
+          <button onClick={async () => await app.redirectToAccountSettings()}>Account</button>
+          <button onClick={async () => await app.redirectToSignOut()}>Sign out</button>
         </>
       ) : (
         <>
-          <Link href={app.urls.signIn}>Sign in</Link>
-          <Link href={app.urls.signUp}>Sign up</Link>
+          <button onClick={async () => await app.redirectToSignIn()}>Sign in</button>
+          <button onClick={async () => await app.redirectToSignUp()}>Sign up</button>
         </>
       )}
     </header>

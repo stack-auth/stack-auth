@@ -214,7 +214,7 @@ export function HostedPasswordReset(props: {
         <p className="text-muted-foreground">
           Remembered your password?{" "}
           <a
-            href={app.urls.signIn}
+            href="#"
             className={authFooterLinkClassName}
             onClick={(event) => {
               event.preventDefault();

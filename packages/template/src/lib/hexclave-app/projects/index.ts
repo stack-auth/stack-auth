@@ -176,17 +176,19 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         domain: d.domain,
         handler_path: d.handlerPath
       })),
-      oauth_providers: options.config?.oauthProviders?.map((p) => ({
-        id: p.id as any,
-        type: p.type,
-        ...(p.type === 'standard' && {
-          client_id: p.clientId,
-          client_secret: p.clientSecret,
-          facebook_config_id: p.facebookConfigId,
-          microsoft_tenant_id: p.microsoftTenantId,
-          apple_bundle_ids: p.appleBundleIds,
-        }),
-      })),
+      oauth_providers: options.config?.oauthProviders
+        ?.filter((p): p is Exclude<typeof p, { type: 'custom_oidc' }> => p.type !== 'custom_oidc')
+        .map((p) => ({
+          id: p.id as any,
+          type: p.type,
+          ...(p.type === 'standard' && {
+            client_id: p.clientId,
+            client_secret: p.clientSecret,
+            facebook_config_id: p.facebookConfigId,
+            microsoft_tenant_id: p.microsoftTenantId,
+            apple_bundle_ids: p.appleBundleIds,
+          }),
+        })),
       email_config: options.config?.emailConfig && (
         options.config.emailConfig.type === 'shared' ? {
           type: 'shared',

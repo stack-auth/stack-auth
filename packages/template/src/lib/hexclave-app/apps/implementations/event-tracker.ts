@@ -4,7 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { generateUuid } from "./session-replay";
+import { generateUuid, isAnalyticsNotEnabledError } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -28,6 +28,10 @@ function hasHistoryMethods(value: unknown): value is { pushState: History["pushS
     return false;
   }
   return typeof value.pushState === "function" && typeof value.replaceState === "function";
+}
+
+function getTextSnippet(textContent: string | null): string {
+  return textContent == null ? "" : textContent.trim().substring(0, 200);
 }
 
 // Pixel quantization factor for x/y/viewport in stored click events. Matches the
@@ -317,7 +321,7 @@ export class EventTracker {
       event_at_ms: Date.now(),
       data: {
         tag_name: target.tagName.toLowerCase(),
-        text: target.textContent.trim().substring(0, 200),
+        text: getTextSnippet(target.textContent),
         href: this._findNearestAnchorHref(target),
         selector: this._buildSelector(target),
         elements_chain: buildElementsChain(target),
@@ -499,25 +503,26 @@ export class EventTracker {
     );
 
     if (res.status === "error") {
+      if (isAnalyticsNotEnabledError(res.error)) {
+        this._disable();
+        return;
+      }
       console.warn("EventTracker flush failed:", res.error);
       return;
     }
 
     if (!res.data.ok) {
-      // If the server tells us analytics is not enabled for this project,
-      // silently disable the tracker — no point retrying or warning the user.
-      const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
-      if (knownError === "ANALYTICS_NOT_ENABLED") {
-        this._disabled = true;
-        if (this._flushTimer !== null) {
-          clearInterval(this._flushTimer);
-          this._flushTimer = null;
-        }
-        this._teardown();
-        return;
-      }
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
     }
+  }
+
+  private _disable() {
+    this._disabled = true;
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._teardown();
   }
 
   private _tick() {

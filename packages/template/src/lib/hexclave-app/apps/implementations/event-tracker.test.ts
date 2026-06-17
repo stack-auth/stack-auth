@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventTracker } from "./event-tracker";
@@ -386,7 +387,7 @@ describe("EventTracker", () => {
     }
   });
 
-  it("silently disables when server responds with ANALYTICS_NOT_ENABLED", async () => {
+  it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Click me</button>";
 
@@ -396,28 +397,19 @@ describe("EventTracker", () => {
       projectId: "internal",
       sendBatch: async (body) => {
         sentBodies.push(body);
-        return Result.ok(new Response(
-          JSON.stringify({ code: "ANALYTICS_NOT_ENABLED", error: "Analytics is not enabled for this project." }),
-          {
-            status: 400,
-            headers: { "x-stack-known-error": "ANALYTICS_NOT_ENABLED" },
-          },
-        ));
+        return Result.error(new KnownErrors.AnalyticsNotEnabled());
       },
     });
 
     try {
       tracker.start();
 
-      // First flush sends the initial page-view event; server rejects it.
       await advancePastFlush();
       expect(sentBodies).toHaveLength(1);
-
-      // No console.warn should have been emitted.
       expect(warnSpy).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      expect((tracker as any)._flushTimer).toBeNull();
 
-      // After disabling, new events should not accumulate or trigger further
-      // flushes.
       document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await advancePastFlush();
       expect(sentBodies).toHaveLength(1);

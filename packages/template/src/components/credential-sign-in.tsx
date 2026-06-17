@@ -66,7 +66,14 @@ export function CredentialSignIn() {
       />
       <FormWarningText text={errors.password?.message?.toString()} />
 
-      <StyledLink href={app.urls.forgotPassword} className="mt-1 text-sm">
+      <StyledLink
+        href="#"
+        className="mt-1 text-sm"
+        onClick={(e) => {
+          e.preventDefault();
+          runAsynchronouslyWithAlert(app.redirectToForgotPassword());
+        }}
+      >
         {t('Forgot password?')}
       </StyledLink>
 

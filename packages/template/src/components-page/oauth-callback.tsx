@@ -66,7 +66,15 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         <div className="flex flex-col justify-center items-center gap-4">
           <Spinner size={20} />
         </div>
-        {showRedirectLink || redirectUrl != null ? <p>{t('If you are not redirected automatically, ')}<StyledLink className="whitespace-nowrap" href={redirectUrl ?? app.urls.home}>{t("click here")}</StyledLink></p> : null}
+        {showRedirectLink || redirectUrl != null ? <p>{t('If you are not redirected automatically, ')}<StyledLink
+          className="whitespace-nowrap"
+          href={redirectUrl ?? "#"}
+          onClick={(e) => {
+            if (redirectUrl != null) return;
+            e.preventDefault();
+            runAsynchronously(app.redirectToHome());
+          }}
+        >{t("click here")}</StyledLink></p> : null}
       </div>
     </MaybeFullPage>
   );

@@ -64,8 +64,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly version: string,
 
     /**
-     * @deprecated `app.urls` is static and does not include runtime redirect-back parameters.
-     * For navigation, prefer `redirectToXyz()` methods (for example `redirectToSignIn()`).
+     * @deprecated Do not use `app.urls` for navigation. It is static and does not include runtime redirect-back,
+     * cross-domain auth, or sign-out state. Use the matching `redirectToXyz()` method instead, for example
+     * `redirectToSignIn()`, `redirectToSignUp()`, `redirectToSignOut()`, or `redirectToAccountSettings()`.
      */
     readonly urls: Readonly<ResolvedHandlerUrls>,
 

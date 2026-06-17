@@ -216,7 +216,6 @@ export const supabaseSetupPrompt = deindent`
 
       import { createSupabaseClient } from "@/utils/supabase-client";
       import { useHexclaveApp, useUser } from "@hexclave/next";
-      import Link from "next/link";
       import { useEffect, useState } from "react";
 
       export default function Page() {
@@ -241,10 +240,10 @@ export const supabaseSetupPrompt = deindent`
               <>
                 <p>You are signed in</p>
                 <p>User ID: {user.id}</p>
-                <Link href={app.urls.signOut}>Sign Out</Link>
+                <button onClick={async () => await app.redirectToSignOut()}>Sign Out</button>
               </>
             ) : (
-              <Link href={app.urls.signIn}>Sign In</Link>
+              <button onClick={async () => await app.redirectToSignIn()}>Sign In</button>
             )}
             <h3>Supabase data</h3>
             <ul>{listContent}</ul>
@@ -978,8 +977,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               // ...
               "scripts": {
                 // ...
-                "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:without-hexclave",
-                "dev:without-hexclave": "<your-existing-dev-script>"
+                "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:inner",
+                "dev:inner": "<your-existing-dev-script>"
               }
             }
             \`\`\`
