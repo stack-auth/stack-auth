@@ -1,0 +1,44 @@
+apps/backend/src/lib/email-template-rewrite.ts
+  h_8c1b79571cf22c 25
+  s_9c7df2c44750e1::t_13a4388d2d8f21 118
+  s_9c7df2c44750e1::t_3e439a83485fbb 133
+  s_9c7df2c44750e1::t_609f5469a89fa9 16,23
+apps/dashboard/src/components/commands/create-dashboard/dashboard-sandbox-host.tsx
+  s_77b2a386920daf::t_17e6d32b9b8941 462
+  h_8c1b79571cf22c 336
+apps/skills/src/mcp-wrapper.ts
+  h_8c1b79571cf22c 13
+apps/backend/src/app/api/latest/internal/rewrite-template-source/route.tsx
+  s_9c7df2c44750e1::t_ef39912875e1b3 29-43
+apps/backend/src/lib/ai/models.ts
+  h_8c1b79571cf22c 22,26,31-32,35-36,42,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e6c335a913a3c5e081e57089cec2f05c9f0167fd",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_77b2a386920daf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43c3491c-67a7-433a-836a-e3297f7571b9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_9c7df2c44750e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02f14f9c-ca1e-449e-a366-bb255cea4603",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
