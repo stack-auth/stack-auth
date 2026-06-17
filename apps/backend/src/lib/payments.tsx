@@ -9,7 +9,7 @@ import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
 import { addInterval } from "@hexclave/shared/dist/utils/dates";
-import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import { isUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -296,7 +296,40 @@ export async function getDefaultCardPaymentMethodSummary(options: {
   };
 }
 
-export function productToInlineProduct(product: ProductWithMetadata): yup.InferType<typeof inlineProductSchema> {
+/** Identifies which customer/product a snapshot belongs to, for diagnostics. */
+export type ProductSnapshotContext = {
+  productId: string | null,
+  customerType: string,
+  customerId: string,
+};
+
+function isPriceRecord(value: unknown): value is ProductWithMetadata["prices"] {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Legacy free-plan snapshots stored `prices` as the string "include-by-default"
+// instead of a record. Live config was migrated to `{}`, but frozen snapshots
+// (subscriptions + Bulldozer materialized tables) weren't, so `typedEntries` on
+// that string explodes into currency-less price entries that fail response
+// validation and 500 the whole payments view. Normalize the sentinel to `{}`
+// (free plans need no prices); for any other non-object, capture it and degrade
+// to `{}` so one bad row can't block a customer.
+// TODO: remove this once no snapshot/Bulldozer data contains "include-by-default".
+function normalizeProductSnapshotPrices(product: ProductWithMetadata, context: ProductSnapshotContext): ProductWithMetadata["prices"] {
+  const prices: unknown = product.prices;
+  if (isPriceRecord(prices)) {
+    return prices;
+  }
+  if (prices !== "include-by-default") {
+    captureError("product-to-inline-product-invalid-prices", new HexclaveAssertionError(
+      "Product snapshot has an unexpected non-object `prices`; degrading to empty prices to avoid blocking the customer's payments view. The underlying snapshot should be investigated and repaired.",
+      { productId: context.productId, customerType: context.customerType, customerId: context.customerId, product },
+    ));
+  }
+  return {};
+}
+
+export function productToInlineProduct(product: ProductWithMetadata, context: ProductSnapshotContext): yup.InferType<typeof inlineProductSchema> {
   return {
     display_name: product.displayName ?? "Product",
     customer_type: product.customerType,
@@ -306,13 +339,40 @@ export function productToInlineProduct(product: ProductWithMetadata): yup.InferT
     client_metadata: product.clientMetadata ?? null,
     client_read_only_metadata: product.clientReadOnlyMetadata ?? null,
     server_metadata: product.serverMetadata ?? null,
-    prices: typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
+    prices: typedFromEntries(typedEntries(normalizeProductSnapshotPrices(product, context)).map(([key, value]) => [key, filterUndefined({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
       interval: value.interval,
       free_trial: value.freeTrial,
     })])),
   };
 }
+
+import.meta.vitest?.describe("productToInlineProduct prices normalization", (test) => {
+  const context = { productId: "free", customerType: "team", customerId: "team_1" };
+  // Snapshots are untrusted JSON, so tests deliberately feed `prices` values that
+  // violate the type. Centralize that single boundary cast here.
+  const snapshotWithPrices = (prices: unknown): ProductWithMetadata => ({
+    displayName: "Free Plan",
+    customerType: "team",
+    serverOnly: false,
+    stackable: false,
+    includedItems: {},
+    prices,
+  }) as ProductWithMetadata;
+
+  test("normal case: a valid prices record passes through unchanged", ({ expect }) => {
+    const inline = productToInlineProduct(
+      snapshotWithPrices({ monthly: { USD: "0", interval: [1, "month"] } }),
+      context,
+    );
+    expect(inline.prices).toEqual({ monthly: { USD: "0", interval: [1, "month"] } });
+  });
+
+  test('legacy "include-by-default" sentinel is normalized to {} (no explosion, schema-valid)', ({ expect }) => {
+    const inline = productToInlineProduct(snapshotWithPrices("include-by-default"), context);
+    expect(inline.prices).toEqual({});
+  });
+});
 
 export async function validatePurchaseSession(options: {
   prisma: PrismaClientTransaction,
