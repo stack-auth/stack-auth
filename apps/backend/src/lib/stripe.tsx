@@ -285,6 +285,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   });
 
   // TODO: handle in parallel, store payment method?
+  const subscriptionWritePromises: Promise<unknown>[] = [];
   for (const subscription of subscriptions.data) {
     if (subscription.items.data.length === 0) {
       continue;
@@ -339,7 +340,9 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
-    runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, upsertedSub));
+    const writePromise = bulldozerWriteSubscription(prisma, upsertedSub);
+    runAsynchronouslyAndWaitUntil(writePromise);
+    subscriptionWritePromises.push(writePromise);
   }
 
   // If this was a cancellation on our own billing (internal tenancy hosts the
@@ -347,6 +350,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   // entitlements. No-op if the team still owns another plan in the line, or
   // for customer projects' own Stripe webhooks.
   if (tenancy.project.id === "internal" && customerType === CustomerType.TEAM) {
+    await Promise.all(subscriptionWritePromises);
     await ensureFreePlanForBillingTeam(customerId);
   }
 }

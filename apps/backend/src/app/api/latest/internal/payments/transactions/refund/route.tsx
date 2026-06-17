@@ -805,8 +805,10 @@ async function handleSubscriptionRefund(options: {
     });
   }
 
+  let subscriptionWritePromise: Promise<unknown> | null = null;
   if (updatedSub) {
-    runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedSub));
+    subscriptionWritePromise = bulldozerWriteSubscription(prisma, updatedSub);
+    runAsynchronouslyAndWaitUntil(subscriptionWritePromise);
   }
 
   // Regrant the free plan if a Hexclave billing team just lost its only
@@ -820,6 +822,7 @@ async function handleSubscriptionRefund(options: {
   // `syncStripeSubscriptions`. Runs after `bulldozerWriteSubscription` so the
   // fast-path subscription LFold reflects the just-ended sub.
   if (updatedSub && tenancy.project.id === "internal" && customerType === "team") {
+    await subscriptionWritePromise;
     await ensureFreePlanForBillingTeam(subscription.customerId);
   }
 
@@ -898,7 +901,7 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
-  runAsynchronouslyAndWaitUntil(bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow));
+  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,
@@ -1056,7 +1059,7 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
-  runAsynchronouslyAndWaitUntil(bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow));
+  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,

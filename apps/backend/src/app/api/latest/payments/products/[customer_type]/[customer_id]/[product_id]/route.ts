@@ -124,6 +124,7 @@ export const DELETE = createSmartRouteHandler({
 
     const hasStripeSubscription = subscriptions.some((subscription) => subscription.stripeSubscriptionId);
     const stripe = hasStripeSubscription ? await getStripeForAccount({ tenancy: auth.tenancy }) : undefined;
+    const subscriptionWritePromises: Promise<unknown>[] = [];
     for (const subscription of subscriptions) {
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
@@ -148,13 +149,16 @@ export const DELETE = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
       });
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedSub));
+      const writePromise = bulldozerWriteSubscription(prisma, updatedSub);
+      runAsynchronouslyAndWaitUntil(writePromise);
+      subscriptionWritePromises.push(writePromise);
     }
 
     // Regrant the free plan if a Hexclave billing team just lost their
     // only plans-line sub. Scoped to the internal tenancy — customer
     // projects' own sub cancellations are for their own products.
     if (auth.tenancy.project.id === "internal" && params.customer_type === "team") {
+      await Promise.all(subscriptionWritePromises);
       await ensureFreePlanForBillingTeam(params.customer_id);
     }
 

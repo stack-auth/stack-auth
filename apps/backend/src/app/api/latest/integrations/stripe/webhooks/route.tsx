@@ -12,7 +12,6 @@ import { yupMixed, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/s
 import { typedIncludes } from '@hexclave/shared/dist/utils/arrays';
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import Stripe from "stripe";
@@ -231,7 +230,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
-    runAsynchronouslyAndWaitUntil(bulldozerWriteOneTimePurchase(prisma, upsertedPurchase));
+    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
 
     const recipients = await getPaymentRecipients({
       tenancy,
