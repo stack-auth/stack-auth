@@ -19,31 +19,31 @@ const MODEL_SELECTION_MATRIX: Record<
   dumb: {
     slow: {
       authenticated: { modelId: "z-ai/glm-4.5-air:free" },
-      unauthenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-oss-120b:nitro" },
-      unauthenticated: { modelId: "openai/gpt-oss-120b:nitro" },
+      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b:nitro" },
     },
   },
   smart: {
     slow: {
-      authenticated: { modelId: "x-ai/grok-build-0.1" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "z-ai/glm-5.2" },
     },
     fast: {
-      authenticated: { modelId: "x-ai/grok-build-0.1" },
-      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b:nitro" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "google/gemini-3.5-flash" },
     },
   },
   smartest: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.2" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
+      unauthenticated: { modelId: "google/gemini-3.5-flash" },
     },
   },
 };

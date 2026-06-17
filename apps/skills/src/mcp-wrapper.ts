@@ -10,7 +10,7 @@ const TOOL_ROUTE_HEADERS = {
   "Access-Control-Allow-Headers": "*",
 };
 
-const MCP_RPC_TIMEOUT_MS = 15_000;
+const MCP_RPC_TIMEOUT_MS = 45_000;
 
 type JsonRecord = Record<string, unknown>;
 

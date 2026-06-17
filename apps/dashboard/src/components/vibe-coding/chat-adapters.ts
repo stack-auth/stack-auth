@@ -151,7 +151,7 @@ export function createDashboardChatAdapter(
     systemPrompt: "create-dashboard",
     tools,
     quality: "smart",
-    speed: "slow",
+    speed: "fast",
     projectId,
     sanitizeContent: sanitizeAiContent,
     transformMessages: async (messages) => {
