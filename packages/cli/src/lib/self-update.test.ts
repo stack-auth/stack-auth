@@ -7,8 +7,7 @@ import * as childProcess from "child_process";
 import * as ownPackage from "./own-package.js";
 
 // `spawn` is a non-configurable built-in export, so it can't be vi.spyOn'd;
-// replace it with a vi.fn the wiring tests drive per-case. Everything else in
-// child_process stays real.
+// replace it with a vi.fn. Everything else in child_process stays real.
 vi.mock("child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("child_process")>();
   return { ...actual, spawn: vi.fn() };
@@ -262,10 +261,9 @@ describe("signalReexecStartedIfChild", () => {
   });
 });
 
-// End-to-end wiring of maybeReexecToLatest: createReexecMarker -> spawn -> the
-// marker existence check -> decidePostReexec. The decision functions are pure-
-// tested above; these guard against the glue regressing (e.g. inverting the
-// started default, or propagating instead of falling back).
+// End-to-end wiring of maybeReexecToLatest (marker -> spawn -> existence check ->
+// decidePostReexec). The decision functions are pure-tested above; these guard
+// against the glue regressing.
 describe("maybeReexecToLatest fallback wiring", () => {
   const managedKeys = [SKIP_AUTO_UPDATE_ENV, DISABLE_AUTO_UPDATE_ENV, REEXEC_MARKER_ENV];
   const savedEnv: Record<string, string | undefined> = {};
@@ -290,9 +288,8 @@ describe("maybeReexecToLatest fallback wiring", () => {
     vi.restoreAllMocks();
   });
 
-  // Fake npx child. `writeMarker` simulates whether the re-exec'd CLI got far
-  // enough to touch the marker (as signalReexecStartedIfChild would) before the
-  // process closes.
+  // Fake npx child. `writeMarker` simulates whether the re-exec'd CLI touched the
+  // marker (as signalReexecStartedIfChild would) before the process closes.
   function mockNpxChild(opts: { writeMarker: boolean }): EventEmitter & { pid: number, kill: () => void } {
     const child = Object.assign(new EventEmitter(), { pid: 4242, kill: () => {} });
     vi.mocked(childProcess.spawn).mockImplementation(((
@@ -324,8 +321,7 @@ describe("maybeReexecToLatest fallback wiring", () => {
 
   it("propagates the exit code (calls process.exit) when the CLI started then failed", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(((() => {
-      // Throw so we don't actually exit the test runner; the SUT's catch swallows
-      // it and the promise resolves, which is fine — we assert on the call.
+      // Throw so we don't actually exit the test runner; the SUT's catch swallows it.
       throw new Error("__exit__");
     }) as never));
     const child = mockNpxChild({ writeMarker: true });
@@ -345,8 +341,7 @@ describe("maybeReexecToLatest fallback wiring", () => {
 
     const promise = maybeReexecToLatest({ forwardArgs: ["dev"] });
     // SIGSTKFLT is absent from os.constants.signals on macOS (present on Linux).
-    // Either way the abort must surface as a real nonzero code — never NaN (which
-    // process.exit coerces to 0, masking the abort as success).
+    // Either way the abort must surface as a real nonzero code, never NaN.
     child.emit("close", null, "SIGSTKFLT");
 
     await promise;

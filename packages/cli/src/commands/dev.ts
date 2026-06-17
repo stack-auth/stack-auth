@@ -749,10 +749,8 @@ child.on("error", (error) => {
 `;
 
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
-  // The npx auto-update handshake marker is internal to the parent<->child
-  // re-exec; never leak it into the user's command. Scrub it here (rather than in
-  // the wrapper script) so it uses the exported constant and covers both the
-  // Windows-direct and POSIX-wrapper spawn paths.
+  // Scrub the internal re-exec handshake marker so it never leaks into the user's
+  // command. Done here (not in the wrapper script) to cover both spawn paths.
   const childEnv = { ...env };
   delete childEnv[REEXEC_MARKER_ENV];
   return new Promise((resolvePromise, reject) => {
