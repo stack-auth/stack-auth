@@ -160,10 +160,16 @@ describe("isCodeVerifierNotNeededError", () => {
     })).toBe(false);
   });
 
-  it("recognizes nested error codes", () => {
+  it("recognizes nested error codes with top-level error_description", () => {
     expect(isCodeVerifierNotNeededError({
       error: { error: "invalid_grant" },
       error_description: "verifier is not needed",
+    })).toBe(true);
+  });
+
+  it("recognizes nested error codes with nested error_description", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: { error: "invalid_grant", error_description: "verifier is not needed" },
     })).toBe(true);
   });
 });

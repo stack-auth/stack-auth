@@ -118,7 +118,12 @@ function getOAuthProviderErrorCode(error: unknown): string | undefined {
 export function isCodeVerifierNotNeededError(error: unknown): boolean {
   const errorCode = getOAuthProviderErrorCode(error);
   if (errorCode !== "invalid_grant") return false;
-  const desc = getStringProperty(error, "error_description") ?? "";
+  // Also check the nested error object for error_description, mirroring
+  // how getOAuthProviderErrorCode resolves the code from error.error.
+  const nestedError = getUnknownProperty(error, "error");
+  const desc = getStringProperty(error, "error_description")
+    ?? getStringProperty(nestedError, "error_description")
+    ?? "";
   const lower = desc.toLowerCase();
   return lower.includes("verifier") && lower.includes("not needed");
 }
