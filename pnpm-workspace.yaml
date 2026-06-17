@@ -2,7 +2,7 @@ packages:
   - packages/*
   - apps/*
   - examples/*
-  - docs
+  - docs-legacy-redirects
   - docs-mintlify
   - sdks/*
   - sdks/implementations/*

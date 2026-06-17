@@ -1,0 +1,730 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/api",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/analytics",
+      "destination": "https://docs.hexclave.com/guides/apps/analytics/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/api-keys",
+      "destination": "https://docs.hexclave.com/guides/apps/api-keys/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/data-vault",
+      "destination": "https://docs.hexclave.com/guides/apps/data-vault/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/emails",
+      "destination": "https://docs.hexclave.com/guides/apps/emails/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/fraud-protection",
+      "destination": "https://docs.hexclave.com/guides/apps/fraud-protection/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/launch-checklist",
+      "destination": "https://docs.hexclave.com/guides/apps/launch-checklist/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/oauth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/orgs-and-teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/payments",
+      "destination": "https://docs.hexclave.com/guides/apps/payments/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/permissions",
+      "destination": "https://docs.hexclave.com/guides/apps/rbac/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/apps/webhooks",
+      "destination": "https://docs.hexclave.com/guides/apps/webhooks/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/account-settings",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/credential-sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/credential-sign-up",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/forgot-password",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/index",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/magic-link-sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/oauth-button",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/oauth-button-group",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/password-reset",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/selected-team-switcher",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/sign-in",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/sign-up",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-handler",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-provider",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/stack-theme",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/components/user-button",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/api-keys",
+      "destination": "https://docs.hexclave.com/guides/apps/api-keys/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/apple",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/apple",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/bitbucket",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/bitbucket",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/discord",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/discord",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/facebook",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/facebook",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/github",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/github",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/gitlab",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/gitlab",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/google",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/google",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/linkedin",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/linkedin",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/microsoft",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/microsoft",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/passkey",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/passkey",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/spotify",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/spotify",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/twitch",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/twitch",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/two-factor-auth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/two-factor-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/auth-providers/x-twitter",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/auth-providers/x-twitter",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/backend-integration",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/custom-user-data",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals#custom-metadata",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/emails",
+      "destination": "https://docs.hexclave.com/guides/apps/emails/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/jwt",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/jwts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/oauth",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/connected-accounts",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/orgs-and-teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/permissions",
+      "destination": "https://docs.hexclave.com/guides/apps/rbac/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/sign-up-rules",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/sign-up-rules",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/team-selection",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/team-selection",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/teams",
+      "destination": "https://docs.hexclave.com/guides/apps/teams/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/user-onboarding",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/user-onboarding",
+      "permanent": true
+    },
+    {
+      "source": "/docs/concepts/webhooks",
+      "destination": "https://docs.hexclave.com/guides/apps/webhooks/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/custom-pages",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/custom-styles",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/dark-mode",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/internationalization",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/forgot-password",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/password-reset",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/sign-in",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/customization/page-examples/sign-up",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/faq",
+      "destination": "https://docs.hexclave.com/guides/faq",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/components",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/getting-started/vite-example",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/js/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/next/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/cli-authentication",
+      "destination": "https://docs.hexclave.com/guides/apps/authentication/cli-authentication",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/convex",
+      "destination": "https://docs.hexclave.com/guides/integrations/convex/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/mcp-setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/ai-integration",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/self-host",
+      "destination": "https://docs.hexclave.com/guides/other/self-host",
+      "permanent": true
+    },
+    {
+      "source": "/docs/others/supabase",
+      "destination": "https://docs.hexclave.com/guides/integrations/supabase/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/overview",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/python/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/react/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/rest-api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/hooks/use-stack-app",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/index",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/overview-new",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/api-key",
+      "destination": "https://docs.hexclave.com/sdk/types/api-key",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/connected-account",
+      "destination": "https://docs.hexclave.com/sdk/types/connected-account",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/contact-channel",
+      "destination": "https://docs.hexclave.com/sdk/types/contact-channel",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/customer",
+      "destination": "https://docs.hexclave.com/sdk/types/customer",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/email",
+      "destination": "https://docs.hexclave.com/sdk/types/email",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/item",
+      "destination": "https://docs.hexclave.com/sdk/types/item",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/project",
+      "destination": "https://docs.hexclave.com/sdk/types/project",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team",
+      "destination": "https://docs.hexclave.com/sdk/types/team",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-permission",
+      "destination": "https://docs.hexclave.com/sdk/types/team-permission",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-profile",
+      "destination": "https://docs.hexclave.com/sdk/types/team-profile",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/team-user",
+      "destination": "https://docs.hexclave.com/sdk/types/team-user",
+      "permanent": true
+    },
+    {
+      "source": "/docs/sdk/types/user",
+      "destination": "https://docs.hexclave.com/sdk/types/user",
+      "permanent": true
+    },
+    {
+      "source": "/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/js/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/js/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/js/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/next/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/next/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/next/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/others/js-client",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/python/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/python/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/python/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/production",
+      "destination": "https://docs.hexclave.com/guides/other/tutorials/ship-production-ready-auth",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/setup",
+      "destination": "https://docs.hexclave.com/guides/getting-started/setup",
+      "permanent": true
+    },
+    {
+      "source": "/react/getting-started/users",
+      "destination": "https://docs.hexclave.com/guides/getting-started/user-fundamentals",
+      "permanent": true
+    },
+    {
+      "source": "/react/sdk",
+      "destination": "https://docs.hexclave.com/sdk/overview",
+      "permanent": true
+    },
+    {
+      "source": "/react/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/rest-api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/sdk/hooks/use-stack-app",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/sdk/objects/stack-app",
+      "destination": "https://docs.hexclave.com/sdk/objects/hexclave-app",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "destination": "https://docs.hexclave.com/",
+      "permanent": true
+    }
+  ]
+}
