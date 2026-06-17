@@ -290,26 +290,31 @@ export function createVerificationCodeHandler<
       const { project, branchId } = parseProjectBranchCombo(revokeOptions);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      const { count } = await globalPrismaClient.verificationCode.deleteMany({
-        where: {
-          projectId: project.id,
-          branchId,
-          id: revokeOptions.id,
-          type: options.type,
-          data: revokeOptions.dataFilter,
+      const where = {
+        projectId: project.id,
+        branchId,
+        id: revokeOptions.id,
+        type: options.type,
+        data: revokeOptions.dataFilter,
+      } satisfies Prisma.VerificationCodeWhereInput;
+
+      const existingCode = await globalPrismaClient.verificationCode.findFirst({
+        where,
+        select: {
+          id: true,
         },
       });
 
-      if (count === 0) {
+      if (existingCode == null) {
         // Either the code doesn't exist or it didn't match the authorized scope.
         // Return the same error in both cases so callers can't probe for the
         // existence of codes outside their scope.
         throw new KnownErrors.VerificationCodeNotFound();
       }
 
-      // Record deletion for external DB sync if this is a TEAM_INVITATION code.
-      // Done only after a row was actually deleted, so we don't emit a tombstone
-      // for a code that was never ours to delete.
+      // The deletion recorder snapshots the VerificationCode row, so it must run
+      // before the delete. The scoped existence check above prevents tombstones
+      // for codes outside the caller's authorized dataFilter.
       if (options.type === 'TEAM_INVITATION') {
         await recordExternalDbSyncDeletion(globalPrismaClient, {
           tableName: "VerificationCode_TEAM_INVITATION",
@@ -318,6 +323,14 @@ export function createVerificationCodeHandler<
           verificationCodeBranchId: branchId,
           verificationCodeId: revokeOptions.id,
         });
+      }
+
+      const { count } = await globalPrismaClient.verificationCode.deleteMany({
+        where,
+      });
+
+      if (count === 0) {
+        throw new KnownErrors.VerificationCodeNotFound();
       }
     },
     async validateCode(tenancyIdAndCode: string) {

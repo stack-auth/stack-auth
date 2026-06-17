@@ -65,12 +65,13 @@ import { EventTracker } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
-import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
+import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
 // IF_PLATFORM js-like
+import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
@@ -685,13 +686,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     const analyticsEnabled = this._analyticsOptions?.enabled !== false;
 
-    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
+    const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
+    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && sessionReplayOptions.enabled) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
-      }, this._analyticsOptions.replays);
+      }, sessionReplayOptions);
       this._sessionRecorder.start();
     }
 
@@ -730,6 +732,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
       mountDevTool(this as any);
+    }
+    if (isBrowserLike()) {
+      // Independent of the dev tool: the clickmap overlay only ever renders
+      // when a dashboard-minted token is handed over, so the listener is
+      // mounted unconditionally (the heavy UI is lazy-loaded on demand).
+      mountClickmapOverlay(this as any);
     }
     // END_PLATFORM
   }

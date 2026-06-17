@@ -1,0 +1,95 @@
+import { Slot, Slottable } from "@radix-ui/react-slot";
+import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
+import { cva, type VariantProps } from "class-variance-authority";
+import React from "react";
+
+import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { cn } from "./utils";
+import { Spinner } from "./spinner";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-colors hover:transition-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default:
+          "bg-primary text-primary-foreground shadow-none hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground shadow-none hover:bg-destructive/90",
+        outline:
+          "border border-black/[0.08] dark:border-white/[0.10] bg-transparent shadow-none hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary/80 text-secondary-foreground shadow-none hover:bg-secondary",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+        plain: "",
+      },
+      size: {
+        default: "h-9 px-4 py-2",
+        sm: "h-8 rounded-lg px-3 text-xs",
+        lg: "h-10 rounded-lg px-8",
+        icon: "h-9 w-9",
+        plain: "",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+export type OriginalButtonProps = {
+  asChild?: boolean,
+} & React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>
+
+const OriginalButton = forwardRefIfNeeded<HTMLButtonElement, OriginalButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button";
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+OriginalButton.displayName = "Button";
+
+type ButtonProps = {
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>,
+  loading?: boolean,
+  loadingStyle?: "spinner" | "disabled",
+} & OriginalButtonProps
+
+const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
+  ({ onClick, loading: loadingProp, loadingStyle = "spinner", children, size, ...props }, ref) => {
+    const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
+      await onClick?.(e);
+    }, [onClick]);
+
+    const loading = loadingProp || isLoading;
+
+    return (
+      <OriginalButton
+        {...props}
+        ref={ref}
+        disabled={props.disabled || loading}
+        onClick={(e) => runAsynchronouslyWithAlert(handleClick(e))}
+        size={size}
+        className={cn("relative", loading && loadingStyle === "spinner" && "[&>:not(.hosted-button-do-not-hide-when-siblings-are)]:invisible", props.className)}
+      >
+        {loadingStyle === "spinner" && <Spinner className={cn("absolute inset-0 flex items-center justify-center hosted-button-do-not-hide-when-siblings-are", !loading && "invisible")} />}
+        <Slottable>
+          {typeof children === "string" ? <span>{children}</span> : children}
+        </Slottable>
+      </OriginalButton>
+    );
+  }
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+export type { ButtonProps };

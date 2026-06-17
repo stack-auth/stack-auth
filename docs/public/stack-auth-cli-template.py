@@ -2,31 +2,33 @@ import time
 import requests
 import webbrowser
 import urllib.parse
+from typing import Optional
 
 def prompt_cli_login(
   *,
   base_url: str = "https://api.stack-auth.com",
   app_url: str,
   project_id: str,
-  publishable_client_key: str,
+  publishable_client_key: Optional[str] = None,
 ):
   if not app_url:
     raise Exception("app_url is required and must be set to the URL of the app you're authenticating with")
   if not project_id:
     raise Exception("project_id is required")
-  if not publishable_client_key:
-    raise Exception("publishable_client_key is required")
 
   def post(endpoint, json):
+    headers = {
+      'Content-Type': 'application/json',
+      'x-hexclave-project-id': project_id,
+      'x-hexclave-access-type': 'client',
+    }
+    if publishable_client_key is not None:
+      headers['x-hexclave-publishable-client-key'] = publishable_client_key
+
     return requests.request(
       'POST',
       f'{base_url}{endpoint}',
-      headers={
-        'Content-Type': 'application/json',
-        'x-stack-project-id': project_id,
-        'x-stack-access-type': 'client',
-        'x-stack-publishable-client-key': publishable_client_key,
-      },
+      headers=headers,
       json=json,
     )
 

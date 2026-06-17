@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { parseHexclaveConfigFileContent, renderConfigFileContent } from "./hexclave-config-file";
-export { parseHexclaveConfigFileContent, renderConfigFileContent };
+import { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
+export { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent };
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.
@@ -104,6 +104,28 @@ import.meta.vitest?.test("parseHexclaveConfigFileContent parses show-onboarding"
 
 import.meta.vitest?.test("parseHexclaveConfigFileContent rejects dynamic config exports", ({ expect }) => {
   expect(() => parseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
+});
+
+import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns the config for static exports", ({ expect }) => {
+  expect(tryParseHexclaveConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
+    auth: { allowSignUp: true },
+  });
+});
+
+import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns null for non-static exports", ({ expect }) => {
+  // Wrapped in a helper call (e.g. defineStackConfig) -> not a plain literal.
+  expect(tryParseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toBeNull();
+  // References an imported value -> has structure to preserve.
+  expect(tryParseHexclaveConfigFileContent('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBeNull();
+  // Syntax error.
+  expect(tryParseHexclaveConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
+});
+
+import.meta.vitest?.test("hexclaveConfigFileExportsConfig detects a config export", ({ expect }) => {
+  expect(hexclaveConfigFileExportsConfig("export const config = { a: 1 };", "stack.config.ts")).toBe(true);
+  expect(hexclaveConfigFileExportsConfig('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBe(true);
+  expect(hexclaveConfigFileExportsConfig("export const notConfig = { a: 1 };", "stack.config.ts")).toBe(false);
+  expect(hexclaveConfigFileExportsConfig("export const config = {", "stack.config.ts")).toBe(false);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {

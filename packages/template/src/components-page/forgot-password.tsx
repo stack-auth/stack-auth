@@ -49,8 +49,7 @@ export function ForgotPasswordForm({ onSent }: { onSent?: () => void }) {
         id="email"
         type="email"
         autoComplete="email"
-        {...register('email')}
-        onChange={() => clearErrors('email')}
+        {...register('email', { onChange: () => clearErrors('email') })}
       />
       <FormWarningText text={errors.email?.message?.toString()} />
 

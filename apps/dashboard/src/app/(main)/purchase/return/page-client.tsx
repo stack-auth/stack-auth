@@ -106,7 +106,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
   }, [updateViewState]);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-white px-4 py-12 dark:bg-black">
+    <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-4 py-12 dark:bg-black">
       <DesignCard glassmorphic className="relative w-full max-w-md" contentClassName="flex flex-col items-center gap-5 p-8 text-center">
         {state.kind === "loading" && (
           <>

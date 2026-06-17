@@ -36,8 +36,8 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   noAutomaticPrefetch?: boolean,
 
   /**
-   * Options for analytics and session recording. Replays are disabled by default;
-   * set `{ replays: { enabled: true } }` to opt in.
+   * Options for analytics and session recording. Replays are enabled by default;
+   * set `{ replays: { enabled: false } }` to opt out.
    */
   analytics?: AnalyticsOptions,
 } & (

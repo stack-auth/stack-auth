@@ -1,5 +1,6 @@
-import { UserButton, useUser } from "@hexclave/react";
+import { useUser } from "@hexclave/react";
 import { createFileRoute } from '@tanstack/react-router';
+import { HostedUserButton } from "~/components/hosted-user-button";
 
 export const Route = createFileRoute('/')({
   component: HandlerPage,
@@ -18,7 +19,7 @@ function HandlerPage() {
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ position: "absolute", top: "1rem", right: "1rem" }}>
-        <UserButton />
+        <HostedUserButton />
       </div>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: "0.5rem" }}>
         Welcome, {name}

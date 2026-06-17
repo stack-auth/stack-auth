@@ -1,6 +1,6 @@
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { decodeJwt } from 'jose';
-import { OAuthUserInfo, validateUserInfo } from "../utils";
+import { OAuthUserInfo, isAppleEmailVerified, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
 export class AppleProvider extends OAuthBaseProvider {
@@ -41,7 +41,7 @@ export class AppleProvider extends OAuthBaseProvider {
     return validateUserInfo({
       accountId: payload.sub,
       email: payload.email,
-      emailVerified: !!payload.email_verified,
+      emailVerified: isAppleEmailVerified(payload.email_verified),
     });
   }
 

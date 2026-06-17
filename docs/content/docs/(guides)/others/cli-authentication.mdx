@@ -13,7 +13,7 @@ To do so, we provide a Python template that you can use as a starting point. [Do
    └─ stack_auth_cli_template.py  # <- the file you just downloaded (rename to use underscores for Python import)
 ```
 
-Then, you can import the `prompt_cli_login` function:
+Then, you can import the `prompt_cli_login` function. The project ID is enough for most projects; only pass `publishable_client_key` if the project has `requirePublishableClientKey` enabled.
 
 ```py
 from stack_auth_cli_template import prompt_cli_login
@@ -22,7 +22,6 @@ from stack_auth_cli_template import prompt_cli_login
 refresh_token = prompt_cli_login(
   app_url="https://your-app-url.example.com",
   project_id="your-project-id-here",
-  publishable_client_key="your-publishable-client-key-here",
 )
 
 if refresh_token is None:

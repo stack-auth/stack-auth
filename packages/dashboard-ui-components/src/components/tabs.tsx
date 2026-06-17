@@ -192,12 +192,12 @@ export function DesignCategoryTabs({
       <div
         ref={tabListRef}
         className={cn(
-          "relative flex min-h-0 min-w-0 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
+          "relative flex min-h-0 min-w-0 flex-1 items-center gap-1 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden",
         )}
       >
         {glassmorphic && sliderMetrics != null && (
           <div
-            className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-lg bg-background shadow-sm ring-1 ring-black/[0.12] motion-reduce:transition-none dark:ring-white/[0.06]"
+            className="pointer-events-none absolute inset-y-0 left-0 z-0 rounded-lg bg-white shadow-sm ring-1 ring-black/[0.12] motion-reduce:transition-none dark:bg-background dark:ring-white/[0.06]"
             style={{
               transition: prefersReducedMotion ? undefined : sliderTransition,
               transform: `translateX(${sliderMetrics.left}px)`,

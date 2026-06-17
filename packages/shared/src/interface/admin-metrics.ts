@@ -140,9 +140,9 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_bounce_rate: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_avg_session_seconds: yupArray(MetricsDataPointSchema).optional().default([]),
   // User-Agent-derived breakdowns for the analytics overview. Computed from the
-  // `data.user_agent` blob on `$page-view` events (captured client-side only,
-  // no server-side fallback). Optional + default-[] for one release cycle
-  // so older clients / servers without UA capture don't fail validation.
+  // `data.user_agent` blob on `$page-view` events, captured client-side.
+  // Optional + default-[] for one release cycle so older clients / servers
+  // without UA capture don't fail validation.
   top_browsers: yupArray(MetricsNamedCountSchema).optional().default([]),
   top_operating_systems: yupArray(MetricsNamedCountSchema).optional().default([]),
   top_devices: yupArray(MetricsNamedCountSchema).optional().default([]),
@@ -172,11 +172,75 @@ export const MetricsRecentUserSchema = yupObject({
   last_active_at_millis: yupNumber().nullable().defined(),
 }).noUnknown(false).defined();
 
-// Per-user activity heatmap — a simple list of daily event counts for a single
+// Per-user activity clickmap — a simple list of daily event counts for a single
 // user. Backed by ClickHouse `analytics_internal.events` filtered by user_id,
 // project_id, and branch_id. See `/internal/user-activity` on the backend.
 export const UserActivityResponseBodySchema = yupObject({
   data_points: MetricsDataPointsSchema,
+}).defined();
+
+export const AnalyticsClickmapKindSchema = yupString().oneOf(["team_user_hour_of_week", "session_replay_clicks"]).defined();
+export const AnalyticsClickmapDeviceSchema = yupString().oneOf(["tv", "widescreen", "desktop", "laptop", "tablet", "mobile"]).defined();
+
+export const AnalyticsClickmapTokenResponseBodySchema = yupObject({
+  token: yupString().defined(),
+  origin: yupString().defined(),
+  expires_at_millis: yupNumber().integer().defined(),
+}).defined();
+
+export const AnalyticsClickmapCellSchema = yupObject({
+  weekday: yupNumber().integer().min(1).max(7).defined(),
+  hour: yupNumber().integer().min(0).max(23).defined(),
+  value: yupNumber().integer().defined(),
+}).defined();
+
+export const AnalyticsClickmapResponseBodySchema = yupObject({
+  kind: AnalyticsClickmapKindSchema,
+  cells: yupArray(AnalyticsClickmapCellSchema).defined(),
+  // Fraction of source rows the result was computed from (1 = full scan).
+  // Returned counts are pre-scaled by 1/sampling.
+  sampling: yupNumber().min(0).max(1).optional().default(1),
+  routes: yupArray(yupObject({
+    path: yupString().defined(),
+    clicks: yupNumber().integer().defined(),
+    users: yupNumber().integer().defined(),
+    replays: yupNumber().integer().defined(),
+  }).defined()).optional().default([]),
+  users: yupArray(yupObject({
+    id: yupString().defined(),
+    display_name: yupString().nullable().defined(),
+    primary_email: yupString().nullable().defined(),
+    profile_image_url: yupString().nullable().defined(),
+    clicks: yupNumber().integer().defined(),
+    replays: yupNumber().integer().defined(),
+    last_event_at_millis: yupNumber().defined(),
+  }).defined()).optional().default([]),
+  replays: yupArray(yupObject({
+    id: yupString().defined(),
+    user_id: yupString().nullable().defined(),
+    route_path: yupString().nullable().defined(),
+    viewport_width: yupNumber().integer().nullable().defined(),
+    viewport_height: yupNumber().integer().nullable().defined(),
+    clicks: yupNumber().integer().defined(),
+    last_event_at_millis: yupNumber().defined(),
+  }).defined()).optional().default([]),
+  selectors: yupArray(yupObject({
+    selector: yupString().defined(),
+    clicks: yupNumber().integer().defined(),
+  }).defined()).optional().default([]),
+  // PostHog-style aggregated element identities. Resilient to DOM drift
+  // because the chain encodes ancestor tags/classes/attrs/text rather than
+  // a positional CSS selector.
+  elements: yupArray(yupObject({
+    elements_chain: yupString().defined(),
+    elements_text: yupString().defined(),
+    tag_name: yupString().defined(),
+    href: yupString().nullable().defined(),
+    clicks: yupNumber().integer().defined(),
+    // Optional for one release cycle so new overlay clients can validate
+    // responses from older servers that only returned aggregate click counts.
+    dead_clicks: yupNumber().integer().optional().default(0),
+  }).defined()).optional().default([]),
 }).defined();
 
 // Recent "currently live" users keyed by ISO country code. Populated by
@@ -243,3 +307,27 @@ export type MetricsRecentUser = yup.InferType<typeof MetricsRecentUserSchema>;
 export type MetricsResponse = yup.InferType<typeof MetricsResponseBodySchema>;
 export type MetricsUserCounts = yup.InferType<typeof MetricsUserCountsSchema>;
 export type UserActivityResponse = yup.InferType<typeof UserActivityResponseBodySchema>;
+export type AnalyticsClickmapKind = yup.InferType<typeof AnalyticsClickmapKindSchema>;
+export type AnalyticsClickmapDevice = yup.InferType<typeof AnalyticsClickmapDeviceSchema>;
+export type AnalyticsClickmapCell = yup.InferType<typeof AnalyticsClickmapCellSchema>;
+export type AnalyticsClickmapResponse = yup.InferType<typeof AnalyticsClickmapResponseBodySchema>;
+export type AnalyticsClickmapTokenResponse = yup.InferType<typeof AnalyticsClickmapTokenResponseBodySchema>;
+
+// Single (camelCase) options shape for the clickmap SDK surface — shared by the
+// StackAdminApp interface and its implementation so the two can't drift. The
+// HexclaveAdminInterface transport layer maps these to the snake_case request body.
+export type AnalyticsClickmapOptions = {
+  kind: AnalyticsClickmapKind,
+  memberUserIds?: string[],
+  routePath?: string,
+  routeRegex?: string,
+  urlPattern?: string,
+  userId?: string,
+  replayId?: string,
+  device?: AnalyticsClickmapDevice,
+  viewportWidthMin?: number,
+  viewportWidthMax?: number,
+  sampling?: number,
+  since: string,
+  until: string,
+};

@@ -121,7 +121,8 @@
     "Whitespaces",
     "wolfgunblood",
     "xact",
-    "zustand"
+    "zustand",
+    "clickmaps"
   ],
   "[typescript]": {
     "editor.codeActionsOnSave": {
