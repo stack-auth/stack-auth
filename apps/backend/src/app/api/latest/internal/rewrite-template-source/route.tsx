@@ -31,14 +31,15 @@ export const POST = createSmartRouteHandler({
     // (which is a fresh HTTP request to /ai/query/generate) is authenticated
     // and resolves to the authenticated model tier rather than falling back
     // to the unauthenticated one.
-    const authHeaders: Record<string, string> = {};
+    const authHeadersMap = new Map<string, string>();
     for (const [key, value] of Object.entries(fullReq.headers)) {
       if (value == null) continue;
       const lower = key.toLowerCase();
       if (lower.startsWith("x-stack-") || lower.startsWith("x-hexclave-")) {
-        authHeaders[key] = value.join(",");
+        authHeadersMap.set(key, value.join(","));
       }
     }
+    const authHeaders: Record<string, string> = Object.fromEntries(authHeadersMap);
 
     const rewriteResult = await rewriteTemplateSourceWithAI(body.template_tsx_source, authHeaders);
     if (rewriteResult.status === "error") {
