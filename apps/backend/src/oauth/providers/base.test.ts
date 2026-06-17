@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, getOAuthCallbackExtraParams, isRetryableOAuthUserInfoError, resolveOAuthAccessTokenExpiredAt } from "./base";
+import { getOAuthAccessTokenRefreshError, getOAuthAccessTokenRefreshErrorDisposition, getOAuthCallbackExtraParams, isCodeVerifierNotNeededError, isRetryableOAuthUserInfoError, resolveOAuthAccessTokenExpiredAt } from "./base";
 
 describe("isRetryableOAuthUserInfoError", () => {
   it("returns true for openid-client timeout errors", () => {
@@ -121,6 +121,50 @@ describe("getOAuthCallbackExtraParams", () => {
         scope: "User.Read openid Mail.Read",
       },
     });
+  });
+});
+
+describe("isCodeVerifierNotNeededError", () => {
+  it("returns true for Google's 'code_verifier or verifier is not needed' error", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: "invalid_grant",
+      error_description: "code_verifier or verifier is not needed.",
+      name: "OPError",
+    })).toBe(true);
+  });
+
+  it("returns false for other invalid_grant errors", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: "invalid_grant",
+      error_description: "Token has been expired or revoked.",
+    })).toBe(false);
+  });
+
+  it("returns false for invalid_grant without error_description", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: "invalid_grant",
+    })).toBe(false);
+  });
+
+  it("returns false for non-invalid_grant errors mentioning verifier", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: "invalid_request",
+      error_description: "code_verifier is not needed.",
+    })).toBe(false);
+  });
+
+  it("returns false for invalid code_verifier errors (mismatch, not 'not needed')", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: "invalid_grant",
+      error_description: "Invalid code verifier.",
+    })).toBe(false);
+  });
+
+  it("recognizes nested error codes", () => {
+    expect(isCodeVerifierNotNeededError({
+      error: { error: "invalid_grant" },
+      error_description: "verifier is not needed",
+    })).toBe(true);
   });
 });
 

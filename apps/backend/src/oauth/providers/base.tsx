@@ -109,6 +109,20 @@ function getOAuthProviderErrorCode(error: unknown): string | undefined {
   return (directCode ?? nestedCode)?.toLowerCase();
 }
 
+/**
+ * Detects when a provider's token endpoint rejects a code_verifier because the
+ * corresponding authorization code was not associated with a PKCE code_challenge.
+ * Google can trigger this when it silently re-authorizes an already-consented user
+ * (include_granted_scopes + prompt overridden to "none").
+ */
+export function isCodeVerifierNotNeededError(error: unknown): boolean {
+  const errorCode = getOAuthProviderErrorCode(error);
+  if (errorCode !== "invalid_grant") return false;
+  const desc = getStringProperty(error, "error_description") ?? "";
+  const lower = desc.toLowerCase();
+  return lower.includes("verifier") && lower.includes("not needed");
+}
+
 export type OAuthAccessTokenRefreshErrorDisposition =
   | {
     type: "invalid-refresh-token",
@@ -421,25 +435,49 @@ export abstract class OAuthBaseProvider {
       callbackParams.iss = this.oauthClient.issuer.metadata.issuer;
     }
 
-    const params = [
+    const callbackExtraParams = getOAuthCallbackExtraParams({
+      includeScopeInTokenExchange: this.includeScopeInCallbackTokenExchange,
+      baseScope: this.scope,
+      extraScope: options.extraScope,
+    });
+
+    const buildParams = (codeVerifier: string | undefined) => [
       this.redirectUri,
       callbackParams,
       {
-        code_verifier: this.noPKCE ? undefined : options.codeVerifier,
+        code_verifier: codeVerifier,
         state: options.state,
       },
-      getOAuthCallbackExtraParams({
-        includeScopeInTokenExchange: this.includeScopeInCallbackTokenExchange,
-        baseScope: this.scope,
-        extraScope: options.extraScope,
-      }),
+      callbackExtraParams,
     ] as const;
 
-    try {
+    const exchangeCode = async (params: ReturnType<typeof buildParams>) => {
       if (this.openid) {
-        tokenSet = await this.oauthClient.callback(...params);
+        return await this.oauthClient.callback(...params);
       } else {
-        tokenSet = await this.oauthClient.oauthCallback(...params);
+        return await this.oauthClient.oauthCallback(...params);
+      }
+    };
+
+    let params = buildParams(this.noPKCE ? undefined : options.codeVerifier);
+
+    try {
+      try {
+        tokenSet = await exchangeCode(params);
+      } catch (pkceError: unknown) {
+        // Some providers (notably Google with include_granted_scopes) may silently
+        // reissue an authorization code without PKCE tracking when they override
+        // prompt=consent with prompt=none for an already-consented user. The token
+        // endpoint then rejects the code_verifier because it never saw a matching
+        // code_challenge. Retry without code_verifier; this is safe for confidential
+        // clients that authenticate with client_secret.
+        if (!this.noPKCE && isCodeVerifierNotNeededError(pkceError)) {
+          captureError("inner-oauth-callback-pkce-fallback", pkceError);
+          params = buildParams(undefined);
+          tokenSet = await exchangeCode(params);
+        } else {
+          throw pkceError;
+        }
       }
     } catch (error: any) {
       if (error?.error === "invalid_grant" || error?.error?.error === "invalid_grant") {
