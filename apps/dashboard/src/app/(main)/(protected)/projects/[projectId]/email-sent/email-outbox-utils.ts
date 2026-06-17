@@ -21,5 +21,5 @@ export function getRecipientDisplay(email: AdminEmailOutbox): string {
 
 export function getEmailTimestamp(email: AdminEmailOutbox): Date {
   const deliveredAt = hasDeliveredAt(email) ? email.deliveredAt : undefined;
-  return deliveredAt ? new Date(deliveredAt) : email.scheduledAt;
+  return deliveredAt != null ? new Date(deliveredAt) : email.scheduledAt;
 }
