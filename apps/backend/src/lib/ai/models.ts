@@ -32,7 +32,7 @@ const MODEL_SELECTION_MATRIX: Record<
       unauthenticated: { modelId: "z-ai/glm-5.2" },
     },
     fast: {
-      authenticated: { modelId: "google/gemini-3.5-flash" },
+      authenticated: { modelId: "openai/gpt-5.5" },
       unauthenticated: { modelId: "google/gemini-3.5-flash" },
     },
   },
