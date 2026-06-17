@@ -10,6 +10,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 
 export const DELETE = createSmartRouteHandler({
   metadata: {
@@ -147,7 +148,7 @@ export const DELETE = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
       });
-      await bulldozerWriteSubscription(prisma, updatedSub);
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedSub));
     }
 
     // Regrant the free plan if a Hexclave billing team just lost their

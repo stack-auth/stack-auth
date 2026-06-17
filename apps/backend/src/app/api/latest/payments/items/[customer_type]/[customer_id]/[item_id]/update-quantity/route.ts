@@ -7,6 +7,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -120,7 +121,7 @@ export const POST = createSmartRouteHandler({
       });
       return change;
     });
-    await bulldozerWriteItemQuantityChange(prisma, change);
+    runAsynchronouslyAndWaitUntil(bulldozerWriteItemQuantityChange(prisma, change));
 
     return {
       statusCode: 200,

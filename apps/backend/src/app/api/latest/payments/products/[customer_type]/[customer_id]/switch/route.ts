@@ -10,6 +10,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
 import Stripe from "stripe";
@@ -314,7 +315,7 @@ export const POST = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: existingSub.id } },
       });
-      await bulldozerWriteSubscription(prisma, updatedSub);
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedSub));
     } else {
       // No existing Stripe subscription — create a new one. This happens when
       // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
@@ -375,7 +376,7 @@ export const POST = createSmartRouteHandler({
       const createdSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_stripeSubscriptionId: { tenancyId: auth.tenancy.id, stripeSubscriptionId: createdSubscription.id } },
       });
-      await bulldozerWriteSubscription(prisma, createdSub);
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, createdSub));
     }
 
     return {

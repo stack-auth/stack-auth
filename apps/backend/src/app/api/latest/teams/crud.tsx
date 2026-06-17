@@ -133,7 +133,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     });
 
     if (freePlanSubscription != null) {
-      await bulldozerWriteSubscription(prisma, freePlanSubscription);
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, freePlanSubscription));
     }
 
     const result = teamPrismaToCrud(db);

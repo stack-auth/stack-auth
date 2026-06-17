@@ -13,6 +13,7 @@ import { getStripeForAccount } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
@@ -805,7 +806,7 @@ async function handleSubscriptionRefund(options: {
   }
 
   if (updatedSub) {
-    await bulldozerWriteSubscription(prisma, updatedSub);
+    runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedSub));
   }
 
   // Regrant the free plan if a Hexclave billing team just lost its only
@@ -897,7 +898,7 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  runAsynchronouslyAndWaitUntil(bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow));
 
   return {
     statusCode: 200 as const,
@@ -998,7 +999,7 @@ async function handleOneTimePurchaseRefund(options: {
       where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
       data: { revokedAt: now },
     });
-    await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+    runAsynchronouslyAndWaitUntil(bulldozerWriteOneTimePurchase(prisma, updatedPurchase));
   }
 
   // ── Refund row ────────────────────────────────────────────────────────
@@ -1055,7 +1056,7 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  runAsynchronouslyAndWaitUntil(bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow));
 
   return {
     statusCode: 200 as const,

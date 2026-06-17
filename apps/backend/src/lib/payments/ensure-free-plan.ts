@@ -8,6 +8,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { addInterval } from "@hexclave/shared/dist/utils/dates";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getOrUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 
 /**
@@ -230,6 +231,6 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   // COMMIT and can't nest. If it fails after the Prisma insert committed,
   // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
   // all other dual-write call sites, reconciled by the next sync.
-  await bulldozerWriteSubscription(internalPrisma, createdSub);
+  runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(internalPrisma, createdSub));
   return true;
 }

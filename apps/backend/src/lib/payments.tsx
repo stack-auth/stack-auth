@@ -8,6 +8,7 @@ import { KnownErrors } from "@hexclave/shared";
 import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { addInterval } from "@hexclave/shared/dist/utils/dates";
 import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@hexclave/shared/dist/utils/objects";
@@ -510,7 +511,7 @@ export async function grantProductToCustomer(options: {
           endedAt: now,
         },
       });
-      await bulldozerWriteSubscription(prisma, updatedConflicting);
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedConflicting));
     }
   }
 
@@ -532,7 +533,7 @@ export async function grantProductToCustomer(options: {
       },
     });
     // dual write - prisma and bulldozer
-    await bulldozerWriteOneTimePurchase(prisma, purchase);
+    runAsynchronouslyAndWaitUntil(bulldozerWriteOneTimePurchase(prisma, purchase));
     return { type: "one_time", purchaseId: purchase.id };
   }
 
@@ -553,7 +554,7 @@ export async function grantProductToCustomer(options: {
     },
   });
   // dual write - prisma and bulldozer
-  await bulldozerWriteSubscription(prisma, subscription);
+  runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, subscription));
 
   return { type: "subscription", subscriptionId: subscription.id };
 }

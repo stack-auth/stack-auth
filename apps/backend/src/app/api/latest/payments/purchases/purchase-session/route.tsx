@@ -8,6 +8,7 @@ import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getStripeOneTimeMinAmount } from "@hexclave/shared/dist/payments/stripe-limits";
 import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -188,7 +189,7 @@ export const POST = createSmartRouteHandler({
             endedAt: new Date(),
           },
         });
-        await bulldozerWriteSubscription(prisma, updatedConflicting);
+        runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, updatedConflicting));
       }
     }
     // One-time payment path after conflicts handled
