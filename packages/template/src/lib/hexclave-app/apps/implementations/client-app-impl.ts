@@ -763,7 +763,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
-      mountDevTool(this as any);
+      mountDevTool(this as any, resolvedOptions.devTool);
     }
     if (isBrowserLike()) {
       // Independent of the dev tool: the clickmap overlay only ever renders
