@@ -1,0 +1,24 @@
+apps/backend/src/app/api/latest/internal/rewrite-template-source/route.tsx
+  s_1b71b13e5bed08::t_14e249640d090f 34,39,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f02f8211c6ec2d0f111819b9273baff3fe7b4e62",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_1b71b13e5bed08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f21b94d4-283b-4c55-ba6b-92d5f93b7bdd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
