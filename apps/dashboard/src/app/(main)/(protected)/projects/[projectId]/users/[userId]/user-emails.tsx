@@ -7,6 +7,7 @@ import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
 import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import type { AdminEmailOutbox, ServerUser } from "@hexclave/next";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { UserPageTableSection } from "./user-page-table-section";
@@ -153,7 +154,7 @@ export function UserEmailsSection({ user }: { user: ServerUser }) {
         emptyLabel="No emails sent to this user"
         paginated
         onRowClick={(row) => {
-          router.push(`/projects/${projectId}/email-viewer/${row.id}`);
+          router.push(urlString`/projects/${projectId}/email-viewer/${row.id}`);
         }}
       />
     </div>
