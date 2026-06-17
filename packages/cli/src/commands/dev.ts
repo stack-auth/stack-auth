@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -488,6 +488,16 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     // exclusive-create; EEXIST means another process holds the lock.
     let lockAcquired = false;
     const lockPath = dashboardRuntimeLockPath(options.port);
+    // Remove stale lock left behind if a previous process was killed mid-prepare
+    // (normal hold time is <1 s, so 5 s is certainly stale).
+    try {
+      const lockStat = statSync(lockPath);
+      if (Date.now() - lockStat.mtimeMs > 5000) {
+        unlinkSync(lockPath);
+      }
+    } catch {
+      // lock doesn't exist or was already removed — fine
+    }
     try {
       closeSync(openSync(lockPath, "wx"));
       lockAcquired = true;
