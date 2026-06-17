@@ -11,31 +11,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 import { UserPageTableSection } from "./user-page-table-section";
 import { STATUS_LABELS, computeEmailStats, getStatusBadgeColor } from "../../email-sent/email-status-utils";
+import { getRecipientDisplay, getEmailTimestamp } from "../../email-sent/email-outbox-utils";
 import { StatsBar } from "../../email-sent/stats-bar";
-
-type EmailWithDeliveredAt = AdminEmailOutbox & {
-  deliveredAt?: Date | string | null,
-};
-
-function hasDeliveredAt(email: AdminEmailOutbox): email is EmailWithDeliveredAt {
-  return "deliveredAt" in email;
-}
-
-function getRecipientDisplay(email: AdminEmailOutbox): string {
-  const to = email.to;
-  if (to.type === "user-primary-email") {
-    return `User: ${to.userId.slice(0, 8)}...`;
-  }
-  if (to.type === "user-custom-emails") {
-    return to.emails[0] ?? `User: ${to.userId.slice(0, 8)}...`;
-  }
-  return to.emails[0] ?? "No recipients";
-}
-
-function getEmailTimestamp(email: AdminEmailOutbox): Date {
-  const deliveredAt = hasDeliveredAt(email) ? email.deliveredAt : undefined;
-  return deliveredAt ? new Date(deliveredAt) : email.scheduledAt;
-}
 
 function isEmailForUser(email: AdminEmailOutbox, userId: string): boolean {
   const to = email.to;
@@ -97,12 +74,20 @@ export function UserEmailsSection({ user }: { user: ServerUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetches all pages of the outbox so client-side filtering by userId
+  // doesn't silently miss emails on later pages.
   const refreshEmails = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await hexclaveAdminApp.listOutboxEmails();
-      setEmails(result.items);
+      const allEmails: AdminEmailOutbox[] = [];
+      let cursor: string | undefined;
+      do {
+        const result = await hexclaveAdminApp.listOutboxEmails(cursor != null ? { cursor } : undefined);
+        allEmails.push(...result.items);
+        cursor = result.nextCursor ?? undefined;
+      } while (cursor != null);
+      setEmails(allEmails);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load emails");
     } finally {
