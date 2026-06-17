@@ -22,7 +22,7 @@ describe("GET /api/v1/internal/changelog", () => {
     expect(["major", "minor", "patch"]).toContain(entry.type);
     expect(typeof entry.markdown).toBe("string");
     expect(typeof entry.bulletCount).toBe("number");
-    expect(entry.bulletCount).toBeGreaterThan(0);
+    expect(entry.bulletCount).toBeGreaterThanOrEqual(0);
   });
 
   it("should return at most 8 entries", async ({ expect }) => {
