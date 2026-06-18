@@ -6,8 +6,8 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@hexclave/bulldozer-server/bulldozer/db";
+import { quoteSqlStringLiteral } from "@hexclave/bulldozer-server/bulldozer/db/utilities";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
 import type { CustomerType, ItemQuantityRow, OwnedProductsRow, SubscriptionMapRow, SubscriptionRow } from "./schema/types";

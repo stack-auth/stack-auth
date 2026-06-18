@@ -11,8 +11,8 @@ import {
   createBulldozerExecutionContext,
   toExecutableSqlTransaction,
   toQueryableSqlQuery,
-} from "@/lib/bulldozer/db/index";
-import { loadProcessQueueFunctionSql } from "@/lib/bulldozer/db/test-sql-loaders";
+} from "@hexclave/bulldozer-server/bulldozer/db";
+import { loadProcessQueueFunctionSql } from "@hexclave/bulldozer-server/bulldozer/db/test-sql-loaders";
 
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };

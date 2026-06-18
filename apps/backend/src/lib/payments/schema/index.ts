@@ -5,7 +5,7 @@
  * Data flows: StoredTables → Events → Transactions → CompactedEntries → OwnedProducts / ItemQuantities
  */
 
-import { declareGroupByTable, declareLFoldTable, declareSortTable } from "@/lib/bulldozer/db/index";
+import { declareGroupByTable, declareLFoldTable, declareSortTable } from "@hexclave/bulldozer-server/bulldozer/db";
 import { createEventTables } from "./phase-1/events";
 import { createSeedEventsStoredTables } from "./phase-1/stored-tables";
 import { createTransactionsTable } from "./phase-1/transactions";

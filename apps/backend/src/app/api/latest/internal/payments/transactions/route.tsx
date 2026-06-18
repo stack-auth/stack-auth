@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@hexclave/bulldozer-server/bulldozer/db";
+import { quoteSqlStringLiteral } from "@hexclave/bulldozer-server/bulldozer/db/utilities";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { getPrismaClientForTenancy } from "@/prisma-client";

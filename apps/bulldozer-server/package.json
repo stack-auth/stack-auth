@@ -1,0 +1,35 @@
+{
+  "name": "@hexclave/bulldozer-server",
+  "version": "1.0.22",
+  "repository": "https://github.com/hexclave/hexclave",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "concurrently -n \"api,studio\" -k \"tsx watch --clear-screen=false src/index.ts\" \"pnpm run run-bulldozer-studio\"",
+    "with-env:dev": "dotenv -e ../backend/.env.development -e ../backend/.env.development.local --",
+    "run-bulldozer-studio": "pnpm run with-env:dev tsx watch --clear-screen=false scripts/run-bulldozer-studio.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "clean": "rimraf node_modules"
+  },
+  "exports": {
+    "./bulldozer/db": "./src/lib/bulldozer/db/index.ts",
+    "./bulldozer/db/*": "./src/lib/bulldozer/db/*.ts"
+  },
+  "dependencies": {
+    "@hexclave/shared": "workspace:*",
+    "@elysiajs/node": "^1.4.5",
+    "concurrently": "^8.2.2",
+    "dotenv-cli": "^7.3.0",
+    "elkjs": "^0.11.1",
+    "elysia": "^1.4.28"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.16.2",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.5.0"
+}

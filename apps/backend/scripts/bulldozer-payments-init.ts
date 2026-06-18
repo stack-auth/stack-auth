@@ -11,8 +11,8 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
-import type { SqlStatement, TableId } from "@/lib/bulldozer/db/utilities";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
+import type { SqlStatement, TableId } from "@hexclave/bulldozer-server/bulldozer/db/utilities";
 import {
   itemQuantityChangeToStoredRow,
   oneTimePurchaseToStoredRow,

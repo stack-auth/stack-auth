@@ -16,7 +16,7 @@
 import {
   declareLFoldTable,
   declareSortTable,
-} from "@/lib/bulldozer/db/index";
+} from "@hexclave/bulldozer-server/bulldozer/db";
 import type { ItemChangesWithExpiriesTables } from "./item-changes-with-expiries";
 import { getLedgerAlgoReducerSql } from "./ledger-algo";
 

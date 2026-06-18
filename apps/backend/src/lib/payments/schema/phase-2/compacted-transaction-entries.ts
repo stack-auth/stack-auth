@@ -27,7 +27,7 @@ import {
   declareFilterTable,
   declareMapTable,
   declareSortTable,
-} from "@/lib/bulldozer/db/index";
+} from "@hexclave/bulldozer-server/bulldozer/db";
 import type { TransactionsTables } from "../phase-1/transactions";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });

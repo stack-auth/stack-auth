@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createBulldozerExecutionContext } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import {
   subscriptionToStoredRow,

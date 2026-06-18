@@ -12,7 +12,7 @@
  */
 
 import { describe, beforeAll, beforeEach, afterAll, it, expect } from "vitest";
-import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 

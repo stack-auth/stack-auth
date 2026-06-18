@@ -8,7 +8,7 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import type { PrismaClientTransaction } from "@/prisma-client";

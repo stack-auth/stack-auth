@@ -5,10 +5,10 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { performance } from "node:perf_hooks";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
-import { createBulldozerExecutionContext, toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db";
 import { quoteSqlJsonbLiteral, quoteSqlStringLiteral } from "../src/lib/bulldozer/db/utilities";
-import { createPaymentsSchema } from "../src/lib/payments/schema/index";
-import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
+import { createPaymentsSchema } from "../../backend/src/lib/payments/schema/index";
+import { globalPrismaClient, retryTransaction } from "../../backend/src/prisma-client";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };

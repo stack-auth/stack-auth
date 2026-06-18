@@ -2,7 +2,7 @@
  * Test-only SQL loaders for bulldozer migration artifacts.
  *
  * Lives next to the bulldozer db code because several test files (both in
- * `apps/backend/src/lib/bulldozer` and in `apps/backend/src/lib/payments`)
+ * `apps/bulldozer-server/src/lib/bulldozer` and in `apps/backend/src/lib/payments`)
  * need to install the `public.bulldozer_timefold_process_queue()` function
  * body from its migration file to exercise the queue-drain path. Keeping
  * one canonical loader here avoids drift between copies when the
@@ -19,8 +19,8 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// apps/backend/src/lib/bulldozer/db/ → apps/backend/prisma/migrations
-const MIGRATIONS_DIR = join(HERE, "..", "..", "..", "..", "prisma", "migrations");
+// apps/bulldozer-server/src/lib/bulldozer/db/ → apps/backend/prisma/migrations
+const MIGRATIONS_DIR = join(HERE, "..", "..", "..", "..", "..", "backend", "prisma", "migrations");
 
 const DOWNSTREAM_CASCADE_MIGRATION = "20260417000000_bulldozer_timefold_downstream_cascade";
 

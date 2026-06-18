@@ -1,5 +1,5 @@
-import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@hexclave/bulldozer-server/bulldozer/db";
+import { tableIdToDebugString } from "@hexclave/bulldozer-server/bulldozer/db/utilities";
 import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";

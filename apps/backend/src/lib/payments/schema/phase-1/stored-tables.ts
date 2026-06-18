@@ -6,7 +6,7 @@
  * tables are derived from these via Bulldozer table algebra.
  */
 
-import { declareStoredTable } from "@/lib/bulldozer/db/index";
+import { declareStoredTable } from "@hexclave/bulldozer-server/bulldozer/db";
 import type {
   ManualItemQuantityChangeRow,
   ManualTransactionRow,
