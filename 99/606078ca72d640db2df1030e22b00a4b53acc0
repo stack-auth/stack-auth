@@ -1,0 +1,25 @@
+apps/dashboard/src/components/user-dialogs.tsx
+  s_4f1366b78a8d2e::t_c8cd2dc0e28801 40-41,43
+  h_8c1b79571cf22c 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "99606078ca72d640db2df1030e22b00a4b53acc0",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_4f1366b78a8d2e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "14727686-cd31-4ab4-980e-b7aa47c489ee",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
