@@ -5,7 +5,7 @@ const CACHE_TTL_MS = 5 * 60 * 1_000; // 5 minutes
 let cachedDocs: { text: string, fetchedAt: number } | null = null;
 
 async function fetchDocsText(): Promise<string> {
-  const now = Date.now();
+  const now = performance.now();
   if (cachedDocs && now - cachedDocs.fetchedAt < CACHE_TTL_MS) {
     return cachedDocs.text;
   }

@@ -63,7 +63,11 @@ export const POST = createSmartRouteHandler({
       systemPrompt += await getVerifiedQaContext();
     }
     systemPrompt += await getMcpSkillContextPrompt(body.mcpCallMetadata?.toolName);
-    const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
+    const tools = await getTools(toolNames, {
+      auth: fullReq.auth,
+      targetProjectId: projectId,
+      mcpToolName: body.mcpCallMetadata?.toolName,
+    });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const isCreateDashboard = systemPromptId === "create-dashboard";
     const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
