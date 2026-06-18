@@ -173,33 +173,6 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Return 404 directly from the middleware for API paths that don't match any
-  // known route. This replaces the file-based `api/[...notFoundPath]` catch-all
-  // which conflicts with Turbopack's route resolution for deeply nested dynamic
-  // routes (routes 7+ segments deep were incorrectly shadowed by the catch-all).
-  if (isApiRequest) {
-    const matchesKnownRoute = routes.some(route => {
-      // Skip catch-all routes — they match everything and would defeat the check
-      if (route.normalizedPath.includes('[...') || route.normalizedPath.includes('[[...')) {
-        return false;
-      }
-      return SmartRouter.matchNormalizedPath(pathname, route.normalizedPath);
-    });
-
-    if (!matchesKnownRoute) {
-      return new NextResponse(
-        `404 — this page does not exist in Hexclave's API.\n\nPlease see the API documentation at https://docs.hexclave.com, or visit the Hexclave dashboard at https://app.hexclave.com.\n\nURL: ${url.href}`,
-        {
-          status: 404,
-          headers: {
-            'content-type': 'text/plain; charset=utf-8',
-            ...corsHeadersInit,
-          },
-        },
-      );
-    }
-  }
-
   const newUrl = request.nextUrl.clone();
   newUrl.pathname = pathname;
   return NextResponse.rewrite(newUrl, responseInit);

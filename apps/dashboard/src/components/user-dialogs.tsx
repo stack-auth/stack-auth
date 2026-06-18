@@ -31,17 +31,6 @@ export function DeleteUserDialog(props: {
   </ActionDialog>;
 }
 
-
-/**
- * Generates a JS snippet that clears existing auth cookies and sets a
- * structured refresh token so impersonation works without logging out first.
- *
- * The SDK reads structured `hexclave-refresh-{pid}--default` cookies before
- * legacy `stack-refresh-{pid}` ones, so simply setting the legacy cookie is
- * ignored when a structured cookie already exists. This snippet deletes all
- * refresh/access cookies for the project and writes the token in the structured
- * format the SDK expects.
- */
 export function generateImpersonateSnippet(
   projectId: string,
   refreshToken: string,
@@ -51,23 +40,14 @@ export function generateImpersonateSnippet(
   const tokenJson = JSON.stringify(refreshToken);
   return deindent`
     (function(){
-      var pid = ${pidJson};
-      var prefixes = [
-        'hexclave-refresh-' + pid, '__Host-hexclave-refresh-' + pid,
-        'stack-refresh-' + pid, '__Host-stack-refresh-' + pid
-      ];
-      var exact = ['stack-refresh', 'hexclave-access', 'stack-access'];
-      document.cookie.split(';').forEach(function(c) {
-        var n = c.trim().split('=')[0];
-        if (exact.indexOf(n) >= 0 || prefixes.some(function(p) { return n.indexOf(p) === 0; })) {
-          document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-          document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; secure';
-        }
+      var isSecure = location.protocol === 'https:';
+      ['hexclave-access', 'stack-access'].forEach(function(n) {
+        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; secure';
       });
-      var pre = location.protocol === 'https:' ? '__Host-' : '';
+      var name = (isSecure ? '__Host-' : '') + 'hexclave-refresh-' + ${pidJson} + '--default';
       var val = encodeURIComponent(JSON.stringify({ refresh_token: ${tokenJson}, updated_at_millis: Date.now() }));
-      var attrs = '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
-      document.cookie = pre + 'hexclave-refresh-' + pid + '--default=' + val + attrs;
+      document.cookie = name + '=' + val + '; expires=${expiresAtDate.toUTCString()}; path=/' + (isSecure ? '; secure' : '');
       location.reload();
     })();
   `;
