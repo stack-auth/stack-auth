@@ -36,20 +36,11 @@ export function generateImpersonateSnippet(
   refreshToken: string,
   expiresAtDate: Date,
 ): string {
-  const pidJson = JSON.stringify(projectId);
-  const tokenJson = JSON.stringify(refreshToken);
   return deindent`
-    (function(){
-      var isSecure = location.protocol === 'https:';
-      ['hexclave-access', 'stack-access'].forEach(function(n) {
-        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; secure';
-      });
-      var name = (isSecure ? '__Host-' : '') + 'hexclave-refresh-' + ${pidJson} + '--default';
-      var val = encodeURIComponent(JSON.stringify({ refresh_token: ${tokenJson}, updated_at_millis: Date.now() }));
-      document.cookie = name + '=' + val + '; expires=${expiresAtDate.toUTCString()}; path=/' + (isSecure ? '; secure' : '');
-      location.reload();
-    })();
+    document.cookie = 'hexclave-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = 'stack-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${encodeURIComponent(projectId)}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    window.location.reload();
   `;
 }
 
