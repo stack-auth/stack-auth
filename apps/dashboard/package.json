@@ -92,7 +92,7 @@
     "libsodium-wrappers": "^0.8.2",
     "lodash": "^4.17.21",
     "motion": "^12.39.0",
-    "next": "16.2.7",
+    "next": "16.2.9",
     "next-themes": "^0.2.1",
     "posthog-js": "^1.336.1",
     "qrcode": "^1.5.4",

@@ -447,7 +447,8 @@ describe("StackClientApp cross-domain auth", () => {
     }));
     let currentHref = callbackUrl.toString();
     let redirectedUrl = "";
-    const redirectSpy = vi.spyOn(StackClientApp.prototype as any, "_redirectTo").mockImplementation(async (options: { url: string | URL }) => {
+    const redirectSpy = vi.spyOn(StackClientApp.prototype as any, "_redirectTo").mockImplementation(async (...args: unknown[]) => {
+      const options = args[0] as { url: string | URL };
       redirectedUrl = options.url.toString();
     });
 

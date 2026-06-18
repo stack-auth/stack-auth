@@ -28,6 +28,7 @@ import {
   CaretDownIcon,
   CaretRightIcon,
   ChartBarIcon,
+  ChartPieSliceIcon,
   CubeIcon,
   GearIcon,
   GlobeIcon,
@@ -105,6 +106,16 @@ const dashboardsItem: Item = {
   href: "/dashboards",
   regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
   icon: ChartBarIcon,
+  type: 'item',
+};
+
+// Internal-only: platform-wide analytics across every project. Rendered solely
+// when the active project is the internal (platform team) dashboard.
+const platformAnalyticsItem: Item = {
+  name: "Platform Analytics",
+  href: "/platform-analytics",
+  regex: /^\/projects\/[^\/]+\/platform-analytics(\/.*)?$/,
+  icon: ChartPieSliceIcon,
   type: 'item',
 };
 
@@ -528,6 +539,14 @@ function SidebarContent({
             href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
+          {projectId === "internal" && (
+            <NavItem
+              item={platformAnalyticsItem}
+              onClick={onNavigate}
+              href={`/projects/${projectId}${platformAnalyticsItem.href}`}
+              isCollapsed={isCollapsed}
+            />
+          )}
         </div>
 
         <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
