@@ -8,14 +8,14 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createBulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
-import { createPaymentsSchema } from "@/lib/payments/schema/index";
+import { createBulldozerExecutionContext } from "../../../lib/bulldozer/db";
+import { createPaymentsSchema } from "../index";
 import {
   subscriptionToStoredRow,
   subscriptionInvoiceToStoredRow,
   oneTimePurchaseToStoredRow,
   itemQuantityChangeToStoredRow,
-} from "@/lib/payments/bulldozer-dual-write";
+} from "../../stored-row-converters";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
 const db = createTestDb();

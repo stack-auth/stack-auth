@@ -85,7 +85,6 @@
     "@react-email/render": "^1.2.1",
     "@sentry/nextjs": "^10.45.0",
     "@simplewebauthn/server": "^13.3.0",
-    "@hexclave/bulldozer-server": "workspace:*",
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "@upstash/qstash": "^2.8.2",

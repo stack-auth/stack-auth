@@ -14,7 +14,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@hexclave/bulldozer-server/bulldozer/db";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "../../../lib/bulldozer/db";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 

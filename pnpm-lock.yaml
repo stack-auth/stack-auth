@@ -124,9 +124,6 @@ importers:
       '@clickhouse/client':
         specifier: ^1.14.0
         version: 1.16.0
-      '@hexclave/bulldozer-server':
-        specifier: workspace:*
-        version: link:../bulldozer-server
       '@hexclave/next':
         specifier: workspace:*
         version: link:../../packages/next
@@ -361,10 +358,13 @@ importers:
     dependencies:
       '@elysiajs/node':
         specifier: ^1.4.5
-        version: 1.4.5(elysia@1.4.28(@sinclair/typebox@0.27.8)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))
+        version: 1.4.5(elysia@1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))
       '@hexclave/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@sinclair/typebox':
+        specifier: ^0.34.49
+        version: 0.34.49
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
@@ -376,17 +376,23 @@ importers:
         version: 0.11.1
       elysia:
         specifier: ^1.4.28
-        version: 1.4.28(@sinclair/typebox@0.27.8)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
+        version: 1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
+      openapi-types:
+        specifier: ^12.1.3
+        version: 12.1.3
     devDependencies:
       '@types/node':
         specifier: 20.17.6
         version: 20.17.6
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.7
       rimraf:
         specifier: ^5.0.5
         version: 5.0.10
       tsx:
-        specifier: ^4.16.2
-        version: 4.21.0
+        specifier: 4.15.5
+        version: 4.15.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -8907,6 +8913,9 @@ packages:
 
   '@sinclair/typebox@0.27.8':
     resolution: {integrity: sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==}
+
+  '@sinclair/typebox@0.34.49':
+    resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
 
   '@sindresorhus/is@5.6.0':
     resolution: {integrity: sha512-TV7t8GKYaJWsn00tFDqBw8+Uqmr8A0fRU1tvTQhyZzGv0sJCGRQL3JGMI3ucuKo3XIZdUP+Lx7/gh2t3lewy7g==}
@@ -20874,10 +20883,10 @@ snapshots:
 
   '@electric-sql/pglite@0.3.2': {}
 
-  '@elysiajs/node@1.4.5(elysia@1.4.28(@sinclair/typebox@0.27.8)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))':
+  '@elysiajs/node@1.4.5(elysia@1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))':
     dependencies:
       crossws: 0.4.4(srvx@0.11.15)
-      elysia: 1.4.28(@sinclair/typebox@0.27.8)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
+      elysia: 1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
       srvx: 0.11.15
 
   '@emnapi/core@1.8.1':
@@ -27572,6 +27581,8 @@ snapshots:
 
   '@sinclair/typebox@0.27.8': {}
 
+  '@sinclair/typebox@0.34.49': {}
+
   '@sindresorhus/is@5.6.0': {}
 
   '@sindresorhus/slugify@2.2.0':
@@ -31956,9 +31967,9 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  elysia@1.4.28(@sinclair/typebox@0.27.8)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3):
+  elysia@1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3):
     dependencies:
-      '@sinclair/typebox': 0.27.8
+      '@sinclair/typebox': 0.34.49
       cookie: 1.1.1
       exact-mirror: 1.1.1
       fast-decode-uri-component: 1.0.1

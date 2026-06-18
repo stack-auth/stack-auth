@@ -5,50 +5,9 @@
  * and returns the current state for a customer.
  */
 
-import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@hexclave/bulldozer-server/bulldozer/db";
-import { quoteSqlStringLiteral } from "@hexclave/bulldozer-server/bulldozer/db/utilities";
+import { bulldozerCustomerPath, fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
 import type { PrismaClientTransaction } from "@/prisma-client";
-import { createPaymentsSchema } from "./schema/index";
-import type { CustomerType, ItemQuantityRow, OwnedProductsRow, SubscriptionMapRow, SubscriptionRow } from "./schema/types";
-
-const schema = createPaymentsSchema();
-
-function customerGroupKeySql(tenancyId: string, customerType: CustomerType, customerId: string) {
-  const json = JSON.stringify({ tenancyId, customerType, customerId });
-  return `${quoteSqlStringLiteral(json).sql}::jsonb`;
-}
-
-/**
- * Reads the latest (last) row from a sorted bulldozer table for a specific
- * customer. Uses ORDER BY DESC LIMIT 1 to avoid loading all rows.
- */
-async function getLatestRow<T>(
-  prisma: PrismaClientTransaction,
-  table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any },
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-): Promise<T | null> {
-  const executionContext = createBulldozerExecutionContext();
-  const innerSql = toQueryableSqlQuery(table.listRowsInGroup(executionContext, {
-    groupKey: { type: "expression", sql: customerGroupKeySql(tenancyId, customerType, customerId) },
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
-
-  const sql = `
-    SELECT * FROM (${innerSql}) AS "__all_rows"
-    ORDER BY "__all_rows"."rowsortkey" DESC NULLS LAST, "__all_rows"."rowidentifier" DESC
-    LIMIT 1
-  `;
-  const replicaClient = '$replica' in prisma ? (prisma as any).$replica() : prisma;
-  const rows = await replicaClient.$queryRaw`${Prisma.raw(sql)}` as any[];
-  if (rows.length === 0) return null;
-  return rows[0].rowdata as T;
-}
+import type { CustomerType, OwnedProductsRow, SubscriptionRow } from "./schema/types";
 
 /**
  * Returns the owned products for a customer.
@@ -62,14 +21,16 @@ export async function getOwnedProductsForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<OwnedProductsRow["ownedProducts"]> {
-  const row = await getLatestRow<OwnedProductsRow>(
-    options.prisma,
-    schema.ownedProducts,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
-  return row?.ownedProducts ?? {};
+  const response = await fetchBulldozerServerJson<{ ownedProducts: OwnedProductsRow["ownedProducts"] }>({
+    method: "GET",
+    path: bulldozerCustomerPath({
+      tenancyId: options.tenancyId,
+      customerType: options.customerType,
+      customerId: options.customerId,
+      suffix: "owned-products",
+    }),
+  });
+  return response.ownedProducts;
 }
 
 /**
@@ -83,14 +44,16 @@ export async function getItemQuantitiesForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<Record<string, number>> {
-  const row = await getLatestRow<ItemQuantityRow>(
-    options.prisma,
-    schema.itemQuantities,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
-  return row?.itemQuantities ?? {};
+  const response = await fetchBulldozerServerJson<{ itemQuantities: Record<string, number> }>({
+    method: "GET",
+    path: bulldozerCustomerPath({
+      tenancyId: options.tenancyId,
+      customerType: options.customerType,
+      customerId: options.customerId,
+      suffix: "item-quantities",
+    }),
+  });
+  return response.itemQuantities;
 }
 
 /**
@@ -126,12 +89,14 @@ export async function getSubscriptionMapForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<Record<string, SubscriptionRow>> {
-  const row = await getLatestRow<SubscriptionMapRow>(
-    options.prisma,
-    schema.subscriptionMapByCustomer,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
-  return row?.subscriptions ?? {};
+  const response = await fetchBulldozerServerJson<{ subscriptions: Record<string, SubscriptionRow> }>({
+    method: "GET",
+    path: bulldozerCustomerPath({
+      tenancyId: options.tenancyId,
+      customerType: options.customerType,
+      customerId: options.customerId,
+      suffix: "subscriptions",
+    }),
+  });
+  return response.subscriptions;
 }

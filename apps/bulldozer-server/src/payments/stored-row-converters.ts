@@ -1,23 +1,8 @@
-/**
- * Dual-write helpers: convert Prisma payment rows to Bulldozer stored table
- * format and execute setRow. Called alongside every Prisma create/update/upsert
- * on the four payment models.
- *
- * The conversion functions (subscriptionToStoredRow, etc.) are also reused by
- * the ingress script (bulldozer-payments-init.ts).
- */
-
-import { bulldozerCustomerPath, fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
-import type { ManualTransactionRow } from "@/lib/payments/schema/types";
-import type { PrismaClientTransaction } from "@/prisma-client";
+import type { ManualTransactionRow } from "./schema/types";
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
 }
-
-// ── Conversion functions ──────────────────────────────────────────────
-// Each takes a Prisma row (any shape from create/upsert/findUnique) and
-// returns the Bulldozer stored table row format.
 
 export function subscriptionToStoredRow(sub: {
   id: string,
@@ -145,86 +130,4 @@ export function itemQuantityChangeToStoredRow(c: {
 
 export function manualTransactionToStoredRow(transaction: ManualTransactionRow): Record<string, unknown> {
   return transaction;
-}
-
-// ── Dual-write executors ──────────────────────────────────────────────
-
-async function postBulldozerRow(path: string, rowData: Record<string, unknown>) {
-  await fetchBulldozerServerJson<{ success: true }>({
-    method: "POST",
-    path,
-    body: { rowData },
-  });
-}
-
-function lowerCustomerType(customerType: string): "user" | "team" | "custom" {
-  const lowered = customerType.toLowerCase();
-  if (lowered === "user" || lowered === "team" || lowered === "custom") {
-    return lowered;
-  }
-  throw new Error(`Invalid customer type for Bulldozer row: ${customerType}`);
-}
-
-function readManualTransactionTenancyId(transaction: ManualTransactionRow): string {
-  const tenancyId = transaction.tenancyId;
-  if (typeof tenancyId !== "string" || tenancyId.length === 0) {
-    throw new Error("Manual transaction is missing tenancyId");
-  }
-  return tenancyId;
-}
-
-export async function bulldozerWriteSubscription(
-  _prisma: PrismaClientTransaction,
-  sub: Parameters<typeof subscriptionToStoredRow>[0],
-) {
-  await postBulldozerRow(
-    `/v1/${encodeURIComponent(sub.tenancyId)}/stripe/subscriptions/changed`,
-    subscriptionToStoredRow(sub),
-  );
-}
-
-export async function bulldozerWriteSubscriptionInvoice(
-  _prisma: PrismaClientTransaction,
-  inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
-) {
-  await postBulldozerRow(
-    `/v1/${encodeURIComponent(inv.tenancyId)}/stripe/subscription-invoices/changed`,
-    subscriptionInvoiceToStoredRow(inv),
-  );
-}
-
-export async function bulldozerWriteOneTimePurchase(
-  _prisma: PrismaClientTransaction,
-  purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
-) {
-  await postBulldozerRow(
-    `/v1/${encodeURIComponent(purchase.tenancyId)}/stripe/one-time-purchases/changed`,
-    oneTimePurchaseToStoredRow(purchase),
-  );
-}
-
-export async function bulldozerWriteItemQuantityChange(
-  _prisma: PrismaClientTransaction,
-  change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
-) {
-  await postBulldozerRow(
-    bulldozerCustomerPath({
-      tenancyId: change.tenancyId,
-      customerType: lowerCustomerType(change.customerType),
-      customerId: change.customerId,
-      suffix: "manual-item-quantity-changes",
-    }),
-    itemQuantityChangeToStoredRow(change),
-  );
-}
-
-export async function bulldozerWriteManualTransaction(
-  _prisma: PrismaClientTransaction,
-  transactionId: string,
-  transaction: ManualTransactionRow,
-) {
-  await postBulldozerRow(
-    `/v1/${encodeURIComponent(readManualTransactionTenancyId(transaction))}/transactions/${encodeURIComponent(transactionId)}/refund`,
-    manualTransactionToStoredRow(transaction),
-  );
 }

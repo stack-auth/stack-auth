@@ -19,8 +19,7 @@
     "noErrorTruncation": true,
     "paths": {
       "@/*": [
-        "./src/*",
-        "../backend/src/*"
+        "./src/*"
       ]
     },
     "skipLibCheck": true,

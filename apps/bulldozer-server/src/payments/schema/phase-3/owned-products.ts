@@ -19,7 +19,7 @@ import {
   declareFilterTable,
   declareLFoldTable,
   declareSortTable,
-} from "@hexclave/bulldozer-server/bulldozer/db";
+} from "../../../lib/bulldozer/db";
 import type { CompactedTransactionEntriesTables } from "../phase-2/compacted-transaction-entries";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });

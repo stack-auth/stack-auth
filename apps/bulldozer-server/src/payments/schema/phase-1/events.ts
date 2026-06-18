@@ -21,7 +21,7 @@ import {
   declareLeftJoinTable,
   declareMapTable,
   declareTimeFoldTable,
-} from "@hexclave/bulldozer-server/bulldozer/db";
+} from "../../../lib/bulldozer/db";
 import { getOtpTimeFoldReducerSql } from "./otp-timefold-algo";
 import type { SeedEventsStoredTables } from "./stored-tables";
 import { getSubscriptionTimeFoldReducerSql } from "./subscription-timefold-algo";

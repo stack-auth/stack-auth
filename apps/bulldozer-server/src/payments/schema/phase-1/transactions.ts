@@ -23,7 +23,7 @@ import {
   declareFilterTable,
   declareGroupByTable,
   declareMapTable,
-} from "@hexclave/bulldozer-server/bulldozer/db";
+} from "../../../lib/bulldozer/db";
 import type { EventTables } from "./events";
 import type { SeedEventsStoredTables } from "./stored-tables";
 

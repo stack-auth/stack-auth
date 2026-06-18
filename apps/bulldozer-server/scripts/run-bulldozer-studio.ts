@@ -7,14 +7,31 @@ import { performance } from "node:perf_hooks";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
 import { createBulldozerExecutionContext, toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db";
 import { quoteSqlJsonbLiteral, quoteSqlStringLiteral } from "../src/lib/bulldozer/db/utilities";
-import { createPaymentsSchema } from "../../backend/src/lib/payments/schema/index";
-import { globalPrismaClient, retryTransaction } from "../../backend/src/prisma-client";
+import { createPaymentsSchema } from "../src/payments/schema/index";
+import { bulldozerSql, executeRaw, queryRaw } from "../src/db";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type SqlExpression<T> = { type: "expression", sql: string };
 type SqlStatement = { type: "statement", sql: string, outputName?: string, requiresSequentialExecution?: boolean };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
+type StudioTransaction = {
+  $queryRawUnsafe<T extends readonly unknown[]>(query: string): Promise<T>,
+  $executeRawUnsafe(query: string): Promise<void>,
+};
+
+async function retryTransaction<T>(fn: (tx: StudioTransaction) => Promise<T>): Promise<T> {
+  const result = await bulldozerSql.begin(async (sql) => {
+    const tx: StudioTransaction = {
+      $queryRawUnsafe: async <TRows extends readonly unknown[]>(query: string) => await sql.unsafe(query) as unknown as TRows,
+      $executeRawUnsafe: async (query: string) => {
+        await sql.unsafe(query);
+      },
+    };
+    return await fn(tx);
+  });
+  return result as T;
+}
 type AutoExplainMetadata = {
   enabled: boolean,
   setupError: string | null,
@@ -283,13 +300,13 @@ async function sleepMs(durationMs: number): Promise<void> {
 
 async function getCurrentPostgresLogSnapshot(): Promise<{ snapshot: PostgresLogSnapshot | null, error: string | null }> {
   try {
-    const logPathRows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT pg_current_logfile() AS "path"`);
+    const logPathRows = await queryRaw<Array<Record<string, unknown>>>(`SELECT pg_current_logfile() AS "path"`);
     const logPath = typeof logPathRows[0]?.path === "string" ? logPathRows[0].path : null;
     if (logPath == null || logPath.trim() === "") {
       return { snapshot: null, error: "pg_current_logfile returned no active log file" };
     }
     const logPathLiteral = quoteSqlStringLiteral(logPath).sql;
-    const logSizeRows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT (pg_stat_file(${logPathLiteral})).size AS "size"`);
+    const logSizeRows = await queryRaw<Array<Record<string, unknown>>>(`SELECT (pg_stat_file(${logPathLiteral})).size AS "size"`);
     const logSize = toNonNegativeInteger(logSizeRows[0]?.size);
     if (logSize == null) {
       return { snapshot: null, error: "Unable to read PostgreSQL log file size" };
@@ -305,7 +322,7 @@ async function readPostgresLogChunk(path: string, offset: number, length: number
     const pathLiteral = quoteSqlStringLiteral(path).sql;
     const safeOffset = Math.max(0, Math.floor(offset));
     const safeLength = Math.max(0, Math.floor(length));
-    const rows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT pg_read_file(${pathLiteral}, ${safeOffset}, ${safeLength}) AS "content"`);
+    const rows = await queryRaw<Array<Record<string, unknown>>>(`SELECT pg_read_file(${pathLiteral}, ${safeOffset}, ${safeLength}) AS "content"`);
     const content = typeof rows[0]?.content === "string" ? rows[0].content : null;
     if (content == null) {
       return { content: null, error: "pg_read_file returned no content" };
@@ -581,7 +598,7 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
   let executeFallbackMsRaw = 0;
   const executePrimaryStartedAt = performance.now();
   try {
-    await globalPrismaClient.$executeRawUnsafe(wrappedInstrumentedSqlScript);
+    await executeRaw(wrappedInstrumentedSqlScript);
     executePrimaryMsRaw = performance.now() - executePrimaryStartedAt;
   } catch (error) {
     executePrimaryMsRaw = performance.now() - executePrimaryStartedAt;
@@ -592,7 +609,7 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
     }
     autoExplainSetupError = message;
     const executeFallbackStartedAt = performance.now();
-    await globalPrismaClient.$executeRawUnsafe(sqlScript);
+    await executeRaw(sqlScript);
     executeFallbackMsRaw = performance.now() - executeFallbackStartedAt;
   }
   const executionFinishedAt = performance.now();
@@ -883,7 +900,7 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
 }
 
 async function queryRows(query: SqlQuery): Promise<unknown[]> {
-  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+  const rows = await retryTransaction(async (tx) => {
     return await tx.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(query));
   });
   if (!Array.isArray(rows)) throw new HexclaveAssertionError("Expected SQL query to return an array of rows.");
@@ -891,7 +908,7 @@ async function queryRows(query: SqlQuery): Promise<unknown[]> {
 }
 
 async function readBoolean(expression: SqlExpression<boolean>): Promise<boolean> {
-  const rows = await retryTransaction(globalPrismaClient, async (tx) => {
+  const rows = await retryTransaction(async (tx) => {
     return await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT (${expression.sql}) AS "value"`);
   });
   if (!Array.isArray(rows) || rows.length === 0 || !isRecord(rows[0])) {
@@ -1152,7 +1169,7 @@ async function getTimefoldDebugSnapshot(): Promise<{
   lastProcessedAt: unknown,
   queue: Array<Record<string, unknown>>,
 }> {
-  return await retryTransaction(globalPrismaClient, async (tx) => {
+  return await retryTransaction(async (tx) => {
     const relationRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`
       SELECT
         to_regclass('"BulldozerTimeFoldQueue"') IS NOT NULL AS "queueTableExists",
@@ -1214,7 +1231,7 @@ async function getRawNode(pathSegments: string[]): Promise<{
   children: Array<{ segment: string, hasChildren: boolean }>,
 }> {
   const keyPathLiteral = keyPathSqlLiteral(pathSegments);
-  const { valueRows, childrenRows } = await retryTransaction(globalPrismaClient, async (tx) => {
+  const { valueRows, childrenRows } = await retryTransaction(async (tx) => {
     const valueRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`
       SELECT "value"
       FROM "BulldozerStorageEngine"
@@ -4292,7 +4309,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     const pathSegments = requireStringArray(Reflect.get(body, "pathSegments"), "pathSegments must be a string[]");
     const value = requireJsonValue(Reflect.get(body, "value") ?? null, "value must be valid JSON.");
     const keyPathSql = keyPathSqlLiteral(pathSegments);
-    await retryTransaction(globalPrismaClient, async (tx) => {
+    await retryTransaction(async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
       await tx.$executeRawUnsafe(`
@@ -4328,7 +4345,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     ) {
       throw new HexclaveAssertionError("Deleting reserved root paths is not allowed.");
     }
-    await retryTransaction(globalPrismaClient, async (tx) => {
+    await retryTransaction(async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
       await tx.$executeRawUnsafe(`
