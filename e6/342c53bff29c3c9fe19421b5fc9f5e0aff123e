@@ -1,0 +1,34 @@
+apps/backend/src/app/api/[...notFoundPath]/route.ts
+  s_649a02d92c225e::t_b0af634e577df6 1-11
+apps/dashboard/src/components/user-dialogs.tsx
+  s_cf8b228bca3d6d::t_40da919a373328 43-46,48,50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e6342c53bff29c3c9fe19421b5fc9f5e0aff123e",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_649a02d92c225e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f840c1e8-0ce9-4f09-a2dc-f7120dd2c487",
+        "model": "composer-2.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_cf8b228bca3d6d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a52e02b6-2b96-40ad-82bf-bb45e67a6113",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
