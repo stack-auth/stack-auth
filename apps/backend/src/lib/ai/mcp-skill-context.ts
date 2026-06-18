@@ -1,13 +1,13 @@
-const HEXCLAVE_SKILL_URI = "https://skill.hexclave.com";
+const HEXCLAVE_DOCS_FULL_URL = "https://docs.hexclave.com/llms-full.txt";
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL_MS = 5 * 60 * 1_000; // 5 minutes
 
-let cachedSkill: { text: string, fetchedAt: number } | null = null;
+let cachedDocs: { text: string, fetchedAt: number } | null = null;
 
-async function fetchSkillText(): Promise<string> {
+async function fetchDocsText(): Promise<string> {
   const now = Date.now();
-  if (cachedSkill && now - cachedSkill.fetchedAt < CACHE_TTL_MS) {
-    return cachedSkill.text;
+  if (cachedDocs && now - cachedDocs.fetchedAt < CACHE_TTL_MS) {
+    return cachedDocs.text;
   }
 
   const controller = new AbortController();
@@ -15,13 +15,13 @@ async function fetchSkillText(): Promise<string> {
 
   let response: Response;
   try {
-    response = await fetch(HEXCLAVE_SKILL_URI, {
+    response = await fetch(HEXCLAVE_DOCS_FULL_URL, {
       headers: { Accept: "text/markdown" },
       signal: controller.signal,
     });
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error(`Skill fetch from ${HEXCLAVE_SKILL_URI} timed out after ${FETCH_TIMEOUT_MS}ms`);
+      throw new Error(`Docs fetch from ${HEXCLAVE_DOCS_FULL_URL} timed out after ${FETCH_TIMEOUT_MS}ms`);
     }
     throw err;
   } finally {
@@ -30,12 +30,12 @@ async function fetchSkillText(): Promise<string> {
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch skill from ${HEXCLAVE_SKILL_URI}: ${response.status} ${response.statusText}`,
+      `Failed to fetch docs from ${HEXCLAVE_DOCS_FULL_URL}: ${response.status} ${response.statusText}`,
     );
   }
 
   const text = await response.text();
-  cachedSkill = { text, fetchedAt: now };
+  cachedDocs = { text, fetchedAt: now };
   return text;
 }
 
@@ -44,24 +44,24 @@ export async function getMcpSkillContextPrompt(toolName: string | null | undefin
     return "";
   }
 
-  const skillContext = await fetchSkillText();
+  const docsContext = await fetchDocsText();
   return `
 
-## MCP-Provided Hexclave Skill Context
+## MCP-Provided Hexclave Documentation Context
 
 The current request came through the public Hexclave MCP server's ask_hexclave tool.
-The backend fetched the canonical Hexclave agent skill from https://skill.hexclave.com
-immediately before spawning this assistant. Treat this skill content as baseline context
+The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
+immediately before spawning this assistant. Treat this documentation as baseline context
 for answering the user's question, while still using documentation tools for specific
 facts and citations:
 
-${skillContext}
+${docsContext}
 `;
 }
 
 /**
- * Exposed for testing only — clears the module-level skill cache.
+ * Exposed for testing only — clears the module-level docs cache.
  */
-export function _clearSkillCache(): void {
-  cachedSkill = null;
+export function _clearDocsCache(): void {
+  cachedDocs = null;
 }
