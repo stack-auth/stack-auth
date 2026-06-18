@@ -14,8 +14,10 @@ import {
 import { cn } from "@/lib/utils";
 import { DotsThree } from "@phosphor-icons/react";
 import { DesignButton } from "@hexclave/dashboard-ui-components";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import React, { useState } from "react";
 
-type DesignMenuTrigger = "button" | "icon";
+type DesignMenuTrigger = "button" | "icon" | "custom";
 type DesignMenuItemVariant = "default" | "destructive";
 type DesignMenuAlign = "start" | "center" | "end";
 
@@ -42,6 +44,7 @@ type DesignMenuBaseProps = {
   trigger?: DesignMenuTrigger,
   triggerLabel?: string,
   triggerIcon?: React.ReactNode,
+  triggerContent?: React.ReactNode,
   label?: string,
   withIcons?: boolean,
   align?: DesignMenuAlign,
@@ -57,7 +60,7 @@ type DesignMenuSelectorProps = DesignMenuBaseProps & {
   variant: "selector",
   options: DesignMenuSelectorOption[],
   value: string,
-  onValueChange: (value: string) => void,
+  onValueChange: (value: string) => void | Promise<void>,
 };
 
 type DesignMenuTogglesProps = DesignMenuBaseProps & {
@@ -79,15 +82,16 @@ export function DesignMenu(props: DesignMenuProps) {
   const triggerLabel = props.triggerLabel ?? "Open Menu";
   const trigger = props.trigger ?? "button";
   const triggerIcon = props.triggerIcon ?? <DotsThree size={18} weight="bold" />;
+  const [open, setOpen] = useState(false);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         {trigger === "button" ? (
           <DesignButton variant="outline" size="sm" className="h-8 px-3 rounded-lg">
             {triggerLabel}
           </DesignButton>
-        ) : (
+        ) : trigger === "icon" ? (
           <DesignButton
             variant="ghost"
             size="sm"
@@ -96,6 +100,12 @@ export function DesignMenu(props: DesignMenuProps) {
           >
             {triggerIcon}
           </DesignButton>
+        ) : (
+          props.triggerContent ?? (
+            <DesignButton variant="outline" size="sm" className="h-8 px-3 rounded-lg">
+              {triggerLabel}
+            </DesignButton>
+          )
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -130,10 +140,25 @@ export function DesignMenu(props: DesignMenuProps) {
         {props.variant === "selector" && (
           <DropdownMenuRadioGroup
             value={props.value}
-            onValueChange={props.onValueChange}
           >
             {props.options.map((option) => (
-              <DropdownMenuRadioItem key={option.id} value={option.id}>
+              <DropdownMenuRadioItem
+                key={option.id}
+                value={option.id}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  if (option.id === props.value) {
+                    setOpen(false);
+                    return;
+                  }
+
+                  setOpen(false);
+                  const result = props.onValueChange(option.id);
+                  if (result instanceof Promise) {
+                    runAsynchronouslyWithAlert(result);
+                  }
+                }}
+              >
                 {option.label}
               </DropdownMenuRadioItem>
             ))}

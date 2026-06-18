@@ -949,33 +949,51 @@ function DefaultActionRow({
   onChange,
 }: {
   value: 'allow' | 'reject',
-  onChange: (value: 'allow' | 'reject') => void,
+  onChange: (value: 'allow' | 'reject') => Promise<void>,
 }) {
+  const defaultActionLabel = value === 'allow' ? 'Allow sign-up' : 'Reject sign-up';
+  const [handleChange, isLoading] = useAsyncCallback(async (nextValue: 'allow' | 'reject') => {
+    await onChange(nextValue);
+  }, [onChange]);
+
   return (
-    <div className={cn("flex items-center justify-between gap-3 rounded-xl px-4 py-3", ruleCardMutedSurfaceClass)}>
-      <div className="flex items-center gap-2">
-        <ShieldCheckIcon className="h-4 w-4 text-muted-foreground" />
-        <Typography className="text-sm">
-          <span className="text-muted-foreground">If no rules match → </span>
-          <span className="font-medium">{value === 'allow' ? 'Allow sign-up' : 'Reject sign-up'}</span>
-        </Typography>
-      </div>
-      <DesignMenu
-        variant="selector"
-        trigger="button"
-        triggerLabel={value === 'allow' ? 'Allow' : 'Reject'}
-        value={value}
-        onValueChange={(v) => {
-          if (!isDefaultAction(v)) {
-            throw new HexclaveAssertionError(`Unexpected default sign-up rule action: ${v}`);
-          }
-          onChange(v);
-        }}
-        options={[
-          { id: "allow", label: "Allow" },
-          { id: "reject", label: "Reject" },
-        ]}
-      />
+    <div className={cn("flex items-center gap-2 rounded-xl px-4 py-3", ruleCardMutedSurfaceClass)}>
+      <ShieldCheckIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <Typography className="shrink-0 text-sm text-muted-foreground">
+        If no rules match →
+      </Typography>
+      {isLoading ? (
+        <DesignSkeleton className="h-8 w-[8.75rem] shrink-0 rounded-lg" />
+      ) : (
+        <DesignMenu
+          variant="selector"
+          trigger="custom"
+          triggerLabel="Change default sign-up rule action"
+          align="start"
+          contentClassName="min-w-[10.5rem]"
+          value={value}
+          onValueChange={(v) => {
+            if (!isDefaultAction(v)) {
+              throw new HexclaveAssertionError(`Unexpected default sign-up rule action: ${v}`);
+            }
+            runAsynchronouslyWithAlert(handleChange(v));
+          }}
+          options={[
+            { id: "allow", label: "Allow sign-up" },
+            { id: "reject", label: "Reject sign-up" },
+          ]}
+          triggerContent={(
+            <DesignButton
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 rounded-lg px-2.5 font-normal"
+            >
+              <span className="font-medium">{defaultActionLabel}</span>
+              <CaretDownIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            </DesignButton>
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -1629,7 +1647,7 @@ type PageBodyProps = {
   onEditRule: (id: string) => void,
   onRequestDelete: (entry: SignUpRuleEntry) => void,
   onToggleEnabled: (id: string, enabled: boolean) => void,
-  onDefaultActionChange: (value: 'allow' | 'reject') => void,
+  onDefaultActionChange: (value: 'allow' | 'reject') => Promise<void>,
   onDragEnd: (event: DragEndEvent) => void,
   onSaveOrder: () => Promise<void>,
   onDiscardOrder: () => void,
@@ -1948,7 +1966,7 @@ export default function PageClient() {
             setDeleteDialogOpen(true);
           }}
           onToggleEnabled={(id, enabled) => runAsynchronouslyWithAlert(handleToggleEnabled(id, enabled))}
-          onDefaultActionChange={(v) => runAsynchronouslyWithAlert(handleDefaultActionChange(v))}
+          onDefaultActionChange={handleDefaultActionChange}
           onDragEnd={handleDragEnd}
           onSaveOrder={handleSaveOrderAsync}
           onDiscardOrder={handleDiscardOrder}
