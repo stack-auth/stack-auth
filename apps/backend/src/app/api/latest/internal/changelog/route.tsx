@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -168,37 +168,21 @@ export const GET = createSmartRouteHandler({
       } as const;
     }
 
-    let content: string;
-    try {
-      const response = await fetch(changelogUrl, {
-        headers: {
-          "Accept": "text/plain",
-          "User-Agent": "stack-auth-backend-changelog",
-        },
-        next: {
-          revalidate: REVALIDATE_SECONDS,
-        },
-      });
+    const response = await fetch(changelogUrl, {
+      headers: {
+        "Accept": "text/plain",
+        "User-Agent": "stack-auth-backend-changelog",
+      },
+      next: {
+        revalidate: REVALIDATE_SECONDS,
+      },
+    });
 
-      if (!response.ok) {
-        captureError("changelog-fetch", new Error(`Changelog fetch failed with status ${response.status} from ${changelogUrl}`));
-        return {
-          statusCode: 200,
-          bodyType: "json",
-          body: { entries: [] },
-        } as const;
-      }
-
-      content = await response.text();
-    } catch (e) {
-      captureError("changelog-fetch", e);
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { entries: [] },
-      } as const;
+    if (!response.ok) {
+      throw new HexclaveAssertionError(`Changelog fetch failed with status ${response.status}`, { changelogUrl });
     }
 
+    const content = await response.text();
     const entries = parseRootChangelog(content).slice(0, 8);
 
     return {
