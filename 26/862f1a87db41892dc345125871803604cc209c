@@ -1,0 +1,14 @@
+packages/shared/src/ai/unified-prompts/skill-site-prompt.ts
+  h_8c1b79571cf22c 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "26862f1a87db41892dc345125871803604cc209c",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
