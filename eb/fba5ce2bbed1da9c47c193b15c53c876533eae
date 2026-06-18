@@ -1,0 +1,34 @@
+apps/backend/src/lib/ai/tools/index.ts
+  s_991453e72fa6ad::t_88f321f0bbc9ec 35-37
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_991453e72fa6ad::t_6fa0a560c24099 39,42-43,47,63,72
+  s_991453e72fa6ad::t_3b636ea6ba844e 2,7,31,33,52,58,75,77
+docs/src/components/mdx/app-card.tsx
+  s_991453e72fa6ad::t_df5a86b19b71dc 5
+  s_991453e72fa6ad::t_a22d6c887b25d1 46
+scripts/generate-setup-prompt-docs.ts
+  h_8c1b79571cf22c 2-4
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_991453e72fa6ad::t_fadcc6d4cb0cdf 1,5,7,9-10,18,24,33,38,47,50,53-54,58,63,65-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ebfba5ce2bbed1da9c47c193b15c53c876533eae",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_991453e72fa6ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "762f296d-f27c-43f4-a503-97a47244302f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
