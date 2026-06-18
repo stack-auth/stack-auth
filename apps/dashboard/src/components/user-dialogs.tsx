@@ -39,7 +39,9 @@ export function generateImpersonateSnippet(
   return deindent`
     document.cookie = 'hexclave-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
     document.cookie = 'stack-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${encodeURIComponent(projectId)}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = 'hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = '__Host-hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'stack-refresh-${encodeURIComponent(projectId)}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
     window.location.reload();
   `;
 }
