@@ -5,9 +5,9 @@ import { DesignButton } from "@/components/design-components";
 import { APIEnvKeys, NextJsEnvKeys, ViteEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
-import { CopyPromptButton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
-import { BookIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
+import { BookIcon, XIcon } from "@phosphor-icons/react";
 import { use } from "@hexclave/shared/dist/utils/react";
 import { deindent } from '@hexclave/shared/dist/utils/strings';
 import dynamic from "next/dynamic";
@@ -25,60 +25,25 @@ const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default),
 const commandClasses = "text-red-600 dark:text-red-400";
 const nameClasses = "text-green-600 dark:text-green-500";
 
-const INSTALL_COMMAND_BY_FRAMEWORK = {
-  nextjs: 'npx @hexclave/cli@latest init',
-  tanstackStart: 'npm install @hexclave/tanstack-start',
-  react: 'npm install @hexclave/react',
-  javascript: 'npm install @hexclave/js',
-  python: 'pip install requests',
-} as const;
+type SetupFramework = 'nextjs' | 'tanstackStart' | 'react' | 'javascript' | 'python';
+type SetupMode = "recommended" | "manual";
 
-type SetupFramework = keyof typeof INSTALL_COMMAND_BY_FRAMEWORK;
+const SETUP_PROMPT = deindent`
+  Install and set up Hexclave in this project by following these instructions:
 
-const TANSTACK_START_SETUP_PROMPT = deindent`
-  Please set up Hexclave in my TanStack Start app.
+  Read https://skill.hexclave.com and follow the setup instructions it gives for this project's specific framework and language.
 
-  1. Install the alpha TanStack Start package:
+  Follow skill.hexclave.com as written, but make sure to use the cloud setup, not the local dashboard setup.
 
-  npm install @hexclave/tanstack-start
+  Do not change the dev script in package.json, even if the skill mentions doing that.
 
-  2. Configure the app with these environment variables:
-
-  VITE_HEXCLAVE_PROJECT_ID=<project-id>
-  HEXCLAVE_SECRET_SERVER_KEY=<secret-server-key>
-
-  3. Create a HexclaveClientApp using @hexclave/tanstack-start with:
-  - projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID
-  - tokenStore: "cookie"
-  - redirectMethod: "window"
-
-  4. Wrap the TanStack Start root route with HexclaveProvider and HexclaveTheme.
-
-  5. Add a /handler/$ route using HexclaveHandler. The handler route must set ssr: false and pass location={pathname} from useLocation().
-
-  Use only the environment variables listed above.
-
-  After it finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/\`. If it is not registered, please add it manually so you have live access to Hexclave docs and APIs.
+  Once setup is done, tell me to add the Hexclave environment variables to .env.local. After that, setup is complete.
 `;
-
-const buildInstallPrompt = (framework: SetupFramework) => {
-  if (framework === "tanstackStart") {
-    return TANSTACK_START_SETUP_PROMPT;
-  }
-
-  const command = INSTALL_COMMAND_BY_FRAMEWORK[framework];
-  return deindent`
-  Please run the following command in my project's terminal:
-
-  ${command}
-
-  After it finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Hexclave docs and APIs.
-`;
-};
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
-  const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'tanstackStart' | 'react' | 'javascript' | 'python'>('nextjs');
+  const [selectedFramework, setSelectedFramework] = useState<SetupFramework>('nextjs');
+  const [setupMode, setSetupMode] = useState<SetupMode>("recommended");
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey?: string, secretServerKey: string } | null>(null);
   const projectConfig = adminApp.useProject().useConfig();
   const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
@@ -610,6 +575,8 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     }
   ];
 
+  const selectedInstallPrompt = SETUP_PROMPT;
+  const selectedKeyType = selectedFramework === 'nextjs' ? 'next' : selectedFramework === 'tanstackStart' ? 'vite' : 'raw';
 
   return (
     <PageLayout width={1000}>
@@ -649,19 +616,41 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
 
       <div className="flex justify-end mt-8 mx-4">
-        <CopyPromptButton
-          variant="outline"
-          size="sm"
-          content={buildInstallPrompt(selectedFramework)}
-        >
-          <SparkleIcon className="w-4 h-4 mr-2 text-purple-500 dark:text-purple-400" weight="fill" />
-          Copy prompt
-        </CopyPromptButton>
+        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : "recommended")}>
+          <TabsList>
+            <TabsTrigger value="recommended">Recommended</TabsTrigger>
+            <TabsTrigger value="manual">Manual setup</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <div className="flex flex-col mt-4 mx-4">
         <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400 ">
-          {[
+          {(setupMode === "recommended" ? [
+            {
+              step: 1,
+              title: "Copy Setup Prompt",
+              content: <div className="flex min-w-0 flex-col gap-4">
+                <CodeBlock
+                  language="text"
+                  content={selectedInstallPrompt}
+                  title="Prompt for your AI agent"
+                  icon="code"
+                  maxHeight={260}
+                />
+              </div>,
+            },
+            {
+              step: 2,
+              title: "Create Keys",
+              content: <>
+                <Typography>
+                  Add these to your project&apos;s <InlineCode>.env.local</InlineCode> file.
+                </Typography>
+                <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type={selectedKeyType} />
+              </>,
+            },
+          ] : [
             {
               step: 1,
               title: "Select your framework",
@@ -719,7 +708,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             ...(selectedFramework === 'react' ? reactSteps : []),
             ...(selectedFramework === 'javascript' ? javascriptSteps : []),
             ...(selectedFramework === 'python' ? pythonSteps : []),
-          ].map((item, index) => (
+          ]).map((item) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col justify-center gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
@@ -727,7 +716,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 </span>
                 <h3 className="font-medium leading-tight">{item.title}</h3>
               </div>
-              <div className="flex flex-grow flex-col gap-4">
+              <div className="flex min-w-0 flex-grow flex-col gap-4">
                 {item.content}
               </div>
             </li>
