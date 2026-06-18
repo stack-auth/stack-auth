@@ -116,15 +116,15 @@ const getDashboardPage = (path: string): string => {
 // Get documentation URL and title for the current page and doc type
 const DASHBOARD_TO_DOCS_MAP = new Map<string, { path: string, title: string }>([
   ['overview', { path: '', title: 'Hexclave Overview' }],
-  ['users', { path: 'getting-started/users', title: 'User Management' }],
-  ['auth-methods', { path: 'concepts/auth-providers', title: 'Authentication Providers' }],
-  ['orgs-and-teams', { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' }],
-  ['team-permissions', { path: 'concepts/permissions#team-permissions', title: 'Team Permissions' }],
-  ['emails', { path: 'concepts/emails', title: 'Emails' }],
-  ['domains', { path: 'getting-started/production#domains', title: 'Domains' }],
-  ['webhooks', { path: 'concepts/webhooks', title: 'Webhooks' }],
-  ['hexclave-keys', { path: 'getting-started/setup#update-api-keys', title: 'Hexclave Keys' }],
-  ['project-settings', { path: 'getting-started/production#enabling-production-mode', title: 'Project Configuration' }],
+  ['users', { path: 'guides/getting-started/user-fundamentals', title: 'User Management' }],
+  ['auth-methods', { path: 'guides/apps/authentication/overview', title: 'Authentication Providers' }],
+  ['orgs-and-teams', { path: 'guides/apps/teams/overview', title: 'Teams & Organizations' }],
+  ['team-permissions', { path: 'guides/apps/rbac/overview', title: 'Team Permissions' }],
+  ['emails', { path: 'guides/apps/emails/overview', title: 'Emails' }],
+  ['domains', { path: 'guides/apps/launch-checklist/overview', title: 'Domains' }],
+  ['webhooks', { path: 'guides/apps/webhooks/overview', title: 'Webhooks' }],
+  ['hexclave-keys', { path: 'guides/apps/api-keys/overview', title: 'Hexclave Keys' }],
+  ['project-settings', { path: 'guides/apps/launch-checklist/overview', title: 'Project Configuration' }],
 ]);
 
 const getDocContentForPath = (path: string, docType: DocType): DocContent => {
@@ -136,19 +136,19 @@ const getDocContentForPath = (path: string, docType: DocType): DocContent => {
       if (!docMapping) {
         throw new Error(`No documentation mapping found for dashboard page: ${page}`);
       }
-      const url = `${getDocsBaseUrl()}/docs-embed/${docMapping.path}`;
+      const url = docMapping.path ? `${getDocsBaseUrl()}/${docMapping.path}` : getDocsBaseUrl();
       const title = docMapping.title;
       return { title, url, type: 'dashboard' };
     }
     case 'docs': {
       // Default to getting started for main docs
-      const url = `${getDocsBaseUrl()}/docs-embed/getting-started/setup`;
+      const url = `${getDocsBaseUrl()}/guides/getting-started/setup`;
       const title = 'Hexclave Documentation';
       return { title, url, type: 'docs' };
     }
     case 'api': {
       // Default to overview for API docs
-      const url = `${getDocsBaseUrl()}/api-embed/overview`;
+      const url = `${getDocsBaseUrl()}/api/overview`;
       const title = 'API Reference';
       return { title, url, type: 'api' };
     }
@@ -376,7 +376,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
                 <h4 className="text-xs font-medium text-muted-foreground">{docContent.title}</h4>
               </div>
               <a
-                href={docContent.url.replace('/docs-embed/', '/docs/').replace('/api-embed/', '/api/')} // Convert embed URLs to full URLs
+                href={docContent.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-foreground transition-colors"
