@@ -115,7 +115,7 @@ const getDashboardPage = (path: string): string => {
 
 // Get documentation URL and title for the current page and doc type
 const DASHBOARD_TO_DOCS_MAP = new Map<string, { path: string, title: string }>([
-  ['overview', { path: 'overview', title: 'Hexclave Overview' }],
+  ['overview', { path: '', title: 'Hexclave Overview' }],
   ['users', { path: 'getting-started/users', title: 'User Management' }],
   ['auth-methods', { path: 'concepts/auth-providers', title: 'Authentication Providers' }],
   ['orgs-and-teams', { path: 'concepts/orgs-and-teams', title: 'Teams & Organizations' }],
