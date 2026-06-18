@@ -1091,10 +1091,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, user_id?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.user_id) qs.set('user_id', options.user_id);
     if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
     if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(

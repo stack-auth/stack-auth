@@ -254,7 +254,7 @@ export const emailOutboxCrud = createCrud({
     serverList: {
       tags: ["Emails"],
       summary: "List email outbox",
-      description: "Lists all emails in the outbox with optional filtering by status or simple_status.",
+      description: "Lists all emails in the outbox with optional filtering by status, simple_status, or user_id.",
     },
   },
 });

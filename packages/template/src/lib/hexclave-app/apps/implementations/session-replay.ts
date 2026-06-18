@@ -1,3 +1,4 @@
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { captureWarning } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -161,6 +162,10 @@ export type SessionRecorderDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export function isAnalyticsNotEnabledError(error: unknown): boolean {
+  return KnownErrors.AnalyticsNotEnabled.isInstance(error);
+}
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -265,28 +270,30 @@ export class SessionRecorder {
       );
 
       if (res.status === "error") {
+        if (isAnalyticsNotEnabledError(res.error)) {
+          this._disable();
+          return;
+        }
         captureWarning("SessionRecorder.flush", res.error);
         return;
       }
 
       if (!res.data.ok) {
-        // If the server tells us analytics is not enabled for this project,
-        // silently disable the recorder — no point retrying or warning the user.
-        const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
-        if (knownError === "ANALYTICS_NOT_ENABLED") {
-          this._disabled = true;
-          if (this._flushTimer !== null) {
-            clearInterval(this._flushTimer);
-            this._flushTimer = null;
-          }
-          this._stopCurrentRecording();
-          return;
-        }
         captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
       }
     } finally {
       this._flushInProgress = false;
     }
+  }
+
+  private _disable() {
+    this._disabled = true;
+    this.clearBuffer();
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._stopCurrentRecording();
   }
 
   private async _startRecording() {

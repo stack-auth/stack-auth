@@ -435,6 +435,71 @@ describe("StackClientApp cross-domain auth", () => {
     }
   });
 
+  it("redirects hosted current-page OAuth callback errors to the hosted error handler during startup", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000010";
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const callbackUrl = new URL("https://demo.stack-auth.com/dashboard");
+    callbackUrl.searchParams.set("errorCode", "SIGN_UP_REJECTED");
+    callbackUrl.searchParams.set("message", "Your sign up was rejected by an administrator's sign-up rule.");
+    callbackUrl.searchParams.set("details", JSON.stringify({
+      message: "Your sign up was rejected by an administrator's sign-up rule.",
+    }));
+    let currentHref = callbackUrl.toString();
+    let redirectedUrl = "";
+    const redirectSpy = vi.spyOn(StackClientApp.prototype as any, "_redirectTo").mockImplementation(async (options: { url: string | URL }) => {
+      redirectedUrl = options.url.toString();
+    });
+
+    globalThis.document = createMockDocument();
+    globalThis.window = {
+      location: {
+        get href() {
+          return currentHref;
+        },
+        set href(value: string) {
+          currentHref = value;
+        },
+        origin: callbackUrl.origin,
+      },
+      history: {
+        replaceState: (_state: unknown, _title: string, url: string) => {
+          currentHref = new URL(url, currentHref).toString();
+        },
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    } as any;
+
+    try {
+      new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId,
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "window",
+        urls: {
+          default: { type: "hosted" },
+        },
+        noAutomaticPrefetch: true,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      redirectSpy.mockRestore();
+      globalThis.window = previousWindow;
+      globalThis.document = previousDocument;
+    }
+
+    const errorUrl = new URL(redirectedUrl);
+    expect(errorUrl.origin).toBe(`https://${projectId}.built-with-stack-auth.com`);
+    expect(errorUrl.pathname).toBe("/handler/error");
+    expect(errorUrl.searchParams.get("errorCode")).toBe("SIGN_UP_REJECTED");
+    expect(errorUrl.searchParams.get("message")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+    expect(new URL(currentHref).searchParams.has("errorCode")).toBe(false);
+  });
+
   it("uses direct sign-out instead of hosted sign-out redirects when code execution is available", async () => {
     const clientApp = new StackClientApp({
       baseUrl: "http://localhost:12345",
