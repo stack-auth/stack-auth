@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -250,6 +250,10 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
   }
 }
 
+function dashboardRuntimeLockPath(port: number): string {
+  return `${dashboardRuntimeRoot(port)}.lock`;
+}
+
 function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
   assertBundledDashboardExists();
   const runtimeRoot = dashboardRuntimeRoot(port);
@@ -479,19 +483,54 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const logFd = openSync(logPath, "a", 0o600);
     chmodSync(logPath, 0o600);
     writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
-    const child = (() => {
-      try {
-        return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
-      } finally {
-        closeSync(logFd);
+    // Acquire a filesystem lock so parallel `hexclave dev` invocations don't
+    // race on the runtime directory. openSync with 'wx' is an atomic
+    // exclusive-create; EEXIST means another process holds the lock.
+    let lockAcquired = false;
+    const lockPath = dashboardRuntimeLockPath(options.port);
+    // Remove stale lock left behind if a previous process was killed mid-prepare
+    // (normal hold time is <1 s, so 5 s is certainly stale).
+    try {
+      const lockStat = statSync(lockPath);
+      if (Date.now() - lockStat.mtimeMs > 5000) {
+        unlinkSync(lockPath);
       }
-    })();
-    if (child.pid == null) {
-      throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+    } catch {
+      // lock doesn't exist or was already removed — fine
     }
-    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
-    logDev(`Dashboard logs: ${logPath}`);
-    child.unref();
+    try {
+      closeSync(openSync(lockPath, "wx"));
+      lockAcquired = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+
+    if (!lockAcquired) {
+      closeSync(logFd);
+      logDev("Another process is starting the dashboard; waiting for it...");
+    } else {
+      try {
+        const child = (() => {
+          try {
+            return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
+          } finally {
+            closeSync(logFd);
+          }
+        })();
+        if (child.pid == null) {
+          throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+        }
+        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+        logDev(`Dashboard logs: ${logPath}`);
+        child.unref();
+      } finally {
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          // best-effort cleanup
+        }
+      }
+    }
 
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {

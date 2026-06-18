@@ -38,11 +38,14 @@ export const ALL_APP_TAGS = {
   },
 } as const satisfies Record<string, AppTag>;
 
+type ParentAppId = "authentication" | "analytics";
+
 type App = {
   displayName: string,
   subtitle: string,
   tags: (keyof typeof ALL_APP_TAGS)[],
   stage: "alpha" | "beta" | "stable",
+  parentAppId?: ParentAppId,
 };
 
 export type AppId = keyof typeof ALL_APPS;
@@ -59,6 +62,7 @@ export const ALL_APPS = {
     subtitle: "Protect your project from fraud and abuse",
     tags: ["auth", "security"],
     stage: "stable",
+    parentAppId: "authentication",
   },
   "onboarding": {
     displayName: "Onboarding",
@@ -88,7 +92,7 @@ export const ALL_APPS = {
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",
     tags: ["operations", "gtm"],
-    stage: "beta",
+    stage: "stable",
   },
   "emails": {
     displayName: "Emails",
@@ -172,12 +176,19 @@ export const ALL_APPS = {
     displayName: "Clickmaps",
     subtitle: "Visualize where users click across your app",
     tags: ["developers", "operations"],
-    stage: "alpha",
+    stage: "stable",
+    parentAppId: "analytics",
   },
   "session-replays": {
     displayName: "Session Replays",
     subtitle: "Watch real user sessions to understand how people use your app",
     tags: ["developers", "operations"],
     stage: "stable",
+    parentAppId: "analytics",
   },
 } as const satisfies Record<string, App>;
+
+export function getParentAppId(appId: AppId): AppId | null {
+  const app = ALL_APPS[appId];
+  return "parentAppId" in app ? app.parentAppId : null;
+}

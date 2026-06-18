@@ -266,7 +266,7 @@ Emails integrate with Hexclave UI components automatically (for example verifica
 For custom flows, trigger `sendEmail` from your server code:
 
 ```typescript
-import { hexclaveServerApp } from '@hexclave/next';
+import { hexclaveServerApp } from '@hexclave/next';  // replace `next` with the correct framework SDK package
 
 export async function inviteUser(userId: string) {
   const result = await hexclaveServerApp.sendEmail({

@@ -16,6 +16,7 @@ import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
 export type EmailOutboxListOptions = {
   status?: string,
   simpleStatus?: string,
+  userId?: string,
   limit?: number,
   cursor?: string,
 };

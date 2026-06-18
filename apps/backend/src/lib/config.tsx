@@ -1116,6 +1116,10 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
       if (!oauthProvider.type) {
         return undefined;
       }
+      // Custom OIDC providers are managed via config, not the legacy CRUD API
+      if (oauthProvider.type === "custom_oidc") {
+        return undefined;
+      }
       if (!oauthProvider.allowSignIn) {
         return undefined;
       }

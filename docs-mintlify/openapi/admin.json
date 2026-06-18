@@ -2713,7 +2713,7 @@
     "/emails/outbox": {
       "get": {
         "summary": "List email outbox",
-        "description": "Lists all emails in the outbox with optional filtering by status or simple_status.",
+        "description": "Lists all emails in the outbox with optional filtering by status, simple_status, or user_id.",
         "parameters": [
           {
             "name": "status",
@@ -2729,6 +2729,16 @@
             "schema": {
               "type": "string"
             },
+            "required": false
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Filter for emails whose recipient is the given user ID."
+            },
+            "description": "Filter for emails whose recipient is the given user ID.",
             "required": false
           },
           {

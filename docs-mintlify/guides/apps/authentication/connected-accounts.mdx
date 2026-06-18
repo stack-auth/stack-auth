@@ -24,7 +24,7 @@ Here's how to connect with Google:
 ```jsx
 'use client';
 
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function Page() {
   const user = useUser({ or: 'redirect' });
@@ -42,7 +42,7 @@ Most providers have access control in the form of OAuth scopes. These are the pe
 ```jsx
 'use client';
 
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function Page() {
   const user = useUser({ or: 'redirect' });
@@ -63,7 +63,7 @@ Once connected with an OAuth provider, obtain the access token with the `account
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function Page() {
   const user = useUser({ or: 'redirect' });

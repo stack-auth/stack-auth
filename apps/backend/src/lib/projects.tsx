@@ -219,6 +219,44 @@ export async function createOrUpdateProjectWithLegacyConfig(
     return permissions ? typedFromEntries(permissions.map((permission) => [permission.id, true])) : undefined;
   };
   const dataOptions = options.data.config || {};
+
+  // When the legacy oauth_providers array is provided, it replaces the entire
+  // auth.oauth.providers config. Custom OIDC entries aren't representable in the
+  // legacy format, so we preserve them by merging them back in for update operations.
+  let oauthProvidersOverride: CompleteConfig['auth']['oauth']['providers'] | undefined;
+  if (dataOptions.oauth_providers) {
+    const standardEntries = typedFromEntries(dataOptions.oauth_providers.map((provider) => {
+      return [
+        provider.id,
+        {
+          type: provider.id,
+          isShared: provider.type === "shared",
+          clientId: provider.client_id,
+          clientSecret: provider.client_secret,
+          // Injecting the hexclave-branded callback for new providers is the
+          // dashboard's job; this legacy path leaves it unset so providers fall
+          // back to the stack-auth callback.
+          customCallbackUrl: undefined,
+          facebookConfigId: provider.facebook_config_id,
+          microsoftTenantId: provider.microsoft_tenant_id,
+          appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
+          allowSignIn: true,
+          allowConnectedAccounts: true,
+        } satisfies CompleteConfig['auth']['oauth']['providers'][string]
+      ];
+    }));
+    if (options.type === "update") {
+      const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
+      const customOidcEntries = typedFromEntries(
+        Object.entries(tenancy.config.auth.oauth.providers)
+          .filter(([_, p]) => p.type === "custom_oidc")
+      );
+      oauthProvidersOverride = { ...customOidcEntries, ...standardEntries };
+    } else {
+      oauthProvidersOverride = standardEntries;
+    }
+  }
+
   const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
     // ======================= auth =======================
     'auth.allowSignUp': dataOptions.sign_up_enabled,
@@ -226,27 +264,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
     'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
     'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
-    'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
-      .map((provider) => {
-        return [
-          provider.id,
-          {
-            type: provider.id,
-            isShared: provider.type === "shared",
-            clientId: provider.client_id,
-            clientSecret: provider.client_secret,
-            // Injecting the hexclave-branded callback for new providers is the
-            // dashboard's job; this legacy path leaves it unset so providers fall
-            // back to the stack-auth callback.
-            customCallbackUrl: undefined,
-            facebookConfigId: provider.facebook_config_id,
-            microsoftTenantId: provider.microsoft_tenant_id,
-            appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
-            allowSignIn: true,
-            allowConnectedAccounts: true,
-          } satisfies CompleteConfig['auth']['oauth']['providers'][string]
-        ];
-      })) : undefined,
+    'auth.oauth.providers': oauthProvidersOverride,
     // ======================= users =======================
     'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
     // ======================= teams =======================

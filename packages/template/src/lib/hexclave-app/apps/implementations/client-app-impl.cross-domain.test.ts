@@ -269,6 +269,8 @@ describe("StackClientApp cross-domain auth", () => {
         protocol: "https:",
         hostname: "demo.stack-auth.com",
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     const clientApp = new StackClientApp({
@@ -454,6 +456,40 @@ describe("StackClientApp cross-domain auth", () => {
     } finally {
       signOutSpy.mockRestore();
     }
+  });
+
+  it("throws when public app.urls reads would return hosted component URLs", () => {
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000003",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "window",
+      urls: {
+        default: { type: "hosted" },
+      },
+      noAutomaticPrefetch: true,
+    });
+
+    expect(() => clientApp.urls.signIn).toThrowError(/app\.urls\.signIn cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignIn\(\) instead/s);
+    expect(() => clientApp.urls.signOut).toThrowError(/app\.urls\.signOut cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignOut\(\) instead/s);
+    expect(clientApp.urls.afterSignIn).toBe("/");
+  });
+
+  it("keeps public app.urls reads available for non-hosted targets", () => {
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-000000000003",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: "memory",
+      redirectMethod: "window",
+      urls: {
+        handler: "/custom-handler",
+      },
+      noAutomaticPrefetch: true,
+    });
+
+    expect(clientApp.urls.signIn).toBe("/custom-handler/sign-in");
   });
 
   it("keeps default hosted signOut() on the source domain when afterSignOut is not configured", async () => {

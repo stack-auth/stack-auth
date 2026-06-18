@@ -3,12 +3,12 @@
 import { AppIcon } from "@/components/app-square";
 import { Link } from "@/components/link";
 import { Badge, Button, ScrollArea } from "@/components/ui";
-import { ALL_APPS_FRONTEND, getAppPath, getItemPath, hasNavigationItems, isSubApp, type NavigableAppFrontend } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, getItemPath, hasNavigationItems, type NavigableAppFrontend } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
 import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
-import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, ALL_APP_TAGS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
@@ -49,7 +49,7 @@ const AvailableAppPreview = memo(function AvailableAppPreview({
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
-  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppId = getParentAppId(appId);
   const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
 
   const features = [
@@ -461,7 +461,7 @@ export function useCmdKCommands({
       // Some enabled apps might not have navigation metadata yet
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!app || !appFrontend) continue;
-      const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+      const parentAppId = getParentAppId(appId);
       const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
 
       const IconComponent = appFrontend.icon;
@@ -542,7 +542,7 @@ export function useCmdKCommands({
       // Some apps might not have frontend metadata yet
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!app || !appFrontend) continue;
-      const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+      const parentAppId = getParentAppId(appId);
       const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
       const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
       const isParentEnabled = parentAppId == null ? false : enabledApps.includes(parentAppId);

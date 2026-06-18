@@ -4,7 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { generateUuid } from "./session-replay";
+import { generateUuid, isAnalyticsNotEnabledError } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -28,6 +28,10 @@ function hasHistoryMethods(value: unknown): value is { pushState: History["pushS
     return false;
   }
   return typeof value.pushState === "function" && typeof value.replaceState === "function";
+}
+
+function getTextSnippet(textContent: string | null): string {
+  return textContent == null ? "" : textContent.trim().substring(0, 200);
 }
 
 // Pixel quantization factor for x/y/viewport in stored click events. Matches the
@@ -108,6 +112,7 @@ type TrackedEvent = {
 export class EventTracker {
   private _started = false;
   private _cancelled = false;
+  private _disabled = false;
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
@@ -173,6 +178,7 @@ export class EventTracker {
   }
 
   private _pushEvent(event: TrackedEvent) {
+    if (this._disabled) return;
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
@@ -315,7 +321,7 @@ export class EventTracker {
       event_at_ms: Date.now(),
       data: {
         tag_name: target.tagName.toLowerCase(),
-        text: target.textContent.trim().substring(0, 200),
+        text: getTextSnippet(target.textContent),
         href: this._findNearestAnchorHref(target),
         selector: this._buildSelector(target),
         elements_chain: buildElementsChain(target),
@@ -464,6 +470,8 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    if (this._disabled) return;
+
     // A keepalive flush means the page is unloading — a click still awaiting
     // dead-click classification led to that unload, so it is alive by
     // definition and ships unmarked.
@@ -495,6 +503,10 @@ export class EventTracker {
     );
 
     if (res.status === "error") {
+      if (isAnalyticsNotEnabledError(res.error)) {
+        this._disable();
+        return;
+      }
       console.warn("EventTracker flush failed:", res.error);
       return;
     }
@@ -502,6 +514,15 @@ export class EventTracker {
     if (!res.data.ok) {
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
     }
+  }
+
+  private _disable() {
+    this._disabled = true;
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._teardown();
   }
 
   private _tick() {

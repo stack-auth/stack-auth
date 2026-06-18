@@ -1112,10 +1112,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return result as AdminEmailOutbox;
   }
 
-  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, userId?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
     const response = await this._interface.listOutboxEmails({
       status: options?.status,
       simple_status: options?.simpleStatus,
+      user_id: options?.userId,
       limit: options?.limit,
       cursor: options?.cursor,
     });
