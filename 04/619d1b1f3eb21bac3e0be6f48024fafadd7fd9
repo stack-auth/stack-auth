@@ -1,0 +1,26 @@
+apps/backend/src/server/app.ts
+  s_aee85d0233a355::t_f8aa282d61ae30 9,24-26,129-215
+apps/backend/instrumentation-client.ts
+  s_aee85d0233a355::t_f8aa282d61ae30 3,5
+apps/backend/tsdown.config.ts
+  s_aee85d0233a355::t_f8aa282d61ae30 5,40-59,87
+apps/backend/src/lib/next-compat/fetch.d.ts
+  s_aee85d0233a355::t_246f63b24234f3 1-3,7-13
+  s_aee85d0233a355::t_8d773907631be5 4-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "04619d1b1f3eb21bac3e0be6f48024fafadd7fd9",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
