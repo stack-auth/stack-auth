@@ -1,0 +1,19 @@
+apps/backend/src/lib/payments/customer-data.ts
+  s_aee85d0233a355::t_59c1eb721aaec7 143,145-146,148-149,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "5a4085e995062b00c5920c2103cf42086b4ccd93",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
