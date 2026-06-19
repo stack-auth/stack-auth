@@ -1,5 +1,5 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
+import { KnownError, KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
@@ -742,11 +742,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (
       isBrowserLike()
       && (this._isOAuthCallbackUrlHosted() || this._currentUrlLooksLikeNestedCrossDomainOAuthCallback())
-      && this._currentUrlLooksLikeHexclaveOAuthCallback()
+      && (this._currentUrlLooksLikeHexclaveOAuthCallback() || this._currentUrlLooksLikeOAuthCallbackError())
     ) {
       this._trackPendingAuthResolution(async () => {
         if (isBrowserLike()) {
-          await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
+          await this._handleHostedOAuthCallbackDuringStartup();
         }
       });
     }
@@ -850,6 +850,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")
     ) || (
       currentUrl.searchParams.has("errorCode") && currentUrl.searchParams.has("message")
+    ) || (
+      this._currentUrlLooksLikeOAuthCallbackError()
+    );
+  }
+
+  protected _currentUrlLooksLikeOAuthCallbackError(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has("errorCode") && currentUrl.searchParams.has("message")) {
+      return true;
+    }
+    return (
+      (currentUrl.searchParams.has("error") || currentUrl.searchParams.has("error_description"))
+      && !(currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state"))
     );
   }
 
@@ -889,6 +905,26 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       currentUrl.searchParams.delete(param);
     }
     return currentUrl.toString();
+  }
+
+  protected async _redirectToOAuthCallbackError(error: KnownError): Promise<void> {
+    const errorUrl = new URL(this._getUrls().error, window.location.href);
+    errorUrl.searchParams.set("errorCode", error.errorCode);
+    errorUrl.searchParams.set("message", error.message);
+    errorUrl.searchParams.set("details", JSON.stringify(error.details ?? {}));
+    await this._redirectIfTrusted(errorUrl.toString(), { replace: true });
+  }
+
+  protected async _handleHostedOAuthCallbackDuringStartup(): Promise<void> {
+    try {
+      await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
+    } catch (error) {
+      if (KnownError.isKnownError(error)) {
+        await this._redirectToOAuthCallbackError(error);
+        return;
+      }
+      throw error;
+    }
   }
 
   protected async _fetchCurrentRefreshTokenIdIfSignedIn(options?: {

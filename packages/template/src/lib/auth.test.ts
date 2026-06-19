@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { HexclaveClientInterface } from "@hexclave/shared";
+import { HexclaveClientInterface, KnownErrors } from "@hexclave/shared";
 import { describe, expect, it, vi } from "vitest";
-import { getNewOAuthProviderOrScopeUrl } from "./auth";
+import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "./auth";
 
 vi.mock("./cookie", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./cookie")>();
@@ -15,18 +15,22 @@ vi.mock("./cookie", async (importOriginal) => {
   };
 });
 
+function createTestInterface() {
+  return new HexclaveClientInterface({
+    clientVersion: "test",
+    getBaseUrl: () => "https://api.example.com",
+    getApiUrls: () => ["https://api.example.com"],
+    extraRequestHeaders: {},
+    projectId: "00000000-0000-4000-8000-000000000000",
+    publishableClientKey: "pck_test",
+  });
+}
+
 describe("getNewOAuthProviderOrScopeUrl", () => {
   it("returns the OAuth URL without performing navigation", async () => {
     window.history.replaceState({}, "", "/account?after_auth_return_to=%2Fsettings");
 
-    const iface = new HexclaveClientInterface({
-      clientVersion: "test",
-      getBaseUrl: () => "https://api.example.com",
-      getApiUrls: () => ["https://api.example.com"],
-      extraRequestHeaders: {},
-      projectId: "00000000-0000-4000-8000-000000000000",
-      publishableClientKey: "pck_test",
-    });
+    const iface = createTestInterface();
     const session = iface.createSession({ refreshToken: null, accessToken: null });
 
     const location = await getNewOAuthProviderOrScopeUrl(
@@ -59,5 +63,23 @@ describe("getNewOAuthProviderOrScopeUrl", () => {
         "type": "link",
       }
     `);
+  });
+});
+
+describe("callOAuthCallback", () => {
+  it("turns provider access denial callback params into a known error", async () => {
+    window.history.replaceState({}, "", "/handler/oauth-callback?error=access_denied&error_description=User+cancelled");
+
+    await expect(callOAuthCallback(createTestInterface(), "/handler/oauth-callback"))
+      .rejects.toSatisfy((error: unknown) => KnownErrors.OAuthProviderAccessDenied.isInstance(error));
+    expect(window.location.href).toBe("http://localhost:3000/handler/oauth-callback");
+  });
+
+  it("turns generic provider error callback params into a known error", async () => {
+    window.history.replaceState({}, "", "/handler/oauth-callback?error=server_error&error_description=Provider+failed");
+
+    await expect(callOAuthCallback(createTestInterface(), "/handler/oauth-callback"))
+      .rejects.toSatisfy((error: unknown) => KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error));
+    expect(window.location.href).toBe("http://localhost:3000/handler/oauth-callback");
   });
 });
