@@ -1,0 +1,20 @@
+apps/backend/src/lib/users.tsx
+  s_aee85d0233a355::t_cfd2f75124e01d 294-323,332-333
+  s_aee85d0233a355::t_5847dd15942478 324-331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "17f24388039a8fdb86e5e0ea19075360eb877e72",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
