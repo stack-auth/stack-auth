@@ -1,0 +1,21 @@
+packages/shared/src/helpers/emails.ts
+  s_aee85d0233a355::t_998b802ecfe640 92,124,156
+apps/backend/src/app/api/latest/users/crud.tsx
+  s_aee85d0233a355::t_eeb831e9e8957d 257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "35a531bddae9a4bf65cb7d2b610ab1230f9d5e10",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
