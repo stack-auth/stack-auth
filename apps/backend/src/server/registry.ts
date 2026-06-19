@@ -31,11 +31,20 @@ export function matchRoute(dispatchPath: string): RouteMatch | undefined {
       return {
         methods: entry.methods,
         normalizedPath: entry.normalizedPath,
-        params,
+        params: decodeRouteParams(params),
       };
     }
   }
   return undefined;
+}
+
+function decodeRouteParams(params: Record<string, string | string[]>): Record<string, string | string[]> {
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? value.map(decodeURIComponent) : decodeURIComponent(value),
+    ]),
+  );
 }
 
 function buildRouteRegistry() {
