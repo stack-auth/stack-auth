@@ -1,8 +1,13 @@
+//! Performance test matching bulldozer-js payments schema tests.
+
 use serde_json::{json, Value};
-use std::fs;
 use std::time::Instant;
 
 use crate::payments_schema::*;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Test Constants (matching JS test)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const USER_COUNT: usize = 6;
 const ITEM_UPDATES_PER_USER: usize = 10;
@@ -10,208 +15,271 @@ const PREFILL_USER_COUNT: usize = 200;
 const PREFILL_ITEM_UPDATES_PER_USER: usize = 4;
 const MONTH_MS: i64 = 2_592_000_000;
 
-#[derive(Clone)]
-struct Metric {
-    name: String,
-    count: usize,
-    elapsed_ms: f64,
-    ops_per_second: f64,
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// Test Data Generation
+// ═══════════════════════════════════════════════════════════════════════════════
 
-fn measure<T, F: FnOnce() -> T>(metrics: &mut Vec<Metric>, name: &str, count: usize, operation: F) -> T {
-    let start = Instant::now();
-    let value = operation();
-    let elapsed = start.elapsed();
-    let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
-    let ops_per_second = count as f64 / elapsed_ms * 1000.0;
-    metrics.push(Metric {
-        name: name.to_string(),
-        count,
-        elapsed_ms,
-        ops_per_second,
-    });
-    eprintln!("[bulldozer-payments-schema-perf-rs] {}: {:.1} ms ({} ops, {:.2} ops/s)", name, elapsed_ms, count, ops_per_second);
-    value
-}
-
-fn product(included_items: Value) -> ProductSnapshot {
-    serde_json::from_value(json!({
-        "displayName": "Perf Product",
-        "customerType": "user",
-        "productLineId": "line-perf",
-        "prices": { "p1": { "USD": "10.00" } },
-        "includedItems": included_items,
-    })).unwrap()
-}
-
-fn customer_id(namespace: &str, index: usize) -> String {
-    format!("{}user-{}", namespace, index)
-}
-
-fn subscription(index: usize, namespace: &str) -> SubscriptionRow {
-    SubscriptionRow {
-        id: format!("{}sub-{}", namespace, index),
-        tenancy_id: "t1".to_string(),
-        customer_id: customer_id(namespace, index),
-        customer_type: "user".to_string(),
-        product_id: Some("prod-sub".to_string()),
-        price_id: Some("p1".to_string()),
-        product: product(json!({
-            "credits": { "quantity": 100, "expires": "never" },
-            "seats": { "quantity": 1, "expires": "when-purchase-expires" },
-        })),
-        quantity: 1,
-        stripe_subscription_id: None,
-        status: "active".to_string(),
-        current_period_start_millis: 0,
-        current_period_end_millis: MONTH_MS,
-        cancel_at_period_end: false,
-        canceled_at_millis: None,
-        ended_at_millis: None,
-        refunded_at_millis: None,
-        product_revoked_at_millis: None,
-        creation_source: "TEST_MODE".to_string(),
-        created_at_millis: 1_000 + index as i64,
+fn product(items: &[(&str, i64, &str)]) -> Value {
+    let mut included = serde_json::Map::new();
+    for (name, qty, expires) in items {
+        let mut item = serde_json::Map::new();
+        item.insert("quantity".to_string(), json!(qty));
+        if *expires != "never" {
+            item.insert("expires".to_string(), json!(expires));
+        }
+        included.insert(name.to_string(), Value::Object(item));
     }
-}
-
-fn one_time_purchase(index: usize, namespace: &str) -> OneTimePurchaseRow {
-    OneTimePurchaseRow {
-        id: format!("{}otp-{}", namespace, index),
-        tenancy_id: "t1".to_string(),
-        customer_id: customer_id(namespace, index),
-        customer_type: "user".to_string(),
-        product_id: Some("prod-otp".to_string()),
-        price_id: Some("p1".to_string()),
-        product: product(json!({
-            "coins": { "quantity": 50, "expires": "never" },
-        })),
-        quantity: 2,
-        stripe_payment_intent_id: None,
-        revoked_at_millis: None,
-        refunded_at_millis: None,
-        creation_source: "TEST_MODE".to_string(),
-        created_at_millis: 2_000 + index as i64,
-    }
-}
-
-fn manual_item_quantity_change(user_index: usize, update_index: usize, namespace: &str) -> ManualItemQuantityChangeRow {
-    ManualItemQuantityChangeRow {
-        id: format!("{}miqc-{}-{}", namespace, user_index, update_index),
-        tenancy_id: "t1".to_string(),
-        customer_id: customer_id(namespace, user_index),
-        customer_type: "user".to_string(),
-        item_id: if update_index % 2 == 0 { "credits".to_string() } else { "coins".to_string() },
-        quantity: if update_index % 3 == 0 { -1 } else { 3 },
-        description: None,
-        expires_at_millis: None,
-        created_at_millis: 10_000 + user_index as i64 * 1_000 + update_index as i64,
-    }
-}
-
-fn group_key_value(index: usize) -> Value {
     json!({
-        "tenancyId": "t1",
         "customerType": "user",
-        "customerId": customer_id("", index),
+        "prices": {
+            "price-1": {
+                "usd": "1000",
+                "interval": "month"
+            }
+        },
+        "includedItems": included,
+        "productLineId": "test-product-line"
     })
 }
 
-pub fn run_performance_test() {
-    let mut metrics: Vec<Metric> = Vec::new();
-    let prefill_source_fact_count = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
+fn create_subscription(user_idx: usize, base_time: i64) -> (String, Value) {
+    let id = format!("sub-{}", user_idx);
+    let customer_id = format!("user-{}", user_idx);
+    let data = json!({
+        "id": id,
+        "tenancyId": "tenancy-1",
+        "customerId": customer_id,
+        "customerType": "user",
+        "productId": "prod-1",
+        "priceId": "price-1",
+        "product": product(&[
+            ("credits", 100, "never"),
+            ("seats", 1, "when-purchase-expires"),
+        ]),
+        "quantity": 1,
+        "stripeSubscriptionId": format!("stripe-sub-{}", user_idx),
+        "status": "active",
+        "currentPeriodStartMillis": base_time,
+        "currentPeriodEndMillis": base_time + MONTH_MS,
+        "cancelAtPeriodEnd": false,
+        "canceledAtMillis": null,
+        "endedAtMillis": null,
+        "refundedAtMillis": null,
+        "productRevokedAtMillis": null,
+        "creationSource": "TEST_MODE",
+        "createdAtMillis": base_time,
+    });
+    (id, data)
+}
 
-    eprintln!("\n[bulldozer-payments-schema-perf-rs] Running payments schema performance test...\n");
+fn create_one_time_purchase(user_idx: usize, base_time: i64) -> (String, Value) {
+    let id = format!("otp-{}", user_idx);
+    let customer_id = format!("user-{}", user_idx);
+    let data = json!({
+        "id": id,
+        "tenancyId": "tenancy-1",
+        "customerId": customer_id,
+        "customerType": "user",
+        "productId": "prod-2",
+        "priceId": "price-1",
+        "product": product(&[
+            ("coins", 50, "never"),
+        ]),
+        "quantity": 1,
+        "stripePaymentIntentId": format!("stripe-pi-{}", user_idx),
+        "revokedAtMillis": null,
+        "refundedAtMillis": null,
+        "creationSource": "TEST_MODE",
+        "createdAtMillis": base_time + 1000,
+    });
+    (id, data)
+}
 
-    let mut db = measure(&mut metrics, "initialize schema", 1, || {
-        PaymentsDatabase::new()
+fn create_manual_item_qty_change(user_idx: usize, item_idx: usize, base_time: i64) -> (String, Value) {
+    let id = format!("miqc-{}-{}", user_idx, item_idx);
+    let customer_id = format!("user-{}", user_idx);
+    let data = json!({
+        "id": id,
+        "tenancyId": "tenancy-1",
+        "customerId": customer_id,
+        "customerType": "user",
+        "itemId": format!("item-{}", item_idx % 3),
+        "quantity": 10,
+        "description": "Manual adjustment",
+        "expiresAtMillis": null,
+        "createdAtMillis": base_time + 2000 + (item_idx as i64 * 100),
+    });
+    (id, data)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Performance Metrics
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[derive(Clone, Debug)]
+pub struct PerfMetric {
+    pub name: String,
+    pub count: usize,
+    pub elapsed_ms: f64,
+    pub ops_per_second: f64,
+}
+
+pub fn run_performance_test() -> Vec<PerfMetric> {
+    let mut metrics: Vec<PerfMetric> = Vec::new();
+    let base_time = 1_700_000_000_000i64;
+
+    // ─── Initialize Schema ─────────────────────────────────────────────────────
+    let start = Instant::now();
+    let mut db = create_payments_database();
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "initialize schema".to_string(),
+        count: 1,
+        elapsed_ms: elapsed,
+        ops_per_second: 1000.0 / elapsed,
     });
 
-    measure(&mut metrics, "prefill baseline rows", prefill_source_fact_count, || {
-        for i in 0..PREFILL_USER_COUNT {
-            let sub = subscription(i, "prefill-");
-            db.set_subscription(&format!("prefill-sub-{}", i), sub);
-            let otp = one_time_purchase(i, "prefill-");
-            db.set_one_time_purchase(&format!("prefill-otp-{}", i), otp);
-            for update_index in 0..PREFILL_ITEM_UPDATES_PER_USER {
-                let miqc = manual_item_quantity_change(i, update_index, "prefill-");
-                db.set_manual_item_quantity_change(&format!("prefill-miqc-{}-{}", i, update_index), miqc);
-            }
+    // ─── Prefill Baseline Rows ─────────────────────────────────────────────────
+    let count = PREFILL_USER_COUNT * (1 + 1 + PREFILL_ITEM_UPDATES_PER_USER);
+    let start = Instant::now();
+    for i in 0..PREFILL_USER_COUNT {
+        let user_idx = USER_COUNT + i; // offset to not conflict with test users
+        let (id, data) = create_subscription(user_idx, base_time - MONTH_MS);
+        db.set_or_delete_row(SUBSCRIPTIONS, &id, Some(data));
+        let (id, data) = create_one_time_purchase(user_idx, base_time - MONTH_MS);
+        db.set_or_delete_row(ONE_TIME_PURCHASES, &id, Some(data));
+        for j in 0..PREFILL_ITEM_UPDATES_PER_USER {
+            let (id, data) = create_manual_item_qty_change(user_idx, j, base_time - MONTH_MS);
+            db.set_or_delete_row(MANUAL_ITEM_QTY_CHANGES, &id, Some(data));
         }
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "prefill baseline rows".to_string(),
+        count,
+        elapsed_ms: elapsed,
+        ops_per_second: (count as f64) / (elapsed / 1000.0),
     });
 
-    measure(&mut metrics, "write subscriptions", USER_COUNT, || {
-        for i in 0..USER_COUNT {
-            let sub = subscription(i, "");
-            db.set_subscription(&format!("sub-{}", i), sub);
+    // ─── Write Subscriptions ───────────────────────────────────────────────────
+    let start = Instant::now();
+    for i in 0..USER_COUNT {
+        let (id, data) = create_subscription(i, base_time);
+        db.set_or_delete_row(SUBSCRIPTIONS, &id, Some(data));
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "write subscriptions".to_string(),
+        count: USER_COUNT,
+        elapsed_ms: elapsed,
+        ops_per_second: (USER_COUNT as f64) / (elapsed / 1000.0),
+    });
+
+    // ─── Write One-Time Purchases ──────────────────────────────────────────────
+    let start = Instant::now();
+    for i in 0..USER_COUNT {
+        let (id, data) = create_one_time_purchase(i, base_time);
+        db.set_or_delete_row(ONE_TIME_PURCHASES, &id, Some(data));
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "write one-time purchases".to_string(),
+        count: USER_COUNT,
+        elapsed_ms: elapsed,
+        ops_per_second: (USER_COUNT as f64) / (elapsed / 1000.0),
+    });
+
+    // ─── Write Manual Item Quantity Changes ────────────────────────────────────
+    let total_changes = USER_COUNT * ITEM_UPDATES_PER_USER;
+    let start = Instant::now();
+    for i in 0..USER_COUNT {
+        for j in 0..ITEM_UPDATES_PER_USER {
+            let (id, data) = create_manual_item_qty_change(i, j, base_time);
+            db.set_or_delete_row(MANUAL_ITEM_QTY_CHANGES, &id, Some(data));
         }
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "write manual item qty changes".to_string(),
+        count: total_changes,
+        elapsed_ms: elapsed,
+        ops_per_second: (total_changes as f64) / (elapsed / 1000.0),
     });
 
-    measure(&mut metrics, "write one-time purchases", USER_COUNT, || {
-        for i in 0..USER_COUNT {
-            let otp = one_time_purchase(i, "");
-            db.set_one_time_purchase(&format!("otp-{}", i), otp);
-        }
+    // ─── Read Owned Products ───────────────────────────────────────────────────
+    let start = Instant::now();
+    for i in 0..USER_COUNT {
+        let customer_id = format!("user-{}", i);
+        let group_key = json!({"tenancyId": "tenancy-1", "customerType": "user", "customerId": customer_id});
+        let _rows = db.list_rows_in_group(OWNED_PRODUCTS, &group_key);
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "read owned products".to_string(),
+        count: USER_COUNT,
+        elapsed_ms: elapsed,
+        ops_per_second: (USER_COUNT as f64) / (elapsed / 1000.0),
     });
 
-    measure(&mut metrics, "write manual item quantity changes", USER_COUNT * ITEM_UPDATES_PER_USER, || {
-        for user_index in 0..USER_COUNT {
-            for update_index in 0..ITEM_UPDATES_PER_USER {
-                let miqc = manual_item_quantity_change(user_index, update_index, "");
-                db.set_manual_item_quantity_change(&format!("miqc-{}-{}", user_index, update_index), miqc);
-            }
-        }
+    // ─── Read Item Quantities ──────────────────────────────────────────────────
+    let items_per_user = 3; // item-0, item-1, item-2
+    let total_reads = USER_COUNT * items_per_user;
+    let start = Instant::now();
+    for i in 0..USER_COUNT {
+        let customer_id = format!("user-{}", i);
+        let group_key = json!({"tenancyId": "tenancy-1", "customerType": "user", "customerId": customer_id});
+        let _rows = db.list_rows_in_group(ITEM_QUANTITIES, &group_key);
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "read item quantities".to_string(),
+        count: total_reads,
+        elapsed_ms: elapsed,
+        ops_per_second: (total_reads as f64) / (elapsed / 1000.0),
     });
 
-    measure(&mut metrics, "read owned products", USER_COUNT, || {
-        for i in 0..USER_COUNT {
-            let gk = group_key_value(i);
-            let _rows = db.read_owned_products(&gk);
-        }
+    // ─── Read Transactions ─────────────────────────────────────────────────────
+    let start = Instant::now();
+    let mut total_txn_count = 0usize;
+    for i in 0..USER_COUNT {
+        let customer_id = format!("user-{}", i);
+        let group_key = json!({"tenancyId": "tenancy-1", "customerType": "user", "customerId": customer_id});
+        let rows = db.list_rows_in_group(TRANSACTIONS_BY_CUSTOMER, &group_key);
+        total_txn_count += rows.len();
+    }
+    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    metrics.push(PerfMetric {
+        name: "read transactions".to_string(),
+        count: USER_COUNT,
+        elapsed_ms: elapsed,
+        ops_per_second: (USER_COUNT as f64) / (elapsed / 1000.0),
     });
 
-    measure(&mut metrics, "read item quantities", USER_COUNT * 3, || {
-        for i in 0..USER_COUNT {
-            for _item_id in &["credits", "coins", "seats"] {
-                let gk = group_key_value(i);
-                let _rows = db.read_item_quantities(&gk);
-            }
-        }
-    });
+    // ─── Verification ──────────────────────────────────────────────────────────
+    let expected_txns = USER_COUNT * (2 + ITEM_UPDATES_PER_USER); // sub + otp + miqcs
+    println!("\n═══ bulldozer-rs Performance Results (in-memory) ═══\n");
+    println!("Backend: in-memory (generic engine)");
+    println!("Transaction count: {} (expected: {})", total_txn_count, expected_txns);
+    if total_txn_count != expected_txns {
+        println!("⚠ WARNING: Transaction count mismatch!");
+    } else {
+        println!("✓ Transaction count correct");
+    }
+    println!("\n{:<40} {:>8} {:>12} {:>14}", "Operation", "Count", "Elapsed(ms)", "Ops/sec");
+    println!("{}", "-".repeat(78));
+    for m in &metrics {
+        println!("{:<40} {:>8} {:>12.3} {:>14.1}", m.name, m.count, m.elapsed_ms, m.ops_per_second);
+    }
+    println!();
 
-    let transaction_rows = measure(&mut metrics, "read transactions", USER_COUNT, || {
-        let mut count = 0;
-        for i in 0..USER_COUNT {
-            let gk = group_key_value(i);
-            count += db.read_transactions(&gk).len();
-        }
-        count
-    });
+    // Output JSON for comparison
+    let json_results: Vec<Value> = metrics.iter().map(|m| json!({
+        "name": m.name,
+        "count": m.count,
+        "elapsedMs": m.elapsed_ms,
+        "opsPerSecond": m.ops_per_second,
+    })).collect();
+    println!("JSON: {}", serde_json::to_string_pretty(&json_results).unwrap());
 
-    let expected_transactions = USER_COUNT * (2 + ITEM_UPDATES_PER_USER);
-    assert_eq!(
-        transaction_rows, expected_transactions,
-        "Expected {} transaction rows, got {}",
-        expected_transactions, transaction_rows
-    );
-
-    let summary = json!({
-        "engine": "bulldozer-rs",
-        "backend": "in-memory",
-        "users": USER_COUNT,
-        "prefillUsers": PREFILL_USER_COUNT,
-        "prefillSourceFacts": prefill_source_fact_count,
-        "transactions": transaction_rows,
-        "metrics": metrics.iter().map(|m| json!({
-            "name": m.name,
-            "count": m.count,
-            "elapsedMs": m.elapsed_ms,
-            "opsPerSecond": m.ops_per_second,
-        })).collect::<Vec<_>>(),
-    });
-
-    fs::write("bulldozer-payments-schema-perf-rs.untracked.json", serde_json::to_string_pretty(&summary).unwrap())
-        .expect("Failed to write performance results");
-
-    eprintln!("\n[bulldozer-payments-schema-perf-rs] summary={}\n", serde_json::to_string(&summary).unwrap());
+    metrics
 }

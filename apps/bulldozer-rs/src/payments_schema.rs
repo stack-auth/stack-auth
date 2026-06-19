@@ -1,166 +1,37 @@
-use serde::{Deserialize, Serialize};
+//! Payments schema defined on top of the generic bulldozer engine.
+//! Direct port of bulldozer-js/src/payments/schema/index.ts.
+
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-use crate::bulldozer::{canonical_group_key_string, Row};
+use crate::bulldozer::*;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProductSnapshot {
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub product_line_id: Option<String>,
-    pub customer_type: String,
-    pub prices: HashMap<String, HashMap<String, Value>>,
-    pub included_items: HashMap<String, IncludedItemConfig>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IncludedItemConfig {
-    pub quantity: i64,
-    #[serde(default)]
-    pub repeat: Option<Value>,
-    #[serde(default)]
-    pub expires: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubscriptionRow {
-    pub id: String,
-    pub tenancy_id: String,
-    pub customer_id: String,
-    pub customer_type: String,
-    pub product_id: Option<String>,
-    pub price_id: Option<String>,
-    pub product: ProductSnapshot,
-    pub quantity: i64,
-    pub stripe_subscription_id: Option<String>,
-    pub status: String,
-    pub current_period_start_millis: i64,
-    pub current_period_end_millis: i64,
-    pub cancel_at_period_end: bool,
-    pub canceled_at_millis: Option<i64>,
-    pub ended_at_millis: Option<i64>,
-    pub refunded_at_millis: Option<i64>,
-    pub product_revoked_at_millis: Option<i64>,
-    pub creation_source: String,
-    pub created_at_millis: i64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OneTimePurchaseRow {
-    pub id: String,
-    pub tenancy_id: String,
-    pub customer_id: String,
-    pub customer_type: String,
-    pub product_id: Option<String>,
-    pub price_id: Option<String>,
-    pub product: ProductSnapshot,
-    pub quantity: i64,
-    pub stripe_payment_intent_id: Option<String>,
-    pub revoked_at_millis: Option<i64>,
-    pub refunded_at_millis: Option<i64>,
-    pub creation_source: String,
-    pub created_at_millis: i64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ManualItemQuantityChangeRow {
-    pub id: String,
-    pub tenancy_id: String,
-    pub customer_id: String,
-    pub customer_type: String,
-    pub item_id: String,
-    pub quantity: i64,
-    pub description: Option<String>,
-    pub expires_at_millis: Option<i64>,
-    pub created_at_millis: i64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TransactionRow {
-    pub txn_id: String,
-    pub tenancy_id: String,
-    pub effective_at_millis: i64,
-    #[serde(rename = "type")]
-    pub txn_type: String,
-    pub entries: Vec<Value>,
-    pub customer_type: String,
-    pub customer_id: String,
-    pub payment_provider: Option<String>,
-    pub created_at_millis: i64,
-}
-
-// ─── Helper Functions ─────────────────────────────────────────────────────────
-
-fn payment_provider(creation_source: &str) -> &'static str {
-    if creation_source == "TEST_MODE" { "test_mode" } else { "stripe" }
-}
-
-fn charged_amount(product: &ProductSnapshot, price_id: &Option<String>, quantity: i64) -> HashMap<String, String> {
-    let mut result = HashMap::new();
-    let price_id = match price_id {
-        Some(id) => id,
-        None => return result,
-    };
-    let price = match product.prices.get(price_id) {
-        Some(p) => p,
-        None => return result,
-    };
-    for (currency, amount) in price {
-        if currency == "interval" || currency == "serverOnly" || currency == "freeTrial" {
-            continue;
-        }
-        let numeric = match amount {
-            Value::String(s) => s.parse::<f64>().ok(),
-            Value::Number(n) => n.as_f64(),
-            _ => None,
-        };
-        if let Some(n) = numeric {
-            if n.is_finite() {
-                result.insert(currency.clone(), (n * quantity as f64).to_string());
-            }
-        }
-    }
-    result
-}
-
-fn item_grants(product: &ProductSnapshot, quantity: i64) -> Vec<Value> {
-    product.included_items.iter().map(|(item_id, item)| {
-        let expires_when = normalized_expires_when(item);
-        json!({
-            "itemId": item_id,
-            "quantity": item.quantity * quantity,
-            "expiresWhen": expires_when,
-        })
-    }).collect()
-}
-
-fn normalized_expires_when(item: &IncludedItemConfig) -> Value {
-    match &item.expires {
-        Some(s) if s == "when-purchase-expires" || s == "when-repeated" => Value::String(s.clone()),
-        _ => Value::Null,
-    }
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// Constants
+// ═══════════════════════════════════════════════════════════════════════════════
 
 const DAY_MS: i64 = 86_400_000;
 const WEEK_MS: i64 = 7 * DAY_MS;
 const MONTH_MS: i64 = 30 * DAY_MS;
 const YEAR_MS: i64 = 365 * DAY_MS;
 
-fn repeat_interval_ms(repeat: &Option<Value>) -> Option<i64> {
-    let arr = match repeat {
-        Some(Value::Array(a)) if a.len() == 2 => a,
-        _ => return None,
-    };
+// ═══════════════════════════════════════════════════════════════════════════════
+// Helper Functions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn compare_numbers(a: &Value, b: &Value) -> std::cmp::Ordering {
+    let na = a.as_f64().unwrap_or(0.0);
+    let nb = b.as_f64().unwrap_or(0.0);
+    na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
+}
+
+fn payment_provider(creation_source: &str) -> &'static str {
+    if creation_source == "TEST_MODE" { "test_mode" } else { "stripe" }
+}
+
+fn repeat_interval_ms(repeat: &Value) -> Option<i64> {
+    let arr = repeat.as_array()?;
+    if arr.len() != 2 { return None; }
     let count = arr[0].as_i64()?;
     let unit = arr[1].as_str()?;
     Some(match unit {
@@ -172,547 +43,1509 @@ fn repeat_interval_ms(repeat: &Option<Value>) -> Option<i64> {
     })
 }
 
-// ─── Payments Database ────────────────────────────────────────────────────────
-
-/// CustomerKey for grouping transactions by customer.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CustomerKey {
-    pub tenancy_id: String,
-    pub customer_type: String,
-    pub customer_id: String,
+fn normalized_expires_when(item: &Value) -> Value {
+    match item.get("expires").and_then(|v| v.as_str()) {
+        Some(s) if s == "when-purchase-expires" || s == "when-repeated" => Value::String(s.to_string()),
+        _ => Value::Null,
+    }
 }
 
-impl CustomerKey {
-    pub fn to_value(&self) -> Value {
+fn product_line_id(product: &Value) -> Value {
+    product.get("productLineId").cloned().unwrap_or(Value::Null)
+}
+
+fn charged_amount(product: &Value, price_id: &Value, quantity: i64) -> Value {
+    let price_id_str = match price_id.as_str() {
+        Some(s) => s,
+        None => return json!({}),
+    };
+    let prices = match product.get("prices").and_then(|p| p.as_object()) {
+        Some(p) => p,
+        None => return json!({}),
+    };
+    let price = match prices.get(price_id_str).and_then(|p| p.as_object()) {
+        Some(p) => p,
+        None => return json!({}),
+    };
+    let mut result = serde_json::Map::new();
+    for (currency, amount) in price {
+        if currency == "interval" || currency == "serverOnly" || currency == "freeTrial" {
+            continue;
+        }
+        let numeric = match amount {
+            Value::String(s) => s.parse::<f64>().ok(),
+            Value::Number(n) => n.as_f64(),
+            _ => None,
+        };
+        if let Some(n) = numeric {
+            if n.is_finite() {
+                result.insert(currency.clone(), Value::String((n * quantity as f64).to_string()));
+            }
+        }
+    }
+    Value::Object(result)
+}
+
+fn item_grants(product: &Value, quantity: i64) -> Vec<Value> {
+    let items = match product.get("includedItems").and_then(|v| v.as_object()) {
+        Some(items) => items,
+        None => return Vec::new(),
+    };
+    items.iter().map(|(item_id, item)| {
+        let item_qty = item.get("quantity").and_then(|q| q.as_i64()).unwrap_or(0);
         json!({
-            "tenancyId": self.tenancy_id,
-            "customerType": self.customer_type,
-            "customerId": self.customer_id,
+            "itemId": item_id,
+            "quantity": item_qty * quantity,
+            "expiresWhen": normalized_expires_when(item),
         })
-    }
+    }).collect()
 }
 
-/// The payments bulldozer database. Stores source facts and maintains derived views.
-pub struct PaymentsDatabase {
-    // Source tables
-    subscriptions: BTreeMap<String, SubscriptionRow>,
-    one_time_purchases: BTreeMap<String, OneTimePurchaseRow>,
-    manual_item_quantity_changes: BTreeMap<String, ManualItemQuantityChangeRow>,
-
-    // Derived: transactions grouped by customer
-    transactions_by_customer: HashMap<String, Vec<TransactionRow>>,
-
-    // Derived: owned products per customer (fold result)
-    owned_products_by_customer: HashMap<String, Value>,
-
-    // Derived: item quantities per customer (fold result)
-    item_quantities_by_customer: HashMap<String, Value>,
+fn repeat_schedule(product: &Value, quantity: i64, anchor_millis: i64) -> Value {
+    let items = match product.get("includedItems").and_then(|v| v.as_object()) {
+        Some(items) => items,
+        None => return json!({}),
+    };
+    let mut schedule = serde_json::Map::new();
+    for (item_id, item) in items {
+        let item_qty = item.get("quantity").and_then(|q| q.as_i64()).unwrap_or(0);
+        let interval = item.get("repeat").map(|r| repeat_interval_ms(r)).unwrap_or(None);
+        let next_repeat = interval.map(|ms| anchor_millis + ms);
+        schedule.insert(item_id.clone(), json!({
+            "quantity": item_qty * quantity,
+            "expiresWhen": normalized_expires_when(item),
+            "repeatIntervalMs": interval,
+            "nextRepeatMillis": next_repeat,
+        }));
+    }
+    Value::Object(schedule)
 }
 
-impl PaymentsDatabase {
-    pub fn new() -> Self {
-        PaymentsDatabase {
-            subscriptions: BTreeMap::new(),
-            one_time_purchases: BTreeMap::new(),
-            manual_item_quantity_changes: BTreeMap::new(),
-            transactions_by_customer: HashMap::new(),
-            owned_products_by_customer: HashMap::new(),
-            item_quantities_by_customer: HashMap::new(),
+fn outstanding_grants(product: &Value, quantity: i64, txn_id: &str, base_index: usize) -> Vec<Value> {
+    let items = match product.get("includedItems").and_then(|v| v.as_object()) {
+        Some(items) => items,
+        None => return Vec::new(),
+    };
+    items.iter().enumerate().map(|(i, (item_id, item))| {
+        let item_qty = item.get("quantity").and_then(|q| q.as_i64()).unwrap_or(0);
+        json!({
+            "txnId": txn_id,
+            "entryIndex": base_index + i,
+            "itemId": item_id,
+            "quantity": item_qty * quantity,
+            "expiresWhen": normalized_expires_when(item),
+        })
+    }).collect()
+}
+
+fn soonest_next_millis(schedule: &Value, end_millis: Option<i64>) -> Option<i64> {
+    let mut candidates: Vec<i64> = Vec::new();
+    if let Some(obj) = schedule.as_object() {
+        for (_, item) in obj {
+            if let Some(next) = item.get("nextRepeatMillis").and_then(|v| v.as_i64()) {
+                candidates.push(next);
+            }
         }
     }
+    if let Some(end) = end_millis {
+        candidates.push(end);
+    }
+    candidates.into_iter().min()
+}
 
-    pub fn set_subscription(&mut self, row_id: &str, row: SubscriptionRow) {
-        let customer_key = CustomerKey {
-            tenancy_id: row.tenancy_id.clone(),
-            customer_type: row.customer_type.clone(),
-            customer_id: row.customer_id.clone(),
+fn customer_group_key(row_data: &Value) -> Value {
+    json!({
+        "tenancyId": row_data.get("tenancyId").cloned().unwrap_or(Value::Null),
+        "customerType": row_data.get("customerType").cloned().unwrap_or(Value::Null),
+        "customerId": row_data.get("customerId").cloned().unwrap_or(Value::Null),
+    })
+}
+
+fn grant_refs_to_expire(grants: &Value, expires_when: &str, due_item_ids: Option<&Vec<String>>) -> Vec<Value> {
+    let arr = match grants.as_array() {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+    arr.iter().filter(|grant| {
+        let ew = grant.get("expiresWhen").and_then(|v| v.as_str()).unwrap_or("");
+        let matches = if expires_when == "both" {
+            ew == "when-repeated" || ew == "when-purchase-expires"
+        } else {
+            ew == expires_when
         };
-        self.subscriptions.insert(row_id.to_string(), row);
-        self.recompute_customer(&customer_key);
-    }
-
-    pub fn set_one_time_purchase(&mut self, row_id: &str, row: OneTimePurchaseRow) {
-        let customer_key = CustomerKey {
-            tenancy_id: row.tenancy_id.clone(),
-            customer_type: row.customer_type.clone(),
-            customer_id: row.customer_id.clone(),
-        };
-        self.one_time_purchases.insert(row_id.to_string(), row);
-        self.recompute_customer(&customer_key);
-    }
-
-    pub fn set_manual_item_quantity_change(&mut self, row_id: &str, row: ManualItemQuantityChangeRow) {
-        let customer_key = CustomerKey {
-            tenancy_id: row.tenancy_id.clone(),
-            customer_type: row.customer_type.clone(),
-            customer_id: row.customer_id.clone(),
-        };
-        self.manual_item_quantity_changes.insert(row_id.to_string(), row);
-        self.recompute_customer(&customer_key);
-    }
-
-    /// Recompute all derived tables for a given customer.
-    fn recompute_customer(&mut self, key: &CustomerKey) {
-        let key_str = canonical_group_key_string(&key.to_value());
-
-        // Collect all transactions for this customer
-        let mut transactions: Vec<TransactionRow> = Vec::new();
-
-        // From subscriptions
-        for sub in self.subscriptions.values() {
-            if sub.tenancy_id == key.tenancy_id && sub.customer_type == key.customer_type && sub.customer_id == key.customer_id {
-                self.generate_subscription_transactions(sub, &mut transactions);
-            }
+        if !matches { return false; }
+        if let Some(ids) = due_item_ids {
+            let item_id = grant.get("itemId").and_then(|v| v.as_str()).unwrap_or("");
+            ids.contains(&item_id.to_string())
+        } else {
+            true
         }
+    }).map(|grant| {
+        json!({
+            "transactionId": grant.get("txnId"),
+            "entryIndex": grant.get("entryIndex"),
+            "itemId": grant.get("itemId"),
+            "quantity": grant.get("quantity"),
+        })
+    }).collect()
+}
 
-        // From one-time purchases
-        for otp in self.one_time_purchases.values() {
-            if otp.tenancy_id == key.tenancy_id && otp.customer_type == key.customer_type && otp.customer_id == key.customer_id {
-                self.generate_otp_transaction(otp, &mut transactions);
-            }
-        }
+fn due_item_entries(schedule: &Value, current_millis: i64) -> Vec<(String, Value)> {
+    let obj = match schedule.as_object() {
+        Some(o) => o,
+        None => return Vec::new(),
+    };
+    obj.iter().filter(|(_, item)| {
+        item.get("nextRepeatMillis").and_then(|v| v.as_i64())
+            .map_or(false, |next| next <= current_millis)
+    }).map(|(id, item)| (id.clone(), item.clone())).collect()
+}
 
-        // From manual item quantity changes
-        for miqc in self.manual_item_quantity_changes.values() {
-            if miqc.tenancy_id == key.tenancy_id && miqc.customer_type == key.customer_type && miqc.customer_id == key.customer_id {
-                self.generate_manual_iqc_transaction(miqc, &mut transactions);
-            }
-        }
+// ═══════════════════════════════════════════════════════════════════════════════
+// Schema Table IDs
+// ═══════════════════════════════════════════════════════════════════════════════
 
-        // Sort transactions by effectiveAtMillis, then txnId
-        transactions.sort_by(|a, b| {
-            a.effective_at_millis.cmp(&b.effective_at_millis)
-                .then_with(|| a.txn_id.cmp(&b.txn_id))
-        });
+pub const SUBSCRIPTIONS: &str = "payments-subscriptions";
+pub const SUBSCRIPTION_INVOICES: &str = "payments-subscription-invoices";
+pub const ONE_TIME_PURCHASES: &str = "payments-one-time-purchases";
+pub const MANUAL_ITEM_QTY_CHANGES: &str = "payments-manual-item-quantity-changes";
+pub const MANUAL_TRANSACTIONS: &str = "payments-manual-transactions";
+pub const TRANSACTIONS_BY_CUSTOMER: &str = "payments-transactions-by-customer";
+pub const OWNED_PRODUCTS: &str = "payments-owned-products";
+pub const ITEM_QUANTITIES: &str = "payments-item-quantities";
 
-        // Compute owned products (fold over product-grant and product-revocation entries)
-        let owned_products = self.compute_owned_products(&transactions);
+// ═══════════════════════════════════════════════════════════════════════════════
+// Schema Construction
+// ═══════════════════════════════════════════════════════════════════════════════
 
-        // Compute item quantities (fold over item changes)
-        let item_quantities = self.compute_item_quantities(&transactions);
+pub fn create_payments_database() -> Database {
+    let mut db = Database::new();
 
-        self.transactions_by_customer.insert(key_str.clone(), transactions);
-        self.owned_products_by_customer.insert(key_str.clone(), owned_products);
-        self.item_quantities_by_customer.insert(key_str, item_quantities);
-    }
+    // ─── Stored Tables ─────────────────────────────────────────────────────────
+    db.add_table(SUBSCRIPTIONS, Box::new(StoredTable::new()), HashMap::new());
+    db.add_table(SUBSCRIPTION_INVOICES, Box::new(StoredTable::new()), HashMap::new());
+    db.add_table(ONE_TIME_PURCHASES, Box::new(StoredTable::new()), HashMap::new());
+    db.add_table(MANUAL_ITEM_QTY_CHANGES, Box::new(StoredTable::new()), HashMap::new());
+    db.add_table(MANUAL_TRANSACTIONS, Box::new(StoredTable::new()), HashMap::new());
 
-    fn generate_subscription_transactions(&self, sub: &SubscriptionRow, transactions: &mut Vec<TransactionRow>) {
-        let provider = payment_provider(&sub.creation_source);
-        let charged = charged_amount(&sub.product, &sub.price_id, sub.quantity);
-        let has_money_transfer = provider != "test_mode" && !charged.is_empty();
-        let grants = item_grants(&sub.product, sub.quantity);
-
-        // Subscription start transaction
-        let mut entries: Vec<Value> = vec![
-            json!({
-                "type": "active-subscription-start",
-                "customerType": sub.customer_type,
-                "customerId": sub.customer_id,
-                "subscriptionId": sub.id,
+    // ─── Subscriptions with Invoices (left join) ───────────────────────────────
+    db.add_table(
+        "payments-subscriptions-with-invoices",
+        Box::new(LeftJoinTable::new(
+            Box::new(|row: &Row| {
+                let d = &row.row_data;
+                json!({"tenancyId": d.get("tenancyId"), "stripeSubscriptionId": d.get("stripeSubscriptionId")})
             }),
-            json!({
-                "type": "product-grant",
-                "customerType": sub.customer_type,
-                "customerId": sub.customer_id,
-                "productId": sub.product_id,
-                "product": serde_json::to_value(&sub.product).unwrap(),
-                "productLineId": sub.product.product_line_id.as_deref(),
-                "quantity": sub.quantity,
-                "subscriptionId": sub.id,
+            Box::new(|row: &Row| {
+                let d = &row.row_data;
+                json!({"tenancyId": d.get("tenancyId"), "stripeSubscriptionId": d.get("stripeSubscriptionId")})
             }),
-        ];
-        if has_money_transfer {
-            entries.push(json!({
-                "type": "money-transfer",
-                "customerType": sub.customer_type,
-                "customerId": sub.customer_id,
-                "chargedAmount": charged,
-            }));
-        }
-        for grant in &grants {
-            entries.push(json!({
-                "type": "item-quantity-change",
-                "customerType": sub.customer_type,
-                "customerId": sub.customer_id,
-                "itemId": grant["itemId"],
-                "quantity": grant["quantity"],
-                "expiresWhen": grant["expiresWhen"],
-            }));
-        }
-
-        transactions.push(TransactionRow {
-            txn_id: format!("sub-start:{}", sub.id),
-            tenancy_id: sub.tenancy_id.clone(),
-            effective_at_millis: sub.created_at_millis,
-            txn_type: "subscription-start".to_string(),
-            entries,
-            customer_type: sub.customer_type.clone(),
-            customer_id: sub.customer_id.clone(),
-            payment_provider: Some(provider.to_string()),
-            created_at_millis: sub.created_at_millis,
-        });
-
-        // Check for subscription end (immediate end without repeats)
-        if let Some(ended_at) = sub.ended_at_millis {
-            let has_repeat = sub.product.included_items.values()
-                .any(|item| repeat_interval_ms(&item.repeat).is_some());
-            let immediate_end = !has_repeat && ended_at < sub.current_period_end_millis && sub.product_revoked_at_millis.is_none();
-
-            if immediate_end {
-                let start_product_grant_entry_index: usize = 1;
-                let start_item_change_base_index: usize = if has_money_transfer { 3 } else { 2 };
-
-                let mut end_entries: Vec<Value> = vec![
-                    json!({
-                        "type": "active-subscription-end",
-                        "customerType": sub.customer_type,
-                        "customerId": sub.customer_id,
-                        "subscriptionId": sub.id,
-                    }),
-                    json!({
-                        "type": "product-revocation",
-                        "customerType": sub.customer_type,
-                        "customerId": sub.customer_id,
-                        "adjustedTransactionId": format!("sub-start:{}", sub.id),
-                        "adjustedEntryIndex": start_product_grant_entry_index,
-                        "quantity": sub.quantity,
-                        "productId": sub.product_id,
-                        "productLineId": sub.product.product_line_id.as_deref(),
-                    }),
-                ];
-
-                // Expire all outstanding item grants
-                for (i, (item_id, item)) in sub.product.included_items.iter().enumerate() {
-                    let expires_when = normalized_expires_when(item);
-                    if expires_when != Value::Null {
-                        end_entries.push(json!({
-                            "type": "item-quantity-expire",
-                            "customerType": sub.customer_type,
-                            "customerId": sub.customer_id,
-                            "adjustedTransactionId": format!("sub-start:{}", sub.id),
-                            "adjustedEntryIndex": start_item_change_base_index + i,
-                            "quantity": item.quantity * sub.quantity,
-                            "itemId": item_id,
-                        }));
-                    }
-                }
-
-                transactions.push(TransactionRow {
-                    txn_id: format!("sub-end:{}", sub.id),
-                    tenancy_id: sub.tenancy_id.clone(),
-                    effective_at_millis: ended_at,
-                    txn_type: "subscription-end".to_string(),
-                    entries: end_entries,
-                    customer_type: sub.customer_type.clone(),
-                    customer_id: sub.customer_id.clone(),
-                    payment_provider: Some(provider.to_string()),
-                    created_at_millis: ended_at,
-                });
-            }
-        }
-
-        // Cancel event
-        if sub.cancel_at_period_end && (sub.status == "active" || sub.status == "trialing") {
-            transactions.push(TransactionRow {
-                txn_id: format!("sub-cancel:{}", sub.id),
-                tenancy_id: sub.tenancy_id.clone(),
-                effective_at_millis: sub.canceled_at_millis.unwrap_or(sub.created_at_millis),
-                txn_type: "subscription-cancel".to_string(),
-                entries: vec![json!({
-                    "type": "active-subscription-change",
-                    "customerType": sub.customer_type,
-                    "customerId": sub.customer_id,
-                    "subscriptionId": sub.id,
-                    "changeType": "cancel",
-                })],
-                customer_type: sub.customer_type.clone(),
-                customer_id: sub.customer_id.clone(),
-                payment_provider: Some(provider.to_string()),
-                created_at_millis: sub.created_at_millis,
-            });
-        }
-    }
-
-    fn generate_otp_transaction(&self, otp: &OneTimePurchaseRow, transactions: &mut Vec<TransactionRow>) {
-        let provider = payment_provider(&otp.creation_source);
-        let charged = charged_amount(&otp.product, &otp.price_id, otp.quantity);
-        let has_money_transfer = provider != "test_mode" && !charged.is_empty();
-        let grants = item_grants(&otp.product, otp.quantity);
-
-        let mut entries: Vec<Value> = vec![
-            json!({
-                "type": "product-grant",
-                "customerType": otp.customer_type,
-                "customerId": otp.customer_id,
-                "productId": otp.product_id,
-                "product": serde_json::to_value(&otp.product).unwrap(),
-                "productLineId": otp.product.product_line_id.as_deref(),
-                "quantity": otp.quantity,
-                "oneTimePurchaseId": otp.id,
+            Box::new(compare_json),
+            Box::new(|left: &Row, right: Option<&Row>| {
+                json!({"leftRowData": left.row_data, "rightRowData": right.map(|r| &r.row_data).cloned().unwrap_or(Value::Null)})
             }),
-        ];
-        if has_money_transfer {
-            entries.push(json!({
-                "type": "money-transfer",
-                "customerType": otp.customer_type,
-                "customerId": otp.customer_id,
-                "chargedAmount": charged,
-            }));
-        }
-        for grant in &grants {
-            entries.push(json!({
-                "type": "item-quantity-change",
-                "customerType": otp.customer_type,
-                "customerId": otp.customer_id,
-                "itemId": grant["itemId"],
-                "quantity": grant["quantity"],
-                "expiresWhen": grant["expiresWhen"],
-            }));
-        }
+        )),
+        HashMap::from([
+            ("left".to_string(), SUBSCRIPTION_INVOICES.to_string()),
+            ("right".to_string(), SUBSCRIPTIONS.to_string()),
+        ]),
+    );
 
-        transactions.push(TransactionRow {
-            txn_id: format!("otp:{}", otp.id),
-            tenancy_id: otp.tenancy_id.clone(),
-            effective_at_millis: otp.created_at_millis,
-            txn_type: "one-time-purchase".to_string(),
-            entries,
-            customer_type: otp.customer_type.clone(),
-            customer_id: otp.customer_id.clone(),
-            payment_provider: Some(provider.to_string()),
-            created_at_millis: otp.created_at_millis,
-        });
-    }
+    // ─── Renewal Invoice Rows (filter) ─────────────────────────────────────────
+    db.add_table(
+        "payments-renewal-invoice-rows",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            let right = row.row_data.get("rightRowData");
+            let left = row.row_data.get("leftRowData");
+            right.map_or(false, |r| !r.is_null())
+                && left.and_then(|l| l.get("isSubscriptionCreationInvoice")).and_then(|v| v.as_bool()).unwrap_or(false) == false
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscriptions-with-invoices".to_string())]),
+    );
 
-    fn generate_manual_iqc_transaction(&self, miqc: &ManualItemQuantityChangeRow, transactions: &mut Vec<TransactionRow>) {
-        transactions.push(TransactionRow {
-            txn_id: format!("miqc:{}", miqc.id),
-            tenancy_id: miqc.tenancy_id.clone(),
-            effective_at_millis: miqc.created_at_millis,
-            txn_type: "manual-item-quantity-change".to_string(),
-            entries: vec![json!({
-                "type": "item-quantity-change",
-                "customerType": miqc.customer_type,
-                "customerId": miqc.customer_id,
-                "itemId": miqc.item_id,
-                "quantity": miqc.quantity,
-                "expiresWhen": miqc.expires_at_millis,
-            })],
-            customer_type: miqc.customer_type.clone(),
-            customer_id: miqc.customer_id.clone(),
-            payment_provider: Value::Null.as_str().map(|s| s.to_string()),
-            created_at_millis: miqc.created_at_millis,
-        });
-    }
+    // ─── Subscription Renewal Events (map) ─────────────────────────────────────
+    db.add_table(
+        "payments-subscription-renewal-events",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let sub = row.row_data.get("rightRowData").unwrap();
+            let invoice = row.row_data.get("leftRowData").unwrap();
+            let provider = payment_provider(sub.get("creationSource").and_then(|v| v.as_str()).unwrap_or(""));
+            json!({
+                "subscriptionId": sub.get("id"),
+                "tenancyId": sub.get("tenancyId"),
+                "customerId": sub.get("customerId"),
+                "customerType": sub.get("customerType"),
+                "invoiceId": invoice.get("id"),
+                "chargedAmount": charged_amount(sub.get("product").unwrap_or(&Value::Null), sub.get("priceId").unwrap_or(&Value::Null), sub.get("quantity").and_then(|v| v.as_i64()).unwrap_or(1)),
+                "paymentProvider": provider,
+                "effectiveAtMillis": invoice.get("createdAtMillis"),
+                "createdAtMillis": invoice.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-renewal-invoice-rows".to_string())]),
+    );
 
-    /// Compute owned products fold.
-    fn compute_owned_products(&self, transactions: &[TransactionRow]) -> Value {
-        // Extract product-grant and product-revocation entries, sorted by effectiveAtMillis
-        let mut product_entries: Vec<(i64, &str, &Value)> = Vec::new();
-        for txn in transactions {
-            for entry in &txn.entries {
-                let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                if entry_type == "product-grant" || entry_type == "product-revocation" {
-                    product_entries.push((txn.effective_at_millis, &txn.txn_id, entry));
-                }
-            }
-        }
-        product_entries.sort_by_key(|(millis, txn_id, _)| (*millis, txn_id.to_string()));
+    // ─── Cancel Pending Subscriptions (filter) ─────────────────────────────────
+    db.add_table(
+        "payments-cancel-pending-subscriptions",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            let cap = row.row_data.get("cancelAtPeriodEnd").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = row.row_data.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            cap && (status == "active" || status == "trialing")
+        }))),
+        HashMap::from([("input".to_string(), SUBSCRIPTIONS.to_string())]),
+    );
 
-        // Fold over entries
-        let mut state: HashMap<String, (i64, Value, Value)> = HashMap::new(); // productId -> (quantity, product, productLineId)
-        let mut last_output = Value::Null;
+    // ─── Subscription Cancel Events (map) ──────────────────────────────────────
+    db.add_table(
+        "payments-subscription-cancel-events",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let provider = payment_provider(d.get("creationSource").and_then(|v| v.as_str()).unwrap_or(""));
+            let effective = d.get("canceledAtMillis").filter(|v| !v.is_null())
+                .or_else(|| d.get("createdAtMillis"));
+            json!({
+                "subscriptionId": d.get("id"),
+                "tenancyId": d.get("tenancyId"),
+                "customerId": d.get("customerId"),
+                "customerType": d.get("customerType"),
+                "changeType": "cancel",
+                "paymentProvider": provider,
+                "effectiveAtMillis": effective,
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-cancel-pending-subscriptions".to_string())]),
+    );
 
-        for (effective_at, txn_id, entry) in &product_entries {
-            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let product_id = entry.get("productId").and_then(|v| v.as_str()).unwrap_or("__null__").to_string();
-            let quantity = entry.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+    // ─── Subscription TimeFold ─────────────────────────────────────────────────
+    db.add_table(
+        "payments-subscription-timefold",
+        Box::new(TimeFoldTable::new(
+            json!({}),
+            Box::new(|_state: &Value, row: &Row, trigger_time: Option<i64>| {
+                let sub = &row.row_data;
+                if trigger_time.is_none() {
+                    // Initial: compute subscription start state
+                    let provider = payment_provider(sub.get("creationSource").and_then(|v| v.as_str()).unwrap_or(""));
+                    let product = sub.get("product").unwrap_or(&Value::Null);
+                    let price_id = sub.get("priceId").unwrap_or(&Value::Null);
+                    let quantity = sub.get("quantity").and_then(|v| v.as_i64()).unwrap_or(1);
+                    let created_at = sub.get("createdAtMillis").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let ended_at = sub.get("endedAtMillis").and_then(|v| v.as_i64());
+                    let period_end = sub.get("currentPeriodEndMillis").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let revoked_at = sub.get("productRevokedAtMillis").and_then(|v| v.as_i64());
 
-            let (current_qty, current_product, current_pli) = state.entry(product_id.clone())
-                .or_insert_with(|| (0, Value::Null, Value::Null));
+                    let charged = charged_amount(product, price_id, quantity);
+                    let has_money = provider != "test_mode" && charged.as_object().map_or(false, |o| !o.is_empty());
+                    let grants = item_grants(product, quantity);
+                    let start_txn_id = format!("sub-start:{}", sub.get("id").and_then(|v| v.as_str()).unwrap_or(""));
+                    let start_product_grant_entry_index: usize = 1;
+                    let start_item_change_base_index: usize = if has_money { 3 } else { 2 };
 
-            if entry_type == "product-grant" {
-                *current_qty = (*current_qty + quantity).max(0);
-                *current_product = entry.get("product").cloned().unwrap_or(Value::Null);
-                *current_pli = entry.get("productLineId").cloned().unwrap_or(Value::Null);
-            } else {
-                *current_qty = (*current_qty - quantity).max(0);
-            }
+                    let schedule = repeat_schedule(product, quantity, created_at);
+                    let has_repeat = schedule.as_object().map_or(false, |obj| {
+                        obj.values().any(|item| item.get("nextRepeatMillis").map_or(false, |v| !v.is_null()))
+                    });
 
-            // Build the output owned products map
-            let owned: HashMap<&str, Value> = state.iter()
-                .map(|(k, (q, p, pli))| (k.as_str(), json!({"quantity": q, "product": p, "productLineId": pli})))
-                .collect();
-            last_output = json!({
-                "txnEffectiveAtMillis": effective_at,
-                "txnId": txn_id,
-                "ownedProducts": owned,
-                "customerType": entry.get("customerType"),
-                "customerId": entry.get("customerId"),
-                "tenancyId": entry.get("tenancyId"),
-            });
-        }
+                    let out_grants = outstanding_grants(product, quantity, &start_txn_id, start_item_change_base_index);
 
-        last_output
-    }
+                    let initial_state = json!({
+                        "subscriptionId": sub.get("id"),
+                        "tenancyId": sub.get("tenancyId"),
+                        "customerId": sub.get("customerId"),
+                        "customerType": sub.get("customerType"),
+                        "productId": sub.get("productId"),
+                        "product": product,
+                        "productLineId": product_line_id(product),
+                        "priceId": price_id,
+                        "quantity": quantity,
+                        "paymentProvider": provider,
+                        "endedAtMillis": ended_at,
+                        "productRevokedAtMillis": revoked_at,
+                        "chargedAmount": charged,
+                        "startTxnId": start_txn_id,
+                        "startProductGrantEntryIndex": start_product_grant_entry_index,
+                        "startItemChangeBaseIndex": start_item_change_base_index,
+                        "itemRepeatSchedule": schedule,
+                        "outstandingGrants": out_grants,
+                        "repeatCount": 0,
+                    });
 
-    /// Compute item quantities fold.
-    fn compute_item_quantities(&self, transactions: &[TransactionRow]) -> Value {
-        // First, expand transaction entries into item changes with expiries (the "split" step)
-        let mut item_changes: Vec<(i64, String, String, i64, Option<i64>)> = Vec::new();
-        // (effective_at, txn_id, item_id, quantity, expires_at)
+                    let start_event = json!({
+                        "type": "subscription-start",
+                        "subscriptionId": sub.get("id"),
+                        "tenancyId": sub.get("tenancyId"),
+                        "customerId": sub.get("customerId"),
+                        "customerType": sub.get("customerType"),
+                        "productId": sub.get("productId"),
+                        "product": product,
+                        "productLineId": product_line_id(product),
+                        "priceId": price_id,
+                        "quantity": quantity,
+                        "chargedAmount": charged_amount(product, price_id, quantity),
+                        "itemGrants": grants,
+                        "paymentProvider": provider,
+                        "effectiveAtMillis": created_at,
+                        "createdAtMillis": created_at,
+                    });
 
-        for txn in transactions {
-            for entry in &txn.entries {
-                let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let immediate_end = ended_at.is_some() && !has_repeat
+                        && ended_at.unwrap() < period_end && revoked_at.is_none();
 
-                if entry_type == "item-quantity-change" {
-                    let item_id = entry.get("itemId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let quantity = entry.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let expires_when = entry.get("expiresWhen");
-
-                    // Check if expiresWhen is a number (absolute millis expiry)
-                    let expires_at_millis = match expires_when {
-                        Some(Value::Number(n)) => n.as_i64(),
-                        _ => None,
-                    };
-
-                    if let Some(exp) = expires_at_millis {
-                        if exp > txn.effective_at_millis && quantity > 0 {
-                            // Split into grant + future expiry
-                            item_changes.push((txn.effective_at_millis, txn.txn_id.clone(), item_id.clone(), quantity, Some(exp)));
-                            item_changes.push((exp, txn.txn_id.clone(), item_id, -quantity, None));
-                        } else {
-                            item_changes.push((txn.effective_at_millis, txn.txn_id.clone(), item_id, quantity, None));
+                    if immediate_end {
+                        let end_event = subscription_end_event(&initial_state);
+                        let events = json!([start_event, end_event]);
+                        TimeFoldResult {
+                            new_state: initial_state,
+                            new_row_data: events,
+                            next_trigger_time_ms: None,
                         }
                     } else {
-                        // Compactable: no expiry logic, just the change
-                        item_changes.push((txn.effective_at_millis, txn.txn_id.clone(), item_id, quantity, None));
+                        let next = soonest_next_millis(
+                            initial_state.get("itemRepeatSchedule").unwrap_or(&Value::Null),
+                            ended_at,
+                        );
+                        TimeFoldResult {
+                            new_state: initial_state,
+                            new_row_data: json!([start_event]),
+                            next_trigger_time_ms: next,
+                        }
                     }
-                } else if entry_type == "item-quantity-expire" {
-                    let item_id = entry.get("itemId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let quantity = entry.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
-                    item_changes.push((txn.effective_at_millis, txn.txn_id.clone(), item_id, -quantity, None));
-                }
-            }
-        }
-
-        // Sort by effective time
-        item_changes.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-
-        // Fold over changes to compute item quantities
-        // State: item_id -> { grants: [(quantity, expires_at)], debt: i64 }
-        let mut state: HashMap<String, ItemQuantityState> = HashMap::new();
-        let mut last_output = Value::Null;
-
-        for (effective_at, txn_id, item_id, quantity, expires_at) in &item_changes {
-            let item_state = state.entry(item_id.clone()).or_insert_with(|| ItemQuantityState {
-                grants: Vec::new(),
-                debt: 0,
-            });
-
-            if *quantity > 0 {
-                let after_debt = *quantity + item_state.debt;
-                if after_debt > 0 {
-                    item_state.grants.push((after_debt, *expires_at));
-                    item_state.debt = 0;
                 } else {
-                    item_state.debt = after_debt;
-                }
-            } else if *quantity < 0 {
-                let mut remaining = quantity.unsigned_abs() as i64;
-                // Sort grants by expiry (soonest first, null = infinity last)
-                item_state.grants.sort_by(|(_, ea), (_, eb)| {
-                    let a = ea.unwrap_or(i64::MAX);
-                    let b = eb.unwrap_or(i64::MAX);
-                    a.cmp(&b)
-                });
-                let mut new_grants = Vec::new();
-                for (q, e) in item_state.grants.drain(..) {
-                    let consumed = q.min(remaining);
-                    remaining -= consumed;
-                    if q > consumed {
-                        new_grants.push((q - consumed, e));
+                    let current_millis = trigger_time.unwrap();
+                    let ended_at = _state.get("endedAtMillis").and_then(|v| v.as_i64());
+                    if ended_at.is_some() && ended_at.unwrap() <= current_millis {
+                        let end_event = subscription_end_event(_state);
+                        TimeFoldResult {
+                            new_state: _state.clone(),
+                            new_row_data: json!([end_event]),
+                            next_trigger_time_ms: None,
+                        }
+                    } else {
+                        let (new_state, event) = subscription_repeat_step(_state, current_millis);
+                        let next = soonest_next_millis(
+                            new_state.get("itemRepeatSchedule").unwrap_or(&Value::Null),
+                            new_state.get("endedAtMillis").and_then(|v| v.as_i64()),
+                        );
+                        TimeFoldResult {
+                            new_state,
+                            new_row_data: json!([event]),
+                            next_trigger_time_ms: next,
+                        }
                     }
                 }
-                item_state.grants = new_grants;
-                item_state.debt -= remaining;
-            } else {
-                // quantity == 0: filter out expired grants
-                item_state.grants.retain(|(_, e)| {
-                    e.is_none() || e.unwrap() > *effective_at
-                });
+            }),
+        )),
+        HashMap::from([("input".to_string(), SUBSCRIPTIONS.to_string())]),
+    );
+
+    // ─── Subscription Timefold Events (flatmap) ────────────────────────────────
+    db.add_table(
+        "payments-subscription-timefold-events",
+        Box::new(FlatMapTable::new(Box::new(|row: &Row| {
+            match row.row_data.as_array() {
+                Some(arr) => arr.clone(),
+                None => Vec::new(),
+            }
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-timefold".to_string())]),
+    );
+
+    // ─── Subscription Start Events (filter) ────────────────────────────────────
+    db.add_table(
+        "payments-subscription-start-events",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("subscription-start")
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-timefold-events".to_string())]),
+    );
+
+    // ─── Subscription End Events (filter) ──────────────────────────────────────
+    db.add_table(
+        "payments-subscription-end-events",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("subscription-end")
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-timefold-events".to_string())]),
+    );
+
+    // ─── Item Grant Repeat from Subscriptions (filter) ─────────────────────────
+    db.add_table(
+        "payments-item-grant-repeat-from-subscriptions",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("item-grant-repeat")
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-timefold-events".to_string())]),
+    );
+
+    // ─── One Time Purchase Events (map) ────────────────────────────────────────
+    db.add_table(
+        "payments-one-time-purchase-events",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let product = d.get("product").unwrap_or(&Value::Null);
+            let price_id = d.get("priceId").unwrap_or(&Value::Null);
+            let quantity = d.get("quantity").and_then(|v| v.as_i64()).unwrap_or(1);
+            let provider = payment_provider(d.get("creationSource").and_then(|v| v.as_str()).unwrap_or(""));
+            json!({
+                "purchaseId": d.get("id"),
+                "tenancyId": d.get("tenancyId"),
+                "customerId": d.get("customerId"),
+                "customerType": d.get("customerType"),
+                "productId": d.get("productId"),
+                "product": product,
+                "productLineId": product_line_id(product),
+                "priceId": price_id,
+                "quantity": quantity,
+                "chargedAmount": charged_amount(product, price_id, quantity),
+                "itemGrants": item_grants(product, quantity),
+                "paymentProvider": provider,
+                "effectiveAtMillis": d.get("createdAtMillis"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), ONE_TIME_PURCHASES.to_string())]),
+    );
+
+    // ─── OTP TimeFold ──────────────────────────────────────────────────────────
+    db.add_table(
+        "payments-otp-timefold",
+        Box::new(TimeFoldTable::new(
+            json!({}),
+            Box::new(|_state: &Value, row: &Row, trigger_time: Option<i64>| {
+                let purchase = &row.row_data;
+                if trigger_time.is_none() {
+                    let provider = payment_provider(purchase.get("creationSource").and_then(|v| v.as_str()).unwrap_or(""));
+                    let product = purchase.get("product").unwrap_or(&Value::Null);
+                    let quantity = purchase.get("quantity").and_then(|v| v.as_i64()).unwrap_or(1);
+                    let created_at = purchase.get("createdAtMillis").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let revoked_at = purchase.get("revokedAtMillis").and_then(|v| v.as_i64());
+                    let has_money = provider != "test_mode";
+                    let txn_id = format!("otp:{}", purchase.get("id").and_then(|v| v.as_str()).unwrap_or(""));
+
+                    // Only include items with repeat interval
+                    let full_schedule = repeat_schedule(product, quantity, created_at);
+                    let filtered_schedule = if let Some(obj) = full_schedule.as_object() {
+                        let filtered: serde_json::Map<String, Value> = obj.iter()
+                            .filter(|(_, v)| v.get("repeatIntervalMs").map_or(false, |ms| !ms.is_null()))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        Value::Object(filtered)
+                    } else {
+                        json!({})
+                    };
+
+                    let out_grants = outstanding_grants(product, quantity, &txn_id, if has_money { 2 } else { 1 });
+
+                    let initial_state = json!({
+                        "purchaseId": purchase.get("id"),
+                        "tenancyId": purchase.get("tenancyId"),
+                        "customerId": purchase.get("customerId"),
+                        "customerType": purchase.get("customerType"),
+                        "paymentProvider": provider,
+                        "revokedAtMillis": revoked_at,
+                        "itemRepeatSchedule": filtered_schedule,
+                        "outstandingGrants": out_grants,
+                        "repeatCount": 0,
+                    });
+
+                    let next = soonest_next_millis(&filtered_schedule, None);
+                    let capped_next = match (next, revoked_at) {
+                        (Some(n), Some(r)) if n > r => None,
+                        _ => next,
+                    };
+
+                    TimeFoldResult {
+                        new_state: initial_state,
+                        new_row_data: json!([]),
+                        next_trigger_time_ms: capped_next,
+                    }
+                } else {
+                    let current_millis = trigger_time.unwrap();
+                    let (new_state, event) = otp_repeat_step(_state, current_millis);
+                    let next = soonest_next_millis(
+                        new_state.get("itemRepeatSchedule").unwrap_or(&Value::Null),
+                        None,
+                    );
+                    let capped_next = match (next, new_state.get("revokedAtMillis").and_then(|v| v.as_i64())) {
+                        (Some(n), Some(r)) if n > r => None,
+                        _ => next,
+                    };
+                    TimeFoldResult {
+                        new_state,
+                        new_row_data: json!([event]),
+                        next_trigger_time_ms: capped_next,
+                    }
+                }
+            }),
+        )),
+        HashMap::from([("input".to_string(), ONE_TIME_PURCHASES.to_string())]),
+    );
+
+    // ─── OTP Timefold Events (flatmap) ─────────────────────────────────────────
+    db.add_table(
+        "payments-otp-timefold-events",
+        Box::new(FlatMapTable::new(Box::new(|row: &Row| {
+            match row.row_data.as_array() {
+                Some(arr) => arr.clone(),
+                None => Vec::new(),
+            }
+        }))),
+        HashMap::from([("input".to_string(), "payments-otp-timefold".to_string())]),
+    );
+
+    // ─── Item Grant Repeat from OTPs (filter) ──────────────────────────────────
+    db.add_table(
+        "payments-item-grant-repeat-from-otps",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("item-grant-repeat")
+        }))),
+        HashMap::from([("input".to_string(), "payments-otp-timefold-events".to_string())]),
+    );
+
+    // ─── Item Grant Repeat Events (concat) ─────────────────────────────────────
+    db.add_table(
+        "payments-item-grant-repeat-events",
+        Box::new(ConcatTable::new(vec!["subscription".to_string(), "otp".to_string()])),
+        HashMap::from([
+            ("subscription".to_string(), "payments-item-grant-repeat-from-subscriptions".to_string()),
+            ("otp".to_string(), "payments-item-grant-repeat-from-otps".to_string()),
+        ]),
+    );
+
+    // ─── Manual Item Quantity Change Events (map) ──────────────────────────────
+    db.add_table(
+        "payments-manual-item-quantity-change-events",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            json!({
+                "changeId": d.get("id"),
+                "tenancyId": d.get("tenancyId"),
+                "customerId": d.get("customerId"),
+                "customerType": d.get("customerType"),
+                "itemId": d.get("itemId"),
+                "quantity": d.get("quantity"),
+                "expiresAtMillis": d.get("expiresAtMillis"),
+                "effectiveAtMillis": d.get("createdAtMillis"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), MANUAL_ITEM_QTY_CHANGES.to_string())]),
+    );
+
+    // ─── Transaction Tables (map from events to transactions) ──────────────────
+
+    // Subscription Renewal Txn
+    db.add_table(
+        "payments-txn-subscription-renewal",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            json!({
+                "txnId": format!("sub-renewal:{}", d.get("invoiceId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "subscription-renewal",
+                "entries": [{"type": "money-transfer", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "chargedAmount": d.get("chargedAmount")}],
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-renewal-events".to_string())]),
+    );
+
+    // Subscription Cancel Txn
+    db.add_table(
+        "payments-txn-subscription-cancel",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            json!({
+                "txnId": format!("sub-cancel:{}", d.get("subscriptionId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "subscription-cancel",
+                "entries": [{"type": "active-subscription-change", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "subscriptionId": d.get("subscriptionId"), "changeType": d.get("changeType")}],
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-cancel-events".to_string())]),
+    );
+
+    // Subscription Start Txn
+    db.add_table(
+        "payments-txn-subscription-start",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let provider = d.get("paymentProvider").and_then(|v| v.as_str()).unwrap_or("test_mode");
+            let charged = d.get("chargedAmount").unwrap_or(&Value::Null);
+            let has_money = provider != "test_mode" && charged.as_object().map_or(false, |o| !o.is_empty());
+            let grants = d.get("itemGrants").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+
+            let mut entries: Vec<Value> = vec![
+                json!({"type": "active-subscription-start", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "subscriptionId": d.get("subscriptionId")}),
+                json!({"type": "product-grant", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "productId": d.get("productId"), "product": d.get("product"), "productLineId": d.get("productLineId"), "quantity": d.get("quantity"), "subscriptionId": d.get("subscriptionId")}),
+            ];
+            if has_money {
+                entries.push(json!({"type": "money-transfer", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "chargedAmount": charged}));
+            }
+            for grant in &grants {
+                entries.push(json!({"type": "item-quantity-change", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "itemId": grant.get("itemId"), "quantity": grant.get("quantity"), "expiresWhen": grant.get("expiresWhen")}));
             }
 
-            // Compute current quantities
-            let quantities: HashMap<&str, i64> = state.iter()
-                .map(|(id, s)| {
-                    let sum: i64 = s.grants.iter().map(|(q, _)| q).sum::<i64>() + s.debt;
-                    (id.as_str(), sum)
+            json!({
+                "txnId": format!("sub-start:{}", d.get("subscriptionId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "subscription-start",
+                "entries": entries,
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-start-events".to_string())]),
+    );
+
+    // Subscription End Events Natural (filter - no revocation)
+    db.add_table(
+        "payments-subscription-end-events-natural",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("productRevokedAtMillis").map_or(true, |v| v.is_null())
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-end-events".to_string())]),
+    );
+
+    // Subscription End Txn
+    db.add_table(
+        "payments-txn-subscription-end",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let expire_refs = d.get("itemQuantityChangesToExpire").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+
+            let mut entries: Vec<Value> = vec![
+                json!({"type": "active-subscription-end", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "subscriptionId": d.get("subscriptionId")}),
+                json!({"type": "product-revocation", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "adjustedTransactionId": d.get("startProductGrantRef").and_then(|v| v.get("transactionId")), "adjustedEntryIndex": d.get("startProductGrantRef").and_then(|v| v.get("entryIndex")), "quantity": d.get("quantity"), "productId": d.get("productId"), "productLineId": d.get("productLineId")}),
+            ];
+            for entry in &expire_refs {
+                entries.push(json!({"type": "item-quantity-expire", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "adjustedTransactionId": entry.get("transactionId"), "adjustedEntryIndex": entry.get("entryIndex"), "quantity": entry.get("quantity"), "itemId": entry.get("itemId")}));
+            }
+
+            json!({
+                "txnId": format!("sub-end:{}", d.get("subscriptionId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "subscription-end",
+                "entries": entries,
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-subscription-end-events-natural".to_string())]),
+    );
+
+    // Item Grant Repeat Txn
+    db.add_table(
+        "payments-txn-item-grant-repeat",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let prev_expire = d.get("previousGrantsToExpire").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let grants = d.get("itemGrants").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+
+            let mut entries: Vec<Value> = Vec::new();
+            for entry in &prev_expire {
+                entries.push(json!({"type": "item-quantity-expire", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "adjustedTransactionId": entry.get("transactionId"), "adjustedEntryIndex": entry.get("entryIndex"), "quantity": entry.get("quantity"), "itemId": entry.get("itemId")}));
+            }
+            for grant in &grants {
+                entries.push(json!({"type": "item-quantity-change", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "itemId": grant.get("itemId"), "quantity": grant.get("quantity"), "expiresWhen": grant.get("expiresWhen")}));
+            }
+
+            json!({
+                "txnId": format!("igr:{}:{}", d.get("sourceId").and_then(|v| v.as_str()).unwrap_or(""), d.get("effectiveAtMillis").and_then(|v| v.as_i64()).unwrap_or(0)),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "item-grant-repeat",
+                "entries": entries,
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-item-grant-repeat-events".to_string())]),
+    );
+
+    // One Time Purchase Txn
+    db.add_table(
+        "payments-txn-one-time-purchase",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let provider = d.get("paymentProvider").and_then(|v| v.as_str()).unwrap_or("test_mode");
+            let charged = d.get("chargedAmount").unwrap_or(&Value::Null);
+            let has_money = provider != "test_mode" && charged.as_object().map_or(false, |o| !o.is_empty());
+            let grants = d.get("itemGrants").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+
+            let mut entries: Vec<Value> = vec![
+                json!({"type": "product-grant", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "productId": d.get("productId"), "product": d.get("product"), "productLineId": d.get("productLineId"), "quantity": d.get("quantity"), "oneTimePurchaseId": d.get("purchaseId")}),
+            ];
+            if has_money {
+                entries.push(json!({"type": "money-transfer", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "chargedAmount": charged}));
+            }
+            for grant in &grants {
+                entries.push(json!({"type": "item-quantity-change", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "itemId": grant.get("itemId"), "quantity": grant.get("quantity"), "expiresWhen": grant.get("expiresWhen")}));
+            }
+
+            json!({
+                "txnId": format!("otp:{}", d.get("purchaseId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "one-time-purchase",
+                "entries": entries,
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": d.get("paymentProvider"),
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-one-time-purchase-events".to_string())]),
+    );
+
+    // Manual Item Quantity Change Txn
+    db.add_table(
+        "payments-txn-manual-item-quantity-change",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            json!({
+                "txnId": format!("miqc:{}", d.get("changeId").and_then(|v| v.as_str()).unwrap_or("")),
+                "tenancyId": d.get("tenancyId"),
+                "effectiveAtMillis": d.get("effectiveAtMillis"),
+                "type": "manual-item-quantity-change",
+                "entries": [{"type": "item-quantity-change", "customerType": d.get("customerType"), "customerId": d.get("customerId"), "itemId": d.get("itemId"), "quantity": d.get("quantity"), "expiresWhen": d.get("expiresAtMillis")}],
+                "customerType": d.get("customerType"),
+                "customerId": d.get("customerId"),
+                "paymentProvider": Value::Null,
+                "createdAtMillis": d.get("createdAtMillis"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-manual-item-quantity-change-events".to_string())]),
+    );
+
+    // Refund filter (from manual transactions)
+    db.add_table(
+        "payments-txn-refund",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("refund")
+        }))),
+        HashMap::from([("input".to_string(), MANUAL_TRANSACTIONS.to_string())]),
+    );
+
+    // ─── Transactions Concat ───────────────────────────────────────────────────
+    db.add_table(
+        "payments-transactions",
+        Box::new(ConcatTable::new(vec![
+            "renewal".to_string(), "cancel".to_string(), "start".to_string(),
+            "end".to_string(), "repeat".to_string(), "otp".to_string(),
+            "manual".to_string(), "refund".to_string(),
+        ])),
+        HashMap::from([
+            ("renewal".to_string(), "payments-txn-subscription-renewal".to_string()),
+            ("cancel".to_string(), "payments-txn-subscription-cancel".to_string()),
+            ("start".to_string(), "payments-txn-subscription-start".to_string()),
+            ("end".to_string(), "payments-txn-subscription-end".to_string()),
+            ("repeat".to_string(), "payments-txn-item-grant-repeat".to_string()),
+            ("otp".to_string(), "payments-txn-one-time-purchase".to_string()),
+            ("manual".to_string(), "payments-txn-manual-item-quantity-change".to_string()),
+            ("refund".to_string(), "payments-txn-refund".to_string()),
+        ]),
+    );
+
+    // ─── Transactions By Customer (group-by) ───────────────────────────────────
+    db.add_table(
+        TRANSACTIONS_BY_CUSTOMER,
+        Box::new(GroupByTable::new(
+            Box::new(|row: &Row| customer_group_key(&row.row_data)),
+            Box::new(compare_json),
+            Box::new(compare_json),
+        )),
+        HashMap::from([("input".to_string(), "payments-transactions".to_string())]),
+    );
+
+    // ─── Transaction Entries (flatmap) ─────────────────────────────────────────
+    db.add_table(
+        "payments-transaction-entries",
+        Box::new(FlatMapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let entries = d.get("entries").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            entries.into_iter().enumerate().map(|(i, mut entry)| {
+                if let Some(obj) = entry.as_object_mut() {
+                    obj.insert("index".to_string(), json!(i));
+                    obj.insert("txnId".to_string(), d.get("txnId").cloned().unwrap_or(Value::Null));
+                    obj.insert("txnEffectiveAtMillis".to_string(), d.get("effectiveAtMillis").cloned().unwrap_or(Value::Null));
+                    obj.insert("txnCreatedAtMillis".to_string(), d.get("createdAtMillis").cloned().unwrap_or(Value::Null));
+                    obj.insert("txnType".to_string(), d.get("type").cloned().unwrap_or(Value::Null));
+                    obj.insert("tenancyId".to_string(), d.get("tenancyId").cloned().unwrap_or(Value::Null));
+                    obj.insert("paymentProvider".to_string(), d.get("paymentProvider").cloned().unwrap_or(Value::Null));
+                }
+                entry
+            }).collect()
+        }))),
+        HashMap::from([("input".to_string(), TRANSACTIONS_BY_CUSTOMER.to_string())]),
+    );
+
+    // ─── Item Quantity Change filters ──────────────────────────────────────────
+    db.add_table(
+        "payments-entries-item-quantity-change-all",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("item-quantity-change")
+        }))),
+        HashMap::from([("input".to_string(), "payments-transaction-entries".to_string())]),
+    );
+
+    db.add_table(
+        "payments-entries-item-quantity-change-compactable",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("expiresWhen").map_or(true, |v| v.is_null())
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-item-quantity-change-all".to_string())]),
+    );
+
+    db.add_table(
+        "payments-entries-item-quantity-change-non-compactable",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("expiresWhen").map_or(false, |v| !v.is_null())
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-item-quantity-change-all".to_string())]),
+    );
+
+    // Compactable -> aggregates
+    db.add_table(
+        "payments-entries-item-quantity-change-compactable-aggregates",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let item_id = d.get("itemId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            json!({
+                "type": "item-quantity-compaction-aggregate",
+                "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                "txnId": d.get("txnId"),
+                "index": d.get("index"),
+                "items": { item_id: { "firstRow": d, "quantity": d.get("quantity") } },
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-item-quantity-change-compactable".to_string())]),
+    );
+
+    // Item quantity expire entries
+    db.add_table(
+        "payments-entries-item-quantity-expire",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("item-quantity-expire")
+        }))),
+        HashMap::from([("input".to_string(), "payments-transaction-entries".to_string())]),
+    );
+
+    // Compaction boundaries
+    db.add_table(
+        "payments-entries-compaction-boundaries",
+        Box::new(MapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            json!({
+                "type": "item-quantity-compaction-boundary",
+                "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                "txnId": d.get("txnId"),
+                "index": d.get("index"),
+            })
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-item-quantity-expire".to_string())]),
+    );
+
+    // Compaction input (concat)
+    db.add_table(
+        "payments-entries-compaction-input",
+        Box::new(ConcatTable::new(vec!["compactable".to_string(), "boundary".to_string()])),
+        HashMap::from([
+            ("compactable".to_string(), "payments-entries-item-quantity-change-compactable-aggregates".to_string()),
+            ("boundary".to_string(), "payments-entries-compaction-boundaries".to_string()),
+        ]),
+    );
+
+    // Compaction input sorted
+    db.add_table(
+        "payments-entries-compaction-input-sorted",
+        Box::new(SortTable::new(
+            Box::new(|row: &Row| {
+                let d = &row.row_data;
+                let is_boundary = d.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-boundary");
+                json!({
+                    "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                    "boundaryOrder": if is_boundary { 0 } else { 1 },
+                    "txnId": d.get("txnId").cloned().unwrap_or_else(|| json!(row.row_identifier)),
+                    "index": d.get("index").cloned().unwrap_or(json!(0)),
+                    "rowIdentifier": row.row_identifier.clone(),
                 })
-                .collect();
+            }),
+            Box::new(|a: &Value, b: &Value| {
+                let cmp_field = |field: &str| -> std::cmp::Ordering {
+                    let va = a.get(field);
+                    let vb = b.get(field);
+                    match (va, vb) {
+                        (Some(va), Some(vb)) => {
+                            let na = va.as_f64().unwrap_or(0.0);
+                            let nb = vb.as_f64().unwrap_or(0.0);
+                            na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
+                        }
+                        _ => std::cmp::Ordering::Equal,
+                    }
+                };
+                cmp_field("txnEffectiveAtMillis")
+                    .then(cmp_field("boundaryOrder"))
+                    .then_with(|| {
+                        let sa = a.get("txnId").and_then(|v| v.as_str()).unwrap_or("");
+                        let sb = b.get("txnId").and_then(|v| v.as_str()).unwrap_or("");
+                        sa.cmp(sb)
+                    })
+                    .then(cmp_field("index"))
+                    .then_with(|| {
+                        let sa = a.get("rowIdentifier").and_then(|v| v.as_str()).unwrap_or("");
+                        let sb = b.get("rowIdentifier").and_then(|v| v.as_str()).unwrap_or("");
+                        sa.cmp(sb)
+                    })
+            }),
+        )),
+        HashMap::from([("input".to_string(), "payments-entries-compaction-input".to_string())]),
+    );
 
-            last_output = json!({
-                "txnEffectiveAtMillis": effective_at,
-                "txnId": txn_id,
-                "itemQuantities": quantities,
-                "customerType": "user",
-                "customerId": "",
-                "tenancyId": "",
-            });
-        }
+    // Compacted raw (compact table)
+    db.add_table(
+        "payments-entries-compacted-raw",
+        Box::new(CompactTable::new(
+            Box::new(|left: &Value, right: &Value| {
+                let left_is_boundary = left.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-boundary");
+                let right_is_boundary = right.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-boundary");
+                if left_is_boundary || right_is_boundary {
+                    vec![left.clone(), right.clone()]
+                } else {
+                    // Merge aggregates
+                    vec![merge_compaction_aggregates(left, right)]
+                }
+            }),
+            Box::new(|a: &Value, b: &Value| {
+                let cmp_field = |field: &str| -> std::cmp::Ordering {
+                    let na = a.get(field).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let nb = b.get(field).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
+                };
+                cmp_field("txnEffectiveAtMillis")
+                    .then_with(|| {
+                        let la = a.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-boundary");
+                        let lb = b.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-boundary");
+                        (if la { 0i32 } else { 1 }).cmp(&(if lb { 0 } else { 1 }))
+                    })
+                    .then_with(|| {
+                        let sa = a.get("txnId").and_then(|v| v.as_str()).unwrap_or("");
+                        let sb = b.get("txnId").and_then(|v| v.as_str()).unwrap_or("");
+                        sa.cmp(sb)
+                    })
+                    .then(cmp_field("index"))
+            }),
+        )),
+        HashMap::from([("input".to_string(), "payments-entries-compaction-input-sorted".to_string())]),
+    );
 
-        last_output
-    }
+    // Compacted aggregates (filter)
+    db.add_table(
+        "payments-entries-compacted-aggregates",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) == Some("item-quantity-compaction-aggregate")
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-compacted-raw".to_string())]),
+    );
 
-    // ─── Read Methods ─────────────────────────────────────────────────────────
+    // Compacted item quantity change (flatmap from aggregates)
+    db.add_table(
+        "payments-entries-compacted-item-quantity-change",
+        Box::new(FlatMapTable::new(Box::new(|row: &Row| {
+            let items = row.row_data.get("items").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+            items.values().map(|item| {
+                let first_row = item.get("firstRow").unwrap_or(&Value::Null);
+                let mut result = first_row.clone();
+                if let Some(obj) = result.as_object_mut() {
+                    obj.insert("type".to_string(), json!("compacted-item-quantity-change"));
+                    obj.insert("quantity".to_string(), item.get("quantity").cloned().unwrap_or(json!(0)));
+                    obj.insert("expiresWhen".to_string(), Value::Null);
+                }
+                result
+            }).collect()
+        }))),
+        HashMap::from([("input".to_string(), "payments-entries-compacted-aggregates".to_string())]),
+    );
 
-    pub fn read_transactions(&self, group_key: &Value) -> Vec<Row> {
-        let key_str = canonical_group_key_string(group_key);
-        match self.transactions_by_customer.get(&key_str) {
-            Some(txns) => txns.iter().map(|txn| Row {
-                group_key: group_key.clone(),
-                row_identifier: txn.txn_id.clone(),
-                row_sort_key: Value::from(txn.effective_at_millis),
-                row_data: serde_json::to_value(txn).unwrap(),
-            }).collect(),
-            None => Vec::new(),
-        }
-    }
+    // Passthrough non-item-quantity-change entries
+    db.add_table(
+        "payments-entries-passthrough-non-item-quantity-change",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            row.row_data.get("type").and_then(|v| v.as_str()) != Some("item-quantity-change")
+        }))),
+        HashMap::from([("input".to_string(), "payments-transaction-entries".to_string())]),
+    );
 
-    pub fn read_owned_products(&self, group_key: &Value) -> Vec<Row> {
-        let key_str = canonical_group_key_string(group_key);
-        match self.owned_products_by_customer.get(&key_str) {
-            Some(data) if *data != Value::Null => vec![Row {
-                group_key: group_key.clone(),
-                row_identifier: "fold-result".to_string(),
-                row_sort_key: Value::Null,
-                row_data: data.clone(),
-            }],
-            _ => Vec::new(),
-        }
-    }
+    // Compacted transaction entries (concat)
+    db.add_table(
+        "payments-compacted-transaction-entries",
+        Box::new(ConcatTable::new(vec!["passthrough".to_string(), "compacted".to_string(), "nonCompactable".to_string()])),
+        HashMap::from([
+            ("passthrough".to_string(), "payments-entries-passthrough-non-item-quantity-change".to_string()),
+            ("compacted".to_string(), "payments-entries-compacted-item-quantity-change".to_string()),
+            ("nonCompactable".to_string(), "payments-entries-item-quantity-change-non-compactable".to_string()),
+        ]),
+    );
 
-    pub fn read_item_quantities(&self, group_key: &Value) -> Vec<Row> {
-        let key_str = canonical_group_key_string(group_key);
-        match self.item_quantities_by_customer.get(&key_str) {
-            Some(data) if *data != Value::Null => vec![Row {
-                group_key: group_key.clone(),
-                row_identifier: "fold-result".to_string(),
-                row_sort_key: Value::Null,
-                row_data: data.clone(),
-            }],
-            _ => Vec::new(),
-        }
-    }
+    // ─── Product entries ───────────────────────────────────────────────────────
+    db.add_table(
+        "payments-product-entries",
+        Box::new(FilterTable::new(Box::new(|row: &Row| {
+            let t = row.row_data.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            t == "product-grant" || t == "product-revocation"
+        }))),
+        HashMap::from([("input".to_string(), "payments-compacted-transaction-entries".to_string())]),
+    );
 
-    pub fn tick(&mut self, _now_millis: i64) {
-        // Time-fold tick: For the performance test workload, no subscriptions have
-        // repeat schedules that would trigger, so this is a no-op in the benchmark.
-        // A full implementation would check each subscription/OTP for pending triggers.
-    }
+    db.add_table(
+        "payments-product-entries-sorted",
+        Box::new(SortTable::new(
+            Box::new(|row: &Row| row.row_data.get("txnEffectiveAtMillis").cloned().unwrap_or(json!(0))),
+            Box::new(compare_numbers),
+        )),
+        HashMap::from([("input".to_string(), "payments-product-entries".to_string())]),
+    );
+
+    // Owned Products (left-fold)
+    db.add_table(
+        OWNED_PRODUCTS,
+        Box::new(LeftFoldTable::new(
+            json!({}),
+            Box::new(|state: &Value, row: &Row| {
+                let d = &row.row_data;
+                let entry_type = d.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let product_id = d.get("productId").and_then(|v| v.as_str()).unwrap_or("__null__");
+                let key = if d.get("productId").map_or(true, |v| v.is_null()) { "__null__" } else { product_id };
+                let quantity = d.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+
+                let mut current = state.as_object().cloned().unwrap_or_default();
+                let old = current.get(key).and_then(|v| v.get("quantity")).and_then(|v| v.as_i64()).unwrap_or(0);
+                let next_qty = if entry_type == "product-grant" {
+                    (old + quantity).max(0)
+                } else {
+                    (old - quantity).max(0)
+                };
+
+                let product_val = if entry_type == "product-grant" {
+                    d.get("product").cloned().unwrap_or(Value::Null)
+                } else {
+                    current.get(key).and_then(|v| v.get("product")).cloned().unwrap_or(Value::Null)
+                };
+                let pline = if entry_type == "product-grant" {
+                    d.get("productLineId").cloned().unwrap_or(Value::Null)
+                } else {
+                    current.get(key).and_then(|v| v.get("productLineId")).cloned().unwrap_or(Value::Null)
+                };
+
+                current.insert(key.to_string(), json!({"quantity": next_qty, "product": product_val, "productLineId": pline}));
+                let next = Value::Object(current);
+                let output = json!({
+                    "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                    "txnId": d.get("txnId"),
+                    "ownedProducts": next,
+                    "customerType": d.get("customerType"),
+                    "customerId": d.get("customerId"),
+                    "tenancyId": d.get("tenancyId"),
+                });
+                (next, output)
+            }),
+            Box::new(compare_numbers),
+        )),
+        HashMap::from([("input".to_string(), "payments-product-entries-sorted".to_string())]),
+    );
+
+    // ─── Item Quantities ───────────────────────────────────────────────────────
+
+    // Split item changes with expiry
+    db.add_table(
+        "payments-split-item-changes-with-expiry",
+        Box::new(FlatMapTable::new(Box::new(|row: &Row| {
+            let d = &row.row_data;
+            let entry_type = d.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+            if entry_type == "item-quantity-expire" {
+                return vec![json!({
+                    "txnId": d.get("txnId"), "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                    "customerType": d.get("customerType"), "customerId": d.get("customerId"),
+                    "tenancyId": d.get("tenancyId"), "itemId": d.get("itemId"),
+                    "quantity": d.get("quantity").and_then(|v| v.as_i64()).map(|q| -q),
+                    "expiresAtMillis": Value::Null,
+                })];
+            }
+            if entry_type == "compacted-item-quantity-change" {
+                return vec![json!({
+                    "txnId": d.get("txnId"), "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                    "customerType": d.get("customerType"), "customerId": d.get("customerId"),
+                    "tenancyId": d.get("tenancyId"), "itemId": d.get("itemId"),
+                    "quantity": d.get("quantity"), "expiresAtMillis": Value::Null,
+                })];
+            }
+            if entry_type != "item-quantity-change" {
+                return Vec::new();
+            }
+
+            let expires_when = d.get("expiresWhen").unwrap_or(&Value::Null);
+            let effective = d.get("txnEffectiveAtMillis").and_then(|v| v.as_i64()).unwrap_or(0);
+            let qty = d.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+
+            if let Some(exp_millis) = expires_when.as_i64() {
+                if exp_millis > effective && qty > 0 {
+                    return vec![
+                        json!({
+                            "txnId": d.get("txnId"), "txnEffectiveAtMillis": effective,
+                            "customerType": d.get("customerType"), "customerId": d.get("customerId"),
+                            "tenancyId": d.get("tenancyId"), "itemId": d.get("itemId"),
+                            "quantity": qty, "expiresAtMillis": exp_millis,
+                        }),
+                        json!({
+                            "txnId": d.get("txnId"), "txnEffectiveAtMillis": exp_millis,
+                            "customerType": d.get("customerType"), "customerId": d.get("customerId"),
+                            "tenancyId": d.get("tenancyId"), "itemId": d.get("itemId"),
+                            "quantity": -qty, "expiresAtMillis": Value::Null,
+                        }),
+                    ];
+                }
+            }
+
+            vec![json!({
+                "txnId": d.get("txnId"), "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                "customerType": d.get("customerType"), "customerId": d.get("customerId"),
+                "tenancyId": d.get("tenancyId"), "itemId": d.get("itemId"),
+                "quantity": d.get("quantity"), "expiresAtMillis": Value::Null,
+            })]
+        }))),
+        HashMap::from([("input".to_string(), "payments-compacted-transaction-entries".to_string())]),
+    );
+
+    // Changes sorted for ledger
+    db.add_table(
+        "payments-changes-sorted-for-ledger",
+        Box::new(SortTable::new(
+            Box::new(|row: &Row| row.row_data.get("txnEffectiveAtMillis").cloned().unwrap_or(json!(0))),
+            Box::new(compare_numbers),
+        )),
+        HashMap::from([("input".to_string(), "payments-split-item-changes-with-expiry".to_string())]),
+    );
+
+    // Item Quantities (left-fold)
+    db.add_table(
+        ITEM_QUANTITIES,
+        Box::new(LeftFoldTable::new(
+            json!({}),
+            Box::new(|state: &Value, row: &Row| {
+                let d = &row.row_data;
+                let item_id = d.get("itemId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let quantity = d.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+                let expires_at = d.get("expiresAtMillis").and_then(|v| v.as_i64());
+
+                let mut current = state.as_object().cloned().unwrap_or_default();
+                let old_item = current.get(&item_id).cloned().unwrap_or(json!({"grants": [], "debt": 0}));
+                let mut grants: Vec<(i64, Option<i64>)> = old_item.get("grants").and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().map(|g| {
+                        let q = g.get("q").and_then(|v| v.as_i64()).unwrap_or(0);
+                        let e = g.get("e").and_then(|v| v.as_i64());
+                        (q, e)
+                    }).collect())
+                    .unwrap_or_default();
+                let mut debt = old_item.get("debt").and_then(|v| v.as_i64()).unwrap_or(0);
+
+                if quantity > 0 {
+                    let after = quantity + debt;
+                    if after > 0 {
+                        grants.push((after, expires_at));
+                        debt = 0;
+                    } else {
+                        debt = after;
+                    }
+                } else if quantity < 0 {
+                    let mut remaining = quantity.unsigned_abs() as i64;
+                    // Sort grants by expiry (earliest first, null = infinity)
+                    grants.sort_by(|a, b| {
+                        let ea = a.1.unwrap_or(i64::MAX);
+                        let eb = b.1.unwrap_or(i64::MAX);
+                        ea.cmp(&eb)
+                    });
+                    let mut next_grants = Vec::new();
+                    for (q, e) in &grants {
+                        let consumed = (*q).min(remaining);
+                        remaining -= consumed;
+                        if *q > consumed {
+                            next_grants.push((*q - consumed, *e));
+                        }
+                    }
+                    grants = next_grants;
+                    debt -= remaining;
+                } else {
+                    // quantity == 0: filter out expired grants
+                    let effective = d.get("txnEffectiveAtMillis").and_then(|v| v.as_i64()).unwrap_or(0);
+                    grants.retain(|(_, e)| e.is_none() || e.unwrap() > effective);
+                }
+
+                let grants_json: Vec<Value> = grants.iter().map(|(q, e)| {
+                    json!({"q": q, "e": e})
+                }).collect();
+
+                current.insert(item_id, json!({"grants": grants_json, "debt": debt}));
+
+                // Compute current quantities
+                let quantities: serde_json::Map<String, Value> = current.iter().map(|(k, v)| {
+                    let item_grants = v.get("grants").and_then(|g| g.as_array())
+                        .map(|arr| arr.iter().map(|g| g.get("q").and_then(|v| v.as_i64()).unwrap_or(0)).sum::<i64>())
+                        .unwrap_or(0);
+                    let item_debt = v.get("debt").and_then(|d| d.as_i64()).unwrap_or(0);
+                    (k.clone(), json!(item_grants + item_debt))
+                }).collect();
+
+                let next = Value::Object(current);
+                let output = json!({
+                    "txnEffectiveAtMillis": d.get("txnEffectiveAtMillis"),
+                    "txnId": d.get("txnId"),
+                    "itemQuantities": Value::Object(quantities),
+                    "customerType": d.get("customerType"),
+                    "customerId": d.get("customerId"),
+                    "tenancyId": d.get("tenancyId"),
+                });
+                (next, output)
+            }),
+            Box::new(compare_numbers),
+        )),
+        HashMap::from([("input".to_string(), "payments-changes-sorted-for-ledger".to_string())]),
+    );
+
+    db
 }
 
-struct ItemQuantityState {
-    grants: Vec<(i64, Option<i64>)>, // (quantity, expires_at)
-    debt: i64,
+// ═══════════════════════════════════════════════════════════════════════════════
+// Business Logic Helpers (subscription/OTP event generation)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn subscription_end_event(state: &Value) -> Value {
+    json!({
+        "type": "subscription-end",
+        "subscriptionId": state.get("subscriptionId"),
+        "tenancyId": state.get("tenancyId"),
+        "customerId": state.get("customerId"),
+        "customerType": state.get("customerType"),
+        "productId": state.get("productId"),
+        "productLineId": state.get("productLineId"),
+        "quantity": state.get("quantity"),
+        "startProductGrantRef": {
+            "transactionId": state.get("startTxnId"),
+            "entryIndex": state.get("startProductGrantEntryIndex"),
+        },
+        "itemQuantityChangesToExpire": grant_refs_to_expire(
+            state.get("outstandingGrants").unwrap_or(&Value::Null),
+            "both",
+            None,
+        ),
+        "productRevokedAtMillis": state.get("productRevokedAtMillis"),
+        "paymentProvider": state.get("paymentProvider"),
+        "effectiveAtMillis": state.get("endedAtMillis"),
+        "createdAtMillis": state.get("endedAtMillis"),
+    })
+}
+
+fn subscription_repeat_step(state: &Value, current_millis: i64) -> (Value, Value) {
+    let schedule = state.get("itemRepeatSchedule").unwrap_or(&Value::Null);
+    let due_items = due_item_entries(schedule, current_millis);
+    let due_ids: Vec<String> = due_items.iter().map(|(id, _)| id.clone()).collect();
+
+    let prev_expire = grant_refs_to_expire(
+        state.get("outstandingGrants").unwrap_or(&Value::Null),
+        "when-repeated",
+        Some(&due_ids),
+    );
+
+    let item_repeat_grants: Vec<Value> = due_items.iter().map(|(item_id, item)| {
+        json!({
+            "itemId": item_id,
+            "quantity": item.get("quantity"),
+            "expiresWhen": item.get("expiresWhen"),
+        })
+    }).collect();
+
+    let sub_id = state.get("subscriptionId").and_then(|v| v.as_str()).unwrap_or("");
+    let txn_id = format!("igr:{}:{}", sub_id, current_millis);
+
+    // Update outstanding grants
+    let old_grants = state.get("outstandingGrants").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let mut next_grants: Vec<Value> = old_grants.into_iter().filter(|grant| {
+        let ew = grant.get("expiresWhen").and_then(|v| v.as_str()).unwrap_or("");
+        let gid = grant.get("itemId").and_then(|v| v.as_str()).unwrap_or("");
+        !(ew == "when-repeated" && due_ids.contains(&gid.to_string()))
+    }).collect();
+    for (i, (item_id, item)) in due_items.iter().enumerate() {
+        next_grants.push(json!({
+            "txnId": txn_id,
+            "entryIndex": prev_expire.len() + i,
+            "itemId": item_id,
+            "quantity": item.get("quantity"),
+            "expiresWhen": item.get("expiresWhen"),
+        }));
+    }
+
+    // Update schedule
+    let mut next_schedule = schedule.as_object().cloned().unwrap_or_default();
+    for (item_id, item) in &next_schedule.clone() {
+        let next_repeat = item.get("nextRepeatMillis").and_then(|v| v.as_i64());
+        let interval = item.get("repeatIntervalMs").and_then(|v| v.as_i64());
+        if let (Some(nr), Some(int)) = (next_repeat, interval) {
+            if nr <= current_millis {
+                let mut updated = item.clone();
+                if let Some(obj) = updated.as_object_mut() {
+                    obj.insert("nextRepeatMillis".to_string(), json!(nr + int));
+                }
+                next_schedule.insert(item_id.clone(), updated);
+            }
+        }
+    }
+
+    let repeat_count = state.get("repeatCount").and_then(|v| v.as_i64()).unwrap_or(0);
+
+    let mut new_state = state.clone();
+    if let Some(obj) = new_state.as_object_mut() {
+        obj.insert("outstandingGrants".to_string(), json!(next_grants));
+        obj.insert("itemRepeatSchedule".to_string(), Value::Object(next_schedule));
+        obj.insert("repeatCount".to_string(), json!(repeat_count + 1));
+    }
+
+    let event = json!({
+        "type": "item-grant-repeat",
+        "sourceType": "subscription",
+        "sourceId": state.get("subscriptionId"),
+        "tenancyId": state.get("tenancyId"),
+        "customerId": state.get("customerId"),
+        "customerType": state.get("customerType"),
+        "itemGrants": item_repeat_grants,
+        "previousGrantsToExpire": prev_expire,
+        "paymentProvider": state.get("paymentProvider"),
+        "effectiveAtMillis": current_millis,
+        "createdAtMillis": current_millis,
+    });
+
+    (new_state, event)
+}
+
+fn otp_repeat_step(state: &Value, current_millis: i64) -> (Value, Value) {
+    let schedule = state.get("itemRepeatSchedule").unwrap_or(&Value::Null);
+    let due_items = due_item_entries(schedule, current_millis);
+    let due_ids: Vec<String> = due_items.iter().map(|(id, _)| id.clone()).collect();
+
+    let prev_expire = grant_refs_to_expire(
+        state.get("outstandingGrants").unwrap_or(&Value::Null),
+        "when-repeated",
+        Some(&due_ids),
+    );
+
+    let item_repeat_grants: Vec<Value> = due_items.iter().map(|(item_id, item)| {
+        json!({
+            "itemId": item_id,
+            "quantity": item.get("quantity"),
+            "expiresWhen": item.get("expiresWhen"),
+        })
+    }).collect();
+
+    let purchase_id = state.get("purchaseId").and_then(|v| v.as_str()).unwrap_or("");
+    let txn_id = format!("igr:{}:{}", purchase_id, current_millis);
+
+    let old_grants = state.get("outstandingGrants").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let mut next_grants: Vec<Value> = old_grants.into_iter().filter(|grant| {
+        let ew = grant.get("expiresWhen").and_then(|v| v.as_str()).unwrap_or("");
+        let gid = grant.get("itemId").and_then(|v| v.as_str()).unwrap_or("");
+        !(ew == "when-repeated" && due_ids.contains(&gid.to_string()))
+    }).collect();
+    for (i, (item_id, item)) in due_items.iter().enumerate() {
+        next_grants.push(json!({
+            "txnId": txn_id,
+            "entryIndex": prev_expire.len() + i,
+            "itemId": item_id,
+            "quantity": item.get("quantity"),
+            "expiresWhen": item.get("expiresWhen"),
+        }));
+    }
+
+    let mut next_schedule = schedule.as_object().cloned().unwrap_or_default();
+    for (item_id, item) in &next_schedule.clone() {
+        let next_repeat = item.get("nextRepeatMillis").and_then(|v| v.as_i64());
+        let interval = item.get("repeatIntervalMs").and_then(|v| v.as_i64());
+        if let (Some(nr), Some(int)) = (next_repeat, interval) {
+            if nr <= current_millis {
+                let mut updated = item.clone();
+                if let Some(obj) = updated.as_object_mut() {
+                    obj.insert("nextRepeatMillis".to_string(), json!(nr + int));
+                }
+                next_schedule.insert(item_id.clone(), updated);
+            }
+        }
+    }
+
+    let repeat_count = state.get("repeatCount").and_then(|v| v.as_i64()).unwrap_or(0);
+
+    let mut new_state = state.clone();
+    if let Some(obj) = new_state.as_object_mut() {
+        obj.insert("outstandingGrants".to_string(), json!(next_grants));
+        obj.insert("itemRepeatSchedule".to_string(), Value::Object(next_schedule));
+        obj.insert("repeatCount".to_string(), json!(repeat_count + 1));
+    }
+
+    let event = json!({
+        "type": "item-grant-repeat",
+        "sourceType": "one_time_purchase",
+        "sourceId": state.get("purchaseId"),
+        "tenancyId": state.get("tenancyId"),
+        "customerId": state.get("customerId"),
+        "customerType": state.get("customerType"),
+        "itemGrants": item_repeat_grants,
+        "previousGrantsToExpire": prev_expire,
+        "paymentProvider": state.get("paymentProvider"),
+        "effectiveAtMillis": current_millis,
+        "createdAtMillis": current_millis,
+    });
+
+    (new_state, event)
+}
+
+fn merge_compaction_aggregates(a: &Value, b: &Value) -> Value {
+    let a_items = a.get("items").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+    let b_items = b.get("items").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+
+    let mut merged = a_items.clone();
+    for (item_id, b_item) in &b_items {
+        let b_qty = b_item.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+        if let Some(existing) = merged.get_mut(item_id) {
+            let old_qty = existing.get("quantity").and_then(|v| v.as_i64()).unwrap_or(0);
+            if let Some(obj) = existing.as_object_mut() {
+                obj.insert("quantity".to_string(), json!(old_qty + b_qty));
+            }
+        } else {
+            merged.insert(item_id.clone(), b_item.clone());
+        }
+    }
+
+    json!({
+        "type": "item-quantity-compaction-aggregate",
+        "txnEffectiveAtMillis": a.get("txnEffectiveAtMillis"),
+        "txnId": a.get("txnId"),
+        "index": a.get("index"),
+        "items": merged,
+    })
 }
