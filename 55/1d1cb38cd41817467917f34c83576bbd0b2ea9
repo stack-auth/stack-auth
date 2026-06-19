@@ -1,0 +1,23 @@
+apps/backend/api/index.ts
+  s_5b8300334f65db::t_29696366b3cc9f 1-21
+apps/backend/vercel.json
+  s_5b8300334f65db::t_deaf9d20575848 4-6
+apps/backend/tsdown.config.ts
+  s_5b8300334f65db::t_6957905b6d54ed 90-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "551d1cb38cd41817467917f34c83576bbd0b2ea9",
+  "prompts": {},
+  "sessions": {
+    "s_5b8300334f65db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec104795-7ae6-490d-94e9-b60c76de41bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
