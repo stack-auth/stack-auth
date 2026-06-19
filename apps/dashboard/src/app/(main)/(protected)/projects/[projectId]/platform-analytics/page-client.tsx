@@ -583,8 +583,7 @@ function FeatureAdoption({ features, totalProjects }: { features: Array<{ featur
         {features.map((feature) => {
           const meta = FEATURE_META.get(feature.feature);
           const Icon = meta?.icon ?? ChartLineUpIcon;
-          const pct = Math.round((feature.projects_using / denominator) * 100);
-          const pctClamped = Math.max(0, Math.min(100, pct));
+          const pctClamped = Math.max(0, Math.min(100, Math.round((feature.projects_using / denominator) * 100)));
           return (
             <div key={feature.feature} className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2 text-sm">
@@ -592,7 +591,7 @@ function FeatureAdoption({ features, totalProjects }: { features: Array<{ featur
                   <Icon className="h-4 w-4 text-muted-foreground" weight="regular" />
                   {meta?.label ?? feature.feature}
                 </span>
-                <span className="tabular-nums text-muted-foreground">{formatNumber(feature.projects_using)} <span className="text-xs">({pct}%)</span></span>
+                <span className="tabular-nums text-muted-foreground">{formatNumber(feature.projects_using)} <span className="text-xs">({pctClamped}%)</span></span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
                 <div className="h-full rounded-full bg-foreground/30" style={{ width: `${pctClamped}%` }} />
