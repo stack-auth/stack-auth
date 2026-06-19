@@ -92,31 +92,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           }));
         }
 
-        const transporter = nodemailer.createTransport({
-          host: options.emailConfig.host,
-          port: options.emailConfig.port,
-          secure: options.emailConfig.secure,
-          disableFileAccess: true,
-          disableUrlAccess: true,
-          connectionTimeout: 15000,
-          greetingTimeout: 10000,
-          socketTimeout: 20000,
-          dnsTimeout: 7000,
-          auth: {
-            user: options.emailConfig.username,
-            pass: options.emailConfig.password,
-          },
-        });
-
-        try {
-          await transporter.sendMail({
-            from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-            ...options,
-            to: toArray,
-          });
-        } finally {
-          transporter.close();
-        }
+        await sendMailWithLocalhostFallback(options, toArray);
 
         return Result.ok(undefined);
       } catch (error) {
@@ -240,6 +216,66 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
   } finally {
     finished = true;
   }
+}
+
+async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, toArray: string[]) {
+  if (options.emailConfig.host === "localhost") {
+    try {
+      await sendMailWithHost(options, toArray, "::1");
+      return;
+    } catch (error) {
+      if (!isGreetingTimeout(error)) {
+        throw error;
+      }
+    }
+  }
+
+  try {
+    await sendMailWithHost(options, toArray, options.emailConfig.host);
+  } catch (error) {
+    // Local development Docker stacks may expose SMTP on only one loopback family. If the
+    // configured localhost family never sends a greeting, the other loopback family is equivalent.
+    if (options.emailConfig.host !== "localhost" || !isGreetingTimeout(error)) {
+      throw error;
+    }
+    await sendMailWithHost(options, toArray, "127.0.0.1");
+  }
+}
+
+async function sendMailWithHost(options: LowLevelSendEmailOptions, toArray: string[], host: string) {
+  const transporter = nodemailer.createTransport({
+    host,
+    port: options.emailConfig.port,
+    secure: options.emailConfig.secure,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    dnsTimeout: 7000,
+    auth: {
+      user: options.emailConfig.username,
+      pass: options.emailConfig.password,
+    },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
+      ...options,
+      to: toArray,
+    });
+  } finally {
+    transporter.close();
+  }
+}
+
+function isGreetingTimeout(error: unknown) {
+  return error instanceof Error
+    && "code" in error
+    && error.code === "ETIMEDOUT"
+    && "command" in error
+    && error.command === "CONN";
 }
 
 export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSendEmailOptions): Promise<Result<undefined, {
