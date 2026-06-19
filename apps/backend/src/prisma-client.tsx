@@ -68,7 +68,7 @@ class AsyncSemaphore {
 // Elysia admits more concurrent local requests than the old Next dev server.
 // Keep interactive transactions below the pg pool size so queued API requests
 // wait in-process instead of failing Prisma's transaction start window.
-const interactiveTransactionLimiter: AsyncSemaphore = globalVar.__hexclave_interactive_transaction_limiter ??= new AsyncSemaphore(12);
+const interactiveTransactionLimiter: AsyncSemaphore = globalVar.__hexclave_interactive_transaction_limiter ??= new AsyncSemaphore(20);
 
 function getSchemaFromConnectionString(connectionString: string) {
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
@@ -446,7 +446,7 @@ class TransactionErrorThatShouldNotBeRetried extends Error {
 /**
  * @deprecated Prisma transactions are slow and lock the database. Use rawQuery with CTEs instead. Ask Konsti if you're confused or think you need transactions.
  */
-export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable", timeout?: number } = {}): Promise<T> {
+export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn: (tx: PrismaClientTransaction) => Promise<T>, options: { level?: "default" | "serializable", timeout?: number, maxWait?: number } = {}): Promise<T> {
   // serializable transactions are currently off by default, later we may turn them on
   const enableSerializable = options.level === "serializable";
 
@@ -490,6 +490,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
               return res;
             }, {
               isolationLevel: enableSerializable ? Prisma.TransactionIsolationLevel.Serializable : undefined,
+              maxWait: options.maxWait ?? 15_000,
               ...(options.timeout != null ? { timeout: options.timeout } : {}),
             }));
           } catch (e) {
