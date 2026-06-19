@@ -140,12 +140,15 @@ export async function getItemQuantityForCustomer(options: {
 
 function customerTypeToPrisma(customerType: CustomerType): PrismaCustomerType {
   switch (customerType) {
-    case "user":
+    case "user": {
       return PrismaCustomerType.USER;
-    case "team":
+    }
+    case "team": {
       return PrismaCustomerType.TEAM;
-    case "custom":
+    }
+    case "custom": {
       return PrismaCustomerType.CUSTOM;
+    }
   }
 }
 
