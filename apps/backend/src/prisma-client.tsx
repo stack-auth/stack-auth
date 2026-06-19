@@ -26,6 +26,50 @@ export type PrismaClientTransaction =
   | Omit<PrismaClient, "$on">  // $on is not available on extended Prisma clients, so we don't require it here. see: https://www.prisma.io/docs/orm/reference/prisma-client-reference#on
   | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
+class AsyncSemaphore {
+  private activeCount = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private readonly maxActiveCount: number) {
+    if (!Number.isInteger(maxActiveCount) || maxActiveCount < 1) {
+      throw new HexclaveAssertionError("AsyncSemaphore maxActiveCount must be a positive integer", { maxActiveCount });
+    }
+  }
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+
+  private async acquire(): Promise<void> {
+    if (this.activeCount < this.maxActiveCount) {
+      this.activeCount++;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  private release(): void {
+    const nextWaiter = this.waiters.shift();
+    if (nextWaiter != null) {
+      nextWaiter();
+      return;
+    }
+    this.activeCount--;
+  }
+}
+
+// Elysia admits more concurrent local requests than the old Next dev server.
+// Keep interactive transactions below the pg pool size so queued API requests
+// wait in-process instead of failing Prisma's transaction start window.
+const interactiveTransactionLimiter: AsyncSemaphore = globalVar.__hexclave_interactive_transaction_limiter ??= new AsyncSemaphore(12);
+
 function getSchemaFromConnectionString(connectionString: string) {
   return (new URL(connectionString)).searchParams.get('schema') ?? "public";
 }
@@ -416,7 +460,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
     return false;
   };
 
-  return await traceSpan('Prisma transaction', async (span) => {
+  return await interactiveTransactionLimiter.run(async () => await traceSpan('Prisma transaction', async (span) => {
     const res = await Result.retry(async (attemptIndex) => {
       return await traceSpan(`transaction attempt #${attemptIndex}`, async (attemptSpan) => {
         const attemptRes = await (async () => {
@@ -477,7 +521,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
     span.setAttribute("stack.prisma.transaction.serializable-enabled", enableSerializable ? "true" : "false");
 
     return Result.orThrow(res);
-  });
+  }));
 }
 
 const allSupportedPrismaClients = ["global", "source-of-truth"] as const;
