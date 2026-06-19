@@ -133,9 +133,11 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     });
 
     if (freePlanSubscription != null) {
-      // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
-      // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, freePlanSubscription));
+      // The response is the handoff point for callers that immediately read
+      // plan-limited resources (analytics, seats, auth-user caps). Under
+      // Elysia's higher local concurrency, returning before this projection is
+      // visible causes those reads to see capacity=0.
+      await bulldozerWriteSubscription(prisma, freePlanSubscription);
     }
 
     const result = teamPrismaToCrud(db);
