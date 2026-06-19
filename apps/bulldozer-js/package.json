@@ -1,0 +1,34 @@
+{
+  "name": "@hexclave/bulldozer-js",
+  "version": "1.0.22",
+  "repository": "https://github.com/hexclave/hexclave",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "run-bulldozer-studio": "tsx watch --clear-screen=false scripts/run-bulldozer-studio.ts",
+    "profile:performance": "tsx scripts/profile-bulldozer-performance.ts",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --ext .ts .",
+    "clean": "rimraf dist && rimraf node_modules"
+  },
+  "dependencies": {
+    "@elysiajs/node": "^1.4.5",
+    "@hexclave/shared": "workspace:*",
+    "@sinclair/typebox": "^0.34.49",
+    "elkjs": "^0.11.1",
+    "elysia": "^1.4.28",
+    "lmdb": "^3.5.5",
+    "openapi-types": "^12.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "rimraf": "^5.0.5",
+    "tsx": "4.15.5",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@11.5.0"
+}
