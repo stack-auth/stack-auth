@@ -1,0 +1,24 @@
+apps/e2e/tests/backend/endpoints/api/v1/internal/mcp.test.ts
+  s_aee85d0233a355::t_fdfb34e8ac9345 44
+apps/backend/src/lib/users.tsx
+  s_aee85d0233a355::t_fd9fa9795ab255 325-331
+  s_aee85d0233a355::t_1572d3a74f41ed 338
+packages/shared/src/helpers/emails.ts
+  s_aee85d0233a355::t_d1e39114675d25 92,124,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "4a488cf1c32b0250bef8a325431961742c471042",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
