@@ -1,0 +1,19 @@
+apps/backend/package.json
+  s_5b8300334f65db::t_a75981301403c9 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f5478f6c72059c13833f5222a5b8faaab62470b1",
+  "prompts": {},
+  "sessions": {
+    "s_5b8300334f65db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec104795-7ae6-490d-94e9-b60c76de41bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
