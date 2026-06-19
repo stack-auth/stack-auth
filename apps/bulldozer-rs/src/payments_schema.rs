@@ -218,8 +218,19 @@ pub const ITEM_QUANTITIES: &str = "payments-item-quantities";
 // Schema Construction
 // ═══════════════════════════════════════════════════════════════════════════════
 
+pub fn create_payments_lmdb_database(path: &std::path::Path) -> LmdbDatabase {
+    let mut lmdb = LmdbDatabase::new(path);
+    register_payments_tables(&mut lmdb.db);
+    lmdb
+}
+
 pub fn create_payments_database() -> Database {
     let mut db = Database::new();
+    register_payments_tables(&mut db);
+    db
+}
+
+fn register_payments_tables(db: &mut Database) {
 
     // ─── Stored Tables ─────────────────────────────────────────────────────────
     db.add_table(SUBSCRIPTIONS, Box::new(StoredTable::new()), HashMap::new());
@@ -1330,8 +1341,6 @@ pub fn create_payments_database() -> Database {
         )),
         HashMap::from([("input".to_string(), "payments-changes-sorted-for-ledger".to_string())]),
     );
-
-    db
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

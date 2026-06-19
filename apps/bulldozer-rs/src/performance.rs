@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 use std::time::Instant;
 
+use crate::bulldozer::Row;
 use crate::payments_schema::*;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -51,23 +52,16 @@ fn create_subscription(user_idx: usize, base_time: i64) -> (String, Value) {
         "customerId": customer_id,
         "customerType": "user",
         "productId": "prod-1",
-        "priceId": "price-1",
-        "product": product(&[
-            ("credits", 100, "never"),
-            ("seats", 1, "when-purchase-expires"),
-        ]),
-        "quantity": 1,
         "stripeSubscriptionId": format!("stripe-sub-{}", user_idx),
-        "status": "active",
-        "currentPeriodStartMillis": base_time,
-        "currentPeriodEndMillis": base_time + MONTH_MS,
+        "currentPeriodEnd": base_time + MONTH_MS,
         "cancelAtPeriodEnd": false,
-        "canceledAtMillis": null,
-        "endedAtMillis": null,
-        "refundedAtMillis": null,
-        "productRevokedAtMillis": null,
-        "creationSource": "TEST_MODE",
         "createdAtMillis": base_time,
+        "creationSource": "TEST_MODE",
+        "product": product(&[
+            ("credits", 100, "period"),
+            ("coins", 50, "never"),
+            ("seats", 5, "period"),
+        ]),
     });
     (id, data)
 }
@@ -81,16 +75,12 @@ fn create_one_time_purchase(user_idx: usize, base_time: i64) -> (String, Value) 
         "customerId": customer_id,
         "customerType": "user",
         "productId": "prod-2",
-        "priceId": "price-1",
-        "product": product(&[
-            ("coins", 50, "never"),
-        ]),
-        "quantity": 1,
-        "stripePaymentIntentId": format!("stripe-pi-{}", user_idx),
-        "revokedAtMillis": null,
-        "refundedAtMillis": null,
-        "creationSource": "TEST_MODE",
         "createdAtMillis": base_time + 1000,
+        "creationSource": "TEST_MODE",
+        "product": product(&[
+            ("credits", 500, "never"),
+            ("coins", 200, "never"),
+        ]),
     });
     (id, data)
 }
@@ -124,26 +114,42 @@ pub struct PerfMetric {
     pub ops_per_second: f64,
 }
 
-pub fn run_performance_test() -> Vec<PerfMetric> {
+// ═══════════════════════════════════════════════════════════════════════════════
+// Unified DB trait for benchmarking both backends
+// ═══════════════════════════════════════════════════════════════════════════════
+
+trait BenchDb {
+    fn set_or_delete_row(&mut self, table_id: &str, row_id: &str, data: Option<Value>);
+    fn list_rows_in_group(&self, table_id: &str, group_key: &Value) -> Vec<Row>;
+}
+
+impl BenchDb for crate::bulldozer::Database {
+    fn set_or_delete_row(&mut self, table_id: &str, row_id: &str, data: Option<Value>) {
+        self.set_or_delete_row(table_id, row_id, data);
+    }
+    fn list_rows_in_group(&self, table_id: &str, group_key: &Value) -> Vec<Row> {
+        self.list_rows_in_group(table_id, group_key)
+    }
+}
+
+impl BenchDb for crate::bulldozer::LmdbDatabase {
+    fn set_or_delete_row(&mut self, table_id: &str, row_id: &str, data: Option<Value>) {
+        self.set_or_delete_row(table_id, row_id, data);
+    }
+    fn list_rows_in_group(&self, table_id: &str, group_key: &Value) -> Vec<Row> {
+        self.list_rows_in_group(table_id, group_key)
+    }
+}
+
+fn run_workload(db: &mut dyn BenchDb) -> Vec<PerfMetric> {
     let mut metrics: Vec<PerfMetric> = Vec::new();
     let base_time = 1_700_000_000_000i64;
-
-    // ─── Initialize Schema ─────────────────────────────────────────────────────
-    let start = Instant::now();
-    let mut db = create_payments_database();
-    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-    metrics.push(PerfMetric {
-        name: "initialize schema".to_string(),
-        count: 1,
-        elapsed_ms: elapsed,
-        ops_per_second: 1000.0 / elapsed,
-    });
 
     // ─── Prefill Baseline Rows ─────────────────────────────────────────────────
     let count = PREFILL_USER_COUNT * (1 + 1 + PREFILL_ITEM_UPDATES_PER_USER);
     let start = Instant::now();
     for i in 0..PREFILL_USER_COUNT {
-        let user_idx = USER_COUNT + i; // offset to not conflict with test users
+        let user_idx = USER_COUNT + i;
         let (id, data) = create_subscription(user_idx, base_time - MONTH_MS);
         db.set_or_delete_row(SUBSCRIPTIONS, &id, Some(data));
         let (id, data) = create_one_time_purchase(user_idx, base_time - MONTH_MS);
@@ -222,7 +228,7 @@ pub fn run_performance_test() -> Vec<PerfMetric> {
     });
 
     // ─── Read Item Quantities ──────────────────────────────────────────────────
-    let items_per_user = 3; // item-0, item-1, item-2
+    let items_per_user = 3;
     let total_reads = USER_COUNT * items_per_user;
     let start = Instant::now();
     for i in 0..USER_COUNT {
@@ -256,30 +262,55 @@ pub fn run_performance_test() -> Vec<PerfMetric> {
     });
 
     // ─── Verification ──────────────────────────────────────────────────────────
-    let expected_txns = USER_COUNT * (2 + ITEM_UPDATES_PER_USER); // sub + otp + miqcs
-    println!("\n═══ bulldozer-rs Performance Results (in-memory) ═══\n");
-    println!("Backend: in-memory (generic engine)");
-    println!("Transaction count: {} (expected: {})", total_txn_count, expected_txns);
+    let expected_txns = USER_COUNT * (2 + ITEM_UPDATES_PER_USER);
+    println!("  Transaction count: {} (expected: {})", total_txn_count, expected_txns);
     if total_txn_count != expected_txns {
-        println!("⚠ WARNING: Transaction count mismatch!");
+        println!("  ⚠ WARNING: Transaction count mismatch!");
     } else {
-        println!("✓ Transaction count correct");
+        println!("  ✓ Transaction count correct");
     }
-    println!("\n{:<40} {:>8} {:>12} {:>14}", "Operation", "Count", "Elapsed(ms)", "Ops/sec");
-    println!("{}", "-".repeat(78));
-    for m in &metrics {
-        println!("{:<40} {:>8} {:>12.3} {:>14.1}", m.name, m.count, m.elapsed_ms, m.ops_per_second);
-    }
-    println!();
 
-    // Output JSON for comparison
+    metrics
+}
+
+fn print_metrics(metrics: &[PerfMetric], backend: &str) {
+    println!("\n  {:<40} {:>8} {:>12} {:>14}", "Operation", "Count", "Elapsed(ms)", "Ops/sec");
+    println!("  {}", "-".repeat(78));
+    for m in metrics {
+        println!("  {:<40} {:>8} {:>12.3} {:>14.1}", m.name, m.count, m.elapsed_ms, m.ops_per_second);
+    }
+
     let json_results: Vec<Value> = metrics.iter().map(|m| json!({
         "name": m.name,
         "count": m.count,
         "elapsedMs": m.elapsed_ms,
         "opsPerSecond": m.ops_per_second,
     })).collect();
-    println!("JSON: {}", serde_json::to_string_pretty(&json_results).unwrap());
+    let summary = json!({
+        "engine": "bulldozer-rs",
+        "backend": backend,
+        "metrics": json_results,
+    });
+    println!("\n  JSON: {}", serde_json::to_string(&summary).unwrap());
+}
 
-    metrics
+pub fn run_performance_test() {
+    // ═══ In-Memory Test ═══════════════════════════════════════════════════════
+    println!("\n═══ bulldozer-rs Performance Results (in-memory) ═══");
+    let start = Instant::now();
+    let mut db = create_payments_database();
+    let init_elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    println!("  initialize schema: {:.3} ms", init_elapsed);
+    let metrics_mem = run_workload(&mut db);
+    print_metrics(&metrics_mem, "in-memory");
+
+    // ═══ LMDB Test ═══════════════════════════════════════════════════════════
+    println!("\n═══ bulldozer-rs Performance Results (lmdb) ═══");
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let mut lmdb_db = create_payments_lmdb_database(tmp_dir.path());
+    let init_elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    println!("  initialize schema: {:.3} ms", init_elapsed);
+    let metrics_lmdb = run_workload(&mut lmdb_db);
+    print_metrics(&metrics_lmdb, "lmdb");
 }

@@ -3,9 +3,10 @@
 //! This is a direct port of the bulldozer-js engine. It implements a DAG of tables
 //! where changes propagate from stored (source) tables through derived tables.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use lmdb::Transaction;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Core Types
@@ -180,6 +181,13 @@ pub trait TableImpl {
     fn tick(&mut self, _now_ms: i64) -> TableChanges {
         TableChanges::default()
     }
+
+    /// Serialize internal state to JSON for persistence.
+    /// Returns Null for derived tables (their state is deterministic).
+    fn get_state(&self) -> Value { Value::Null }
+
+    /// Restore internal state from previously serialized JSON (no-op for derived tables).
+    fn set_state(&mut self, _state: Value) {}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -259,6 +267,13 @@ impl TableImpl for StoredTable {
 
     fn list_groups(&self) -> Vec<Value> {
         vec![Value::Null]
+    }
+
+    fn get_state(&self) -> Value {
+        let map: serde_json::Map<String, Value> = self.rows.iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        Value::Object(map)
     }
 }
 
@@ -1890,5 +1905,77 @@ impl Database {
         let table_idx = *self.table_id_to_index.get(table_id)
             .unwrap_or_else(|| panic!("Table '{}' not found", table_id));
         self.tables[table_idx].implementation.list_groups()
+    }
+
+    /// Serialize all stored table rows to a JSON Value (the persisted state).
+    /// Derived table state is deterministic and not serialized (matching how
+    /// bulldozer-js Piledriver uses heap objects to avoid re-serializing unchanged
+    /// derived state on every write).
+    pub fn get_stored_state_bytes(&self) -> Vec<u8> {
+        let mut snapshot = serde_json::Map::new();
+        for entry in &self.tables {
+            let state = entry.implementation.get_state();
+            if state != Value::Null {
+                snapshot.insert(entry.id.clone(), state);
+            }
+        }
+        serde_json::to_vec(&Value::Object(snapshot)).unwrap()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LMDB-backed Database wrapper
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pub struct LmdbDatabase {
+    pub db: Database,
+    env: lmdb::Environment,
+    lmdb_db: lmdb::Database,
+}
+
+impl LmdbDatabase {
+    pub fn new(path: &std::path::Path) -> Self {
+        std::fs::create_dir_all(path).unwrap();
+        let env = lmdb::Environment::new()
+            .set_map_size(1024 * 1024 * 1024) // 1GB
+            .set_max_dbs(1)
+            .open(path)
+            .unwrap();
+        let lmdb_db = env.open_db(Some("bulldozer")).unwrap_or_else(|_| {
+            env.create_db(Some("bulldozer"), lmdb::DatabaseFlags::empty()).unwrap()
+        });
+        LmdbDatabase {
+            db: Database::new(),
+            env,
+            lmdb_db,
+        }
+    }
+
+    pub fn add_table(
+        &mut self,
+        table_id: &str,
+        implementation: Box<dyn TableImpl>,
+        input_tables: HashMap<String, String>,
+    ) {
+        self.db.add_table(table_id, implementation, input_tables);
+    }
+
+    /// Set or delete a row, propagate changes, then persist the full snapshot to LMDB.
+    pub fn set_or_delete_row(&mut self, table_id: &str, row_id: &str, data: Option<Value>) {
+        self.db.set_or_delete_row(table_id, row_id, data);
+        self.persist();
+    }
+
+    /// Persist stored table state to LMDB (matching bulldozer-js behavior).
+    fn persist(&self) {
+        let bytes = self.db.get_stored_state_bytes();
+        let mut txn = self.env.begin_rw_txn().unwrap();
+        txn.put(self.lmdb_db, b"snapshot", &bytes, lmdb::WriteFlags::empty()).unwrap();
+        txn.commit().unwrap();
+    }
+
+    /// List rows in a group (reads from in-memory state, matching JS behavior).
+    pub fn list_rows_in_group(&self, table_id: &str, group_key: &Value) -> Vec<Row> {
+        self.db.list_rows_in_group(table_id, group_key)
     }
 }
