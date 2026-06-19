@@ -63,7 +63,8 @@ const nextCompatPlugin: Rolldown.Plugin = {
     return nextCompatAliases.get(source) ?? null;
   },
 };
-const sentryRelease = process.env.SENTRY_RELEASE ?? `${packageJson.name}@${packageJson.version}`;
+// Sentry release names may not contain slashes/whitespace, so sanitize the scoped package name.
+const sentryRelease = process.env.SENTRY_RELEASE ?? `${packageJson.name}@${packageJson.version}`.replace(/[/\s]/g, "-");
 const shouldUploadSourcemaps = process.env.SENTRY_ORG != null
   && process.env.SENTRY_PROJECT != null
   && process.env.SENTRY_AUTH_TOKEN != null;
