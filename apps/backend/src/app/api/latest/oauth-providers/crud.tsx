@@ -133,6 +133,14 @@ function resolveProviderType(tenancy: Tenancy, configOAuthProviderId: string): P
   return null;
 }
 
+function resolveConfiguredProviderType(tenancy: Tenancy, configOAuthProviderId: string): ProviderType | null {
+  const config = findProviderConfig(tenancy, configOAuthProviderId);
+  if (config?.type == null || config.type === "custom_oidc") {
+    return null;
+  }
+  return config.type;
+}
+
 
 export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandlers(oauthProviderCrud, {
   paramsSchema: yupObject({
@@ -378,7 +386,7 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
   },
   async onCreate({ auth, data }) {
     const prismaClient = await getPrismaClientForTenancy(auth.tenancy);
-    const providerType = resolveProviderType(auth.tenancy, data.provider_config_id)
+    const providerType = resolveConfiguredProviderType(auth.tenancy, data.provider_config_id)
       ?? throwErr(new StatusError(StatusError.NotFound, `OAuth provider ${data.provider_config_id} not found or not configured`));
 
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: data.user_id });
