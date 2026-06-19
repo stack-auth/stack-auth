@@ -117,7 +117,14 @@
                   }
                 ]
               },
-              "guides/apps/emails/overview",
+              {
+                "group": "Emails",
+                "icon": "/images/app-icons/emails.svg",
+                "pages": [
+                  "guides/apps/emails/overview",
+                  "guides/apps/emails/guide"
+                ]
+              },
               "guides/apps/payments/overview",
               {
                 "group": "Analytics",
