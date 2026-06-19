@@ -720,8 +720,8 @@ function RejectMessageField({ state, size = "sm", className }: { state: RuleEdit
 function RejectActionNote({ state }: { state: RuleEditorState }) {
   if (state.actionType !== 'reject') return null;
   return (
-    <p className="text-xs text-muted-foreground">
-      Reject will prevent users from signing in completely. Consider using Restrict instead — it still creates the user account but blocks app access, and you can unrestrict users later from the dashboard.
+    <p className="text-[11px] leading-snug text-muted-foreground/70">
+      Reject will prevent users from signing up completely. Consider using Restrict instead — it still creates the user account but blocks app access, and you can unrestrict users later from the dashboard.
     </p>
   );
 }
