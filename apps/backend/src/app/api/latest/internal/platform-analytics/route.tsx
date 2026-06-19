@@ -66,7 +66,8 @@ function monthlyRecurringCents(product: unknown, priceId: string | null, quantit
   const usd = (price as Record<string, unknown>).USD;
   const amount = usd == null ? NaN : Number(usd);
   if (!Number.isFinite(amount)) return 0;
-  return Math.round((amount * 100 * (quantity || 1)) / intervalMonths);
+  if (!Number.isFinite(quantity) || quantity < 0) return 0;
+  return Math.round((amount * 100 * quantity) / intervalMonths);
 }
 
 const KpiSchema = yupObject({
@@ -218,10 +219,13 @@ export const GET = createSmartRouteHandler({
       return await result.json<T>();
     };
 
+    const internalProjectId = INTERNAL_PROJECT_ID;
     const userScope = `branch_id = {branchId:String} AND sync_is_deleted = 0`;
-    const baseParams = { branchId };
-    const windowParams = { branchId, since: sinceParam, until: untilParam };
-    const twoWindowParams = { branchId, priorSince: priorSinceParam, mid: midParam, until: untilParam };
+    const customerUserScope = `${userScope} AND project_id != {internalProjectId:String}`;
+    const customerEventScope = `project_id != {internalProjectId:String}`;
+    const baseParams = { branchId, internalProjectId };
+    const windowParams = { branchId, internalProjectId, since: sinceParam, until: untilParam };
+    const twoWindowParams = { branchId, internalProjectId, priorSince: priorSinceParam, mid: midParam, until: untilParam };
 
     let ch: {
       dauSeries: Array<{ day: string, c: string | number }>,
@@ -258,6 +262,7 @@ export const GET = createSmartRouteHandler({
           SELECT toDate(event_at) AS day, uniqExact(assumeNotNull(user_id)) AS c
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+            AND ${customerEventScope}
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
@@ -268,6 +273,7 @@ export const GET = createSmartRouteHandler({
             uniqExactIf(assumeNotNull(user_id), event_type = '$page-view') AS visitors
           FROM analytics_internal.events
           WHERE event_type IN ('$page-view', '$click')
+            AND ${customerEventScope}
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
@@ -275,7 +281,7 @@ export const GET = createSmartRouteHandler({
         chQuery<{ day: string, c: string | number }>(`
           SELECT toDate(signed_up_at, 'UTC') AS day, count() AS c
           FROM analytics_internal.users FINAL
-          WHERE ${userScope} AND is_anonymous = 0
+          WHERE ${customerUserScope} AND is_anonymous = 0
             AND signed_up_at >= {since:DateTime} AND signed_up_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
@@ -288,6 +294,7 @@ export const GET = createSmartRouteHandler({
             uniqExactIf(project_id, event_at < {mid:DateTime}) AS projPrev
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+            AND ${customerEventScope}
             AND event_at >= {priorSince:DateTime} AND event_at < {until:DateTime}
         `, twoWindowParams),
         // User stock counts: total, verified, anonymous (now + as-of window start).
@@ -299,8 +306,8 @@ export const GET = createSmartRouteHandler({
             countIf(is_anonymous = 0 AND signed_up_at < {mid:DateTime} AND ${verifiedSubquery}) AS verifiedPrev,
             countIf(is_anonymous = 1) AS anonymous
           FROM analytics_internal.users FINAL
-          WHERE ${userScope}
-        `, { branchId, mid: midParam }),
+          WHERE ${customerUserScope}
+        `, { branchId, internalProjectId, mid: midParam }),
         // Users by country (for the globe) over the window.
         chQuery<{ country_code: string, c: string | number }>(`
           SELECT country_code, count() AS c FROM (
@@ -308,6 +315,7 @@ export const GET = createSmartRouteHandler({
               SELECT user_id, event_at, CAST(data.ip_info.country_code, 'Nullable(String)') AS cc
               FROM analytics_internal.events
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+                AND ${customerEventScope}
                 AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
             ) WHERE cc IS NOT NULL GROUP BY user_id
           ) WHERE country_code IS NOT NULL GROUP BY country_code ORDER BY c DESC
@@ -316,7 +324,8 @@ export const GET = createSmartRouteHandler({
         chQuery<{ clicks: string | number, dead: string | number }>(`
           SELECT count() AS clicks, sum(is_dead) AS dead
           FROM analytics_internal.clickmap_events
-          WHERE event_at >= {since:DateTime} AND event_at < {until:DateTime}
+          WHERE ${customerEventScope}
+            AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
         `, windowParams),
         // New / retained / reactivated split across all projects.
         chQuery<{ day: string, total_count: string, new_count: string, retained_count: string, reactivated_count: string }>(`
@@ -332,6 +341,7 @@ export const GET = createSmartRouteHandler({
               SELECT DISTINCT toDate(event_at) AS day, assumeNotNull(user_id) AS entity_id
               FROM analytics_internal.events
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+                AND ${customerEventScope}
                 AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
                 AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
             )
@@ -340,6 +350,7 @@ export const GET = createSmartRouteHandler({
             SELECT assumeNotNull(user_id) AS entity_id, toDate(min(event_at)) AS first_date
             FROM analytics_internal.events
             WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+              AND ${customerEventScope}
               AND event_at < {until:DateTime}
               AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
             GROUP BY entity_id
@@ -350,13 +361,13 @@ export const GET = createSmartRouteHandler({
         chQuery<CountRow>(`
           SELECT project_id AS projectId, count() AS c
           FROM analytics_internal.users FINAL
-          WHERE ${userScope} AND is_anonymous = 0 GROUP BY project_id
+          WHERE ${customerUserScope} AND is_anonymous = 0 GROUP BY project_id
         `, baseParams),
         // Per-project verified users.
         chQuery<CountRow>(`
           SELECT project_id AS projectId, count() AS c
           FROM analytics_internal.users FINAL
-          WHERE ${userScope} AND is_anonymous = 0 AND ${verifiedSubquery} GROUP BY project_id
+          WHERE ${customerUserScope} AND is_anonymous = 0 AND ${verifiedSubquery} GROUP BY project_id
         `, baseParams),
         // Per-project signups, current vs prior window.
         chQuery<{ projectId: string, cur: string | number, prev: string | number }>(`
@@ -364,7 +375,7 @@ export const GET = createSmartRouteHandler({
             countIf(signed_up_at >= {mid:DateTime}) AS cur,
             countIf(signed_up_at < {mid:DateTime}) AS prev
           FROM analytics_internal.users FINAL
-          WHERE ${userScope} AND is_anonymous = 0
+          WHERE ${customerUserScope} AND is_anonymous = 0
             AND signed_up_at >= {priorSince:DateTime} AND signed_up_at < {until:DateTime}
           GROUP BY project_id
         `, twoWindowParams),
@@ -375,6 +386,7 @@ export const GET = createSmartRouteHandler({
             uniqExactIf(assumeNotNull(user_id), event_at < {mid:DateTime}) AS prev
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+            AND ${customerEventScope}
             AND event_at >= {priorSince:DateTime} AND event_at < {until:DateTime}
           GROUP BY project_id
         `, twoWindowParams),
@@ -383,14 +395,15 @@ export const GET = createSmartRouteHandler({
           SELECT project_id AS projectId, toDate(event_at) AS day, uniqExact(assumeNotNull(user_id)) AS c
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
+            AND ${customerEventScope}
             AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
           GROUP BY project_id, day
         `, windowParams),
         // Feature adoption signals (per project) from synced CH tables.
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.teams FINAL WHERE ${userScope} GROUP BY project_id`, baseParams),
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.connected_accounts FINAL WHERE ${userScope} GROUP BY project_id`, baseParams),
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.email_outboxes FINAL WHERE ${userScope} GROUP BY project_id`, baseParams),
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.events WHERE event_type = '$page-view' GROUP BY project_id`, {}),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.teams FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.connected_accounts FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.email_outboxes FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.events WHERE event_type = '$page-view' AND branch_id = {branchId:String} AND ${customerEventScope} GROUP BY project_id`, baseParams),
       ]);
       ch = {
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,
@@ -519,8 +532,7 @@ export const GET = createSmartRouteHandler({
     // ---- KPIs ----
     const mp = ch.mauProjects[0] ?? { mauCur: 0, mauPrev: 0, projCur: 0, projPrev: 0 };
     const uc = ch.userCounts[0] ?? { total: 0, totalPrev: 0, verified: 0, verifiedPrev: 0, anonymous: 0 };
-    const half = Math.max(1, WINDOW_DAYS);
-    const dauAvgCur = Math.round(series.reduce((s, p) => s + p.active_users, 0) / half);
+    const dauAvgCur = Math.round(series.reduce((s, p) => s + p.active_users, 0) / Math.max(1, WINDOW_DAYS));
     const mauCur = num(mp.mauCur);
     const mauPrev = num(mp.mauPrev);
     const stick = (dau: number, mau: number) => mau > 0 ? Number(((dau / mau) * 100).toFixed(1)) : 0;
@@ -531,7 +543,7 @@ export const GET = createSmartRouteHandler({
     // MRR (true recurring, normalized to monthly cents).
     let mrrCents = 0;
     for (const s of pg.subscriptions) {
-      mrrCents += monthlyRecurringCents(s.product, s.priceId, num(s.quantity) || 1);
+      mrrCents += monthlyRecurringCents(s.product, s.priceId, num(s.quantity));
     }
 
     const kpis = {
@@ -551,10 +563,11 @@ export const GET = createSmartRouteHandler({
     };
 
     // ---- Breakdowns ----
-    const usersByCountry: Record<string, number> = {};
+    const usersByCountryMap = new Map<string, number>();
     for (const r of ch.country) {
-      if (r.country_code) usersByCountry[r.country_code.toUpperCase()] = num(r.c);
+      if (r.country_code) usersByCountryMap.set(r.country_code.toUpperCase(), num(r.c));
     }
+    const usersByCountry = Object.fromEntries(usersByCountryMap);
     const nonAnon = num(uc.total);
     const verified = num(uc.verified);
     const breakdowns = {

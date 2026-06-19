@@ -326,7 +326,7 @@ function Dashboard({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <FeatureAdoption features={data.feature_adoption} totalProjects={k.active_projects.value || data.projects.length} />
+        <FeatureAdoption features={data.feature_adoption} totalProjects={data.projects.length} />
         <EmailHealth email={data.breakdowns.email} />
         <UxHealth deadClickRate={data.breakdowns.dead_click_rate} />
       </div>
@@ -586,6 +586,7 @@ function FeatureAdoption({ features, totalProjects }: { features: Array<{ featur
           const meta = FEATURE_META.get(feature.feature);
           const Icon = meta?.icon ?? ChartLineUpIcon;
           const pct = Math.round((feature.projects_using / denominator) * 100);
+          const pctClamped = Math.max(0, Math.min(100, pct));
           return (
             <div key={feature.feature} className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2 text-sm">
@@ -596,7 +597,7 @@ function FeatureAdoption({ features, totalProjects }: { features: Array<{ featur
                 <span className="tabular-nums text-muted-foreground">{formatNumber(feature.projects_using)} <span className="text-xs">({pct}%)</span></span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.06]">
-                <div className="h-full rounded-full bg-foreground/30" style={{ width: `${pct}%` }} />
+                <div className="h-full rounded-full bg-foreground/30" style={{ width: `${pctClamped}%` }} />
               </div>
             </div>
           );
