@@ -1,0 +1,19 @@
+apps/e2e/tests/backend/endpoints/api/v1/users.test.ts
+  s_aee85d0233a355::t_0cb1a979b099d3 1645,1647-1648,1651,1654,2399,2401-2402,2405,2408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "d3d478cbd3e52059f76b09d0049dff4781e59fc1",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
