@@ -1,0 +1,21 @@
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_aee85d0233a355::t_38910b94ab49ac 503-504
+  s_aee85d0233a355::t_f076256d0d4b91 356-358,361
+  s_aee85d0233a355::t_b45a3170db8c4f 402-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "1ec17a7a3be64daf702f4d2f14a9ae679d2a6929",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
