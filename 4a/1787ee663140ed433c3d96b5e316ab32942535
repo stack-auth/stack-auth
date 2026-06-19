@@ -1,0 +1,19 @@
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_fb2a76151d7ea6::t_48b98f429a3818 450-451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "4a1787ee663140ed433c3d96b5e316ab32942535",
+  "prompts": {},
+  "sessions": {
+    "s_fb2a76151d7ea6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd42695c-c842-48ac-bcea-61328560b657",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
