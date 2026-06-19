@@ -1,0 +1,77 @@
+apps/backend/src/server/server.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-23
+apps/backend/src/instrumentation.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1,4
+apps/backend/tsdown.config.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-8,10-12,14,16-29,31,33-37,39-45,47-52,54-63,66-86,88-113
+apps/backend/src/instrument.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-75
+apps/backend/src/hexclave.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 2,22-28
+apps/backend/src/polyfills.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 1
+apps/backend/package.json
+  s_5b8300334f65db::t_896ea8f9e4ec00 8,14,17-18,21,64-66,78,89-91,93,104,122
+pnpm-lock.yaml
+  s_5b8300334f65db::t_896ea8f9e4ec00 127-129,169-171,202-205,207-210,214-216,247-249,819,834,858,895,913,916,1778,1781,1827,2578,3679-3681,3819-3823,6113-6118,6131-6136,6143-6148,6179-6184,6203-6214,6660-6665,6808-6813,8615-8618,8635-8638,8846-8851,8948-8950,9436-9437,9440-9441,9447-9448,9451-9452,9455-9456,9458,9460-9461,9464-9465,9861-9867,12315-12329,12855-12862,12923-12925,13023-13026,13447-13451,14901-14903,17560-17563,17850-17853,18125-18128,20685-20686,20910-20915,23254-23262,23281-23289,23301-23311,23362-23371,23399-23415,23436,23438,23446,23454,23456,23473,23490,23492,23501,23538,23540,23547,23549,23564,23601,23617,23619,23638,23657,23673,23689,23705,23707,23729,23746,23762,23764,23781,23799,23808,23816,23825,23833,23853,23855,23866,23885,23892,23894,23902,23933,23949,23951,24046-24053,24112-24113,24118-24120,24125-24127,24132-24133,24138-24139,24154,24234-24256,24692,24700,27171-27172,27205-27218,27523-27531,27541,27679-27680,28460,28464,28470,28474,28479,28481,28484,28489,28491-28495,28763,28770,28775,28940,28957,29076,29084,29096-29097,29274-29282,32043-32054,33198-33199,33367-33368,33470-33478,34063-34071,35814-35815,36395,36399,36726,38509,39520-39523,40005-40010,40291
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 422,465,914
+apps/backend/instrumentation-client.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 3,5
+apps/backend/src/lib/next-compat/server.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-37
+apps/backend/src/lib/next-compat/fetch.d.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-13
+apps/backend/src/server/app.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-278
+packages/shared/src/utils/esbuild.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 10-24,43,71,115
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 4
+apps/backend/src/index.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-5
+apps/backend/src/lib/next-compat/request-context.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-55
+apps/backend/scripts/generate-route-info.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 4-38,45
+apps/backend/src/lib/next-compat/navigation.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-44
+apps/backend/tsconfig.json
+  s_5b8300334f65db::t_896ea8f9e4ec00 23-31,43
+apps/e2e/tests/backend/endpoints/api/v1/internal/config.test.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 424
+apps/backend/src/server/middleware.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-174
+apps/backend/scripts/generate-private-sign-up-risk-engine.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 7-15
+apps/backend/src/lib/next-compat/headers.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-122
+apps/backend/src/server/next-request-shim.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-2,4-5,8-25
+apps/backend/src/server/registry.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-103
+apps/backend/vitest.config.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 20-23
+apps/backend/src/server/vercel.ts
+  s_5b8300334f65db::t_896ea8f9e4ec00 1-4
+docker/backend/Dockerfile
+  s_5b8300334f65db::t_896ea8f9e4ec00 55,72-79,92
+apps/backend/src/smart-router.tsx
+  s_5b8300334f65db::t_896ea8f9e4ec00 6-41,102,105,123,144,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "b37efa2f8eff5a7ab4197ae4c94ac94ae67fd3a3",
+  "prompts": {},
+  "sessions": {
+    "s_5b8300334f65db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec104795-7ae6-490d-94e9-b60c76de41bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
