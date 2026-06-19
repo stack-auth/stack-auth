@@ -8,9 +8,11 @@ vi.mock("./projects", () => ({
 
 const mockListManagedProjectIds = vi.mocked(projects.listManagedProjectIds);
 
-// Minimal stub satisfying the UsersCrud["Admin"]["Read"] shape required by the functions.
-// The actual user object is only forwarded to listManagedProjectIds, which is mocked.
-const fakeUser = { id: "user-1" } as Parameters<typeof isPlatformAdmin>[0];
+// The actual user object is only forwarded to listManagedProjectIds, which is
+// mocked, so the concrete shape doesn't matter. UsersCrud["Admin"]["Read"] is a
+// large generated type; building a full fixture adds noise without value here.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- see above
+const fakeUser: Parameters<typeof isPlatformAdmin>[0] = { id: "user-1" } as any;
 
 describe("isPlatformAdmin", () => {
   it("returns true when user manages the internal project", async () => {
@@ -38,16 +40,15 @@ describe("ensurePlatformAdmin", () => {
 
   it("throws a 403 StatusError for non-platform-admins", async () => {
     mockListManagedProjectIds.mockResolvedValue(["customer-project"]);
-    await expect(ensurePlatformAdmin(fakeUser)).rejects.toMatchObject({
-      statusCode: 403,
-      message: "You do not have access to platform analytics.",
-    });
+    await expect(ensurePlatformAdmin(fakeUser)).rejects.toMatchInlineSnapshot(
+      `[StatusError: You do not have access to platform analytics.]`
+    );
   });
 
   it("throws a 403 StatusError when user manages no projects at all", async () => {
     mockListManagedProjectIds.mockResolvedValue([]);
-    await expect(ensurePlatformAdmin(fakeUser)).rejects.toMatchObject({
-      statusCode: 403,
-    });
+    await expect(ensurePlatformAdmin(fakeUser)).rejects.toMatchInlineSnapshot(
+      `[StatusError: You do not have access to platform analytics.]`
+    );
   });
 });
