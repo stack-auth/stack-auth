@@ -1,0 +1,24 @@
+apps/backend/src/prisma-client.tsx
+  s_aee85d0233a355::t_0b76ded9af2b92 29-72
+  s_aee85d0233a355::t_a077beba428dba 463,524
+apps/backend/tsconfig.json
+  s_aee85d0233a355::t_bbf2be82c093e4 48-49
+  s_aee85d0233a355::t_3636e2ba85d73a 9
+  s_aee85d0233a355::t_125ab440d0e457 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "b38e025998d3507a5241ff41cfd2be953c034d58",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
