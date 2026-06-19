@@ -16,6 +16,14 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 const WINDOW_DAYS = 30;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const LEADERBOARD_LIMIT = 500;
+// 1-in-N consistent user-level sampling for the new/retained/reactivated activity
+// split, with counts scaled back up by N. The split's window function + all-history
+// scan made it the heaviest query in this route (~1.3 GiB peak at 1M users / 50M
+// events); sampling 1/4 cuts that ~78% for a ~0.4% mean error. The same cityHash
+// bucket is applied to both subqueries so each sampled user's full activity
+// sequence is preserved (retention/reactivation stay unbiased). See
+// scripts/benchmark-platform-analytics.ts.
+const ACTIVITY_SPLIT_SAMPLE = 4;
 const INTERNAL_PROJECT_ID = "internal";
 const AVG_DAYS_PER_MONTH = 365.25 / 12;
 const MRR_SUBSCRIPTION_STATUSES = ["active", "trialing"];
@@ -260,7 +268,7 @@ export const GET = createSmartRouteHandler({
       ] = await Promise.all([
         // Platform daily DAU (active users) over the visible window.
         chQuery<{ day: string, c: string | number }>(`
-          SELECT toDate(event_at) AS day, uniqExact(assumeNotNull(user_id)) AS c
+          SELECT toDate(event_at) AS day, uniqExact(sipHash64(assumeNotNull(user_id))) AS c
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
@@ -289,8 +297,8 @@ export const GET = createSmartRouteHandler({
         // MAU + active projects, current vs prior 30d window (single pass over 60d).
         chQuery<{ mauCur: string | number, mauPrev: string | number, projCur: string | number, projPrev: string | number }>(`
           SELECT
-            uniqExactIf(assumeNotNull(user_id), event_at >= {mid:DateTime}) AS mauCur,
-            uniqExactIf(assumeNotNull(user_id), event_at < {mid:DateTime}) AS mauPrev,
+            uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at >= {mid:DateTime}) AS mauCur,
+            uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at < {mid:DateTime}) AS mauPrev,
             uniqExactIf(project_id, event_at >= {mid:DateTime}) AS projCur,
             uniqExactIf(project_id, event_at < {mid:DateTime}) AS projPrev
           FROM analytics_internal.events
@@ -332,26 +340,28 @@ export const GET = createSmartRouteHandler({
         chQuery<{ day: string, total_count: string, new_count: string, retained_count: string, reactivated_count: string }>(`
           SELECT
             toString(w.day) AS day,
-            count() AS total_count,
-            countIf(f.first_date = w.day) AS new_count,
-            countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
-            countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
+            count() * ${ACTIVITY_SPLIT_SAMPLE} AS total_count,
+            countIf(f.first_date = w.day) * ${ACTIVITY_SPLIT_SAMPLE} AS new_count,
+            countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) * ${ACTIVITY_SPLIT_SAMPLE} AS retained_count,
+            countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) * ${ACTIVITY_SPLIT_SAMPLE} AS reactivated_count
           FROM (
             SELECT day, entity_id, lagInFrame(day, 1) OVER (PARTITION BY entity_id ORDER BY day) AS prev_day
             FROM (
-              SELECT DISTINCT toDate(event_at) AS day, assumeNotNull(user_id) AS entity_id
+              SELECT DISTINCT toDate(event_at) AS day, sipHash64(assumeNotNull(user_id)) AS entity_id
               FROM analytics_internal.events
               WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
                 AND ${customerEventScope}
+                AND cityHash64(assumeNotNull(user_id)) % ${ACTIVITY_SPLIT_SAMPLE} = 0
                 AND event_at >= {since:DateTime} AND event_at < {until:DateTime}
                 AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
             )
           ) AS w
           LEFT JOIN (
-            SELECT assumeNotNull(user_id) AS entity_id, toDate(min(event_at)) AS first_date
+            SELECT sipHash64(assumeNotNull(user_id)) AS entity_id, toDate(min(event_at)) AS first_date
             FROM analytics_internal.events
             WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
               AND ${customerEventScope}
+              AND cityHash64(assumeNotNull(user_id)) % ${ACTIVITY_SPLIT_SAMPLE} = 0
               AND event_at < {until:DateTime}
               AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0
             GROUP BY entity_id
@@ -383,8 +393,8 @@ export const GET = createSmartRouteHandler({
         // Per-project active users, current vs prior window.
         chQuery<{ projectId: string, cur: string | number, prev: string | number }>(`
           SELECT project_id AS projectId,
-            uniqExactIf(assumeNotNull(user_id), event_at >= {mid:DateTime}) AS cur,
-            uniqExactIf(assumeNotNull(user_id), event_at < {mid:DateTime}) AS prev
+            uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at >= {mid:DateTime}) AS cur,
+            uniqExactIf(sipHash64(assumeNotNull(user_id)), event_at < {mid:DateTime}) AS prev
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}
@@ -393,7 +403,7 @@ export const GET = createSmartRouteHandler({
         `, twoWindowParams),
         // Per-project daily active sparkline (visible window).
         chQuery<{ projectId: string, day: string, c: string | number }>(`
-          SELECT project_id AS projectId, toDate(event_at) AS day, uniqExact(assumeNotNull(user_id)) AS c
+          SELECT project_id AS projectId, toDate(event_at) AS day, uniqExact(sipHash64(assumeNotNull(user_id))) AS c
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh' AND user_id IS NOT NULL
             AND ${customerEventScope}

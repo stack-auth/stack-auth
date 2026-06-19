@@ -294,7 +294,8 @@ function Dashboard({
             ? <EmptyChart />
             : <ComposedAnalyticsChart datapoints={composed} showVisitors showPageViews showRevenue height={300} />}
         </ChartCard>
-        <ChartCard title="Growth quality" subtitle="New / retained / reactivated users" gradient="green">
+        {/* Counts here are a sampled estimate (1-in-4 active users, scaled back up) to keep the backend query cheap; expect a ~0.4% margin. */}
+        <ChartCard title="Growth quality" subtitle="New / retained / reactivated users · sampled estimate (~0.4%)" gradient="green">
           {stacked.length === 0
             ? <EmptyChart />
             : <StackedBarChartDisplay datapoints={stacked} height={300} />}
