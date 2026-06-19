@@ -131,7 +131,14 @@
                 "icon": "/images/app-icons/payments.svg",
                 "pages": [
                   "guides/apps/payments/overview",
-                  "guides/apps/payments/guide"
+                  "guides/apps/payments/setup",
+                  "guides/apps/payments/products-and-pricing",
+                  "guides/apps/payments/items-and-entitlements",
+                  "guides/apps/payments/checkout",
+                  "guides/apps/payments/subscriptions",
+                  "guides/apps/payments/billing-and-invoices",
+                  "guides/apps/payments/granting-products",
+                  "guides/apps/payments/customers"
                 ]
               },
               {
@@ -331,6 +338,10 @@
     {
       "source": "/guides/apps/fraud-protection/overview",
       "destination": "/guides/apps/authentication/fraud-protection"
+    },
+    {
+      "source": "/guides/apps/payments/guide",
+      "destination": "/guides/apps/payments/setup"
     }
   ]
 }

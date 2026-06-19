@@ -1,0 +1,85 @@
+---
+title: "Checkout & Purchases"
+description: "Sell a product with a checkout URL and read what a customer owns"
+---
+
+To sell a product, generate a checkout URL and redirect the customer to it. Hexclave runs the hosted checkout, receives the payment confirmation, and grants the product - you never write a webhook handler.
+
+## Selling a product
+
+The `createCheckoutUrl` method is available on both user and team objects.
+
+<Tabs>
+  <Tab title="Client Component">
+    ```typescript title="app/components/purchase-button.tsx"
+    "use client";
+    import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
+
+    export default function PurchaseButton({ productId }: { productId: string }) {
+      const user = useUser({ or: 'redirect' });
+
+      const handlePurchase = async () => {
+        const checkoutUrl = await user.createCheckoutUrl({
+          productId,
+          returnUrl: window.location.href,
+        });
+        window.location.href = checkoutUrl;
+      };
+
+      return <button onClick={handlePurchase}>Purchase</button>;
+    }
+    ```
+  </Tab>
+  <Tab title="Server Component">
+    ```typescript title="app/purchase/page.tsx"
+    import { hexclaveServerApp } from "@/stack/server";
+
+    export default async function PurchasePage() {
+      const user = await hexclaveServerApp.getUser({ or: 'redirect' });
+
+      const checkoutUrl = await user.createCheckoutUrl({
+        productId: "prod_premium_monthly",
+      });
+
+      return <a href={checkoutUrl}>Upgrade to Premium</a>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+For team purchases, call `createCheckoutUrl` on the team object instead:
+
+```typescript
+const team = user.useTeam(teamId);
+const checkoutUrl = await team.createCheckoutUrl({ productId });
+```
+
+<Info>
+  If you're using a non-JS backend (Python, Go, etc.), call the REST API directly: `POST /api/v1/payments/purchases/create-purchase-url` with `customer_type`, `customer_id`, and `product_id`. See the [REST API overview](/api/overview) for details.
+</Info>
+
+## Checking what a customer owns
+
+After a purchase, you'll want to know what the customer has. Check their product list, or check a specific [item balance](./items-and-entitlements).
+
+```typescript
+// Client component (hook - re-renders on changes)
+const products = user.useProducts();
+
+// Server component
+const products = await user.listProducts();
+```
+
+Each product in the list includes:
+
+- `id` - The product ID (or `null` for inline products)
+- `displayName` - The product name
+- `quantity` - How many the customer owns (relevant for stackable products)
+- `subscription` - `null` for one-time products, or an object with `subscriptionId`, `currentPeriodEnd`, `cancelAtPeriodEnd`, and `isCancelable` for subscriptions
+- `switchOptions` - Other products in the same product line the customer could switch to
+
+## Related
+
+- [Items & Entitlements](./items-and-entitlements) - read and consume credits, seats, and quota
+- [Subscriptions](./subscriptions) - manage recurring plans after purchase
+- [Granting Products](./granting-products) - give access without checkout

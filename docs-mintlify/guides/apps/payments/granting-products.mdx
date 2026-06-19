@@ -1,0 +1,57 @@
+---
+title: "Granting Products"
+description: "Give a customer a product without going through checkout"
+---
+
+Sometimes you need to give a customer a product without charging them - free trials, admin grants, promotional offers, support credits. Use `grantProduct` on the server.
+
+## Granting a configured product
+
+```typescript
+// Grant a pre-configured product to a user
+await hexclaveServerApp.grantProduct({
+  userId: "user-id",
+  productId: "prod_premium",
+});
+
+// Grant to a team
+await hexclaveServerApp.grantProduct({
+  teamId: "team-id",
+  productId: "prod_team_plan",
+});
+
+// Grant to a custom customer
+await hexclaveServerApp.grantProduct({
+  customCustomerId: "external-org-123",
+  productId: "prod_enterprise",
+});
+```
+
+If you already have a reference to a **server** user or team object (for example from `hexclaveServerApp.getUser(userId)`), you can also call `user.grantProduct({ productId })` directly. This method is server-only.
+
+## Inline products
+
+You can also grant products with an **inline definition** - no pre-configured product needed. This is useful for one-off grants like bonus credits:
+
+```typescript
+await hexclaveServerApp.grantProduct({
+  userId: "user-id",
+  product: {
+    display_name: "Bonus Credits",
+    customer_type: "user",
+    server_only: true,
+    stackable: false,
+    prices: {
+      manual: { USD: "0" },
+    },
+    included_items: {
+      credits: { quantity: 100 },
+    },
+  },
+});
+```
+
+## Related
+
+- [Items & Entitlements](./items-and-entitlements) - the credits and seats a grant hands out
+- [Customer Types](./customers) - grant to users, teams, or custom customers

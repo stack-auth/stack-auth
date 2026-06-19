@@ -1,0 +1,37 @@
+---
+title: "Products & Pricing"
+description: "Define what you sell - products, prices, product lines, add-ons, and trials"
+---
+
+A **product** is anything a customer can buy: a subscription plan, a one-time purchase, or a credit pack. Configure your products in **Payments -> Products & Items**.
+
+## Defining products
+
+Each product has:
+
+- **Display name** - What the customer sees
+- **Customer type** - Whether this product is for users, teams, or custom customers (see [Customer Types](./customers))
+- **Prices** - One or more prices, each with a currency amount and an optional billing interval (day, week, month, or year). Amounts are **decimal strings** like `"9.99"` or `"1000"` — not cent integers. Payments are processed in **USD**.
+- **Included items** - Items granted when the product is purchased, with configurable quantity, repeat schedule, and expiration behavior (see [Items & Entitlements](./items-and-entitlements))
+
+A few additional options:
+
+- **Free trial** - Give customers a trial period before charging. Can be set on the product or on individual prices.
+- **Add-ons** - Set **isAddOnTo** to require the customer to already own a specific base product before purchasing this one.
+- **Server-only** - Hide the product from client SDK responses. Useful for products that should only be granted programmatically.
+- **Stackable** - Allow multiple purchases of the same product (default is one per customer).
+
+## Product lines
+
+A **product line** groups products that are mutually exclusive. For example, a "Plan" product line might contain Free, Pro, and Enterprise - a customer can only hold one at a time. When they upgrade or downgrade, the old product is replaced.
+
+Assign products to a product line to power plan tiers and enable [subscription switching](./subscriptions). Configure lines in **Payments -> Product Lines**.
+
+<Info>
+  Add-ons are exempt from product-line exclusivity - a customer can own an add-on alongside their base product in the same line.
+</Info>
+
+## Related
+
+- [Items & Entitlements](./items-and-entitlements) - attach credits, seats, and quota to a product
+- [Checkout & Purchases](./checkout) - sell a product once it's defined
