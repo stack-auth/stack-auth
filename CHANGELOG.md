@@ -4,8 +4,9 @@
 
 ## 6/19/26
 
+![Clickmaps analytics](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-clickmaps.png)
+- New clickmap heatmaps for route analytics — visualize where users click on any page.
 - Custom OIDC provider support (team plan+) with improved OAuth sign-up errors and Apple OAuth fixes.
-- Route analytics heatmaps and dashboard UI fixes for sidebar animation, bar charts, and devtool tabs.
 - Redesigned hosted components, new Emails tab on the User Detail page, and purchase page loading state.
 - CLI auth no longer requires a publishable key, plus stability fixes for ENOTEMPTY races and RDE source maps.
 - AI-aware config editing and new skill context for Ask Hexclave.
