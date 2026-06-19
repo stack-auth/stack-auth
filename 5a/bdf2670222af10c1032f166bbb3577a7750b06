@@ -1,0 +1,24 @@
+apps/backend/src/server/server.ts
+  s_aee85d0233a355::t_5f9ab34962ec10 2
+apps/backend/src/server/env-expand.ts
+  s_aee85d0233a355::t_d181a7663cc48d 1-2
+  s_aee85d0233a355::t_5f9ab34962ec10 3-36
+apps/backend/src/index.ts
+  s_aee85d0233a355::t_5f9ab34962ec10 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "5abdf2670222af10c1032f166bbb3577a7750b06",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
