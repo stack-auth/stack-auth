@@ -1,4 +1,5 @@
 import "@/polyfills";
+import "./env-expand";
 import "@/instrument";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { app } from "./app";
