@@ -15,7 +15,10 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
-const envInt = (n: string, f: number) => { const v = getEnvVariable(n, ""); return v === "" ? f : Number(v); };
+const envInt = (n: string, f: number) => {
+  const v = getEnvVariable(n, "");
+  return v === "" ? f : Number(v);
+};
 const envBool = (n: string) => ["1", "true"].includes(getEnvVariable(n, ""));
 const NUM_PROJECTS = envInt("PA_PROJECTS", 10_000), NUM_USERS = envInt("PA_USERS", 1_000_000), NUM_EVENTS = envInt("PA_EVENTS", 50_000_000);
 const ZIPF_K = 4, BRANCH = "main", INTERNAL = "internal";
@@ -24,7 +27,9 @@ const chMetrics = getClickhouseAdminClientForMetrics();
 const log = (...a: unknown[]) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
 
 const ONE_DAY_MS = 86400000, WINDOW_DAYS = 30;
-const now = new Date(); const todayUtc = new Date(now); todayUtc.setUTCHours(0, 0, 0, 0);
+const now = new Date();
+const todayUtc = new Date(now);
+todayUtc.setUTCHours(0, 0, 0, 0);
 const windowStart = new Date(todayUtc.getTime() - (WINDOW_DAYS - 1) * ONE_DAY_MS);
 const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 const chDT = (d: Date) => d.toISOString().slice(0, 19);
@@ -105,7 +110,7 @@ async function run(sql: string, settings?: Record<string, string>): Promise<Run>
     const rows = (await r.json<Record<string, string>>()).map((x) => ({ day: x.day, total_count: Number(x.total_count), new_count: Number(x.new_count), retained_count: Number(x.retained_count), reactivated_count: Number(x.reactivated_count) }));
     await chMetrics.command({ query: "SYSTEM FLUSH LOGS" });
     const s = (await (await chMetrics.query({ query: `SELECT query_duration_ms d, memory_usage m, read_rows rr FROM system.query_log WHERE query_id={q:String} AND type='QueryFinish' ORDER BY event_time DESC LIMIT 1`, query_params: { q: qid }, format: "JSONEachRow" })).json<{ d: string, m: string, rr: string }>())[0];
-    const run = { mem: Number(s?.m ?? 0) / 1048576, ms: Number(s?.d ?? 0), readRows: Number(s?.rr ?? 0), rows };
+    const run = { mem: Number(s.m) / 1048576, ms: Number(s.d), readRows: Number(s.rr), rows };
     if (!best || run.mem < best.mem) best = run;
   }
   return best!;
@@ -120,10 +125,16 @@ function accuracy(truth: Day[], approx: Day[]) {
   for (const m of metrics) {
     const errs: number[] = [];
     for (const a of approx) {
-      const t = tm.get(a.day); if (!t) continue;
+      const t = tm.get(a.day);
+      if (!t) continue;
       const tv = t[m], av = a[m];
-      if (tv === 0) { if (av !== 0) errs.push(100); continue; }
-      const e = Math.abs(av - tv) / tv * 100; errs.push(e); errsAll.push(e);
+      if (tv === 0) {
+        if (av !== 0) errs.push(100);
+        continue;
+      }
+      const e = Math.abs(av - tv) / tv * 100;
+      errs.push(e);
+      errsAll.push(e);
     }
     per[m] = { mean: errs.reduce((s, x) => s + x, 0) / Math.max(1, errs.length), max: Math.max(0, ...errs) };
   }
@@ -131,7 +142,11 @@ function accuracy(truth: Day[], approx: Day[]) {
 }
 
 async function main() {
-  if (!envBool("PA_SKIP_SEED")) await seed(); else log("reusing bench_pa.events");
+  if (!envBool("PA_SKIP_SEED")) {
+    await seed();
+  } else {
+    log("reusing bench_pa.events");
+  }
 
   const cases: Array<{ name: string, kind: "exact" | "approx", sql: string, settings?: Record<string, string> }> = [
     { name: "original (string entity)", kind: "exact", sql: exactSql("assumeNotNull(user_id)") },
@@ -157,7 +172,15 @@ async function main() {
   }
   writeFileSync("/tmp/split-optimize.json", JSON.stringify({ generatedAt: new Date().toISOString(), scale: { NUM_PROJECTS, NUM_USERS, NUM_EVENTS }, cases: out }, null, 2));
   log("wrote /tmp/split-optimize.json");
-  if (!envBool("PA_KEEP")) await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" });
+  if (!envBool("PA_KEEP")) {
+    await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" });
+  }
   process.exit(0);
 }
-main().catch((e) => { console.error("FAILED:", e); process.exit(1); });
+
+try {
+  await main();
+} catch (e) {
+  console.error("FAILED:", e);
+  process.exit(1);
+}

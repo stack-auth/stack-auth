@@ -49,13 +49,16 @@ const OUT = getEnvVariable("PA_OUT", "/tmp/platform-analytics-bench.json");
 const chAdmin = getClickhouseAdminClient();
 const chMetrics = getClickhouseAdminClientForMetrics();
 
-function log(...a: unknown[]) { console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a); }
+function log(...a: unknown[]) {
+  console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
+}
 
 // ---------- window math (mirror the route) ----------
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 30;
 const now = new Date();
-const todayUtc = new Date(now); todayUtc.setUTCHours(0, 0, 0, 0);
+const todayUtc = new Date(now);
+todayUtc.setUTCHours(0, 0, 0, 0);
 const windowStart = new Date(todayUtc.getTime() - (WINDOW_DAYS - 1) * ONE_DAY_MS);
 const priorStart = new Date(todayUtc.getTime() - (2 * WINDOW_DAYS - 1) * ONE_DAY_MS);
 const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
@@ -438,7 +441,7 @@ async function runChQuery(q: ChQ): Promise<ChResult> {
     const queryId = `pa-${q.name}-${randomUUID()}`;
     try {
       const r = await chMetrics.query({ query: q.sql, query_params: q.params, query_id: queryId, format: "JSONEachRow" });
-      const rows = await r.json();
+      await r.json();
       await chMetrics.command({ query: "SYSTEM FLUSH LOGS" });
       const stat = await (await chMetrics.query({
         query: `SELECT query_duration_ms, memory_usage, read_rows, read_bytes, result_rows
@@ -448,9 +451,9 @@ async function runChQuery(q: ChQ): Promise<ChResult> {
       const s = stat[0];
       const res: ChResult = {
         name: q.name, what: q.what,
-        durationMs: Number(s?.query_duration_ms ?? 0), memMiB: Number(s?.memory_usage ?? 0) / 1048576,
-        readRows: Number(s?.read_rows ?? 0), readMiB: Number(s?.read_bytes ?? 0) / 1048576,
-        resultRows: Number(s?.result_rows ?? rows.length),
+        durationMs: Number(s.query_duration_ms), memMiB: Number(s.memory_usage) / 1048576,
+        readRows: Number(s.read_rows), readMiB: Number(s.read_bytes) / 1048576,
+        resultRows: Number(s.result_rows),
       };
       if (!best || res.durationMs < best.durationMs) best = res;
     } catch (e) {
@@ -488,7 +491,7 @@ async function runPgQuery(q: PgQ): Promise<PgResult> {
   return best!;
 }
 function sumChildren(node: Record<string, unknown>, key: string): number {
-  const plans = (node.Plans as Array<Record<string, unknown>>) ?? [];
+  const plans = (node.Plans as Array<Record<string, unknown>> | undefined) ?? [];
   let s = 0;
   for (const c of plans) s += Number(c[key] ?? 0) + sumChildren(c, key);
   return s;
@@ -497,7 +500,7 @@ function topNodes(node: Record<string, unknown>, depth = 0): string {
   const t = String(node["Node Type"] ?? "");
   const rel = node["Relation Name"] ? ` ${node["Relation Name"]}` : "";
   let s = `${"  ".repeat(depth)}${t}${rel} (rows=${node["Actual Rows"]})`;
-  const plans = (node.Plans as Array<Record<string, unknown>>) ?? [];
+  const plans = (node.Plans as Array<Record<string, unknown>> | undefined) ?? [];
   for (const c of plans.slice(0, 3)) s += "\n" + topNodes(c, depth + 1);
   return s;
 }
@@ -515,11 +518,19 @@ async function main() {
 
   log("running ClickHouse queries...");
   const chResults: ChResult[] = [];
-  for (const q of CH_QUERIES) { const r = await runChQuery(q); chResults.push(r); log(`  CH ${q.name}: ${r.error ? "ERR " + r.error : `${r.durationMs}ms, ${r.memMiB.toFixed(0)}MiB, read ${r.readRows.toLocaleString()} rows`}`); }
+  for (const q of CH_QUERIES) {
+    const r = await runChQuery(q);
+    chResults.push(r);
+    log(`  CH ${q.name}: ${r.error ? "ERR " + r.error : `${r.durationMs}ms, ${r.memMiB.toFixed(0)}MiB, read ${r.readRows.toLocaleString()} rows`}`);
+  }
 
   log("running Postgres queries...");
   const pgResults: PgResult[] = [];
-  for (const q of PG_QUERIES) { const r = await runPgQuery(q); pgResults.push(r); log(`  PG ${q.name}: ${r.error ? "ERR " + r.error : `${r.durationMs.toFixed(0)}ms, ${(r.sharedHitMiB + r.sharedReadMiB).toFixed(0)}MiB buffers`}`); }
+  for (const q of PG_QUERIES) {
+    const r = await runPgQuery(q);
+    pgResults.push(r);
+    log(`  PG ${q.name}: ${r.error ? "ERR " + r.error : `${r.durationMs.toFixed(0)}ms, ${(r.sharedHitMiB + r.sharedReadMiB).toFixed(0)}MiB buffers`}`);
+  }
 
   const out = {
     generatedAt: new Date().toISOString(),
@@ -539,4 +550,10 @@ async function main() {
   }
   process.exit(0);
 }
-main().catch((e) => { console.error("BENCH FAILED:", e); process.exit(1); });
+
+try {
+  await main();
+} catch (e) {
+  console.error("BENCH FAILED:", e);
+  process.exit(1);
+}

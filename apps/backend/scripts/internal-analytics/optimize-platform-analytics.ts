@@ -19,7 +19,10 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
-const envInt = (n: string, f: number) => { const v = getEnvVariable(n, ""); return v === "" ? f : Number(v); };
+const envInt = (n: string, f: number) => {
+  const v = getEnvVariable(n, "");
+  return v === "" ? f : Number(v);
+};
 const envBool = (n: string) => ["1", "true"].includes(getEnvVariable(n, ""));
 const NUM_PROJECTS = envInt("PA_PROJECTS", 10_000);
 const NUM_USERS = envInt("PA_USERS", 1_000_000);
@@ -30,7 +33,9 @@ const chMetrics = getClickhouseAdminClientForMetrics();
 const log = (...a: unknown[]) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
 
 const ONE_DAY_MS = 86400000, WINDOW_DAYS = 30;
-const now = new Date(); const todayUtc = new Date(now); todayUtc.setUTCHours(0, 0, 0, 0);
+const now = new Date();
+const todayUtc = new Date(now);
+todayUtc.setUTCHours(0, 0, 0, 0);
 const windowStart = new Date(todayUtc.getTime() - (WINDOW_DAYS - 1) * ONE_DAY_MS);
 const priorStart = new Date(todayUtc.getTime() - (2 * WINDOW_DAYS - 1) * ONE_DAY_MS);
 const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
@@ -103,7 +108,7 @@ async function runCh(sql: string, params: Record<string, unknown>): Promise<Run>
     const rows = await (await chMetrics.query({ query: sql, query_params: params, query_id: qid, format: "JSONEachRow" })).json<Record<string, unknown>>();
     await chMetrics.command({ query: "SYSTEM FLUSH LOGS" });
     const s = (await (await chMetrics.query({ query: `SELECT query_duration_ms d, memory_usage m, read_rows r FROM system.query_log WHERE query_id={q:String} AND type='QueryFinish' ORDER BY event_time DESC LIMIT 1`, query_params: { q: qid }, format: "JSONEachRow" })).json<{ d: string, m: string, r: string }>())[0];
-    const run: Run = { ms: Number(s?.d ?? 0), memMiB: Number(s?.m ?? 0) / 1048576, readRows: Number(s?.r ?? 0), canon: canonRows(rows) };
+    const run: Run = { ms: Number(s.d), memMiB: Number(s.m) / 1048576, readRows: Number(s.r), canon: canonRows(rows) };
     if (!best || run.memMiB < best.memMiB) best = run;
   }
   return best!;
@@ -118,7 +123,9 @@ async function runPg(sql: string, params: unknown[]): Promise<PgRun> {
     const plan = (await globalPrismaClient.$queryRawUnsafe<Array<{ "QUERY PLAN": Array<{ Plan: Record<string, unknown>, "Execution Time": number }> }>>(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${sql}`, ...params))[0]["QUERY PLAN"][0];
     const sumBuf = (node: Record<string, unknown>): number => {
       let s = Number(node["Shared Hit Blocks"] ?? 0) + Number(node["Shared Read Blocks"] ?? 0) + Number(node["Temp Written Blocks"] ?? 0) + Number(node["Temp Read Blocks"] ?? 0);
-      for (const c of (node.Plans as Array<Record<string, unknown>> ?? [])) s += sumBuf(c);
+      for (const c of ((node.Plans as Array<Record<string, unknown>> | undefined) ?? [])) {
+        s += sumBuf(c);
+      }
       return s;
     };
     const run = { ms: Number(plan["Execution Time"]), bufMiB: sumBuf(plan.Plan) * 8192 / 1048576, rows: Number(plan.Plan["Actual Rows"] ?? 0) };
@@ -204,7 +211,11 @@ const PG_CASES: PgCase[] = [
 ];
 
 async function main() {
-  if (!envBool("PA_SKIP_SEED")) await seed(); else log("reusing bench_pa");
+  if (!envBool("PA_SKIP_SEED")) {
+    await seed();
+  } else {
+    log("reusing bench_pa");
+  }
   const report: { ch: unknown[], pg: unknown[] } = { ch: [], pg: [] };
 
   log("=== ClickHouse ===");
@@ -241,7 +252,16 @@ async function main() {
 
   writeFileSync("/tmp/platform-analytics-optimize.json", JSON.stringify({ generatedAt: new Date().toISOString(), scale: { NUM_PROJECTS, NUM_USERS, NUM_EVENTS }, ...report }, null, 2));
   log("wrote /tmp/platform-analytics-optimize.json");
-  if (!envBool("PA_KEEP")) { await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" }); await globalPrismaClient.$executeRawUnsafe("DROP SCHEMA IF EXISTS bench_pa CASCADE"); }
+  if (!envBool("PA_KEEP")) {
+    await chAdmin.command({ query: "DROP DATABASE IF EXISTS bench_pa" });
+    await globalPrismaClient.$executeRawUnsafe("DROP SCHEMA IF EXISTS bench_pa CASCADE");
+  }
   process.exit(0);
 }
-main().catch((e) => { console.error("FAILED:", e); process.exit(1); });
+
+try {
+  await main();
+} catch (e) {
+  console.error("FAILED:", e);
+  process.exit(1);
+}
