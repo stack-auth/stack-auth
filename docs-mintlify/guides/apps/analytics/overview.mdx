@@ -1,18 +1,20 @@
 ---
 title: "Analytics"
 description: "Explore events, session replays, and SQL queries in your project's analytics dataset"
-icon: "/images/app-icons/analytics.svg"
 ---
 
 The Analytics app gives you direct access to your project's analytics dataset in Hexclave. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
 
 ## Overview
 
-Analytics is organized into three areas in the dashboard:
+Analytics is organized into four areas in the dashboard:
 
 - **Tables**: Browse event rows with sorting, search, and incremental loading
 - **Queries**: Run and save reusable ClickHouse SQL queries
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
+- **Clickmaps**: Visualize where users click across your pages
+
+See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session replays and clickmaps.
 
 ## How Analytics Works
 
@@ -46,7 +48,7 @@ To use analytics in your project:
 
 After setup, Stack automatically captures client-side `$page-view` and `$click` events.
 
-If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
+Session replay recording is also on by default once Analytics is enabled. See [Replays & Clickmaps](./replays-and-clickmaps) to tune privacy or opt out.
 
 ## Tables
 
@@ -81,9 +83,9 @@ The **Replays** screen helps you move from "an event happened" to "what the user
 
 Use replays when metrics alone are not enough to explain user behavior.
 
-### Enabling Replay Recording in the SDK
+### Replay recording in the SDK
 
-Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
+Session replay recording is **enabled by default** once Analytics is on and your client app uses a persistent token store. You can tune privacy or opt out via the `analytics.replays` options:
 
 ```ts
 import { HexclaveClientApp } from "@hexclave/js";
@@ -93,6 +95,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
   tokenStore: "cookie", // use "nextjs-cookie" in Next.js
   analytics: {
     replays: {
+      // Enabled by default; set to false to opt out.
       enabled: true,
       // Optional. Defaults to true.
       maskAllInputs: true,
@@ -101,7 +104,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
 });
 ```
 
-`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it. For the full set of privacy controls, playback, and clickmaps, see [Replays & Clickmaps](./replays-and-clickmaps).
 
 ### Disabling Analytics Capture in the SDK
 

@@ -146,7 +146,8 @@
                 "icon": "/images/app-icons/analytics.svg",
                 "pages": [
                   "guides/apps/analytics/overview",
-                  "guides/apps/analytics/queries-and-tables"
+                  "guides/apps/analytics/queries-and-tables",
+                  "guides/apps/analytics/replays-and-clickmaps"
                 ]
               },
               {
