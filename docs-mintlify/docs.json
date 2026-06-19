@@ -126,7 +126,14 @@
                   "guides/apps/emails/templates-and-themes"
                 ]
               },
-              "guides/apps/payments/overview",
+              {
+                "group": "Payments",
+                "icon": "/images/app-icons/payments.svg",
+                "pages": [
+                  "guides/apps/payments/overview",
+                  "guides/apps/payments/guide"
+                ]
+              },
               {
                 "group": "Analytics",
                 "icon": "/images/app-icons/analytics.svg",
