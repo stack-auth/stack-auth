@@ -1,6 +1,6 @@
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase, PiledriverObject } from "../piledriver/index.js";
-import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   declareBulldozerDatabase,
   declareGroupByTable,

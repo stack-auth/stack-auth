@@ -1284,10 +1284,10 @@ describe("Bulldozer", () => {
 
     snapshot = await set(snapshot, "store", "b", 2);
     expect(await rows(snapshot, "compact")).toEqual([
-      { groupKey: null, rowIdentifier: JSON.stringify(["a", "b", 0]), rowSortKey: null, rowData: 3 },
+      { groupKey: null, rowIdentifier: "a", rowSortKey: null, rowData: 3 },
     ]);
 
-    const stableId = JSON.stringify([JSON.stringify(["a", "b", 0]), "c", 0]);
+    const stableId = "a";
     snapshot = await set(snapshot, "store", "c", 3);
     expect(await rows(snapshot, "mat")).toEqual([
       { groupKey: null, rowIdentifier: stableId, rowSortKey: null, rowData: 6 },
@@ -1323,7 +1323,7 @@ describe("Bulldozer", () => {
     snapshot = await set(snapshot, "store", "r4", 4);
 
     expect(await rows(snapshot, "compact", {}, { team: "g" })).toEqual([
-      { groupKey: { team: "g" }, rowIdentifier: JSON.stringify([JSON.stringify([JSON.stringify(["r1", "r2", 0]), "r3", 0]), "r4", 0]), rowSortKey: null, rowData: 10 },
+      { groupKey: { team: "g" }, rowIdentifier: "r1", rowSortKey: null, rowData: 10 },
     ]);
   });
 

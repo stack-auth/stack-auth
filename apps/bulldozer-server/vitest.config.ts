@@ -50,6 +50,12 @@ export default mergeConfig(
     test: {
       testTimeout: 60000,
       hookTimeout: 60000,
+      poolOptions: {
+        threads: {
+          minThreads: 1,
+          maxThreads: 8,
+        },
+      },
       env: loadEnvFiles(backendDir, [".env", ".env.development", ".env.development.local"]),
     },
     envDir: backendDir,

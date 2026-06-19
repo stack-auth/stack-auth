@@ -63,6 +63,23 @@ describe("ConcatTreeList", () => {
     expect(await arrayFrom(list)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it("preserves boundary identifiers when merging adjacent rows", async () => {
+    const list = await ConcatTreeList.concatWithMergedBoundaries([
+      ConcatTreeList.fromEntries<number>([["a", 1], ["b", 2]]),
+      ConcatTreeList.fromEntries<number>([["c", 3], ["d", 4]]),
+    ], {
+      mergeBoundary: (leftLast, rightFirst) => [leftLast + rightFirst],
+    });
+
+    expect(await ConcatTreeList.diff(
+      ConcatTreeList.fromEntries<number>([["a", 1], ["b", 2], ["d", 4]]),
+      list,
+    )).toEqual({
+      missing: [{ id: "b", value: 2 }],
+      added: [{ id: "b", value: 5 }],
+    });
+  });
+
   it("diffs missing and added rows", async () => {
     const sharedPrefix = ConcatTreeList.fromEntries<number>([["a", 1], ["b", 2]]);
     const left = ConcatTreeList.concat<number>([sharedPrefix, ConcatTreeList.fromEntries<number>([["c", 3], ["d", 4]])]);

@@ -125,8 +125,12 @@ export class ConcatTreeList<T extends PiledriverObject> implements AsyncIterable
       if (next) {
         const leftLast = await ConcatTreeList.getEntryFrom<T>(nonEmptyLists[i].root!, nonEmptyLists[i].root!.size - 1);
         const rightFirst = await ConcatTreeList.getEntryFrom<T>(next.root!, 0);
+        const boundaryValues = Array.from(options.mergeBoundary(leftLast[1], rightFirst[1]));
         const boundary = ConcatTreeList.fromEntries<T>(
-          Array.from(options.mergeBoundary(leftLast[1], rightFirst[1]), (value, index): Entry<T> => [JSON.stringify([leftLast[0], rightFirst[0], index]), value]),
+          boundaryValues.map((value, index): Entry<T> => [
+            index === 0 ? leftLast[0] : index === 1 ? rightFirst[0] : JSON.stringify([leftLast[0], rightFirst[0], index]),
+            value,
+          ]),
           options,
         );
         if (boundary.root) children.push(boundary.root);
