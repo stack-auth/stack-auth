@@ -93,6 +93,7 @@
                   "guides/apps/authentication/connected-accounts",
                   "guides/apps/authentication/jwts",
                   "guides/apps/authentication/sign-up-rules",
+                  "guides/apps/authentication/fraud-protection",
                   "guides/apps/authentication/cli-authentication",
                   {
                     "group": "All Auth Providers",
@@ -127,7 +128,6 @@
                   "guides/apps/teams/team-selection"
                 ]
               },
-              "guides/apps/fraud-protection/overview",
               "guides/apps/rbac/overview",
               "guides/apps/api-keys/overview",
               "guides/apps/data-vault/overview",
@@ -305,6 +305,10 @@
     {
       "source": "/guides/going-further/stack-app",
       "destination": "/sdk/objects/hexclave-app"
+    },
+    {
+      "source": "/guides/apps/fraud-protection/overview",
+      "destination": "/guides/apps/authentication/fraud-protection"
     }
   ]
 }
