@@ -119,7 +119,14 @@
               },
               "guides/apps/emails/overview",
               "guides/apps/payments/overview",
-              "guides/apps/analytics/overview",
+              {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/apps/analytics/overview",
+                  "guides/apps/analytics/queries-and-tables"
+                ]
+              },
               {
                 "group": "Teams",
                 "icon": "/images/app-icons/teams.svg",
