@@ -89,7 +89,7 @@ export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemePro
     <Html>
       <Head />
       <Tailwind>
-        <Body className="bg-[#fafbfb] font-sans text-base m-0 p-0" style={{ margin: '0rem', padding: '0rem', overflowX: 'hidden' }}>
+        <Body className="bg-[#fafbfb] font-sans text-base m-0 p-0" style={{ overflowX: 'hidden' }}>
           <div className="py-8 px-4 flex justify-center">
             <Container className="bg-white p-[45px] rounded-lg shadow-sm mx-auto" style={{ width: '100%', maxWidth: '600px' }}>
               <ProjectLogo data={projectLogos} mode="light" />
@@ -121,7 +121,7 @@ export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemePro
     <Html>
       <Head />
       <Tailwind>
-        <Body className="bg-[#323232] font-sans text-white m-0 p-0" style={{ margin: '0rem', padding: '0rem', overflowX: 'hidden' }}>
+        <Body className="bg-[#323232] font-sans text-white m-0 p-0" style={{ overflowX: 'hidden' }}>
           <div className="py-8 px-4 flex justify-center">
             <Container className="bg-black p-[45px] rounded-lg shadow-sm mx-auto" style={{ width: '100%', maxWidth: '600px' }}>
               <ProjectLogo data={projectLogos} mode="dark" />
@@ -153,7 +153,7 @@ export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemePro
     <Html>
       <Head />
       <Tailwind>
-        <Body className="bg-[#f0eef6] font-sans text-base m-0 p-0" style={{ margin: '0rem', padding: '0rem', overflowX: 'hidden' }}>
+        <Body className="bg-[#f0eef6] font-sans text-base m-0 p-0" style={{ overflowX: 'hidden' }}>
           <div className="py-8 px-4 flex justify-center">
             <Container className="bg-white p-[45px] rounded-2xl mx-auto" style={{ width: '100%', maxWidth: '600px', borderTop: '4px solid #7c5ce0' }}>
               <ProjectLogo data={projectLogos} mode="light" />

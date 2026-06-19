@@ -322,13 +322,20 @@ export async function createOrUpgradeAnonymousUserWithoutRules(
       && KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(cause)
     ) {
       const details = cause.details;
+      let emailForError = primaryEmail;
+      if (details != null && typeof details === "object" && !Array.isArray(details)) {
+        const contactChannelValue = Reflect.get(details, "contact_channel_value");
+        if (typeof contactChannelValue === "string") {
+          emailForError = contactChannelValue;
+        }
+      }
       const wouldWorkIfEmailWasVerified = (
         details != null
         && typeof details === "object"
         && !Array.isArray(details)
         && Object.entries(details).some(([key, value]) => key === "would_work_if_email_was_verified" && value === true)
       );
-      throw new KnownErrors.UserWithEmailAlreadyExists(primaryEmail, wouldWorkIfEmailWasVerified);
+      throw new KnownErrors.UserWithEmailAlreadyExists(emailForError, wouldWorkIfEmailWasVerified);
     }
     throw error;
   }
