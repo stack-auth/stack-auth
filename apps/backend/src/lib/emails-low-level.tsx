@@ -219,9 +219,9 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 }
 
 async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, toArray: string[]) {
-  if (options.emailConfig.host === "localhost") {
+  if (isLoopbackSmtpHost(options.emailConfig.host)) {
     try {
-      await sendMailWithHost(options, toArray, "::1");
+      await sendMailWithHost(options, toArray, getPreferredLoopbackSmtpHost(options.emailConfig.host));
       return;
     } catch (error) {
       if (!isGreetingTimeout(error)) {
@@ -235,11 +235,23 @@ async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, 
   } catch (error) {
     // Local development Docker stacks may expose SMTP on only one loopback family. If the
     // configured localhost family never sends a greeting, the other loopback family is equivalent.
-    if (options.emailConfig.host !== "localhost" || !isGreetingTimeout(error)) {
+    if (!isLoopbackSmtpHost(options.emailConfig.host) || !isGreetingTimeout(error)) {
       throw error;
     }
-    await sendMailWithHost(options, toArray, "127.0.0.1");
+    await sendMailWithHost(options, toArray, getFallbackLoopbackSmtpHost(options.emailConfig.host));
   }
+}
+
+function isLoopbackSmtpHost(host: string) {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+function getPreferredLoopbackSmtpHost(configuredHost: string) {
+  return configuredHost === "127.0.0.1" ? "::1" : configuredHost;
+}
+
+function getFallbackLoopbackSmtpHost(configuredHost: string) {
+  return configuredHost === "::1" || configuredHost === "[::1]" ? "127.0.0.1" : "::1";
 }
 
 async function sendMailWithHost(options: LowLevelSendEmailOptions, toArray: string[], host: string) {
