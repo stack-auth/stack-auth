@@ -79,6 +79,7 @@ type PlatformAnalytics = {
     email: { sent: number, delivered: number, bounced: number, error: number, in_progress: number },
     dead_click_rate: number,
   },
+  total_projects: number,
   feature_adoption: Array<{ feature: string, projects_using: number }>,
   projects: ProjectRow[],
 };
@@ -326,7 +327,7 @@ function Dashboard({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <FeatureAdoption features={data.feature_adoption} totalProjects={data.projects.length} />
+        <FeatureAdoption features={data.feature_adoption} totalProjects={data.total_projects} />
         <EmailHealth email={data.breakdowns.email} />
         <UxHealth deadClickRate={data.breakdowns.dead_click_rate} />
       </div>
@@ -439,7 +440,7 @@ function projectStatus(project: ProjectRow, windowDays: number): string {
   return "Flat";
 }
 
-type SortKey = "total_users" | "verified" | "active_users" | "signups" | "signup_growth" | "revenue" | "revenue_growth";
+type SortKey = "total_users" | "verified" | "active_users" | "signups" | "signup_growth" | "revenue";
 
 function ProjectLeaderboard({ projects, windowDays }: { projects: ProjectRow[], windowDays: number }) {
   const [sortKey, setSortKey] = useState<SortKey>("total_users");
@@ -462,9 +463,6 @@ function ProjectLeaderboard({ projects, windowDays }: { projects: ProjectRow[], 
         }
         case "revenue": {
           return p.revenue_cents;
-        }
-        case "revenue_growth": {
-          return growthPct(p.revenue_cents, p.revenue_cents_prev) ?? -Infinity;
         }
         default: {
           return p.total_users;

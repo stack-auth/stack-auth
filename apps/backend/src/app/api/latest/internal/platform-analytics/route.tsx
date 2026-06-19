@@ -160,6 +160,7 @@ export const GET = createSmartRouteHandler({
         }).defined(),
         dead_click_rate: yupNumber().defined(),
       }).defined(),
+      total_projects: yupNumber().integer().defined(),
       feature_adoption: yupArray(yupObject({
         feature: yupString().defined(),
         projects_using: yupNumber().integer().defined(),
@@ -673,6 +674,7 @@ export const GET = createSmartRouteHandler({
         series,
         activity_split,
         breakdowns,
+        total_projects: projectRows.length,
         feature_adoption,
         projects: projects.slice(0, LEADERBOARD_LIMIT),
       },
@@ -706,6 +708,7 @@ function emptyBody(now: Date) {
       email: { sent: 0, delivered: 0, bounced: 0, error: 0, in_progress: 0 },
       dead_click_rate: 0,
     },
+    total_projects: 0,
     feature_adoption: [],
     projects: [],
   };
