@@ -19,6 +19,9 @@ type TableWithListRows = {
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
+const PREFILL_USER_COUNT = 200;
+const PREFILL_ITEM_UPDATES_PER_USER = 4;
+const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 const MONTH_MS = 2_592_000_000;
 const schema = createPaymentsSchema();
 const db = createTestDb();
@@ -31,10 +34,11 @@ const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapsh
   prices: { p1: { USD: "10.00" } },
   includedItems,
 });
-const subscription = (index: number): SubscriptionRow => ({
-  id: `sub-${index}`,
+const customerId = (namespace: string, index: number) => `${namespace}user-${index}`;
+const subscription = (index: number, namespace = ""): SubscriptionRow => ({
+  id: `${namespace}sub-${index}`,
   tenancyId: "t1",
-  customerId: `user-${index}`,
+  customerId: customerId(namespace, index),
   customerType: "user",
   productId: "prod-sub",
   priceId: "p1",
@@ -55,10 +59,10 @@ const subscription = (index: number): SubscriptionRow => ({
   creationSource: "TEST_MODE",
   createdAtMillis: 1_000 + index,
 });
-const oneTimePurchase = (index: number) => ({
-  id: `otp-${index}`,
+const oneTimePurchase = (index: number, namespace = "") => ({
+  id: `${namespace}otp-${index}`,
   tenancyId: "t1",
-  customerId: `user-${index}`,
+  customerId: customerId(namespace, index),
   customerType: "user",
   productId: "prod-otp",
   priceId: "p1",
@@ -72,10 +76,10 @@ const oneTimePurchase = (index: number) => ({
   creationSource: "TEST_MODE",
   createdAtMillis: 2_000 + index,
 });
-const manualItemQuantityChange = (userIndex: number, updateIndex: number) => ({
-  id: `miqc-${userIndex}-${updateIndex}`,
+const manualItemQuantityChange = (userIndex: number, updateIndex: number, namespace = "") => ({
+  id: `${namespace}miqc-${userIndex}-${updateIndex}`,
   tenancyId: "t1",
-  customerId: `user-${userIndex}`,
+  customerId: customerId(namespace, userIndex),
   customerType: "user",
   itemId: updateIndex % 2 === 0 ? "credits" : "coins",
   quantity: updateIndex % 3 === 0 ? -1 : 3,
@@ -84,7 +88,7 @@ const manualItemQuantityChange = (userIndex: number, updateIndex: number) => ({
   createdAtMillis: 10_000 + userIndex * 1_000 + updateIndex,
 });
 const groupKeyExpression = (index: number) => {
-  const groupKey = JSON.stringify({ tenancyId: "t1", customerType: "user", customerId: `user-${index}` }).replaceAll("'", "''");
+  const groupKey = JSON.stringify({ tenancyId: "t1", customerType: "user", customerId: customerId("", index) }).replaceAll("'", "''");
   return { type: "expression" as const, sql: `'${groupKey}'::jsonb` };
 };
 const measure = async <T>(metrics: Metric[], name: string, count: number, operation: () => Promise<T>) => {
@@ -109,18 +113,28 @@ const readRowsForCustomer = async (table: TableWithListRows, customerIndex: numb
 describe.sequential("payments schema performance (postgres bulldozer-server)", () => {
   beforeAll(async () => {
     await db.setup();
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     await db.teardown();
   });
 
-  it("runs the comparable schema workload", { timeout: 120_000 }, async () => {
+  it("runs the comparable schema workload", { timeout: 300_000 }, async () => {
     const metrics: Metric[] = [];
     executionContext = createBulldozerExecutionContext();
 
     await measure(metrics, "initialize schema", 1, async () => {
       for (const table of schema._allTables) await db.runStatements(table.init(executionContext));
+    });
+
+    await measure(metrics, "prefill baseline rows", PREFILL_SOURCE_FACT_COUNT, async () => {
+      for (let i = 0; i < PREFILL_USER_COUNT; i++) {
+        await db.runStatements(schema.subscriptions.setRow(executionContext, `prefill-sub-${i}`, jsonbExpr(subscription(i, "prefill-"))));
+        await db.runStatements(schema.oneTimePurchases.setRow(executionContext, `prefill-otp-${i}`, jsonbExpr(oneTimePurchase(i, "prefill-"))));
+        for (let updateIndex = 0; updateIndex < PREFILL_ITEM_UPDATES_PER_USER; updateIndex++) {
+          await db.runStatements(schema.manualItemQuantityChanges.setRow(executionContext, `prefill-miqc-${i}-${updateIndex}`, jsonbExpr(manualItemQuantityChange(i, updateIndex, "prefill-"))));
+        }
+      }
     });
 
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
@@ -158,7 +172,7 @@ describe.sequential("payments schema performance (postgres bulldozer-server)", (
     });
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
-    const summary = { engine: "bulldozer-server", backend: "postgres", users: USER_COUNT, transactions: transactionRows, metrics };
+    const summary = { engine: "bulldozer-server", backend: "postgres", users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
     writeFileSync("../../bulldozer-payments-schema-perf-server.untracked.json", JSON.stringify(summary, null, 2));
     process.stdout.write(`\n[bulldozer-payments-schema-perf-server] summary=${JSON.stringify(summary)}\n`);
   });

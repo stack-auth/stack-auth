@@ -15,6 +15,9 @@ type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["
 
 const USER_COUNT = 6;
 const ITEM_UPDATES_PER_USER = 10;
+const PREFILL_USER_COUNT = 200;
+const PREFILL_ITEM_UPDATES_PER_USER = 4;
+const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 const MONTH_MS = 2_592_000_000;
 const tempPaths: string[] = [];
 const perfBackend = process.env.BULLDOZER_PAYMENTS_PERF_BACKEND ?? "lmdb-instant";
@@ -26,10 +29,11 @@ const product = (includedItems: ProductSnapshot["includedItems"]): ProductSnapsh
   prices: { p1: { USD: "10.00" } },
   includedItems,
 });
-const subscription = (index: number): SubscriptionRow => ({
-  id: `sub-${index}`,
+const customerId = (namespace: string, index: number) => `${namespace}user-${index}`;
+const subscription = (index: number, namespace = ""): SubscriptionRow => ({
+  id: `${namespace}sub-${index}`,
   tenancyId: "t1",
-  customerId: `user-${index}`,
+  customerId: customerId(namespace, index),
   customerType: "user",
   productId: "prod-sub",
   priceId: "p1",
@@ -50,10 +54,10 @@ const subscription = (index: number): SubscriptionRow => ({
   creationSource: "TEST_MODE",
   createdAtMillis: 1_000 + index,
 });
-const oneTimePurchase = (index: number) => ({
-  id: `otp-${index}`,
+const oneTimePurchase = (index: number, namespace = "") => ({
+  id: `${namespace}otp-${index}`,
   tenancyId: "t1",
-  customerId: `user-${index}`,
+  customerId: customerId(namespace, index),
   customerType: "user",
   productId: "prod-otp",
   priceId: "p1",
@@ -67,10 +71,10 @@ const oneTimePurchase = (index: number) => ({
   creationSource: "TEST_MODE",
   createdAtMillis: 2_000 + index,
 });
-const manualItemQuantityChange = (userIndex: number, updateIndex: number) => ({
-  id: `miqc-${userIndex}-${updateIndex}`,
+const manualItemQuantityChange = (userIndex: number, updateIndex: number, namespace = "") => ({
+  id: `${namespace}miqc-${userIndex}-${updateIndex}`,
   tenancyId: "t1",
-  customerId: `user-${userIndex}`,
+  customerId: customerId(namespace, userIndex),
   customerType: "user",
   itemId: updateIndex % 2 === 0 ? "credits" : "coins",
   quantity: updateIndex % 3 === 0 ? -1 : 3,
@@ -78,7 +82,7 @@ const manualItemQuantityChange = (userIndex: number, updateIndex: number) => ({
   expiresAtMillis: null,
   createdAtMillis: 10_000 + userIndex * 1_000 + updateIndex,
 });
-const customerGroup = (index: number): PiledriverObject => ({ tenancyId: "t1", customerType: "user", customerId: `user-${index}` });
+const customerGroup = (index: number, namespace = ""): PiledriverObject => ({ tenancyId: "t1", customerType: "user", customerId: customerId(namespace, index) });
 const rows = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject) => {
   const result = [];
   for await (const row of snapshot.listRowsInGroup({ tableId, groupKey, range: {} })) result.push(row);
@@ -116,6 +120,20 @@ describe("payments schema performance", () => {
 
     initialized = await measure(metrics, "initialize schema", 1, newPaymentsDb);
     const { db, schema } = initialized;
+
+    await measure(metrics, "prefill baseline rows", PREFILL_SOURCE_FACT_COUNT, async () => {
+      for (let i = 0; i < PREFILL_USER_COUNT; i++) {
+        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `prefill-sub-${i}`, newRowData: subscription(i, "prefill-") as unknown as PiledriverObject }));
+        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `prefill-otp-${i}`, newRowData: oneTimePurchase(i, "prefill-") as unknown as PiledriverObject }));
+        for (let updateIndex = 0; updateIndex < PREFILL_ITEM_UPDATES_PER_USER; updateIndex++) {
+          await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+            tableId: schema.manualItemQuantityChanges,
+            rowIdentifier: `prefill-miqc-${i}-${updateIndex}`,
+            newRowData: manualItemQuantityChange(i, updateIndex, "prefill-"),
+          }));
+        }
+      }
+    });
 
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
       for (let i = 0; i < USER_COUNT; i++) {
@@ -157,7 +175,7 @@ describe("payments schema performance", () => {
     });
 
     expect(transactionRows).toBe(USER_COUNT * (2 + ITEM_UPDATES_PER_USER));
-    const summary = { engine: "bulldozer-js", backend: perfBackend, users: USER_COUNT, transactions: transactionRows, metrics };
+    const summary = { engine: "bulldozer-js", backend: perfBackend, users: USER_COUNT, prefillUsers: PREFILL_USER_COUNT, prefillSourceFacts: PREFILL_SOURCE_FACT_COUNT, transactions: transactionRows, metrics };
     writeFileSync("../../bulldozer-payments-schema-perf-js.untracked.json", JSON.stringify(summary, null, 2));
     process.stdout.write(`\n[bulldozer-payments-schema-perf-js] summary=${JSON.stringify(summary)}\n`);
   });
