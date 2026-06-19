@@ -1,0 +1,23 @@
+apps/backend/src/lib/payments/customer-data.ts
+  s_aee85d0233a355::t_3af4618fe6a3ad 291-294,296-299,363
+  s_aee85d0233a355::t_02f4f5684b928d 8,98-108,128,134-153,243-244,295,300-301,303-306,308,310-320,322-324,360-362,364-365
+  s_aee85d0233a355::t_9c0cb3cea4a7df 13,65-78,154-242,245-290,302,307,309,321,326-359
+apps/backend/src/app/api/latest/teams/crud.tsx
+  s_aee85d0233a355::t_07535eb3a22db1 136-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "33cfa9b55adb8182b62c598627e480c819000ac8",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
