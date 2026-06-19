@@ -1,0 +1,27 @@
+apps/backend/src/lib/next-compat/headers.tsx
+  s_aee85d0233a355::t_614ee45cd8001c 45-46
+  s_aee85d0233a355::t_e46c015882295c 38-42
+packages/shared/src/utils/esbuild.tsx
+  s_aee85d0233a355::t_887f11b800c66d 10,17
+  s_aee85d0233a355::t_0401f94a1e7bcf 18-23
+  s_aee85d0233a355::t_f34dec7c0b76f6 115
+  s_aee85d0233a355::t_ec1216f1aec40b 11-16,24,43,71
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  s_aee85d0233a355::t_c980bbf54510b7 422,465,914
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "6579004765b53ed08723808448f5c87ef99dcddb",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
