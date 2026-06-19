@@ -87,7 +87,10 @@ const plugins = [
 ];
 
 export default defineConfig({
-  entry: [resolve(backendDir, "src/server/server.ts")],
+  entry: [
+    resolve(backendDir, "src/server/server.ts"),
+    resolve(backendDir, "src/server/vercel.ts"),
+  ],
   format: ["esm"],
   outDir: resolve(backendDir, "dist"),
   target: "node22",
