@@ -18,7 +18,7 @@ import { runBulldozerPaymentsInit } from "./payments/bulldozer-payments-init";
 import type { CustomerType } from "./payments/schema/types";
 import { listTransactions } from "./payments/transaction-list-service";
 
-const port = Number(process.env.BULLDOZER_SERVER_PORT ?? `${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}46`);
+const port = Number(process.env.BULLDOZER_SERVER_PORT ?? `${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}47`);
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
