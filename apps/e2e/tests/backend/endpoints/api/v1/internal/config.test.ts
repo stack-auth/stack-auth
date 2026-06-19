@@ -421,7 +421,7 @@ describe("oauth config", () => {
     expect(invalidTypeResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch",
+        "body": "auth.oauth.providers.invalid.type must be one of the following values: google, github, microsoft, spotify, facebook, discord, gitlab, bitbucket, linkedin, apple, x, twitch, custom_oidc",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);

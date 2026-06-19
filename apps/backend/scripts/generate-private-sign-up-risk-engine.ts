@@ -1,9 +1,18 @@
-import { deindent } from "@hexclave/shared/dist/utils/strings";
 import fs from "node:fs";
 import path from "node:path";
 
 const generatedFilePath = path.join("src", "private", "implementation.generated.ts");
 const privateEnginePath = path.join("src", "private", "implementation", "index.ts");
+
+function deindent(strings: TemplateStringsArray, ...values: unknown[]) {
+  const value = strings.reduce((result, string, index) => {
+    return result + string + (index < values.length ? String(values[index]) : "");
+  }, "");
+  const lines = value.split("\n");
+  const nonEmptyLines = lines.filter(line => line.trim() !== "");
+  const indent = Math.min(...nonEmptyLines.map(line => line.match(/^ */)?.[0].length ?? 0));
+  return lines.map(line => line.slice(indent)).join("\n").trim();
+}
 
 function main() {
   const existingContents = fs.existsSync(generatedFilePath)

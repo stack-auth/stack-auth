@@ -17,14 +17,18 @@
     "jsx": "react-jsx",
     "incremental": true,
     "noErrorTruncation": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "next/headers": [
+        "./src/lib/next-compat/headers.tsx"
+      ],
+      "next/navigation": [
+        "./src/lib/next-compat/navigation.tsx"
+      ],
+      "next/server": [
+        "./src/lib/next-compat/server.tsx"
       ]
     },
     "skipLibCheck": true,
@@ -33,13 +37,10 @@
     ]
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     "**/*.?ts",
-    "**/*.?tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "**/*.?tsx"
   ],
   "exclude": [
     "node_modules",

@@ -1,5 +1,5 @@
 import { StackServerApp } from '@hexclave/next';
-import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
+import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
 
 export function getHexclaveServerApp() {
   // Fail fast if the backend self-URL env var is missing — without it the SDK
@@ -19,5 +19,12 @@ export function getHexclaveServerApp() {
     tokenStore: null,
     publishableClientKey: getEnvVariable('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY'),
     secretServerKey: getEnvVariable('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY'),
+    extraRequestHeaders: getNodeEnvironment() === "development" ? {
+      // Backend self-calls should not trip the artificial development delay/rate
+      // limiter. External e2e requests already set this header; mirroring it here
+      // keeps self-calls on the primary URL instead of falling through to the
+      // local hardcoded fallback port when the dev limiter returns a synthetic 429.
+      "x-stack-disable-artificial-development-delay": "yes",
+    } : undefined,
   });
 }
