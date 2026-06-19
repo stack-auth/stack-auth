@@ -1,0 +1,20 @@
+apps/backend/tsdown.config.ts
+  s_aee85d0233a355::t_bd0aeb8635749b 55-65,72,102
+  s_aee85d0233a355::t_dd0559924c0ffc 39-53,94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "3ec5c62c23719840840f0b425414114af874a843",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
