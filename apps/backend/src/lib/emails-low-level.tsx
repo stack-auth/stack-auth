@@ -224,7 +224,7 @@ async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, 
       await sendMailWithHost(options, toArray, getPreferredLoopbackSmtpHost(options.emailConfig.host));
       return;
     } catch (error) {
-      if (!isGreetingTimeout(error)) {
+      if (!isLoopbackFallbackError(error)) {
         throw error;
       }
     }
@@ -235,7 +235,7 @@ async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, 
   } catch (error) {
     // Local development Docker stacks may expose SMTP on only one loopback family. If the
     // configured localhost family never sends a greeting, the other loopback family is equivalent.
-    if (!isLoopbackSmtpHost(options.emailConfig.host) || !isGreetingTimeout(error)) {
+    if (!isLoopbackSmtpHost(options.emailConfig.host) || !isLoopbackFallbackError(error)) {
       throw error;
     }
     await sendMailWithHost(options, toArray, getFallbackLoopbackSmtpHost(options.emailConfig.host));
@@ -288,6 +288,25 @@ function isGreetingTimeout(error: unknown) {
     && error.code === "ETIMEDOUT"
     && "command" in error
     && error.command === "CONN";
+}
+
+function isConnectionRefused(error: unknown) {
+  return error instanceof Error
+    && (
+      ("code" in error && error.code === "ECONNREFUSED")
+      || (
+        "code" in error
+        && error.code === "ESOCKET"
+        && "errno" in error
+        && error.errno === -61
+        && "syscall" in error
+        && error.syscall === "connect"
+      )
+    );
+}
+
+function isLoopbackFallbackError(error: unknown) {
+  return isGreetingTimeout(error) || isConnectionRefused(error);
 }
 
 export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSendEmailOptions): Promise<Result<undefined, {

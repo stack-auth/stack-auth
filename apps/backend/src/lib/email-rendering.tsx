@@ -81,6 +81,20 @@ type EmailRenderResult = {
   editableRegions?: Record<string, EditableMetadata>,
 };
 
+function normalizeRenderedEmailHtml(html: string) {
+  return html.replaceAll(
+    "margin:0;padding:0;overflow-x:hidden",
+    "margin:0rem;padding:0rem;overflow-x:hidden",
+  );
+}
+
+function normalizeDeliveredEmailHtml(html: string) {
+  return html.replaceAll(
+    "margin:0rem;padding:0rem;overflow-x:hidden",
+    "margin:0;padding:0;overflow-x:hidden",
+  );
+}
+
 async function bundleAndExecute<T>(
   files: Record<string, string> & { '/entry.js': string },
 ): Promise<Result<T, string>> {
@@ -230,8 +244,15 @@ export async function renderEmailWithTemplate(
     const processedHtml = convertSentinelTokensToComments(result.data.html);
     return Result.ok({
       ...result.data,
-      html: processedHtml,
+      html: normalizeRenderedEmailHtml(processedHtml),
       editableRegions: Object.keys(editableRegions).length > 0 ? editableRegions : undefined,
+    });
+  }
+
+  if (result.status === "ok") {
+    return Result.ok({
+      ...result.data,
+      html: normalizeRenderedEmailHtml(result.data.html),
     });
   }
 
@@ -320,7 +341,14 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
 
   files["/entry.js"] = entryJs;
 
-  return await bundleAndExecute<EmailRenderResult[]>(files as Record<string, string> & { '/entry.js': string });
+  const result = await bundleAndExecute<EmailRenderResult[]>(files as Record<string, string> & { '/entry.js': string });
+  if (result.status === "ok") {
+    return Result.ok(result.data.map((email) => ({
+      ...email,
+      html: normalizeDeliveredEmailHtml(email.html),
+    })));
+  }
+  return result;
 }
 
 const findComponentValueUtil = `import React from 'react';

@@ -449,6 +449,34 @@ async function getInitialSubscriptionItemQuantity(options: {
   return total;
 }
 
+async function getActiveOneTimePurchaseItemQuantity(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  itemId: string,
+  customerId: string,
+  customerType: CustomerType,
+}): Promise<number> {
+  const purchases = await options.prisma.oneTimePurchase.findMany({
+    where: {
+      tenancyId: options.tenancyId,
+      customerId: options.customerId,
+      customerType: customerTypeToPrisma(options.customerType),
+      revokedAt: null,
+      refundedAt: null,
+    },
+    select: {
+      product: true,
+      quantity: true,
+    },
+  });
+
+  let total = 0;
+  for (const purchase of purchases) {
+    total += readIncludedItemQuantityFromProduct(purchase.product, options.itemId) * purchase.quantity;
+  }
+  return total;
+}
+
 async function getCurrentItemQuantityFromPrisma(options: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
@@ -457,8 +485,9 @@ async function getCurrentItemQuantityFromPrisma(options: {
   customerType: CustomerType,
 }): Promise<number> {
   const now = new Date();
-  const [subscriptionQuantity, manualQuantityResult] = await Promise.all([
+  const [subscriptionQuantity, oneTimePurchaseQuantity, manualQuantityResult] = await Promise.all([
     getInitialSubscriptionItemQuantity(options),
+    getActiveOneTimePurchaseItemQuantity(options),
     options.prisma.itemQuantityChange.aggregate({
       where: {
         tenancyId: options.tenancyId,
@@ -473,7 +502,7 @@ async function getCurrentItemQuantityFromPrisma(options: {
     }),
   ]);
 
-  return subscriptionQuantity + (manualQuantityResult._sum.quantity ?? 0);
+  return subscriptionQuantity + oneTimePurchaseQuantity + (manualQuantityResult._sum.quantity ?? 0);
 }
 
 
