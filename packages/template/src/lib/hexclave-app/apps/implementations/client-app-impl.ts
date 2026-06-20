@@ -1,5 +1,5 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
+import { KnownError, KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
@@ -96,6 +96,38 @@ const nestedCrossDomainAuthQueryParams = {
   codeChallengeMethod: "code_challenge_method",
   afterCallbackRedirectUrl: "after_callback_redirect_url",
 } as const;
+
+function getRedirectHelperInstruction(handlerName: string): string {
+  if (handlerName === "handler") {
+    return "Use a page-specific redirect helper such as app.redirectToSignIn() instead.";
+  }
+  const redirectMethodName = `redirectTo${handlerName.slice(0, 1).toUpperCase()}${handlerName.slice(1)}`;
+  return `Use app.${redirectMethodName}() instead.`;
+}
+
+function createUrlsForPublicAccess(options: {
+  urls: ResolvedHandlerUrls,
+  projectId: string,
+}): Readonly<ResolvedHandlerUrls> {
+  const hostedUrlNames = new Set(
+    Object.entries(options.urls)
+      .filter(([, url]) => isHostedHandlerUrlForProject({ url, projectId: options.projectId }))
+      .map(([handlerName]) => handlerName),
+  );
+
+  return new Proxy(options.urls, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && hostedUrlNames.has(property)) {
+        throw new Error(
+          `app.urls.${property} cannot be used when this app is configured to use hosted components. ` +
+          "`app.urls` is static and does not include the runtime redirect-back, cross-domain auth, or sign-out state required by hosted components. " +
+          getRedirectHelperInstruction(property),
+        );
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
 
 const oauthCallbackResponseQueryParams = ["code", "state", "error", "error_description", "errorCode", "message", "details"] as const;
 
@@ -710,11 +742,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (
       isBrowserLike()
       && (this._isOAuthCallbackUrlHosted() || this._currentUrlLooksLikeNestedCrossDomainOAuthCallback())
-      && this._currentUrlLooksLikeHexclaveOAuthCallback()
+      && (this._currentUrlLooksLikeHexclaveOAuthCallback() || this._currentUrlLooksLikeOAuthCallbackError())
     ) {
       this._trackPendingAuthResolution(async () => {
         if (isBrowserLike()) {
-          await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
+          await this._handleHostedOAuthCallbackDuringStartup();
         }
       });
     }
@@ -731,7 +763,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
-      mountDevTool(this as any);
+      mountDevTool(this as any, resolvedOptions.devTool);
     }
     if (isBrowserLike()) {
       // Independent of the dev tool: the clickmap overlay only ever renders
@@ -818,6 +850,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state")
     ) || (
       currentUrl.searchParams.has("errorCode") && currentUrl.searchParams.has("message")
+    ) || (
+      this._currentUrlLooksLikeOAuthCallbackError()
+    );
+  }
+
+  protected _currentUrlLooksLikeOAuthCallbackError(): boolean {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has("errorCode") && currentUrl.searchParams.has("message")) {
+      return true;
+    }
+    return (
+      (currentUrl.searchParams.has("error") || currentUrl.searchParams.has("error_description"))
+      && !(currentUrl.searchParams.has("code") && currentUrl.searchParams.has("state"))
     );
   }
 
@@ -857,6 +905,26 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       currentUrl.searchParams.delete(param);
     }
     return currentUrl.toString();
+  }
+
+  protected async _redirectToOAuthCallbackError(error: KnownError): Promise<void> {
+    const errorUrl = new URL(this._getUrls().error, window.location.href);
+    errorUrl.searchParams.set("errorCode", error.errorCode);
+    errorUrl.searchParams.set("message", error.message);
+    errorUrl.searchParams.set("details", JSON.stringify(error.details ?? {}));
+    await this._redirectIfTrusted(errorUrl.toString(), { replace: true });
+  }
+
+  protected async _handleHostedOAuthCallbackDuringStartup(): Promise<void> {
+    try {
+      await this.callOAuthCallback({ dontWarnAboutMissingQueryParams: true });
+    } catch (error) {
+      if (KnownError.isKnownError(error)) {
+        await this._redirectToOAuthCallbackError(error);
+        return;
+      }
+      throw error;
+    }
   }
 
   protected async _fetchCurrentRefreshTokenIdIfSignedIn(options?: {
@@ -1734,7 +1802,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           teamId: crud.id,
           email: options.email,
           session,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app._getUrls().teamInvitation, "callbackUrl"),
         });
         await app._teamInvitationsCache.refresh([session, crud.id]);
       },
@@ -1804,7 +1872,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
         await app._interface.sendCurrentUserContactChannelVerificationEmail(
           crud.id,
-          options?.callbackUrl || constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          options?.callbackUrl || constructRedirectUrl(app._getUrls().emailVerification, "callbackUrl"),
           session
         );
       },
@@ -2174,7 +2242,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           {
             provider,
             redirectUrl: app._getOAuthCallbackRedirectUri(),
-            errorRedirectUrl: app.urls.error,
+            errorRedirectUrl: app._getUrls().error,
             providerScope: mergeScopeStrings(scopeString, (app._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
           },
           session,
@@ -2315,7 +2383,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
         return await app._interface.sendVerificationEmail(
           crud.primary_email,
-          options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"),
+          options?.callbackUrl ?? constructRedirectUrl(app._getUrls().emailVerification, "callbackUrl"),
           session
         );
       },
@@ -2798,6 +2866,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   get urls(): Readonly<ResolvedHandlerUrls> {
+    return createUrlsForPublicAccess({
+      urls: this._getUrls(),
+      projectId: this.projectId,
+    });
+  }
+
+  protected _getUrls(): Readonly<ResolvedHandlerUrls> {
     return getUrls(this._urlOptions, { projectId: this.projectId });
   }
 

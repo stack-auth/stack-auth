@@ -33,8 +33,8 @@ export const config: HexclaveConfig = "show-onboarding";
 ```json title="package.json"
 {
   "scripts": {
-    "dev": "stack dev --config-file ./hexclave.config.ts -- npm run dev:without-hexclave",
-    "dev:without-hexclave": "<your-existing-dev-script>"
+    "dev": "stack dev --config-file ./hexclave.config.ts -- npm run dev:inner",
+    "dev:inner": "<your-existing-dev-script>"
   }
 }
 ```

@@ -26,8 +26,22 @@ export const POST = createSmartRouteHandler({
       tsx_source: yupString().defined(),
     }).defined(),
   }),
-  handler: async ({ body }) => {
-    const rewriteResult = await rewriteTemplateSourceWithAI(body.template_tsx_source);
+  handler: async ({ body }, fullReq) => {
+    // Forward the caller's Hexclave/Stack auth headers so the inner AI call
+    // (which is a fresh HTTP request to /ai/query/generate) is authenticated
+    // and resolves to the authenticated model tier rather than falling back
+    // to the unauthenticated one.
+    const authHeadersMap = new Map<string, string>();
+    for (const [key, value] of Object.entries(fullReq.headers)) {
+      if (value == null) continue;
+      const lower = key.toLowerCase();
+      if (lower.startsWith("x-stack-") || lower.startsWith("x-hexclave-")) {
+        authHeadersMap.set(key, value.join(","));
+      }
+    }
+    const authHeaders: Record<string, string> = Object.fromEntries(authHeadersMap);
+
+    const rewriteResult = await rewriteTemplateSourceWithAI(body.template_tsx_source, authHeaders);
     if (rewriteResult.status === "error") {
       throw new KnownErrors.TemplateSourceRewriteError(rewriteResult.error);
     }

@@ -20,6 +20,7 @@ export type ToolName = typeof TOOL_NAMES[number];
 export type ToolContext = {
   auth: SmartRequestAuth | null,
   targetProjectId?: string | null,
+  mcpToolName?: string | null,
 };
 
 export async function getTools(
@@ -31,6 +32,9 @@ export async function getTools(
   for (const toolName of toolNames) {
     switch (toolName) {
       case "docs": {
+        if (context.mcpToolName === "ask_hexclave") {
+          break;
+        }
         const docsTools = await createDocsTools();
         Object.assign(tools, docsTools);
         break;

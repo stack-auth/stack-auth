@@ -219,36 +219,30 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 }
 
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
-  return {
-    // Canonical Hexclave names (preferred by SDKs/examples post-rebrand)...
-    HEXCLAVE_PROJECT_ID: project.projectId,
-    NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
-    VITE_HEXCLAVE_PROJECT_ID: project.projectId,
-    EXPO_PUBLIC_HEXCLAVE_PROJECT_ID: project.projectId,
-    HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    VITE_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    EXPO_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    HEXCLAVE_SECRET_SERVER_KEY: project.secretServerKey,
-    HEXCLAVE_API_URL: project.apiBaseUrl,
-    NEXT_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
-    VITE_HEXCLAVE_API_URL: project.apiBaseUrl,
-    EXPO_PUBLIC_HEXCLAVE_API_URL: project.apiBaseUrl,
-    // ...plus the legacy Stack names so existing/copied setups keep working.
-    STACK_PROJECT_ID: project.projectId,
-    NEXT_PUBLIC_STACK_PROJECT_ID: project.projectId,
-    VITE_STACK_PROJECT_ID: project.projectId,
-    EXPO_PUBLIC_STACK_PROJECT_ID: project.projectId,
-    STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    VITE_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    STACK_SECRET_SERVER_KEY: project.secretServerKey,
-    STACK_API_URL: project.apiBaseUrl,
-    NEXT_PUBLIC_STACK_API_URL: project.apiBaseUrl,
-    VITE_STACK_API_URL: project.apiBaseUrl,
-    EXPO_PUBLIC_STACK_API_URL: project.apiBaseUrl,
+  const brands = ["HEXCLAVE", "STACK"];
+  const publicPrefixes = ["", "NEXT_PUBLIC_", "VITE_", "EXPO_PUBLIC_"];
+
+  const publicValues: Record<string, string> = {
+    PROJECT_ID: project.projectId,
+    PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    API_URL: project.apiBaseUrl,
   };
+  const secretValues: Record<string, string> = {
+    SECRET_SERVER_KEY: project.secretServerKey,
+  };
+
+  const env: Record<string, string> = {};
+  for (const brand of brands) {
+    for (const [name, value] of Object.entries(publicValues)) {
+      for (const prefix of publicPrefixes) {
+        env[`${prefix}${brand}_${name}`] = value;
+      }
+    }
+    for (const [name, value] of Object.entries(secretValues)) {
+      env[`${brand}_${name}`] = value;
+    }
+  }
+  return env;
 }
 
 async function getOrCreateProject(options: {

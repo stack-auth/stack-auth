@@ -141,7 +141,7 @@ vi.mock("./link-existing-onboarding", () => ({
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
-import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();
@@ -168,6 +168,14 @@ describe("ProjectOnboardingWizard", () => {
 
     for (const alphaAppId of alphaAppIds) {
       expect(orderedAppIds()).not.toContain(alphaAppId);
+    }
+  });
+
+  it("does not offer sub-apps during app selection", () => {
+    const subAppIds = (Object.keys(ALL_APPS) as AppId[]).filter((appId) => getParentAppId(appId) != null);
+
+    for (const subAppId of subAppIds) {
+      expect(orderedAppIds()).not.toContain(subAppId);
     }
   });
 
