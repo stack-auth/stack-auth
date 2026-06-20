@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { quoteSqlJsonbLiteral, quoteSqlStringLiteral, sqlExpression } from "@/lib/bulldozer/db/utilities";
+import type { SqlExpression } from "@/lib/bulldozer/db/utilities";
 import { flushPaymentProjectionWrites } from "@/lib/payments/bulldozer-dual-write";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
@@ -39,6 +40,12 @@ type LedgerTransactionRow = {
 
 type QueriedLedgerTransactionRow = LedgerTransactionRow & {
   sourceId: string,
+};
+
+type TransactionGroupKey = {
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
 };
 
 const DEFAULT_LEDGER_TRANSACTION_TYPES: readonly LedgerTransactionType[] = [
@@ -548,6 +555,70 @@ function buildAdjustedByFromRefunds(options: {
   return adjustedByFromRefunds ?? [];
 }
 
+function createTransactionGroupKeySql(options: TransactionGroupKey): SqlExpression<TransactionGroupKey> {
+  return sqlExpression`
+    jsonb_build_object(
+      'tenancyId', ${quoteSqlJsonbLiteral(options.tenancyId)},
+      'customerType', ${quoteSqlJsonbLiteral(options.customerType)},
+      'customerId', ${quoteSqlJsonbLiteral(options.customerId)}
+    )
+  `;
+}
+
+function createGroupedTransactionRowsSql(options: {
+  tenancyId: string,
+  customerType: "user" | "team" | "custom" | undefined,
+  customerId: string | undefined,
+}): string {
+  const executionContext = createBulldozerExecutionContext();
+  if (options.customerType !== undefined && options.customerId !== undefined) {
+    return toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
+      groupKey: createTransactionGroupKeySql({
+        tenancyId: options.tenancyId,
+        customerType: options.customerType,
+        customerId: options.customerId,
+      }),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+  }
+
+  const groupsSql = toQueryableSqlQuery(schema.transactions.listGroups(executionContext, {
+    start: "start",
+    end: "end",
+    startInclusive: true,
+    endInclusive: true,
+  }));
+  const rowsSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
+    groupKey: sqlExpression`"__groups"."groupkey"`,
+    start: "start",
+    end: "end",
+    startInclusive: true,
+    endInclusive: true,
+  }));
+  const groupWhereClauses = [
+    `"__groups"."groupkey"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
+  ];
+  if (options.customerType !== undefined) {
+    groupWhereClauses.push(`"__groups"."groupkey"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+  }
+  if (options.customerId !== undefined) {
+    groupWhereClauses.push(`"__groups"."groupkey"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+  }
+
+  // The transactions table is materialized by tenancy/customer group. Filtering
+  // groups first keeps admin listing requests from scanning every transaction
+  // row produced by other test tenants or projects.
+  return `
+    SELECT "__rows"."rowdata" AS rowdata
+    FROM (${groupsSql}) AS "__groups"
+    CROSS JOIN LATERAL (${rowsSql}) AS "__rows"
+    WHERE ${groupWhereClauses.join("\n      AND ")}
+  `;
+}
+
 /**
  * Builds the source-txn → refunds lookup. New-format refunds are linked by
  * parsing the txnId (`refund:<sourceTxnId>:<uuid>`). Legacy refund rows
@@ -614,24 +685,15 @@ async function getTransactions(options: {
   }
 
   const decodedCursor = options.cursor ? parseCursor(options.cursor) : null;
-  const executionContext = createBulldozerExecutionContext();
-  const baseSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
+  const baseSql = createGroupedTransactionRowsSql({
+    tenancyId: options.tenancyId,
+    customerType: options.customerType,
+    customerId: options.customerId,
+  });
 
   const whereClauses = [
-    `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
     `"__rows"."rowdata"->>'type' IN (${ledgerTypes.map((value) => quoteSqlStringLiteral(value).sql).join(", ")})`,
   ];
-  if (options.customerType) {
-    whereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
-  }
-  if (options.customerId) {
-    whereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
-  }
   if (decodedCursor) {
     whereClauses.push(`(
       (("__rows"."rowdata"->>'createdAtMillis')::bigint < ${decodedCursor.createdAtMillis})
@@ -697,16 +759,9 @@ async function getTransactions(options: {
         AND "__entry"->>'adjustedTransactionId' IN (${adjustedTransactionIdsSql})
     )`;
     const refundWhereClauses = [
-      `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
       `"__rows"."rowdata"->>'type' = 'refund'`,
       `((${refundLikeClauses}) OR ${legacyRefundClause})`,
     ];
-    if (options.customerType) {
-      refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
-    }
-    if (options.customerId) {
-      refundWhereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
-    }
     const refundSql = `
       SELECT "__rows"."rowdata" AS "rowData"
       FROM (${baseSql}) AS "__rows"
