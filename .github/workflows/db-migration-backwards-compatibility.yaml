@@ -51,7 +51,7 @@ jobs:
     name: Back-compat — Current branch migrations with ${{ needs.check-migrations-changed.outputs.base_branch }} branch code
     needs: check-migrations-changed
     if: needs.check-migrations-changed.outputs.migrations_changed == 'true'
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     env:
       NODE_ENV: test
       HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
@@ -252,7 +252,7 @@ jobs:
     name: Forward-compat — Current branch code with ${{ needs.check-migrations-changed.outputs.base_branch }} branch migrations
     needs: [check-migrations-changed, backwards-compatibility]
     if: always() && needs.backwards-compatibility.result == 'failure'
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     env:
       NODE_ENV: test
       HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes

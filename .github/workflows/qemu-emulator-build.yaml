@@ -42,7 +42,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Both arches build on ubicloud's amd64 runner. amd64 uses KVM;
+          # Both arches build on a GitHub-hosted amd64 runner. amd64 uses KVM;
           # arm64 runs under cross-arch TCG (slow, but only cloud-init
           # provisioning has to complete — the boot/verify smoke test below
           # is gated to amd64 because TCG can't boot Next.js in any
@@ -51,9 +51,9 @@ jobs:
           # to guarantee KVM/HVF/TCG + `-cpu max` compatibility on the
           # user's machine.
           - arch: amd64
-            runner: ubicloud-standard-8
+            runner: ubuntu-latest
           - arch: arm64
-            runner: ubicloud-standard-8
+            runner: ubuntu-latest
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -187,7 +187,7 @@ jobs:
   test:
     name: Smoke Test (${{ matrix.arch }})
     needs: build
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false

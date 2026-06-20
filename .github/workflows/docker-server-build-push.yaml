@@ -17,7 +17,7 @@ env:
 jobs:
   build-server:
     name: Docker Build and Push Server
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write

@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     name: E2E Tests (Node ${{ matrix.node-version }}, Freestyle ${{ matrix.freestyle-mode }})
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     env:
       NODE_ENV: test
       HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
