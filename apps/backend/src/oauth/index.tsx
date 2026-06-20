@@ -118,28 +118,39 @@ export async function getProvider(
   // so customCallbackUrl should always be set for these providers.
   if (providerType === "custom_oidc") {
     const issuerUrl = provider.issuerUrl ?? throwErr("Issuer URL is required for custom OIDC providers");
+    const clientId = provider.clientId ?? throwErr("Client ID is required for custom OIDC providers");
+    const clientSecret = provider.clientSecret ?? throwErr("Client secret is required for custom OIDC providers");
     const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-    return await CustomOidcProvider.create({
-      clientId: provider.clientId ?? throwErr("Client ID is required for custom OIDC providers"),
-      clientSecret: provider.clientSecret ?? throwErr("Client secret is required for custom OIDC providers"),
-      redirectUri,
-      issuerUrl,
-      scope: provider.scope,
-    });
+    try {
+      return await CustomOidcProvider.create({ clientId, clientSecret, redirectUri, issuerUrl, scope: provider.scope });
+    } catch (error) {
+      // OIDC discovery (Issuer.discover) throws an opaque "OPError: Not Found" when
+      // the issuer doesn't serve /.well-known/openid-configuration. Wrap it with the
+      // provider id, issuer URL and a fix hint so operators don't have to decode the
+      // raw openid-client error from the logs.
+      throw new HexclaveAssertionError(
+        `Failed to initialize custom OIDC provider "${configId ?? providerType}": could not load its OpenID configuration from issuer "${issuerUrl}" (${error instanceof Error ? error.message : String(error)}). Check that the Issuer URL is correct and serves a valid document at <issuer>/.well-known/openid-configuration. If this provider only supports plain OAuth 2.0 (no OIDC discovery), configure it as an OAuth 2.0 provider instead.`,
+        { cause: error },
+      );
+    }
   }
 
   // Generic OAuth 2.0 (non-OIDC) providers with manually-configured endpoints.
   if (providerType === "custom_oauth") {
+    const clientId = provider.clientId ?? throwErr("Client ID is required for custom OAuth providers");
+    const clientSecret = provider.clientSecret ?? throwErr("Client secret is required for custom OAuth providers");
+    const authorizationEndpoint = provider.authorizationEndpoint ?? throwErr("Authorization endpoint is required for custom OAuth providers");
+    const tokenEndpoint = provider.tokenEndpoint ?? throwErr("Token endpoint is required for custom OAuth providers");
+    const userinfoEndpoint = provider.userinfoEndpoint ?? throwErr("Userinfo endpoint is required for custom OAuth providers");
     const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-    return await CustomOAuthProvider.create({
-      clientId: provider.clientId ?? throwErr("Client ID is required for custom OAuth providers"),
-      clientSecret: provider.clientSecret ?? throwErr("Client secret is required for custom OAuth providers"),
-      redirectUri,
-      authorizationEndpoint: provider.authorizationEndpoint ?? throwErr("Authorization endpoint is required for custom OAuth providers"),
-      tokenEndpoint: provider.tokenEndpoint ?? throwErr("Token endpoint is required for custom OAuth providers"),
-      userinfoEndpoint: provider.userinfoEndpoint ?? throwErr("Userinfo endpoint is required for custom OAuth providers"),
-      scope: provider.scope,
-    });
+    try {
+      return await CustomOAuthProvider.create({ clientId, clientSecret, redirectUri, authorizationEndpoint, tokenEndpoint, userinfoEndpoint, scope: provider.scope });
+    } catch (error) {
+      throw new HexclaveAssertionError(
+        `Failed to initialize custom OAuth 2.0 provider "${configId ?? providerType}": ${error instanceof Error ? error.message : String(error)}. Check that the authorization, token and userinfo endpoints are correct, absolute URLs.`,
+        { cause: error },
+      );
+    }
   }
 
   const redirectUri = getRedirectUri(provider, providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
