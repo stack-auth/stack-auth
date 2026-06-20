@@ -1,5 +1,5 @@
 import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
-import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { createFreePlanSubscriptionRow } from "@/lib/payments/ensure-free-plan";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
@@ -135,7 +135,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     if (freePlanSubscription != null) {
       // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
       // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, freePlanSubscription));
+      scheduleBulldozerWriteSubscription(prisma, freePlanSubscription);
     }
 
     const result = teamPrismaToCrud(db);
