@@ -1,0 +1,21 @@
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_aee85d0233a355::t_5e71a65779f0f5 186-189
+apps/backend/src/app/api/latest/internal/payments/transactions/route.tsx
+  s_aee85d0233a355::t_85d37c48628ee9 4,781
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "3d5e03ea80318693333e3722cecf0e58d944478c",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
