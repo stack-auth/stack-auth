@@ -95,17 +95,18 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
     });
 
+    const totalQuantity = await getItemQuantityForCustomer({
+      prisma,
+      tenancyId: tenancy.id,
+      itemId: req.params.item_id,
+      customerId: req.params.customer_id,
+      customerType: req.params.customer_type,
+    });
+    if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
+      throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
+    }
+
     const change = await retryTransaction(prisma, async (tx) => {
-      const totalQuantity = await getItemQuantityForCustomer({
-        prisma: tx,
-        tenancyId: tenancy.id,
-        itemId: req.params.item_id,
-        customerId: req.params.customer_id,
-        customerType: req.params.customer_type,
-      });
-      if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
-      }
       // dual write - prisma and bulldozer
       const change = await tx.itemQuantityChange.create({
         data: {
@@ -129,5 +130,4 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
-
 
