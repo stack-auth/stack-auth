@@ -36,6 +36,15 @@ FROM base AS builder
 # Skip generate-sdks.ts in preinstall hook (file not available in pruned output)
 ENV HEXCLAVE_SKIP_TEMPLATE_GENERATION=true
 
+# Turborepo remote cache (optional). When TURBO_API/TURBO_TEAM are passed as build
+# args and a TURBO_TOKEN secret is mounted on the build step below, `turbo run`
+# pulls/pushes artifacts from the remote cache to skip unchanged work. Left empty
+# (no token) for local builds, in which case turbo just builds normally.
+ARG TURBO_API=
+ARG TURBO_TEAM=
+ENV TURBO_API=${TURBO_API}
+ENV TURBO_TEAM=${TURBO_TEAM}
+
 # copy over package.json files and install dependencies
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml .
@@ -56,7 +65,10 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build the backend NextJS app
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    --mount=type=secret,id=TURBO_TOKEN \
+    TURBO_TOKEN="$(cat /run/secrets/TURBO_TOKEN 2>/dev/null || true)" \
+    pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
 # Build the self-host seed script
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store cd apps/backend && pnpm build-self-host-migration-script

@@ -66,6 +66,14 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Turborepo remote cache: TURBO_TOKEN as a build secret (kept out of
+          # image layers), API/team as build args. Lets the in-Docker turbo build
+          # reuse artifacts across runs.
+          build-args: |
+            TURBO_API=${{ vars.TURBO_API }}
+            TURBO_TEAM=${{ vars.TURBO_TEAM }}
+          secrets: |
+            TURBO_TOKEN=${{ secrets.TURBO_TOKEN }}
           # GitHub Actions layer cache: reuse unchanged stages across runs so
           # only changed layers rebuild. mode=max also caches intermediate
           # multi-stage layers (pruner/builder), which is where this Dockerfile
