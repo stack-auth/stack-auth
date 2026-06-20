@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlJsonbLiteral, quoteSqlStringLiteral, sqlExpression } from "@/lib/bulldozer/db/utilities";
+import { getStorageEnginePath, quoteSqlJsonbLiteral, quoteSqlStringLiteral, sqlExpression } from "@/lib/bulldozer/db/utilities";
 import type { SqlExpression } from "@/lib/bulldozer/db/utilities";
 import { flushPaymentProjectionWrites } from "@/lib/payments/bulldozer-dual-write";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
@@ -585,37 +585,32 @@ function createGroupedTransactionRowsSql(options: {
     }));
   }
 
-  const groupsSql = toQueryableSqlQuery(schema.transactions.listGroups(executionContext, {
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
-  const rowsSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
-    groupKey: sqlExpression`"__groups"."groupkey"`,
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
+  const groupsRootPathSql = getStorageEnginePath(schema.transactions.tableId, ["groups"]).sql;
   const groupWhereClauses = [
-    `"__groups"."groupkey"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
+    `"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
   ];
   if (options.customerType !== undefined) {
-    groupWhereClauses.push(`"__groups"."groupkey"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+    groupWhereClauses.push(`"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
   }
   if (options.customerId !== undefined) {
-    groupWhereClauses.push(`"__groups"."groupkey"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+    groupWhereClauses.push(`"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
   }
 
   // The transactions table is materialized by tenancy/customer group. Filtering
-  // groups first keeps admin listing requests from scanning every transaction
-  // row produced by other test tenants or projects.
+  // groups first keeps admin listing requests from scanning every transaction row
+  // produced by other test tenants or projects. We spell this out instead of
+  // using listGroups() because listGroups() checks every group for rows before
+  // the caller's tenancy filter can apply.
   return `
-    SELECT "__rows"."rowdata" AS rowdata
-    FROM (${groupsSql}) AS "__groups"
-    CROSS JOIN LATERAL (${rowsSql}) AS "__rows"
-    WHERE ${groupWhereClauses.join("\n      AND ")}
+    SELECT "__rows"."value"->'rowData' AS rowdata
+    FROM "BulldozerStorageEngine" AS "__groups"
+    INNER JOIN "BulldozerStorageEngine" AS "__groupRowsPath"
+      ON "__groupRowsPath"."keyPathParent" = "__groups"."keyPath"
+      AND "__groupRowsPath"."keyPath"[cardinality("__groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
+    INNER JOIN "BulldozerStorageEngine" AS "__rows"
+      ON "__rows"."keyPathParent" = "__groupRowsPath"."keyPath"
+    WHERE "__groups"."keyPathParent" = ${groupsRootPathSql}::jsonb[]
+      AND ${groupWhereClauses.join("\n      AND ")}
   `;
 }
 
