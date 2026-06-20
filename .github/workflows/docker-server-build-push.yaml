@@ -66,3 +66,9 @@ jobs:
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions layer cache: reuse unchanged stages across runs so
+          # only changed layers rebuild. mode=max also caches intermediate
+          # multi-stage layers (pruner/builder), which is where this Dockerfile
+          # spends most of its time (pnpm install + turbo build).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
