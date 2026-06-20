@@ -1,0 +1,35 @@
+apps/backend/src/lib/stripe.tsx
+  s_aee85d0233a355::t_0536118edcf875 2,341,398
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/switch/route.ts
+  s_aee85d0233a355::t_a3f899dc33e21f 2,317,378
+apps/backend/src/lib/payments.tsx
+  s_aee85d0233a355::t_27ffc2b5116723 2,573,595,616
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_aee85d0233a355::t_c0c119cf103dd7 18,180-192,200-206,214-220,232
+apps/backend/src/app/api/latest/payments/purchases/purchase-session/route.tsx
+  s_aee85d0233a355::t_642141fdebc463 3,191
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/[product_id]/route.ts
+  s_aee85d0233a355::t_d20be5cc7ba039 3,150
+apps/backend/src/lib/payments/ensure-free-plan.ts
+  s_aee85d0233a355::t_65723e6a9aed01 3,233
+apps/backend/src/app/api/latest/integrations/stripe/webhooks/route.tsx
+  s_aee85d0233a355::t_d597e9d5cdc0d6 2,233
+apps/backend/src/app/api/latest/internal/payments/transactions/refund/route.tsx
+  s_aee85d0233a355::t_df67af6372f956 5,808,1001
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "6ae96d619832f1d0b586b6661beb92da60d65568",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
