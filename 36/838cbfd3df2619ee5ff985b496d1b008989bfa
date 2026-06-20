@@ -1,0 +1,19 @@
+apps/backend/src/app/api/latest/internal/payments/transactions/route.tsx
+  s_aee85d0233a355::t_b83912ace5669c 3,588,590,593,596,600-603,605-613
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "36838cbfd3df2619ee5ff985b496d1b008989bfa",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
