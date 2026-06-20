@@ -1,0 +1,24 @@
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_aee85d0233a355::t_86a8b15026bc0f 15,18,201-210
+apps/backend/src/app/api/latest/payments/items/[customer_type]/[customer_id]/[item_id]/update-quantity/route.ts
+  s_aee85d0233a355::t_c920ee9ae071a5 124-126
+  s_aee85d0233a355::t_9997c15307fe60 2,127
+apps/backend/src/lib/payments/customer-data.ts
+  s_aee85d0233a355::t_dfc98366443292 128,361-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "30d86859dac8451d5f14a21b87f1b16e9c06e9b7",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
