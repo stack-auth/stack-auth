@@ -401,13 +401,21 @@ describe("send email to all users", () => {
     const messages2 = await mailbox2.waitForMessagesWithSubject("All Users Test");
     expect(messages2.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows both emails as sent
-    const outboxResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
-      method: "GET",
-      accessType: "server",
-    });
-    expect(outboxResponse.status).toBe(200);
-    const allUsersEmails = outboxResponse.body.items.filter((e: any) => e.subject === "All Users Test");
+    // SMTP delivery can become visible just before the worker commits the final
+    // outbox status update, so wait for both sent rows before snapshotting.
+    let allUsersEmails: Array<Record<string, unknown>> = [];
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const outboxResponse = await niceBackendFetch("/api/v1/emails/outbox?status=sent", {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(outboxResponse.status).toBe(200);
+      allUsersEmails = outboxResponse.body.items.filter((e: { subject?: string }) => e.subject === "All Users Test");
+      if (allUsersEmails.length >= 2) {
+        break;
+      }
+      await wait(500);
+    }
     expect(allUsersEmails).toMatchInlineSnapshot(`
       [
         {
@@ -2202,4 +2210,3 @@ describe("email queue deferred retry logic", () => {
     });
   });
 });
-
