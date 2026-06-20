@@ -1,0 +1,19 @@
+apps/backend/src/app/api/latest/teams/crud.tsx
+  s_aee85d0233a355::t_ebdce063441ce6 2,138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "4f7c89f495216cf5b8db5e8958ec6b8df2a6c2c3",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
