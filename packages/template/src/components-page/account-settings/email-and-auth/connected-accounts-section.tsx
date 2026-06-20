@@ -1,4 +1,4 @@
-import { Button, Typography } from "@hexclave/ui";
+import { BrandIcons, Button, Typography } from "@hexclave/ui";
 import { useStackApp } from "../../..";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
@@ -49,8 +49,8 @@ export function ConnectedAccountsSection(props?: {
                 {provider.iconUrl
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <img src={provider.iconUrl} alt="" width={20} height={20} style={{ objectFit: 'contain' }} />
-                  : null}
-                <Typography className='truncate'>{provider.displayName || provider.id}</Typography>
+                  : <BrandIcons.Mapping provider={provider.id} iconSize={20} />}
+                <Typography className='truncate'>{provider.displayName || BrandIcons.toTitle(provider.id)}</Typography>
               </div>
               {isConnected
                 ? <Typography variant='secondary' type='label'>{t("Connected")}</Typography>
