@@ -7,7 +7,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { oauthProviderCrud } from "@hexclave/shared/dist/interface/crud/oauth-providers";
 import { userIdOrMeSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { allProviders, ProviderType } from "@hexclave/shared/dist/utils/oauth";
+import { allProviders, isCustomProviderType, ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 // Helper function to check if a provider type is already used for signing in
@@ -123,8 +123,8 @@ function findProviderConfig(tenancy: Tenancy, providerConfigId: string) {
 function resolveProviderType(tenancy: Tenancy, configOAuthProviderId: string): ProviderType | null {
   const config = findProviderConfig(tenancy, configOAuthProviderId);
   if (config?.type != null) {
-    // Custom OIDC providers don't have a standard ProviderType
-    if (config.type === "custom_oidc") return null;
+    // Custom SSO providers don't have a standard ProviderType
+    if (isCustomProviderType(config.type)) return null;
     return config.type;
   }
   if ((allProviders as readonly string[]).includes(configOAuthProviderId)) {

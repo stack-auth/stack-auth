@@ -7,6 +7,8 @@ export type AuthProject = {
     magicLinkEnabled: boolean,
     oauthProviders: {
       id: string,
+      displayName?: string,
+      iconUrl?: string,
     }[],
   },
 };

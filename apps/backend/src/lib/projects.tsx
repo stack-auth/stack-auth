@@ -7,6 +7,7 @@ import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { isCustomProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideEnvironmentConfigOverride, overrideProjectConfigOverride } from "./config";
@@ -247,11 +248,11 @@ export async function createOrUpdateProjectWithLegacyConfig(
     }));
     if (options.type === "update") {
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
-      const customOidcEntries = typedFromEntries(
+      const customSsoEntries = typedFromEntries(
         Object.entries(tenancy.config.auth.oauth.providers)
-          .filter(([_, p]) => p.type === "custom_oidc")
+          .filter(([_, p]) => isCustomProviderType(p.type))
       );
-      oauthProvidersOverride = { ...customOidcEntries, ...standardEntries };
+      oauthProvidersOverride = { ...customSsoEntries, ...standardEntries };
     } else {
       oauthProvidersOverride = standardEntries;
     }

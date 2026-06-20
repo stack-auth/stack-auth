@@ -1686,6 +1686,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         allowUserApiKeys: crud.config.allow_user_api_keys,
         oauthProviders: crud.config.enabled_oauth_providers.map((p) => ({
           id: p.id,
+          displayName: p.display_name,
+          iconUrl: p.icon_url,
         })),
       }
     };

@@ -177,7 +177,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         handler_path: d.handlerPath
       })),
       oauth_providers: options.config?.oauthProviders
-        ?.filter((p): p is Exclude<typeof p, { type: 'custom_oidc' }> => p.type !== 'custom_oidc')
+        ?.filter((p): p is Exclude<typeof p, { type: 'custom_oidc' | 'custom_oauth' }> => p.type !== 'custom_oidc' && p.type !== 'custom_oauth')
         .map((p) => ({
           id: p.id as any,
           type: p.type,

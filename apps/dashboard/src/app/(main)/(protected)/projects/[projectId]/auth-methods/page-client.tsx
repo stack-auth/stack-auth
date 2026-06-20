@@ -15,6 +15,7 @@ import {
 } from "@hexclave/dashboard-ui-components";
 import { DesignMenu, type DesignMenuActionItem } from "@/components/design-components/menu";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { LogoUpload } from "@/components/logo-upload";
 import {
   AsteriskIcon,
   EnvelopeSimpleIcon,
@@ -37,7 +38,7 @@ import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { allProviders } from "@hexclave/shared/dist/utils/oauth";
+import { allProviders, isCustomProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { typedFromEntries, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { resolvePlanId } from "@hexclave/shared/dist/plans";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -211,49 +212,66 @@ function AddCustomOidcButtonInner({
 
 function AddCustomOidcButtonDisabled({ onClick, isTeamPlanOrAbove }: { onClick: () => void, isTeamPlanOrAbove: boolean }) {
   return (
-    <SimpleTooltip tooltip={!isTeamPlanOrAbove ? "Custom OIDC providers require a Team plan or above." : undefined}>
+    <SimpleTooltip tooltip={!isTeamPlanOrAbove ? "Custom SSO providers require a Team plan or above." : undefined}>
       <DesignButton
         onClick={onClick}
         variant="secondary"
         disabled={!isTeamPlanOrAbove}
       >
         <GlobeIcon size={16} className="mr-1.5" />
-        Add Custom OIDC
+        Add Custom SSO
         {!isTeamPlanOrAbove && <span className="ml-1.5"><DesignBadge label="Team+" color="blue" size="sm" /></span>}
       </DesignButton>
     </SimpleTooltip>
   );
 }
 
-// ─── Custom OIDC types and helpers ────────────────────────────────────────
+// ─── Custom SSO types and helpers ─────────────────────────────────────────
 
-type CustomOidcConfigEntry = {
+type CustomSsoProtocol = "custom_oidc" | "custom_oauth";
+
+const PROTOCOL_LABELS: Record<CustomSsoProtocol, string> = {
+  custom_oidc: "OIDC",
+  custom_oauth: "OAuth 2.0",
+};
+
+type CustomSsoConfigEntry = {
   id: string,
-  type: "custom_oidc",
-  issuerUrl: string,
+  type: CustomSsoProtocol,
   clientId: string,
   clientSecret: string,
   scope?: string,
   displayName?: string,
+  iconUrl?: string,
   customCallbackUrl?: string,
+  // OIDC (type === "custom_oidc")
+  issuerUrl?: string,
+  // OAuth 2.0 (type === "custom_oauth")
+  authorizationEndpoint?: string,
+  tokenEndpoint?: string,
+  userinfoEndpoint?: string,
 };
 
-function getCustomOidcProviders(config: CompleteConfig): CustomOidcConfigEntry[] {
+function getCustomSsoProviders(config: CompleteConfig): CustomSsoConfigEntry[] {
   return typedEntries(config.auth.oauth.providers)
-    .filter(([, p]) => p.type === "custom_oidc")
+    .filter(([, p]) => isCustomProviderType(p.type))
     .map(([id, p]) => ({
       id,
-      type: "custom_oidc" as const,
-      issuerUrl: p.issuerUrl ?? throwErr(`Custom OIDC provider "${id}" is missing issuerUrl`),
-      clientId: p.clientId ?? throwErr(`Custom OIDC provider "${id}" is missing clientId`),
-      clientSecret: p.clientSecret ?? throwErr(`Custom OIDC provider "${id}" is missing clientSecret`),
+      type: p.type as CustomSsoProtocol,
+      clientId: p.clientId ?? throwErr(`Custom SSO provider "${id}" is missing clientId`),
+      clientSecret: p.clientSecret ?? throwErr(`Custom SSO provider "${id}" is missing clientSecret`),
       scope: p.scope,
       displayName: p.displayName,
+      iconUrl: p.iconUrl,
       customCallbackUrl: p.customCallbackUrl,
+      issuerUrl: p.issuerUrl,
+      authorizationEndpoint: p.authorizationEndpoint,
+      tokenEndpoint: p.tokenEndpoint,
+      userinfoEndpoint: p.userinfoEndpoint,
     }));
 }
 
-const customOidcFormSchema = yupObject({
+const customSsoFormSchema = yupObject({
   providerId: yupString().defined().nonEmpty().matches(
     /^[a-z0-9_-]+$/,
     "Provider ID must only contain lowercase letters, numbers, hyphens, and underscores"
@@ -262,39 +280,72 @@ const customOidcFormSchema = yupObject({
     "This ID is reserved for a standard provider. Choose a different name.",
     (v) => !allProviders.includes(v as any),
   ),
+  protocol: yupString().oneOf(["custom_oidc", "custom_oauth"]).defined(),
   displayName: yupString().defined().nonEmpty(),
-  issuerUrl: urlSchema.defined().nonEmpty(),
+  iconUrl: yupString().optional(),
+  // Empty-string defaults for the non-active protocol's fields must become undefined,
+  // otherwise urlSchema's URL test would reject "" even when the field isn't required.
+  issuerUrl: urlSchema.transform((v) => (v === "" ? undefined : v)).when("protocol", {
+    is: "custom_oidc",
+    then: (schema) => schema.defined().nonEmpty(),
+    otherwise: (schema) => schema.optional(),
+  }),
+  authorizationEndpoint: urlSchema.transform((v) => (v === "" ? undefined : v)).when("protocol", {
+    is: "custom_oauth",
+    then: (schema) => schema.defined().nonEmpty(),
+    otherwise: (schema) => schema.optional(),
+  }),
+  tokenEndpoint: urlSchema.transform((v) => (v === "" ? undefined : v)).when("protocol", {
+    is: "custom_oauth",
+    then: (schema) => schema.defined().nonEmpty(),
+    otherwise: (schema) => schema.optional(),
+  }),
+  userinfoEndpoint: urlSchema.transform((v) => (v === "" ? undefined : v)).when("protocol", {
+    is: "custom_oauth",
+    then: (schema) => schema.defined().nonEmpty(),
+    otherwise: (schema) => schema.optional(),
+  }),
   clientId: yupString().defined().nonEmpty(),
   clientSecret: yupString().defined().nonEmpty(),
   scope: yupString().optional(),
 });
 
-type CustomOidcFormValues = {
+type CustomSsoFormValues = {
   providerId: string,
+  protocol: CustomSsoProtocol,
   displayName: string,
-  issuerUrl: string,
+  iconUrl?: string,
+  issuerUrl?: string,
+  authorizationEndpoint?: string,
+  tokenEndpoint?: string,
+  userinfoEndpoint?: string,
   clientId: string,
   clientSecret: string,
   scope?: string,
 };
 
-function CustomOidcProviderDialog({
+function CustomSsoProviderDialog({
   open,
   onClose,
   existing,
 }: {
   open: boolean,
   onClose: () => void,
-  existing?: CustomOidcConfigEntry,
+  existing?: CustomSsoConfigEntry,
 }) {
   const hexclaveAdminApp = useAdminApp();
   const config = hexclaveAdminApp.useProject().useConfig();
   const updateConfig = useUpdateConfig();
 
-  const defaultValues: CustomOidcFormValues = {
+  const defaultValues: CustomSsoFormValues = {
     providerId: existing?.id ?? "",
+    protocol: existing?.type ?? "custom_oidc",
     displayName: existing?.displayName ?? "",
+    iconUrl: existing?.iconUrl ?? "",
     issuerUrl: existing?.issuerUrl ?? "",
+    authorizationEndpoint: existing?.authorizationEndpoint ?? "",
+    tokenEndpoint: existing?.tokenEndpoint ?? "",
+    userinfoEndpoint: existing?.userinfoEndpoint ?? "",
     clientId: existing?.clientId ?? "",
     clientSecret: existing?.clientSecret ?? "",
     scope: existing?.scope ?? "",
@@ -302,14 +353,15 @@ function CustomOidcProviderDialog({
 
   const isEditing = !!existing;
 
-  const onSubmit = async (values: CustomOidcFormValues) => {
+  const onSubmit = async (values: CustomSsoFormValues) => {
     const providerId = isEditing ? existing.id : values.providerId;
     if (!isEditing && providerId in config.auth.oauth.providers) {
       throw new HexclaveAssertionError(`OAuth provider ID "${providerId}" already exists`);
     }
+    const isOidc = values.protocol === "custom_oidc";
     // `as any` — same rationale as adminProviderToConfigProvider
     const configEntry: CompleteConfig['auth']['oauth']['providers'][string] = {
-      type: "custom_oidc" as any,
+      type: values.protocol as any,
       isShared: false,
       clientId: values.clientId,
       clientSecret: values.clientSecret,
@@ -317,9 +369,13 @@ function CustomOidcProviderDialog({
       facebookConfigId: undefined,
       microsoftTenantId: undefined,
       appleBundles: undefined,
-      issuerUrl: values.issuerUrl,
+      issuerUrl: isOidc ? values.issuerUrl : undefined,
+      authorizationEndpoint: isOidc ? undefined : values.authorizationEndpoint,
+      tokenEndpoint: isOidc ? undefined : values.tokenEndpoint,
+      userinfoEndpoint: isOidc ? undefined : values.userinfoEndpoint,
       scope: values.scope || undefined,
       displayName: values.displayName,
+      iconUrl: values.iconUrl || undefined,
       allowSignIn: true,
       allowConnectedAccounts: true,
     };
@@ -332,139 +388,240 @@ function CustomOidcProviderDialog({
     });
   };
 
-  const callbackUrl = isEditing
-    ? resolveProviderCallbackUrl(existing.id, config.auth.oauth.providers[existing.id])
-    : null;
-
   return (
-    <FormDialog<CustomOidcFormValues>
+    <FormDialog<CustomSsoFormValues>
       defaultValues={defaultValues}
-      formSchema={customOidcFormSchema}
+      formSchema={customSsoFormSchema}
       onSubmit={onSubmit}
       open={open}
       onClose={onClose}
-      title={isEditing ? `Edit ${existing.displayName || "Custom OIDC Provider"}` : "Add Custom OIDC Provider"}
+      title={isEditing ? `Edit ${existing.displayName || "Custom SSO Provider"}` : "Add Custom SSO Provider"}
       cancelButton
       okButton={{ label: isEditing ? "Save" : "Add Provider" }}
-      render={(form) => (
-        <div className="flex flex-col gap-4 w-full">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04]">
-              <GlobeIcon size={18} className="text-foreground/70" />
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-foreground">Custom OIDC Provider</span>
-                <DesignBadge label="OIDC" color="blue" size="sm" />
-              </div>
-              <span className="text-[11px] text-muted-foreground">Connect any OIDC-compliant identity provider</span>
-            </div>
-          </div>
+      render={(form) => {
+        const protocol = (form.watch("protocol") ?? "custom_oidc") as CustomSsoProtocol;
+        const watchedProviderId = form.watch("providerId");
+        const iconUrl = form.watch("iconUrl");
+        // The redirect URL is deterministic from the provider ID, so we can show it
+        // before the provider is created — the admin needs it to configure their IdP.
+        const callbackUrl = isEditing
+          ? resolveProviderCallbackUrl(existing.id, config.auth.oauth.providers[existing.id])
+          : (watchedProviderId ? getNewProviderCallbackUrl(watchedProviderId) : null);
 
-          {!isEditing && (
+        return (
+          <div className="flex flex-col gap-4 w-full">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04] overflow-hidden">
+                {iconUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={iconUrl} alt="" className="w-full h-full object-contain" />
+                  : <GlobeIcon size={18} className="text-foreground/70" />}
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-foreground">Custom SSO Provider</span>
+                  <DesignBadge label={PROTOCOL_LABELS[protocol]} color="blue" size="sm" />
+                </div>
+                <span className="text-[11px] text-muted-foreground">Connect any OIDC or OAuth 2.0 identity provider</span>
+              </div>
+            </div>
+
             <FormField
               control={form.control}
-              name="providerId"
+              name="protocol"
               render={({ field }) => (
                 <FormItem className="space-y-1.5">
-                  <FormLabel className="text-xs font-medium text-muted-foreground">Provider ID</FormLabel>
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Protocol</FormLabel>
                   <FormControl>
-                    <DesignInput {...field} value={field.value} placeholder="my-oidc-provider" size="sm" autoComplete="off" />
+                    <DesignSelectorDropdown
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      size="md"
+                      options={[
+                        { value: "custom_oidc", label: "OIDC (OpenID Connect)" },
+                        { value: "custom_oauth", label: "OAuth 2.0" },
+                        { value: "custom_saml", label: "SAML (coming soon)", disabled: true },
+                      ]}
+                    />
                   </FormControl>
                   <FormMessage />
-                  <span className="text-[10px] text-muted-foreground">Unique identifier — lowercase letters, numbers, hyphens, underscores only.</span>
                 </FormItem>
               )}
             />
-          )}
 
-          <FormField
-            control={form.control}
-            name="displayName"
-            render={({ field }) => (
-              <FormItem className="space-y-1.5">
-                <FormLabel className="text-xs font-medium text-muted-foreground">Display Name</FormLabel>
-                <FormControl>
-                  <DesignInput {...field} value={field.value} placeholder="My Identity Provider" size="sm" autoComplete="off" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+            {!isEditing && (
+              <FormField
+                control={form.control}
+                name="providerId"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Provider ID</FormLabel>
+                    <FormControl>
+                      <DesignInput {...field} value={field.value} placeholder="my-sso-provider" size="sm" autoComplete="off" />
+                    </FormControl>
+                    <FormMessage />
+                    <span className="text-[10px] text-muted-foreground">Unique identifier — lowercase letters, numbers, hyphens, underscores only.</span>
+                  </FormItem>
+                )}
+              />
             )}
-          />
 
-          <FormField
-            control={form.control}
-            name="issuerUrl"
-            render={({ field }) => (
-              <FormItem className="space-y-1.5">
-                <FormLabel className="text-xs font-medium text-muted-foreground">Issuer URL</FormLabel>
-                <FormControl>
-                  <DesignInput {...field} value={field.value} placeholder="https://your-idp.example.com" size="sm" autoComplete="off" />
-                </FormControl>
-                <FormMessage />
-                <span className="text-[10px] text-muted-foreground">Must support OIDC discovery (/.well-known/openid-configuration).</span>
-              </FormItem>
+            <FormField
+              control={form.control}
+              name="displayName"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Display Name</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value} placeholder="My Identity Provider" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="iconUrl"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Icon (optional)</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value ?? ""} placeholder="https://example.com/icon.png" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                  <div className="pt-1">
+                    <LogoUpload
+                      label=""
+                      type="logo"
+                      value={field.value || null}
+                      onValueChange={(value) => field.onChange(value ?? "")}
+                      description="Paste an image URL above, or upload a file."
+                    />
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            {protocol === "custom_oidc" ? (
+              <FormField
+                control={form.control}
+                name="issuerUrl"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Issuer URL</FormLabel>
+                    <FormControl>
+                      <DesignInput {...field} value={field.value ?? ""} placeholder="https://your-idp.example.com" size="sm" autoComplete="off" />
+                    </FormControl>
+                    <FormMessage />
+                    <span className="text-[10px] text-muted-foreground">Must support OIDC discovery (/.well-known/openid-configuration).</span>
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="authorizationEndpoint"
+                  render={({ field }) => (
+                    <FormItem className="space-y-1.5">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Authorization Endpoint</FormLabel>
+                      <FormControl>
+                        <DesignInput {...field} value={field.value ?? ""} placeholder="https://your-idp.example.com/oauth/authorize" size="sm" autoComplete="off" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="tokenEndpoint"
+                  render={({ field }) => (
+                    <FormItem className="space-y-1.5">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Token Endpoint</FormLabel>
+                      <FormControl>
+                        <DesignInput {...field} value={field.value ?? ""} placeholder="https://your-idp.example.com/oauth/token" size="sm" autoComplete="off" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="userinfoEndpoint"
+                  render={({ field }) => (
+                    <FormItem className="space-y-1.5">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">Userinfo Endpoint</FormLabel>
+                      <FormControl>
+                        <DesignInput {...field} value={field.value ?? ""} placeholder="https://your-idp.example.com/oauth/userinfo" size="sm" autoComplete="off" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
-          />
 
-          <FormField
-            control={form.control}
-            name="clientId"
-            render={({ field }) => (
-              <FormItem className="space-y-1.5">
-                <FormLabel className="text-xs font-medium text-muted-foreground">Client ID</FormLabel>
-                <FormControl>
-                  <DesignInput {...field} value={field.value} placeholder="Client ID" size="sm" autoComplete="off" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+            <FormField
+              control={form.control}
+              name="clientId"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Client ID</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value} placeholder="Client ID" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="clientSecret"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="scope"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Scopes (optional)</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value ?? ""} placeholder={protocol === "custom_oidc" ? "openid email profile" : "email profile"} size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                  <span className="text-[10px] text-muted-foreground">Space-separated{protocol === "custom_oidc" ? ". Defaults to “openid email profile”." : "."}</span>
+                </FormItem>
+              )}
+            />
+
+            {callbackUrl && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
+                <Typography type="footnote" className="break-all">
+                  <InlineCode>{callbackUrl}</InlineCode>
+                </Typography>
+                <span className="text-[10px] text-muted-foreground">Add this as an allowed redirect/callback URL in your provider.</span>
+              </div>
             )}
-          />
-
-          <FormField
-            control={form.control}
-            name="clientSecret"
-            render={({ field }) => (
-              <FormItem className="space-y-1.5">
-                <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
-                <FormControl>
-                  <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="scope"
-            render={({ field }) => (
-              <FormItem className="space-y-1.5">
-                <FormLabel className="text-xs font-medium text-muted-foreground">Scopes (optional)</FormLabel>
-                <FormControl>
-                  <DesignInput {...field} value={field.value ?? ""} placeholder="openid email profile" size="sm" autoComplete="off" />
-                </FormControl>
-                <FormMessage />
-                <span className="text-[10px] text-muted-foreground">Space-separated. Defaults to &quot;openid email profile&quot;.</span>
-              </FormItem>
-            )}
-          />
-
-          {callbackUrl && (
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
-              <Typography type="footnote" className="break-all">
-                <InlineCode>{callbackUrl}</InlineCode>
-              </Typography>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        );
+      }}
     />
   );
 }
 
-function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigEntry }) {
+function CustomSsoProviderInlineRow({ provider }: { provider: CustomSsoConfigEntry }) {
   const hexclaveAdminApp = useAdminApp();
   const updateConfig = useUpdateConfig();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -500,11 +657,14 @@ function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigE
     <DesignCardTint gradient="default" className="px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04]">
-            <GlobeIcon size={18} className="text-foreground/70" />
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04] overflow-hidden">
+            {provider.iconUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={provider.iconUrl} alt="" className="w-full h-full object-contain" />
+              : <GlobeIcon size={18} className="text-foreground/70" />}
           </div>
           <span className="text-sm font-semibold text-foreground truncate">{provider.displayName || provider.id}</span>
-          <DesignBadge label="Custom OIDC" color="blue" size="sm" />
+          <DesignBadge label={`Custom SSO · ${PROTOCOL_LABELS[provider.type]}`} color="blue" size="sm" />
         </div>
         <DesignMenu
           variant="actions"
@@ -516,7 +676,7 @@ function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigE
         />
       </div>
 
-      <CustomOidcProviderDialog
+      <CustomSsoProviderDialog
         open={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
         existing={provider}
@@ -749,6 +909,8 @@ function ProviderInlineRow({ provider }: { provider: AdminOAuthProviderConfig })
 
 // ─── Live preview content ────────────────────────────────────────────────
 
+type PreviewProvider = { id: string, displayName?: string, iconUrl?: string };
+
 function LivePreviewBody({
   config,
   passwordEnabled,
@@ -760,7 +922,7 @@ function LivePreviewBody({
   passwordEnabled: boolean,
   otpEnabled: boolean,
   passkeyEnabled: boolean,
-  enabledProviders: AdminOAuthProviderConfig[],
+  enabledProviders: PreviewProvider[],
 }) {
   return (
     <div className="self-stretch py-2 min-w-[400px] items-center">
@@ -947,9 +1109,9 @@ export default function PageClient() {
   const [confirmSignUpEnabled, setConfirmSignUpEnabled] = useState(false);
   const [confirmSignUpDisabled, setConfirmSignUpDisabled] = useState(false);
   const [disabledProvidersDialogOpen, setDisabledProvidersDialogOpen] = useState(false);
-  const [customOidcDialogOpen, setCustomOidcDialogOpen] = useState(false);
+  const [customSsoDialogOpen, setCustomSsoDialogOpen] = useState(false);
 
-  const customOidcProviders = useMemo(() => getCustomOidcProviders(config), [config]);
+  const customSsoProviders = useMemo(() => getCustomSsoProviders(config), [config]);
 
   // ===== AUTH METHODS local state =====
   const [localPasswordEnabled, setLocalPasswordEnabled] = useState<boolean | undefined>(undefined);
@@ -1064,6 +1226,13 @@ export default function PageClient() {
     .map(([, provider]) => provider)
     .filter((provider): provider is AdminOAuthProviderConfig => !!provider);
 
+  // Providers shown in the live preview: standard enabled providers plus custom SSO
+  // providers (with their display name and icon), mirroring what the auth page renders.
+  const previewProviders: PreviewProvider[] = [
+    ...enabledProvidersList.map((provider) => ({ id: provider.id })),
+    ...customSsoProviders.map((provider) => ({ id: provider.id, displayName: provider.displayName, iconUrl: provider.iconUrl })),
+  ];
+
   // ===== Toggle helpers =====
   const onPasswordChange = (checked: boolean) => {
     setLocalPasswordEnabled(checked === config.auth.password.allowSignIn ? undefined : checked);
@@ -1116,10 +1285,10 @@ export default function PageClient() {
                 {enabledProvidersList.map(provider => (
                   <ProviderInlineRow key={provider.id} provider={provider} />
                 ))}
-                {customOidcProviders.map(provider => (
-                  <CustomOidcProviderInlineRow key={provider.id} provider={provider} />
+                {customSsoProviders.map(provider => (
+                  <CustomSsoProviderInlineRow key={provider.id} provider={provider} />
                 ))}
-                {enabledProvidersList.length === 0 && customOidcProviders.length === 0 && (
+                {enabledProvidersList.length === 0 && customSsoProviders.length === 0 && (
                   <DesignAlert
                     variant="info"
                     description="No SSO providers enabled. Add one to let users sign in with their existing accounts."
@@ -1134,7 +1303,7 @@ export default function PageClient() {
                   <PlusCircleIcon size={16} className="mr-1.5" />
                   Add SSO providers
                 </DesignButton>
-                <AddCustomOidcButton onClick={() => setCustomOidcDialogOpen(true)} />
+                <AddCustomOidcButton onClick={() => setCustomSsoDialogOpen(true)} />
               </div>
             </DesignCard>
             <DesignCard
@@ -1148,7 +1317,7 @@ export default function PageClient() {
                 passwordEnabled={passwordEnabled}
                 otpEnabled={otpEnabled}
                 passkeyEnabled={passkeyEnabled}
-                enabledProviders={enabledProvidersList}
+                enabledProviders={previewProviders}
               />
             </DesignCard>
           </div>
@@ -1230,9 +1399,9 @@ export default function PageClient() {
           open={disabledProvidersDialogOpen}
           onOpenChange={(x) => setDisabledProvidersDialogOpen(x)}
         />
-        <CustomOidcProviderDialog
-          open={customOidcDialogOpen}
-          onClose={() => setCustomOidcDialogOpen(false)}
+        <CustomSsoProviderDialog
+          open={customSsoDialogOpen}
+          onClose={() => setCustomSsoDialogOpen(false)}
         />
         {emailVerification.dialog}
       </PageLayout>

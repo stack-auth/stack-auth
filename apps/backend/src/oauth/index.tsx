@@ -8,6 +8,7 @@ import { OAuthModel } from "./model";
 import { AppleProvider } from "./providers/apple";
 import { OAuthBaseProvider } from "./providers/base";
 import { BitbucketProvider } from "./providers/bitbucket";
+import { CustomOAuthProvider } from "./providers/custom-oauth";
 import { CustomOidcProvider } from "./providers/custom-oidc";
 import { FacebookProvider } from "./providers/facebook";
 import { GithubProvider } from "./providers/github";
@@ -123,6 +124,20 @@ export async function getProvider(
       clientSecret: provider.clientSecret ?? throwErr("Client secret is required for custom OIDC providers"),
       redirectUri,
       issuerUrl,
+      scope: provider.scope,
+    });
+  }
+
+  // Generic OAuth 2.0 (non-OIDC) providers with manually-configured endpoints.
+  if (providerType === "custom_oauth") {
+    const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+    return await CustomOAuthProvider.create({
+      clientId: provider.clientId ?? throwErr("Client ID is required for custom OAuth providers"),
+      clientSecret: provider.clientSecret ?? throwErr("Client secret is required for custom OAuth providers"),
+      redirectUri,
+      authorizationEndpoint: provider.authorizationEndpoint ?? throwErr("Authorization endpoint is required for custom OAuth providers"),
+      tokenEndpoint: provider.tokenEndpoint ?? throwErr("Token endpoint is required for custom OAuth providers"),
+      userinfoEndpoint: provider.userinfoEndpoint ?? throwErr("Userinfo endpoint is required for custom OAuth providers"),
       scope: provider.scope,
     });
   }

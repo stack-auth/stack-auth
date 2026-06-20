@@ -396,10 +396,15 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
               bundleId: schemaFields.oauthAppleBundleIdSchema,
             }),
           ).optional(),
-          // Custom OIDC provider fields (only used when type is "custom_oidc")
+          // Custom SSO provider fields (only used when type is "custom_oidc" or "custom_oauth")
           issuerUrl: schemaFields.oauthIssuerUrlSchema.optional(),
           scope: schemaFields.oauthScopeSchema.optional(),
-          displayName: yupString().optional(),
+          displayName: schemaFields.oauthProviderDisplayNameSchema.optional(),
+          iconUrl: schemaFields.oauthProviderIconUrlSchema.optional(),
+          // Custom OAuth 2.0 (non-OIDC) endpoints (only used when type is "custom_oauth")
+          authorizationEndpoint: schemaFields.oauthAuthorizationEndpointSchema.optional(),
+          tokenEndpoint: schemaFields.oauthTokenEndpointSchema.optional(),
+          userinfoEndpoint: schemaFields.oauthUserinfoEndpointSchema.optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),

@@ -8,6 +8,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { isCustomProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
@@ -1111,13 +1112,15 @@ import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for develop
 
 // C -> A
 export const renderedOrganizationConfigToProjectCrud = (renderedConfig: CompleteConfig): ProjectsCrud["Admin"]["Read"]['config'] => {
+  // Standard/shared providers exposed via the legacy admin CRUD `oauth_providers`.
+  // Custom SSO providers (custom_oidc / custom_oauth) are managed via config and
+  // are intentionally excluded here, since this list only models first-class providers.
   const oauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
     .map(([oauthProviderId, oauthProvider]) => {
       if (!oauthProvider.type) {
         return undefined;
       }
-      // Custom OIDC providers are managed via config, not the legacy CRUD API
-      if (oauthProvider.type === "custom_oidc") {
+      if (isCustomProviderType(oauthProvider.type)) {
         return undefined;
       }
       if (!oauthProvider.allowSignIn) {
@@ -1133,6 +1136,26 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
         apple_bundle_ids: oauthProvider.appleBundles ? Object.values(oauthProvider.appleBundles).filter(isTruthy).map(b => b.bundleId).filter(isTruthy) : undefined,
       } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
+    })
+    .filter(isTruthy)
+    .sort((a, b) => stringCompare(a.id, b.id));
+
+  // Sign-in-enabled providers exposed to the client (auth pages). Unlike
+  // `oauth_providers`, this DOES include custom SSO providers, keyed by their config
+  // id (which the authorize endpoint looks up directly), with their display name and icon.
+  const enabledOauthProviders = typedEntries(renderedConfig.auth.oauth.providers)
+    .map(([oauthProviderId, oauthProvider]) => {
+      if (!oauthProvider.type || !oauthProvider.allowSignIn) {
+        return undefined;
+      }
+      if (isCustomProviderType(oauthProvider.type)) {
+        return filterUndefined({
+          id: oauthProviderId,
+          display_name: oauthProvider.displayName,
+          icon_url: oauthProvider.iconUrl,
+        } as const);
+      }
+      return { id: oauthProvider.type } as const;
     })
     .filter(isTruthy)
     .sort((a, b) => stringCompare(a.id, b.id));
@@ -1158,7 +1181,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
     passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
 
     oauth_providers: oauthProviders,
-    enabled_oauth_providers: oauthProviders,
+    enabled_oauth_providers: enabledOauthProviders,
 
     domains: typedEntries(renderedConfig.domains.trustedDomains)
       .map(([_, domainConfig]) => domainConfig.baseUrl === undefined ? undefined : ({

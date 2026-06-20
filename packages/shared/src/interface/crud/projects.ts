@@ -29,7 +29,12 @@ const oauthProviderReadSchema = yupObject({
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
 
 const enabledOAuthProviderSchema = yupObject({
-  id: schemaFields.oauthIdSchema.defined(),
+  // For standard providers this is the provider type (e.g. "google"); for custom
+  // SSO providers this is the provider's config id, so it cannot be constrained to
+  // the standard provider list.
+  id: schemaFields.yupString().defined(),
+  display_name: schemaFields.oauthProviderDisplayNameSchema.optional(),
+  icon_url: schemaFields.oauthProviderIconUrlSchema.optional(),
 });
 
 const onboardingConfigChoiceValues = ["create-new", "link-existing"] as const;

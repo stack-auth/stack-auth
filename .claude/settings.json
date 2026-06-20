@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path' | { read file_path; if [[ \"$file_path\" =~ \\.(js|jsx|ts|tsx)$ ]]; then cd \"$(dirname \"$file_path\")\" && pnpm run lint --fix \"$file_path\" || true; fi }"
+            "command": "jq -r '.tool_input.file_path' | { read -r f; case \"$f\" in *.js|*.jsx|*.ts|*.tsx) d=$(dirname \"$f\"); while [ \"$d\" != \"/\" ] && [ ! -f \"$d/package.json\" ]; do d=$(dirname \"$d\"); done; (cd \"$d\" && pnpm exec eslint --fix \"$f\") >/dev/null 2>&1 || true;; esac; }"
           }
         ]
       }

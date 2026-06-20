@@ -14,6 +14,10 @@ export type ProjectConfig = {
 
 export type OAuthProviderConfig = {
   readonly id: string,
+  /** Display name shown on the sign-in button (custom SSO providers only). */
+  readonly displayName?: string,
+  /** Icon URL or data URI shown on the sign-in button (custom SSO providers only). */
+  readonly iconUrl?: string,
 };
 
 /**
@@ -79,6 +83,18 @@ export type AdminOAuthProviderConfig = {
       issuerUrl: string,
       scope?: string,
       displayName?: string,
+      iconUrl?: string,
+    }
+    | {
+      type: 'custom_oauth',
+      clientId: string,
+      clientSecret: string,
+      authorizationEndpoint: string,
+      tokenEndpoint: string,
+      userinfoEndpoint: string,
+      scope?: string,
+      displayName?: string,
+      iconUrl?: string,
     }
   ) & OAuthProviderConfig;
 

@@ -23,7 +23,7 @@ const providerButtonClassNames = new Map<string, string>([
   ["twitch", "bg-[#9146FF] text-white hover:bg-[#772ce8] border border-[#641bdf] shadow-sm"],
 ]);
 
-function getProviderStyle(provider: string): {
+export function getProviderStyle(provider: string): {
   name: string,
   icon: ReactElement | null,
   iconClassName?: string,
@@ -81,11 +81,23 @@ export function OAuthButton(props: {
   provider: string,
   type: AuthType,
   isMock?: boolean,
+  displayName?: string,
+  iconUrl?: string,
 }) {
   const app = useStackApp();
   const inIframe = useInIframe();
   const [lastUsed, setLastUsed] = useState<string | null>(null);
-  const style = getProviderStyle(props.provider);
+  const baseStyle = getProviderStyle(props.provider);
+  // Custom SSO providers aren't in the built-in style map, so fall back to the
+  // admin-provided display name and icon (an external URL or data URI).
+  const style = {
+    name: props.displayName || baseStyle.name,
+    icon: props.iconUrl
+      // eslint-disable-next-line @next/next/no-img-element
+      ? <img src={props.iconUrl} alt="" width={20} height={20} className="object-contain" />
+      : baseStyle.icon,
+    iconClassName: props.iconUrl ? undefined : baseStyle.iconClassName,
+  };
   let iconWrapperClasses = style.iconClassName;
 
   if (["github", "facebook", "discord", "linkedin", "twitch"].includes(props.provider)) {
@@ -149,6 +161,8 @@ export function OAuthButtonGroup(props: {
           provider={provider.id}
           type={props.type}
           isMock={props.mockProject != null}
+          displayName={provider.displayName}
+          iconUrl={provider.iconUrl}
         />
       ))}
     </div>

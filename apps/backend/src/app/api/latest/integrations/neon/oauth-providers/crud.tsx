@@ -5,6 +5,7 @@ import { createCrud } from "@hexclave/shared/dist/crud";
 import * as schemaFields from "@hexclave/shared/dist/schema-fields";
 import { yupObject } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { isCustomProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { createLazyProxy } from "@hexclave/shared/dist/utils/proxies";
 
 const oauthProviderReadSchema = yupObject({
@@ -71,16 +72,16 @@ const oauthProvidersCrud = createCrud({
 
 /**
  * Returns only standard/shared providers for the legacy Neon integration API.
- * Custom OIDC providers are excluded since they don't fit the legacy schema.
+ * Custom SSO providers are excluded since they don't fit the legacy schema.
  */
 function getStandardProviders(config: Tenancy['config']) {
-  return Object.values(config.auth.oauth.providers).filter(p => p.type !== "custom_oidc");
+  return Object.values(config.auth.oauth.providers).filter(p => !isCustomProviderType(p.type));
 }
 
 function oauthProviderConfigToLegacyConfig(provider: Tenancy['config']['auth']['oauth']['providers'][string]) {
   const providerType = provider.type;
-  if (providerType === "custom_oidc") {
-    throwErr("oauthProviderConfigToLegacyConfig must not be called with custom_oidc providers");
+  if (isCustomProviderType(providerType)) {
+    throwErr("oauthProviderConfigToLegacyConfig must not be called with custom SSO providers");
   }
   return {
     id: providerType || throwErr('Provider type is required'),

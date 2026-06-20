@@ -184,5 +184,7 @@
   },
   "editor.formatOnSaveMode": "file",
   "git.ignoreLimitWarning": true,
-  "chatgpt.commentCodeLensEnabled": false
+  "chatgpt.commentCodeLensEnabled": false,
+  "snyk.advanced.organization": "9b081781-54e1-4370-a15e-1af15bc27361",
+  "snyk.advanced.autoSelectOrganization": true
 }
