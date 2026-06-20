@@ -4,7 +4,6 @@
 
 ## 6/19/26
 
-![Clickmaps analytics](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-clickmaps.png)
 - New clickmap heatmaps for route analytics — visualize where users click on any page.
 - Custom OIDC provider support (team plan+) with improved OAuth sign-up errors and Apple OAuth fixes.
 - Redesigned hosted components, new Emails tab on the User Detail page, and purchase page loading state.
