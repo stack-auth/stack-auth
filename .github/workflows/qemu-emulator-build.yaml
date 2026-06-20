@@ -42,17 +42,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Both arches build on a GitHub-hosted amd64 runner. amd64 uses KVM;
-          # arm64 runs under cross-arch TCG (slow, but only cloud-init
-          # provisioning has to complete — the boot/verify smoke test below
-          # is gated to amd64 because TCG can't boot Next.js in any
-          # reasonable time). Snapshots are NOT published — `stack emulator
-          # pull` captures one locally on first run, which is the only way
-          # to guarantee KVM/HVF/TCG + `-cpu max` compatibility on the
-          # user's machine.
+          # Builds the amd64 emulator image on a GitHub-hosted amd64 runner
+          # using KVM. Snapshots are NOT published — `stack emulator pull`
+          # captures one locally on first run, which is the only way to
+          # guarantee KVM/HVF/TCG + `-cpu max` compatibility on the user's
+          # machine.
           - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
             runner: ubuntu-latest
 
     steps:
@@ -76,11 +71,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          # qemu-utils gives us qemu-img; qemu-efi-aarch64 provides the arm64
-          # UEFI firmware. The actual qemu-system-* binaries come from the
-          # source build below — Ubuntu 24.04 ships QEMU 8.2 which predates
-          # the mapped-ram migration capability we rely on.
-          sudo apt-get install -y qemu-utils qemu-efi-aarch64 socat genisoimage zstd \
+          # qemu-utils gives us qemu-img. The actual qemu-system-* binaries
+          # come from the source build below — Ubuntu 24.04 ships QEMU 8.2
+          # which predates the mapped-ram migration capability we rely on.
+          sudo apt-get install -y qemu-utils socat genisoimage zstd \
             ninja-build pkg-config python3-venv \
             libglib2.0-dev libpixman-1-dev libslirp-dev libepoxy-dev libgbm-dev
 
@@ -92,7 +86,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: /opt/qemu
-          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v1
+          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v2
 
       - name: Build QEMU 10.2.2 from source
         if: steps.qemu-cache.outputs.cache-hit != 'true'
@@ -103,7 +97,7 @@ jobs:
           tar -xf /tmp/qemu.tar.xz -C /tmp/qemu-src --strip-components=1
           cd /tmp/qemu-src
           ./configure --prefix=/opt/qemu \
-            --target-list=x86_64-softmmu,aarch64-softmmu \
+            --target-list=x86_64-softmmu \
             --enable-kvm --enable-slirp --enable-tcg \
             --disable-docs --disable-gtk --disable-sdl --disable-vnc \
             --disable-guest-agent --disable-tools
@@ -114,7 +108,6 @@ jobs:
         run: |
           echo "/opt/qemu/bin" >> "$GITHUB_PATH"
           /opt/qemu/bin/qemu-system-x86_64 --version
-          /opt/qemu/bin/qemu-system-aarch64 --version
 
       - name: Enable KVM access
         run: |
@@ -139,9 +132,7 @@ jobs:
         run: node docker/local-emulator/generate-env-development.mjs
 
       # amd64 runs under KVM on the runner so we can boot the newly-built
-      # image to verify it works end-to-end before publishing. arm64 runs
-      # under cross-arch TCG on an amd64 host, which can't reliably boot
-      # Next.js within any sane window — skipped.
+      # image to verify it works end-to-end before publishing.
       - name: Start emulator and verify
         if: matrix.arch == 'amd64'
         env:
@@ -210,7 +201,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: /opt/qemu
-          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v1
+          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v2
 
       - name: Build QEMU 10.2.2 from source
         if: steps.qemu-cache.outputs.cache-hit != 'true'
@@ -221,7 +212,7 @@ jobs:
           tar -xf /tmp/qemu.tar.xz -C /tmp/qemu-src --strip-components=1
           cd /tmp/qemu-src
           ./configure --prefix=/opt/qemu \
-            --target-list=x86_64-softmmu,aarch64-softmmu \
+            --target-list=x86_64-softmmu \
             --enable-kvm --enable-slirp --enable-tcg \
             --disable-docs --disable-gtk --disable-sdl --disable-vnc \
             --disable-guest-agent --disable-tools
@@ -340,7 +331,6 @@ jobs:
           ### Images
           | File | Description |
           |------|-------------|
-          | \`stack-emulator-arm64.qcow2\` | ARM64 disk image |
           | \`stack-emulator-amd64.qcow2\` | AMD64 disk image |
 
           \`emulator pull\` downloads the qcow2 and captures a local fast-start
