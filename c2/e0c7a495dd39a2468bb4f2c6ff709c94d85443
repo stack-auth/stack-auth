@@ -1,0 +1,25 @@
+apps/backend/src/lib/email-rendering.tsx
+  s_aee85d0233a355::t_d55fe985826232 84-90,247,252-255
+  s_aee85d0233a355::t_1a849ce24a86b0 91-97,257,344-351
+apps/backend/src/lib/emails-low-level.tsx
+  s_aee85d0233a355::t_467d7f2f6686cb 227,238,293-294,306-310
+  s_aee85d0233a355::t_e75d89d27724ee 295-305
+apps/backend/src/lib/payments/customer-data.ts
+  s_aee85d0233a355::t_32afdfe2e61562 452-479,488,490,505
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "c2e0c7a495dd39a2468bb4f2c6ff709c94d85443",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
