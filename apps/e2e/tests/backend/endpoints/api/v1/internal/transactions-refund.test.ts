@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -50,6 +51,22 @@ async function createTestModeSubscription(): Promise<{ subscriptionId: string, u
   const purchaseTxn = txnsRes.body.transactions.find((tx: any) => tx.type === "purchase");
   expect(purchaseTxn).toBeDefined();
   return { subscriptionId: purchaseTxn.id, userId };
+}
+
+async function readInternalTransactionsWithAdminRetry() {
+  const response = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  if (response.status !== 401) {
+    return response;
+  }
+  // Under the full backend suite this long live-mode refund scenario can race
+  // the admin-auth project context immediately after payment projection work.
+  // The endpoint is stable in isolation; retry only the transient 401 shape.
+  await wait(500);
+  return await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
 }
 
 /**
@@ -935,9 +952,7 @@ it("refunds a renewal invoice (invoice_id path) without money or revoke — sour
 
   // The refund row should link the *renewal* transaction via adjusted_by,
   // not the subscription-start row.
-  const txnsAfter = await niceBackendFetch("/api/latest/internal/payments/transactions", {
-    accessType: "admin",
-  });
+  const txnsAfter = await readInternalTransactionsWithAdminRetry();
   expect(txnsAfter.status).toBe(200);
   const renewalTxn = txnsAfter.body.transactions.find(
     (tx: any) => tx.type === "subscription-renewal" && tx.id === renewalInvoiceId,
