@@ -12,8 +12,10 @@ import { createBulldozerExecutionContext, toExecutableSqlTransaction, type Bulld
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import type { PrismaClientTransaction } from "@/prisma-client";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 const schema = paymentsSchema;
+let itemQuantityProjectionQueue: Promise<void> = Promise.resolve();
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -194,6 +196,18 @@ export async function bulldozerWriteItemQuantityChange(
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
 ) {
   await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change));
+}
+
+export function scheduleBulldozerWriteItemQuantityChange(
+  prisma: PrismaClientTransaction,
+  change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
+) {
+  const queuedWrite = itemQuantityProjectionQueue.then(
+    async () => await bulldozerWriteItemQuantityChange(prisma, change),
+    async () => await bulldozerWriteItemQuantityChange(prisma, change),
+  );
+  itemQuantityProjectionQueue = queuedWrite.catch(() => undefined);
+  runAsynchronously(queuedWrite);
 }
 
 export async function bulldozerWriteManualTransaction(

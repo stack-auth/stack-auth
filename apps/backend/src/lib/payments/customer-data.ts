@@ -125,17 +125,7 @@ export async function getItemQuantityForCustomer(options: {
   customerId: string,
   customerType: CustomerType,
 }): Promise<number> {
-  const row = await getItemQuantitiesRow({
-    prisma: options.prisma,
-    tenancyId: options.tenancyId,
-    customerType: options.customerType,
-    customerId: options.customerId,
-  });
-  if (row != null) {
-    return row.itemQuantities[options.itemId] ?? 0;
-  }
-
-  return await getInitialSubscriptionItemQuantity(options);
+  return await getCurrentItemQuantityFromPrisma(options);
 }
 
 function customerTypeToPrisma(customerType: CustomerType): PrismaCustomerType {
@@ -366,6 +356,33 @@ async function getInitialSubscriptionItemQuantity(options: {
     total += readIncludedItemQuantityFromProduct(subscription.product, options.itemId) * subscription.quantity;
   }
   return total;
+}
+
+async function getCurrentItemQuantityFromPrisma(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  itemId: string,
+  customerId: string,
+  customerType: CustomerType,
+}): Promise<number> {
+  const now = new Date();
+  const [subscriptionQuantity, manualQuantityResult] = await Promise.all([
+    getInitialSubscriptionItemQuantity(options),
+    options.prisma.itemQuantityChange.aggregate({
+      where: {
+        tenancyId: options.tenancyId,
+        customerId: options.customerId,
+        customerType: customerTypeToPrisma(options.customerType),
+        itemId: options.itemId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      _sum: {
+        quantity: true,
+      },
+    }),
+  ]);
+
+  return subscriptionQuantity + (manualQuantityResult._sum.quantity ?? 0);
 }
 
 
