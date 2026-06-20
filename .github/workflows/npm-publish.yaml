@@ -1,6 +1,7 @@
 name: Publish npm packages
 
 on:
+  workflow_dispatch:  # allow manual publish (e.g. from dev on this fork)
   push:
     branches:
       - dev
@@ -15,13 +16,12 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: "hexclave/stack-auth — Publish npm packages"
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.NPM_PUBLISH_VERSION_UPDATE_PR_PAT }}
+          token: ${{ secrets.NPM_PUBLISH_VERSION_UPDATE_PR_PAT || github.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -46,6 +46,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Update package versions on dev
+        # Upstream release automation (needs a PAT + push rights). On forks without
+        # the PAT this may fail; publishing already happened, so don't fail the run.
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
