@@ -1,0 +1,19 @@
+apps/backend/src/lib/emails-low-level.tsx
+  s_aee85d0233a355::t_cd54a31fecbed4 250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "1e848f582d67d4351fcc899b584a2e058416f20a",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
