@@ -5,7 +5,7 @@
 
   new HexclaveClientApp({
     projectId: "internal",
-    publishableClientKey: "pck_gdjdkp91a359xtb8ajypqg74se1134z8bwb36appwss7r",
+    publishableClientKey: "pck_3e7rwjp3mfgztqv312zs52xkn4tm9bzrnxf7w9wfcn850",
     tokenStore: "cookie",
     analytics: {
       replays: {
