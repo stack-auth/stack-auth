@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
-import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteManualTransaction, scheduleBulldozerWriteOneTimePurchase, scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
@@ -805,7 +805,7 @@ async function handleSubscriptionRefund(options: {
   }
 
   if (updatedSub) {
-    await bulldozerWriteSubscription(prisma, updatedSub);
+    scheduleBulldozerWriteSubscription(prisma, updatedSub);
   }
 
   // Regrant the free plan if a Hexclave billing team just lost its only
@@ -998,7 +998,7 @@ async function handleOneTimePurchaseRefund(options: {
       where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
       data: { revokedAt: now },
     });
-    await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+    scheduleBulldozerWriteOneTimePurchase(prisma, updatedPurchase);
   }
 
   // ── Refund row ────────────────────────────────────────────────────────

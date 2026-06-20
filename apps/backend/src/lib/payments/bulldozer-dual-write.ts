@@ -15,7 +15,7 @@ import type { PrismaClientTransaction } from "@/prisma-client";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 const schema = paymentsSchema;
-let itemQuantityProjectionQueue: Promise<void> = Promise.resolve();
+let paymentProjectionQueue: Promise<void> = Promise.resolve();
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -177,6 +177,19 @@ export async function bulldozerWriteSubscription(
   await executeSetRow(prisma, schema.subscriptions, sub.id, subscriptionToStoredRow(sub));
 }
 
+function schedulePaymentProjectionWrite(write: () => Promise<void>) {
+  const queuedWrite = paymentProjectionQueue.then(write, write);
+  paymentProjectionQueue = queuedWrite.catch(() => undefined);
+  runAsynchronously(queuedWrite);
+}
+
+export function scheduleBulldozerWriteSubscription(
+  prisma: PrismaClientTransaction,
+  sub: Parameters<typeof subscriptionToStoredRow>[0],
+) {
+  schedulePaymentProjectionWrite(async () => await bulldozerWriteSubscription(prisma, sub));
+}
+
 export async function bulldozerWriteSubscriptionInvoice(
   prisma: PrismaClientTransaction,
   inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
@@ -184,11 +197,25 @@ export async function bulldozerWriteSubscriptionInvoice(
   await executeSetRow(prisma, schema.subscriptionInvoices, inv.id, subscriptionInvoiceToStoredRow(inv));
 }
 
+export function scheduleBulldozerWriteSubscriptionInvoice(
+  prisma: PrismaClientTransaction,
+  inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
+) {
+  schedulePaymentProjectionWrite(async () => await bulldozerWriteSubscriptionInvoice(prisma, inv));
+}
+
 export async function bulldozerWriteOneTimePurchase(
   prisma: PrismaClientTransaction,
   purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
 ) {
   await executeSetRow(prisma, schema.oneTimePurchases, purchase.id, oneTimePurchaseToStoredRow(purchase));
+}
+
+export function scheduleBulldozerWriteOneTimePurchase(
+  prisma: PrismaClientTransaction,
+  purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
+) {
+  schedulePaymentProjectionWrite(async () => await bulldozerWriteOneTimePurchase(prisma, purchase));
 }
 
 export async function bulldozerWriteItemQuantityChange(
@@ -202,12 +229,7 @@ export function scheduleBulldozerWriteItemQuantityChange(
   prisma: PrismaClientTransaction,
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
 ) {
-  const queuedWrite = itemQuantityProjectionQueue.then(
-    async () => await bulldozerWriteItemQuantityChange(prisma, change),
-    async () => await bulldozerWriteItemQuantityChange(prisma, change),
-  );
-  itemQuantityProjectionQueue = queuedWrite.catch(() => undefined);
-  runAsynchronously(queuedWrite);
+  schedulePaymentProjectionWrite(async () => await bulldozerWriteItemQuantityChange(prisma, change));
 }
 
 export async function bulldozerWriteManualTransaction(

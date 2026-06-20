@@ -1,6 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
-import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
@@ -188,7 +188,7 @@ export const POST = createSmartRouteHandler({
             endedAt: new Date(),
           },
         });
-        await bulldozerWriteSubscription(prisma, updatedConflicting);
+        scheduleBulldozerWriteSubscription(prisma, updatedConflicting);
       }
     }
     // One-time payment path after conflicts handled

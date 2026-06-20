@@ -1,5 +1,5 @@
 import { CustomerType } from "@/generated/prisma/client";
-import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
+import { scheduleBulldozerWriteSubscription, scheduleBulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
@@ -338,7 +338,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
-    await bulldozerWriteSubscription(prisma, upsertedSub);
+    scheduleBulldozerWriteSubscription(prisma, upsertedSub);
   }
 
   // If this was a cancellation on our own billing (internal tenancy hosts the
@@ -395,5 +395,5 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
-  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
+  scheduleBulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
 }

@@ -1,6 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
-import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
@@ -147,7 +147,7 @@ export const DELETE = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
       });
-      await bulldozerWriteSubscription(prisma, updatedSub);
+      scheduleBulldozerWriteSubscription(prisma, updatedSub);
     }
 
     // Regrant the free plan if a Hexclave billing team just lost their
