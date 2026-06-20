@@ -405,6 +405,8 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           authorizationEndpoint: schemaFields.oauthAuthorizationEndpointSchema.optional(),
           tokenEndpoint: schemaFields.oauthTokenEndpointSchema.optional(),
           userinfoEndpoint: schemaFields.oauthUserinfoEndpointSchema.optional(),
+          // Treat emails from this custom provider as verified even without an email_verified claim
+          trustEmailVerified: schemaFields.oauthTrustEmailVerifiedSchema.optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),

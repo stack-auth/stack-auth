@@ -3,6 +3,7 @@ import { OAuthBaseProvider, TokenSet } from "./base";
 
 export class CustomOidcProvider extends OAuthBaseProvider {
   private constructor(
+    private readonly trustEmailVerified: boolean,
     ...args: ConstructorParameters<typeof OAuthBaseProvider>
   ) {
     super(...args);
@@ -14,9 +15,10 @@ export class CustomOidcProvider extends OAuthBaseProvider {
     redirectUri: string,
     issuerUrl: string,
     scope?: string,
+    trustEmailVerified?: boolean,
   }) {
-    const { redirectUri, issuerUrl, scope, ...rest } = options;
-    return new CustomOidcProvider(...await OAuthBaseProvider.createConstructorArgs({
+    const { redirectUri, issuerUrl, scope, trustEmailVerified, ...rest } = options;
+    return new CustomOidcProvider(!!trustEmailVerified, ...await OAuthBaseProvider.createConstructorArgs({
       discoverFromUrl: issuerUrl,
       redirectUri,
       baseScope: scope || "openid email profile",
@@ -32,7 +34,8 @@ export class CustomOidcProvider extends OAuthBaseProvider {
       displayName: rawUserInfo.name ?? rawUserInfo.preferred_username ?? null,
       email: rawUserInfo.email ?? null,
       profileImageUrl: rawUserInfo.picture ?? null,
-      emailVerified: !!rawUserInfo.email_verified,
+      // Trust the admin's "treat emails as verified" toggle when the provider omits the claim.
+      emailVerified: !!rawUserInfo.email_verified || this.trustEmailVerified,
     });
   }
 

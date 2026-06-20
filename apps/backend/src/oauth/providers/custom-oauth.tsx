@@ -9,6 +9,7 @@ import { OAuthBaseProvider, TokenSet } from "./base";
  */
 export class CustomOAuthProvider extends OAuthBaseProvider {
   private constructor(
+    private readonly trustEmailVerified: boolean,
     ...args: ConstructorParameters<typeof OAuthBaseProvider>
   ) {
     super(...args);
@@ -22,9 +23,10 @@ export class CustomOAuthProvider extends OAuthBaseProvider {
     tokenEndpoint: string,
     userinfoEndpoint: string,
     scope?: string,
+    trustEmailVerified?: boolean,
   }) {
-    const { redirectUri, authorizationEndpoint, tokenEndpoint, userinfoEndpoint, scope, ...rest } = options;
-    return new CustomOAuthProvider(...await OAuthBaseProvider.createConstructorArgs({
+    const { redirectUri, authorizationEndpoint, tokenEndpoint, userinfoEndpoint, scope, trustEmailVerified, ...rest } = options;
+    return new CustomOAuthProvider(!!trustEmailVerified, ...await OAuthBaseProvider.createConstructorArgs({
       issuer: new URL(authorizationEndpoint).origin,
       authorizationEndpoint,
       tokenEndpoint,
@@ -44,7 +46,8 @@ export class CustomOAuthProvider extends OAuthBaseProvider {
       displayName: rawUserInfo.name ?? rawUserInfo.preferred_username ?? rawUserInfo.login ?? rawUserInfo.username ?? null,
       email: rawUserInfo.email ?? null,
       profileImageUrl: rawUserInfo.picture ?? rawUserInfo.avatar_url ?? null,
-      emailVerified: !!(rawUserInfo.email_verified ?? rawUserInfo.verified_email),
+      // Trust the admin's "treat emails as verified" toggle when the provider omits the claim.
+      emailVerified: !!(rawUserInfo.email_verified ?? rawUserInfo.verified_email) || this.trustEmailVerified,
     });
   }
 

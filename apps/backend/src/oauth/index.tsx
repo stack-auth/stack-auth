@@ -122,7 +122,7 @@ export async function getProvider(
     const clientSecret = provider.clientSecret ?? throwErr("Client secret is required for custom OIDC providers");
     const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
     try {
-      return await CustomOidcProvider.create({ clientId, clientSecret, redirectUri, issuerUrl, scope: provider.scope });
+      return await CustomOidcProvider.create({ clientId, clientSecret, redirectUri, issuerUrl, scope: provider.scope, trustEmailVerified: provider.trustEmailVerified });
     } catch (error) {
       // OIDC discovery (Issuer.discover) throws an opaque "OPError: Not Found" when
       // the issuer doesn't serve /.well-known/openid-configuration. Wrap it with the
@@ -144,7 +144,7 @@ export async function getProvider(
     const userinfoEndpoint = provider.userinfoEndpoint ?? throwErr("Userinfo endpoint is required for custom OAuth providers");
     const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
     try {
-      return await CustomOAuthProvider.create({ clientId, clientSecret, redirectUri, authorizationEndpoint, tokenEndpoint, userinfoEndpoint, scope: provider.scope });
+      return await CustomOAuthProvider.create({ clientId, clientSecret, redirectUri, authorizationEndpoint, tokenEndpoint, userinfoEndpoint, scope: provider.scope, trustEmailVerified: provider.trustEmailVerified });
     } catch (error) {
       throw new HexclaveAssertionError(
         `Failed to initialize custom OAuth 2.0 provider "${configId ?? providerType}": ${error instanceof Error ? error.message : String(error)}. Check that the authorization, token and userinfo endpoints are correct, absolute URLs.`,

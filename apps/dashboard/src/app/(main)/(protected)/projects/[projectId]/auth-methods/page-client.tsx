@@ -35,7 +35,7 @@ import {
 import { AdminProject, AuthPage } from "@hexclave/next";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
-import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { urlSchema, yupBoolean, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders, isCustomProviderType } from "@hexclave/shared/dist/utils/oauth";
@@ -243,6 +243,7 @@ type CustomSsoConfigEntry = {
   scope?: string,
   displayName?: string,
   iconUrl?: string,
+  trustEmailVerified?: boolean,
   customCallbackUrl?: string,
   // OIDC (type === "custom_oidc")
   issuerUrl?: string,
@@ -263,6 +264,7 @@ function getCustomSsoProviders(config: CompleteConfig): CustomSsoConfigEntry[] {
       scope: p.scope,
       displayName: p.displayName,
       iconUrl: p.iconUrl,
+      trustEmailVerified: p.trustEmailVerified,
       customCallbackUrl: p.customCallbackUrl,
       issuerUrl: p.issuerUrl,
       authorizationEndpoint: p.authorizationEndpoint,
@@ -308,6 +310,7 @@ const customSsoFormSchema = yupObject({
   clientId: yupString().defined().nonEmpty(),
   clientSecret: yupString().defined().nonEmpty(),
   scope: yupString().optional(),
+  trustEmailVerified: yupBoolean().optional(),
 });
 
 type CustomSsoFormValues = {
@@ -322,6 +325,7 @@ type CustomSsoFormValues = {
   clientId: string,
   clientSecret: string,
   scope?: string,
+  trustEmailVerified?: boolean,
 };
 
 function CustomSsoProviderDialog({
@@ -349,6 +353,7 @@ function CustomSsoProviderDialog({
     clientId: existing?.clientId ?? "",
     clientSecret: existing?.clientSecret ?? "",
     scope: existing?.scope ?? "",
+    trustEmailVerified: existing?.trustEmailVerified ?? false,
   };
 
   const isEditing = !!existing;
@@ -376,6 +381,7 @@ function CustomSsoProviderDialog({
       scope: values.scope || undefined,
       displayName: values.displayName,
       iconUrl: values.iconUrl || undefined,
+      trustEmailVerified: values.trustEmailVerified || undefined,
       allowSignIn: true,
       allowConnectedAccounts: true,
     };
@@ -601,6 +607,22 @@ function CustomSsoProviderDialog({
                   </FormControl>
                   <FormMessage />
                   <span className="text-[10px] text-muted-foreground">Space-separated{protocol === "custom_oidc" ? ". Defaults to “openid email profile”." : "."}</span>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="trustEmailVerified"
+              render={({ field }) => (
+                <FormItem className="flex items-start justify-between gap-3 space-y-0">
+                  <div className="flex flex-col gap-0.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Trust emails as verified</FormLabel>
+                    <span className="text-[10px] text-muted-foreground">Treat this provider&apos;s emails as verified even without an <InlineCode>email_verified</InlineCode> claim. Only enable for trusted providers — it affects same-email account linking.</span>
+                  </div>
+                  <FormControl>
+                    <Switch checked={!!field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
                 </FormItem>
               )}
             />
