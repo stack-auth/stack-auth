@@ -1,0 +1,19 @@
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  s_aee85d0233a355::t_10c9aca3477e27 404-418
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "5a80a685a419e623ceddf8e0decdfc2cb307ae5e",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
