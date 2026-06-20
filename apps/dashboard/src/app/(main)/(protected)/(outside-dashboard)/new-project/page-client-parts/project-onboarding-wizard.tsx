@@ -381,7 +381,7 @@ export function ProjectOnboardingWizard(props: {
     await runWithSaving(async () => {
       setPaymentsSetupAction("defer");
       try {
-        if (selectedPaymentsCountry === "US") {
+        if (selectedPaymentsCountry === "US" && !isRemoteDevelopmentEnvironment) {
           await props.project.app.setupPayments();
         }
         await persistOnboardingState();
@@ -390,9 +390,10 @@ export function ProjectOnboardingWizard(props: {
         setPaymentsSetupAction(null);
       }
     });
-  }, [persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
+  }, [isRemoteDevelopmentEnvironment, persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
 
   const connectPaymentsSetup = useCallback(async () => {
+    if (isRemoteDevelopmentEnvironment) return;
     await runWithSaving(async () => {
       setPaymentsSetupAction("connect");
       try {
@@ -406,7 +407,7 @@ export function ProjectOnboardingWizard(props: {
         setPaymentsSetupAction(null);
       }
     });
-  }, [props.project.app, runWithSaving]);
+  }, [isRemoteDevelopmentEnvironment, props.project.app, runWithSaving]);
 
   useEffect(() => {
     if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
@@ -937,7 +938,7 @@ export function ProjectOnboardingWizard(props: {
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
-            disabled={saving || paymentsSetupAction != null}
+            disabled={saving || paymentsSetupAction != null || isRemoteDevelopmentEnvironment}
             loading={paymentsSetupAction === "connect"}
             onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
           >
@@ -989,7 +990,11 @@ export function ProjectOnboardingWizard(props: {
                   <span>Powered by</span>
                   <StripeWordmark className="h-3 w-auto shrink-0 translate-y-px text-[#635BFF] dark:text-[#8b87ff]" />
                 </div>
-                {selectedPaymentsCountry !== "US" && (
+                {isRemoteDevelopmentEnvironment ? (
+                  <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
+                    Payments setup is not available in remote development environments.
+                  </Typography>
+                ) : selectedPaymentsCountry !== "US" && (
                   <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
                     Payments is currently only available in the United States.
                   </Typography>
