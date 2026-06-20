@@ -1,0 +1,19 @@
+apps/backend/src/app/api/latest/payments/items/[customer_type]/[customer_id]/[item_id]/update-quantity/route.ts
+  s_aee85d0233a355::t_f427d140e54d42 98-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "299a476289a424bc624e625bfa72c138dd3acb76",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
