@@ -6,7 +6,6 @@ on:
       - main
 
 permissions:
-  id-token: write  # Required for npm OIDC provenance
   contents: write
 
 concurrency:
@@ -28,7 +27,8 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 'latest'
-          registry-url: 'https://registry.npmjs.org'
+          # Registry + auth come from the committed root .npmrc (@hexclave scope ->
+          # npm.egelhaus.de) plus the NODE_AUTH_TOKEN env on the publish step.
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -40,10 +40,10 @@ jobs:
         run: pnpm build:packages
 
       - name: Publish packages
-        # pnpm publish skips versions that already exist on npm by default
+        # pnpm publish skips versions that already exist on the registry by default
         run: pnpm publish -r --no-git-checks --access public
         env:
-          NPM_CONFIG_PROVENANCE: true
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Update package versions on dev
         run: |
