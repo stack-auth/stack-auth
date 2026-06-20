@@ -247,7 +247,7 @@ function isLoopbackSmtpHost(host: string) {
 }
 
 function getPreferredLoopbackSmtpHost(configuredHost: string) {
-  return configuredHost === "127.0.0.1" ? "::1" : configuredHost;
+  return configuredHost === "::1" || configuredHost === "[::1]" ? configuredHost : "::1";
 }
 
 function getFallbackLoopbackSmtpHost(configuredHost: string) {
