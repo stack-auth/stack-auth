@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { flushPaymentProjectionWrites } from "@/lib/payments/bulldozer-dual-write";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -777,6 +778,7 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async ({ auth, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await flushPaymentProjectionWrites();
     const rawLimit = query.limit ?? "50";
     const parsedLimit = Number.parseInt(rawLimit, 10);
     const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));

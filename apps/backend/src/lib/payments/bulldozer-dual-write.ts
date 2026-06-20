@@ -183,6 +183,10 @@ function schedulePaymentProjectionWrite(write: () => Promise<void>) {
   runAsynchronously(queuedWrite);
 }
 
+export async function flushPaymentProjectionWrites() {
+  await paymentProjectionQueue;
+}
+
 export function scheduleBulldozerWriteSubscription(
   prisma: PrismaClientTransaction,
   sub: Parameters<typeof subscriptionToStoredRow>[0],
