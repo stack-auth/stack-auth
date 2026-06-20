@@ -22,11 +22,16 @@ export function OAuthButton({
   type,
   isMock = false,
   onAuthenticate,
+  displayName,
+  iconUrl,
 }: {
   provider: string,
   type: 'sign-in' | 'sign-up',
   isMock?: boolean,
   onAuthenticate?: () => Promise<void>,
+  // Custom SSO providers: admin-defined label + icon (absolute URL or data URI).
+  displayName?: string,
+  iconUrl?: string,
 }) {
   const { t } = useTranslation();
   const hexclaveApp = useStackApp();
@@ -162,8 +167,11 @@ export function OAuthButton({
     }
     default: {
       style = {
-        name: provider,
-        icon: null,
+        name: displayName || provider,
+        icon: iconUrl
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={iconUrl} alt="" width={iconSize} height={iconSize} style={{ objectFit: 'contain' }} />
+          : null,
       };
     }
   }

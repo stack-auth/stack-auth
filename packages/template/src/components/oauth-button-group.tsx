@@ -12,6 +12,8 @@ export function OAuthButtonGroup({
     config: {
       oauthProviders: {
         id: string,
+        displayName?: string,
+        iconUrl?: string,
       }[],
     },
   },
@@ -23,6 +25,8 @@ export function OAuthButtonGroup({
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
           isMock={!!mockProject}
+          displayName={p.displayName}
+          iconUrl={p.iconUrl}
         />
       ))}
     </div>

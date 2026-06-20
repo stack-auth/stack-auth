@@ -35,6 +35,8 @@ type Props = {
       magicLinkEnabled: boolean,
       oauthProviders: {
         id: string,
+        displayName?: string,
+        iconUrl?: string,
       }[],
     },
   },
