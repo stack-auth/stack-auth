@@ -5,12 +5,12 @@
  * and returns the current state for a customer.
  */
 
-import { CustomerType as PrismaCustomerType, Prisma } from "@/generated/prisma/client";
+import { CustomerType as PrismaCustomerType, Prisma, SubscriptionStatus as PrismaSubscriptionStatus } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
-import type { CustomerType, DayInterval, IncludedItemConfig, ItemQuantityRow, Json, OwnedProductsRow, ProductSnapshot, SubscriptionMapRow, SubscriptionRow } from "./schema/types";
+import type { CustomerType, DayInterval, IncludedItemConfig, ItemQuantityRow, Json, OwnedProductsRow, ProductSnapshot, PurchaseCreationSource, SubscriptionMapRow, SubscriptionRow, SubscriptionStatus } from "./schema/types";
 
 const schema = createPaymentsSchema();
 
@@ -62,11 +62,7 @@ export async function getOwnedProductsForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<OwnedProductsRow["ownedProducts"]> {
-  const row = await getOwnedProductsRow(options);
-  if (row != null) {
-    return row.ownedProducts;
-  }
-  return await getInitialSubscriptionOwnedProducts(options);
+  return await getCurrentOwnedProductsFromPrisma(options);
 }
 
 async function getOwnedProductsRow(options: {
@@ -138,6 +134,34 @@ function customerTypeToPrisma(customerType: CustomerType): PrismaCustomerType {
     }
     case "custom": {
       return PrismaCustomerType.CUSTOM;
+    }
+  }
+}
+
+function readSubscriptionStatusFromPrisma(status: PrismaSubscriptionStatus): SubscriptionStatus {
+  switch (status) {
+    case PrismaSubscriptionStatus.active:
+    case PrismaSubscriptionStatus.trialing:
+    case PrismaSubscriptionStatus.canceled:
+    case PrismaSubscriptionStatus.paused:
+    case PrismaSubscriptionStatus.incomplete:
+    case PrismaSubscriptionStatus.incomplete_expired:
+    case PrismaSubscriptionStatus.past_due:
+    case PrismaSubscriptionStatus.unpaid: {
+      return status;
+    }
+  }
+}
+
+function readPurchaseCreationSourceFromPrisma(source: string): PurchaseCreationSource {
+  switch (source) {
+    case "PURCHASE_PAGE":
+    case "TEST_MODE":
+    case "API_GRANT": {
+      return source;
+    }
+    default: {
+      throw new Error(`Unknown purchase creation source: ${source}`);
     }
   }
 }
@@ -311,10 +335,41 @@ async function getActiveSubscriptionRows(options: {
       ],
     },
     select: {
+      id: true,
+      tenancyId: true,
+      customerId: true,
+      customerType: true,
       productId: true,
+      priceId: true,
       product: true,
       quantity: true,
+      stripeSubscriptionId: true,
+      status: true,
+      currentPeriodStart: true,
+      currentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
+      canceledAt: true,
+      endedAt: true,
+      refundedAt: true,
+      productRevokedAt: true,
+      creationSource: true,
+      createdAt: true,
     },
+  });
+}
+
+function addOwnedProduct(
+  result: Map<string, OwnedProductsRow["ownedProducts"][string]>,
+  productId: string | null,
+  quantity: number,
+  product: ProductSnapshot,
+) {
+  const key = productId ?? "__null__";
+  const existing = result.get(key);
+  result.set(key, {
+    quantity: (existing?.quantity ?? 0) + quantity,
+    product,
+    productLineId: product.productLineId ?? null,
   });
 }
 
@@ -331,13 +386,49 @@ async function getInitialSubscriptionOwnedProducts(options: {
     if (product == null) {
       continue;
     }
-    const key = subscription.productId ?? "__null__";
-    const existing = result.get(key);
-    result.set(key, {
-      quantity: (existing?.quantity ?? 0) + subscription.quantity,
-      product,
-      productLineId: product.productLineId ?? null,
-    });
+    addOwnedProduct(result, subscription.productId, subscription.quantity, product);
+  }
+  return Object.fromEntries(result);
+}
+
+async function getCurrentOwnedProductsFromPrisma(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerId: string,
+  customerType: CustomerType,
+}): Promise<OwnedProductsRow["ownedProducts"]> {
+  const [subscriptions, oneTimePurchases] = await Promise.all([
+    getActiveSubscriptionRows(options),
+    options.prisma.oneTimePurchase.findMany({
+      where: {
+        tenancyId: options.tenancyId,
+        customerId: options.customerId,
+        customerType: customerTypeToPrisma(options.customerType),
+        revokedAt: null,
+        refundedAt: null,
+      },
+      select: {
+        productId: true,
+        product: true,
+        quantity: true,
+      },
+    }),
+  ]);
+
+  const result = new Map<string, OwnedProductsRow["ownedProducts"][string]>();
+  for (const subscription of subscriptions) {
+    const product = readProductSnapshot(subscription.product, options.customerType);
+    if (product == null) {
+      continue;
+    }
+    addOwnedProduct(result, subscription.productId, subscription.quantity, product);
+  }
+  for (const purchase of oneTimePurchases) {
+    const product = readProductSnapshot(purchase.product, options.customerType);
+    if (product == null) {
+      continue;
+    }
+    addOwnedProduct(result, purchase.productId, purchase.quantity, product);
   }
   return Object.fromEntries(result);
 }
@@ -398,12 +489,40 @@ export async function getSubscriptionMapForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<Record<string, SubscriptionRow>> {
-  const row = await getLatestRow<SubscriptionMapRow>(
-    options.prisma,
-    schema.subscriptionMapByCustomer,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
-  return row?.subscriptions ?? {};
+  const subscriptions = await options.prisma.subscription.findMany({
+    where: {
+      tenancyId: options.tenancyId,
+      customerId: options.customerId,
+      customerType: customerTypeToPrisma(options.customerType),
+    },
+  });
+  const result = new Map<string, SubscriptionRow>();
+  for (const subscription of subscriptions) {
+    const product = readProductSnapshot(subscription.product, options.customerType);
+    if (product == null) {
+      continue;
+    }
+    result.set(subscription.id, {
+      id: subscription.id,
+      tenancyId: subscription.tenancyId,
+      customerId: subscription.customerId,
+      customerType: options.customerType,
+      productId: subscription.productId,
+      priceId: subscription.priceId,
+      product,
+      quantity: subscription.quantity,
+      stripeSubscriptionId: subscription.stripeSubscriptionId,
+      status: readSubscriptionStatusFromPrisma(subscription.status),
+      currentPeriodStartMillis: subscription.currentPeriodStart.getTime(),
+      currentPeriodEndMillis: subscription.currentPeriodEnd.getTime(),
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+      canceledAtMillis: subscription.canceledAt?.getTime() ?? null,
+      endedAtMillis: subscription.endedAt?.getTime() ?? null,
+      refundedAtMillis: subscription.refundedAt?.getTime() ?? null,
+      productRevokedAtMillis: subscription.productRevokedAt?.getTime() ?? null,
+      creationSource: readPurchaseCreationSourceFromPrisma(subscription.creationSource),
+      createdAtMillis: subscription.createdAt.getTime(),
+    });
+  }
+  return Object.fromEntries(result);
 }
