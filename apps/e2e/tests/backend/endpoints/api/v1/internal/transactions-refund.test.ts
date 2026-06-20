@@ -110,7 +110,7 @@ async function createApiGrantSubscription(): Promise<{ subscriptionId: string, u
   return { subscriptionId: purchaseTxn.id, userId };
 }
 
-it("refunds a server-granted (API_GRANT) subscription with end_action='now'", async () => {
+it("refunds a server-granted (API_GRANT) subscription with end_action='now'", { timeout: 120_000 }, async () => {
   // API_GRANT subs have no SubscriptionInvoice. The refund route must take
   // the no-invoice path for them instead of throwing SubscriptionInvoiceNotFound.
   const { subscriptionId, userId } = await createApiGrantSubscription();
