@@ -1,0 +1,22 @@
+apps/e2e/tests/backend/endpoints/api/v1/internal/transactions.test.ts
+  s_aee85d0233a355::t_2cea3abb0f7cc2 324,428,463
+apps/e2e/tests/backend/endpoints/api/v1/internal/transactions-refund.test.ts
+  s_aee85d0233a355::t_37affc2aaa9106 955
+  s_aee85d0233a355::t_5c23567d77703d 2,56-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "b912b9872516e6f78a4f9de3cc77c7a25128900d",
+  "prompts": {},
+  "sessions": {
+    "s_aee85d0233a355": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edd78-6c58-7b92-8f46-dc8862eb8244",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
