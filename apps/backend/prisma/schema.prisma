@@ -947,6 +947,12 @@ model EmailOutbox {
   overrideNotificationCategoryId String?
   shouldSkipDeliverabilityCheck  Boolean
 
+  // If set, the id of the configured `emails.addresses` entry this email should
+  // be sent from (overrides the project's default sender). Resolved at send time;
+  // if the address was deleted after enqueue, the send falls back to the default
+  // sender. Not a DB foreign key — it references a config record, not a table.
+  senderAddressId                 String?
+
   createdWith                     EmailOutboxCreatedWith
   // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT. (Enforced by EmailOutbox_email_draft_check and EmailOutbox_email_draft_reverse_check constraints.)
   emailDraftId                    String?

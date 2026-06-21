@@ -2,6 +2,7 @@ import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClic
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { PaymentSupportedCountry } from "@hexclave/shared/dist/payments/payment-countries";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -136,7 +137,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,
 
-    setupPayments(): Promise<{ url: string }>,
+    setupPayments(options?: { country?: PaymentSupportedCountry }): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null>,
     updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void>,

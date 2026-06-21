@@ -1,5 +1,6 @@
 import { CrudTypeOf, createCrud } from "../../crud";
 import { ALL_APPS } from "../../apps/apps-config";
+import { onboardingPaymentsCountryValues } from "../../payments/payment-countries";
 import * as schemaFields from "../../schema-fields";
 import { yupArray, yupObject, yupString } from "../../schema-fields";
 
@@ -39,7 +40,6 @@ const enabledOAuthProviderSchema = yupObject({
 
 const onboardingConfigChoiceValues = ["create-new", "link-existing"] as const;
 const onboardingSignInMethodValues = ["credential", "magicLink", "passkey", "google", "github", "microsoft"] as const;
-const onboardingPaymentsCountryValues = ["US", "OTHER"] as const;
 
 const projectOnboardingStateSchema = yupObject({
   selected_config_choice: yupString().oneOf(onboardingConfigChoiceValues).defined(),

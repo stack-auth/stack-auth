@@ -8,6 +8,7 @@ import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/intern
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { PaymentSupportedCountry } from "@hexclave/shared/dist/payments/payment-countries";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -828,8 +829,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return { renderedHtml: result.rendered_html };
   }
 
-  async setupPayments(): Promise<{ url: string }> {
-    const result = await this._interface.setupPayments();
+  async setupPayments(options?: { country?: PaymentSupportedCountry }): Promise<{ url: string }> {
+    const result = await this._interface.setupPayments(options);
     await this._stripeAccountInfoCache.refresh([]);
     return result;
   }

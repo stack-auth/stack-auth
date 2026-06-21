@@ -49,6 +49,11 @@ export async function sendEmailToMany(options: {
   createdWith: { type: "draft", draftId: string } | { type: "programmatic-call", templateId: string | null },
   overrideSubject?: string,
   overrideNotificationCategoryId?: string,
+  // Optional id of the configured `emails.addresses` entry to send from. The
+  // caller is responsible for validating it exists in the tenancy config before
+  // enqueueing; the send step resolves it (and falls back to the default sender
+  // if it was deleted in the meantime).
+  senderAddressId?: string,
 }) {
   await globalPrismaClient.emailOutbox.createMany({
     data: options.recipients.map(recipient => ({
@@ -65,6 +70,7 @@ export async function sendEmailToMany(options: {
       shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
       overrideSubject: options.overrideSubject,
       overrideNotificationCategoryId: options.overrideNotificationCategoryId,
+      senderAddressId: options.senderAddressId,
     })),
   });
 
@@ -139,6 +145,34 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
   }
 }
 
+
+/**
+ * Resolves a per-email "from" override from a configured `emails.addresses`
+ * entry. Returns null when no address was requested, or when the requested
+ * address no longer exists in the config (e.g. it was deleted after the email
+ * was enqueued) — in which case the caller should fall back to the default
+ * sender rather than fail the send.
+ */
+export function resolveSenderAddressOverride(
+  tenancy: Tenancy,
+  senderAddressId: string | null | undefined,
+): { senderEmail: string, senderName: string | undefined } | null {
+  if (senderAddressId == null) {
+    return null;
+  }
+  const addresses = tenancy.config.emails.addresses;
+  // The address may have been deleted after the email was enqueued; fall back to
+  // the default sender rather than failing the send. (Record indexing is typed as
+  // always-present, so guard membership explicitly.)
+  if (!(senderAddressId in addresses)) {
+    return null;
+  }
+  const address = addresses[senderAddressId];
+  if (address.email == null) {
+    return null;
+  }
+  return { senderEmail: address.email, senderName: address.displayName };
+}
 
 export async function getSharedEmailConfig(displayName: string): Promise<LowLevelEmailConfig> {
   return {

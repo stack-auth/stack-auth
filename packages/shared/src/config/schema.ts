@@ -439,6 +439,20 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
         otherwise: (schema) => schema.optional(),
       }),
     }),
+    // Additional named email addresses beyond the single `server.senderEmail`.
+    // `role: "sender"` addresses can be chosen when sending; `role: "support"`
+    // addresses also receive inbound mail that is routed into conversations
+    // (see the email-support integration). This is additive: when empty, sending
+    // falls back to `server.senderEmail` / managed sender, so existing configs
+    // keep working without a migration.
+    addresses: yupRecord(
+      userSpecifiedIdSchema("emailAddressId"),
+      yupObject({
+        email: schemaFields.emailSenderEmailSchema.defined(),
+        displayName: schemaFields.emailSenderNameSchema.optional(),
+        role: yupString().oneOf(["sender", "support"]).defined(),
+      }),
+    ),
   })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
@@ -807,6 +821,11 @@ const organizationConfigDefaults = {
       managedSubdomain: undefined,
       managedSenderLocalPart: undefined,
     },
+    addresses: (key: string) => ({
+      email: undefined,
+      displayName: undefined,
+      role: 'sender',
+    }) as const,
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
     themes: typedAssign((key: string) => ({
       displayName: "Unnamed Theme",

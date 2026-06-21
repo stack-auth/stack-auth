@@ -23,6 +23,9 @@ const bodyBase = yupObject({
   scheduled_at_millis: yupNumber().optional().meta({
     openapiField: { description: "When to send the email. If not specified, the email will be sent immediately." }
   }),
+  sender_address_id: yupString().optional().meta({
+    openapiField: { description: "The id of a configured email address (emails.addresses) to send this email from. If not specified, the project's default sender is used." }
+  }),
 });
 
 export const POST = createSmartRouteHandler({
@@ -75,6 +78,13 @@ export const POST = createSmartRouteHandler({
       if (!getNotificationCategoryByName(body.notification_category_name)) {
         throwErr(400, "Notification category not found with given name");
       }
+    }
+
+    // Validate the chosen sender address against the tenancy config so the caller
+    // gets an error now rather than a silent fall-back to the default sender at
+    // send time.
+    if (body.sender_address_id != null && !(body.sender_address_id in auth.tenancy.config.emails.addresses)) {
+      throwErr(400, "No email address found with given sender_address_id");
     }
 
     const isHighPriority = body.is_high_priority ?? false;
@@ -171,6 +181,7 @@ export const POST = createSmartRouteHandler({
       scheduledAt: scheduledAt,
       overrideSubject: overrideSubject,
       overrideNotificationCategoryId: overrideNotificationCategoryId,
+      senderAddressId: body.sender_address_id,
     });
 
 

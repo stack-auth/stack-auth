@@ -1,7 +1,7 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
-import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
+import { EmailOutboxRecipient, getEmailConfig, resolveSenderAddressOverride, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getHexclaveServerApp } from "@/hexclave";
@@ -735,11 +735,23 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
+    // The batch shares one transport (host/credentials), but each email may pick
+    // a different "from" via senderAddressId. Override just the sender fields for
+    // this row, keeping the shared transport. Falls back to the batch default when
+    // the address was deleted after enqueue.
+    const senderOverride = resolveSenderAddressOverride(context.tenancy, row.senderAddressId);
+    const rowEmailConfig = senderOverride == null
+      ? context.emailConfig
+      : {
+        ...context.emailConfig,
+        senderEmail: senderOverride.senderEmail,
+        senderName: senderOverride.senderName ?? context.emailConfig.senderName,
+      };
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectWithoutRetries({
         tenancyId: context.tenancy.id,
-        emailConfig: context.emailConfig,
+        emailConfig: rowEmailConfig,
         to: resolution.emails,
         subject: row.renderedSubject ?? "",
         html: row.renderedHtml ?? undefined,

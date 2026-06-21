@@ -9,6 +9,8 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { getPublicEnvVar } from "@/lib/env";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { isPaymentSupportedCountry, paymentSupportedCountries, paymentSupportedCountryDisplayNames, type PaymentSupportedCountry } from "@hexclave/shared/dist/payments/payment-countries";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
 import { usePathname } from "next/navigation";
@@ -39,8 +41,10 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const hasAnyProductsOrItems = Object.keys(paymentsConfig.products).length > 0 || Object.keys(paymentsConfig.items).length > 0;
   const isProductLinesOnboarding = pathname.endsWith('/product-lines') && !hasAnyProductsOrItems;
 
-  const setupPayments = async () => {
-    const { url } = await hexclaveAdminApp.setupPayments();
+  // `country` is only needed when creating a brand-new Stripe account; for an
+  // existing account that just needs more onboarding it is omitted and ignored.
+  const setupPayments = async (country?: PaymentSupportedCountry) => {
+    const { url } = await hexclaveAdminApp.setupPayments(country != null ? { country } : undefined);
     window.location.href = url;
     await wait(2000);
   };
@@ -253,16 +257,19 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<void> }) {
+function SetupPaymentsButton({ setupPayments }: { setupPayments: (country?: PaymentSupportedCountry) => Promise<void> }) {
   const hexclaveAdminApp = useAdminApp();
-  const [screen, setScreen] = useState<"country-select" | "us-selected" | "other-selected">("country-select");
+  const [screen, setScreen] = useState<"country-select" | "available" | "unsupported">("country-select");
+  const [selectedCountry, setSelectedCountry] = useState<PaymentSupportedCountry | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
   const handleCountrySubmit = (country: string) => {
-    if (country === "US") {
-      setScreen("us-selected");
+    if (isPaymentSupportedCountry(country)) {
+      setSelectedCountry(country);
+      setScreen("available");
     } else {
-      setScreen("other-selected");
+      setSelectedCountry(null);
+      setScreen("unsupported");
     }
   };
 
@@ -271,19 +278,20 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
   };
 
   const handleContinueOnboarding = async () => {
-    await setupPayments();
+    await setupPayments(selectedCountry ?? throwErr("Country must be selected before continuing payments setup"));
     setIsOpen(false);
   };
 
   const handleDoThisLater = async () => {
-    await hexclaveAdminApp.setupPayments();
+    // Create the Stripe account in the selected country but don't redirect to onboarding yet.
+    await hexclaveAdminApp.setupPayments({ country: selectedCountry ?? throwErr("Country must be selected before setting up payments") });
     window.location.reload();
-    // Call setup endpoint but don't open URL
     setIsOpen(false);
   };
 
   const resetAndClose = () => {
     setScreen("country-select");
+    setSelectedCountry(null);
     setIsOpen(false);
   };
 
@@ -298,14 +306,15 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         title="Welcome to Payments!"
         description="Please select your or your company's country of residence below"
         formSchema={yup.object({
-          country: yup.string().oneOf(["US", "OTHER"]).defined().label("Country of residence").meta({
+          country: yup.string().oneOf([...paymentSupportedCountries, "OTHER"]).defined().label("Country of residence").meta({
             stackFormFieldRender: (props: any) => (
               <SelectField
                 {...props}
                 label="Country of residence"
                 required
                 options={[
-                  { value: "US", label: "🇺🇸 United States" },
+                  { value: "US", label: `🇺🇸 ${paymentSupportedCountryDisplayNames.US}` },
+                  { value: "DE", label: `🇩🇪 ${paymentSupportedCountryDisplayNames.DE}` },
                   { value: "OTHER", label: "Other" },
                 ]}
               />
@@ -330,7 +339,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
     );
   }
 
-  if (screen === "us-selected") {
+  if (screen === "available") {
     return (
       <>
         <Button className="group" onClick={() => setIsOpen(true)}>
@@ -350,6 +359,13 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
           cancelButton={false}
           okButton={false}
         >
+          <div className="text-sm text-muted-foreground">
+            Your Stripe account will be created in{" "}
+            <span className="font-medium text-foreground">
+              {selectedCountry != null ? paymentSupportedCountryDisplayNames[selectedCountry] : ""}
+            </span>
+            . This cannot be changed later.
+          </div>
           <div className="flex justify-between w-full pt-4">
             <Button variant="outline" onClick={handleBack}>
               Back
@@ -368,7 +384,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
     );
   }
 
-  // Handle other-selected screen
+  // Handle unsupported-country screen
   return (
     <>
       <Button className="group" onClick={() => setIsOpen(true)}>
@@ -388,7 +404,7 @@ function SetupPaymentsButton({ setupPayments }: { setupPayments: () => Promise<v
         okButton={false}
       >
         <div className="mb-4">
-          Hexclave Payments is currently only available in the US. If you&apos;d like to be notified when we expand to other countries, please reach out to us on our{" "}
+          Hexclave Payments isn&apos;t available in your country yet. If you&apos;d like to be notified when we expand to more countries, please reach out to us on our{" "}
           <Link href="https://feedback.hexclave.com" target="_blank" className="underline">
             Feedback platform
           </Link>

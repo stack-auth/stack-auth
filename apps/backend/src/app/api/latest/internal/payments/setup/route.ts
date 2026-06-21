@@ -1,8 +1,14 @@
 import { getHexclaveStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { paymentSupportedCountries } from "@hexclave/shared/dist/payments/payment-countries";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+
+function throwSetupError(): never {
+  throw new StatusError(400, "A supported country of residence is required to set up payments.");
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -14,6 +20,12 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
+    // The country of residence selected during payments setup. Used as the
+    // Stripe Connect account country, which is immutable once the account is
+    // created, so it only matters on first setup (see handler).
+    body: yupObject({
+      country: yupString().oneOf(paymentSupportedCountries).optional(),
+    }).optional(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -22,7 +34,7 @@ export const POST = createSmartRouteHandler({
       url: yupString().defined(),
     }).defined(),
   }),
-  handler: async ({ auth }) => {
+  handler: async ({ auth, body }) => {
     const stripe = getHexclaveStripe();
     const dashboardBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL");
 
@@ -41,6 +53,10 @@ export const POST = createSmartRouteHandler({
       : new URL(`/projects/${encodeURIComponent(auth.project.id)}/payments`, dashboardBaseUrl).toString();
 
     if (!stripeAccountId) {
+      // Country is required to create the Stripe account. The dashboard always
+      // sends it now; reject rather than silently defaulting so we never create
+      // an account in the wrong (immutable) country.
+      const country = body?.country ?? throwSetupError();
       const account = await stripe.accounts.create({
         controller: {
           stripe_dashboard: { type: "none" },
@@ -49,7 +65,7 @@ export const POST = createSmartRouteHandler({
           card_payments: { requested: true },
           transfers: { requested: true },
         },
-        country: "US",
+        country,
         metadata: {
           tenancyId: auth.tenancy.id,
         }

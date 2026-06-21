@@ -1,0 +1,122 @@
+---
+title: Managed Email Setup
+description: Configure managed email delivery for your self-hosted Hexclave instance, as an instance admin.
+---
+
+"Managed email" lets each project send transactional email from its **own
+verified subdomain** (e.g. `updates@emails.yourcustomer.com`) without the project
+owner ever touching SMTP credentials. Hexclave provisions the sending domain and
+DNS automatically.
+
+This is split into two responsibilities:
+
+- **You, the instance admin (operator)**, wire up the provider credentials once,
+  at the server level. This page is mostly about that.
+- **Each project owner** then runs a self-service flow in the dashboard to
+  delegate their subdomain. That part is documented inline in the dashboard.
+
+<Note>
+Managed email is optional. If you don't operate the integration, projects can
+still use **Custom SMTP** or their **own Resend API key** — see
+[Self-Hosting → Email](/guides/other/self-host#email). Managed email only adds
+the zero-config, per-subdomain provisioning flow.
+</Note>
+
+## How it works
+
+Managed email relies on two external services:
+
+| Service | Role |
+| --- | --- |
+| [Resend](https://resend.com) | Sends the email and verifies the sending domain. |
+| [DNSimple](https://dnsimple.com) | Hosts a DNS zone for each project subdomain so Hexclave can create the required records automatically. |
+
+When a project owner starts setup, Hexclave creates a DNSimple zone and a Resend
+domain for their subdomain, then returns the **nameservers** the owner must add at
+their registrar. Once DNS is delegated and Resend verifies the domain, the project
+switches its sender address to the managed subdomain.
+
+## Operator configuration
+
+Set these environment variables on the **backend** service. They are read at
+runtime by the managed-email integration; without them the managed flow is
+unavailable and projects fall back to SMTP/Resend.
+
+```env
+# Resend — used to send mail and provision sending domains
+STACK_RESEND_API_KEY=re_...
+
+# Resend webhooks — verifies inbound webhook signatures (domain verification,
+# delivery events). Set this to the signing secret from your Resend webhook.
+STACK_RESEND_WEBHOOK_SECRET=whsec_...
+
+# DNSimple — used to create and manage a DNS zone per project subdomain
+STACK_DNSIMPLE_API_TOKEN=...
+STACK_DNSIMPLE_ACCOUNT_ID=...
+
+# Optional — defaults to https://api.dnsimple.com/v2
+# Point at the sandbox (https://api.sandbox.dnsimple.com/v2) for testing.
+STACK_DNSIMPLE_API_BASE_URL=https://api.dnsimple.com/v2
+```
+
+<Steps>
+  <Step title="Create a Resend account and API key">
+    In the [Resend dashboard](https://resend.com), create an API key with
+    permission to send email and manage domains. Set it as `STACK_RESEND_API_KEY`.
+  </Step>
+  <Step title="Configure the Resend webhook">
+    Add a webhook in Resend pointing at
+    `https://<your-api-domain>/api/latest/integrations/resend/webhooks`. Copy the
+    signing secret into `STACK_RESEND_WEBHOOK_SECRET`. Hexclave verifies every
+    webhook signature and rejects unsigned requests.
+  </Step>
+  <Step title="Create a DNSimple account and token">
+    In [DNSimple](https://dnsimple.com), create an account-level API token and note
+    your account ID. Set them as `STACK_DNSIMPLE_API_TOKEN` and
+    `STACK_DNSIMPLE_ACCOUNT_ID`. Hexclave uses DNSimple to host a delegated DNS
+    zone for each project subdomain.
+  </Step>
+  <Step title="Restart the backend">
+    Restart the backend service so the new environment variables are picked up.
+    Managed email now appears as an option in each project's **Emails → Email
+    Server** settings.
+  </Step>
+</Steps>
+
+## What a project owner does
+
+Once you've configured the operator credentials, project owners complete the rest
+themselves — no further action from you:
+
+<Steps>
+  <Step title="Open Emails → Email Server → Managed">
+    In their project dashboard, the owner picks the **Managed** email server.
+  </Step>
+  <Step title="Enter a subdomain and sender local part">
+    For example, subdomain `emails.example.com` and sender local part `updates`,
+    producing the sender address `updates@emails.example.com`. The subdomain must
+    be a fully-qualified domain like `mail.example.com`.
+  </Step>
+  <Step title="Delegate the subdomain">
+    Hexclave provisions the DNS zone and shows the **nameserver (NS) records** to
+    add at the domain's registrar. The owner adds those records to delegate the
+    subdomain to DNSimple.
+  </Step>
+  <Step title="Verify and apply">
+    Once DNS propagates and Resend verifies the domain, the owner clicks **Apply**.
+    The project's sender address switches to the managed subdomain and outgoing mail
+    flows through Resend.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+- **Managed option is missing in the dashboard** — the backend can't read the
+  operator credentials. Confirm `STACK_RESEND_API_KEY`, `STACK_DNSIMPLE_API_TOKEN`,
+  and `STACK_DNSIMPLE_ACCOUNT_ID` are set and the backend was restarted.
+- **Domain stuck in `pending` / `partially_verified`** — DNS hasn't fully
+  propagated, or the NS records weren't added correctly at the registrar.
+  Propagation can take up to 24–48 hours.
+- **Webhooks rejected (400 "Invalid Resend webhook signature")** —
+  `STACK_RESEND_WEBHOOK_SECRET` doesn't match the secret configured on the Resend
+  webhook.

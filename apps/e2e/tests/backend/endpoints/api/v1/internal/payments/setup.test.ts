@@ -90,13 +90,13 @@ describe("POST /api/v1/internal/payments/setup", () => {
   });
 
   describe("with admin access", () => {
-    it("should return a setup URL when creating new stripe account", async ({ expect }) => {
+    it("should return a setup URL when creating new stripe account in the US", async ({ expect }) => {
       await Auth.fastSignUp();
       await Project.createAndSwitch();
       const response = await niceBackendFetch("/api/v1/internal/payments/setup", {
         method: "POST",
         accessType: "admin",
-        body: {}
+        body: { country: "US" }
       });
 
       expect(response).toMatchInlineSnapshot(`
@@ -108,6 +108,45 @@ describe("POST /api/v1/internal/payments/setup", () => {
       `);
     });
 
+    it("should accept Germany (DE) as the country of residence", async ({ expect }) => {
+      await Auth.fastSignUp();
+      await Project.createAndSwitch();
+      const response = await niceBackendFetch("/api/v1/internal/payments/setup", {
+        method: "POST",
+        accessType: "admin",
+        body: { country: "DE" }
+      });
+
+      expect(response.status).toBe(200);
+      expect(typeof response.body.url).toBe("string");
+    });
+
+    it("should reject creating a new account without a country", async ({ expect }) => {
+      await Auth.fastSignUp();
+      await Project.createAndSwitch();
+      const response = await niceBackendFetch("/api/v1/internal/payments/setup", {
+        method: "POST",
+        accessType: "admin",
+        body: {}
+      });
+
+      // Country is required to create the (immutable-country) Stripe account; we
+      // fail loud rather than silently defaulting.
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject an unsupported country", async ({ expect }) => {
+      await Auth.fastSignUp();
+      await Project.createAndSwitch();
+      const response = await niceBackendFetch("/api/v1/internal/payments/setup", {
+        method: "POST",
+        accessType: "admin",
+        body: { country: "FR" }
+      });
+
+      expect(response.status).toBe(400);
+    });
+
     it("should reuse existing stripe account when already configured", async ({ expect }) => {
       await Auth.fastSignUp();
       await Project.createAndSwitch();
@@ -116,7 +155,7 @@ describe("POST /api/v1/internal/payments/setup", () => {
       const response1 = await niceBackendFetch("/api/v1/internal/payments/setup", {
         method: "POST",
         accessType: "admin",
-        body: {}
+        body: { country: "US" }
       });
       expect(response1).toMatchInlineSnapshot(`
         NiceResponse {
@@ -126,7 +165,8 @@ describe("POST /api/v1/internal/payments/setup", () => {
         }
       `);
 
-      // Second call should reuse the same account
+      // Second call should reuse the same account; country is ignored once the
+      // account exists, so it may be omitted.
       const response2 = await niceBackendFetch("/api/v1/internal/payments/setup", {
         method: "POST",
         accessType: "admin",

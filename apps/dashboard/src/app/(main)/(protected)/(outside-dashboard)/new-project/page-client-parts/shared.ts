@@ -1,6 +1,7 @@
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject } from "@hexclave/next";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { isOnboardingPaymentsCountry, paymentSupportedCountryDisplayNames, type OnboardingPaymentsCountry } from "@hexclave/shared/dist/payments/payment-countries";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -9,7 +10,7 @@ const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 export type SignInMethod = "credential" | "magicLink" | "passkey" | "google" | "github" | "microsoft";
 export type OnboardingConfigChoice = "create-new" | "link-existing";
-export type OnboardingPaymentsCountry = "US" | "OTHER";
+export type { OnboardingPaymentsCountry };
 
 export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
   { id: "credential", label: "Email & password" },
@@ -48,7 +49,8 @@ export type TimelineStep = {
 };
 
 export const PAYMENT_COUNTRY_OPTIONS = [
-  { value: "US", label: "United States" },
+  { value: "US", label: paymentSupportedCountryDisplayNames.US },
+  { value: "DE", label: paymentSupportedCountryDisplayNames.DE },
   { value: "OTHER", label: "Other" },
 ] as const;
 
@@ -76,7 +78,7 @@ export function isProjectOnboardingState(value: unknown): value is ProjectOnboar
     return false;
   }
   const selectedPaymentsCountry = Reflect.get(value, "selected_payments_country");
-  if (selectedPaymentsCountry !== "US" && selectedPaymentsCountry !== "OTHER") {
+  if (!isOnboardingPaymentsCountry(selectedPaymentsCountry)) {
     return false;
   }
   return true;

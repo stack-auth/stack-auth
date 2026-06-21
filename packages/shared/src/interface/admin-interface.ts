@@ -1,6 +1,7 @@
 import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
+import type { PaymentSupportedCountry } from "../payments/payment-countries";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
@@ -860,7 +861,7 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async setupPayments(): Promise<{ url: string }> {
+  async setupPayments(options?: { country?: PaymentSupportedCountry }): Promise<{ url: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/setup",
       {
@@ -868,7 +869,7 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify(options?.country != null ? { country: options.country } : {}),
       },
       null,
     );

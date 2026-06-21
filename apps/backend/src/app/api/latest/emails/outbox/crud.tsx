@@ -511,6 +511,7 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     overrideSubject: j.overrideSubject as string | null,
     overrideNotificationCategoryId: j.overrideNotificationCategoryId as string | null,
     shouldSkipDeliverabilityCheck: j.shouldSkipDeliverabilityCheck as boolean,
+    senderAddressId: j.senderAddressId as string | null,
     createdWith: j.createdWith as EmailOutbox["createdWith"],
     emailDraftId: j.emailDraftId as string | null,
     emailProgrammaticCallTemplateId: j.emailProgrammaticCallTemplateId as string | null,

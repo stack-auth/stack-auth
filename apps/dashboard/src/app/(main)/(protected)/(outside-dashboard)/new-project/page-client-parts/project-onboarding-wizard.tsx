@@ -64,6 +64,8 @@ import {
   SIGN_IN_METHODS,
   type SignInMethod,
 } from "./shared";
+import { isOnboardingPaymentsCountry, isPaymentSupportedCountry } from "@hexclave/shared/dist/payments/payment-countries";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { LinkExistingOnboarding } from "./link-existing-onboarding";
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
@@ -381,8 +383,8 @@ export function ProjectOnboardingWizard(props: {
     await runWithSaving(async () => {
       setPaymentsSetupAction("defer");
       try {
-        if (selectedPaymentsCountry === "US") {
-          await props.project.app.setupPayments();
+        if (isPaymentSupportedCountry(selectedPaymentsCountry)) {
+          await props.project.app.setupPayments({ country: selectedPaymentsCountry });
         }
         await persistOnboardingState();
         await setStatus("welcome");
@@ -396,7 +398,10 @@ export function ProjectOnboardingWizard(props: {
     await runWithSaving(async () => {
       setPaymentsSetupAction("connect");
       try {
-        const setup = await props.project.app.setupPayments();
+        const country = isPaymentSupportedCountry(selectedPaymentsCountry)
+          ? selectedPaymentsCountry
+          : throwErr("Connect should only be reachable for supported payment countries");
+        const setup = await props.project.app.setupPayments({ country });
         const redirectUrl = new URL(setup.url);
         if (redirectUrl.protocol !== "https:") {
           throw new Error("Payments setup redirect URL must use HTTPS.");
@@ -406,7 +411,7 @@ export function ProjectOnboardingWizard(props: {
         setPaymentsSetupAction(null);
       }
     });
-  }, [props.project.app, runWithSaving]);
+  }, [props.project.app, runWithSaving, selectedPaymentsCountry]);
 
   useEffect(() => {
     if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
@@ -933,7 +938,7 @@ export function ProjectOnboardingWizard(props: {
             Do Later
           </DesignButton>
         }
-        secondaryAction={selectedPaymentsCountry === "US" ? (
+        secondaryAction={isPaymentSupportedCountry(selectedPaymentsCountry) ? (
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
@@ -976,7 +981,7 @@ export function ProjectOnboardingWizard(props: {
                 <DesignSelectorDropdown
                   value={selectedPaymentsCountry}
                   onValueChange={(value) => {
-                    if (value !== "US" && value !== "OTHER") {
+                    if (!isOnboardingPaymentsCountry(value)) {
                       throw new Error(`Invalid payments country: ${value}`);
                     }
                     setSelectedPaymentsCountry(value);
@@ -989,9 +994,9 @@ export function ProjectOnboardingWizard(props: {
                   <span>Powered by</span>
                   <StripeWordmark className="h-3 w-auto shrink-0 translate-y-px text-[#635BFF] dark:text-[#8b87ff]" />
                 </div>
-                {selectedPaymentsCountry !== "US" && (
+                {selectedPaymentsCountry === "OTHER" && (
                   <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
-                    Payments is currently only available in the United States.
+                    Payments isn&apos;t available in your country yet.
                   </Typography>
                 )}
               </div>

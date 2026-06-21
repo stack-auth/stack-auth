@@ -249,6 +249,13 @@ const environmentSchemaFuzzerConfig = [{
       managedSubdomain: ["mail.example.com", "invalid subdomain"],
       managedSenderLocalPart: ["noreply", "some invalid local part"],
     }],
+    addresses: [{
+      "some-address-id": [{
+        email: ["support@example.com", "some invalid email"],
+        displayName: ["Support", undefined],
+        role: ["sender", "support"] as const,
+      }],
+    }],
   }],
   payments: [{
     ...branchSchemaFuzzerConfig[0].payments[0],

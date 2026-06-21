@@ -235,6 +235,8 @@ type SendEmailOptionsBase = {
   notificationCategoryName?: string,
   scheduledAt?: Date,
   variables?: Record<string, unknown>,
+  /** The id of a configured email address (emails.addresses) to send from. Defaults to the project's default sender. */
+  senderAddressId?: string,
 }
 
 
