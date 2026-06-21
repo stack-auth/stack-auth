@@ -3,6 +3,7 @@ import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-us
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, hexclaveAppInternalsSymbol, TokenStoreInit } from "../../common";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
+import type { SupportConversation, SupportConversationDetail } from "../../support";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
@@ -83,6 +84,10 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number, anonRefreshToken?: string, promptLink?: (url: string, loginCode: string) => void }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
+    listSupportConversations(options?: { query?: string, limit?: number, offset?: number }): Promise<{ conversations: SupportConversation[], hasMore: boolean }>,
+    createSupportConversation(options: { subject: string, message: string }): Promise<SupportConversationDetail>,
+    getSupportConversation(conversationId: string): Promise<SupportConversationDetail>,
+    sendSupportConversationMessage(conversationId: string, message: string): Promise<SupportConversationDetail>,
     sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,

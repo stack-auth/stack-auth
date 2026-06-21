@@ -109,6 +109,36 @@ themselves — no further action from you:
   </Step>
 </Steps>
 
+## Email support (inbound → Conversations)
+
+Managed email can also **receive** mail. When a project configures a `support`
+address (Emails → Email Settings → Email Addresses), email sent to that address is
+routed into the Support app's Conversations, and agent replies are delivered back
+to the customer by email — threaded so follow-ups stay in the same conversation.
+
+To enable inbound on your instance:
+
+<Steps>
+  <Step title="Enable inbound on Resend and point it at the inbound webhook">
+    Configure Resend's inbound email for your managed domains to deliver to
+    `https://<your-api-domain>/api/latest/integrations/resend/inbound`.
+  </Step>
+  <Step title="Set the inbound webhook secret">
+    Set `STACK_RESEND_INBOUND_WEBHOOK_SECRET` to the inbound webhook's signing
+    secret. If you reuse the same secret as your other Resend webhook, you can omit
+    this and the inbound endpoint falls back to `STACK_RESEND_WEBHOOK_SECRET`.
+  </Step>
+  <Step title="Ensure inbound DNS (MX) for the managed subdomain">
+    Inbound delivery requires the managed subdomain's MX records to point at
+    Resend per their inbound setup. This is in addition to the sending records the
+    project owner already added during managed-domain setup.
+  </Step>
+</Steps>
+
+Project owners then add a `support`-role address on the managed subdomain (e.g.
+`support@emails.example.com`) under Email Settings; only mail addressed to a
+configured support address creates conversations.
+
 ## Troubleshooting
 
 - **Managed option is missing in the dashboard** — the backend can't read the

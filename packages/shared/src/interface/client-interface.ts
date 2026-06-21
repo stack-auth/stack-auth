@@ -156,6 +156,35 @@ async function encodeAnalyticsBody(
   }
 }
 
+export type SupportConversationSummaryJson = {
+  conversation_id: string,
+  subject: string,
+  status: string,
+  priority: string,
+  source: string,
+  last_message_type: string,
+  preview: string | null,
+  last_activity_at: string,
+};
+
+export type SupportConversationMessageJson = {
+  id: string,
+  body: string | null,
+  message_type: string,
+  created_at: string,
+  sender: {
+    type: string,
+    id: string | null,
+    display_name: string | null,
+    primary_email: string | null,
+  },
+};
+
+export type SupportConversationDetailJson = {
+  conversation: SupportConversationSummaryJson,
+  messages: SupportConversationMessageJson[],
+};
+
 export class HexclaveClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<HexclaveClientInterface["_runNetworkDiagnosticsInner"]>;
   private _requestListeners = new Set<RequestListener>();
@@ -855,6 +884,68 @@ export class HexclaveClientInterface {
     }, null);
 
     throw new HexclaveAssertionError(await res.text());
+  }
+
+  async listSupportConversations(
+    options: { query?: string, limit?: number, offset?: number },
+    session: InternalSession,
+  ): Promise<{ conversations: SupportConversationSummaryJson[], has_more: boolean }> {
+    const params = new URLSearchParams();
+    if (options.query != null) params.set("query", options.query);
+    if (options.limit != null) params.set("limit", String(options.limit));
+    if (options.offset != null) params.set("offset", String(options.offset));
+    const queryString = params.toString();
+    const res = await this.sendClientRequest(
+      `/internal/dogfood/support/conversations${queryString.length > 0 ? `?${queryString}` : ""}`,
+      { method: "GET" },
+      session,
+    );
+    return await res.json();
+  }
+
+  async createSupportConversation(
+    options: { subject: string, message: string },
+    session: InternalSession,
+  ): Promise<{ conversation_id: string }> {
+    const res = await this.sendClientRequest(
+      "/internal/dogfood/support/conversations",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: options.subject, message: options.message }),
+      },
+      session,
+    );
+    return await res.json();
+  }
+
+  async getSupportConversation(
+    conversationId: string,
+    session: InternalSession,
+  ): Promise<SupportConversationDetailJson> {
+    const res = await this.sendClientRequest(
+      urlString`/internal/dogfood/support/conversations/${conversationId}`,
+      { method: "GET" },
+      session,
+    );
+    return await res.json();
+  }
+
+  async sendSupportConversationMessage(
+    conversationId: string,
+    message: string,
+    session: InternalSession,
+  ): Promise<SupportConversationDetailJson> {
+    const res = await this.sendClientRequest(
+      urlString`/internal/dogfood/support/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      },
+      session,
+    );
+    return await res.json();
   }
 
   async sendForgotPasswordEmail(

@@ -49,6 +49,7 @@ import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlac
 import { envVars } from "../../../../generated/env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
+import { SupportConversation, SupportConversationDetail, supportConversationDetailFromJson, supportConversationFromJson } from "../../support";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -3151,6 +3152,32 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
+  }
+
+  async listSupportConversations(options?: { query?: string, limit?: number, offset?: number }): Promise<{ conversations: SupportConversation[], hasMore: boolean }> {
+    const session = await this._getSession();
+    const result = await this._interface.listSupportConversations(options ?? {}, session);
+    return {
+      conversations: result.conversations.map(supportConversationFromJson),
+      hasMore: result.has_more,
+    };
+  }
+
+  async createSupportConversation(options: { subject: string, message: string }): Promise<SupportConversationDetail> {
+    const session = await this._getSession();
+    const { conversation_id } = await this._interface.createSupportConversation(options, session);
+    // Return the full thread so callers can render it immediately.
+    return supportConversationDetailFromJson(await this._interface.getSupportConversation(conversation_id, session));
+  }
+
+  async getSupportConversation(conversationId: string): Promise<SupportConversationDetail> {
+    const session = await this._getSession();
+    return supportConversationDetailFromJson(await this._interface.getSupportConversation(conversationId, session));
+  }
+
+  async sendSupportConversationMessage(conversationId: string, message: string): Promise<SupportConversationDetail> {
+    const session = await this._getSession();
+    return supportConversationDetailFromJson(await this._interface.sendSupportConversationMessage(conversationId, message, session));
   }
 
   async sendMagicLinkEmail(email: string, options?: {

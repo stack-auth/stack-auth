@@ -738,7 +738,13 @@ function NewConversationDialog(props: {
   );
 }
 
-const REPLY_DISABLED_MESSAGE = "Customer-visible replies are disabled until inbound email is available. Please respond to the customer by email (use their address from the header).";
+// Built-in canned replies surfaced as quick-insert chips in the reply composer.
+const CANNED_REPLIES: { label: string, text: string }[] = [
+  { label: "Greeting", text: "Hi! Thanks for reaching out — happy to help with this." },
+  { label: "Need info", text: "Could you share a bit more detail, including any error messages or screenshots? That'll help us pin this down." },
+  { label: "Investigating", text: "Thanks — we're looking into this now and will follow up shortly." },
+  { label: "Resolved", text: "This should be resolved now. Let us know if anything else comes up!" },
+];
 
 function SupportComposer(props: {
   detail: ConversationDetailResponse,
@@ -758,7 +764,7 @@ function SupportComposer(props: {
   }, [props.detail.conversation.conversationId]);
 
   const submit = async () => {
-    if (mode === "reply" || body.trim() === "" || isSubmitting) {
+    if (body.trim() === "" || isSubmitting) {
       return;
     }
     setIsSubmitting(true);
@@ -767,11 +773,13 @@ function SupportComposer(props: {
       const nextDetail = await appendConversationUpdate(props.currentUser, {
         projectId: props.projectId,
         conversationId: props.detail.conversation.conversationId,
-        type: "internal-note",
+        type: mode,
         body: body.trim(),
       });
       props.onUpdated(nextDetail);
       setBody("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not send your message. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -825,12 +833,23 @@ function SupportComposer(props: {
 
         <Typography variant="secondary" className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
           {mode === "reply"
-            ? "Read-only — use email to reach the customer."
+            ? "Sent to the customer — by email for email conversations, in-app otherwise."
             : "Team only — not sent to the customer."}
         </Typography>
 
         {mode === "reply" && (
-          <DesignAlert variant="info" title="Reply unavailable" description={REPLY_DISABLED_MESSAGE} />
+          <div className="flex flex-wrap gap-1">
+            {CANNED_REPLIES.map((canned) => (
+              <button
+                key={canned.label}
+                type="button"
+                onClick={() => setBody((current) => (current.trim().length > 0 ? `${current.trimEnd()} ${canned.text}` : canned.text))}
+                className="rounded-full border border-border/60 bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+              >
+                {canned.label}
+              </button>
+            ))}
+          </div>
         )}
 
         {errorMessage != null && (
@@ -848,25 +867,19 @@ function SupportComposer(props: {
             "flex items-end gap-1 rounded-2xl border px-1 py-0.5 shadow-sm backdrop-blur-md transition-colors duration-150 sm:gap-1.5 sm:rounded-[22px] sm:px-1.5 sm:py-1",
             mode === "internal-note"
               ? "border-purple-400/25 bg-purple-500/[0.06] dark:border-purple-400/20 dark:bg-purple-500/[0.08]"
-              : "border-border/60 bg-muted/40 opacity-90 dark:bg-background/40",
+              : "border-blue-400/25 bg-blue-500/[0.06] dark:border-blue-400/20 dark:bg-blue-500/[0.08]",
           )}
         >
           <Textarea
-            value={mode === "reply" ? "" : body}
+            value={body}
             onChange={(event) => setBody(event.target.value)}
-            readOnly={mode === "reply"}
-            disabled={mode === "reply"}
-            placeholder={mode === "reply" ? REPLY_DISABLED_MESSAGE : "Internal note…"}
+            placeholder={mode === "reply" ? "Reply to the customer…" : "Internal note…"}
             rows={mode === "reply" ? 2 : 1}
             className={cn(
               "max-h-[min(7rem,22vh)] min-h-[36px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm leading-snug sm:min-h-[40px] sm:px-2.5 sm:py-2 sm:text-[15px]",
               "shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0",
-              mode === "reply" && "cursor-not-allowed text-muted-foreground",
             )}
             onKeyDown={(event) => {
-              if (mode === "reply") {
-                return;
-              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 runAsynchronouslyWithAlert(submit);
@@ -876,14 +889,14 @@ function SupportComposer(props: {
           <Button
             type="button"
             size="icon"
-            disabled={mode === "reply" || body.trim() === "" || isSubmitting}
+            disabled={body.trim() === "" || isSubmitting}
             className={cn(
               "mb-0.5 h-8 w-8 shrink-0 rounded-full text-white shadow-md transition-transform duration-150 active:scale-95 sm:mb-1 sm:h-9 sm:w-9",
               mode === "internal-note"
                 ? "bg-purple-600 hover:bg-purple-600/90"
                 : "bg-blue-500 hover:bg-blue-500/90",
             )}
-            aria-label={mode === "reply" ? "Send reply (disabled)" : "Add note"}
+            aria-label={mode === "reply" ? "Send reply" : "Add note"}
             onClick={() => runAsynchronouslyWithAlert(submit)}
           >
             {isSubmitting ? (

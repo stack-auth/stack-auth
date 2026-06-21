@@ -14,6 +14,8 @@ import {
   conversationIdRouteParamsSchema,
   internalDashboardAuthSchema,
 } from "@/lib/conversations-api";
+import { sendConversationEmailReply } from "@/lib/support-email";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
   projectIdSchema,
@@ -157,6 +159,25 @@ export const PATCH = createSmartRouteHandler({
       conversationId: params.conversationId,
       includeInternalNotes: true,
     });
+
+    // For email-sourced conversations, deliver the agent's reply to the customer
+    // as an email (threaded via a conversation-id header). Done in the background
+    // so a slow SMTP server doesn't block the dashboard response; the reply is
+    // already persisted regardless of email delivery.
+    if (body.type === "reply" && detail.conversation.source === "email") {
+      const toEmail = detail.conversation.userPrimaryEmail
+        ?? [...detail.messages].reverse().find((message) => message.sender.type === "user")?.sender.primaryEmail
+        ?? null;
+      if (toEmail != null) {
+        runAsynchronouslyAndWaitUntil(sendConversationEmailReply({
+          tenancy,
+          conversationId: params.conversationId,
+          toEmail,
+          subject: detail.conversation.subject,
+          body: body.body,
+        }));
+      }
+    }
 
     return {
       statusCode: 200 as const,

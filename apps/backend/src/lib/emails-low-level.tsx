@@ -44,6 +44,9 @@ export type LowLevelSendEmailOptions = {
   subject: string,
   html?: string,
   text?: string,
+  // Extra SMTP headers (e.g. conversation-threading headers for support email).
+  // Passed straight through to the transport.
+  headers?: Record<string, string>,
 }
 
 async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOptions): Promise<Result<undefined, {
