@@ -1,0 +1,40 @@
+apps/backend/src/server/vercel.ts
+  h_8c1b79571cf22c 2
+apps/backend/src/server/server.ts
+  h_8c1b79571cf22c 2,6
+apps/backend/tsdown.config.ts
+  h_8c1b79571cf22c 1
+apps/backend/src/server/middleware.ts
+  h_8c1b79571cf22c 4-5
+apps/backend/src/server/app.ts
+  h_8c1b79571cf22c 2,4-5,7-10
+apps/backend/instrumentation-client.ts
+  h_8c1b79571cf22c 8
+apps/backend/src/server/next-request-shim.ts
+  h_8c1b79571cf22c 2
+apps/backend/src/instrument.ts
+  s_39d61b0013d137::t_97bbf0a96f4937 50-55
+apps/backend/src/index.ts
+  h_8c1b79571cf22c 2,4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "531a497fa3e3f1cb275e894afb7b75d94eb7ff70",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_39d61b0013d137": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b1432656-e0d5-4e93-a216-3b8509c0a53e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
