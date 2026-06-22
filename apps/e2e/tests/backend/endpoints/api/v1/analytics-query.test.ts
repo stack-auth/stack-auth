@@ -1851,6 +1851,11 @@ it("rejects analytics queries when the timeout quota is zero (would otherwise se
   const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
+  // Wait for the free plan's analytics_timeout_seconds to materialise before
+  // draining; otherwise the drain (allow_negative=false) races the async grant
+  // and is rejected for taking the quota negative.
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS.free.analyticsTimeoutSeconds);
+
   // Drain analytics_timeout_seconds to 0 (free plan starts at 10) via the
   // internal-tenancy items endpoint.
   await withInternalProject(async () => {

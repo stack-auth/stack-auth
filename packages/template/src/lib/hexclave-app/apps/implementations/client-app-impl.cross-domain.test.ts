@@ -485,11 +485,14 @@ describe("StackClientApp cross-domain auth", () => {
         noAutomaticPrefetch: true,
       });
 
-      // Poll for the async startup redirect instead of waiting a fixed number
-      // of ticks, which is racy under CI load.
+      // Poll for the async startup redirect (dispatched fire-and-forget from
+      // the constructor) instead of waiting a fixed number of ticks. The chain
+      // can take >1s under CI load; keep the mocked window in place until it
+      // lands, otherwise it reads an empty window.location.href and throws
+      // "Invalid URL" after the finally block restores the real window.
       await vi.waitFor(() => {
         expect(redirectedUrl).not.toBe("");
-      });
+      }, { timeout: 15_000 });
     } finally {
       redirectSpy.mockRestore();
       globalThis.window = previousWindow;
