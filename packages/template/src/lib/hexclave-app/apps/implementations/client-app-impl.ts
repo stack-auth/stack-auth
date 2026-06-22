@@ -44,7 +44,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { MtlsCertificateInfo } from "@hexclave/shared/dist/utils/mtls";
+import { MtlsCertificateInfo, MtlsPrivateKeyFormatError } from "@hexclave/shared/dist/utils/mtls";
 import { signMtlsChallengeWithCertificate } from "../../../mtls";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -2544,9 +2544,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
             privateKeyPem: options.privateKeyPem,
             challenge,
           });
-        } catch {
-          // Signing failed locally — the cert/key are malformed or don't match each other.
-          return Result.error(new KnownErrors.MtlsCertificateInvalid("Could not sign the registration challenge. Make sure the certificate and private key are valid and match each other."));
+        } catch (e) {
+          // Signing happens locally and only uses the private key (not the certificate), so a failure here
+          // is a private-key problem: an unsupported/encrypted encoding, or a key that doesn't match the
+          // certificate's algorithm. Surface the specific guidance from the key normalizer when we have it.
+          const message = e instanceof MtlsPrivateKeyFormatError
+            ? e.message
+            : "Could not sign the registration challenge with the provided private key. Make sure it is an unencrypted private key (PKCS#8, PKCS#1, or SEC1) that matches the certificate.";
+          return Result.error(new KnownErrors.MtlsCertificateInvalid(message));
         }
 
         const registrationResult = await app._interface.registerMtls({
@@ -3982,8 +3987,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (KnownErrors.InvalidTotpCode.isInstance(error)) {
         return Result.error(error);
       }
-      // Local signing failed (malformed cert/key, or mismatched key) — surface as an invalid-certificate error.
-      return Result.error(new KnownErrors.MtlsCertificateInvalid("Could not sign the authentication challenge. Make sure the certificate and private key are valid and match each other."));
+      // Local signing failed — a private-key problem (unsupported/encrypted encoding, or a key that doesn't
+      // match the certificate's algorithm). Surface the specific guidance from the key normalizer if present.
+      const message = error instanceof MtlsPrivateKeyFormatError
+        ? error.message
+        : "Could not sign the authentication challenge with the provided private key. Make sure it is an unencrypted private key (PKCS#8, PKCS#1, or SEC1) that matches the certificate.";
+      return Result.error(new KnownErrors.MtlsCertificateInvalid(message));
     }
 
     if (result.status === 'ok') {
