@@ -1,0 +1,39 @@
+apps/backend/src/server/middleware.ts
+  s_39d61b0013d137::t_9d7a517b5c0394 61-62
+  s_39d61b0013d137::t_1721aa6955d858 151-196
+  s_39d61b0013d137::t_f923ee0233b796 111
+  s_39d61b0013d137::t_365439adf58b19 197-220
+.github/workflows/e2e-fallback-tests.yaml
+  h_8c1b79571cf22c 99
+apps/backend/api/dist-vercel.d.ts
+  s_39d61b0013d137::t_460f853af080fe 1-8
+apps/backend/scripts/generate-private-sign-up-risk-engine.ts
+  s_39d61b0013d137::t_9004c0a206aeef 1
+apps/backend/scripts/db-migrations.tsdown.config.ts
+  h_8c1b79571cf22c 52
+apps/backend/src/hexclave.tsx
+  s_39d61b0013d137::t_cae84c2cab6298 2
+apps/backend/src/smart-router.tsx
+  s_39d61b0013d137::t_d1bec484a9c32d 1-13,79,82,100,121,128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "c0a7f07349d723978f065dd84da14ff8dcbc7141",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_39d61b0013d137": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b1432656-e0d5-4e93-a216-3b8509c0a53e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
