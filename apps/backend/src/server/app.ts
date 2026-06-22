@@ -4,6 +4,7 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { serializeSetCookie } from "@/lib/next-compat/headers";
 import { createNextRequestShim } from "./next-request-shim";
 import { httpMethodNames } from "@/generated/route-modules";
+import { NextNotFoundError } from "@/lib/next-compat/navigation";
 import { matchRoute, MalformedRouteParamError } from "./registry";
 import { runRequestPipeline } from "./middleware";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
@@ -89,6 +90,9 @@ export async function dispatch(request: Request) {
             Location: error.redirectUrl,
           },
         });
+      }
+      if (error instanceof NextNotFoundError) {
+        return new Response("Not Found", { status: 404 });
       }
       throw error;
     }
