@@ -41,7 +41,7 @@
     "@types/node": "20.17.6",
     "rimraf": "^6.0.1",
     "tsdown": "^0.20.3",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.5.0"
 }

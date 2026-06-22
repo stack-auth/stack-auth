@@ -22,7 +22,7 @@
     "@types/node": "20.17.6",
     "@types/react": "18.3.12",
     "@types/react-dom": "^18.3.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.5.0"
 }

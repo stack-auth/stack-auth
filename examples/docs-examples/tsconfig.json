@@ -18,12 +18,14 @@
     "isolatedModules": true,
     "incremental": true,
     "jsx": "preserve",
-    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"
       }
     ],
+    "paths": {
+      "src/*": ["./src/*"]
+    },
     "strictNullChecks": true,
     "skipLibCheck": true
   },
