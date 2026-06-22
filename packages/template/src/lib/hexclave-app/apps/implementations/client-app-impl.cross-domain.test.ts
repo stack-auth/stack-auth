@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { Store } from "@hexclave/shared/dist/utils/stores";
 import { StackClientApp } from "../interfaces/client-app";
@@ -49,6 +49,22 @@ function createMockDocument(): Document {
 }
 
 describe("StackClientApp cross-domain auth", () => {
+  // These tests assert the built-in default hosted handler domain
+  // (built-with-stack-auth.com). CI exports the e2e .env process-wide, which
+  // sets a localhost handler suffix containing an unsubstituted port-prefix
+  // placeholder; left in place it leaks into these unit tests and produces an
+  // invalid hosted URL. Clear the handler env so the default always applies.
+  const hostedHandlerEnvKeys = ["HEXCLAVE", "NEXT_PUBLIC_HEXCLAVE", "VITE_HEXCLAVE", "STACK", "NEXT_PUBLIC_STACK", "VITE_STACK"]
+    .flatMap((prefix) => [`${prefix}_HOSTED_HANDLER_DOMAIN_SUFFIX`, `${prefix}_HOSTED_HANDLER_URL_TEMPLATE`]);
+  beforeEach(() => {
+    for (const key of hostedHandlerEnvKeys) {
+      vi.stubEnv(key, "");
+    }
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("uses the fresh post-auth refresh token when minting a cross-domain handoff", async () => {
     const freshAccessToken = createAccessTokenString("fresh-refresh-token-id");
     const clientApp = new StackClientApp({
