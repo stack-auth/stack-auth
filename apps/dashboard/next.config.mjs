@@ -67,6 +67,12 @@ const nextConfig = {
   output: process.env.NEXT_CONFIG_OUTPUT,
   distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
   outputFileTracingRoot: path.join(__dirname, "../.."),
+  // The claude-agent-sdk spawns cli.js as a child process (resolved via
+  // import.meta.url). If the SDK is bundled, Turbopack bakes the .pnpm path
+  // into import.meta.url, but copy-runtime-assets removes .pnpm — so cli.js
+  // vanishes. Keeping it external ensures it gets a top-level node_modules
+  // entry that survives the .pnpm removal and import.meta.url resolves correctly.
+  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
   outputFileTracingIncludes: {
     "/api/remote-development-environment/config/apply-update": [
       path.join(claudeAgentSdkTraceDir, "cli.js"),
