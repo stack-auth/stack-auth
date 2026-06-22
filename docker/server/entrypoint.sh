@@ -179,7 +179,7 @@ mkdir -p "$WORK_DIR"
 
 if [ "$WORK_DIR" != "/app" ]; then
   echo "Copying files to working directory..."
-  cp -rL /app/. "$WORK_DIR"/.
+  cp -r /app/. "$WORK_DIR"/.
 fi
 
 # The full-tree sentinel scan is expensive (several seconds over the whole built
