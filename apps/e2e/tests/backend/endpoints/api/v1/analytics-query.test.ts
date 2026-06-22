@@ -7,7 +7,13 @@ import { Project, User, niceBackendFetch, withInternalProject } from "../../../b
 import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
 
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  // Wait for the free plan's analytics_timeout_seconds to materialise (granted
+  // async on project creation) so we don't race the query's quota check, the
+  // same way runQueryWithPlan does.
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS.free.analyticsTimeoutSeconds);
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",

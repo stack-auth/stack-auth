@@ -485,12 +485,8 @@ describe("StackClientApp cross-domain auth", () => {
         noAutomaticPrefetch: true,
       });
 
-      // The hosted OAuth-callback error redirect is dispatched asynchronously
-      // from the constructor's startup chain. Poll until it actually lands
-      // instead of waiting a fixed number of microtasks: under CI load the
-      // chain can take longer than a couple of ticks, leaving `redirectedUrl`
-      // empty (so `new URL("")` throws) and leaking the pending redirect into
-      // the next test once the mocked window/spy have been restored.
+      // Poll for the async startup redirect instead of waiting a fixed number
+      // of ticks, which is racy under CI load.
       await vi.waitFor(() => {
         expect(redirectedUrl).not.toBe("");
       });
