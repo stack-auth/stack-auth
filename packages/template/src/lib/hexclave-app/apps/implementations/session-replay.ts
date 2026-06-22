@@ -172,9 +172,6 @@ export function isAnalyticsNotEnabledError(error: unknown): boolean {
  * production and should be silently ignored rather than logged as warnings.
  */
 export function isAdBlockerNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError) {
-    return true;
-  }
   if (error instanceof Error) {
     return error.message.includes("Failed to fetch")
       || error.message.includes("NetworkError")
