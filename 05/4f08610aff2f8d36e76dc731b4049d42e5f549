@@ -1,0 +1,19 @@
+apps/backend/package.json
+  s_dc15e76db22ef6::t_f3ba1bbbdc98e8 3,22-23,30,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "054f08610aff2f8d36e76dc731b4049d42e5f549",
+  "prompts": {},
+  "sessions": {
+    "s_dc15e76db22ef6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef034-937c-7893-ae5b-2693afcfd01a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
