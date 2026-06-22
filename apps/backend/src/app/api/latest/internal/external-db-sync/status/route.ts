@@ -1,7 +1,9 @@
-import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { globalPrismaClient } from "@/prisma-client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { traceSpan } from "@/utils/telemetry";
+import { KnownErrors } from "@hexclave/shared";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import {
   adaptSchema,
@@ -13,11 +15,9 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, errorToNiceString, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { errorToNiceString, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { Client } from "pg";
-import { KnownErrors } from "@hexclave/shared";
-import { traceSpan } from "@/utils/telemetry";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;
 
@@ -852,9 +852,6 @@ async function fetchExternalDatabaseStatus(
   }
 
   const client = new Client({ connectionString: dbConfig.connectionString });
-  client.on("error", (error) => {
-    captureError(`external-db-sync-status-${dbId}-pg-client`, error);
-  });
   const connectResult = await Result.fromPromise(client.connect());
   if (connectResult.status === "error") {
     return {
