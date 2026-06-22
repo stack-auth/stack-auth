@@ -179,7 +179,17 @@ mkdir -p "$WORK_DIR"
 
 if [ "$WORK_DIR" != "/app" ]; then
   echo "Copying files to working directory..."
-  cp -r /app/. "$WORK_DIR"/.
+  # Use -rL to dereference symlinks so the copy works in the new location
+  cp -rL /app/. "$WORK_DIR"/.
+  # Verify critical backend entry point was copied
+  if [ ! -f "$WORK_DIR/apps/backend/dist/server.mjs" ]; then
+    echo "ERROR: apps/backend/dist/server.mjs missing after copy"
+    ls -la "$WORK_DIR/apps/backend/" 2>/dev/null || echo "  apps/backend/ not found"
+    ls -la "$WORK_DIR/apps/backend/dist/" 2>/dev/null || echo "  apps/backend/dist/ not found"
+    echo "Checking /app source:"
+    ls -la /app/apps/backend/dist/server.mjs 2>/dev/null || echo "  /app source also missing!"
+    exit 1
+  fi
 fi
 
 # The full-tree sentinel scan is expensive (several seconds over the whole built

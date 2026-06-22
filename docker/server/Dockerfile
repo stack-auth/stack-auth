@@ -89,6 +89,12 @@ COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/back
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 
+# Verify backend entry point exists and inspect apps/backend layout
+RUN ls -la apps/backend/dist/server.mjs && \
+    echo "--- apps/backend/ listing ---" && ls -la apps/backend/ && \
+    echo "--- apps/backend/dist/ listing ---" && ls -la apps/backend/dist/ | head -10 && \
+    echo "--- file type check ---" && file apps/backend/dist/server.mjs
+
 # Add the entrypoint script
 COPY ./docker/server/entrypoint.sh .
 RUN chmod +x entrypoint.sh
