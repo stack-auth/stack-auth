@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
-import { CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
@@ -47,39 +46,8 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
     prisma: any,
   }) {
     const now = new Date();
-    const subId = randomUUID();
-    const stripeSubId = `stripe-${randomUUID()}`;
-    const statusStr = options.status ?? "active";
-    const periodEnd = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
-
-    // Dual-write: Prisma is the source of truth for getSubscriptionMapForCustomer;
-    // bulldozer write keeps the LFold projections consistent.
-    const statusMap: Record<string, SubscriptionStatus> = {
-      active: SubscriptionStatus.active,
-      trialing: SubscriptionStatus.trialing,
-      incomplete: SubscriptionStatus.incomplete,
-      past_due: SubscriptionStatus.past_due,
-    };
-    await options.prisma.subscription.create({
-      data: {
-        id: subId,
-        tenancyId: options.tenancyId,
-        customerId: options.billingTeamId,
-        customerType: CustomerType.TEAM,
-        productId: options.productId,
-        priceId: null,
-        product: options.productSnapshot,
-        quantity: 1,
-        stripeSubscriptionId: stripeSubId,
-        status: statusMap[statusStr] ?? SubscriptionStatus.active,
-        currentPeriodStart: now,
-        currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: false,
-        creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      },
-    });
     await bulldozerWriteSubscription(options.prisma, {
-      id: subId,
+      id: randomUUID(),
       tenancyId: options.tenancyId,
       customerId: options.billingTeamId,
       customerType: "TEAM",
@@ -88,10 +56,10 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ProductSnapshot is a structural JSON type; bulldozerWriteSubscription will stamp it into the stored row as-is.
       product: options.productSnapshot as any,
       quantity: 1,
-      stripeSubscriptionId: stripeSubId,
-      status: statusStr,
+      stripeSubscriptionId: `stripe-${randomUUID()}`,
+      status: options.status ?? "active",
       currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
+      currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 3600 * 1000),
       cancelAtPeriodEnd: false,
       canceledAt: null,
       endedAt: null,
@@ -190,27 +158,6 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
 
     const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
     const endedSubId = randomUUID();
-    // Dual-write: Prisma is the source of truth for getSubscriptionMapForCustomer
-    await (prisma as any).subscription.create({
-      data: {
-        id: endedSubId,
-        tenancyId: tenancy.id,
-        customerId: billingTeamId,
-        customerType: CustomerType.TEAM,
-        productId: "team",
-        priceId: null,
-        product: teamProduct,
-        quantity: 1,
-        stripeSubscriptionId: null,
-        status: SubscriptionStatus.canceled,
-        currentPeriodStart: yesterday,
-        currentPeriodEnd: yesterday,
-        cancelAtPeriodEnd: false,
-        canceledAt: yesterday,
-        endedAt: yesterday,
-        creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      },
-    });
     await bulldozerWriteSubscription(prisma, {
       id: endedSubId,
       tenancyId: tenancy.id,

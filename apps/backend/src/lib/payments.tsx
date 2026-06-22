@@ -1,5 +1,5 @@
 import { CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
-import { scheduleBulldozerWriteOneTimePurchase, scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import type { OwnedProductsRow } from "@/lib/payments/schema/types";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
@@ -570,7 +570,7 @@ export async function grantProductToCustomer(options: {
           endedAt: now,
         },
       });
-      scheduleBulldozerWriteSubscription(prisma, updatedConflicting);
+      await bulldozerWriteSubscription(prisma, updatedConflicting);
     }
   }
 
@@ -592,7 +592,7 @@ export async function grantProductToCustomer(options: {
       },
     });
     // dual write - prisma and bulldozer
-    scheduleBulldozerWriteOneTimePurchase(prisma, purchase);
+    await bulldozerWriteOneTimePurchase(prisma, purchase);
     return { type: "one_time", purchaseId: purchase.id };
   }
 
@@ -613,7 +613,8 @@ export async function grantProductToCustomer(options: {
     },
   });
   // dual write - prisma and bulldozer
-  scheduleBulldozerWriteSubscription(prisma, subscription);
+  await bulldozerWriteSubscription(prisma, subscription);
 
   return { type: "subscription", subscriptionId: subscription.id };
 }
+

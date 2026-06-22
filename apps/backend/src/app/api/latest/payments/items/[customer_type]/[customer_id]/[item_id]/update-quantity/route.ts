@@ -1,5 +1,5 @@
 import { ensureCustomerExists } from "@/lib/payments";
-import { scheduleBulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -106,6 +106,7 @@ export const POST = createSmartRouteHandler({
       if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
       }
+      // dual write - prisma and bulldozer
       const change = await tx.itemQuantityChange.create({
         data: {
           tenancyId: tenancy.id,
@@ -119,10 +120,7 @@ export const POST = createSmartRouteHandler({
       });
       return change;
     });
-    // Bulldozer projection writes take a global advisory lock; under parallel e2e load,
-    // awaiting them here can make otherwise-successful quota updates exceed request timeouts.
-    // Current quantity reads use the Prisma ledger, so the derived projection may catch up async.
-    scheduleBulldozerWriteItemQuantityChange(prisma, change);
+    await bulldozerWriteItemQuantityChange(prisma, change);
 
     return {
       statusCode: 200,
@@ -131,3 +129,5 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
+
+

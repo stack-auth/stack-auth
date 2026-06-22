@@ -1,8 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { getStorageEnginePath, quoteSqlJsonbLiteral, quoteSqlStringLiteral, sqlExpression } from "@/lib/bulldozer/db/utilities";
-import type { SqlExpression } from "@/lib/bulldozer/db/utilities";
-import { flushPaymentProjectionWrites } from "@/lib/payments/bulldozer-dual-write";
+import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { REFUND_TXN_PREFIX, parseRefundTxnId } from "@/lib/payments/refund-txn-id";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -40,12 +38,6 @@ type LedgerTransactionRow = {
 
 type QueriedLedgerTransactionRow = LedgerTransactionRow & {
   sourceId: string,
-};
-
-type TransactionGroupKey = {
-  tenancyId: string,
-  customerType: "user" | "team" | "custom",
-  customerId: string,
 };
 
 const DEFAULT_LEDGER_TRANSACTION_TYPES: readonly LedgerTransactionType[] = [
@@ -555,65 +547,6 @@ function buildAdjustedByFromRefunds(options: {
   return adjustedByFromRefunds ?? [];
 }
 
-function createTransactionGroupKeySql(options: TransactionGroupKey): SqlExpression<TransactionGroupKey> {
-  return sqlExpression`
-    jsonb_build_object(
-      'tenancyId', ${quoteSqlJsonbLiteral(options.tenancyId)},
-      'customerType', ${quoteSqlJsonbLiteral(options.customerType)},
-      'customerId', ${quoteSqlJsonbLiteral(options.customerId)}
-    )
-  `;
-}
-
-function createGroupedTransactionRowsSql(options: {
-  tenancyId: string,
-  customerType: "user" | "team" | "custom" | undefined,
-  customerId: string | undefined,
-}): string {
-  const executionContext = createBulldozerExecutionContext();
-  if (options.customerType !== undefined && options.customerId !== undefined) {
-    return toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
-      groupKey: createTransactionGroupKeySql({
-        tenancyId: options.tenancyId,
-        customerType: options.customerType,
-        customerId: options.customerId,
-      }),
-      start: "start",
-      end: "end",
-      startInclusive: true,
-      endInclusive: true,
-    }));
-  }
-
-  const groupsRootPathSql = getStorageEnginePath(schema.transactions.tableId, ["groups"]).sql;
-  const groupWhereClauses = [
-    `"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
-  ];
-  if (options.customerType !== undefined) {
-    groupWhereClauses.push(`"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
-  }
-  if (options.customerId !== undefined) {
-    groupWhereClauses.push(`"__groups"."keyPath"[cardinality("__groups"."keyPath")]->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
-  }
-
-  // The transactions table is materialized by tenancy/customer group. Filtering
-  // groups first keeps admin listing requests from scanning every transaction row
-  // produced by other test tenants or projects. We spell this out instead of
-  // using listGroups() because listGroups() checks every group for rows before
-  // the caller's tenancy filter can apply.
-  return `
-    SELECT "__rows"."value"->'rowData' AS rowdata
-    FROM "BulldozerStorageEngine" AS "__groups"
-    INNER JOIN "BulldozerStorageEngine" AS "__groupRowsPath"
-      ON "__groupRowsPath"."keyPathParent" = "__groups"."keyPath"
-      AND "__groupRowsPath"."keyPath"[cardinality("__groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
-    INNER JOIN "BulldozerStorageEngine" AS "__rows"
-      ON "__rows"."keyPathParent" = "__groupRowsPath"."keyPath"
-    WHERE "__groups"."keyPathParent" = ${groupsRootPathSql}::jsonb[]
-      AND ${groupWhereClauses.join("\n      AND ")}
-  `;
-}
-
 /**
  * Builds the source-txn → refunds lookup. New-format refunds are linked by
  * parsing the txnId (`refund:<sourceTxnId>:<uuid>`). Legacy refund rows
@@ -680,15 +613,24 @@ async function getTransactions(options: {
   }
 
   const decodedCursor = options.cursor ? parseCursor(options.cursor) : null;
-  const baseSql = createGroupedTransactionRowsSql({
-    tenancyId: options.tenancyId,
-    customerType: options.customerType,
-    customerId: options.customerId,
-  });
+  const executionContext = createBulldozerExecutionContext();
+  const baseSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
+    start: "start",
+    end: "end",
+    startInclusive: true,
+    endInclusive: true,
+  }));
 
   const whereClauses = [
+    `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
     `"__rows"."rowdata"->>'type' IN (${ledgerTypes.map((value) => quoteSqlStringLiteral(value).sql).join(", ")})`,
   ];
+  if (options.customerType) {
+    whereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+  }
+  if (options.customerId) {
+    whereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+  }
   if (decodedCursor) {
     whereClauses.push(`(
       (("__rows"."rowdata"->>'createdAtMillis')::bigint < ${decodedCursor.createdAtMillis})
@@ -754,9 +696,16 @@ async function getTransactions(options: {
         AND "__entry"->>'adjustedTransactionId' IN (${adjustedTransactionIdsSql})
     )`;
     const refundWhereClauses = [
+      `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
       `"__rows"."rowdata"->>'type' = 'refund'`,
       `((${refundLikeClauses}) OR ${legacyRefundClause})`,
     ];
+    if (options.customerType) {
+      refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+    }
+    if (options.customerId) {
+      refundWhereClauses.push(`"__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}`);
+    }
     const refundSql = `
       SELECT "__rows"."rowdata" AS "rowData"
       FROM (${baseSql}) AS "__rows"
@@ -828,7 +777,6 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async ({ auth, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    await flushPaymentProjectionWrites(auth.tenancy.id);
     const rawLimit = query.limit ?? "50";
     const parsedLimit = Number.parseInt(rawLimit, 10);
     const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));

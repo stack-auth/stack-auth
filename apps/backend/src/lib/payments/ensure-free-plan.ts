@@ -1,6 +1,6 @@
 import { CustomerType, PrismaClient, PurchaseCreationSource, Subscription, SubscriptionStatus } from "@/generated/prisma/client";
 import { isAddOnProduct } from "@/lib/payments";
-import { scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import type { ProductSnapshot } from "@/lib/payments/schema/types";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
@@ -230,6 +230,6 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   // COMMIT and can't nest. If it fails after the Prisma insert committed,
   // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
   // all other dual-write call sites, reconciled by the next sync.
-  scheduleBulldozerWriteSubscription(internalPrisma, createdSub);
+  await bulldozerWriteSubscription(internalPrisma, createdSub);
   return true;
 }

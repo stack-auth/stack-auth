@@ -353,12 +353,10 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
   for (const row of rows) {
     countByDay.set(row.day.split('T')[0], Number(row.daily_users));
   }
-  const dayKeys = Array.from({ length: METRICS_WINDOW_DAYS + 1 }, (_, i) =>
-    new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0]
-  );
 
   const out: DataPoints = [];
-  for (const dayKey of dayKeys) {
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const dayKey = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
     out.push({ date: dayKey, activity: countByDay.get(dayKey) ?? 0 });
   }
   return out;
@@ -399,8 +397,7 @@ async function loadHourlyUsers(tenancy: Tenancy, now: Date, includeAnonymous: bo
 
   const countByHour = new Map<string, number>();
   for (const row of rows) {
-    const hourString = row.hour.includes("T") ? row.hour : row.hour.replace(" ", "T") + "Z";
-    countByHour.set(new Date(hourString).toISOString().slice(0, 13), Number(row.hourly_users));
+    countByHour.set(new Date(row.hour).toISOString().slice(0, 13), Number(row.hourly_users));
   }
 
   const out: DataPoints = [];
@@ -500,8 +497,7 @@ async function loadHourlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymo
   const rows: { hour: string, dau: number }[] = await result.json();
   const dauByHour = new Map<string, number>();
   for (const row of rows) {
-    const hourString = row.hour.includes("T") ? row.hour : row.hour.replace(" ", "T") + "Z";
-    dauByHour.set(new Date(hourString).toISOString().slice(0, 13), Number(row.dau));
+    dauByHour.set(new Date(row.hour).toISOString().slice(0, 13), Number(row.dau));
   }
 
   const out: DataPoints = [];

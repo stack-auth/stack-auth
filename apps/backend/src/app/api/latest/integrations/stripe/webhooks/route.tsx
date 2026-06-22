@@ -1,5 +1,5 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
-import { scheduleBulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
 import { listPermissions } from "@/lib/permissions";
 import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
@@ -230,7 +230,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
-    scheduleBulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
+    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
 
     const recipients = await getPaymentRecipients({
       tenancy,

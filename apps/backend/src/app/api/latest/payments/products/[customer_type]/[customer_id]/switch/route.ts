@@ -1,5 +1,5 @@
 import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, grantProductToCustomer, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
-import { scheduleBulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
 import { upsertProductVersion } from "@/lib/product-versions";
@@ -314,7 +314,7 @@ export const POST = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: existingSub.id } },
       });
-      scheduleBulldozerWriteSubscription(prisma, updatedSub);
+      await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
       // No existing Stripe subscription — create a new one. This happens when
       // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
@@ -375,7 +375,7 @@ export const POST = createSmartRouteHandler({
       const createdSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_stripeSubscriptionId: { tenancyId: auth.tenancy.id, stripeSubscriptionId: createdSubscription.id } },
       });
-      scheduleBulldozerWriteSubscription(prisma, createdSub);
+      await bulldozerWriteSubscription(prisma, createdSub);
     }
 
     return {

@@ -29,16 +29,6 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
   });
 
   const grantOtp = async (id: string, productId: string, product: ReturnType<typeof makeProduct>) => {
-    // Dual-write: Prisma is the source of truth for getOwnedProductsForCustomer;
-    // bulldozer write keeps the LFold projections consistent.
-    await prisma.oneTimePurchase.create({
-      data: {
-        id, tenancyId, customerId, customerType: 'CUSTOM',
-        productId, priceId: null, product: product as any, quantity: 1,
-        stripePaymentIntentId: null,
-        creationSource: 'TEST_MODE',
-      },
-    });
     await bulldozerWriteOneTimePurchase(prisma as any, {
       id, tenancyId, customerId, customerType: 'CUSTOM',
       productId, priceId: null, product: product as any, quantity: 1,
@@ -117,13 +107,13 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
 
   it('blocks non-stackable product if customer already owns it', async () => {
     const prodId = `prod-dup-${testId}`;
-    await grantOtp(generateUuid(), prodId, makeProduct());
+    await grantOtp(`otp-dup-${testId}`, prodId, makeProduct());
     await expect(callValidate(makeProduct(), { productId: prodId })).rejects.toThrowError(/already owns/);
   });
 
   it('allows stackable product even if customer already owns it', async () => {
     const prodId = `prod-stack-${testId}`;
-    await grantOtp(generateUuid(), prodId, makeProduct({ stackable: true }));
+    await grantOtp(`otp-stack-${testId}`, prodId, makeProduct({ stackable: true }));
     const res = await callValidate(makeProduct({ stackable: true }), { productId: prodId });
     expect(res.selectedPrice).toBeDefined();
   });
@@ -135,7 +125,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
 
   it('blocks purchase when OTP exists in same product line (no sub to cancel)', async () => {
     const lineId = `line-block-${testId}`;
-    await grantOtp(generateUuid(), `prod-in-line-${testId}`, makeProduct({ productLineId: lineId }));
+    await grantOtp(`otp-line-${testId}`, `prod-in-line-${testId}`, makeProduct({ productLineId: lineId }));
     await expect(callValidate(makeProduct({ productLineId: lineId }), { productId: `prod-other-${testId}` }))
       .rejects.toThrowError('one-time purchase in this product line');
   });
@@ -201,7 +191,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
 
   it('allows add-on if base product is owned', async () => {
     const baseId = `base-addon-${testId}`;
-    await grantOtp(generateUuid(), baseId, makeProduct());
+    await grantOtp(`otp-base-${testId}`, baseId, makeProduct());
     const res = await callValidate(makeProduct({ isAddOnTo: { [baseId]: true } }));
     expect(res.selectedPrice).toBeDefined();
   });
@@ -209,7 +199,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
   it('allows add-on in same product line as its base product', async () => {
     const lineId = `line-addon-${testId}`;
     const baseId = `base-sameline-${testId}`;
-    await grantOtp(generateUuid(), baseId, makeProduct({ productLineId: lineId }));
+    await grantOtp(`otp-sameline-${testId}`, baseId, makeProduct({ productLineId: lineId }));
     const res = await callValidate(
       makeProduct({ productLineId: lineId, isAddOnTo: { [baseId]: true } }),
       { productId: `addon-sameline-${testId}` },

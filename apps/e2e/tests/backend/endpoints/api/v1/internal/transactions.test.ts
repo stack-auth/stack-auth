@@ -322,7 +322,7 @@ it("supports concatenated cursor pagination", async () => {
   expect(page2.body).toMatchObject({ transactions: expect.any(Array) });
 });
 
-it("omits subscription-renewal entries for subscription creation invoices", { timeout: 120_000 }, async () => {
+it("omits subscription-renewal entries for subscription creation invoices", async () => {
   const config = await setupProjectWithPaymentsConfig();
   const subProduct = config.products["sub-product"];
   const { userId } = await Auth.fastSignUp();
@@ -426,7 +426,7 @@ it("omits subscription-renewal entries for subscription creation invoices", { ti
   expect(purchaseTransaction).toBeDefined();
 });
 
-it("filters results by transaction type", { timeout: 120_000 }, async () => {
+it("filters results by transaction type", async () => {
   await setupProjectWithPaymentsConfig();
   const { userId } = await Auth.fastSignUp();
 
@@ -461,7 +461,7 @@ it("filters results by transaction type", { timeout: 120_000 }, async () => {
   expect(purchaseOnly.body.transactions[0].type).toBe("purchase");
 });
 
-it("filters results by customer_type across sources", { timeout: 120_000 }, async () => {
+it("filters results by customer_type across sources", async () => {
   await setupProjectWithPaymentsConfig({
     extraProducts: {
       "team-product": {
