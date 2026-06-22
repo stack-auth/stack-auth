@@ -19,6 +19,7 @@ import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
 import { AdminUserProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
 import { ITEM_IDS, PLAN_LIMITS } from '@hexclave/shared/dist/plans';
 import { DayInterval } from '@hexclave/shared/dist/utils/dates';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
 
@@ -56,21 +57,22 @@ function enableSeedLogTimestamps() {
 
 export async function seed() {
   enableSeedLogTimestamps();
-  process.env.STACK_SEED_MODE = 'true';
+  process.env.HEXCLAVE_SEED_MODE = 'true';
   console.log('Seeding database...');
 
   // Optional default admin user
-  const adminEmail = process.env.STACK_SEED_INTERNAL_PROJECT_USER_EMAIL;
-  const adminPassword = process.env.STACK_SEED_INTERNAL_PROJECT_USER_PASSWORD;
-  const adminInternalAccess = process.env.STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS === 'true';
-  const adminGithubId = process.env.STACK_SEED_INTERNAL_PROJECT_USER_GITHUB_ID;
+  const adminEmail = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_EMAIL", "");
+  const adminPassword = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_PASSWORD", "");
+  const adminInternalAccess = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS", "") === 'true';
+  const adminGithubId = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_GITHUB_ID", "");
 
   // dashboard settings
-  const dashboardDomain = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
-  const oauthProviderIds = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
-  const otpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED === 'true';
-  const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
-  const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
+  const dashboardDomain = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "");
+  const rawOauthProviderIds = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS", "");
+  const oauthProviderIds = rawOauthProviderIds ? rawOauthProviderIds.split(',') : [];
+  const otpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED", "") === 'true';
+  const signUpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED", "") === 'true';
+  const allowLocalhost = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST", "") === 'true';
 
   const localEmulatorEnabled = isLocalEmulatorEnabled();
 
@@ -366,22 +368,22 @@ export async function seed() {
   // seed, email/svix, clickhouse). The emulator CLI authenticates against the
   // internal project using the pck stored here, so it must land before the rest
   // of the seed even if something later fails.
-  const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
-  const rawPck = process.env.STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY;
+  const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === 'true';
+  const rawPck = getEnvVariable("STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY", "");
   if (isLocalEmulator && !rawPck) {
     // Emulator images build before a per-VM pck is available. Runtime boots set
-    // STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
+    // HEXCLAVE_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
     // random value and re-run the seed, which upserts the internal key set then.
     console.log('Skipping internal API key set (no pck provided; emulator mode).');
   } else {
     const keySet = {
-      publishableClientKey: rawPck || throwErr('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
+      publishableClientKey: rawPck || throwErr('HEXCLAVE_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
       secretServerKey: isLocalEmulator
-        ? (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
-        : (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
+        ? (getEnvVariable("STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY", "") || null)
+        : (getEnvVariable("STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY", "") || throwErr('HEXCLAVE_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
       superSecretAdminKey: isLocalEmulator
-        ? (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY ?? null)
-        : (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set')),
+        ? (getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY", "") || null)
+        : (getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY", "") || throwErr('HEXCLAVE_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set')),
     };
 
     await globalPrismaClient.apiKeySet.upsert({
@@ -401,7 +403,7 @@ export async function seed() {
     console.log('Updated internal API key set');
   }
 
-  const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
+  const shouldSeedDummyProject = getEnvVariable("STACK_SEED_ENABLE_DUMMY_PROJECT", "") === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
       projectId: DUMMY_PROJECT_ID,
