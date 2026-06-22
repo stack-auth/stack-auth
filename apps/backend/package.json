@@ -90,6 +90,7 @@
     "@sentry/node": "^10.45.0",
     "@sentry/rollup-plugin": "^4.6.1",
     "@simplewebauthn/server": "^13.3.0",
+    "@sinclair/typebox": "^0.34.49",
     "@upstash/qstash": "^2.8.2",
     "@vercel/functions": "^2.0.0",
     "@vercel/sandbox": "^1.2.0",
