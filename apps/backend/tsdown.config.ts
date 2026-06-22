@@ -1,8 +1,8 @@
+import { sentryRollupPlugin } from "@sentry/rollup-plugin";
 import { readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sentryRollupPlugin } from "@sentry/rollup-plugin";
 import { defineConfig, type Rolldown, type UserConfig } from "tsdown";
 // @ts-expect-error - this is a workspace tsdown helper imported from source.
 import { createBasePlugin } from "../../configs/tsdown/plugins.ts";

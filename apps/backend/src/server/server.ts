@@ -1,9 +1,9 @@
-import "@/polyfills";
-import "./env-expand";
 import "@/instrument";
+import "@/polyfills";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { app } from "./app";
+import "./env-expand";
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
 const port = Number(getEnvVariable("PORT", getEnvVariable("BACKEND_PORT", `${portPrefix}02`)));

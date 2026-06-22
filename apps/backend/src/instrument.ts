@@ -1,11 +1,11 @@
+import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
+import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/node";
-import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
-import { nicify } from "@hexclave/shared/dist/utils/strings";
 import { initPerfStats } from "./lib/dev-perf-stats";
 
 globalThis.global = globalThis;
@@ -47,6 +47,12 @@ export function registerBackendInstrumentation() {
 
   Sentry.init({
     ...sentryBaseConfig,
+    // We run our own OpenTelemetry NodeSDK above (for Prisma + the dev OTLP exporter), which already
+    // registers the global trace/context/propagation APIs. Without this flag, @sentry/node (v10 is
+    // OpenTelemetry-native) tries to register them again, logging "Attempted duplicate registration
+    // of API: trace/propagation/context". Skipping Sentry's OTel setup lets the NodeSDK own it while
+    // error capture continues to work normally.
+    skipOpenTelemetrySetup: true,
     dsn: getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", ""),
     enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
     beforeSend(event, hint) {

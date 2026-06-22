@@ -1,5 +1,5 @@
-import type { NextRequest } from "next/server";
 import { NextURL } from "@/lib/next-compat/server";
+import type { NextRequest } from "next/server";
 
 type NodeRequestInit = RequestInit & {
   duplex?: "half",

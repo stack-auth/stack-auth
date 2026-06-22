@@ -1,4 +1,4 @@
-export {};
+export { };
 
 declare global {
   // RequestInit is defined as an interface by lib.dom; interface merging is the
