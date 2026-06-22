@@ -1,0 +1,26 @@
+apps/backend/src/server/vercel.ts
+  s_39d61b0013d137::t_6fb0941cfd1575 2
+apps/backend/src/app/api/latest/internal/external-db-sync/status/route.ts
+  h_8c1b79571cf22c 3-6,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "8ad5c827ff181d4ddb1b49f2a1266e4f31485124",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_39d61b0013d137": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b1432656-e0d5-4e93-a216-3b8509c0a53e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
