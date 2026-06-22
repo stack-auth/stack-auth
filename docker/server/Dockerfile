@@ -52,6 +52,9 @@ COPY --from=pruner /app/out/full/ .
 # Docs are required for backend OpenAPI/codegen
 COPY docs ./docs
 
+# Dashboard still needs standalone output for its Next.js build
+ENV NEXT_CONFIG_OUTPUT=standalone
+
 # Build the backend and dashboard
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm turbo run docker-build --filter=@hexclave/backend... --filter=@hexclave/dashboard...
 
