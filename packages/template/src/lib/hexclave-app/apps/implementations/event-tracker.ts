@@ -4,7 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { generateUuid, isAnalyticsNotEnabledError } from "./session-replay";
+import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -505,6 +505,11 @@ export class EventTracker {
     if (res.status === "error") {
       if (isAnalyticsNotEnabledError(res.error)) {
         this._disable();
+        return;
+      }
+      // Ad blockers commonly block analytics endpoints, causing network
+      // errors. These are expected and should not pollute the console.
+      if (isAdBlockerNetworkError(res.error)) {
         return;
       }
       console.warn("EventTracker flush failed:", res.error);
