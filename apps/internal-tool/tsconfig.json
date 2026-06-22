@@ -14,7 +14,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node", "react"],
+    "noUncheckedSideEffectImports": false,
     "plugins": [
       {
         "name": "next"
