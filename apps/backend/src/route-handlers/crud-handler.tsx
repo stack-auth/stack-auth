@@ -11,7 +11,6 @@ import { FilterUndefined } from "@hexclave/shared/dist/utils/objects";
 import { deindent, typedToLowercase } from "@hexclave/shared/dist/utils/strings";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import * as yup from "yup";
-import { CrudHandlerInvocationError } from "./crud-handler-invocation-error";
 import { SmartRequestAuth } from "./smart-request";
 import { SmartRouteHandler, createSmartRouteHandler, routeHandlerTypeHelper } from "./smart-route-handler";
 
@@ -294,7 +293,11 @@ export function createCrudHandlers<
   ) as any;
 }
 
-export { CrudHandlerInvocationError } from "./crud-handler-invocation-error";
+export class CrudHandlerInvocationError extends Error {
+  constructor(public readonly cause: unknown) {
+    super("Error while invoking CRUD handler programmatically. This is a wrapper error to prevent caught errors (eg. StatusError) from being caught by outer catch blocks. Check the `cause` property.\n\nOriginal error: " + cause, { cause });
+  }
+}
 
 async function validate<T>(obj: unknown, schema: yup.ISchema<T>, currentUser: UsersCrud["Admin"]["Read"] | null, validationDescription: string): Promise<T> {
   try {

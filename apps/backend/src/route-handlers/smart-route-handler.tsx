@@ -11,7 +11,6 @@ import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
-import { CrudHandlerInvocationError } from "./crud-handler-invocation-error";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -50,14 +49,6 @@ function catchError(error: unknown, requestId: string): StatusError {
   }
 
   if (StatusError.isStatusError(error)) return error;
-
-  // Unwrap CrudHandlerInvocationError — its cause is a StatusError that should be returned
-  // with its proper HTTP status code instead of a generic 500. This is a safety net for cases
-  // where allowedErrorTypes wasn't updated after changing which errors a CRUD handler throws.
-  if (error instanceof CrudHandlerInvocationError && StatusError.isStatusError(error.cause)) {
-    captureError(`route-handler`, error);
-    return error.cause;
-  }
 
   captureError(`route-handler`, error);
   return new InternalServerError(error, requestId);
