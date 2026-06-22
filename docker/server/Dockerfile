@@ -92,9 +92,6 @@ COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/pr
 COPY --from=builder --chown=node:node /app/apps/backend/node_modules ./apps/backend/node_modules
 COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
 
-# Verify backend entry point exists
-RUN ls apps/backend/dist/server.mjs
-
 # Add the entrypoint script
 COPY ./docker/server/entrypoint.sh .
 RUN chmod +x entrypoint.sh
