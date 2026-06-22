@@ -21,17 +21,19 @@ This guide explains how to set up Passkey authentication with Hexclave. Passkeys
   </Step>
 
   <Step title="Implement Passkey Authentication in Your Application">
-    1. Make sure you've installed the Hexclave SDK in your application:
+    1. Make sure you've installed the right Hexclave SDK package for your framework. For example, in Next.js:
        ```bash
        npm install @hexclave/next
        ```
+
+       For other frameworks, use the package shown in [Setup](/guides/getting-started/setup), such as `@hexclave/react`, `@hexclave/js`, or `@hexclave/tanstack-start`.
 
     2. Add Passkey support to your sign-in component by using the built-in Hexclave components or creating your own implementation with the SDK.
 
        Using built-in components:
 
        ```jsx
-       import { SignIn } from "@hexclave/next";
+       import { SignIn } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
        export default function SignInPage() {
          return <SignIn />;

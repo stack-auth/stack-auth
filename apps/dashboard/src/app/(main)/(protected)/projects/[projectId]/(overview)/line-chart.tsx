@@ -847,9 +847,6 @@ export function ComposedAnalyticsChart({
               <clipPath id={`visitors-highlight-clip-${id}`}>
                 <rect x={hoveredX - 56} y={-1000} width={112} height={3000} />
               </clipPath>
-              <clipPath id={`page-views-highlight-clip-${id}`}>
-                <rect x={hoveredX - 56} y={-1000} width={112} height={3000} />
-              </clipPath>
               <clipPath id={`dau-highlight-clip-${id}`}>
                 <rect x={hoveredX - 56} y={-1000} width={112} height={3000} />
               </clipPath>
@@ -877,22 +874,16 @@ export function ComposedAnalyticsChart({
           dataKey="page_views"
           yAxisId="visitors"
           fill="var(--color-page_views)"
-          fillOpacity={showPageViews ? (hoveredIndex == null ? 0.18 : 0.08) : 0}
           radius={[4, 4, 0, 0]}
           {...chartMotion}
-        />
-        {showPageViews && hoveredIndex != null && hoveredX != null && (
-          <Bar
-            dataKey="page_views"
-            yAxisId="visitors"
-            fill="var(--color-page_views)"
-            fillOpacity={0.5}
-            radius={[4, 4, 0, 0]}
-            isAnimationActive={false}
-            style={{ clipPath: `url(#page-views-highlight-clip-${id})` }}
-            legendType="none"
-          />
-        )}
+        >
+          {taggedDatapoints.map((_, index) => (
+            <Cell
+              key={`page-views-${index}`}
+              fillOpacity={showPageViews ? (hoveredIndex === index ? 0.5 : 0.18) : 0}
+            />
+          ))}
+        </Bar>
         <Area
           type="monotone"
           dataKey="visitors"

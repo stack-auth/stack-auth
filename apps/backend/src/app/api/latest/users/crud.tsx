@@ -254,7 +254,7 @@ async function checkAuthData(
     });
 
     if (existingChannelUsedForAuth) {
-      throw new KnownErrors.UserWithEmailAlreadyExists(data.primaryEmail);
+      throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", data.primaryEmail);
     }
   }
 }

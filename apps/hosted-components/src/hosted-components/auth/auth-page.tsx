@@ -185,7 +185,7 @@ function HostedAuthPageInner(props: {
             <p className="text-muted-foreground">
               Don't have an account?{" "}
               <a
-                href={app.urls.signUp}
+                href="#"
                 className={authFooterLinkClassName}
                 onClick={(event) => {
                   event.preventDefault();
@@ -200,7 +200,7 @@ function HostedAuthPageInner(props: {
           <p className="text-muted-foreground">
             Already have an account?{" "}
             <a
-              href={app.urls.signIn}
+              href="#"
               className={authFooterLinkClassName}
               onClick={(event) => {
                 event.preventDefault();

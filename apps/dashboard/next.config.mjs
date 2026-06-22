@@ -1,4 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import { createRequire } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const sharedBackendRequire = createRequire(path.join(__dirname, "../../packages/shared-backend/package.json"));
+const claudeAgentSdkDir = path.dirname(sharedBackendRequire.resolve("@anthropic-ai/claude-agent-sdk"));
+const claudeAgentSdkTraceDir = path.relative(__dirname, claudeAgentSdkDir);
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -43,17 +51,37 @@ const withConfiguredSentryConfig = (nextConfig) =>
     }
   );
 
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // optionally set output to "standalone" for Docker builds
   // https://nextjs.org/docs/pages/api-reference/next-config-js/output
   output: process.env.NEXT_CONFIG_OUTPUT,
   distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
+  outputFileTracingRoot: path.join(__dirname, "../.."),
+  outputFileTracingIncludes: {
+    "/api/remote-development-environment/config/apply-update": [
+      path.join(claudeAgentSdkTraceDir, "cli.js"),
+      path.join(claudeAgentSdkTraceDir, "manifest.json"),
+      path.join(claudeAgentSdkTraceDir, "manifest.zst.json"),
+      path.join(claudeAgentSdkTraceDir, "resvg.wasm"),
+      path.join(claudeAgentSdkTraceDir, "vendor/**/*"),
+    ],
+  },
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
-  // we're open-source, so we can provide source maps
-  productionBrowserSourceMaps: true,
+  // we're open-source, so we can provide source maps — but skip them for
+  // RDE standalone builds where they just take up space for no reason
+  productionBrowserSourceMaps: process.env.NEXT_CONFIG_OUTPUT !== "standalone",
 
   poweredByHeader: false,
 
@@ -100,7 +128,7 @@ const nextConfig = {
   },
 
   async headers() {
-    const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+    const isLocalEmulator = resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR", "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
     return [
       {
         source: "/(.*)",
@@ -122,7 +150,7 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          ...process.env.NEXT_PUBLIC_STACK_IS_PREVIEW === "true" ? [] : [{
+          ...resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true" ? [] : [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
           }],

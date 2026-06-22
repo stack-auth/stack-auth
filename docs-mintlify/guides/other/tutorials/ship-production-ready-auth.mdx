@@ -44,7 +44,7 @@ You typically combine **one or more** of:
 
     Match **only** prefixes that should be gated. Do **not** blanket-match `/` or you can block static assets and Stack’s **`/handler`** routes (sign-in, sign-up, callbacks).
 
-    If your project uses **custom handler base paths**, use the sign-in URL from `hexclaveServerApp.urls.signIn` as the redirect target instead of hard-coding `/handler/sign-in` (it may be an absolute URL depending on configuration—`NextResponse.redirect` accepts that).
+    If your project uses hosted components or cross-domain auth, prefer protecting pages with `hexclaveServerApp.getUser({ or: "redirect" })` in a Server Component. Middleware cannot run the runtime `redirectToSignIn()` helper, so only hard-code `/handler/sign-in` here when your app owns a same-domain handler route.
   </Tab>
   <Tab title="Server Component">
     ```tsx title="app/app/dashboard/page.tsx"

@@ -255,68 +255,7 @@ const docsJson = {
       "/code-language-labels.js"
     ]
   },
-  "redirects": [
-    {
-      "source": "/sdk/objects/stack-app",
-      "destination": "/sdk/objects/hexclave-app"
-    },
-    {
-      "source": "/sdk/hooks/use-stack-app",
-      "destination": "/sdk/hooks/use-hexclave-app"
-    },
-    {
-      "source": "/rest-api/overview",
-      "destination": "/api/overview"
-    },
-    {
-      "source": "/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/next/getting-started/setup",
-      "destination": "/guides/getting-started/setup"
-    },
-    {
-      "source": "/docs/sdk",
-      "destination": "/sdk/overview"
-    },
-    {
-      "source": "/docs/apps/analytics",
-      "destination": "/guides/apps/analytics/overview"
-    },
-    {
-      "source": "/docs/apps/api-keys",
-      "destination": "/guides/apps/api-keys/overview"
-    },
-    {
-      "source": "/docs/others/convex",
-      "destination": "/guides/integrations/convex/overview"
-    },
-    {
-      "source": "/docs/concepts/teams",
-      "destination": "/guides/apps/teams/overview"
-    },
-    {
-      "source": "/docs/concepts/custom-user-data",
-      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
-    },
-    {
-      "source": "/guides/going-further/user-metadata",
-      "destination": "/guides/getting-started/user-fundamentals#custom-metadata"
-    },
-    {
-      "source": "/others/js-client",
-      "destination": "/sdk/objects/hexclave-app"
-    },
-    {
-      "source": "/guides/going-further/stack-app",
-      "destination": "/sdk/objects/hexclave-app"
-    }
-  ]
+  "redirects": []
 } as const;
 
 export default docsJson;

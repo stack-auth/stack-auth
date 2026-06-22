@@ -1,3 +1,4 @@
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { captureWarning } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -7,7 +8,7 @@ export type AnalyticsReplayOptions = {
   /**
    * Whether session replays are enabled.
    *
-   * @default false
+   * @default true
    */
   enabled?: boolean,
   /**
@@ -40,11 +41,18 @@ export type AnalyticsOptions = {
    */
   enabled?: boolean,
   /**
-   * Options for session replay recording. Replays are disabled by default;
-   * set `enabled: true` to opt in.
+   * Options for session replay recording. Replays are enabled by default;
+   * set `enabled: false` to opt out.
    */
   replays?: AnalyticsReplayOptions,
 };
+
+export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {
+  return {
+    ...analyticsOptions?.replays,
+    enabled: analyticsOptions?.replays?.enabled ?? true,
+  };
+}
 
 /**
  * Converts AnalyticsOptions to a JSON-safe representation.
@@ -154,9 +162,14 @@ export type SessionRecorderDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export function isAnalyticsNotEnabledError(error: unknown): boolean {
+  return KnownErrors.AnalyticsNotEnabled.isInstance(error);
+}
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
+  private _disabled = false;
   private _stopRecording: (() => void) | null = null;
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -224,6 +237,7 @@ export class SessionRecorder {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    if (this._disabled) return;
     if (this._events.length === 0) return;
     // Prevent concurrent in-flight HTTP requests. When a flush is already
     // in-flight, a second batch could race on the server (both call
@@ -256,6 +270,10 @@ export class SessionRecorder {
       );
 
       if (res.status === "error") {
+        if (isAnalyticsNotEnabledError(res.error)) {
+          this._disable();
+          return;
+        }
         captureWarning("SessionRecorder.flush", res.error);
         return;
       }
@@ -266,6 +284,16 @@ export class SessionRecorder {
     } finally {
       this._flushInProgress = false;
     }
+  }
+
+  private _disable() {
+    this._disabled = true;
+    this.clearBuffer();
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._stopCurrentRecording();
   }
 
   private async _startRecording() {

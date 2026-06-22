@@ -32,10 +32,17 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_TABLE_BASE_SQL }),
     client.command({ query: REFRESH_TOKENS_TABLE_BASE_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
+    client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
   ]);
+
+  await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
 
   // Alter events table (must come before views that reference new columns)
   await client.command({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
+
+  // Clickmap materialized view depends on the events table existing; create after the ALTER above
+  // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
+  await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
 
   // Create all views in parallel
   await Promise.all([
@@ -647,4 +654,102 @@ WHERE sync_is_deleted = 0;
 
 const EXTERNAL_ANALYTICS_DB_SQL = `
 CREATE DATABASE IF NOT EXISTS analytics_internal;
+`;
+
+// Clickmap-only physical table (PostHog-style schema). Fed by clickmap_events_mv
+// from analytics_internal.events WHERE event_type='$click'. Backwards compatible
+// with click rows that pre-date elements_chain / scaled coords: the MV derives
+// pointer_* from raw data.x / data.y / data.page_y, and elements_chain falls
+// back to the empty string when the SDK didn't emit one.
+//
+// SCALE_FACTOR = 16 mirrors PostHog: pixel coords are divided at ingest so
+// downstream queries operate on small integers and partitions stay compact.
+//
+// Order key (project_id, branch_id, date, path, viewport_width) matches the
+// hot clickmap query: "all clicks on this path in this date range at these
+// viewport widths".
+//
+// Dead-click classification lives on the click row itself: the SDK watches
+// each click for up to ~3.75s for any observable effect and sets data.dead=1
+// on the $click when there was none. One row per physical click, so count()
+// stays the total and countIf(is_dead) is the dead subset; no second event
+// type or table.
+const CLICKMAP_EVENTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.clickmap_events (
+    project_id           String,
+    branch_id            String,
+    event_at             DateTime64(3, 'UTC'),
+    user_id              Nullable(String),
+    session_replay_id    Nullable(String),
+    url                  String,
+    path                 String,
+    viewport_width       UInt16,
+    viewport_height      UInt16,
+    pointer_x            UInt16,
+    pointer_y            UInt16,
+    client_y             UInt16,
+    pointer_relative_x   Float32,
+    pointer_target_fixed UInt8,
+    elements_chain       String,
+    selector             String,
+    elements_text        String,
+    tag_name             LowCardinality(String),
+    href                 Nullable(String),
+    is_dead              UInt8 DEFAULT 0
+)
+ENGINE MergeTree
+PARTITION BY toYYYYMM(event_at)
+ORDER BY (project_id, branch_id, toDate(event_at), path, viewport_width);
+`;
+
+const CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL = `
+ALTER TABLE analytics_internal.clickmap_events
+ADD COLUMN IF NOT EXISTS is_dead UInt8 DEFAULT 0;
+`;
+
+// Materialized view that auto-populates clickmap_events on every $click insert.
+// No POPULATE clause: existing rows stay in analytics_internal.events. New
+// click rows flow into both tables.
+//
+// All field accesses use the toFloat64OrZero(toString(...)) pattern that the
+// existing analytics queries use, so JSON-Variant nullability is handled the
+// same way.
+const CLICKMAP_EVENTS_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.clickmap_events_mv
+TO analytics_internal.clickmap_events
+AS
+SELECT
+    project_id,
+    branch_id,
+    event_at,
+    user_id,
+    session_replay_id,
+    toString(data.url) AS url,
+    toString(data.path) AS path,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_width)))))) AS viewport_width,
+    toUInt16(least(65535, greatest(0, toUInt32(toFloat64OrZero(toString(data.viewport_height)))))) AS viewport_height,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.x_scaled)), toFloat64OrZero(toString(data.page_x)) / 16, toFloat64OrZero(toString(data.x)) / 16)
+    )))) AS pointer_x,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.y_scaled)), toFloat64OrZero(toString(data.page_y)) / 16, toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS pointer_y,
+    toUInt16(least(65535, greatest(0, toUInt32(
+        coalesce(toFloat64OrNull(toString(data.client_y_scaled)), toFloat64OrZero(toString(data.y)) / 16)
+    )))) AS client_y,
+    toFloat32(coalesce(
+        toFloat64OrNull(toString(data.pointer_relative_x)),
+        if(toFloat64OrZero(toString(data.viewport_width)) > 0,
+           toFloat64OrZero(toString(data.x)) / toFloat64OrZero(toString(data.viewport_width)),
+           0)
+    )) AS pointer_relative_x,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.pointer_target_fixed)), 0)) AS pointer_target_fixed,
+    toString(data.elements_chain) AS elements_chain,
+    toString(data.selector) AS selector,
+    toString(data.text) AS elements_text,
+    toString(data.tag_name) AS tag_name,
+    nullIf(toString(data.href), '') AS href,
+    toUInt8(coalesce(toUInt8OrNull(toString(data.dead)), 0)) AS is_dead
+FROM analytics_internal.events
+WHERE event_type = '$click';
 `;

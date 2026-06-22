@@ -333,12 +333,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   </head>
   <body>
     <div id="root"></div>
-    
-    <!-- Babel (for JSX transpilation). crossorigin=anonymous is required so that
-         errors thrown from inside Babel (e.g. JSX SyntaxErrors from AI-generated
-         code) are not sanitized to "Script error." with no message — unpkg sends
-         the matching Access-Control-Allow-Origin header. -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js" crossorigin="anonymous"></script>
 
     <!-- Install a global error listener BEFORE any AI code runs so that Babel parse
          errors, uncaught runtime throws, and async rejections all reach the parent.
@@ -464,6 +459,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           projectOwnerSession: async () => {
             return await requestAccessToken();
           },
+          analytics: { enabled: false },
         });
 
         // Expose under both names. AI-generated dashboards (post-PR2 prompt)

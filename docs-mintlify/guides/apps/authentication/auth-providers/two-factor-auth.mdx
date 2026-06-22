@@ -20,15 +20,17 @@ This guide explains how Two-Factor Authentication (2FA) works with Hexclave. 2FA
   <Step title="Implement User Settings in Your Application">
     To allow your users to set up 2FA for their accounts:
 
-    1. Make sure you've installed the Hexclave SDK in your application:
+    1. Make sure you've installed the right Hexclave SDK package for your framework. For example, in Next.js:
        ```bash
        npm install @hexclave/next
        ```
 
+       For other frameworks, use the package shown in [Setup](/guides/getting-started/setup), such as `@hexclave/react`, `@hexclave/js`, or `@hexclave/tanstack-start`.
+
     2. Use the Hexclave components to give users access to their account settings, where they can enable 2FA:
 
        ```jsx
-       import { AccountSettings } from "@hexclave/next";
+       import { AccountSettings } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
        export default function SettingsPage() {
          return <AccountSettings />;

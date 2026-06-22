@@ -10,16 +10,16 @@ export type HexclaveConfig = StackConfigObject | typeof showOnboardingHexclaveCo
 
 type StrictConfigShape<Actual, Expected> =
   Expected extends readonly unknown[]
-    ? Actual extends readonly unknown[]
+      ? Actual extends readonly unknown[]
       ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
-      : Actual
+        : Actual
     : Expected extends object
-      ? Actual extends object
+        ? Actual extends object
         ? Exclude<keyof Actual, keyof Expected> extends never
           ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
-          : never
-        : Actual
-      : Actual;
+            : never
+          : Actual
+        : Actual;
 
 type StrictStackConfig<T extends StackConfig> =
   T extends StackConfigObject

@@ -6,8 +6,8 @@ import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { PlanUsageResponse } from "./plan-usage";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -447,6 +447,48 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return (await response.json()) as UserActivityResponse;
+  }
+
+  async getAnalyticsClickmap(options: {
+    kind: AnalyticsClickmapKind,
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    url_pattern?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsClickmapDevice,
+    viewport_width_min?: number,
+    viewport_width_max?: number,
+    sampling?: number,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsClickmapResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapResponse;
+  }
+
+  async createAnalyticsClickmapToken(options: {
+    origin: string,
+  }): Promise<AnalyticsClickmapTokenResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap-token",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapTokenResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {
@@ -1063,10 +1105,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, user_id?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.user_id) qs.set('user_id', options.user_id);
     if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
     if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(

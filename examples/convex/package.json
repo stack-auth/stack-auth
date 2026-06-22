@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/convex-example",
-  "version": "1.0.15",
+  "version": "1.0.24",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -21,7 +21,7 @@
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "convex": "^1.27.0",
-    "next": "15.5.10",
+    "next": "15.5.19",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"
   },

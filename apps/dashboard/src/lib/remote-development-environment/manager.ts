@@ -15,9 +15,10 @@ import { peekRemoteDevelopmentEnvironmentBrowserSecretConfirmationCodeForCli } f
 import {
   ensureConfigFileExists,
   readConfigFile,
+  replaceConfigObject,
   resolveConfigFilePath,
   sha256String,
-  writeConfigObject,
+  updateConfigObject,
 } from "./config-file";
 import { assertRemoteDevelopmentEnvironmentEnabled } from "./env";
 import {
@@ -218,21 +219,30 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 }
 
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
-  return {
-    STACK_PROJECT_ID: project.projectId,
-    NEXT_PUBLIC_STACK_PROJECT_ID: project.projectId,
-    VITE_STACK_PROJECT_ID: project.projectId,
-    EXPO_PUBLIC_STACK_PROJECT_ID: project.projectId,
-    STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    VITE_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
-    STACK_SECRET_SERVER_KEY: project.secretServerKey,
-    STACK_API_URL: project.apiBaseUrl,
-    NEXT_PUBLIC_STACK_API_URL: project.apiBaseUrl,
-    VITE_STACK_API_URL: project.apiBaseUrl,
-    EXPO_PUBLIC_STACK_API_URL: project.apiBaseUrl,
+  const brands = ["HEXCLAVE", "STACK"];
+  const publicPrefixes = ["", "NEXT_PUBLIC_", "VITE_", "EXPO_PUBLIC_"];
+
+  const publicValues: Record<string, string> = {
+    PROJECT_ID: project.projectId,
+    PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
+    API_URL: project.apiBaseUrl,
   };
+  const secretValues: Record<string, string> = {
+    SECRET_SERVER_KEY: project.secretServerKey,
+  };
+
+  const env: Record<string, string> = {};
+  for (const brand of brands) {
+    for (const [name, value] of Object.entries(publicValues)) {
+      for (const prefix of publicPrefixes) {
+        env[`${prefix}${brand}_${name}`] = value;
+      }
+    }
+    for (const [name, value] of Object.entries(secretValues)) {
+      env[`${brand}_${name}`] = value;
+    }
+  }
+  return env;
 }
 
 async function getOrCreateProject(options: {
@@ -758,14 +768,14 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       projectId: options.projectId,
       configFilePath,
     });
-    const currentConfig = (await readConfigFile(configFilePath)).config;
     if (options.waitForSync === false) {
-      writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+      const currentConfig = (await readConfigFile(configFilePath)).config;
+      await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);
     } else {
       state.synchronouslyUpdatingConfigFiles.add(configFilePath);
       try {
-        writeConfigObject(configFilePath, override(currentConfig, options.configUpdate));
+        await updateConfigObject(configFilePath, options.configUpdate);
       } finally {
         setTimeout(() => {
           state.synchronouslyUpdatingConfigFiles.delete(configFilePath);

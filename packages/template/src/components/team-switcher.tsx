@@ -65,8 +65,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
   // Use mock data if provided, otherwise use real data
   const app = props.mockUser ? {
     useProject: () => props.mockProject || { config: { clientTeamCreationEnabled: false } },
-    useNavigate: () => () => {}, // Mock navigate function
-    urls: { accountSettings: '/account-settings' },
+    redirectToAccountSettings: async () => {},
   } : appFromHook;
 
   const user = props.mockUser ? {
@@ -75,7 +74,6 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
     setSelectedTeam: async () => {}, // Mock function
   } : userFromHook;
 
-  const navigate = app.useNavigate();
   const project = app.useProject();
   const rawTeams = props.teams ?? user?.useTeams();
   const selectedTeam = props.team || rawTeams?.find(team => team.id === props.teamId);
@@ -120,7 +118,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
                 className="h-6 w-6"
                 onClick={() => {
                   if (!props.mockUser) {
-                    navigate(`${app.urls.accountSettings}#team-${selectedTeam.id}`);
+                    runAsynchronouslyWithAlert(app.redirectToAccountSettings());
                   }
                 }}
               >
@@ -170,7 +168,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
             <Button
               onClick={() => {
                 if (!props.mockUser) {
-                  navigate(`${app.urls.accountSettings}#team-creation`);
+                  runAsynchronouslyWithAlert(app.redirectToAccountSettings());
                 }
               }}
               className="w-full"

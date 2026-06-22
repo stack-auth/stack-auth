@@ -85,7 +85,13 @@ export function ForgotPassword(props: { fullPage?: boolean }) {
           <Typography type='h2'>{t("Reset Your Password")}</Typography>
           <Typography>
             {t("Don't need to reset?")}{" "}
-            <StyledLink href={hexclaveApp.urls['signIn']}>
+            <StyledLink
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                runAsynchronouslyWithAlert(hexclaveApp.redirectToSignIn());
+              }}
+            >
               {t("Sign in")}
             </StyledLink>
           </Typography>

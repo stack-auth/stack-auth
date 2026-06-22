@@ -503,8 +503,9 @@ async function updateRemoteDevelopmentEnvironmentConfigFile(
       body: JSON.stringify({
         project_id: adminApp.projectId,
         config_update: configUpdate,
-        wait_for_sync: false,
+        wait_for_sync: true,
       }),
+      signal: AbortSignal.timeout(130_000),
     });
     if (!response.ok) {
       throw new Error(`Failed to update local development environment config (${response.status}): ${await response.text()}`);
@@ -578,12 +579,9 @@ export function useUpdateConfig() {
         throw new HexclaveAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
       }
 
-      const project = await adminApp.getProject();
       if (await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate) === "redirecting") {
         return false;
       }
-      // Update the remote project immediately so the dashboard reads the new value before the file sync lands.
-      await project.updatePushedConfig(configUpdate);
       return true;
     }
 

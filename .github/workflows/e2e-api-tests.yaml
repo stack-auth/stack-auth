@@ -17,10 +17,10 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
-      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -59,7 +59,7 @@ jobs:
       - name: Override Freestyle API key for prod mode
         if: matrix.freestyle-mode == 'prod'
         run: |
-          echo "STACK_FREESTYLE_API_KEY=${{ secrets.STACK_FREESTYLE_REAL_API_KEY }}" >> apps/backend/.env.test.local
+          echo "HEXCLAVE_FREESTYLE_API_KEY=${{ secrets.STACK_FREESTYLE_REAL_API_KEY }}" >> apps/backend/.env.test.local
 
       - name: Create .env.test.local file for apps/dashboard
         run: cp apps/dashboard/.env.development apps/dashboard/.env.test.local

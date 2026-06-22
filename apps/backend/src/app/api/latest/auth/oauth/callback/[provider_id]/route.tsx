@@ -189,7 +189,7 @@ const handler = createSmartRouteHandler({
         throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
       }
 
-      const providerObj = await getProvider(provider as any);
+      const providerObj = await getProvider(provider as any, provider.id);
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
       try {
         callbackResult = await providerObj.getCallback({
