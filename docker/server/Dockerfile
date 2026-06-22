@@ -74,28 +74,26 @@ RUN apt-get update && \
     apt-get install -y openssl socat && \
     rm -rf /var/lib/apt/lists
 
-# Copy built dashboard (standalone includes monorepo apps/ structure, so copy first)
+# Copy built dashboard (standalone includes monorepo apps/ structure)
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=builder --chown=node:node /app/apps/dashboard/public ./apps/dashboard/public
-
-# Copy the bundled Elysia backend AFTER dashboard standalone to overlay dist/
-COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
-COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder --chown=node:node /app/apps/backend/node_modules ./apps/backend/node_modules
-COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
 
 # Restore workspace node_modules needed by non-Next runtime scripts (e.g. migrations)
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 
-# Debug: inspect what exists at apps/backend after all COPYs
-RUN echo "--- apps/backend/ listing ---" && \
-    ls -la apps/backend/ 2>/dev/null || echo "apps/backend/ NOT FOUND" && \
-    echo "--- apps/backend/dist/ listing ---" && \
-    ls -la apps/backend/dist/ 2>/dev/null || echo "apps/backend/dist/ NOT FOUND" && \
-    echo "--- find all files under apps/backend/ ---" && \
-    find apps/backend/ -maxdepth 2 -ls 2>/dev/null | head -30 || true
+# Copy the bundled Elysia backend LAST — the dashboard standalone output includes
+# a traced subset of apps/backend/ via pnpm workspace symlinks, and Docker COPY
+# creates opaque directory layers that hide files from earlier layers. By copying
+# the real backend dist after everything else, its files are guaranteed visible.
+COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
+COPY --from=builder --chown=node:node /app/apps/backend/node_modules ./apps/backend/node_modules
+COPY --from=builder --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
+
+# Verify backend entry point exists
+RUN ls apps/backend/dist/server.mjs
 
 # Add the entrypoint script
 COPY ./docker/server/entrypoint.sh .
