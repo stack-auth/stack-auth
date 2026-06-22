@@ -84,7 +84,7 @@ export function isProjectOnboardingState(value: unknown): value is ProjectOnboar
 
 export function normalizeProjectOnboardingState(
   value: ProjectOnboardingState,
-  options?: { developmentEnvironment: boolean },
+  options?: { developmentEnvironment: boolean, isLocalEmulator?: boolean },
 ): ProjectOnboardingState {
   const selectedApps = ALL_APP_IDS.filter((appId) => (
     value.selected_apps.some((selectedAppId) => selectedAppId === appId)
@@ -94,7 +94,11 @@ export function normalizeProjectOnboardingState(
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
   const developmentEnvironment = options?.developmentEnvironment === true;
-  const normalizedSignInMethods = developmentEnvironment
+  const isLocalEmulator = options?.isLocalEmulator === true;
+  // Only strip OAuth sign-in methods for the local emulator, which lacks real OAuth
+  // infrastructure. The RDE connects to the production backend where shared OAuth
+  // providers work normally.
+  const normalizedSignInMethods = isLocalEmulator
     ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
     : selectedSignInMethods;
   return {
@@ -113,6 +117,7 @@ export function createProjectOnboardingState(options: {
   selectedEmailThemeId: string | null,
   selectedPaymentsCountry: OnboardingPaymentsCountry,
   developmentEnvironment: boolean,
+  isLocalEmulator?: boolean,
 }): ProjectOnboardingState {
   return normalizeProjectOnboardingState({
     selected_config_choice: options.selectedConfigChoice,
@@ -122,7 +127,7 @@ export function createProjectOnboardingState(options: {
       .filter((methodId) => options.selectedSignInMethods.has(methodId)),
     selected_email_theme_id: options.selectedEmailThemeId,
     selected_payments_country: options.selectedPaymentsCountry,
-  }, { developmentEnvironment: options.developmentEnvironment });
+  }, { developmentEnvironment: options.developmentEnvironment, isLocalEmulator: options.isLocalEmulator });
 }
 
 export function isStackAppInternals(value: unknown): value is HexclaveAppInternals {

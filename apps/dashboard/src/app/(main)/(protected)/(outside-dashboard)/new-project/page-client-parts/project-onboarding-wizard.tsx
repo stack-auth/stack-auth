@@ -96,12 +96,13 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry: "US",
       developmentEnvironment: isDevelopmentEnvironment,
+      isLocalEmulator,
     });
     if (onboardingState == null) {
       return defaultState;
     }
-    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
-  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment, isLocalEmulator });
+  }, [completeConfig, isDevelopmentEnvironment, isLocalEmulator, onboardingState, project]);
   const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
@@ -282,8 +283,9 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry,
       developmentEnvironment: isDevelopmentEnvironment,
+      isLocalEmulator,
     });
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
   const persistOnboardingState = useCallback(async () => {
     await setOnboardingState(buildOnboardingState());
@@ -300,7 +302,7 @@ export function ProjectOnboardingWizard(props: {
     for (const appId of ALL_APP_IDS) {
       configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
     }
-    if (isDevelopmentEnvironment) {
+    if (isLocalEmulator) {
       configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
         type: "google",
         allowSignIn: true,
@@ -318,7 +320,7 @@ export function ProjectOnboardingWizard(props: {
       } : null;
     }
     return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isLocalEmulator, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
     const configUpdate: EnvironmentConfigOverrideOverride = {};
@@ -347,7 +349,7 @@ export function ProjectOnboardingWizard(props: {
           return;
         }
 
-        if (!isDevelopmentEnvironment) {
+        if (!isLocalEmulator) {
           const providersUpdated = await updateConfig({
             adminApp: props.project.app,
             configUpdate: buildEnvironmentOAuthConfigUpdate(),
@@ -368,7 +370,7 @@ export function ProjectOnboardingWizard(props: {
     buildEnvironmentOAuthConfigUpdate,
     finishProjectOnboarding,
     isLinkExistingMode,
-    isDevelopmentEnvironment,
+    isLocalEmulator,
     persistOnboardingState,
     props.project.app,
     clearOnboardingState,
@@ -698,7 +700,7 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
-    const availableSignInMethods = isDevelopmentEnvironment
+    const availableSignInMethods = isLocalEmulator
       ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
       : SIGN_IN_METHODS;
 
