@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, readlinkSync, readdirSync, rmSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -162,6 +162,10 @@ function hoistPnpmStorePackages(pnpmDir) {
     }
     const dest = join(destNodeModules, packageName);
     if (!existsSync(dest)) {
+      const scopeDir = packageName.includes("/") ? join(destNodeModules, packageName.split("/")[0]) : null;
+      if (scopeDir && !existsSync(scopeDir)) {
+        mkdirSync(scopeDir, { recursive: true });
+      }
       cpSync(packageDir, dest, { recursive: true, dereference: true });
     }
   }
