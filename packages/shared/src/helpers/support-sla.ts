@@ -1,14 +1,41 @@
+import { conversationPriorityValues, type ConversationPriority } from "../interface/conversations";
+
 export type SupportSlaConfig = {
   enabled: boolean,
   firstResponseMinutes: number | null,
   nextResponseMinutes: number | null,
 };
 
+/**
+ * Normalizes the (possibly-undefined) `support.defaultPriority` config value into
+ * a concrete ConversationPriority, falling back to "normal".
+ */
+export function getSupportDefaultPriority(value: string | undefined): ConversationPriority {
+  return conversationPriorityValues.find((priority) => priority === value) ?? "normal";
+}
+
 export const DEFAULT_SUPPORT_SLA: SupportSlaConfig = {
   enabled: false,
   firstResponseMinutes: null,
   nextResponseMinutes: null,
 };
+
+/**
+ * Normalizes the (possibly-undefined) `support.sla` block from a rendered project
+ * config into a concrete SupportSlaConfig, falling back to the built-in default.
+ */
+export function getSupportSlaConfig(
+  sla: { enabled?: boolean, firstResponseMinutes?: number | null, nextResponseMinutes?: number | null } | undefined,
+): SupportSlaConfig {
+  if (sla == null) {
+    return DEFAULT_SUPPORT_SLA;
+  }
+  return {
+    enabled: sla.enabled ?? false,
+    firstResponseMinutes: sla.firstResponseMinutes ?? null,
+    nextResponseMinutes: sla.nextResponseMinutes ?? null,
+  };
+}
 
 function addMinutesOrNull(now: Date, minutes: number | null): Date | null {
   if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;

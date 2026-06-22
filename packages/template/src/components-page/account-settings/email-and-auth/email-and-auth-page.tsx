@@ -1,4 +1,5 @@
 import { PageLayout } from "../page-layout";
+import { CertificateSection } from "./certificate-section";
 import { ConnectedAccountsSection } from "./connected-accounts-section";
 import { EmailsSection } from "./emails-section";
 import { MfaSection } from "./mfa-section";
@@ -14,6 +15,7 @@ export function EmailsAndAuthPage(props?: {
       <EmailsSection mockMode={props?.mockMode}/>
       <PasswordSection mockMode={props?.mockMode} />
       <PasskeySection mockMode={props?.mockMode} />
+      <CertificateSection mockMode={props?.mockMode} />
       <OtpSection mockMode={props?.mockMode} />
       <MfaSection mockMode={props?.mockMode} />
       <ConnectedAccountsSection mockMode={props?.mockMode} />

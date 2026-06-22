@@ -1,4 +1,5 @@
 import { createConversation } from "@/lib/conversations";
+import { getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { sendSupportFeedbackEmail } from "@/lib/internal-feedback-emails";
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -97,6 +98,7 @@ export const POST = createSmartRouteHandler({
           displayName: auth.user.display_name ?? null,
           primaryEmail: auth.user.primary_email ?? null,
         },
+        slaConfig: getSupportSlaConfig(auth.tenancy.config.support.sla),
       });
     }
 

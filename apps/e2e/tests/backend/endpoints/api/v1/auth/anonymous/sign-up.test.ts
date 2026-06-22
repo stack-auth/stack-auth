@@ -1,7 +1,7 @@
 import { it } from "../../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
-it("allows anonymous users to sign up on the internal project", async ({ expect }) => {
+it("allows guest sign-in on the internal project when enabled", async ({ expect }) => {
   await Auth.Anonymous.signUp();
   const me = await niceBackendFetch("/api/v1/users/me", {
     accessType: "client",
@@ -46,8 +46,9 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
   `);
 });
 
-it("allows anonymous users to sign up on newly created projects", async ({ expect }) => {
+it("allows guest sign-in on newly created projects when enabled", async ({ expect }) => {
   await Project.createAndSwitch();
+  await Project.updateConfig({ "auth.anonymous.allowSignIn": true });
   const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
     accessType: "client",
     method: "POST",
@@ -65,8 +66,9 @@ it("allows anonymous users to sign up on newly created projects", async ({ expec
   `);
 });
 
-it("can still sign up anonymously even if sign ups are disabled", async ({ expect }) => {
+it("allows guest sign-in even when sign-ups are disabled (independent of allowSignUp)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { sign_up_enabled: false, credential_enabled: true } });
+  await Project.updateConfig({ "auth.anonymous.allowSignIn": true });
   const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
     accessType: "client",
     method: "POST",
@@ -80,6 +82,27 @@ it("can still sign up anonymously even if sign ups are disabled", async ({ expec
         "user_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects guest sign-in when it is disabled (the default)", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const res = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
+        "error": "Anonymous accounts are not enabled for this project.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });

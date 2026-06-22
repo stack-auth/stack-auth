@@ -8,6 +8,7 @@ import {
   appendConversationMessage,
   getConversationDetail,
 } from "@/lib/conversations";
+import { getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
   yupNumber,
@@ -81,6 +82,7 @@ export const PATCH = createSmartRouteHandler({
         displayName: auth.user.display_name ?? null,
         primaryEmail: auth.user.primary_email ?? null,
       },
+      slaConfig: getSupportSlaConfig(auth.tenancy.config.support.sla),
     });
 
     const detail = await getConversationDetail({

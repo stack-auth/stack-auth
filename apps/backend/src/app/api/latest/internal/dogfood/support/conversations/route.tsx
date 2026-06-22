@@ -9,6 +9,7 @@ import {
   createConversation,
   listConversationSummaries,
 } from "@/lib/conversations";
+import { getSupportDefaultPriority, getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
   yupNumber,
@@ -83,7 +84,7 @@ export const POST = createSmartRouteHandler({
       tenancyId: auth.tenancy.id,
       userId: auth.user.id,
       subject: body.subject,
-      priority: "normal",
+      priority: getSupportDefaultPriority(auth.tenancy.config.support.defaultPriority),
       source: "chat",
       channelType: "chat",
       adapterKey: "support-chat",
@@ -94,6 +95,7 @@ export const POST = createSmartRouteHandler({
         displayName: auth.user.display_name ?? null,
         primaryEmail: auth.user.primary_email ?? null,
       },
+      slaConfig: getSupportSlaConfig(auth.tenancy.config.support.sla),
     });
 
     return {

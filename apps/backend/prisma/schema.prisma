@@ -320,6 +320,7 @@ model ProjectUser {
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod         PasswordAuthMethod[]
   passkeyAuthMethod          PasskeyAuthMethod[]
+  mtlsAuthMethod             MtlsAuthMethod[]
   otpAuthMethod              OtpAuthMethod[]
   oauthAuthMethod            OAuthAuthMethod[]
   projectApiKey              ProjectApiKey[]
@@ -491,6 +492,7 @@ model AuthMethod {
   otpAuthMethod      OtpAuthMethod?
   passwordAuthMethod PasswordAuthMethod?
   passkeyAuthMethod  PasskeyAuthMethod?
+  mtlsAuthMethod     MtlsAuthMethod?
   oauthAuthMethod    OAuthAuthMethod?
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
@@ -554,6 +556,45 @@ model PasskeyAuthMethod {
   @@id([tenancyId, authMethodId])
   // a user can only have one password auth method
   @@unique([tenancyId, projectUserId])
+}
+
+// App-layer mTLS (client certificate) auth method. The user registers an X.509 certificate and later
+// signs in by proving possession of the private key (signing a server-issued challenge). Unlike the
+// other auth methods, a user may register MULTIPLE certificates (one per device/machine), so there is
+// deliberately NO @@unique on (tenancyId, projectUserId) here.
+model MtlsAuthMethod {
+  tenancyId     String @db.Uuid
+  authMethodId  String @db.Uuid
+  projectUserId String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // SHA-256 fingerprint of the DER-encoded certificate, lowercase hex without colons. Sign-in lookup key.
+  fingerprint        String
+  // The certificate's SubjectPublicKeyInfo (SPKI), DER encoded as base64url. Verifies the challenge signature.
+  publicKey          String
+  // Full certificate PEM, so subject/issuer/CA chain can be re-derived and re-validated at sign-in time.
+  certificatePem     String
+  subject            String
+  issuer             String
+  serialNumber       String
+  // "RSA" | "EC" — drives the signature verification algorithm chosen server-side.
+  keyAlgorithm       String
+  // The certificate's own signature algorithm (e.g. "sha256WithRSAEncryption"); informational.
+  signatureAlgorithm String
+  validFrom          DateTime
+  validTo            DateTime
+  // User-facing label (defaults to the subject CN, or "Certificate <short fingerprint>").
+  displayName        String?
+
+  authMethod  AuthMethod  @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  @@id([tenancyId, authMethodId])
+  // The same certificate cannot be registered twice within a project (sign-in looks it up by fingerprint).
+  @@unique([tenancyId, fingerprint])
+  @@index([tenancyId, projectUserId])
 }
 
 // This connects to projectUserOauthAccount, which might be shared between auth method and connected account.
@@ -715,6 +756,8 @@ enum VerificationCodeType {
   MFA_ATTEMPT
   PASSKEY_REGISTRATION_CHALLENGE
   PASSKEY_AUTHENTICATION_CHALLENGE
+  MTLS_REGISTRATION_CHALLENGE
+  MTLS_AUTHENTICATION_CHALLENGE
   INTEGRATION_PROJECT_TRANSFER
   PURCHASE_URL
 }

@@ -6,6 +6,7 @@ import { InternalSession } from "@hexclave/shared/dist/sessions";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { GeoInfo } from "@hexclave/shared/dist/utils/geo";
 import { ReadonlyJson } from "@hexclave/shared/dist/utils/json";
+import { MtlsCertificateInfo } from "@hexclave/shared/dist/utils/mtls";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
@@ -259,6 +260,10 @@ export type UserExtra = {
   getOAuthProvider(id: string): Promise<OAuthProvider | null>,
 
   registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
+
+  registerCertificate(options: { certificatePem: string, privateKeyPem: string, displayName?: string }): Promise<Result<{ id: string, fingerprint: string }, KnownErrors["MtlsRegistrationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsProofOfPossessionFailed"] | KnownErrors["MtlsCaValidationFailed"] | KnownErrors["MtlsCertificateAlreadyRegistered"]>>,
+  listCertificates(): Promise<MtlsCertificateInfo[]>,
+  deleteCertificate(id: string): Promise<Result<undefined, KnownErrors["MtlsCannotDeleteLastAuthMethod"]>>,
 }
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>

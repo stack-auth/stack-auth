@@ -1179,6 +1179,8 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
     credential_enabled: renderedConfig.auth.password.allowSignIn,
     magic_link_enabled: renderedConfig.auth.otp.allowSignIn,
     passkey_enabled: renderedConfig.auth.passkey.allowSignIn,
+    mtls_enabled: renderedConfig.auth.mtls.allowSignIn,
+    anonymous_sign_in_enabled: renderedConfig.auth.anonymous.allowSignIn,
 
     oauth_providers: oauthProviders,
     enabled_oauth_providers: enabledOauthProviders,

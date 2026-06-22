@@ -21,7 +21,7 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
-import { computeFirstResponseDueAt, computeNextResponseDueAt, DEFAULT_SUPPORT_SLA } from "@hexclave/shared/dist/helpers/support-sla";
+import { computeFirstResponseDueAt, computeNextResponseDueAt, DEFAULT_SUPPORT_SLA, type SupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { yupArray, yupMixed, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -568,6 +568,7 @@ export async function createConversation(options: {
   body: string,
   sender: ConversationSender,
   attachments?: unknown[],
+  slaConfig?: SupportSlaConfig,
 }) {
   const sender = parseSender(options.sender);
   const now = new Date();
@@ -579,7 +580,7 @@ export async function createConversation(options: {
   const isAgentMessage = sender.type === "agent";
 
   const firstResponseDueAt = isUserMessage
-    ? computeFirstResponseDueAt(now, DEFAULT_SUPPORT_SLA)
+    ? computeFirstResponseDueAt(now, options.slaConfig ?? DEFAULT_SUPPORT_SLA)
     : null;
 
   await retryTransaction(globalPrismaClient, async (tx) => {
@@ -735,6 +736,7 @@ export async function appendConversationMessage(options: {
   adapterKey?: string,
   attachments?: unknown[],
   metadata?: unknown | null,
+  slaConfig?: SupportSlaConfig,
 }) {
   const sender = parseSender(options.sender);
   const conversation = await getConversationState({
@@ -762,7 +764,7 @@ export async function appendConversationMessage(options: {
   const shouldSetNextResponseDueAt = shouldTrackReplies && sender.type === "user" && autoStatus === "open";
   const shouldClearNextResponseDueAt = shouldTrackReplies && sender.type === "agent";
   const nextResponseDueAt = shouldSetNextResponseDueAt
-    ? computeNextResponseDueAt(now, DEFAULT_SUPPORT_SLA)
+    ? computeNextResponseDueAt(now, options.slaConfig ?? DEFAULT_SUPPORT_SLA)
     : null;
 
   await retryTransaction(globalPrismaClient, async (tx) => {

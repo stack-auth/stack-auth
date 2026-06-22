@@ -1043,6 +1043,87 @@ const PasskeyAuthenticationFailed = createKnownErrorConstructor(
 );
 
 
+const MtlsAuthenticationNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_AUTHENTICATION_NOT_ENABLED",
+  () => [
+    400,
+    "mTLS (client certificate) authentication is not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
+const MtlsCertificateInvalid = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_CERTIFICATE_INVALID",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const MtlsProofOfPossessionFailed = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_PROOF_OF_POSSESSION_FAILED",
+  () => [
+    400,
+    "Could not verify possession of the certificate's private key. The signature over the registration challenge was invalid.",
+  ] as const,
+  () => [] as const,
+);
+
+const MtlsCaValidationFailed = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_CA_VALIDATION_FAILED",
+  () => [
+    400,
+    "The certificate does not chain to a trusted certificate authority configured for this project.",
+  ] as const,
+  () => [] as const,
+);
+
+const MtlsCertificateAlreadyRegistered = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_CERTIFICATE_ALREADY_REGISTERED",
+  () => [
+    400,
+    "This certificate is already registered. Each certificate can only be registered once.",
+  ] as const,
+  () => [] as const,
+);
+
+const MtlsRegistrationFailed = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_REGISTRATION_FAILED",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const MtlsAuthenticationFailed = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_AUTHENTICATION_FAILED",
+  (message: string) => [
+    400,
+    message,
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
+const MtlsCannotDeleteLastAuthMethod = createKnownErrorConstructor(
+  KnownError,
+  "MTLS_CANNOT_DELETE_LAST_AUTH_METHOD",
+  () => [
+    400,
+    "Cannot delete this certificate because it is the only remaining sign-in method on the account. Add another sign-in method first.",
+  ] as const,
+  () => [] as const,
+);
+
+
 const PermissionNotFound = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_NOT_FOUND",
@@ -1956,6 +2037,14 @@ export const KnownErrors = {
   PasskeyRegistrationFailed,
   PasskeyWebAuthnError,
   PasskeyAuthenticationFailed,
+  MtlsAuthenticationNotEnabled,
+  MtlsCertificateInvalid,
+  MtlsProofOfPossessionFailed,
+  MtlsCaValidationFailed,
+  MtlsCertificateAlreadyRegistered,
+  MtlsRegistrationFailed,
+  MtlsAuthenticationFailed,
+  MtlsCannotDeleteLastAuthMethod,
   PermissionNotFound,
   PermissionScopeMismatch,
   ContainedPermissionNotFound,

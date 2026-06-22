@@ -18,9 +18,11 @@ import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { LogoUpload } from "@/components/logo-upload";
 import {
   AsteriskIcon,
+  CertificateIcon,
   EnvelopeSimpleIcon,
   EyeIcon,
   GearSixIcon,
+  GhostIcon,
   GlobeIcon,
   KeyIcon,
   LinkIcon,
@@ -938,12 +940,16 @@ function LivePreviewBody({
   passwordEnabled,
   otpEnabled,
   passkeyEnabled,
+  mtlsEnabled,
+  anonymousSignInEnabled,
   enabledProviders,
 }: {
   config: AdminProject['config'],
   passwordEnabled: boolean,
   otpEnabled: boolean,
   passkeyEnabled: boolean,
+  mtlsEnabled: boolean,
+  anonymousSignInEnabled: boolean,
   enabledProviders: PreviewProvider[],
 }) {
   return (
@@ -960,6 +966,8 @@ function LivePreviewBody({
                   credentialEnabled: passwordEnabled,
                   magicLinkEnabled: otpEnabled,
                   passkeyEnabled: passkeyEnabled,
+                  mtlsEnabled: mtlsEnabled,
+                  anonymousSignInEnabled: anonymousSignInEnabled,
                   oauthProviders: enabledProviders,
                 },
               }}
@@ -1139,19 +1147,28 @@ export default function PageClient() {
   const [localPasswordEnabled, setLocalPasswordEnabled] = useState<boolean | undefined>(undefined);
   const [localOtpEnabled, setLocalOtpEnabled] = useState<boolean | undefined>(undefined);
   const [localPasskeyEnabled, setLocalPasskeyEnabled] = useState<boolean | undefined>(undefined);
+  const [localMtlsEnabled, setLocalMtlsEnabled] = useState<boolean | undefined>(undefined);
+  const [localRequireCa, setLocalRequireCa] = useState<boolean | undefined>(undefined);
+  const [localTrustedCaPem, setLocalTrustedCaPem] = useState<string | undefined>(undefined);
 
   const passwordEnabled = localPasswordEnabled ?? config.auth.password.allowSignIn;
   const otpEnabled = localOtpEnabled ?? config.auth.otp.allowSignIn;
   const passkeyEnabled = localPasskeyEnabled ?? config.auth.passkey.allowSignIn;
+  const mtlsEnabled = localMtlsEnabled ?? config.auth.mtls.allowSignIn;
+  const requireCa = localRequireCa ?? (config.auth.mtls.requireCa ?? false);
+  const trustedCaPem = localTrustedCaPem ?? (config.auth.mtls.trustedCaPem ?? "");
 
   const authMethodsHasChanges = useMemo(() =>
     localPasswordEnabled !== undefined ||
     localOtpEnabled !== undefined ||
-    localPasskeyEnabled !== undefined,
-  [localPasswordEnabled, localOtpEnabled, localPasskeyEnabled]);
+    localPasskeyEnabled !== undefined ||
+    localMtlsEnabled !== undefined ||
+    localRequireCa !== undefined ||
+    localTrustedCaPem !== undefined,
+  [localPasswordEnabled, localOtpEnabled, localPasskeyEnabled, localMtlsEnabled, localRequireCa, localTrustedCaPem]);
 
   const handleAuthMethodsSave = async () => {
-    const configUpdate: Record<string, boolean> = {};
+    const configUpdate: Record<string, boolean | string> = {};
     if (localPasswordEnabled !== undefined) {
       configUpdate['auth.password.allowSignIn'] = localPasswordEnabled;
     }
@@ -1161,31 +1178,69 @@ export default function PageClient() {
     if (localPasskeyEnabled !== undefined) {
       configUpdate['auth.passkey.allowSignIn'] = localPasskeyEnabled;
     }
+    if (localMtlsEnabled !== undefined) {
+      configUpdate['auth.mtls.allowSignIn'] = localMtlsEnabled;
+    }
+    if (localRequireCa !== undefined) {
+      configUpdate['auth.mtls.requireCa'] = localRequireCa;
+    }
+    if (localTrustedCaPem !== undefined) {
+      configUpdate['auth.mtls.trustedCaPem'] = localTrustedCaPem;
+    }
     await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     setLocalPasswordEnabled(undefined);
     setLocalOtpEnabled(undefined);
     setLocalPasskeyEnabled(undefined);
+    setLocalMtlsEnabled(undefined);
+    setLocalRequireCa(undefined);
+    setLocalTrustedCaPem(undefined);
   };
 
   const handleAuthMethodsDiscard = () => {
     setLocalPasswordEnabled(undefined);
     setLocalOtpEnabled(undefined);
     setLocalPasskeyEnabled(undefined);
+    setLocalMtlsEnabled(undefined);
+    setLocalRequireCa(undefined);
+    setLocalTrustedCaPem(undefined);
   };
 
   // ===== SIGN-UP local state =====
   const [localAllowSignUp, setLocalAllowSignUp] = useState<boolean | undefined>(undefined);
   const [localMergeStrategy, setLocalMergeStrategy] = useState<OAuthAccountMergeStrategy | undefined>(undefined);
+  const [localAllowGuest, setLocalAllowGuest] = useState<boolean | undefined>(undefined);
+  // `undefined` = no local change; `null` = "never expire"; a number = days.
+  const [localGuestTtl, setLocalGuestTtl] = useState<number | null | undefined>(undefined);
 
   const allowSignUp = localAllowSignUp ?? config.auth.allowSignUp;
   const mergeStrategy = localMergeStrategy ?? config.auth.oauth.accountMergeStrategy;
+  const allowGuest = localAllowGuest ?? config.auth.anonymous.allowSignIn;
+  const guestTtl = localGuestTtl !== undefined ? localGuestTtl : (config.auth.anonymous.expireGuestsAfterDays ?? null);
 
   const signUpHasChanges = useMemo(() =>
-    localAllowSignUp !== undefined || localMergeStrategy !== undefined,
-  [localAllowSignUp, localMergeStrategy]);
+    localAllowSignUp !== undefined || localMergeStrategy !== undefined || localAllowGuest !== undefined || localGuestTtl !== undefined,
+  [localAllowSignUp, localMergeStrategy, localAllowGuest, localGuestTtl]);
+
+  // Collects the guest + merge-strategy updates (everything except the allowSignUp toggle, which routes
+  // through a confirmation dialog).
+  const collectSignUpSideUpdates = () => {
+    const configUpdate: Record<string, any> = {};
+    if (localMergeStrategy !== undefined) configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
+    if (localAllowGuest !== undefined) configUpdate['auth.anonymous.allowSignIn'] = localAllowGuest;
+    if (localGuestTtl !== undefined) configUpdate['auth.anonymous.expireGuestsAfterDays'] = localGuestTtl;
+    return configUpdate;
+  };
+
+  const resetSignUpLocalState = () => {
+    setLocalAllowSignUp(undefined);
+    setLocalMergeStrategy(undefined);
+    setLocalAllowGuest(undefined);
+    setLocalGuestTtl(undefined);
+  };
 
   const handleSignUpSave = async () => {
     if (localAllowSignUp !== undefined && localAllowSignUp !== config.auth.allowSignUp) {
+      // Toggling sign-up requires confirmation; the confirm handler applies the rest of the changes too.
       if (localAllowSignUp) {
         setConfirmSignUpEnabled(true);
       } else {
@@ -1194,30 +1249,21 @@ export default function PageClient() {
       return;
     }
 
-    if (localMergeStrategy !== undefined) {
-      await updateConfig({
-        adminApp: hexclaveAdminApp,
-        configUpdate: { 'auth.oauth.accountMergeStrategy': localMergeStrategy },
-        pushable: true,
-      });
+    const configUpdate = collectSignUpSideUpdates();
+    if (Object.keys(configUpdate).length > 0) {
+      await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
     }
-    setLocalAllowSignUp(undefined);
-    setLocalMergeStrategy(undefined);
+    resetSignUpLocalState();
   };
 
   const handleSignUpDiscard = () => {
-    setLocalAllowSignUp(undefined);
-    setLocalMergeStrategy(undefined);
+    resetSignUpLocalState();
   };
 
   const handleSignUpConfirmed = async (newAllowSignUp: boolean) => {
-    const configUpdate: Record<string, any> = { 'auth.allowSignUp': newAllowSignUp };
-    if (localMergeStrategy !== undefined) {
-      configUpdate['auth.oauth.accountMergeStrategy'] = localMergeStrategy;
-    }
+    const configUpdate: Record<string, any> = { 'auth.allowSignUp': newAllowSignUp, ...collectSignUpSideUpdates() };
     await updateConfig({ adminApp: hexclaveAdminApp, configUpdate, pushable: true });
-    setLocalAllowSignUp(undefined);
-    setLocalMergeStrategy(undefined);
+    resetSignUpLocalState();
   };
 
   // ===== USER DELETION local state =====
@@ -1265,8 +1311,24 @@ export default function PageClient() {
   const onPasskeyChange = (checked: boolean) => {
     setLocalPasskeyEnabled(checked === config.auth.passkey.allowSignIn ? undefined : checked);
   };
+  const onMtlsChange = (checked: boolean) => {
+    setLocalMtlsEnabled(checked === config.auth.mtls.allowSignIn ? undefined : checked);
+  };
+  const onRequireCaChange = (checked: boolean) => {
+    setLocalRequireCa(checked === (config.auth.mtls.requireCa ?? false) ? undefined : checked);
+  };
+  const onTrustedCaPemChange = (value: string) => {
+    setLocalTrustedCaPem(value === (config.auth.mtls.trustedCaPem ?? "") ? undefined : value);
+  };
   const onAllowSignUpChange = (checked: boolean) => {
     setLocalAllowSignUp(checked === config.auth.allowSignUp ? undefined : checked);
+  };
+  const onAllowGuestChange = (checked: boolean) => {
+    setLocalAllowGuest(checked === config.auth.anonymous.allowSignIn ? undefined : checked);
+  };
+  const onGuestTtlChange = (days: number | null) => {
+    const current = config.auth.anonymous.expireGuestsAfterDays ?? null;
+    setLocalGuestTtl(days === current ? undefined : days);
   };
   const onMergeStrategyChange = (value: string) => {
     if (value !== "link_method" && value !== "raise_error" && value !== "allow_duplicates") {
@@ -1297,7 +1359,31 @@ export default function PageClient() {
                 <MethodToggleRow icon={AsteriskIcon} label="Email/password authentication" hint="Classic email + password credentials." checked={passwordEnabled} onCheckedChange={onPasswordChange} density="default" />
                 <MethodToggleRow icon={LinkIcon} label="Magic link (Email OTP)" hint="One-time codes delivered by email." checked={otpEnabled} onCheckedChange={onOtpChange} density="default" />
                 <MethodToggleRow icon={KeyIcon} label="Passkey" hint="Phishing-resistant device-bound credentials." checked={passkeyEnabled} onCheckedChange={onPasskeyChange} density="default" />
+                <MethodToggleRow icon={CertificateIcon} label="mTLS (Client Certificate)" hint="Power users sign in by proving possession of an X.509 client certificate." checked={mtlsEnabled} onCheckedChange={onMtlsChange} density="default" />
               </div>
+              {mtlsEnabled && (
+                <div className="mt-2 ml-2 pl-4 border-l border-foreground/10 flex flex-col gap-2">
+                  <MethodToggleRow
+                    icon={CertificateIcon}
+                    label="Require a trusted CA"
+                    hint="Only accept certificates that chain to one of the CA certificates below. When off, any certificate is accepted and bound to its public key (self-signed is fine)."
+                    checked={requireCa}
+                    onCheckedChange={onRequireCaChange}
+                    density="compact"
+                  />
+                  {requireCa && (
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-xs text-muted-foreground">Trusted CA certificate(s) (PEM)</Label>
+                      <textarea
+                        className="text-xs font-mono border rounded-md p-2 bg-transparent min-h-[120px]"
+                        placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                        value={trustedCaPem}
+                        onChange={(e) => onTrustedCaPemChange(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <InlineSaveDiscard hasChanges={authMethodsHasChanges} onSave={handleAuthMethodsSave} onDiscard={handleAuthMethodsDiscard} />
 
               <div className="mt-5 mb-3">
@@ -1339,6 +1425,8 @@ export default function PageClient() {
                 passwordEnabled={passwordEnabled}
                 otpEnabled={otpEnabled}
                 passkeyEnabled={passkeyEnabled}
+                mtlsEnabled={mtlsEnabled}
+                anonymousSignInEnabled={allowGuest}
                 enabledProviders={previewProviders}
               />
             </DesignCard>
@@ -1384,6 +1472,38 @@ export default function PageClient() {
                   className="w-[180px]"
                 />
               </Label>
+              <MethodToggleRow
+                icon={GhostIcon}
+                label="Allow guest sign-in"
+                hint="Adds a 'Continue as guest' button to your sign-in page so visitors get a temporary anonymous account to explore your app. Independent of the sign-up toggle above."
+                checked={allowGuest}
+                onCheckedChange={onAllowGuestChange}
+                density="compact"
+              />
+              {allowGuest && (
+                <Label className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-foreground/[0.03] transition-colors duration-150 hover:transition-none cursor-pointer">
+                  <div className="p-2 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04] shrink-0">
+                    <GhostIcon size={18} className="text-foreground/70 dark:text-muted-foreground" aria-hidden="true" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">Clean up inactive guests</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Automatically delete guest accounts that have been inactive for this long.</div>
+                  </div>
+                  <DesignSelectorDropdown
+                    value={guestTtl === null ? "never" : String(guestTtl)}
+                    onValueChange={(v) => onGuestTtlChange(v === "never" ? null : Number(v))}
+                    options={[
+                      { value: "never", label: "Never" },
+                      { value: "1", label: "1 day" },
+                      { value: "7", label: "7 days" },
+                      { value: "30", label: "30 days" },
+                      { value: "90", label: "90 days" },
+                    ]}
+                    size="sm"
+                    className="w-[180px]"
+                  />
+                </Label>
+              )}
             </div>
             <InlineSaveDiscard hasChanges={signUpHasChanges} onSave={handleSignUpSave} onDiscard={handleSignUpDiscard} />
           </DesignCard>

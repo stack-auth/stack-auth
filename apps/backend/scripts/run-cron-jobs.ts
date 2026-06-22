@@ -6,6 +6,7 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
+  "/api/latest/internal/cleanup-anonymous-users",
 ];
 
 async function main() {

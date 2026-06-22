@@ -3,6 +3,7 @@ import {
   getManagedProjectTenancy,
   listConversationSummaries,
 } from "@/lib/conversations";
+import { getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import {
   conversationListResponseSchema,
   conversationPriorityValues,
@@ -122,6 +123,7 @@ export const POST = createSmartRouteHandler({
         displayName: auth.user.display_name ?? null,
         primaryEmail: auth.user.primary_email ?? null,
       },
+      slaConfig: getSupportSlaConfig(tenancy.config.support.sla),
     });
 
     return {

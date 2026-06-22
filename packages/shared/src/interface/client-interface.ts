@@ -11,6 +11,7 @@ import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
 import { publishableClientKeyNotNecessarySentinel } from '../utils/oauth';
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
+import { MtlsCertificateInfo } from '../utils/mtls';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
@@ -1206,6 +1207,127 @@ export class HexclaveClientInterface {
     return Result.ok(await res.data.json());
   }
 
+  async initiateMtlsRegistration(
+    options: {},
+    session: InternalSession
+  ): Promise<Result<{ challenge: string, code: string }, KnownErrors["MtlsAuthenticationNotEnabled"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mtls/initiate-mtls-registration",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      session,
+      [KnownErrors.MtlsAuthenticationNotEnabled]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    return Result.ok(await res.data.json());
+  }
+
+  async registerMtls(
+    options: { certificate_pem: string, signature: string, display_name?: string, code: string },
+    session: InternalSession
+  ): Promise<Result<{ id: string, fingerprint: string }, KnownErrors["MtlsRegistrationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsProofOfPossessionFailed"] | KnownErrors["MtlsCaValidationFailed"] | KnownErrors["MtlsCertificateAlreadyRegistered"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mtls/register",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      session,
+      [KnownErrors.MtlsRegistrationFailed, KnownErrors.MtlsCertificateInvalid, KnownErrors.MtlsProofOfPossessionFailed, KnownErrors.MtlsCaValidationFailed, KnownErrors.MtlsCertificateAlreadyRegistered]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    return Result.ok(await res.data.json());
+  }
+
+  async initiateMtlsAuthentication(
+    options: {},
+    session: InternalSession
+  ): Promise<Result<{ challenge: string, code: string }, KnownErrors["MtlsAuthenticationNotEnabled"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mtls/initiate-mtls-authentication",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      session,
+      [KnownErrors.MtlsAuthenticationNotEnabled]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    return Result.ok(await res.data.json());
+  }
+
+  async signInWithMtls(
+    body: { certificate_pem: string, signature: string, code: string },
+    session: InternalSession
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["MtlsAuthenticationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsCaValidationFailed"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mtls/sign-in",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      session,
+      [KnownErrors.MtlsAuthenticationFailed, KnownErrors.MtlsCertificateInvalid, KnownErrors.MtlsCaValidationFailed]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    const result = await res.data.json();
+    return Result.ok({
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+    });
+  }
+
+  async listMtlsCertificates(session: InternalSession): Promise<Result<MtlsCertificateInfo[], KnownErrors["MtlsAuthenticationNotEnabled"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      "/auth/mtls/certificates",
+      { method: "GET" },
+      session,
+      [KnownErrors.MtlsAuthenticationNotEnabled]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    const result = await res.data.json();
+    // `c` is an untyped JSON object from the API response; we map its snake_case fields to camelCase here.
+    return Result.ok(result.certificates.map((c: any) => ({
+      id: c.id,
+      fingerprint: c.fingerprint,
+      subject: c.subject,
+      issuer: c.issuer,
+      displayName: c.display_name,
+      validFrom: c.valid_from,
+      validTo: c.valid_to,
+      createdAt: c.created_at,
+    })));
+  }
+
+  async deleteMtlsCertificate(id: string, session: InternalSession): Promise<Result<undefined, KnownErrors["MtlsCannotDeleteLastAuthMethod"]>> {
+    const res = await this.sendClientRequestAndCatchKnownError(
+      `/auth/mtls/certificates/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+      session,
+      [KnownErrors.MtlsCannotDeleteLastAuthMethod]
+    );
+    if (res.status === "error") {
+      return Result.error(res.error);
+    }
+    return Result.ok(undefined);
+  }
+
   async sendTeamInvitation(options: {
     email: string,
     teamId: string,
@@ -1353,14 +1475,14 @@ export class HexclaveClientInterface {
     });
   }
 
-  async signUpAnonymously(session: InternalSession): Promise<Result<{ accessToken: string, refreshToken: string }, never>> {
+  async signUpAnonymously(session: InternalSession): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["AnonymousAccountsNotEnabled"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/anonymous/sign-up",
       {
         method: "POST",
       },
       session,
-      [],
+      [KnownErrors.AnonymousAccountsNotEnabled],
     );
 
     if (res.status === "error") {

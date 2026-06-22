@@ -12,6 +12,10 @@
     {
       "path": "/api/latest/internal/external-db-sync/sequencer",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/cleanup-anonymous-users",
+      "schedule": "0 3 * * *"
     }
   ],
   "github": {

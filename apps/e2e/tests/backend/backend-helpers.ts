@@ -2,6 +2,7 @@ import type { ProjectConfigOverride } from "@hexclave/shared/dist/config/schema"
 import { AdminUserProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { signMtlsChallenge } from "@hexclave/shared/dist/utils/mtls";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { publishableClientKeyNotNecessarySentinel } from "@hexclave/shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@hexclave/shared/dist/utils/objects";
@@ -1033,7 +1034,12 @@ export namespace Auth {
   }
 
   export namespace Anonymous {
-    export async function signUp() {
+    export async function signUp(options?: { skipEnableConfig?: boolean }) {
+      // Guest sign-in is off by default, so enable it on the current project before signing up
+      // (callers that want to test the disabled path pass `skipEnableConfig: true`).
+      if (!options?.skipEnableConfig) {
+        await Project.updateConfig({ "auth.anonymous.allowSignIn": true });
+      }
       const response = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
         method: "POST",
         accessType: "client",
@@ -1061,6 +1067,75 @@ export namespace Auth {
         refreshToken: response.body.refresh_token,
         userId: response.body.user_id,
       };
+    }
+  }
+
+  export namespace Mtls {
+    // Deterministic EC P-256 self-signed test certificate + matching PKCS#8 private key (validity ~2126),
+    // generated with openssl. `TEST_PRIVATE_KEY_2` is a DIFFERENT key used to test signature failures.
+    export const TEST_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIIBkTCCATegAwIBAgIULVp4M7tVmg3UPjc5H+RGg/fnJqowCgYIKoZIzj0EAwIw
+HTEbMBkGA1UEAwwSSGV4Y2xhdmUgbVRMUyBUZXN0MCAXDTI2MDYyMjEzMDMwN1oY
+DzIxMjYwNTI5MTMwMzA3WjAdMRswGQYDVQQDDBJIZXhjbGF2ZSBtVExTIFRlc3Qw
+WTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARUiK42FfXMbSyaq+cY7K2rhvbyWkdK
+gvILvq5vWs2cg+eZrCRAEl2pe2by43iugVmENyhlaQ1VbZ+lPXGPK01Ho1MwUTAd
+BgNVHQ4EFgQU7v/QLQzi624f4yciYTRDxIsCZGYwHwYDVR0jBBgwFoAU7v/QLQzi
+624f4yciYTRDxIsCZGYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBF
+AiEA7wchBs4k2Ax6va3f5T5dM7ULutX8Tl+ISNESJGGZ3xgCIF7iRSPEIpPbxXgx
+qBX+Ykf9y4KCXiXhQuozVJePjLO/
+-----END CERTIFICATE-----
+`;
+    export const TEST_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQglJxXgME3/6qshsi3
+1wbuVbHG8Jfh6hX0yFUnnRyeulmhRANCAARUiK42FfXMbSyaq+cY7K2rhvbyWkdK
+gvILvq5vWs2cg+eZrCRAEl2pe2by43iugVmENyhlaQ1VbZ+lPXGPK01H
+-----END PRIVATE KEY-----
+`;
+    export const TEST_PRIVATE_KEY_2 = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgAKmnFLIVxQ85teP6
+I6vl/bGQ5EcvekGWgIdwdPz8YsChRANCAARP0XlFGdYJAaKUqSIJbC+yNHvrN+r0
+rz2hvUGF0eJWHn536FGgg0kVK+d1UZHXUPlGukL8NaIvFMaGOFGXzkro
+-----END PRIVATE KEY-----
+`;
+
+    export async function enableConfig() {
+      await Project.updateConfig({ "auth.mtls.allowSignIn": true });
+    }
+
+    export async function register(options?: { certificatePem?: string, privateKeyPem?: string, displayName?: string }) {
+      const certificatePem = options?.certificatePem ?? TEST_CERTIFICATE;
+      const privateKeyPem = options?.privateKeyPem ?? TEST_PRIVATE_KEY;
+      const initiateRes = await niceBackendFetch("/api/v1/auth/mtls/initiate-mtls-registration", {
+        method: "POST",
+        accessType: "client",
+        body: {},
+      });
+      if (initiateRes.status !== 200) return { initiateRes, registerRes: undefined };
+      const signature = await signMtlsChallenge({ privateKey: privateKeyPem, keyAlgorithm: "EC", challenge: initiateRes.body.challenge });
+      const registerRes = await niceBackendFetch("/api/v1/auth/mtls/register", {
+        method: "POST",
+        accessType: "client",
+        body: { certificate_pem: certificatePem, signature, code: initiateRes.body.code, display_name: options?.displayName },
+      });
+      return { initiateRes, registerRes };
+    }
+
+    export async function signIn(options?: { certificatePem?: string, privateKeyPem?: string }) {
+      const certificatePem = options?.certificatePem ?? TEST_CERTIFICATE;
+      const privateKeyPem = options?.privateKeyPem ?? TEST_PRIVATE_KEY;
+      const initiateRes = await niceBackendFetch("/api/v1/auth/mtls/initiate-mtls-authentication", {
+        method: "POST",
+        accessType: "client",
+        body: {},
+      });
+      if (initiateRes.status !== 200) return { initiateRes, signInRes: undefined };
+      const signature = await signMtlsChallenge({ privateKey: privateKeyPem, keyAlgorithm: "EC", challenge: initiateRes.body.challenge });
+      const signInRes = await niceBackendFetch("/api/v1/auth/mtls/sign-in", {
+        method: "POST",
+        accessType: "client",
+        body: { certificate_pem: certificatePem, signature, code: initiateRes.body.code },
+      });
+      return { initiateRes, signInRes };
     }
   }
 }

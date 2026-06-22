@@ -81,6 +81,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       noRedirect?: boolean,
     } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeFailed"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
+    signInWithCertificate(options: { certificatePem: string, privateKeyPem: string }): Promise<Result<undefined, KnownErrors["MtlsAuthenticationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsCaValidationFailed"] | KnownErrors["InvalidTotpCode"]>>,
+    signInAsGuest(options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["AnonymousAccountsNotEnabled"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number, anonRefreshToken?: string, promptLink?: (url: string, loginCode: string) => void }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,

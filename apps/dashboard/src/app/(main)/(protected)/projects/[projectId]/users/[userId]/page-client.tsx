@@ -64,6 +64,7 @@ import { UserAnalyticsSection } from "./user-analytics";
 import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
 import { UserEmailsSection } from "./user-emails";
+import { UserSupportSection } from "./user-support";
 import dynamic from "next/dynamic";
 
 // The session-replays page is ~2k LOC and pulls rrweb in via dynamic imports.
@@ -1872,6 +1873,7 @@ const USER_PAGE_TABS = [
   { id: "authentication", label: "Authentication", appId: "authentication" },
   { id: "teams", label: "Teams", appId: "teams" },
   { id: "emails", label: "Emails", appId: "emails" },
+  { id: "support", label: "Support", appId: "support" },
   { id: "payments", label: "Payments", appId: "payments" },
   { id: "analytics", label: "Analytics", appId: "analytics" },
   { id: "session-replays", label: "Session Replays", appId: "session-replays" },
@@ -2000,6 +2002,11 @@ function UserPage({ user }: { user: ServerUser }) {
           {activeTab === "emails" && (
             <Suspense fallback={<TabContentSkeleton sections={1} />}>
               <UserEmailsSection user={user} />
+            </Suspense>
+          )}
+          {activeTab === "support" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <UserSupportSection user={user} />
             </Suspense>
           )}
           {activeTab === "payments" && (

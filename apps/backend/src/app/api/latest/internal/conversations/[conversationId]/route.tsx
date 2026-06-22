@@ -15,6 +15,7 @@ import {
   internalDashboardAuthSchema,
 } from "@/lib/conversations-api";
 import { sendConversationEmailReply } from "@/lib/support-email";
+import { getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
@@ -117,6 +118,7 @@ export const PATCH = createSmartRouteHandler({
           displayName: auth.user.display_name ?? null,
           primaryEmail: auth.user.primary_email ?? null,
         },
+        slaConfig: getSupportSlaConfig(tenancy.config.support.sla),
       });
     } else if (body.type === "internal-note") {
       await appendConversationMessage({

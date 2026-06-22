@@ -37,6 +37,15 @@ const branchSchemaFuzzerConfig = [{
     passkey: [{
       allowSignIn: [true, false],
     }],
+    mtls: [{
+      allowSignIn: [true, false],
+      requireCa: [true, false],
+      trustedCaPem: ["", "-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----"],
+    }],
+    anonymous: [{
+      allowSignIn: [true, false],
+      expireGuestsAfterDays: [null, 7, 30],
+    }],
     oauth: [{
       accountMergeStrategy: ["link_method", "raise_error", "allow_duplicates"],
       providers: [{
@@ -260,6 +269,14 @@ const environmentSchemaFuzzerConfig = [{
   payments: [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
+  }],
+  support: [{
+    sla: [{
+      enabled: [false, true],
+      firstResponseMinutes: [null, 15, 60] as (number | null)[],
+      nextResponseMinutes: [null, 30, 120] as (number | null)[],
+    }],
+    defaultPriority: ["low", "normal", "high", "urgent"] as const,
   }],
   analytics: [{
     queryFolders: [{

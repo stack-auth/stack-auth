@@ -18,6 +18,8 @@ import { MagicLinkSignIn } from '../components/magic-link-sign-in';
 import { PredefinedMessageCard } from '../components/message-cards/predefined-message-card';
 import { OAuthButtonGroup } from '../components/oauth-button-group';
 import { PasskeyButton } from '../components/passkey-button';
+import { CertificateButton } from '../components/certificate-button';
+import { GuestSignInButton } from '../components/guest-sign-in-button';
 import { useTranslation } from '../lib/translations';
 
 type Props = {
@@ -32,6 +34,8 @@ type Props = {
       signUpEnabled: boolean,
       credentialEnabled: boolean,
       passkeyEnabled: boolean,
+      mtlsEnabled?: boolean,
+      anonymousSignInEnabled?: boolean,
       magicLinkEnabled: boolean,
       oauthProviders: {
         id: string,
@@ -132,7 +136,12 @@ function Inner(props: Props) {
 
   const hasOAuthProviders = project.config.oauthProviders.length > 0;
   const hasPasskey = (project.config.passkeyEnabled === true && props.type === "sign-in");
-  const enableSeparator = (project.config.credentialEnabled || project.config.magicLinkEnabled) && (hasOAuthProviders || hasPasskey);
+  // mTLS is sign-in only (certificates are added to existing accounts, like passkeys).
+  const hasMtls = (project.config.mtlsEnabled === true && props.type === "sign-in");
+  // Guest sign-in is offered on both views (a visitor on either page may just want to explore).
+  const hasGuest = project.config.anonymousSignInEnabled === true;
+  const hasNonCredentialMethod = hasOAuthProviders || hasPasskey || hasMtls || hasGuest;
+  const enableSeparator = (project.config.credentialEnabled || project.config.magicLinkEnabled) && hasNonCredentialMethod;
 
   return (
     <MaybeFullPage fullPage={!!props.fullPage}>
@@ -161,10 +170,12 @@ function Inner(props: Props) {
             </Typography>
           )}
         </div>
-        {(hasOAuthProviders || hasPasskey) && (
+        {hasNonCredentialMethod && (
           <div className='gap-4 flex flex-col items-stretch stack-scope'>
             {hasOAuthProviders && <OAuthButtonGroup type={props.type} mockProject={props.mockProject} />}
             {hasPasskey && <PasskeyButton type={props.type} />}
+            {hasMtls && <CertificateButton type={props.type} />}
+            {hasGuest && <GuestSignInButton type={props.type} />}
           </div>
         )}
 
@@ -188,7 +199,7 @@ function Inner(props: Props) {
           props.type === 'sign-up' ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />
         ) : project.config.magicLinkEnabled ? (
           <MagicLinkSignIn />
-        ) : !(hasOAuthProviders || hasPasskey) ? <Typography variant={"destructive"} className="text-center">{t("No authentication method enabled.")}</Typography> : null}
+        ) : !hasNonCredentialMethod ? <Typography variant={"destructive"} className="text-center">{t("No authentication method enabled.")}</Typography> : null}
         {props.extraInfo && (
           <div className={cn('flex flex-col items-center text-center text-sm text-gray-500', {
             'mt-2': project.config.credentialEnabled || project.config.magicLinkEnabled,

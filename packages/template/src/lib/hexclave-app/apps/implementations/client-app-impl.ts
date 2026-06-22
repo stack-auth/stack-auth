@@ -44,6 +44,8 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
+import { MtlsCertificateInfo } from "@hexclave/shared/dist/utils/mtls";
+import { signMtlsChallengeWithCertificate } from "../../../mtls";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../../generated/env";
@@ -1681,6 +1683,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         credentialEnabled: crud.config.credential_enabled,
         magicLinkEnabled: crud.config.magic_link_enabled,
         passkeyEnabled: crud.config.passkey_enabled,
+        mtlsEnabled: crud.config.mtls_enabled,
+        anonymousSignInEnabled: crud.config.anonymous_sign_in_enabled,
         clientTeamCreationEnabled: crud.config.client_team_creation_enabled,
         clientUserDeletionEnabled: crud.config.client_user_deletion_enabled,
         allowTeamApiKeys: crud.config.allow_team_api_keys,
@@ -2525,6 +2529,47 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
         await app._refreshUser(session);
         return registrationResult;
+      },
+      async registerCertificate(options: { certificatePem: string, privateKeyPem: string, displayName?: string }): Promise<Result<{ id: string, fingerprint: string }, KnownErrors["MtlsRegistrationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsProofOfPossessionFailed"] | KnownErrors["MtlsCaValidationFailed"] | KnownErrors["MtlsCertificateAlreadyRegistered"]>> {
+        const initiationResult = await app._interface.initiateMtlsRegistration({}, session);
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.MtlsRegistrationFailed("Failed to initiate certificate registration"));
+        }
+        const { challenge, code } = initiationResult.data;
+
+        let signature: string;
+        try {
+          signature = await signMtlsChallengeWithCertificate({
+            certificatePem: options.certificatePem,
+            privateKeyPem: options.privateKeyPem,
+            challenge,
+          });
+        } catch {
+          // Signing failed locally — the cert/key are malformed or don't match each other.
+          return Result.error(new KnownErrors.MtlsCertificateInvalid("Could not sign the registration challenge. Make sure the certificate and private key are valid and match each other."));
+        }
+
+        const registrationResult = await app._interface.registerMtls({
+          certificate_pem: options.certificatePem,
+          signature,
+          display_name: options.displayName,
+          code,
+        }, session);
+
+        await app._refreshUser(session);
+        return registrationResult;
+      },
+      async listCertificates(): Promise<MtlsCertificateInfo[]> {
+        const result = await app._interface.listMtlsCertificates(session);
+        if (result.status !== "ok") {
+          throw result.error;
+        }
+        return result.data;
+      },
+      async deleteCertificate(id: string): Promise<Result<undefined, KnownErrors["MtlsCannotDeleteLastAuthMethod"]>> {
+        const result = await app._interface.deleteMtlsCertificate(id, session);
+        await app._refreshUser(session);
+        return result;
       },
     };
   }
@@ -3656,17 +3701,41 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         this._ensurePersistentTokenStore();
         const session = await this._getSession();
         const result = await this._interface.signUpAnonymously(session);
-        if (result.status === "ok") {
-          await this._signInToAccountWithTokens(result.data);
-        } else {
-          throw new HexclaveAssertionError("signUpAnonymously() should never return an error");
+        if (result.status !== "ok") {
+          // The project may have guest sign-in disabled (AnonymousAccountsNotEnabled). Surface the error
+          // so callers (e.g. signInAsGuest()) can handle it; the public method maps it to a Result.
+          throw result.error;
         }
-        this._anonymousSignUpInProgress = null;
+        await this._signInToAccountWithTokens(result.data);
         return result.data;
-      })();
+      })().finally(() => {
+        // Always clear the in-flight guard, on success OR failure, so a rejected attempt isn't cached.
+        this._anonymousSignUpInProgress = null;
+      });
     }
 
     return await this._anonymousSignUpInProgress;
+  }
+
+  async signInAsGuest(options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["AnonymousAccountsNotEnabled"]>> {
+    this._ensurePersistentTokenStore();
+    let tokens;
+    try {
+      tokens = await this._signUpAnonymously();
+    } catch (e) {
+      if (KnownErrors.AnonymousAccountsNotEnabled.isInstance(e)) {
+        return Result.error(e);
+      }
+      throw e;
+    }
+    // Tokens are already stored by _signUpAnonymously; redirect the guest into the app like other sign-ins.
+    if (!(options?.noRedirect)) {
+      await this._redirectToHandler("afterSignIn", { replace: true }, {
+        awaitPendingAuthResolutions: false,
+        overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(tokens),
+      });
+    }
+    return Result.ok(undefined);
   }
 
   async signInWithMagicLink(code: string, options?: { noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["VerificationCodeError"] | KnownErrors["InvalidTotpCode"]>> {
@@ -3877,6 +3946,44 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         // This should never happen
         return Result.error(new KnownErrors.PasskeyAuthenticationFailed("Failed to sign in with passkey"));
       }
+    }
+
+    if (result.status === 'ok') {
+      await this._signInToAccountWithTokens(result.data);
+      await this._redirectToHandler("afterSignIn", { replace: true }, {
+        overrideTokenStoreInit: this._getTokenStoreInitForFreshTokens(result.data),
+      });
+      return Result.ok(undefined);
+    } else {
+      return Result.error(result.error);
+    }
+  }
+
+  async signInWithCertificate(options: { certificatePem: string, privateKeyPem: string }): Promise<Result<undefined, KnownErrors["MtlsAuthenticationFailed"] | KnownErrors["MtlsCertificateInvalid"] | KnownErrors["MtlsCaValidationFailed"] | KnownErrors["InvalidTotpCode"]>> {
+    this._ensurePersistentTokenStore();
+    const session = await this._getSession();
+    let result;
+    try {
+      result = await this._catchMfaRequiredError(async () => {
+        const initiationResult = await this._interface.initiateMtlsAuthentication({}, session);
+        if (initiationResult.status !== "ok") {
+          return Result.error(new KnownErrors.MtlsAuthenticationFailed("Failed to initiate certificate authentication"));
+        }
+        const { challenge, code } = initiationResult.data;
+
+        const signature = await signMtlsChallengeWithCertificate({
+          certificatePem: options.certificatePem,
+          privateKeyPem: options.privateKeyPem,
+          challenge,
+        });
+        return await this._interface.signInWithMtls({ certificate_pem: options.certificatePem, signature, code }, session);
+      });
+    } catch (error) {
+      if (KnownErrors.InvalidTotpCode.isInstance(error)) {
+        return Result.error(error);
+      }
+      // Local signing failed (malformed cert/key, or mismatched key) — surface as an invalid-certificate error.
+      return Result.error(new KnownErrors.MtlsCertificateInvalid("Could not sign the authentication challenge. Make sure the certificate and private key are valid and match each other."));
     }
 
     if (result.status === 'ok') {

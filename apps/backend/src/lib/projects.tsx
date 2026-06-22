@@ -264,6 +264,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'auth.password.allowSignIn': dataOptions.credential_enabled,
     'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
     'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
+    'auth.mtls.allowSignIn': dataOptions.mtls_enabled,
+    'auth.anonymous.allowSignIn': dataOptions.anonymous_sign_in_enabled,
     'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
     'auth.oauth.providers': oauthProvidersOverride,
     // ======================= users =======================

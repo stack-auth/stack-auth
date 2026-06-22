@@ -1,6 +1,7 @@
 import { appendConversationMessage, createConversation } from "@/lib/conversations";
 import { globalPrismaClient } from "@/prisma-client";
 import { getTenancy } from "@/lib/tenancies";
+import { getSupportDefaultPriority, getSupportSlaConfig } from "@hexclave/shared/dist/helpers/support-sla";
 import { Prisma } from "@/generated/prisma/client";
 
 /**
@@ -180,6 +181,8 @@ export async function processInboundEmail(parsed: ParsedInboundEmail): Promise<P
       primaryEmail: parsed.fromEmail,
     };
 
+    const slaConfig = getSupportSlaConfig(tenancy.config.support.sla);
+
     if (parsed.conversationIdHeader != null && await conversationExists(tenancy.id, parsed.conversationIdHeader)) {
       await appendConversationMessage({
         tenancyId: tenancy.id,
@@ -189,6 +192,7 @@ export async function processInboundEmail(parsed: ParsedInboundEmail): Promise<P
         sender,
         channelType: "email",
         adapterKey: SUPPORT_EMAIL_ADAPTER_KEY,
+        slaConfig,
       });
       return { status: "appended", tenancyId: tenancy.id, conversationId: parsed.conversationIdHeader };
     }
@@ -197,12 +201,13 @@ export async function processInboundEmail(parsed: ParsedInboundEmail): Promise<P
       tenancyId: tenancy.id,
       userId,
       subject: parsed.subject,
-      priority: "normal",
+      priority: getSupportDefaultPriority(tenancy.config.support.defaultPriority),
       source: "email",
       channelType: "email",
       adapterKey: SUPPORT_EMAIL_ADAPTER_KEY,
       body: parsed.body,
       sender,
+      slaConfig,
     });
     return { status: "created", tenancyId: tenancy.id, conversationId };
   }

@@ -112,6 +112,23 @@ const branchAuthSchema = yupObject({
   passkey: yupObject({
     allowSignIn: yupBoolean(),
   }),
+  mtls: yupObject({
+    allowSignIn: yupBoolean(),
+    // When true, only certificates that chain to one of the `trustedCaPem` CAs are accepted at
+    // registration AND sign-in. When false, any certificate is accepted and we bind to its public key.
+    requireCa: yupBoolean().optional(),
+    // PEM bundle of one or more trusted CA certificates (concatenated). Only consulted when requireCa is true.
+    trustedCaPem: yupString().optional(),
+  }),
+  anonymous: yupObject({
+    // Whether visitors can start an anonymous "guest" session. Intentionally independent of `allowSignUp`:
+    // guest mode is an exploration affordance, not account creation, and admins routinely disable sign-up
+    // while still wanting a "try it" button.
+    allowSignIn: yupBoolean(),
+    // Inactivity window (in days) after which idle guest accounts are purged by the cleanup cron.
+    // null / unset = never expire.
+    expireGuestsAfterDays: yupNumber().integer().min(1).nullable().optional(),
+  }),
   oauth: yupObject({
     accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
     providers: yupRecord(
@@ -141,6 +158,36 @@ const branchAuthSchema = yupObject({
     }),
   ),
   signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
+});
+
+import.meta.vitest?.test("branchAuthSchema accepts mtls config with CA pinning", async ({ expect }) => {
+  await expect(branchAuthSchema.validate({
+    mtls: { allowSignIn: true, requireCa: true, trustedCaPem: "-----BEGIN CERTIFICATE-----\nABC\n-----END CERTIFICATE-----" },
+  }, { abortEarly: false })).resolves.toMatchObject({
+    mtls: { allowSignIn: true, requireCa: true },
+  });
+});
+
+import.meta.vitest?.test("branchAuthSchema accepts anonymous config with a guest TTL", async ({ expect }) => {
+  await expect(branchAuthSchema.validate({
+    anonymous: { allowSignIn: true, expireGuestsAfterDays: 30 },
+  }, { abortEarly: false })).resolves.toMatchObject({
+    anonymous: { allowSignIn: true, expireGuestsAfterDays: 30 },
+  });
+});
+
+import.meta.vitest?.test("branchAuthSchema accepts a null guest TTL (never expire)", async ({ expect }) => {
+  await expect(branchAuthSchema.validate({
+    anonymous: { allowSignIn: true, expireGuestsAfterDays: null },
+  }, { abortEarly: false })).resolves.toMatchObject({
+    anonymous: { allowSignIn: true, expireGuestsAfterDays: null },
+  });
+});
+
+import.meta.vitest?.test("branchAuthSchema rejects a non-positive guest TTL", async ({ expect }) => {
+  await expect(branchAuthSchema.validate({
+    anonymous: { allowSignIn: true, expireGuestsAfterDays: 0 },
+  }, { abortEarly: false })).rejects.toThrow();
 });
 
 export const branchPaymentsSchema = yupObject({
@@ -470,6 +517,20 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
     testMode: yupBoolean(),
   })),
 
+  // Settings for the Support app (conversations / SLA). Additive and optional;
+  // when unset, the backend falls back to its built-in defaults.
+  support: yupObject({
+    sla: yupObject({
+      enabled: yupBoolean(),
+      firstResponseMinutes: yupNumber().nullable(),
+      nextResponseMinutes: yupNumber().nullable(),
+    }),
+    // Priority assigned to newly-opened customer conversations.
+    // Values mirror conversationPriorityValues (kept inline to avoid coupling the
+    // config schema to the conversations interface module).
+    defaultPriority: yupString().oneOf(["low", "normal", "high", "urgent"]),
+  }),
+
   analytics: environmentAnalyticsSchema,
   customDashboards: schemaFields.customDashboardsSchema,
 }));
@@ -780,6 +841,15 @@ const organizationConfigDefaults = {
     passkey: {
       allowSignIn: false,
     },
+    mtls: {
+      allowSignIn: false,
+      requireCa: false,
+      trustedCaPem: undefined,
+    },
+    anonymous: {
+      allowSignIn: false,
+      expireGuestsAfterDays: undefined,
+    },
     oauth: {
       accountMergeStrategy: 'link_method',
       providers: (key: string) => ({
@@ -870,6 +940,15 @@ const organizationConfigDefaults = {
       displayName: key,
       customerType: "user",
     } as const)
+  },
+
+  support: {
+    sla: {
+      enabled: false,
+      firstResponseMinutes: null,
+      nextResponseMinutes: null,
+    },
+    defaultPriority: "normal",
   },
 
 

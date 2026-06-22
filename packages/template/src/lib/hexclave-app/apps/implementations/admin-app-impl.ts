@@ -202,6 +202,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
         credentialEnabled: data.config.credential_enabled,
         magicLinkEnabled: data.config.magic_link_enabled,
         passkeyEnabled: data.config.passkey_enabled,
+        mtlsEnabled: data.config.mtls_enabled,
+        anonymousSignInEnabled: data.config.anonymous_sign_in_enabled,
         clientTeamCreationEnabled: data.config.client_team_creation_enabled,
         clientUserDeletionEnabled: data.config.client_user_deletion_enabled,
         allowLocalhost: data.config.allow_localhost,

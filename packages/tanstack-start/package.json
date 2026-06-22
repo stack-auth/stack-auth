@@ -87,6 +87,7 @@
     "@stripe/react-stripe-js": "^3.8.1",
     "@stripe/stripe-js": "^7.7.0",
     "@simplewebauthn/browser": "^13.2.2",
+    "@peculiar/x509": "^1.12.0",
     "@hexclave/shared": "workspace:*",
     "@hexclave/ui": "workspace:*",
     "@tanstack/react-table": "^8.21.3",
