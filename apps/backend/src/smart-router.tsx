@@ -1,43 +1,20 @@
+import { isTruthy } from "@hexclave/shared/dist/utils/booleans";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { numberCompare } from "@hexclave/shared/dist/utils/numbers";
+
+
+// SmartRouter may be imported on the edge, so we can't import fs at the top level
+// hence, we define some wrapper functions
+const listRecursively: typeof import("@hexclave/shared/dist/utils/fs").listRecursively = async (...args) => {
+  // SmartRouter may be imported on the edge, so we can't import fs at the top level
+  // hence, this wrapper function
+  const m = await import("@hexclave/shared/dist/utils/fs");
+  return await m.listRecursively(...args);
+};
 const readFile = async (path: string) => {
   const fs = await import("fs");
   return await fs.promises.readFile(path, "utf-8");
 };
-
-const listRecursively = async (root: string, options: { excludeDirectories: boolean }) => {
-  const fs = await import("fs");
-  const path = await import("path");
-  const results: string[] = [];
-  const visit = async (currentPath: string) => {
-    const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryPath = path.join(currentPath, entry.name);
-      if (entry.isDirectory()) {
-        if (!options.excludeDirectories) {
-          results.push(entryPath);
-        }
-        await visit(entryPath);
-      } else {
-        results.push(entryPath);
-      }
-    }
-  };
-  await visit(root);
-  return results;
-};
-
-function isTruthy<T>(value: T | false | null | undefined | ""): value is T {
-  return !!value;
-}
-
-function numberCompare(a: number, b: number) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-class SmartRouterAssertionError extends Error {
-  constructor(message: string, options?: unknown) {
-    super(options === undefined ? message : `${message}: ${JSON.stringify(options)}`);
-  }
-}
 
 
 export const SmartRouter = {
@@ -99,10 +76,10 @@ export const SmartRouter = {
         } as const;
       } else {
         if (!allFiles.includes(`src/app/api/migrations/${version}/beta-changes.txt`)) {
-          throw new SmartRouterAssertionError(`API version ${version} does not have a beta-changes.txt file. The beta-changes.txt file should contain the changes since the last beta release.`);
+          throw new HexclaveAssertionError(`API version ${version} does not have a beta-changes.txt file. The beta-changes.txt file should contain the changes since the last beta release.`);
         }
         if (!version.includes("beta") && !allFiles.includes(`src/app/api/migrations/${version}/changes.txt`)) {
-          throw new SmartRouterAssertionError(`API version ${version} does not have a changes.txt file. The changes.txt file should contain the changes since the last full (non-beta) release.`);
+          throw new HexclaveAssertionError(`API version ${version} does not have a changes.txt file. The changes.txt file should contain the changes since the last full (non-beta) release.`);
         }
         return {
           name: version,
@@ -120,7 +97,7 @@ export const SmartRouter = {
 
 function parseApiVersionStringToArray(version: string): [number, number] {
   const matchResult = version.match(/^v(\d+)(?:beta(\d+))?$/);
-  if (!matchResult) throw new SmartRouterAssertionError(`Invalid API version string: ${version}`);
+  if (!matchResult) throw new HexclaveAssertionError(`Invalid API version string: ${version}`);
   return [+matchResult[1], matchResult[2] === "" ? Number.POSITIVE_INFINITY : +matchResult[2]];
 }
 
@@ -141,14 +118,14 @@ function matchPath(path: string, toMatchWith: string): Record<string, string | s
 
   if (toMatchWithFirst.startsWith("[[...") && toMatchWithFirst.endsWith("]]")) {
     if (modifiedToMatchWith.includes("/")) {
-      throw new SmartRouterAssertionError("Optional catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
+      throw new HexclaveAssertionError("Optional catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
     }
     return {
       [toMatchWithFirst.slice(5, -2)]: modifiedPath === "" ? [] : modifiedPath.split("/"),
     };
   } else if (toMatchWithFirst.startsWith("[...") && toMatchWithFirst.endsWith("]")) {
     if (modifiedToMatchWith.includes("/")) {
-      throw new SmartRouterAssertionError("Catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
+      throw new HexclaveAssertionError("Catch-all routes must be at the end of the path", { modifiedPath, modifiedToMatchWith });
     }
     if (modifiedPath === "") return false;
     return {

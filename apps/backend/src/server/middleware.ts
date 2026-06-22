@@ -58,6 +58,8 @@ export type PipelineResult = {
 
 export async function runRequestPipeline(request: Request): Promise<PipelineResult> {
   const url = new URL(request.url);
+  const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
+  ensureForwardedForHeader(mergedHeaders, request);
   const delay = +getEnvVariable("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
   if (delay) {
     if (getNodeEnvironment().includes("production")) {
@@ -106,15 +108,13 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
       return {
         corsHeadersInit,
         dispatchPath: url.pathname,
-        mergedHeaders: mergeHexclaveHeaderAliases(request.headers),
+        mergedHeaders,
         originalUrl: request.url,
         shortCircuitResponse: response,
       };
     }
     devRateLimitMarks.push(now);
   }
-
-  const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
 
   if (request.method === "OPTIONS" && isApiRequest) {
     return {
@@ -147,6 +147,76 @@ function mergeHexclaveHeaderAliases(headers: Headers) {
   }
   return newRequestHeaders;
 }
+
+const clientIpForwardingHeaders = ["x-forwarded-for", "x-real-ip", "x-vercel-forwarded-for", "cf-connecting-ip"];
+
+function ensureForwardedForHeader(headers: Headers, request: Request) {
+  // Direct connections (local dev, proxy-less self-host) arrive without any forwarding
+  // header, so getEndUserIp() finds no client IP and warns on every request. The Node
+  // adapter still knows the socket's remote address, so synthesize x-forwarded-for from
+  // it — mirroring what the old Next.js dev server did. Behind a real proxy (e.g. Vercel)
+  // one of these headers is already set, so this stays a no-op there.
+  if (clientIpForwardingHeaders.some((header) => headers.has(header))) {
+    return;
+  }
+  const socketIp = readClientSocketIp(request);
+  if (socketIp == null) {
+    return;
+  }
+  headers.set("x-forwarded-for", normalizeClientIp(socketIp));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readClientSocketIp(request: Request): string | undefined {
+  // The Node adapter (srvx) augments the web Request with the resolved client IP and
+  // the underlying Node socket, neither of which exist on the standard Request type.
+  // Read them defensively at runtime instead of casting; on other runtimes (e.g. the
+  // Vercel serverless entry) these are simply absent and we fall through to undefined.
+  const directIp: unknown = Reflect.get(request, "ip");
+  if (typeof directIp === "string" && directIp !== "") {
+    return directIp;
+  }
+  const runtime: unknown = Reflect.get(request, "runtime");
+  const node: unknown = isRecord(runtime) ? runtime.node : undefined;
+  const req: unknown = isRecord(node) ? node.req : undefined;
+  const socket: unknown = isRecord(req) ? req.socket : undefined;
+  const remoteAddress: unknown = isRecord(socket) ? socket.remoteAddress : undefined;
+  return typeof remoteAddress === "string" && remoteAddress !== "" ? remoteAddress : undefined;
+}
+
+function normalizeClientIp(ip: string): string {
+  // Node sockets report IPv4 clients as IPv4-mapped IPv6 (e.g. "::ffff:127.0.0.1").
+  // Normalize to the plain IPv4 form so it matches what proxies put in x-forwarded-for.
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  return mapped ? mapped[1] : ip;
+}
+
+import.meta.vitest?.test("ensureForwardedForHeader synthesizes the client IP for direct connections", ({ expect }) => {
+  // Uses the adapter-provided client IP when no forwarding header is present.
+  const fromIp = new Headers();
+  ensureForwardedForHeader(fromIp, Object.assign(new Request("http://localhost/api/v1"), { ip: "203.0.113.7" }));
+  expect(fromIp.get("x-forwarded-for")).toBe("203.0.113.7");
+
+  // Falls back to the raw Node socket and normalizes IPv4-mapped IPv6 to plain IPv4.
+  const fromSocket = new Headers();
+  ensureForwardedForHeader(fromSocket, Object.assign(new Request("http://localhost/api/v1"), {
+    runtime: { node: { req: { socket: { remoteAddress: "::ffff:127.0.0.1" } } } },
+  }));
+  expect(fromSocket.get("x-forwarded-for")).toBe("127.0.0.1");
+
+  // Never overwrites an existing forwarding header (e.g. behind a trusted proxy like Vercel).
+  const existing = new Headers({ "x-forwarded-for": "198.51.100.1" });
+  ensureForwardedForHeader(existing, Object.assign(new Request("http://localhost/api/v1"), { ip: "203.0.113.7" }));
+  expect(existing.get("x-forwarded-for")).toBe("198.51.100.1");
+
+  // No socket info available (e.g. an unusual runtime) → leaves headers untouched.
+  const none = new Headers();
+  ensureForwardedForHeader(none, new Request("http://localhost/api/v1"));
+  expect(none.get("x-forwarded-for")).toBe(null);
+});
 
 function getDispatchPath(originalPathname: string) {
   let pathname = originalPathname;

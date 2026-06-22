@@ -49,7 +49,7 @@ export default defineConfig({
   inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: [...nodeBuiltins, ...externalPackages],
-  clean: false,
+  clean: true,
   // Use banner to add createRequire for CommonJS modules that use require() for builtins
   // The imported require is used by the shimmed __require2 function
   banner: {
