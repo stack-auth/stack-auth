@@ -1,54 +1,13 @@
 /**
- * Customer-facing payment data queries backed by bulldozer tables.
+ * Customer-facing payment data queries.
  *
- * Reads from the Phase 3 output tables (OwnedProducts, ItemQuantities)
- * and returns the current state for a customer.
+ * Reads directly from Prisma (subscriptions, one-time purchases, item quantity changes)
+ * to return the current state for a customer.
  */
 
-import { CustomerType as PrismaCustomerType, Prisma, SubscriptionStatus as PrismaSubscriptionStatus } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { CustomerType as PrismaCustomerType, SubscriptionStatus as PrismaSubscriptionStatus } from "@/generated/prisma/client";
 import type { PrismaClientTransaction } from "@/prisma-client";
-import { createPaymentsSchema } from "./schema/index";
-import type { CustomerType, DayInterval, IncludedItemConfig, ItemQuantityRow, Json, OwnedProductsRow, ProductSnapshot, PurchaseCreationSource, SubscriptionMapRow, SubscriptionRow, SubscriptionStatus } from "./schema/types";
-
-const schema = createPaymentsSchema();
-
-function customerGroupKeySql(tenancyId: string, customerType: CustomerType, customerId: string) {
-  const json = JSON.stringify({ tenancyId, customerType, customerId });
-  return `${quoteSqlStringLiteral(json).sql}::jsonb`;
-}
-
-/**
- * Reads the latest (last) row from a sorted bulldozer table for a specific
- * customer. Uses ORDER BY DESC LIMIT 1 to avoid loading all rows.
- */
-async function getLatestRow<T>(
-  prisma: PrismaClientTransaction,
-  table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any },
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-): Promise<T | null> {
-  const executionContext = createBulldozerExecutionContext();
-  const innerSql = toQueryableSqlQuery(table.listRowsInGroup(executionContext, {
-    groupKey: { type: "expression", sql: customerGroupKeySql(tenancyId, customerType, customerId) },
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
-
-  const sql = `
-    SELECT * FROM (${innerSql}) AS "__all_rows"
-    ORDER BY "__all_rows"."rowsortkey" DESC NULLS LAST, "__all_rows"."rowidentifier" DESC
-    LIMIT 1
-  `;
-  const replicaClient = '$replica' in prisma ? (prisma as any).$replica() : prisma;
-  const rows = await replicaClient.$queryRaw`${Prisma.raw(sql)}` as any[];
-  if (rows.length === 0) return null;
-  return rows[0].rowdata as T;
-}
+import type { CustomerType, DayInterval, IncludedItemConfig, Json, OwnedProductsRow, ProductSnapshot, PurchaseCreationSource, SubscriptionRow, SubscriptionStatus } from "./schema/types";
 
 /**
  * Returns the owned products for a customer.
@@ -63,51 +22,6 @@ export async function getOwnedProductsForCustomer(options: {
   customerId: string,
 }): Promise<OwnedProductsRow["ownedProducts"]> {
   return await getCurrentOwnedProductsFromPrisma(options);
-}
-
-async function getOwnedProductsRow(options: {
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-}): Promise<OwnedProductsRow | null> {
-  return await getLatestRow<OwnedProductsRow>(
-    options.prisma,
-    schema.ownedProducts,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
-}
-
-/**
- * Returns all item quantities for a customer.
- *
- * Returns a map of itemId → net quantity.
- */
-export async function getItemQuantitiesForCustomer(options: {
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-}): Promise<Record<string, number>> {
-  const row = await getItemQuantitiesRow(options);
-  return row?.itemQuantities ?? {};
-}
-
-async function getItemQuantitiesRow(options: {
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  customerType: CustomerType,
-  customerId: string,
-}): Promise<ItemQuantityRow | null> {
-  return await getLatestRow<ItemQuantityRow>(
-    options.prisma,
-    schema.itemQuantities,
-    options.tenancyId,
-    options.customerType,
-    options.customerId,
-  );
 }
 
 /**
@@ -371,24 +285,6 @@ function addOwnedProduct(
     product,
     productLineId: product.productLineId ?? null,
   });
-}
-
-async function getInitialSubscriptionOwnedProducts(options: {
-  prisma: PrismaClientTransaction,
-  tenancyId: string,
-  customerId: string,
-  customerType: CustomerType,
-}): Promise<OwnedProductsRow["ownedProducts"]> {
-  const subscriptions = await getActiveSubscriptionRows(options);
-  const result = new Map<string, OwnedProductsRow["ownedProducts"][string]>();
-  for (const subscription of subscriptions) {
-    const product = readProductSnapshot(subscription.product, options.customerType);
-    if (product == null) {
-      continue;
-    }
-    addOwnedProduct(result, subscription.productId, subscription.quantity, product);
-  }
-  return Object.fromEntries(result);
 }
 
 async function getCurrentOwnedProductsFromPrisma(options: {

@@ -219,26 +219,22 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 }
 
 async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, toArray: string[]) {
-  if (isLoopbackSmtpHost(options.emailConfig.host)) {
-    try {
-      await sendMailWithHost(options, toArray, getPreferredLoopbackSmtpHost(options.emailConfig.host));
-      return;
-    } catch (error) {
-      if (!isLoopbackFallbackError(error)) {
-        throw error;
-      }
-    }
+  const configuredHost = options.emailConfig.host;
+  if (!isLoopbackSmtpHost(configuredHost)) {
+    await sendMailWithHost(options, toArray, configuredHost);
+    return;
   }
 
+  // Local development Docker stacks may expose SMTP on only one loopback family.
+  // Resolve "localhost" to explicit addresses so we can try both families deterministically.
+  const [primary, fallback] = getLoopbackSmtpHosts(configuredHost);
   try {
-    await sendMailWithHost(options, toArray, options.emailConfig.host);
+    await sendMailWithHost(options, toArray, primary);
   } catch (error) {
-    // Local development Docker stacks may expose SMTP on only one loopback family. If the
-    // configured localhost family never sends a greeting, the other loopback family is equivalent.
-    if (!isLoopbackSmtpHost(options.emailConfig.host) || !isLoopbackFallbackError(error)) {
+    if (!isLoopbackFallbackError(error)) {
       throw error;
     }
-    await sendMailWithHost(options, toArray, getFallbackLoopbackSmtpHost(options.emailConfig.host));
+    await sendMailWithHost(options, toArray, fallback);
   }
 }
 
@@ -246,12 +242,12 @@ function isLoopbackSmtpHost(host: string) {
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 
-function getPreferredLoopbackSmtpHost(configuredHost: string) {
-  return configuredHost === "::1" || configuredHost === "[::1]" ? configuredHost : "::1";
-}
-
-function getFallbackLoopbackSmtpHost(configuredHost: string) {
-  return configuredHost === "::1" || configuredHost === "[::1]" ? "127.0.0.1" : "::1";
+function getLoopbackSmtpHosts(configuredHost: string): [string, string] {
+  if (configuredHost === "::1" || configuredHost === "[::1]") {
+    return [configuredHost, "127.0.0.1"];
+  }
+  // "localhost" and "127.0.0.1" both try IPv4 first, then IPv6
+  return ["127.0.0.1", "::1"];
 }
 
 async function sendMailWithHost(options: LowLevelSendEmailOptions, toArray: string[], host: string) {

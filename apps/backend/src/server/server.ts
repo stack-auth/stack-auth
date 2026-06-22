@@ -2,6 +2,7 @@ import "@/polyfills";
 import "./env-expand";
 import "@/instrument";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { app } from "./app";
 
 const portPrefix = getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81");
@@ -16,9 +17,5 @@ app.listen({
 console.log(`Hexclave backend listening on http://${hostname}:${port}`);
 
 process.once("SIGTERM", () => {
-  app.stop().then(() => undefined, (error: unknown) => {
-    setTimeout(() => {
-      throw error;
-    }, 0);
-  });
+  runAsynchronously(app.stop());
 });

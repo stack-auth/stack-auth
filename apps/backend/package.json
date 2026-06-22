@@ -17,7 +17,7 @@
     "build": "pnpm run codegen && tsdown --config tsdown.config.ts",
     "docker-build": "pnpm run codegen && tsdown --config tsdown.config.ts",
     "build-self-host-migration-script": "tsdown --config scripts/db-migrations.tsdown.config.ts",
-    "analyze-bundle": "next experimental-analyze",
+
     "start": "node dist/server.mjs",
     "codegen-prisma": "HEXCLAVE_DATABASE_CONNECTION_STRING=\"${HEXCLAVE_DATABASE_CONNECTION_STRING:-${STACK_DATABASE_CONNECTION_STRING:-placeholder-database-connection-string}}\" pnpm run prisma generate",
     "codegen-prisma:watch": "HEXCLAVE_DATABASE_CONNECTION_STRING=\"${HEXCLAVE_DATABASE_CONNECTION_STRING:-${STACK_DATABASE_CONNECTION_STRING:-placeholder-database-connection-string}}\" pnpm run prisma generate --watch",

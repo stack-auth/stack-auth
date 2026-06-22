@@ -416,6 +416,7 @@ describe("send email to all users", () => {
       }
       await wait(500);
     }
+    expect(allUsersEmails.length).toBeGreaterThanOrEqual(2);
     expect(allUsersEmails).toMatchInlineSnapshot(`
       [
         {

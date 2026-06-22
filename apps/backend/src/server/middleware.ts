@@ -6,7 +6,7 @@ import { SmartRouter } from "@/smart-router";
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
 const DEV_RATE_LIMIT_WINDOW_MS = 10_000;
-const devRateLimitTimestamps: number[] = [];
+const devRateLimitMarks: number[] = [];
 
 const corsAllowedRequestHeaders = [
   "content-type",
@@ -79,12 +79,12 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   } : undefined;
 
   if (isApiRequest && !request.headers.get("x-stack-disable-artificial-development-delay") && getNodeEnvironment() === "development" && request.method !== "OPTIONS" && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
-    const now = Date.now();
-    while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
-      devRateLimitTimestamps.shift();
+    const now = performance.now();
+    while (devRateLimitMarks.length > 0 && now - devRateLimitMarks[0] > DEV_RATE_LIMIT_WINDOW_MS) {
+      devRateLimitMarks.shift();
     }
-    if (devRateLimitTimestamps.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
-      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
+    if (devRateLimitMarks.length >= DEV_RATE_LIMIT_MAX_REQUESTS) {
+      const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitMarks[0]));
       const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
 
       const response = Response.json({
@@ -111,7 +111,7 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
         shortCircuitResponse: response,
       };
     }
-    devRateLimitTimestamps.push(now);
+    devRateLimitMarks.push(now);
   }
 
   const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);

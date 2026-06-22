@@ -4,7 +4,7 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { serializeSetCookie } from "@/lib/next-compat/headers";
 import { createNextRequestShim } from "./next-request-shim";
 import { httpMethodNames } from "@/generated/route-modules";
-import { matchRoute } from "./registry";
+import { matchRoute, MalformedRouteParamError } from "./registry";
 import { runRequestPipeline } from "./middleware";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
@@ -37,7 +37,15 @@ export async function dispatch(request: Request) {
     return withGlobalHeaders(pipeline.shortCircuitResponse);
   }
 
-  const match = matchRoute(pipeline.dispatchPath);
+  let match;
+  try {
+    match = matchRoute(pipeline.dispatchPath);
+  } catch (error) {
+    if (error instanceof MalformedRouteParamError) {
+      return withGlobalHeaders(new Response("Bad Request", { status: 400 }));
+    }
+    throw error;
+  }
   if (match == null) {
     return withGlobalHeaders(new Response("<div>404 Not Found</div>", {
       status: 404,
@@ -261,7 +269,12 @@ async function handleMonitoringTunnel(request: Request) {
 }
 
 function getEnvelopeDsn(envelopeHeaderBytes: string) {
-  const parsedEnvelopeHeader: unknown = JSON.parse(envelopeHeaderBytes);
+  let parsedEnvelopeHeader: unknown;
+  try {
+    parsedEnvelopeHeader = JSON.parse(envelopeHeaderBytes);
+  } catch {
+    return undefined;
+  }
   if (
     parsedEnvelopeHeader == null
     || typeof parsedEnvelopeHeader !== "object"

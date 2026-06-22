@@ -38,11 +38,26 @@ export function matchRoute(dispatchPath: string): RouteMatch | undefined {
   return undefined;
 }
 
+export class MalformedRouteParamError extends Error {
+  constructor(param: string) {
+    super(`Malformed percent-encoding in route parameter: ${param}`);
+    this.name = "MalformedRouteParamError";
+  }
+}
+
+function strictDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new MalformedRouteParamError(value);
+  }
+}
+
 function decodeRouteParams(params: Record<string, string | string[]>): Record<string, string | string[]> {
   return Object.fromEntries(
     Object.entries(params).map(([key, value]) => [
       key,
-      Array.isArray(value) ? value.map(decodeURIComponent) : decodeURIComponent(value),
+      Array.isArray(value) ? value.map(strictDecodeURIComponent) : strictDecodeURIComponent(value),
     ]),
   );
 }

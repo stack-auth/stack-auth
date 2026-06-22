@@ -49,7 +49,7 @@ export function parseCookieHeader(cookieHeader: string | null) {
       continue;
     }
     const rawValue = part.slice(separatorIndex + 1).trim();
-    cookies.set(name, decodeURIComponent(rawValue));
+    cookies.set(name, rawValue);
   }
   return cookies;
 }

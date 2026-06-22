@@ -115,6 +115,7 @@ export async function cookies() {
           path: "/",
         },
       };
+      context.pendingSetCookies = context.pendingSetCookies.filter(c => c.name !== name);
       context.deletedCookies.push(cookie);
       context.incomingCookies.delete(name);
     },
