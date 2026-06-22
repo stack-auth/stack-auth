@@ -291,52 +291,25 @@ export async function createOrUpgradeAnonymousUserWithoutRules(
   createOrUpdate: KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
   allowedErrorTypes: (new (...args: any) => any)[],
 ): Promise<UsersCrud["Admin"]["Read"]> {
-  try {
-    if (currentUser?.is_anonymous) {
-      // Upgrade anonymous user
-      return await usersCrudHandlers.adminUpdate({
-        tenancy,
-        user_id: currentUser.id,
-        data: {
-          ...createOrUpdate,
-          is_anonymous: false,
-        },
-        allowedErrorTypes,
-      });
-    } else {
-      // Create new user (normal flow)
-      // Cast needed: createOrUpdate may contain create-only fields (like risk scores) that
-      // KeyIntersect<Create, Update> strips from the type since they're absent on Update
-      return await usersCrudHandlers.adminCreate({
-        tenancy,
-        data: createOrUpdate as UsersCrud["Admin"]["Create"],
-        allowedErrorTypes,
-      });
-    }
-  } catch (error) {
-    const primaryEmail = createOrUpdate.primary_email;
-    const cause = error instanceof Error && "cause" in error ? error.cause : error;
-    if (
-      typeof primaryEmail === "string"
-      && allowedErrorTypes.some((ErrorType) => ErrorType === KnownErrors.UserWithEmailAlreadyExists)
-      && KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(cause)
-    ) {
-      const details = cause.details;
-      let emailForError = primaryEmail;
-      if (details != null && typeof details === "object" && !Array.isArray(details)) {
-        const contactChannelValue = Reflect.get(details, "contact_channel_value");
-        if (typeof contactChannelValue === "string") {
-          emailForError = contactChannelValue;
-        }
-      }
-      const wouldWorkIfEmailWasVerified = (
-        details != null
-        && typeof details === "object"
-        && !Array.isArray(details)
-        && Object.entries(details).some(([key, value]) => key === "would_work_if_email_was_verified" && value === true)
-      );
-      throw new KnownErrors.UserWithEmailAlreadyExists(emailForError, wouldWorkIfEmailWasVerified);
-    }
-    throw error;
+  if (currentUser?.is_anonymous) {
+    // Upgrade anonymous user
+    return await usersCrudHandlers.adminUpdate({
+      tenancy,
+      user_id: currentUser.id,
+      data: {
+        ...createOrUpdate,
+        is_anonymous: false,
+      },
+      allowedErrorTypes,
+    });
+  } else {
+    // Create new user (normal flow)
+    // Cast needed: createOrUpdate may contain create-only fields (like risk scores) that
+    // KeyIntersect<Create, Update> strips from the type since they're absent on Update
+    return await usersCrudHandlers.adminCreate({
+      tenancy,
+      data: createOrUpdate as UsersCrud["Admin"]["Create"],
+      allowedErrorTypes,
+    });
   }
 }

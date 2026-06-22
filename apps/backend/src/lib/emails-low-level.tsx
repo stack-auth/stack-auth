@@ -92,7 +92,31 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           }));
         }
 
-        await sendMailWithLocalhostFallback(options, toArray);
+        const transporter = nodemailer.createTransport({
+          host: options.emailConfig.host,
+          port: options.emailConfig.port,
+          secure: options.emailConfig.secure,
+          disableFileAccess: true,
+          disableUrlAccess: true,
+          connectionTimeout: 15000,
+          greetingTimeout: 10000,
+          socketTimeout: 20000,
+          dnsTimeout: 7000,
+          auth: {
+            user: options.emailConfig.username,
+            pass: options.emailConfig.password,
+          },
+        });
+
+        try {
+          await transporter.sendMail({
+            from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
+            ...options,
+            to: toArray,
+          });
+        } finally {
+          transporter.close();
+        }
 
         return Result.ok(undefined);
       } catch (error) {
@@ -216,93 +240,6 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
   } finally {
     finished = true;
   }
-}
-
-async function sendMailWithLocalhostFallback(options: LowLevelSendEmailOptions, toArray: string[]) {
-  const configuredHost = options.emailConfig.host;
-  if (!isLoopbackSmtpHost(configuredHost)) {
-    await sendMailWithHost(options, toArray, configuredHost);
-    return;
-  }
-
-  // Local development Docker stacks may expose SMTP on only one loopback family.
-  // Resolve "localhost" to explicit addresses so we can try both families deterministically.
-  const [primary, fallback] = getLoopbackSmtpHosts(configuredHost);
-  try {
-    await sendMailWithHost(options, toArray, primary);
-  } catch (error) {
-    if (!isLoopbackFallbackError(error)) {
-      throw error;
-    }
-    await sendMailWithHost(options, toArray, fallback);
-  }
-}
-
-function isLoopbackSmtpHost(host: string) {
-  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-}
-
-function getLoopbackSmtpHosts(configuredHost: string): [string, string] {
-  if (configuredHost === "::1" || configuredHost === "[::1]") {
-    return [configuredHost, "127.0.0.1"];
-  }
-  // "localhost" and "127.0.0.1" both try IPv4 first, then IPv6
-  return ["127.0.0.1", "::1"];
-}
-
-async function sendMailWithHost(options: LowLevelSendEmailOptions, toArray: string[], host: string) {
-  const transporter = nodemailer.createTransport({
-    host,
-    port: options.emailConfig.port,
-    secure: options.emailConfig.secure,
-    disableFileAccess: true,
-    disableUrlAccess: true,
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
-    dnsTimeout: 7000,
-    auth: {
-      user: options.emailConfig.username,
-      pass: options.emailConfig.password,
-    },
-  });
-
-  try {
-    await transporter.sendMail({
-      from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-      ...options,
-      to: toArray,
-    });
-  } finally {
-    transporter.close();
-  }
-}
-
-function isGreetingTimeout(error: unknown) {
-  return error instanceof Error
-    && "code" in error
-    && error.code === "ETIMEDOUT"
-    && "command" in error
-    && error.command === "CONN";
-}
-
-function isConnectionRefused(error: unknown) {
-  return error instanceof Error
-    && (
-      ("code" in error && error.code === "ECONNREFUSED")
-      || (
-        "code" in error
-        && error.code === "ESOCKET"
-        && "errno" in error
-        && error.errno === -61
-        && "syscall" in error
-        && error.syscall === "connect"
-      )
-    );
-}
-
-function isLoopbackFallbackError(error: unknown) {
-  return isGreetingTimeout(error) || isConnectionRefused(error);
 }
 
 export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSendEmailOptions): Promise<Result<undefined, {

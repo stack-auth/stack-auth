@@ -1642,16 +1642,15 @@ describe("with server access", () => {
       NiceResponse {
         "status": 409,
         "body": {
-          "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+          "code": "USER_EMAIL_ALREADY_EXISTS",
           "details": {
-            "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "type": "email",
+            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
             "would_work_if_email_was_verified": false,
           },
-          "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account.",
+          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
         },
         "headers": Headers {
-          "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+          "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
           <some fields may have been hidden>,
         },
       }
@@ -2396,16 +2395,15 @@ describe("with server access", () => {
       NiceResponse {
         "status": 409,
         "body": {
-          "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+          "code": "USER_EMAIL_ALREADY_EXISTS",
           "details": {
-            "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "type": "email",
+            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
             "would_work_if_email_was_verified": false,
           },
-          "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account.",
+          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
         },
         "headers": Headers {
-          "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+          "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
           <some fields may have been hidden>,
         },
       }

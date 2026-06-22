@@ -28,12 +28,6 @@ function assertUuid(value: unknown, label: string): asserts value is string {
   }
 }
 
-function capturePgClientError(client: Client, captureId: string): void {
-  client.on("error", (error) => {
-    captureError(captureId, error);
-  });
-}
-
 type ExternalDbSyncClient = PrismaTransaction | PrismaClientWithReplica;
 
 type ExternalDbSyncTarget =
@@ -1462,7 +1456,6 @@ async function syncDatabase(
     const externalClient = new Client({
       connectionString: dbConfig.connectionString,
     });
-    capturePgClientError(externalClient, `external-db-sync-${dbId}-pg-client`);
 
     let needsResync = false;
     const syncResult = await Result.fromPromise((async () => {
