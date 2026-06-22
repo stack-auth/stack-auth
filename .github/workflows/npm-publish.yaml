@@ -56,9 +56,8 @@ jobs:
           git add .
           git diff --exit-code HEAD
 
-          git fetch origin dev:dev
-          git checkout dev
-          git diff --exit-code dev origin/dev
+          git fetch origin dev
+          git diff --exit-code HEAD origin/dev
 
           pnpm install --frozen-lockfile
 
