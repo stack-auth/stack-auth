@@ -254,7 +254,16 @@ async function checkAuthData(
     });
 
     if (existingChannelUsedForAuth) {
-      throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", data.primaryEmail);
+      // An existing user changing their email to one already used for auth by
+      // someone else gets the clearer contact-channel error. But a brand-new
+      // sign-up / first-time email auth (no old email) keeps the standard
+      // "user with email already exists" error — which is also the only error
+      // the sign-up endpoints allow through, so throwing the contact-channel
+      // one there would surface as a 500 instead of a clean 409.
+      if (data.oldPrimaryEmail != null) {
+        throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", data.primaryEmail);
+      }
+      throw new KnownErrors.UserWithEmailAlreadyExists(data.primaryEmail);
     }
   }
 }
