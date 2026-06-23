@@ -1,0 +1,23 @@
+vitest.shared.ts
+  s_f326c445dd4d03::t_041ba6b88df272 9
+.github/workflows/e2e-fallback-tests.yaml
+  s_f326c445dd4d03::t_5b84708969553b 99
+apps/backend/scripts/db-migrations.tsdown.config.ts
+  s_f326c445dd4d03::t_ac4d1bba2c3119 52-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "dff79b05a8de9a999c14c8b741d82cdc7d1066ef",
+  "prompts": {},
+  "sessions": {
+    "s_f326c445dd4d03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef5c7-c1eb-7210-85dc-b702dfe4edc8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
