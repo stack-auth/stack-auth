@@ -51,7 +51,8 @@ export function registerBackendInstrumentation() {
     // registers the global trace/context/propagation APIs. Without this flag, @sentry/node (v10 is
     // OpenTelemetry-native) tries to register them again, logging "Attempted duplicate registration
     // of API: trace/propagation/context". Skipping Sentry's OTel setup lets the NodeSDK own it while
-    // error capture continues to work normally.
+    // error capture continues to work normally. (Letting Sentry own OTel instead would require migrating
+    // our OpenTelemetry deps from v1 to v2 to match @sentry/node v10.)
     skipOpenTelemetrySetup: true,
     dsn: getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", ""),
     enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
