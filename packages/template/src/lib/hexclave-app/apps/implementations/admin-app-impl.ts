@@ -828,7 +828,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   }
 
   async getEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<string> {
-    return (await this._interface.renderEmailPreview(options)).html;
+    const result = Result.orThrow(await this._emailPreviewCache.getOrWait([options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource], "write-only"));
+    return result.html;
   }
   // IF_PLATFORM react-like
   useEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
