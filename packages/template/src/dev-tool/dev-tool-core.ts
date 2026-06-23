@@ -245,7 +245,7 @@ function generateRandomEmail(): string {
   for (let i = 0; i < 8; i++) {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `dev-${id}@test.hexclave.com`;
+  return `dev-${id}@devtool-quick-sign-up.example.com`;
 }
 
 // ---------------------------------------------------------------------------
