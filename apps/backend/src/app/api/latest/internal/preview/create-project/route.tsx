@@ -33,12 +33,28 @@ async function claimPoolProject(ownerTeamId: string): Promise<string | null> {
 }
 
 /**
+ * Maximum number of pre-seeded projects to keep in the pool. Prevents
+ * unbounded growth when multiple concurrent requests find an empty pool.
+ */
+const TARGET_POOL_SIZE = 3;
+
+/**
  * Asynchronously seeds a new preview project into the pool (with
  * isAvailableAsPreviewProject = true) so a future request can claim it
  * instantly.
+ *
+ * Pool projects have ownerTeamId = null so they don't appear in any user's
+ * dashboard. The claim query assigns the real ownerTeamId when a project is
+ * claimed.
  */
 function replenishPreviewProjectPool(ownerTeamId: string): void {
   runAsynchronouslyAndWaitUntil(async () => {
+    // Cap pool size to avoid unbounded growth from concurrent empty-pool hits.
+    const currentPoolSize = await globalPrismaClient.project.count({
+      where: { isAvailableAsPreviewProject: true },
+    });
+    if (currentPoolSize >= TARGET_POOL_SIZE) return;
+
     const clickhouseClient = getClickhouseAdminClient();
     const projectId = await seedDummyProject({
       ownerTeamId,
@@ -47,9 +63,15 @@ function replenishPreviewProjectPool(ownerTeamId: string): void {
       skipGithubConfigSource: true,
       clickhouseClient,
     });
+    // Mark as available and null out ownerTeamId so the pool project doesn't
+    // appear in the seeding user's dashboard. The claim query sets the real
+    // ownerTeamId when the project is claimed.
     await globalPrismaClient.project.update({
       where: { id: projectId },
-      data: { isAvailableAsPreviewProject: true },
+      data: {
+        isAvailableAsPreviewProject: true,
+        ownerTeamId: null,
+      },
     });
   });
 }
@@ -126,8 +148,8 @@ export const POST = createSmartRouteHandler({
     }
 
     // Replenish the pool asynchronously so the next request can be served
-    // instantly. Uses the same ownerTeamId as a placeholder — it will be
-    // reassigned when claimed.
+    // instantly. ownerTeamId is needed for seedDummyProject but gets nulled out
+    // afterward — the claim query assigns the real owner.
     replenishPreviewProjectPool(membership.teamId);
 
     return {
