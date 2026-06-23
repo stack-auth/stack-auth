@@ -441,8 +441,8 @@ import.meta.vitest?.test("timeoutThrow", async ({ expect }) => {
  * promises, which matters when `fn` hits a shared resource (e.g. a database) and
  * an unbounded fan-out could exhaust connections or overload a replica. Results
  * are returned in input order regardless of completion order, and the first
- * rejection propagates (in-flight workers still settle but their results are
- * discarded).
+ * rejection aborts further scheduling — already in-flight workers still settle
+ * but no new items are started.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
@@ -454,12 +454,18 @@ export async function mapWithConcurrency<T, R>(
   }
   const results = new Array<R>(items.length);
   let nextIndex = 0;
+  let aborted = false;
   const worker = async () => {
-    while (true) {
+    while (!aborted) {
       // Claim an index synchronously before awaiting so workers never process the same item.
       const index = nextIndex++;
       if (index >= items.length) return;
-      results[index] = await fn(items[index]!, index);
+      try {
+        results[index] = await fn(items[index]!, index);
+      } catch (error) {
+        aborted = true;
+        throw error;
+      }
     }
   };
   const workerCount = Math.min(concurrency, items.length);

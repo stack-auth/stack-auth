@@ -238,7 +238,7 @@ async function purchaseTeamPlanForBillingTeam(ownerTeamId: string): Promise<void
     throw new HexclaveAssertionError("Expected team plan purchase URL creation to succeed", { createUrlResponse });
   }
 
-  const fullCode = createUrlResponse.body.url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]
+  const fullCode = createUrlResponse.body.url.match(/\/purchase\/([a-z0-9_-]+)/)?.[1]
     ?? throwErr("Could not parse purchase code from team plan purchase URL", { createUrlResponse });
   const purchaseResponse = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",

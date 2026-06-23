@@ -291,7 +291,7 @@ async function sumTenancyMeteredUsage(tenancyIds: string[], period: UsagePeriod)
   const subtotals = await mapWithConcurrency(
     groups,
     PLAN_USAGE_TENANCY_COUNTER_CONCURRENCY,
-    async (group) => await countMeteredUsageForGroup(group, period),
+    (group) => countMeteredUsageForGroup(group, period),
   );
 
   return subtotals.reduce<TenancyMeteredUsage>(
