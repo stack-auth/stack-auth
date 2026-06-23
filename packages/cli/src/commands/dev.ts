@@ -235,6 +235,10 @@ function replaceSentinels(content: string, env: NodeJS.ProcessEnv): string {
   });
 }
 
+function hasErrnoCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+
 function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv): void {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
@@ -242,7 +246,7 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
       try {
         replaceDashboardRuntimeSentinels(path, env);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        if (hasErrnoCode(error, "ENOENT")) continue;
         throw error;
       }
       continue;
@@ -259,7 +263,7 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
     try {
       buffer = readFileSync(path);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (hasErrnoCode(error, "ENOENT")) continue;
       throw error;
     }
     if (!buffer.includes("STACK_ENV_VAR_SENTINEL")) {
