@@ -17,7 +17,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { Json } from "@hexclave/shared/dist/utils/json";
 import { stepCountIs, streamText, type ModelMessage } from "ai";
-import { vokerGenerateText, vokerClient } from "@/lib/ai/voker";
+import { vokerGenerateText, getVokerClient } from "@/lib/ai/voker";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -101,7 +101,7 @@ export const POST = createSmartRouteHandler({
 
       runAsynchronouslyAndWaitUntil(
         result.text.then((text) => {
-          vokerClient.events.create({
+          getVokerClient().events.create({
             vokerAgent: "hexclave-ai-assistant",
             vokerSession,
             eventName: "llm",
