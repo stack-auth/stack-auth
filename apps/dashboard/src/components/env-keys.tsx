@@ -1,20 +1,22 @@
 "use client";
 
 import { getPublicEnvVar } from '@/lib/env';
-import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
+import { Button, CopyButton, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import React, { useState } from "react";
-import { EyeIcon, EyeSlashIcon, CopyIcon, CheckIcon, FileTextIcon } from "@phosphor-icons/react";
+import { EyeIcon, EyeSlashIcon, FileTextIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 
 type EnvFileViewerProps = {
   filename: string;
   value: string;
 }
 
+export const codePanelShellClasses = "overflow-hidden transition-all duration-150 hover:transition-none rounded-xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] shadow-none border border-black/[0.06] dark:border-white/[0.06]";
+
+const codePanelHeaderClasses = "text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center bg-black/[0.015] dark:bg-white/[0.015] py-2.5 border-b border-black/[0.06] dark:border-white/[0.06]";
+
 export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
   const [revealAll, setRevealAll] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const lines = value.split("\n").map((line, idx) => {
     const eqIndex = line.indexOf("=");
@@ -24,60 +26,29 @@ export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
     return { key, val, isComment: false };
   });
 
-  const handleCopyAll = () => {
-    runAsynchronously(async () => {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
   return (
-    <div className="overflow-hidden transition-all duration-150 hover:transition-none rounded-2xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] border border-black/[0.06] dark:border-white/[0.06] shadow-none w-full flex flex-col">
-      {/* Tab/Header Bar */}
-      <div className="text-muted-foreground font-medium pl-4 pr-3 text-sm flex justify-between items-center py-2.5 bg-black/[0.015] dark:bg-white/[0.015] border-b border-black/[0.06] dark:border-white/[0.06]">
+    <div className={cn(codePanelShellClasses, "w-full flex flex-col")}>
+      <div className={codePanelHeaderClasses}>
+        <h5 className="font-medium flex items-center gap-2">
+          <FileTextIcon className="w-4 h-4" />
+          {filename}
+        </h5>
         <div className="flex items-center gap-2">
-          <FileTextIcon className="w-4 h-4 text-muted-foreground/80" />
-          <span className="font-mono text-xs font-semibold text-foreground/80">{filename}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            className="h-6 w-6 p-1"
             onClick={() => setRevealAll(!revealAll)}
-            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/75 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all"
             title={revealAll ? "Mask values" : "Reveal values"}
             aria-label={revealAll ? "Mask values" : "Reveal values"}
           >
-            {revealAll ? (
-              <EyeSlashIcon className="h-3.5 w-3.5" />
-            ) : (
-              <EyeIcon className="h-3.5 w-3.5" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCopyAll}
-            title={copied ? "Copied" : "Copy file"}
-            aria-label={copied ? "Copied" : "Copy file"}
-            className={cn(
-              "h-8 w-8 flex items-center justify-center rounded-lg border transition-all",
-              copied
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                : "bg-white/50 dark:bg-background/40 border-black/[0.08] dark:border-white/[0.06] text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-background/80"
-            )}
-          >
-            {copied ? (
-              <CheckIcon className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" weight="bold" />
-            ) : (
-              <CopyIcon className="h-3.5 w-3.5" />
-            )}
-          </button>
+            {revealAll ? <EyeSlashIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
+          </Button>
+          <CopyButton content={value} variant="secondary" />
         </div>
       </div>
 
-      {/* Editor Body */}
-      <div className="overflow-x-auto px-3 py-2.5 font-mono text-xs bg-black/[0.01] dark:bg-white/[0.005] select-text">
+      <div className="overflow-x-auto p-4 font-mono text-xs select-text">
         <table className="w-full border-collapse">
           <tbody>
             {lines.map((line, idx) => {

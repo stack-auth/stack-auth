@@ -2,7 +2,7 @@
 
 import { CodeBlock } from '@/components/code-block';
 import { DesignButton } from "@/components/design-components";
-import { APIEnvKeys, NextJsEnvKeys, ViteEnvKeys } from '@/components/env-keys';
+import { APIEnvKeys, NextJsEnvKeys, ViteEnvKeys, codePanelShellClasses } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
@@ -826,40 +826,42 @@ function HexclaveKeys(props: {
   onGenerateKeys: () => Promise<void>,
   type: 'next' | 'vite' | 'raw',
 }) {
-  return (
-    <div className="w-full rounded-2xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] border border-black/[0.06] dark:border-white/[0.06] shadow-none p-5 gap-3 flex flex-col transition-all duration-150 hover:transition-none">
-      {props.keys ? (
-        <>
-          {props.type === 'next' ? (
-            <NextJsEnvKeys
-              projectId={props.keys.projectId}
-              publishableClientKey={props.keys.publishableClientKey}
-              secretServerKey={props.keys.secretServerKey}
-            />
-          ) : props.type === 'vite' ? (
-            <ViteEnvKeys
-              projectId={props.keys.projectId}
-              secretServerKey={props.keys.secretServerKey}
-            />
-          ) : (
-            <APIEnvKeys
-              projectId={props.keys.projectId}
-              publishableClientKey={props.keys.publishableClientKey}
-              secretServerKey={props.keys.secretServerKey}
-            />
-          )}
-
-          <Typography type="label" variant="secondary">
-            {`Save these keys securely - they won't be shown again after leaving this page.`}
-          </Typography>
-        </>
-      ) : (
+  if (!props.keys) {
+    return (
+      <div className={cn(codePanelShellClasses, "w-full p-5 flex flex-col")}>
         <div className="flex items-center justify-center">
           <DesignButton onClick={props.onGenerateKeys}>
             Generate Keys
           </DesignButton>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full flex flex-col gap-3">
+      {props.type === 'next' ? (
+        <NextJsEnvKeys
+          projectId={props.keys.projectId}
+          publishableClientKey={props.keys.publishableClientKey}
+          secretServerKey={props.keys.secretServerKey}
+        />
+      ) : props.type === 'vite' ? (
+        <ViteEnvKeys
+          projectId={props.keys.projectId}
+          secretServerKey={props.keys.secretServerKey}
+        />
+      ) : (
+        <APIEnvKeys
+          projectId={props.keys.projectId}
+          publishableClientKey={props.keys.publishableClientKey}
+          secretServerKey={props.keys.secretServerKey}
+        />
       )}
+
+      <Typography type="label" variant="secondary">
+        {`Save these keys securely - they won't be shown again after leaving this page.`}
+      </Typography>
     </div>
   );
 }
