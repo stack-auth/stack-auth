@@ -106,6 +106,9 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
+// The server rejects payloads > 1MB. Stay well under to account for JSON
+// envelope overhead (browser_session_id, timestamps, wrapper keys, etc.).
+const MAX_FLUSH_PAYLOAD_BYTES = 900_000;
 
 export type StoredSession = {
   session_id: string,
@@ -189,6 +192,7 @@ export class SessionRecorder {
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: unknown[] = [];
+  private _eventSizes: number[] = [];
   private _approxBytes = 0;
   private _lastPersistActivity = 0;
   private _recording = false;
@@ -239,6 +243,7 @@ export class SessionRecorder {
 
   clearBuffer() {
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
   }
 
@@ -264,6 +269,24 @@ export class SessionRecorder {
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
 
+    // Take only as many events as fit under the server's payload limit.
+    // When _flushInProgress blocked earlier flushes, events can accumulate
+    // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
+    // exceed the server's 1MB body limit (413).
+    let batchBytes = 0;
+    let batchEnd = 0;
+    for (let i = 0; i < this._events.length; i++) {
+      const nextSize = this._eventSizes[i] ?? 0;
+      if (batchBytes + nextSize > MAX_FLUSH_PAYLOAD_BYTES && batchEnd > 0) break;
+      batchBytes += nextSize;
+      batchEnd = i + 1;
+    }
+
+    const batchEvents = this._events.slice(0, batchEnd);
+    this._events = this._events.slice(batchEnd);
+    this._eventSizes = this._eventSizes.slice(batchEnd);
+    this._approxBytes -= batchBytes;
+
     const batchId = generateUuid();
     const payload = {
       browser_session_id: stored.session_id,
@@ -271,11 +294,8 @@ export class SessionRecorder {
       batch_id: batchId,
       started_at_ms: stored.created_at_ms,
       sent_at_ms: nowMs,
-      events: this._events,
+      events: batchEvents,
     };
-
-    this._events = [];
-    this._approxBytes = 0;
 
     this._flushInProgress = true;
     try {
@@ -303,6 +323,13 @@ export class SessionRecorder {
       }
     } finally {
       this._flushInProgress = false;
+    }
+
+    // If there are still events left in the buffer after this flush (because
+    // the batch was capped), flush again immediately rather than waiting for
+    // the next timer tick.
+    if (this._events.length > 0) {
+      await this._flush(options);
     }
   }
 
@@ -353,8 +380,10 @@ export class SessionRecorder {
           }
         }
 
+        const eventSize = JSON.stringify(event).length;
         this._events.push(event);
-        this._approxBytes += JSON.stringify(event).length;
+        this._eventSizes.push(eventSize);
+        this._approxBytes += eventSize;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }));
         }
@@ -387,6 +416,7 @@ export class SessionRecorder {
       this._stopRecording = null;
     }
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
     this._recording = false;
   }
