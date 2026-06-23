@@ -240,7 +240,14 @@ function hasErrnoCode(error: unknown, code: string): boolean {
 }
 
 function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv): void {
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
+  let entries: ReturnType<typeof readdirSync>;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch (error) {
+    if (hasErrnoCode(error, "ENOENT")) return;
+    throw error;
+  }
+  for (const entry of entries) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) {
       try {
