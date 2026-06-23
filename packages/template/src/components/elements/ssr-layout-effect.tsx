@@ -1,6 +1,10 @@
 "use client";
 import { useLayoutEffect } from "react";
 
+function escapeHtmlAttr(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function SsrScript(props: { script: string, nonce?: string }) {
   useLayoutEffect(() => {
     // TODO fix workaround: React has a bug where it doesn't run the script on the first CSR render if SSR has been skipped due to suspense
@@ -15,7 +19,7 @@ export function SsrScript(props: { script: string, nonce?: string }) {
   // suppressHydrationWarning hides the SSR-vs-client innerHTML difference (server has the
   // script tag, client has empty string).
   const isServer = typeof window === 'undefined';
-  const nonceAttr = props.nonce ? ` nonce="${props.nonce}"` : '';
+  const nonceAttr = props.nonce ? ` nonce="${escapeHtmlAttr(props.nonce)}"` : '';
 
   return (
     <span
