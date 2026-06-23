@@ -1,0 +1,19 @@
+apps/backend/src/instrument.ts
+  s_39d61b0013d137::t_5be7e9f3d146d8 54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "b7c48b575d8cdf78ad51796c853c8f2c65146387",
+  "prompts": {},
+  "sessions": {
+    "s_39d61b0013d137": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b1432656-e0d5-4e93-a216-3b8509c0a53e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
