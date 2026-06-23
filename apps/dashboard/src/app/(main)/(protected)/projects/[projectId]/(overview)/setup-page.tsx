@@ -588,7 +588,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           <XIcon className="w-4 h-4 ml-1 mt-0.5" />
         </DesignButton>
       </div>
-      <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
+      <div className="flex gap-4 justify-center items-center rounded-2xl py-4 px-8 backdrop-blur-md bg-white/60 dark:bg-background/40 ring-1 ring-black/[0.06] dark:ring-white/[0.06] border border-black/[0.06] dark:border-white/[0.06] shadow-sm">
         <GlobeIllustration />
 
         <div className="flex flex-col gap-4">
@@ -695,7 +695,13 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                   }] as const).map(({ name, imgSrc: src, reverseIfDark, id }) => (
                     <DesignButton
                       key={id}
-                      variant={id === selectedFramework ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 '
+                      variant="plain"
+                      className={cn(
+                        "h-24 w-24 flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-150 hover:transition-none shadow-sm",
+                        id === selectedFramework
+                          ? "bg-white/95 dark:bg-background/90 ring-1 ring-black/[0.08] dark:ring-white/[0.08] border-black/[0.1] dark:border-white/[0.1] shadow"
+                          : "bg-white/40 dark:bg-background/20 ring-1 ring-black/[0.04] dark:ring-white/[0.04] border-transparent hover:bg-white/70 dark:hover:bg-background/40 hover:ring-black/[0.06] dark:hover:ring-white/[0.06]"
+                      )}
                       onClick={() => setSelectedFramework(id)}
                     >
                       <Image
@@ -708,7 +714,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                         sizes="100vw"
                         style={{ width: '30px', height: 'auto' }}
                       />
-                      <Typography type='label'>{name}</Typography>
+                      <span className="max-w-full px-1 text-center text-xs font-medium leading-tight text-foreground/90 whitespace-normal">
+                        {name}
+                      </span>
                     </DesignButton>
                   ))}
                 </div>
@@ -722,8 +730,8 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           ]).map((item) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col justify-center gap-2 max-w-[180px] min-w-[180px]">
-                <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
-                  <span className={`text-gray-500 dark:text-gray-700 font-medium`}>{item.step}</span>
+                <span className={`absolute flex items-center justify-center w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded-full -start-4 ring-4 ring-white dark:ring-zinc-900`}>
+                  <span className={`text-zinc-500 dark:text-zinc-400 font-semibold`}>{item.step}</span>
                 </span>
                 <h3 className="font-medium leading-tight">{item.title}</h3>
               </div>
@@ -819,7 +827,7 @@ function HexclaveKeys(props: {
   type: 'next' | 'vite' | 'raw',
 }) {
   return (
-    <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
+    <div className="w-full rounded-2xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] border border-black/[0.06] dark:border-white/[0.06] shadow-none p-5 gap-3 flex flex-col transition-all duration-150 hover:transition-none">
       {props.keys ? (
         <>
           {props.type === 'next' ? (
