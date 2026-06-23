@@ -18,6 +18,13 @@
         "default": "./dist/config-agent.js"
       },
       "default": "./dist/esm/config-agent.js"
+    },
+    "./dist/esbuild": {
+      "types": "./dist/esbuild.d.ts",
+      "require": {
+        "default": "./dist/esbuild.js"
+      },
+      "default": "./dist/esm/esbuild.js"
     }
   },
   "scripts": {
