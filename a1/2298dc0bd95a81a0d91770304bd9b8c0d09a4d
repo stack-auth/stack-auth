@@ -1,0 +1,21 @@
+apps/backend/src/server/backend-request.ts
+  s_e1b276c65f7c0f::t_681156e472a998 5-16
+apps/backend/src/proxy.tsx
+  s_e1b276c65f7c0f::t_ae460744cd1d1a 174,176-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "a12298dc0bd95a81a0d91770304bd9b8c0d09a4d",
+  "prompts": {},
+  "sessions": {
+    "s_e1b276c65f7c0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14ce3408-aa61-41ea-8323-6f493d8fe1af",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
