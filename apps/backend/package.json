@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/backend",
-  "version": "1.0.25",
+  "version": "1.0.28",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -103,7 +103,7 @@
     "elkjs": "^0.11.1",
     "elysia": "1.4.28",
     "emailable": "^3.1.1",
-    "freestyle-sandboxes": "^0.1.6",
+    "freestyle": "^0.1.63",
     "jiti": "^2.6.1",
     "jose": "^6.1.3",
     "json-diff": "^1.0.6",
@@ -128,7 +128,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@simplewebauthn/types": "^11.0.0",
     "@types/json-diff": "^1.0.3",
     "@types/node": "20.17.6",
     "@types/nodemailer": "^6.4.14",
@@ -138,7 +137,7 @@
     "@types/react-dom": "19.2.3",
     "@types/semver": "^7.5.8",
     "concurrently": "^8.2.2",
-    "glob": "^10.4.1",
+    "glob": "^13.0.0",
     "import-in-the-middle": "1.14.2",
     "prisma": "^7.0.0",
     "require-in-the-middle": "^7.4.0",

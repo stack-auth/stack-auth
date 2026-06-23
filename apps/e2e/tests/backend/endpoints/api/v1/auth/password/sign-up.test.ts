@@ -140,15 +140,16 @@ it("should not allow signing up with an e-mail that already exists", async ({ ex
     NiceResponse {
       "status": 409,
       "body": {
-        "code": "USER_EMAIL_ALREADY_EXISTS",
+        "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
         "details": {
-          "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "type": "email",
           "would_work_if_email_was_verified": false,
         },
-        "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
+        "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account.",
       },
       "headers": Headers {
-        "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
+        "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
         <some fields may have been hidden>,
       },
     }

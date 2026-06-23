@@ -12,6 +12,7 @@ import {
   AlertTitle,
   BrowserFrame,
   Button,
+  Skeleton,
   cn,
   Switch,
   TooltipProvider,
@@ -29,12 +30,11 @@ import {
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
-import { AdminOwnedProject, AuthPage } from "@hexclave/next";
+import { AuthPage, type AdminOwnedProject } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DomainSetupTransitionState,
@@ -55,10 +55,12 @@ import {
   OAUTH_SIGN_IN_METHODS,
   type OnboardingConfigChoice,
   type OnboardingPaymentsCountry,
+  type OnboardingProgressUpdate,
   orderedAppIds,
   PAYMENT_COUNTRY_OPTIONS,
   PRIMARY_APP_IDS,
   type ProjectOnboardingState,
+  type ProjectOnboardingStatus,
   REQUIRED_APP_IDS,
   SHARED_OAUTH_SIGN_IN_METHODS,
   SIGN_IN_METHODS,
@@ -66,27 +68,22 @@ import {
 } from "./shared";
 import { LinkExistingOnboarding } from "./link-existing-onboarding";
 
-const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
-
 export function ProjectOnboardingWizard(props: {
   project: AdminOwnedProject,
   status: ProjectOnboardingStatus,
   onboardingState: ProjectOnboardingState | null,
   mode: string | null,
   setMode: (mode: string | null) => void,
-  setStatus: (status: ProjectOnboardingStatus) => Promise<void>,
-  setOnboardingState: (state: ProjectOnboardingState) => Promise<void>,
-  clearOnboardingState: () => Promise<void>,
+  saveOnboardingProgress: (update: OnboardingProgressUpdate) => Promise<void>,
   onComplete: () => void,
 }) {
   const router = useRouter();
-  const { project, status, onboardingState, setMode, setStatus, setOnboardingState, clearOnboardingState, onComplete } = props;
+  const { project, status, onboardingState, setMode, saveOnboardingProgress, onComplete } = props;
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
   const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
-  const setProjectOnboardingStatus = setStatus;
   const finishProjectOnboarding = onComplete;
   const deriveCurrentOnboardingState = useCallback((onboardingStatus: ProjectOnboardingStatus): ProjectOnboardingState => {
     const defaultState = createProjectOnboardingState({
@@ -120,8 +117,7 @@ export function ProjectOnboardingWizard(props: {
   const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
   const [paymentsSetupAction, setPaymentsSetupAction] = useState<"defer" | "connect" | null>(null);
   const previousProjectId = useRef<string | null>(null);
-  const paymentsAutoCompletingRef = useRef(false);
-  const stripeAccountInfo = props.project.app.useStripeAccountInfo();
+  const finalConfigSavePromiseRef = useRef<Promise<boolean> | null>(null);
 
   const runWithSaving = useCallback(async (fn: () => Promise<void>) => {
     setSaving(true);
@@ -169,10 +165,9 @@ export function ProjectOnboardingWizard(props: {
     setDomainSetupAutoAdvanceError(null);
     setDomainSetupAutoAdvancing(false);
     setPaymentsSetupAction(null);
-    paymentsAutoCompletingRef.current = false;
+    finalConfigSavePromiseRef.current = null;
   }, [completeConfig, deriveCurrentOnboardingState, project, project.id, status]);
 
-  const emailThemes = project.app.useEmailThemes();
   const isLinkExistingMode = !isDevelopmentEnvironment && props.mode === "link-existing";
   const paymentsAppEnabledInConfig = completeConfig.apps.installed.payments?.enabled === true;
   const includePayments = (
@@ -186,6 +181,26 @@ export function ProjectOnboardingWizard(props: {
   );
   const currentTimelineIndex = useMemo(() => getStepIndex(timelineSteps, status), [status, timelineSteps]);
 
+  useEffect(() => {
+    if (isLinkExistingMode || (status !== "apps_selection" && status !== "auth_setup")) {
+      return;
+    }
+
+    runAsynchronously(async () => {
+      await project.app.listEmailThemes();
+    }, { noErrorLogging: true });
+  }, [isLinkExistingMode, project.app, status]);
+
+  useEffect(() => {
+    if (status !== "email_theme_setup" || !includePayments) {
+      return;
+    }
+
+    runAsynchronously(async () => {
+      await project.app.getStripeAccountInfo();
+    }, { noErrorLogging: true });
+  }, [includePayments, project.app, status]);
+
   const handleTimelineStepClick = useCallback((step: ProjectOnboardingStatus) => {
     const targetIndex = getStepIndex(timelineSteps, step);
     if (targetIndex < 0 || targetIndex >= currentTimelineIndex) {
@@ -196,9 +211,9 @@ export function ProjectOnboardingWizard(props: {
       if (step === "config_choice" && props.mode !== "link-existing") {
         setMode(null);
       }
-      await setStatus(step);
+      await saveOnboardingProgress({ status: step });
     });
-  }, [currentTimelineIndex, props.mode, setMode, setStatus, timelineSteps]);
+  }, [currentTimelineIndex, props.mode, saveOnboardingProgress, setMode, timelineSteps]);
 
   const handleBack = useMemo(() => {
     if (currentTimelineIndex <= 0) {
@@ -213,7 +228,7 @@ export function ProjectOnboardingWizard(props: {
       setDomainSetupAutoAdvanceError(null);
       setDomainSetupAutoAdvancing(true);
       try {
-        await setStatus("email_theme_setup");
+        await saveOnboardingProgress({ status: "email_theme_setup" });
       } catch (error) {
         setDomainSetupAutoAdvanceError(error instanceof Error ? error.message : "Failed to continue to the email theme step.");
         throw error;
@@ -221,7 +236,7 @@ export function ProjectOnboardingWizard(props: {
         setDomainSetupAutoAdvancing(false);
       }
     });
-  }, [setStatus]);
+  }, [saveOnboardingProgress]);
 
   useEffect(() => {
     if (status !== "domain_setup") {
@@ -287,9 +302,12 @@ export function ProjectOnboardingWizard(props: {
     });
   }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
-  const persistOnboardingState = useCallback(async () => {
-    await setOnboardingState(buildOnboardingState());
-  }, [buildOnboardingState, setOnboardingState]);
+  const saveCurrentOnboardingProgress = useCallback(async (nextStatus: ProjectOnboardingStatus) => {
+    await saveOnboardingProgress({
+      status: nextStatus,
+      onboardingState: buildOnboardingState(),
+    });
+  }, [buildOnboardingState, saveOnboardingProgress]);
 
   const buildBranchConfigUpdate = useCallback(() => {
     const emailThemeId = selectedEmailThemeId ?? completeConfig.emails.selectedThemeId;
@@ -335,48 +353,86 @@ export function ProjectOnboardingWizard(props: {
     return configUpdate;
   }, [signInMethods]);
 
-  const finalizeOnboarding = useCallback(async () => {
-    await runWithSaving(async () => {
-      if (!isLinkExistingMode) {
-        await persistOnboardingState();
+  const saveFinalConfig = useCallback(async (): Promise<boolean> => {
+    if (isLinkExistingMode) {
+      return true;
+    }
 
-        const branchConfigUpdated = await updateConfig({
-          adminApp: props.project.app,
-          configUpdate: buildBranchConfigUpdate(),
-          pushable: true,
-        });
-        if (!branchConfigUpdated) {
-          return;
-        }
-
-        if (!isLocalEmulator) {
-          const providersUpdated = await updateConfig({
-            adminApp: props.project.app,
-            configUpdate: buildEnvironmentOAuthConfigUpdate(),
-            pushable: false,
-          });
-          if (!providersUpdated) {
-            return;
-          }
-        }
-      }
-
-      await setProjectOnboardingStatus("completed");
-      await clearOnboardingState();
-      finishProjectOnboarding();
+    const branchConfigUpdated = await updateConfig({
+      adminApp: props.project.app,
+      configUpdate: buildBranchConfigUpdate(),
+      pushable: true,
     });
+    if (!branchConfigUpdated) {
+      return false;
+    }
+
+    if (!isLocalEmulator) {
+      const providersUpdated = await updateConfig({
+        adminApp: props.project.app,
+        configUpdate: buildEnvironmentOAuthConfigUpdate(),
+        pushable: false,
+      });
+      if (!providersUpdated) {
+        return false;
+      }
+    }
+
+    return true;
   }, [
     buildBranchConfigUpdate,
     buildEnvironmentOAuthConfigUpdate,
-    finishProjectOnboarding,
     isLinkExistingMode,
     isLocalEmulator,
-    persistOnboardingState,
     props.project.app,
-    clearOnboardingState,
-    runWithSaving,
-    setProjectOnboardingStatus,
     updateConfig,
+  ]);
+
+  useEffect(() => {
+    if (status !== "welcome" || isLinkExistingMode || isLocalEmulator || finalConfigSavePromiseRef.current != null) {
+      return;
+    }
+
+    finalConfigSavePromiseRef.current = (async () => {
+      const pushedConfigSource = await props.project.getPushedConfigSource();
+      if (pushedConfigSource.type !== "unlinked") {
+        return false;
+      }
+      return await saveFinalConfig();
+    })();
+    runAsynchronously(finalConfigSavePromiseRef.current, { noErrorLogging: true });
+  }, [isLinkExistingMode, isLocalEmulator, props.project, saveFinalConfig, status]);
+
+  const finalizeOnboarding = useCallback(async () => {
+    await runWithSaving(async () => {
+      const backgroundConfigSave = finalConfigSavePromiseRef.current;
+      let configSaved: boolean;
+      try {
+        configSaved = backgroundConfigSave != null
+          ? await backgroundConfigSave
+          : await saveFinalConfig();
+      } catch {
+        finalConfigSavePromiseRef.current = null;
+        configSaved = false;
+      }
+
+      if (!configSaved) {
+        finalConfigSavePromiseRef.current = null;
+        configSaved = await saveFinalConfig();
+      }
+
+      if (!configSaved) {
+        throw new Error("Failed to save project configuration. Please try again.");
+      }
+
+      await saveOnboardingProgress({ status: "completed", onboardingState: null });
+      finishProjectOnboarding();
+    });
+  }, [
+    finishProjectOnboarding,
+    runWithSaving,
+    saveFinalConfig,
+    saveOnboardingProgress,
   ]);
 
   const deferPaymentsSetup = useCallback(async () => {
@@ -386,13 +442,12 @@ export function ProjectOnboardingWizard(props: {
         if (selectedPaymentsCountry === "US") {
           await props.project.app.setupPayments();
         }
-        await persistOnboardingState();
-        await setStatus("welcome");
+        await saveCurrentOnboardingProgress("welcome");
       } finally {
         setPaymentsSetupAction(null);
       }
     });
-  }, [persistOnboardingState, props.project.app, runWithSaving, selectedPaymentsCountry, setStatus]);
+  }, [props.project.app, runWithSaving, saveCurrentOnboardingProgress, selectedPaymentsCountry]);
 
   const connectPaymentsSetup = useCallback(async () => {
     await runWithSaving(async () => {
@@ -409,23 +464,6 @@ export function ProjectOnboardingWizard(props: {
       }
     });
   }, [props.project.app, runWithSaving]);
-
-  useEffect(() => {
-    if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
-      return;
-    }
-
-    paymentsAutoCompletingRef.current = true;
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        await persistOnboardingState();
-        await setStatus("welcome");
-      } catch (error) {
-        paymentsAutoCompletingRef.current = false;
-        throw error;
-      }
-    });
-  }, [persistOnboardingState, setStatus, status, stripeAccountInfo?.details_submitted]);
 
   if (props.status === "welcome") {
     return (
@@ -454,9 +492,9 @@ export function ProjectOnboardingWizard(props: {
           const latestConfig = await props.project.getConfig();
           const paymentsEnabledInLatestConfig = latestConfig.apps.installed.payments?.enabled === true;
           if (paymentsEnabledInLatestConfig) {
-            await props.setStatus("payments_setup");
+            await saveOnboardingProgress({ status: "payments_setup" });
           } else {
-            await props.setStatus("welcome");
+            await saveOnboardingProgress({ status: "welcome" });
           }
         }}
       />
@@ -479,8 +517,7 @@ export function ProjectOnboardingWizard(props: {
               className="w-full rounded-full"
               loading={saving}
               onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                await persistOnboardingState();
-                await props.setStatus("apps_selection");
+                await saveCurrentOnboardingProgress("apps_selection");
               }))}
             >
               Continue
@@ -517,10 +554,10 @@ export function ProjectOnboardingWizard(props: {
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await persistOnboardingState();
               if (selectedConfigChoice === "create-new") {
-                await props.setStatus("apps_selection");
+                await saveCurrentOnboardingProgress("apps_selection");
               } else {
+                await saveOnboardingProgress({ onboardingState: buildOnboardingState() });
                 props.setMode("link-existing");
               }
             }))}
@@ -614,8 +651,7 @@ export function ProjectOnboardingWizard(props: {
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await persistOnboardingState();
-              await props.setStatus("auth_setup");
+              await saveCurrentOnboardingProgress("auth_setup");
             }))}
           >
             Continue
@@ -722,8 +758,7 @@ export function ProjectOnboardingWizard(props: {
               if (signInMethods.size === 0) {
                 throw new Error("Select at least one sign-in method before continuing.");
               }
-              await persistOnboardingState();
-              await props.setStatus("email_theme_setup");
+              await saveCurrentOnboardingProgress("email_theme_setup");
             }))}
           >
             Continue
@@ -833,12 +868,10 @@ export function ProjectOnboardingWizard(props: {
             className="w-full rounded-full"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await persistOnboardingState();
-
               if (includePayments) {
-                await props.setStatus("payments_setup");
+                await saveCurrentOnboardingProgress("payments_setup");
               } else {
-                await props.setStatus("welcome");
+                await saveCurrentOnboardingProgress("welcome");
               }
             }))}
           >
@@ -846,68 +879,14 @@ export function ProjectOnboardingWizard(props: {
           </DesignButton>
         }
       >
-        <div className="space-y-4">
-          {emailThemes.length === 0 && (
-            <DesignAlert
-              variant="warning"
-              title="No themes found"
-              description="Theme selection is temporarily unavailable. You can still continue."
-            />
-          )}
-          <div className="grid gap-4 sm:grid-cols-3">
-            {emailThemes.map((theme) => {
-              const isSelected = selectedEmailThemeId === theme.id;
-              return (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => setSelectedEmailThemeId(theme.id)}
-                  disabled={saving}
-                  className={cn(
-                    "relative flex flex-col overflow-hidden rounded-2xl text-left transition-[box-shadow,background-color] duration-150 hover:transition-none",
-                    "disabled:cursor-not-allowed disabled:opacity-60",
-                    isSelected
-                      ? cn(
-                          "bg-blue-500/[0.06] dark:bg-blue-500/[0.04] ring-1 ring-blue-500/40",
-                          "shadow-[0_12px_40px_-8px_rgba(59,130,246,0.45),0_0_1px_rgba(59,130,246,0.2)]",
-                          "dark:shadow-[0_14px_48px_-10px_rgba(96,165,250,0.38),0_0_1px_rgba(96,165,250,0.25)]",
-                        )
-                      : cn(
-                          "bg-white/90 dark:bg-white/[0.06]",
-                          "ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
-                        ),
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "aspect-[4/3] overflow-hidden border-b border-black/[0.06] dark:border-white/[0.06] bg-background transition-opacity duration-150",
-                      !isSelected && "opacity-[0.65]",
-                    )}
-                  >
-                    <div style={{ transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" }}>
-                      <OnboardingEmailThemePreview adminApp={props.project.app} themeId={theme.id} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 p-3">
-                    <Typography
-                      className={cn(
-                        "min-w-0 flex-1 text-sm font-medium transition-colors duration-150",
-                        isSelected ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {theme.displayName}
-                    </Typography>
-                    {isSelected && (
-                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
-                        <CheckCircleIcon className="h-4 w-4" weight="fill" />
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <Suspense fallback={<EmailThemeSetupStepSkeleton />}>
+          <EmailThemeSetupStep
+            project={props.project}
+            saving={saving}
+            selectedEmailThemeId={selectedEmailThemeId}
+            setSelectedEmailThemeId={setSelectedEmailThemeId}
+          />
+        </Suspense>
       </OnboardingPage>
     );
   }
@@ -946,59 +925,17 @@ export function ProjectOnboardingWizard(props: {
           </DesignButton>
         ) : undefined}
       >
-        <div className="mx-auto w-full max-w-sm">
-          <DesignCard
-            glassmorphic={false}
-            className="border-0 bg-white/90 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10]"
-            contentClassName="!p-6 md:!p-7"
-          >
-            <div className="flex flex-col items-center gap-6 md:gap-7">
-              <Typography type="h2" className="text-center tracking-tight text-balance">
-                Built-in Billing
-              </Typography>
-
-              <div className="flex w-full flex-col gap-3 rounded-xl bg-foreground/[0.03] px-5 py-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2.5">
-                  <WebhooksLogoIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
-                  <span>No webhooks or syncing required</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <ArrowsClockwiseIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
-                  <span>One-time and recurring payments</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <ChartBarIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
-                  <span>Usage-based billing support</span>
-                </div>
-              </div>
-
-              <div className="w-full space-y-2.5">
-                <Typography className="text-xs font-medium text-muted-foreground">Country of residence</Typography>
-                <DesignSelectorDropdown
-                  value={selectedPaymentsCountry}
-                  onValueChange={(value) => {
-                    if (value !== "US" && value !== "OTHER") {
-                      throw new Error(`Invalid payments country: ${value}`);
-                    }
-                    setSelectedPaymentsCountry(value);
-                  }}
-                  options={PAYMENT_COUNTRY_OPTIONS.map((country) => ({ value: country.value, label: country.label }))}
-                  size="md"
-                />
-                <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-muted-foreground">
-                  <ShieldCheckIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                  <span>Powered by</span>
-                  <StripeWordmark className="h-3 w-auto shrink-0 translate-y-px text-[#635BFF] dark:text-[#8b87ff]" />
-                </div>
-                {selectedPaymentsCountry !== "US" && (
-                  <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
-                    Payments is currently only available in the United States.
-                  </Typography>
-                )}
-              </div>
-            </div>
-          </DesignCard>
-        </div>
+        <Suspense fallback={<PaymentsSetupStepSkeleton />}>
+          <PaymentsSetupAutoComplete
+            project={props.project}
+            buildOnboardingState={buildOnboardingState}
+            saveOnboardingProgress={saveOnboardingProgress}
+          />
+          <PaymentsSetupStepContent
+            selectedPaymentsCountry={selectedPaymentsCountry}
+            setSelectedPaymentsCountry={setSelectedPaymentsCountry}
+          />
+        </Suspense>
       </OnboardingPage>
     );
   }
@@ -1017,4 +954,229 @@ export function ProjectOnboardingWizard(props: {
       </div>
     </div>
   );
+}
+
+function EmailThemeSetupStepSkeleton() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-3" data-testid="email-theme-step-skeleton">
+      {["theme-skeleton-one", "theme-skeleton-two", "theme-skeleton-three"].map((id) => (
+        <div
+          key={id}
+          className="relative flex flex-col overflow-hidden rounded-2xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10]"
+        >
+          <Skeleton className="aspect-[4/3] rounded-none border-b border-black/[0.06] bg-foreground/[0.08] dark:border-white/[0.06]" />
+          <div className="flex items-center justify-between gap-2 p-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-5 w-5 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmailThemeSetupStep({
+  project,
+  saving,
+  selectedEmailThemeId,
+  setSelectedEmailThemeId,
+}: {
+  project: AdminOwnedProject,
+  saving: boolean,
+  selectedEmailThemeId: string | null,
+  setSelectedEmailThemeId: (themeId: string) => void,
+}) {
+  const emailThemes = project.app.useEmailThemes();
+
+  return (
+    <div className="space-y-4">
+      {emailThemes.length === 0 && (
+        <DesignAlert
+          variant="warning"
+          title="No themes found"
+          description="Theme selection is temporarily unavailable. You can still continue."
+        />
+      )}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {emailThemes.map((theme) => {
+          const isSelected = selectedEmailThemeId === theme.id;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              onClick={() => setSelectedEmailThemeId(theme.id)}
+              disabled={saving}
+              className={cn(
+                "relative flex flex-col overflow-hidden rounded-2xl text-left transition-[box-shadow,background-color] duration-150 hover:transition-none",
+                "disabled:cursor-not-allowed disabled:opacity-60",
+                isSelected
+                  ? cn(
+                      "bg-blue-500/[0.06] dark:bg-blue-500/[0.04] ring-1 ring-blue-500/40",
+                      "shadow-[0_12px_40px_-8px_rgba(59,130,246,0.45),0_0_1px_rgba(59,130,246,0.2)]",
+                      "dark:shadow-[0_14px_48px_-10px_rgba(96,165,250,0.38),0_0_1px_rgba(96,165,250,0.25)]",
+                    )
+                  : cn(
+                      "bg-white/90 dark:bg-white/[0.06]",
+                      "ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
+                    ),
+              )}
+            >
+              <div
+                className={cn(
+                  "aspect-[4/3] overflow-hidden border-b border-black/[0.06] dark:border-white/[0.06] bg-background transition-opacity duration-150",
+                  !isSelected && "opacity-[0.65]",
+                )}
+              >
+                <div style={{ transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" }}>
+                  <OnboardingEmailThemePreview adminApp={project.app} themeId={theme.id} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 p-3">
+                <Typography
+                  className={cn(
+                    "min-w-0 flex-1 text-sm font-medium transition-colors duration-150",
+                    isSelected ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {theme.displayName}
+                </Typography>
+                {isSelected && (
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                    <CheckCircleIcon className="h-4 w-4" weight="fill" />
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PaymentsSetupStepSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-sm" data-testid="payments-setup-step-skeleton">
+      <div className="rounded-2xl bg-white/90 p-6 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10] md:p-7">
+        <div className="flex flex-col items-center gap-6 md:gap-7">
+          <Skeleton className="h-7 w-40" />
+          <div className="flex w-full flex-col gap-3 rounded-xl bg-foreground/[0.03] px-5 py-4">
+            {["feature-skeleton-one", "feature-skeleton-two", "feature-skeleton-three"].map((id) => (
+              <div key={id} className="flex items-center gap-2.5">
+                <Skeleton className="h-3.5 w-3.5 rounded-full" />
+                <Skeleton className="h-4 w-full max-w-[220px]" />
+              </div>
+            ))}
+          </div>
+          <div className="w-full space-y-2.5">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <div className="flex items-center justify-center gap-1.5">
+              <Skeleton className="h-3.5 w-3.5 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentsSetupStepContent({
+  selectedPaymentsCountry,
+  setSelectedPaymentsCountry,
+}: {
+  selectedPaymentsCountry: OnboardingPaymentsCountry,
+  setSelectedPaymentsCountry: (country: OnboardingPaymentsCountry) => void,
+}) {
+  return (
+    <div className="mx-auto w-full max-w-sm">
+      <DesignCard
+        glassmorphic={false}
+        className="border-0 bg-white/90 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10]"
+        contentClassName="!p-6 md:!p-7"
+      >
+        <div className="flex flex-col items-center gap-6 md:gap-7">
+          <Typography type="h2" className="text-center tracking-tight text-balance">
+            Built-in Billing
+          </Typography>
+
+          <div className="flex w-full flex-col gap-3 rounded-xl bg-foreground/[0.03] px-5 py-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2.5">
+              <WebhooksLogoIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+              <span>No webhooks or syncing required</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <ArrowsClockwiseIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+              <span>One-time and recurring payments</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <ChartBarIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+              <span>Usage-based billing support</span>
+            </div>
+          </div>
+
+          <div className="w-full space-y-2.5">
+            <Typography className="text-xs font-medium text-muted-foreground">Country of residence</Typography>
+            <DesignSelectorDropdown
+              value={selectedPaymentsCountry}
+              onValueChange={(value) => {
+                if (value !== "US" && value !== "OTHER") {
+                  throw new Error(`Invalid payments country: ${value}`);
+                }
+                setSelectedPaymentsCountry(value);
+              }}
+              options={PAYMENT_COUNTRY_OPTIONS.map((country) => ({ value: country.value, label: country.label }))}
+              size="md"
+            />
+            <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-muted-foreground">
+              <ShieldCheckIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span>Powered by</span>
+              <StripeWordmark className="h-3 w-auto shrink-0 translate-y-px text-[#635BFF] dark:text-[#8b87ff]" />
+            </div>
+            {selectedPaymentsCountry !== "US" && (
+              <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
+                Payments is currently only available in the United States.
+              </Typography>
+            )}
+          </div>
+        </div>
+      </DesignCard>
+    </div>
+  );
+}
+
+function PaymentsSetupAutoComplete({
+  project,
+  buildOnboardingState,
+  saveOnboardingProgress,
+}: {
+  project: AdminOwnedProject,
+  buildOnboardingState: () => ProjectOnboardingState,
+  saveOnboardingProgress: (update: OnboardingProgressUpdate) => Promise<void>,
+}) {
+  const stripeAccountInfo = project.app.useStripeAccountInfo();
+  const autoCompletingRef = useRef(false);
+
+  useEffect(() => {
+    if (stripeAccountInfo?.details_submitted !== true || autoCompletingRef.current) {
+      return;
+    }
+
+    autoCompletingRef.current = true;
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await saveOnboardingProgress({
+          status: "welcome",
+          onboardingState: buildOnboardingState(),
+        });
+      } catch (error) {
+        autoCompletingRef.current = false;
+        throw error;
+      }
+    });
+  }, [buildOnboardingState, saveOnboardingProgress, stripeAccountInfo?.details_submitted]);
+
+  return null;
 }

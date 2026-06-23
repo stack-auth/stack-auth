@@ -245,7 +245,7 @@ function generateRandomEmail(): string {
   for (let i = 0; i < 8; i++) {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `dev-${id}@test.hexclave.com`;
+  return `dev-${id}@devtool-quick-sign-up.example.com`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1848,7 +1848,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
 function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
-  const urls = app.urls;
+  const urls = app[hexclaveAppInternalsSymbol].getUrls();
   const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [

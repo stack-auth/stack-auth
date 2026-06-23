@@ -70,8 +70,11 @@ describe("SessionRecorder flush", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
+      const event1 = { type: 2, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 2, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event1];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event1).length];
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
@@ -82,8 +85,11 @@ describe("SessionRecorder flush", () => {
 
       // Unlike ANALYTICS_NOT_ENABLED, ad blocker errors do NOT disable the
       // recorder — subsequent flushes continue attempting delivery.
+      const event2 = { type: 3, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 3, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event2).length];
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
@@ -92,6 +98,113 @@ describe("SessionRecorder flush", () => {
     } finally {
       recorder.stop();
       warnSpy.mockRestore();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("splits large batches into multiple requests to stay under server 1MB limit", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // Create events that together exceed 900KB (the per-batch cap).
+      // Each event is ~500KB, so two events (~1MB) must be split into two batches.
+      const largeData = "x".repeat(500_000);
+      const event1 = { type: 2, timestamp: Date.now(), data: largeData };
+      const event2 = { type: 3, timestamp: Date.now(), data: largeData };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [event1, event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event1).length, JSON.stringify(event2).length];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = JSON.stringify(event1).length + JSON.stringify(event2).length;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (recorder as any)._tick();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Should have sent two separate batches
+      expect(sentBodies).toHaveLength(2);
+
+      // Each batch should contain exactly one event
+      const batch1 = JSON.parse(sentBodies[0]);
+      const batch2 = JSON.parse(sentBodies[1]);
+      expect(batch1.events).toHaveLength(1);
+      expect(batch2.events).toHaveLength(1);
+
+      // They should have different batch IDs
+      expect(batch1.batch_id).not.toBe(batch2.batch_id);
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("sends a single oversized event alone without dropping it", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // A single event larger than 900KB — should still be sent (not dropped)
+      const hugeData = "y".repeat(1_000_000);
+      const hugeEvent = { type: 2, timestamp: Date.now(), data: hugeData };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [hugeEvent];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(hugeEvent).length];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = JSON.stringify(hugeEvent).length;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (recorder as any)._tick();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Should still send the event (the server may reject it, but we don't drop it client-side)
+      expect(sentBodies).toHaveLength(1);
+      const batch = JSON.parse(sentBodies[0]);
+      expect(batch.events).toHaveLength(1);
+    } finally {
+      recorder.stop();
       localStorage.removeItem(storageKey);
       vi.useRealTimers();
     }
@@ -122,8 +235,11 @@ describe("SessionRecorder flush", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
+      const event1 = { type: 2, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 2, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event1];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event1).length];
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
@@ -132,8 +248,11 @@ describe("SessionRecorder flush", () => {
       expect(sentBodies).toHaveLength(1);
       expect(warnSpy).not.toHaveBeenCalled();
 
+      const event2 = { type: 3, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 3, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event2).length];
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);

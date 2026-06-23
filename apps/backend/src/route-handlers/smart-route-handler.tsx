@@ -49,6 +49,7 @@ function catchError(error: unknown, requestId: string): StatusError {
   }
 
   if (StatusError.isStatusError(error)) return error;
+
   captureError(`route-handler`, error);
   return new InternalServerError(error, requestId);
 }

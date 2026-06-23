@@ -214,7 +214,7 @@ function renderComponent(props: {
       }
       for (const [key, value] of Object.entries(pathAliases)) {
         if (path.toLowerCase().replaceAll('-', '') === key.toLowerCase().replaceAll('-', '')) {
-          const redirectUrl = `${app.urls.handler}/${value}?${new URLSearchParams(searchParams).toString()}`;
+          const redirectUrl = `${app[hexclaveAppInternalsSymbol].getUrls().handler}/${value}?${new URLSearchParams(searchParams).toString()}`;
           return { redirect: redirectUrl };
         }
       }
@@ -270,6 +270,7 @@ function RedirectToPage(props: {
 export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RouteProps> & { location?: string }) {
   // Use hooks to get app
   const hexclaveApp = useStackApp();
+  const handlerUrls = hexclaveApp[hexclaveAppInternalsSymbol].getUrls();
   const clientOrigin = useClientOriginAfterHydration();
 
   // IF_PLATFORM next
@@ -281,13 +282,13 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
   const navigate = hexclaveApp.useNavigate();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
-  const currentLocation = props.location ?? (typeof window === "undefined" ? new URL(hexclaveApp.urls.handler, placeholderOrigin).pathname : window.location.pathname);
+  const currentLocation = props.location ?? (typeof window === "undefined" ? new URL(handlerUrls.handler, placeholderOrigin).pathname : window.location.pathname);
   const searchParamsSource = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
   const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {
-    const handlerPath = new URL(hexclaveApp.urls.handler, 'http://example.com').pathname;
+    const handlerPath = new URL(handlerUrls.handler, 'http://example.com').pathname;
     const relativePath = currentLocation.startsWith(handlerPath)
       ? currentLocation.slice(handlerPath.length).replace(/^\/+/, '')
       : currentLocation.replace(/^\/+/, '');
@@ -297,7 +298,7 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
       searchParams: Object.fromEntries(searchParamsSource.entries()),
       handlerPath,
     };
-  }, [currentLocation, searchParamsSource, hexclaveApp.urls.handler]);
+  }, [currentLocation, searchParamsSource, handlerUrls.handler]);
 
   const getDefaultUnknownPathUrl = (unknownPath: string): string | null => {
     return resolveUnknownHandlerPathFallbackUrl({
@@ -308,7 +309,7 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
   };
 
   const shouldRedirectToPage = (name: keyof HandlerUrls): boolean => {
-    const url = hexclaveApp.urls[name];
+    const url = handlerUrls[name];
     const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.hexclave_cross_domain_auth === "1";
     if (isCrossDomainLocalOauthCallback) {
       return false;

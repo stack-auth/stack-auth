@@ -30,6 +30,8 @@ model Project {
   onboardingStatus String  @default("completed")
   onboardingState  Json?
 
+  isAvailableAsPreviewProject Boolean @default(false)
+
   logoUrl             String?
   logoFullUrl         String?
   logoDarkModeUrl     String?
@@ -135,6 +137,7 @@ model BranchConfigOverride {
 
   config Json
   source Json?
+  pushedConfigError Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

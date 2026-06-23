@@ -120,6 +120,43 @@ it("creates a new project", async ({ expect }) => {
   `);
 });
 
+it("updates onboarding status and state together without modifying config", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const beforeResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+  });
+  expect(beforeResponse.status).toBe(200);
+
+  const onboardingState = {
+    selected_config_choice: "create-new" as const,
+    selected_apps: ["authentication", "emails", "payments"] as const,
+    selected_sign_in_methods: ["credential", "magicLink"] as const,
+    selected_email_theme_id: "a0172b5d-cff0-463b-83bb-85124697373a",
+    selected_payments_country: "US" as const,
+  };
+
+  const patchResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      onboarding_status: "auth_setup",
+      onboarding_state: onboardingState,
+    },
+  });
+  expect(patchResponse.status).toBe(200);
+  expect(patchResponse.body.onboarding_status).toBe("auth_setup");
+  expect(patchResponse.body.onboarding_state).toEqual(onboardingState);
+  expect(patchResponse.body.config).toEqual(beforeResponse.body.config);
+
+  const afterResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+  });
+  expect(afterResponse.status).toBe(200);
+  expect(afterResponse.body.onboarding_status).toBe("auth_setup");
+  expect(afterResponse.body.onboarding_state).toEqual(onboardingState);
+  expect(afterResponse.body.config).toEqual(beforeResponse.body.config);
+});
+
 it("creates a new project with different configurations", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
   await Auth.fastSignUp();

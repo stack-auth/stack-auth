@@ -2,6 +2,7 @@ import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject } from "@hexclave/next";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+export type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
@@ -36,6 +37,10 @@ export type ProjectOnboardingState = {
   selected_email_theme_id: string | null,
   selected_payments_country: OnboardingPaymentsCountry,
 };
+
+export type OnboardingProgressUpdate =
+  | { status: ProjectOnboardingStatus, onboardingState?: ProjectOnboardingState | null }
+  | { status?: ProjectOnboardingStatus, onboardingState: ProjectOnboardingState | null };
 
 export type HexclaveAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,

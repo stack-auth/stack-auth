@@ -5,7 +5,7 @@ import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
-import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
+import { Freestyle as FreestyleClient } from 'freestyle';
 
 export type ExecuteJavascriptOptions = {
   nodeModules?: Record<string, string>,
