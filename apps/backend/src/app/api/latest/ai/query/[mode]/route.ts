@@ -99,23 +99,22 @@ export const POST = createSmartRouteHandler({
         stopWhen: stepCountIs(stepLimit),
       });
 
-      runAsynchronouslyAndWaitUntil(
-        result.text.then((text) => {
-          getVokerClient().events.create({
-            vokerAgent: "hexclave-ai-assistant",
-            vokerSession,
-            eventName: "llm",
-            properties: {
-              api: "openai-chat-completions",
-              inputs: {
-                model: String(model.modelId),
-                messages: modelMessages,
-              },
-              output: text,
+      runAsynchronouslyAndWaitUntil(async () => {
+        const text = await result.text;
+        getVokerClient().events.create({
+          vokerAgent: "hexclave-ai-assistant",
+          vokerSession,
+          eventName: "llm",
+          properties: {
+            api: "openai-chat-completions",
+            inputs: {
+              model: String(model.modelId),
+              messages: modelMessages,
             },
-          });
-        })
-      );
+            output: text,
+          },
+        });
+      });
 
       return {
         statusCode: 200,
