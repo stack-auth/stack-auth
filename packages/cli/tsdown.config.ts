@@ -4,7 +4,7 @@ const config: UserConfig = {
   entry: ['src/index.ts'],
   sourcemap: true,
   clean: false,
-  dts: true,
+  dts: false,
   outDir: 'dist',
   external: ['@anthropic-ai/claude-agent-sdk'],
   define: {

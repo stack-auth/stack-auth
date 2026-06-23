@@ -32,7 +32,7 @@
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.14",
-    "typescript": "6.0.3",
+    "typescript": "7.0.1-rc",
     "vite": "^7.0.0",
     "vite-tsconfig-paths": "^4.3.2"
   },
