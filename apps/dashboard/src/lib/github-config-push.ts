@@ -12,7 +12,8 @@
 import type { PushedConfigSource } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
-import { parseHexclaveConfigFileContent, renderConfigFileContent, showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/hexclave-config-file";
+import { evalConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/hexclave-config-file";
 
 import {
   commitFile,
@@ -51,7 +52,7 @@ export function buildUpdatedConfigFileContent(
   currentFileContent: string,
   configUpdate: EnvironmentConfigOverrideOverride,
 ): string {
-  const parsed = parseHexclaveConfigFileContent(currentFileContent, "stack.config.ts");
+  const parsed = evalConfigFileContent(currentFileContent, "stack.config.ts");
   if (parsed === showOnboardingHexclaveConfigValue) {
     throw new Error(
       "The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes."

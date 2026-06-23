@@ -1,7 +1,6 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { parseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
+import { detectImportPackageFromDir, evalConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -76,7 +75,7 @@ async function readConfigContent(filePath: string): Promise<string> {
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
   try {
-    return parseHexclaveConfigFileContent(content, filePath);
+    return evalConfigFileContent(content, filePath);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);

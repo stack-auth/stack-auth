@@ -1,5 +1,5 @@
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, parseHexclaveConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir, evalConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -132,7 +132,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   // Fast path: if the config is a plain static literal (no imports, no helpers),
   // apply the update deterministically without invoking the AI agent.
-  const staticConfig = tryParseStaticConfigFileContent(content, configFilePath);
+  const staticConfig = tryParseConfigFileContent(content, configFilePath);
   if (staticConfig != null && isValidConfig(staticConfig)) {
     const merged = override(staticConfig, configUpdate);
     if (!isValidConfig(merged)) {
@@ -304,9 +304,9 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   }
 }
 
-function tryParseStaticConfigFileContent(content: string, configFilePath: string): Config | null {
+function tryParseConfigFileContent(content: string, configFilePath: string): Config | null {
   try {
-    const parsed = parseHexclaveConfigFileContent(content, configFilePath);
+    const parsed = evalConfigFileContent(content, configFilePath);
     return isValidConfig(parsed) ? parsed : null;
   } catch {
     return null;
@@ -315,12 +315,9 @@ function tryParseStaticConfigFileContent(content: string, configFilePath: string
 
 function configFileExportsConfig(content: string, configFilePath: string): boolean {
   try {
-    parseHexclaveConfigFileContent(content, configFilePath);
+    evalConfigFileContent(content, configFilePath);
     return true;
   } catch {
-    // Dynamic configs can be valid even when the static parser cannot evaluate
-    // them. For the structural fallback we only need to know that a runtime
-    // config binding still exists after the agent edited the file.
     return /\bexport\s+const\s+config\b/.test(content);
   }
 }

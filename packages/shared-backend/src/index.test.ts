@@ -57,7 +57,7 @@ afterEach(() => {
   }
 });
 
-// Config with an import triggers the agent path (tryParseHexclaveConfigFileContent returns null)
+// Config with an import triggers the agent path (tryParseConfigFileContent returns null)
 const CUSTOM_CONFIG = `import emailHtml from "./emails/welcome.html" with { type: "text" };
 export const config = { auth: { allowSignUp: true }, emails: { welcomeHtml: emailHtml } };
 `;
