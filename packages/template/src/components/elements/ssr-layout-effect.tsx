@@ -9,20 +9,22 @@ export function SsrScript(props: { script: string, nonce?: string }) {
     (0, eval)(props.script);
   }, []);
 
-  // Only render the <script> tag during SSR — the browser executes it immediately when parsing
-  // the server HTML. On the client, useLayoutEffect handles execution instead. React 19 warns
-  // about <script> tags rendered on the client ("Scripts inside React components are never
-  // executed when rendering on the client"), and hydration skips <script> tags so omitting it
-  // here doesn't cause a mismatch.
-  if (typeof window !== 'undefined') {
-    return null;
-  }
+  // Embed the <script> in a span's innerHTML rather than as a React <script> JSX element to
+  // avoid React 19's "Scripts inside React components are never executed when rendering on the
+  // client" warning. The browser still executes the script during SSR HTML parsing.
+  // suppressHydrationWarning hides the SSR-vs-client innerHTML difference (server has the
+  // script tag, client has empty string).
+  const isServer = typeof window === 'undefined';
+  const nonceAttr = props.nonce ? ` nonce="${props.nonce}"` : '';
 
   return (
-    <script
-      suppressHydrationWarning  // the transpiler is setup differently for client/server targets, so if `script` was generated with Function.toString they will differ
-      nonce={props.nonce}
-      dangerouslySetInnerHTML={{ __html: props.script }}
+    <span
+      suppressHydrationWarning
+      dangerouslySetInnerHTML={{
+        __html: isServer
+          ? `<script${nonceAttr}>${props.script}</script>`
+          : '',
+      }}
     />
   );
 }
