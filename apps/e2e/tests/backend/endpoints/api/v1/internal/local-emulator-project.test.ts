@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import fs from "fs/promises";
 import path from "path";
 import { describe } from "vitest";
@@ -7,7 +8,7 @@ import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
 const LOCAL_EMULATOR_PROJECT_ENDPOINT = "/api/v1/internal/local-emulator/project";
 const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
-const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 
 async function createTempConfigFile(): Promise<string> {
   const filePath = `/tmp/${randomUUID()}/stack.config.ts`;

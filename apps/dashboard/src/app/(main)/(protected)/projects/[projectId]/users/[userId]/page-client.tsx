@@ -38,7 +38,7 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { DeleteUserDialog, generateImpersonateSnippet, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
@@ -52,8 +52,7 @@ import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { captureError, HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { deindent } from "@hexclave/shared/dist/utils/strings";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
+
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -64,6 +63,7 @@ import { useAdminApp } from "../../use-admin-app";
 import { UserAnalyticsSection } from "./user-analytics";
 import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
+import { UserEmailsSection } from "./user-emails";
 import dynamic from "next/dynamic";
 
 // The session-replays page is ~2k LOC and pulls rrweb in via dynamic imports.
@@ -115,7 +115,6 @@ function UserHeader({ user }: UserHeaderProps) {
   const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const hexclaveAdminApp = useAdminApp();
-  const router = useRouter();
 
   return (
     <div className="flex min-w-0 gap-4 items-center">
@@ -136,12 +135,6 @@ function UserHeader({ user }: UserHeaderProps) {
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={() => router.push(`${urlString`/projects/${hexclaveAdminApp.projectId}/conversations`}?userId=${encodeURIComponent(user.id)}`)}
-        >
-          Support
-        </Button>
         <DesignMenu
           variant="actions"
           trigger="icon"
@@ -155,12 +148,13 @@ function UserHeader({ user }: UserHeaderProps) {
                 runAsynchronouslyWithAlert(async () => {
                   const expiresInMillis = 1000 * 60 * 60 * 2;
                   const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                  const session = await user.createSession({ expiresInMillis });
+                  const session = await user.createSession({ expiresInMillis, isImpersonation: true });
                   const tokens = await session.getTokens();
-                  setImpersonateSnippet(deindent`
-                    document.cookie = 'stack-refresh-${hexclaveAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
-                    window.location.reload();
-                  `);
+                  setImpersonateSnippet(generateImpersonateSnippet(
+                    hexclaveAdminApp.projectId,
+                    tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
+                    expiresAtDate,
+                  ));
                 });
               },
             },
@@ -1621,7 +1615,7 @@ const ACTIVITY_WEEKDAY_LABELS = [
   { label: "", ariaLabel: null },
 ] as const;
 
-// Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
+// Activity clickmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
 // log-scaled intensity based on the user's own max activity over the window.
 // Tailwind needs the exact class strings at build time, so we keep them
 // enumerated here rather than building them dynamically.
@@ -1877,6 +1871,7 @@ type UserPageTabConfig = {
 const USER_PAGE_TABS = [
   { id: "authentication", label: "Authentication", appId: "authentication" },
   { id: "teams", label: "Teams", appId: "teams" },
+  { id: "emails", label: "Emails", appId: "emails" },
   { id: "payments", label: "Payments", appId: "payments" },
   { id: "analytics", label: "Analytics", appId: "analytics" },
   { id: "session-replays", label: "Session Replays", appId: "session-replays" },
@@ -2000,6 +1995,11 @@ function UserPage({ user }: { user: ServerUser }) {
           {activeTab === "teams" && (
             <Suspense fallback={<TabContentSkeleton sections={1} />}>
               <UserTeamsSection user={user} />
+            </Suspense>
+          )}
+          {activeTab === "emails" && (
+            <Suspense fallback={<TabContentSkeleton sections={1} />}>
+              <UserEmailsSection user={user} />
             </Suspense>
           )}
           {activeTab === "payments" && (

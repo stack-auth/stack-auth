@@ -3,11 +3,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { StackAdminApp } from "@hexclave/js";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { describe, beforeAll, afterAll } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
 
-const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 
 const CLI_BIN = path.resolve("packages/cli/dist/index.js");
 
@@ -461,7 +462,7 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
     expect(content).toContain("export const config: HexclaveConfig");
   });
 
@@ -556,7 +557,7 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
+    expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
     expect(content).toContain("export const config: HexclaveConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {

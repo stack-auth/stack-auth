@@ -218,7 +218,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
                 <Typography>
                   {"Don't have an account? "}
                   <a
-                    href={hexclaveApp.urls.signUp}
+                    href="#"
                     onClick={async (e) => {
                       e.preventDefault();
                       await hexclaveApp.redirectToSignUp();
@@ -231,7 +231,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
             }` : `<Typography>
               {"Already have an account? "}
               <a
-                href={hexclaveApp.urls.signIn}
+                href="#"
                 onClick={async (e) => {
                   e.preventDefault();
                   await hexclaveApp.redirectToSignIn();
@@ -552,7 +552,15 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               <Typography type="h2">Reset Your Password</Typography>
               <Typography>
                 {"Don't need to reset? "}
-                <a href={hexclaveApp.urls.signIn}>Sign in</a>
+                <a
+                  href="#"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    await hexclaveApp.redirectToSignIn();
+                  }}
+                >
+                  Sign in
+                </a>
               </Typography>
 
               <form onSubmit={async (e) => {
@@ -618,7 +626,15 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
               {showRedirectLink ? (
                 <Typography>
                   {"If you are not redirected automatically, "}
-                  <a href={hexclaveApp.urls.home}>click here</a>
+                  <a
+                    href="#"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      await hexclaveApp.redirectToHome();
+                    }}
+                  >
+                    click here
+                  </a>
                 </Typography>
               ) : null}
               {error ? <pre>{JSON.stringify(error, null, 2)}</pre> : null}

@@ -22,6 +22,14 @@ set -euo pipefail
 OUTPUT=/run/stack-auth/rotated-secrets.env
 WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/app}"
 
+# Hexclave rebrand: the container env may carry the canonical HEXCLAVE_ name
+# instead of the legacy STACK_ one this script reads.
+if [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ] && [ -n "${HEXCLAVE_DATABASE_CONNECTION_STRING:-}" ] && [ "$STACK_DATABASE_CONNECTION_STRING" != "$HEXCLAVE_DATABASE_CONNECTION_STRING" ]; then
+  echo "ERROR: STACK_DATABASE_CONNECTION_STRING and HEXCLAVE_DATABASE_CONNECTION_STRING are both set to different non-empty values. Remove one of them or set them to the same value." >&2
+  exit 1
+fi
+STACK_DATABASE_CONNECTION_STRING="${STACK_DATABASE_CONNECTION_STRING:-${HEXCLAVE_DATABASE_CONNECTION_STRING:-}}"
+
 PLACEHOLDER_PCK="00000000000000000000000000000000ffffffffffffffffffffffffffffffff"
 
 log() { printf '[rotate-secrets] %s\n' "$*"; }

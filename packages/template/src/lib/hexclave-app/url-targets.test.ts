@@ -81,7 +81,7 @@ describe("handler URL targets", () => {
   });
 
   it("uses hosted defaults for unspecified URLs", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
 
     const urls = resolveHandlerUrls({
       projectId: "project-id",
@@ -97,7 +97,7 @@ describe("handler URL targets", () => {
   });
 
   it("keeps redirect-only post-auth targets local even when the default target is hosted", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
 
     const urls = resolveHandlerUrls({
       projectId: "project-id",
@@ -108,6 +108,7 @@ describe("handler URL targets", () => {
 
     expect(urls.signIn).toBe("https://project-id.example-stack-hosted.test/handler/sign-in");
     expect(urls.signOut).toBe("https://project-id.example-stack-hosted.test/handler/sign-out");
+    expect(urls.home).toBe("/");
     expect(urls.afterSignIn).toBe("/");
     expect(urls.afterSignUp).toBe("/");
     expect(urls.afterSignOut).toBe("/");
@@ -140,7 +141,7 @@ describe("handler URL targets", () => {
   });
 
   it("inherits a hosted default target for the OAuth callback", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
 
     const urls = resolveHandlerUrls({
       projectId: "project-id",
@@ -178,7 +179,7 @@ describe("handler URL targets", () => {
   });
 
   it("uses default target for unknown /handler/* pages", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
 
     const url = resolveUnknownHandlerPathFallbackUrl({
       defaultTarget: { type: "hosted" },
@@ -190,7 +191,7 @@ describe("handler URL targets", () => {
   });
 
   it("uses the full hosted handler URL template when configured", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE", "http://{projectId}.localhost:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09/{hostedPath}");
     vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "93");
 
     const urls = resolveHandlerUrls({
@@ -205,7 +206,7 @@ describe("handler URL targets", () => {
   });
 
   it("validates the hosted handler URL template placeholders", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:9309/{projectId}/handler");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:9309/{projectId}/handler");
 
     expect(() => resolveHandlerUrls({
       projectId: "project-id",
@@ -216,7 +217,7 @@ describe("handler URL targets", () => {
   });
 
   it("rejects hosted handler URL templates that put the project ID in the path", () => {
-    vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:9309/{projectId}/{hostedPath}");
+    vi.stubEnv("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE", "http://localhost:9309/{projectId}/{hostedPath}");
 
     expect(() => resolveHandlerUrls({
       projectId: "project-id",

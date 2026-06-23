@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  DatabaseIcon,
   ChartBarIcon,
   CubeIcon,
   GearIcon,
@@ -108,6 +109,25 @@ const dashboardsItem: Item = {
   type: 'item',
 };
 
+// Internal-only pages that are rendered solely for the internal project.
+const internalToolsItem: AppSection = {
+  name: "Internal tools",
+  icon: DatabaseIcon,
+  firstItemHref: "/platform-analytics",
+  items: [
+    {
+      name: "External DB Sync",
+      href: "/external-db-sync",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/external-db-sync(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Platform Analytics",
+      href: "/platform-analytics",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/platform-analytics(\/.*)?$/.test(fullUrl.pathname),
+    },
+  ],
+};
+
 const projectSettingsItem: AppSection = {
   name: "Project Settings",
   icon: GearIcon,
@@ -116,7 +136,12 @@ const projectSettingsItem: AppSection = {
     {
       name: "General",
       href: "/project-settings",
-      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings(\/.*)?$/.test(fullUrl.pathname),
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Usage",
+      href: "/project-settings/usage",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
     },
     {
       name: "Project Keys",
@@ -188,7 +213,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex h-8 w-full items-center justify-between rounded-lg pl-3 pr-0.5 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
+    "group flex h-8 w-full items-center justify-between rounded-lg pl-2 pr-0.5 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted ? (isSection ? activeSectionClasses : activeItemClasses) : inactiveClasses,
     "cursor-pointer"
   );
@@ -319,8 +344,8 @@ function NavItem({
               : "0px",
           }}
           className={cn(
-            "ml-[0.5px] w-[calc(100%-1px)] transition-[height] duration-200",
-            !isExpanded && "h-0 overflow-hidden"
+            "ml-[0.5px] w-[calc(100%-1px)] overflow-hidden transition-[height] duration-200",
+            !isExpanded && "h-0"
           )}
         >
           <div className="space-y-2 py-2 pl-3">
@@ -479,6 +504,17 @@ function SidebarContent({
   const [isProjectSettingsExpanded, setIsProjectSettingsExpanded] = useState(() =>
     /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
+  const [isInternalToolsExpanded, setIsInternalToolsExpanded] = useState(() =>
+    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync)(\/.*)?$/.test(pathname)
+  );
+  const internalToolsSection = useMemo<AppSection>(() => ({
+    ...internalToolsItem,
+    firstItemHref: `/projects/${projectId}${internalToolsItem.firstItemHref ?? "/platform-analytics"}`,
+    items: internalToolsItem.items.map((item) => ({
+      ...item,
+      href: `/projects/${projectId}${item.href}`,
+    })),
+  }), [projectId]);
   const projectSettingsSection = useMemo<AppSection>(() => ({
     ...projectSettingsItem,
     firstItemHref: `/projects/${projectId}${projectSettingsItem.firstItemHref ?? "/project-settings"}`,
@@ -528,6 +564,15 @@ function SidebarContent({
             href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
+          {projectId === "internal" && (
+            <NavItem
+              item={internalToolsSection}
+              onClick={onNavigate}
+              isExpanded={isInternalToolsExpanded}
+              onToggle={() => setIsInternalToolsExpanded((value) => !value)}
+              isCollapsed={isCollapsed}
+            />
+          )}
         </div>
 
         <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
@@ -737,7 +782,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           <SpotlightSearchWrapper projectId={projectId} />
 
           {/* Body Layout (Left Sidebar + Content + Right Companion) */}
-          <div className="relative flex flex-1 items-start w-full">
+          <div className="relative flex flex-1 items-start w-full has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:items-stretch">
             {/* Left Sidebar - Sticky */}
             <aside
               className={cn(
@@ -753,13 +798,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </aside>
 
             {/* Main Content Area */}
-            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 lg:pr-24 dark:py-0 dark:px-2 dark:pb-3 dark:lg:pr-24">
+            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 lg:pr-24 dark:py-0 dark:px-2 dark:pb-3 dark:lg:pr-24 has-[[data-contained-height]]:flex has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:flex-col">
               <div className={cn(
               "relative flex min-w-0 flex-col overflow-visible has-[[data-full-bleed]]:h-full",
               // Light mode card styling (companion gutter is on <main>, not here — avoids empty card chrome behind Stack Companion)
               "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06]",
               // Dark mode: remove card styling
               "dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0",
+              // Contained pages own their internal scroll regions, so the shell must pass down a finite flex height instead of sizing to content.
+              "has-[[data-contained-height]]:flex-1 has-[[data-contained-height]]:min-h-0 has-[[data-contained-height]]:overflow-hidden",
               // Full-bleed pages (email editors etc.): remove card styling in light mode too
               "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
             )}>

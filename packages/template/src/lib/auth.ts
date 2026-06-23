@@ -1,4 +1,4 @@
-import { KnownError, HexclaveClientInterface } from "@hexclave/shared";
+import { KnownError, KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -46,10 +46,39 @@ type OAuthCallbackConsumptionResult =
     error: KnownError,
   };
 
+const oauthErrorParams = ["error", "error_description", "errorCode", "message", "details"] as const;
+
+function removeOAuthErrorParamsFromHistory(originalUrl: URL): void {
+  const newUrl = new URL(originalUrl);
+  for (const param of oauthErrorParams) {
+    newUrl.searchParams.delete(param);
+  }
+  window.history.replaceState({}, "", newUrl.toString());
+}
+
+function getProviderOAuthErrorFromUrl(originalUrl: URL): KnownError | null {
+  const providerError = originalUrl.searchParams.get("error");
+  const providerErrorDescription = originalUrl.searchParams.get("error_description");
+  if (providerError == null && providerErrorDescription == null) {
+    return null;
+  }
+
+  switch (providerError) {
+    case "access_denied":
+    case "consent_required": {
+      return new KnownErrors.OAuthProviderAccessDenied();
+    }
+    case "server_error":
+    case "temporarily_unavailable":
+    default: {
+      return new KnownErrors.OAuthProviderTemporarilyUnavailable();
+    }
+  }
+}
+
 function consumeOAuthCallbackQueryParams(options?: {
   dontWarnAboutMissingQueryParams?: boolean,
 }): OAuthCallbackConsumptionResult | null {
-  const oauthErrorParams = ["error", "error_description", "errorCode", "message", "details"] as const;
   const requiredParams = ["code", "state"];
   const originalUrl = new URL(window.location.href);
   const knownErrorCode = originalUrl.searchParams.get("errorCode");
@@ -68,11 +97,7 @@ function consumeOAuthCallbackQueryParams(options?: {
       }
     }
 
-    const newUrl = new URL(originalUrl);
-    for (const param of oauthErrorParams) {
-      newUrl.searchParams.delete(param);
-    }
-    window.history.replaceState({}, "", newUrl.toString());
+    removeOAuthErrorParamsFromHistory(originalUrl);
 
     return {
       type: "known-error",
@@ -81,6 +106,15 @@ function consumeOAuthCallbackQueryParams(options?: {
         message: knownErrorMessage,
         details: detailsJson,
       }),
+    };
+  }
+
+  const providerOAuthError = getProviderOAuthErrorFromUrl(originalUrl);
+  if (providerOAuthError != null && !requiredParams.every(param => originalUrl.searchParams.has(param))) {
+    removeOAuthErrorParamsFromHistory(originalUrl);
+    return {
+      type: "known-error",
+      error: providerOAuthError,
     };
   }
 
@@ -100,13 +134,13 @@ function consumeOAuthCallbackQueryParams(options?: {
     // If the state can't be found in the cookies, then the callback wasn't meant for us.
     // Maybe the website uses another OAuth library?
     console.warn(deindent`
-      Stack found an outer OAuth callback state in the query parameters, but not in cookies.
+      Hexclave found an outer OAuth callback state in the query parameters, but not in cookies.
 
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.
         - The cookie was already consumed by this page, and the user already logged in.
-        - You are using another OAuth client library with the same callback URL as Stack.
+        - You are using another OAuth client library with the same callback URL as Hexclave.
         - The user opened the OAuth callback page from their history.
 
       Either way, it is probably safe to ignore this warning unless you are debugging an OAuth issue.

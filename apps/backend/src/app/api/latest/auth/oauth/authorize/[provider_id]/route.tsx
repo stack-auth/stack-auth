@@ -57,8 +57,8 @@ export const GET = createSmartRouteHandler({
       scope: yupString().defined(),
       state: yupString().defined(),
       grant_type: yupString().oneOf(["authorization_code"]).defined(),
-      code_challenge: yupString().defined(),
-      code_challenge_method: yupString().defined(),
+      code_challenge: yupString().matches(/^[A-Za-z0-9._~-]{43,128}$/).defined(),
+      code_challenge_method: yupString().oneOf(["S256"]).defined(),
       response_type: yupString().defined(),
     }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
@@ -140,7 +140,7 @@ export const GET = createSmartRouteHandler({
     // Hexclave rebrand: prefer the new query param name, accept the legacy one,
     // and only fall back to "redirect" when neither was provided.
     const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
-    const providerObj = await getProvider(provider);
+    const providerObj = await getProvider(provider, provider.id);
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
       state: innerState,

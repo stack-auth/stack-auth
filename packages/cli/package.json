@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/cli",
-  "version": "1.0.10",
+  "version": "1.0.27",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "The CLI for Hexclave. https://hexclave.com",
   "main": "dist/index.js",
@@ -28,9 +28,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.73",
     "@inquirer/prompts": "^7.0.0",
     "@sentry/node": "^10.42.0",
+    "@hexclave/shared-backend": "workspace:*",
     "@hexclave/js": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "commander": "^13.1.0",
@@ -41,7 +41,7 @@
     "@types/node": "20.17.6",
     "rimraf": "^6.0.1",
     "tsdown": "^0.20.3",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.5.0"
 }

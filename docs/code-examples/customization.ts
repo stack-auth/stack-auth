@@ -66,7 +66,7 @@ export default function CustomCredentialSignIn() {
       setError('Please enter your password');
       return;
     }
-    // This will redirect to app.urls.afterSignIn if successful.
+    // This will redirect to the configured afterSignIn URL if successful.
     // You can customize the redirect URL in the StackServerApp constructor.
     const result = await app.signInWithCredential({ email, password });
     // It's better to handle each error code separately, but for simplicity,
@@ -180,7 +180,7 @@ export default function CustomCredentialSignUp() {
       setError('Please enter your password');
       return;
     }
-    // This will redirect to app.urls.afterSignUp if successful.
+    // This will redirect to the configured afterSignUp URL if successful.
     // You can customize the redirect URL in the StackServerApp constructor.
     const result = await app.signUpWithCredential({ email, password });
     // It's better to handle each error code separately, but for simplicity,

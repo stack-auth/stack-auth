@@ -1,11 +1,12 @@
 import { randomUUID } from "crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import fs from "fs/promises";
 import path from "path";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
-const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 const blockedMessage = "cannot be changed in a development environment";
 const localEmulatorProjectEndpoint = "/api/v1/internal/local-emulator/project";
 
@@ -115,7 +116,7 @@ describe("local emulator config restrictions", () => {
     const fileContent = await fs.readFile(filePath, "utf-8");
     expect(fileContent).toMatchInlineSnapshot(`
       deindent\`
-        import type { HexclaveConfig } from "@hexclave/js";
+        import type { HexclaveConfig } from "@hexclave/js/config";
         
         export const config: HexclaveConfig = {
           "teams": {

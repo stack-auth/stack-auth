@@ -433,6 +433,57 @@ describe("updating primary_email via users/me endpoint", () => {
       expect(updateResponse.body.primary_email).toBe(newMailbox.emailAddress);
       expect(updateResponse.body.primary_email_auth_enabled).toBe(true);
     });
+
+    it("should return a clear error when changing primary_email to an email already used for auth by another user", async ({ expect }) => {
+      // Create first user with email used for auth (via OTP sign-in)
+      await Auth.Otp.signIn();
+      const firstUserEmail = (await niceBackendFetch("/api/v1/users/me", {
+        accessType: "client",
+      })).body.primary_email;
+
+      // Create second user via server
+      const secondMailbox = createMailbox();
+      const createResponse = await niceBackendFetch("/api/v1/users", {
+        accessType: "server",
+        method: "POST",
+        body: {
+          primary_email: secondMailbox.emailAddress,
+          primary_email_auth_enabled: true,
+        },
+      });
+      expect(createResponse.status).toBe(201);
+      const secondUserId = createResponse.body.id;
+
+      // Try to change second user's primary_email to first user's email (with auth enabled)
+      const updateResponse = await niceBackendFetch(`/api/v1/users/${secondUserId}`, {
+        accessType: "server",
+        method: "PATCH",
+        body: {
+          primary_email: firstUserEmail,
+          primary_email_auth_enabled: true,
+        },
+      });
+
+      // Should get a clear error about the email being used for auth by another account
+      expect(updateResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 409,
+          "body": {
+            "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+            "details": {
+              "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+              "type": "email",
+              "would_work_if_email_was_verified": false,
+            },
+            "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    });
   });
 
   describe("edge cases", () => {

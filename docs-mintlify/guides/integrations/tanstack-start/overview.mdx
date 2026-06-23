@@ -34,11 +34,11 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     In the [Hexclave dashboard](https://app.hexclave.com/projects), create a project and add these variables to your TanStack Start environment:
 
     ```bash title=".env"
-    VITE_STACK_PROJECT_ID=<your-project-id>
-    STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+    VITE_HEXCLAVE_PROJECT_ID=<your-project-id>
+    HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
     ```
 
-    Keep `STACK_SECRET_SERVER_KEY` server-only. Do not expose it to client code.
+    Keep `HEXCLAVE_SECRET_SERVER_KEY` server-only. Do not expose it to client code.
   </Step>
 
   <Step title="Create a Stack client app">
@@ -48,7 +48,7 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
     import { HexclaveClientApp } from "@hexclave/tanstack-start";
 
     export const hexclaveClientApp = new HexclaveClientApp({
-      projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+      projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
       tokenStore: "cookie",
       redirectMethod: "window",
     });
@@ -161,6 +161,6 @@ TanStack Start is a full-stack React framework built on TanStack Router and Vite
 - Render routes that rely on `useUser({ or: "redirect" })` on the client (`ssr: false`) when using `redirectMethod: "window"`.
 - Use `redirectMethod: "window"` unless you explicitly wire a TanStack Router navigation adapter.
 - If you change auth routes, configure the matching `urls` on `HexclaveClientApp`.
-- For server-only logic, use TanStack Start server functions and keep `STACK_SECRET_SERVER_KEY` out of client modules.
+- For server-only logic, use TanStack Start server functions and keep `HEXCLAVE_SECRET_SERVER_KEY` out of client modules.
 
 For TanStack Start framework details, see the [TanStack Start quick start](https://tanstack.com/start/latest/docs/framework/react/quick-start) and [server functions guide](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions).

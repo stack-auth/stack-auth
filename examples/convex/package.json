@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/convex-example",
-  "version": "1.0.10",
+  "version": "1.0.27",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -21,7 +21,7 @@
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "convex": "^1.27.0",
-    "next": "15.5.10",
+    "next": "15.5.19",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"
   },
@@ -38,7 +38,7 @@
     "prettier": "^3.5.3",
     "rimraf": "^5.0.5",
     "tailwindcss": "^4",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "wait-on": "^8.0.1"
   },
   "packageManager": "pnpm@11.5.0"

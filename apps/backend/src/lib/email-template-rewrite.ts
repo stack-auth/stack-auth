@@ -13,16 +13,16 @@ function isMockMode() {
   return key === MOCK_API_KEY_SENTINEL || key === "FORWARD_TO_PRODUCTION";
 }
 
-async function rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource: string): Promise<Result<string, string>> {
+async function rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource: string, authHeaders: Record<string, string>): Promise<Result<string, string>> {
   const backendUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${backendUrl}/api/latest/ai/query/generate`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders },
       body: JSON.stringify({
-        quality: "smart",
+        quality: "dumb",
         speed: "slow",
         tools: [],
         systemPrompt: "rewrite-template-source",
@@ -115,7 +115,7 @@ function stripCodeFences(text: string): string {
   return output;
 }
 
-export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<Result<string, string>> {
+export async function rewriteTemplateSourceWithAI(templateTsxSource: string, authHeaders: Record<string, string>): Promise<Result<string, string>> {
   if (isMockMode()) {
     const mockRewrittenSource = rewriteTemplateSourceInMockMode(templateTsxSource);
     const mockRenderResult = await renderEmailWithTemplate(mockRewrittenSource, emptyEmailTheme, {
@@ -130,7 +130,7 @@ export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Pr
 
   let lastError = "Unknown rewrite failure";
   for (let attempt = 0; attempt < MAX_REWRITE_ATTEMPTS; attempt++) {
-    const rewriteResult = await rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource);
+    const rewriteResult = await rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource, authHeaders);
     if (rewriteResult.status === "error") {
       lastError = rewriteResult.error;
       continue;

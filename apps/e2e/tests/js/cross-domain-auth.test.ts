@@ -31,24 +31,31 @@ function createMockDocument(): Document {
 }
 
 const withHostedDomainSuffix = async (callback: () => Promise<void>) => {
-  const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
-  const oldHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
-  process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX = ".example-stack-hosted.test";
+  // The SDK resolves NEXT_PUBLIC_HEXCLAVE_* before the legacy NEXT_PUBLIC_STACK_*
+  // names, so override the canonical name and clear both spellings.
+  const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  const oldLegacyHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  const oldHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE;
+  const oldLegacyHostedHandlerUrlTemplate = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
+  process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX = ".example-stack-hosted.test";
+  delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
+  delete process.env.NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE;
   delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
 
   try {
     await callback();
   } finally {
-    if (oldHostedHandlerDomainSuffix == null) {
-      delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
-    } else {
-      process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX = oldHostedHandlerDomainSuffix;
-    }
-    if (oldHostedHandlerUrlTemplate == null) {
-      delete process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE;
-    } else {
-      process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE = oldHostedHandlerUrlTemplate;
-    }
+    const restore = (name: string, value: string | undefined) => {
+      if (value == null) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    };
+    restore("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX", oldHostedHandlerDomainSuffix);
+    restore("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", oldLegacyHostedHandlerDomainSuffix);
+    restore("NEXT_PUBLIC_HEXCLAVE_HOSTED_HANDLER_URL_TEMPLATE", oldHostedHandlerUrlTemplate);
+    restore("NEXT_PUBLIC_STACK_HOSTED_HANDLER_URL_TEMPLATE", oldLegacyHostedHandlerUrlTemplate);
   }
 };
 
@@ -111,7 +118,7 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
   });
 });
 
-it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
+it("throws when app.urls.signIn is read for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "44444444-4444-4444-8444-444444444444";
     const currentHref = `${localRedirectUrl}/private-page?foo=bar`;
@@ -124,17 +131,13 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
         href: currentHref,
         assign: () => { throw new Error("INTENTIONAL_TEST_ABORT"); },
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     try {
       const clientApp = createClientApp(projectId);
-      const signInUrl = new URL(clientApp.urls.signIn);
-      expect(signInUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
-      expect(signInUrl.pathname).toBe("/handler/sign-in");
-      expect(signInUrl.searchParams.get("after_auth_return_to")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_state")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_code_challenge")).toBeNull();
-      expect(signInUrl.searchParams.get("hexclave_cross_domain_after_callback_redirect_url")).toBeNull();
+      expect(() => clientApp.urls.signIn).toThrowError(/app\.urls\.signIn cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignIn\(\) instead/s);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -142,7 +145,7 @@ it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
   });
 });
 
-it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
+it("throws when app.urls.signOut is read for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "55555555-5555-4555-8555-555555555555";
     const currentHref = `${localRedirectUrl}/signed-in-page?foo=bar`;
@@ -155,14 +158,13 @@ it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
         href: currentHref,
         assign: () => { throw new Error("INTENTIONAL_TEST_ABORT"); },
       },
+      addEventListener: () => {},
+      removeEventListener: () => {},
     } as any;
 
     try {
       const clientApp = createClientApp(projectId);
-      const signOutUrl = new URL(clientApp.urls.signOut);
-      expect(signOutUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
-      expect(signOutUrl.pathname).toBe("/handler/sign-out");
-      expect(signOutUrl.searchParams.get("after_auth_return_to")).toBeNull();
+      expect(() => clientApp.urls.signOut).toThrowError(/app\.urls\.signOut cannot be used when this app is configured to use hosted components.*Use app\.redirectToSignOut\(\) instead/s);
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -293,8 +295,8 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
   await withHostedDomainSuffix(async () => {
     const projectId = "13131313-1313-4313-8313-131313131313";
     const clientApp = createClientApp(projectId);
-    const getCurrentRefreshTokenIdIfSignedInSpy = vi
-      .spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn")
+    const fetchCurrentRefreshTokenIdIfSignedInSpy = vi
+      .spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn")
       .mockResolvedValue(null);
 
     const previousWindow = globalThis.window;
@@ -310,8 +312,10 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
     } as any;
 
     try {
+      // accountSettings (unlike afterSignIn & co, which resolve to local URLs) still lives on the
+      // hosted domain, so it exercises the nested cross-domain auth params path.
       await expect((clientApp as any)._redirectToHandler(
-        "afterSignIn",
+        "accountSettings",
         { replace: true },
         { awaitPendingAuthResolutions: false },
       )).rejects.toThrowError("INTENTIONAL_TEST_ABORT");
@@ -320,9 +324,9 @@ it("does not await pending auth resolutions when post-callback redirect adds nes
       globalThis.document = previousDocument;
     }
 
-    expect(getCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith({
+    expect(fetchCurrentRefreshTokenIdIfSignedInSpy).toHaveBeenCalledWith(expect.objectContaining({
       awaitPendingAuthResolutions: false,
-    });
+    }));
   });
 });
 
@@ -446,7 +450,7 @@ it("adds nested cross-domain auth params when redirecting signed-in users to hos
     const currentHref = `${localRedirectUrl}/dashboard?tab=settings`;
     const clientApp = createClientApp(projectId);
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
@@ -484,7 +488,7 @@ it("adds nested cross-domain auth params for other cross-domain handler redirect
     const currentHref = `${localRedirectUrl}/private-page`;
     const clientApp = createClientApp(projectId);
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(refreshTokenId);
 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
@@ -524,7 +528,7 @@ it("starts nested cross-domain auth from the target domain", async ({ expect }) 
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "nested-state",
       codeChallenge: "nested-code-challenge",
@@ -588,7 +592,7 @@ it("carries hosted sign-in return state on the nested OAuth redirect URI", async
     const previousDocument = globalThis.document;
     let redirectedUrl = "";
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_getCrossDomainHandoffParamsForRedirect").mockResolvedValue({
       state: "nested-state",
       codeChallenge: "nested-code-challenge",
@@ -649,7 +653,7 @@ it("continues nested cross-domain auth on the source domain", async ({ expect })
     const createCrossDomainAuthRedirectUrlSpy = vi
       .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
       .mockResolvedValue(crossDomainRedirect);
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(sourceRefreshTokenId);
 
     globalThis.document = createMockDocument();
     globalThis.window = {
@@ -721,7 +725,7 @@ it("rejects nested cross-domain auth when the callback URL is untrusted", async 
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
 
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
     vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(false);
 
     globalThis.document = createMockDocument();
@@ -753,7 +757,7 @@ it("rejects nested cross-domain auth when the source session does not match", as
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     const createCrossDomainAuthRedirectUrlSpy = vi.spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl");
-    vi.spyOn(clientApp as any, "_getCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
+    vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue("different-source-session");
 
     globalThis.document = createMockDocument();
     globalThis.window = {

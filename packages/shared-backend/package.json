@@ -1,0 +1,47 @@
+{
+  "name": "@hexclave/shared-backend",
+  "version": "1.0.27",
+  "repository": "https://github.com/hexclave/hexclave",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": {
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/esm/index.js"
+    },
+    "./config-agent": {
+      "types": "./dist/config-agent.d.ts",
+      "require": {
+        "default": "./dist/config-agent.js"
+      },
+      "default": "./dist/esm/config-agent.js"
+    }
+  },
+  "scripts": {
+    "build": "rimraf dist && tsdown",
+    "clean": "rimraf dist && rimraf node_modules",
+    "dev": "tsdown --watch",
+    "lint": "eslint --ext .tsx,.ts .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.73",
+    "@hexclave/shared": "workspace:*",
+    "jiti": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "pnpm@11.5.0"
+}

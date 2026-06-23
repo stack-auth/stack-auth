@@ -189,6 +189,72 @@ describe("email outbox API", () => {
       expect(okResponse.body.items.every((e: any) => e.simple_status === "ok")).toBe(true);
     });
 
+    it("should filter by recipient user_id", async ({ expect }) => {
+      await Project.createAndSwitch({
+        display_name: "Test Outbox Filter User Project",
+        config: {
+          email_config: testEmailConfig,
+        },
+      });
+
+      const firstMailbox = backendContext.value.mailbox;
+      const firstUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: firstMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(firstUserResponse.status).toBe(201);
+      const firstUserId = firstUserResponse.body.id;
+
+      const secondMailbox = await bumpEmailAddress();
+      const secondUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: secondMailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(secondUserResponse.status).toBe(201);
+      const secondUserId = secondUserResponse.body.id;
+
+      await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [firstUserId],
+          html: "<p>User filter first email</p>",
+          subject: "User Filter First Email",
+          notification_category_name: "Transactional",
+        },
+      });
+      await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [secondUserId],
+          html: "<p>User filter second email</p>",
+          subject: "User Filter Second Email",
+          notification_category_name: "Transactional",
+        },
+      });
+
+      await waitForOutboxEmailWithStatus("User Filter First Email", "sent");
+      await waitForOutboxEmailWithStatus("User Filter Second Email", "sent");
+
+      const firstUserOutboxResponse = await niceBackendFetch(`/api/v1/emails/outbox?user_id=${firstUserId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(firstUserOutboxResponse.status).toBe(200);
+      expect(firstUserOutboxResponse.body.items).toHaveLength(1);
+      expect(firstUserOutboxResponse.body.items[0].subject).toBe("User Filter First Email");
+      expect(firstUserOutboxResponse.body.items[0].to.user_id).toBe(firstUserId);
+    });
+
     it("should return empty list for project with no emails", async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Empty Outbox Project",

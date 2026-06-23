@@ -1,27 +1,54 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
-import { DesignAnalyticsCard, DesignCategoryTabs, DesignChartLegend, useInfiniteListWindow } from "@/components/design-components";
+import { DesignAnalyticsCard, DesignCategoryTabs, DesignChartLegend, DesignPillToggle, useInfiniteListWindow } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { cn, Typography } from "@/components/ui";
+import { cn, SimpleTooltip, Typography } from "@/components/ui";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
 import { getEnabledAppIds } from "@/lib/apps-utils";
 import {
+  type AnalyticsOverviewFilters,
   type MetricsEmailOverview,
   type MetricsRecentEmail,
-  type MetricsTopReferrer,
   useMetricsOrThrow,
 } from "@/lib/hexclave-app-internals";
-import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
+import {
+  ChartLineIcon,
+  CompassIcon,
+  DesktopIcon,
+  DeviceMobileIcon,
+  DeviceTabletIcon,
+  EnvelopeIcon,
+  EnvelopeOpenIcon,
+  FunnelIcon,
+  GearIcon,
+  GlobeIcon,
+  MonitorIcon,
+  SquaresFourIcon,
+  WarningCircleIcon,
+  XCircleIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@hexclave/next";
 import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ElementType, type ReactNode, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AnalyticsEventLimitBanner } from "../analytics/shared";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
+import { UserPageMetricCard } from "../users/[userId]/user-page-metric-card";
 import { GlobeSectionWithData } from "./globe-section-with-data";
 import {
   ComposedAnalyticsChart,
@@ -43,6 +70,13 @@ import {
   VisitorsHoverDataPoint
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
+import { ReferrersWithAnalyticsCard, TopNamedListCard, TopRegionsCard } from "./top-lists";
+import {
+  ANALYTICS_CHART_METRIC_MODE_ORDER,
+  toggleAnalyticsChartMetricMode,
+  type AnalyticsChartMetricMode,
+  type AnalyticsChartMode,
+} from "./analytics-chart-mode";
 
 const dailySignUpsConfig: LineChartDisplayConfig = {
   name: 'Daily Sign-Ups',
@@ -69,6 +103,168 @@ function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return n.toLocaleString();
+}
+
+function pagesPerVisitor(pageViews: number, visitors: number): number {
+  return visitors > 0 ? pageViews / visitors : 0;
+}
+
+function formatPagesPerVisitor(value: number): string {
+  if (!Number.isFinite(value)) return "0.0";
+  return value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+const OVERVIEW_HEADER_COMPACT_SCROLL_TOP = 24;
+const OVERVIEW_HEADER_MORPH_MS = 520;
+const OVERVIEW_HEADER_TITLE_EXIT_MS = 150;
+const overviewHeaderLayoutTransition: Transition = {
+  duration: OVERVIEW_HEADER_MORPH_MS / 1000,
+  ease: [0.32, 0.72, 0, 1],
+};
+const reducedOverviewHeaderLayoutTransition: Transition = {
+  duration: 0,
+};
+
+const scrollableOverflowValues = new Set(["auto", "scroll", "overlay"]);
+
+function findScrollContainer(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  while (current != null) {
+    const overflowY = window.getComputedStyle(current).overflowY;
+    if (scrollableOverflowValues.has(overflowY) && current.scrollHeight > current.clientHeight) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function useOverviewHeaderCompacted(enabled: boolean) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [compacted, setCompacted] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setCompacted(false);
+      return;
+    }
+
+    const sentinel = sentinelRef.current;
+    if (sentinel == null) return;
+
+    const scrollContainer = findScrollContainer(sentinel);
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      const nextCompacted = !entry.isIntersecting;
+      setCompacted((current) => current === nextCompacted ? current : nextCompacted);
+    }, {
+      root: scrollContainer,
+      rootMargin: `-${OVERVIEW_HEADER_COMPACT_SCROLL_TOP}px 0px 0px 0px`,
+      threshold: 0,
+    });
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [enabled]);
+
+  return { compacted, sentinelRef };
+}
+
+function useRenderWhileClosing(open: boolean, durationMs: number): boolean {
+  const [shouldRender, setShouldRender] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => setShouldRender(false), durationMs);
+    return () => clearTimeout(timeout);
+  }, [durationMs, open]);
+
+  return open || shouldRender;
+}
+
+function useDelayedTrue(value: boolean, delayMs: number): boolean {
+  const [delayedValue, setDelayedValue] = useState(value);
+
+  useEffect(() => {
+    if (!value) {
+      setDelayedValue(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => setDelayedValue(true), delayMs);
+    return () => clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return delayedValue;
+}
+
+const BROWSER_SLUGS = new Map<string, string>([
+  ["chrome", "googlechrome"],
+  ["google chrome", "googlechrome"],
+  ["firefox", "firefox"],
+  ["safari", "safari"],
+  ["edge", "microsoftedge"],
+  ["microsoft edge", "microsoftedge"],
+  ["opera", "opera"],
+  ["samsung internet", "samsung"],
+  ["brave", "brave"],
+  ["vivaldi", "vivaldi"],
+  ["duckduckgo", "duckduckgo"],
+]);
+
+const OS_SLUGS = new Map<string, string>([
+  ["macos", "apple"],
+  ["ios", "apple"],
+  ["ipados", "apple"],
+  ["windows", "windows11"],
+  ["android", "android"],
+  ["linux", "linux"],
+  ["ubuntu", "ubuntu"],
+  ["chromeos", "googlechrome"],
+]);
+
+function BrandIcon({ slug }: { slug: string | undefined }) {
+  const [failed, setFailed] = useState(false);
+  if (!slug || failed) {
+    return <span aria-hidden className="h-3.5 w-3.5 shrink-0 rounded-sm bg-foreground/[0.06]" />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://cdn.simpleicons.org/${slug}`}
+      alt=""
+      width={14}
+      height={14}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="h-3.5 w-3.5 shrink-0 object-contain opacity-90 [filter:invert(0)] dark:[filter:invert(1)_hue-rotate(180deg)]"
+    />
+  );
+}
+
+function browserIcon(name: string): ReactNode {
+  return <BrandIcon slug={BROWSER_SLUGS.get(name.toLowerCase().trim())} />;
+}
+
+function osIcon(name: string): ReactNode {
+  return <BrandIcon slug={OS_SLUGS.get(name.toLowerCase().trim())} />;
+}
+
+function deviceIcon(name: string): ReactNode {
+  const key = name.toLowerCase().trim();
+  if (key === "mobile") return <DeviceMobileIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" weight="fill" />;
+  if (key === "tablet") return <DeviceTabletIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" weight="fill" />;
+  return <DesktopIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" weight="fill" />;
 }
 
 function calculatePeriodDelta(currentValue: number, previousValue: number): number | undefined {
@@ -113,57 +309,465 @@ function SetupAppPrompt({
   );
 }
 
-type AnalyticsStatPill = {
-  label: string,
-  value: string,
-  delta?: number,
-};
+const FILTER_DIMENSIONS: Array<keyof AnalyticsOverviewFilters> = ["country_code", "referrer", "browser", "os", "device"];
 
-function StatCard({
-  stat,
-  compact = false,
+const FILTER_DIMENSION_LABELS = new Map<keyof AnalyticsOverviewFilters, string>([
+  ["country_code", "Country"],
+  ["referrer", "Referrer"],
+  ["browser", "Browser"],
+  ["os", "OS"],
+  ["device", "Device"],
+]);
+
+function analyticsFiltersKey(filters: AnalyticsOverviewFilters): string {
+  const params = new URLSearchParams();
+  for (const dimension of FILTER_DIMENSIONS) {
+    const value = filters[dimension];
+    if (value != null) {
+      params.set(dimension, value);
+    }
+  }
+  if (filters.since != null) params.set("since", filters.since);
+  if (filters.until != null) params.set("until", filters.until);
+  return params.toString();
+}
+
+// Matches getDateKey in line-chart.tsx: custom-range picker dates are
+// local-midnight Dates, and the daily series keys are "YYYY-MM-DD".
+function localDateKey(date: Date): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Server-side date bounds for the top-N breakdowns (referrers, regions,
+// browsers/OS/devices), derived from the chart time range. Quantized to the
+// current UTC hour (1d) / UTC day (7d) so the metrics cache key stays stable
+// across renders instead of changing every millisecond.
+function analyticsDateRangeForTimeRange(
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null,
+): Pick<AnalyticsOverviewFilters, "since" | "until"> {
+  switch (timeRange) {
+    case "1d": {
+      const latestHour = new Date();
+      latestHour.setUTCMinutes(0, 0, 0);
+      return { since: new Date(latestHour.getTime() - 23 * 60 * 60 * 1000).toISOString() };
+    }
+    case "7d": {
+      const todayUtc = new Date();
+      todayUtc.setUTCHours(0, 0, 0, 0);
+      return { since: new Date(todayUtc.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString() };
+    }
+    case "30d":
+    case "all": {
+      return {};
+    }
+    case "custom": {
+      if (customDateRange == null) {
+        return {};
+      }
+      const untilExclusive = new Date(new Date(`${localDateKey(customDateRange.to)}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000);
+      return {
+        since: `${localDateKey(customDateRange.from)}T00:00:00.000Z`,
+        until: untilExclusive.toISOString(),
+      };
+    }
+  }
+}
+
+function getFilterDimensionLabel(dimension: keyof AnalyticsOverviewFilters): string {
+  const label = FILTER_DIMENSION_LABELS.get(dimension);
+  if (label == null) {
+    throw new Error(`Missing analytics filter dimension label: ${dimension}`);
+  }
+  return label;
+}
+
+function hasAnalyticsFilters(filters: AnalyticsOverviewFilters): boolean {
+  return FILTER_DIMENSIONS.some((dimension) => filters[dimension] != null);
+}
+
+function FilterChipsBar({
+  filters,
+  onClear,
+  onClearAll,
 }: {
-  stat: AnalyticsStatPill,
-  compact?: boolean,
+  filters: AnalyticsOverviewFilters,
+  onClear: (dimension: keyof AnalyticsOverviewFilters) => void,
+  onClearAll: () => void,
 }) {
+  const entries = FILTER_DIMENSIONS.flatMap((dimension) => {
+    const value = filters[dimension];
+    return value != null ? [{ dimension, value }] : [];
+  });
+  if (entries.length === 0) return null;
+
   return (
-    <DesignAnalyticsCard gradient="blue" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
-      <div className={cn(
-        "flex flex-col justify-between h-full",
-        compact ? "px-4 py-3" : "px-5 py-4",
-      )}>
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
-          {stat.label}
+    <div className="flex min-w-0 max-w-[40vw] items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {entries.map(({ dimension, value }) => (
+        <span
+          key={dimension}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground/[0.06] py-1 pl-2.5 pr-1 text-[11px] font-medium text-foreground ring-1 ring-foreground/[0.08]"
+        >
+          <span className="text-muted-foreground">{getFilterDimensionLabel(dimension)}:</span>
+          <span className="max-w-36 truncate tabular-nums">{value}</span>
+          <button
+            type="button"
+            aria-label={`Clear ${getFilterDimensionLabel(dimension)} filter`}
+            onClick={() => onClear(dimension)}
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground hover:transition-none"
+          >
+            <XIcon className="h-2.5 w-2.5" weight="bold" />
+          </button>
         </span>
-        <div className="flex items-baseline gap-1.5 mt-1.5">
-          <span className="text-xl font-bold tabular-nums text-foreground leading-none">
-            {stat.value}
-          </span>
-          {stat.delta != null && (
-            <span className={cn(
-              "text-[10px] font-medium tabular-nums leading-none shrink-0",
-              stat.delta > 0 ? "text-emerald-600 dark:text-emerald-400" : stat.delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
-            )}>
-              {stat.delta > 0 ? "+" : ""}{stat.delta}%
-            </span>
-          )}
-        </div>
-      </div>
-    </DesignAnalyticsCard>
+      ))}
+      {entries.length > 1 && (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="shrink-0 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground hover:transition-none"
+        >
+          Clear all
+        </button>
+      )}
+    </div>
   );
 }
 
-type AnalyticsChartMode = 'default' | 'dau' | 'visitors' | 'revenue';
+type FilterOption = {
+  value: string,
+  label: string,
+};
+
+type FilterDimensionConfig = {
+  key: keyof AnalyticsOverviewFilters,
+  label: string,
+  options: FilterOption[],
+};
+
+function FilterMenuButton({ active }: { active: boolean }) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <button
+        type="button"
+        aria-label="Add analytics filter"
+        className="inline-flex items-center rounded-xl bg-black/[0.08] p-1 transition-colors dark:bg-white/[0.04]"
+      >
+        <span
+          className={cn(
+            "relative flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-all duration-150 hover:bg-black/[0.06] hover:text-foreground hover:transition-none dark:hover:bg-white/[0.04]",
+            active && "bg-background text-foreground shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]",
+          )}
+        >
+          <FunnelIcon className="h-3.5 w-3.5" weight={active ? "fill" : "regular"} />
+        </span>
+      </button>
+    </DropdownMenuTrigger>
+  );
+}
+
+function FilterMenu({
+  filters,
+  onToggle,
+}: {
+  filters: AnalyticsOverviewFilters,
+  onToggle: (dimension: keyof AnalyticsOverviewFilters, value: string) => void,
+}) {
+  const active = hasAnalyticsFilters(filters);
+  const [open, setOpen] = useState(false);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <FilterMenuButton active={active} />
+      <Suspense fallback={null}>
+        <FilterMenuContent
+          filters={filters}
+          onSelect={(dimension, value) => {
+            onToggle(dimension, value);
+            setOpen(false);
+          }}
+        />
+      </Suspense>
+    </DropdownMenu>
+  );
+}
+
+function FilterMenuContent({
+  filters,
+  onSelect,
+}: {
+  filters: AnalyticsOverviewFilters,
+  onSelect: (dimension: keyof AnalyticsOverviewFilters, value: string) => void,
+}) {
+  const adminApp = useAdminApp();
+  // Read unfiltered metrics here so the menu keeps offering the full value set.
+  // The visible overview preloads filtered data separately before swapping.
+  const data = useMetricsOrThrow(adminApp, false);
+  const analytics = data.analytics_overview;
+
+  const dimensions = useMemo<FilterDimensionConfig[]>(() => [
+    { key: "country_code", label: "Country", options: analytics.top_regions.slice(0, 15).map((r) => ({ value: r.country_code.toUpperCase(), label: r.country_code.toUpperCase() })) },
+    { key: "referrer", label: "Referrer", options: analytics.top_referrers.slice(0, 15).map((r) => ({ value: r.referrer, label: r.referrer || "(direct)" })) },
+    { key: "browser", label: "Browser", options: analytics.top_browsers.slice(0, 15).map((b) => ({ value: b.name, label: b.name })) },
+    { key: "os", label: "OS", options: analytics.top_operating_systems.slice(0, 15).map((o) => ({ value: o.name, label: o.name })) },
+    { key: "device", label: "Device", options: analytics.top_devices.slice(0, 15).map((d) => ({ value: d.name, label: d.name })) },
+  ], [analytics.top_browsers, analytics.top_devices, analytics.top_operating_systems, analytics.top_referrers, analytics.top_regions]);
+
+  const firstAvailableDimension = dimensions.find((dimension) => dimension.options.length > 0)?.key ?? "country_code";
+  const [selectedDimension, setSelectedDimension] = useState<keyof AnalyticsOverviewFilters>(firstAvailableDimension);
+  const selectedConfig = dimensions.find((dimension) => dimension.key === selectedDimension);
+  if (selectedConfig == null) {
+    throw new Error(`Missing analytics filter dimension: ${selectedDimension}`);
+  }
+  const selectedFilterValue = filters[selectedConfig.key];
+
+  return (
+    <DropdownMenuPortal>
+      <DropdownMenuContent
+        align="end"
+        className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-foreground/[0.08] bg-background p-0 shadow-lg"
+      >
+        <DropdownMenuLabel className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+          Filter analytics by
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <div className="grid grid-cols-[9rem_1fr] sm:grid-cols-[10rem_1fr]">
+          <div className="border-r border-foreground/[0.08] p-1">
+            {dimensions.map((dimension) => {
+              const isSelected = dimension.key === selectedDimension;
+              const activeValue = filters[dimension.key];
+              return (
+                <button
+                  key={dimension.key}
+                  type="button"
+                  onClick={() => setSelectedDimension(dimension.key)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06] hover:transition-none",
+                    isSelected ? "bg-foreground/[0.06] text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span className="font-medium">{dimension.label}</span>
+                  {activeValue != null && (
+                    <span className="max-w-14 truncate text-[10px] tabular-nums text-muted-foreground">
+                      {activeValue}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex min-h-60 flex-col">
+            <div className="flex items-center justify-between gap-3 border-b border-foreground/[0.08] px-3 py-2">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-foreground">{selectedConfig.label}</div>
+                {selectedFilterValue != null && (
+                  <div className="truncate text-[10px] text-muted-foreground">
+                    Current: {selectedFilterValue}
+                  </div>
+                )}
+              </div>
+              {selectedFilterValue != null && (
+                <button
+                  type="button"
+                  onClick={() => onSelect(selectedConfig.key, selectedFilterValue)}
+                  className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground hover:transition-none"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-y-auto p-1">
+              {selectedConfig.options.length === 0 ? (
+                <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                  No values
+                </div>
+              ) : (
+                selectedConfig.options.map((option) => {
+                  const isActive = selectedFilterValue === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => onSelect(selectedConfig.key, option.value)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06] hover:transition-none",
+                        isActive ? "bg-foreground/[0.06] font-medium text-foreground" : "text-foreground",
+                      )}
+                    >
+                      <span className="truncate">{option.label}</span>
+                      {isActive && <XIcon className="h-3 w-3 shrink-0 text-muted-foreground" weight="bold" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenuPortal>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: "overview" | "globe", onChange: (view: "overview" | "globe") => void }) {
+  return (
+    <DesignPillToggle
+      size="sm"
+      glassmorphic={false}
+      showLabels={false}
+      options={[
+        { id: "overview", label: "Overview", icon: ChartLineIcon },
+        { id: "globe", label: "Globe", icon: GlobeIcon },
+      ]}
+      selected={view}
+      onSelect={(id) => {
+        if (id === "overview" || id === "globe") {
+          onChange(id);
+          return;
+        }
+        throw new Error(`Unsupported project overview view selected: ${id}`);
+      }}
+    />
+  );
+}
+
+function OverviewHeaderChrome({
+  title,
+  actions,
+  compacted,
+  layoutCompacted,
+  renderTitle,
+  layoutTransition,
+  animateLayout,
+}: {
+  title: string,
+  actions: ReactNode,
+  compacted: boolean,
+  layoutCompacted: boolean,
+  renderTitle: boolean,
+  layoutTransition: Transition,
+  animateLayout: boolean,
+}) {
+  return (
+    <motion.div
+      layout={animateLayout}
+      transition={layoutTransition}
+      className={cn(
+        "pointer-events-auto relative w-full max-w-full",
+        layoutCompacted && "ml-auto w-fit",
+      )}
+    >
+      <motion.div
+        layout={animateLayout}
+        transition={layoutTransition}
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
+          layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
+        )}
+      />
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
+          layoutCompacted && "opacity-100",
+        )}
+      />
+      <div
+        className={cn(
+          "relative z-10 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 dark:px-0 dark:py-0 dark:sm:px-0 dark:sm:py-0",
+          layoutCompacted && "gap-0 sm:gap-0",
+          layoutCompacted && "px-3 py-2 sm:px-4 sm:py-2.5 dark:px-4 dark:py-2.5 dark:sm:px-4 dark:sm:py-2.5",
+        )}
+      >
+        {renderTitle && (
+          <div
+            className={cn(
+              "min-w-0 transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
+              compacted && "pointer-events-none opacity-0 blur-[1px]",
+            )}
+          >
+            <Typography
+              type="h2"
+              className="truncate text-xl font-semibold tracking-tight sm:text-2xl"
+            >
+              {title}
+            </Typography>
+          </div>
+        )}
+        <motion.div
+          layout={animateLayout}
+          transition={layoutTransition}
+          className={cn(
+            "relative z-10 min-w-0 max-w-full flex-shrink-0 overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "transition-opacity duration-[520ms] motion-reduce:transition-none",
+            layoutCompacted && "opacity-95",
+          )}
+        >
+          {actions}
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
+function OverviewHeader({ title, actions, sticky }: { title: string, actions: ReactNode, sticky: boolean }) {
+  const { compacted, sentinelRef } = useOverviewHeaderCompacted(sticky);
+  const renderTitle = useRenderWhileClosing(!compacted, OVERVIEW_HEADER_TITLE_EXIT_MS);
+  const shouldReduceMotion = useReducedMotion();
+  const delayedCompacted = useDelayedTrue(compacted, shouldReduceMotion ? 0 : OVERVIEW_HEADER_TITLE_EXIT_MS);
+  const layoutCompacted = sticky && (shouldReduceMotion ? compacted : delayedCompacted);
+  const layoutTransition = shouldReduceMotion ? reducedOverviewHeaderLayoutTransition : overviewHeaderLayoutTransition;
+
+  return (
+    <>
+      {sticky && (
+        <div key="sentinel" ref={sentinelRef} aria-hidden className="-mb-[17px] h-px w-px" />
+      )}
+      <div
+        key="header"
+        className={cn(
+          "relative z-30 w-full pointer-events-none",
+          sticky && "sticky top-[4.25rem] mb-2 dark:top-[5.75rem]",
+        )}
+      >
+        <LayoutGroup id="overview-sticky-header">
+          <OverviewHeaderChrome
+            title={title}
+            actions={actions}
+            compacted={sticky ? compacted : false}
+            layoutCompacted={layoutCompacted}
+            renderTitle={sticky ? renderTitle : true}
+            layoutTransition={layoutTransition}
+            animateLayout
+          />
+        </LayoutGroup>
+      </div>
+    </>
+  );
+}
+
+function GlobeView({ includeAnonymous }: { includeAnonymous: boolean }) {
+  // Fills the height granted by PageLayout's containedHeight mode (the globe
+  // tab sets it) instead of guessing the chrome height with 100vh math, which
+  // left a slight page scroll whenever the guess was off.
+  return (
+    <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl bg-white/90 shadow-sm ring-1 ring-black/[0.06] backdrop-blur-xl dark:rounded-none dark:bg-transparent dark:shadow-none dark:ring-0 dark:backdrop-blur-none">
+      <GlobeSectionWithData includeAnonymous={includeAnonymous} interactive />
+    </div>
+  );
+}
 
 function AnalyticsInChartPill({
   label,
   value,
   delta,
   color,
+  isHighlighted,
   isSelected,
   controlsId,
   tabId,
-  onActivate,
+  onToggle,
   onHoverPreview,
   onHoverEnd,
   onArrowNavigate,
@@ -172,26 +776,30 @@ function AnalyticsInChartPill({
   value: string,
   delta?: number,
   color: string,
+  isHighlighted: boolean,
   isSelected: boolean,
   controlsId: string,
   tabId: string,
-  onActivate: () => void,
+  onToggle: () => void,
   onHoverPreview: () => void,
   onHoverEnd: () => void,
   onArrowNavigate: (direction: 'next' | 'prev' | 'first' | 'last') => void,
 }) {
+  const tooltipByLabel = new Map([
+    ["Daily Active Users", "Shows active users by day so you can see current product usage."],
+    ["Visitors", "Sums each day's unique visitors across the selected period, so returning visitors count once per day."],
+    ["Revenue", "Shows new revenue from payments for the selected period."],
+  ]);
+
   return (
     <button
       type="button"
-      role="tab"
       id={tabId}
-      aria-selected={isSelected}
+      aria-pressed={isSelected}
       aria-controls={controlsId}
-      tabIndex={isSelected ? 0 : -1}
       onMouseEnter={onHoverPreview}
       onMouseLeave={onHoverEnd}
-      onFocus={onActivate}
-      onClick={onActivate}
+      onClick={onToggle}
       onKeyDown={(event) => {
         const isNext = event.key === 'ArrowRight' || event.key === 'ArrowDown';
         const isPrev = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
@@ -210,13 +818,13 @@ function AnalyticsInChartPill({
           onArrowNavigate('last');
         } else if (isActivate) {
           event.preventDefault();
-          onActivate();
+          onToggle();
         }
       }}
       className={cn(
         "group/pill flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors hover:transition-none select-none flex-1",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/[0.18]",
-        isSelected
+        isHighlighted
           ? "bg-foreground/[0.06] ring-1 ring-foreground/[0.09]"
           : "hover:bg-foreground/[0.03]"
       )}
@@ -224,14 +832,16 @@ function AnalyticsInChartPill({
       <span
         className={cn(
           "h-2 w-2 rounded-full shrink-0 transition-transform",
-          isSelected ? "scale-125" : ""
+          isHighlighted ? "scale-125" : ""
         )}
         style={{ backgroundColor: color }}
       />
       <div className="flex flex-col gap-0.5 text-left min-w-0">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">
-          {label}
-        </span>
+        <SimpleTooltip tooltip={tooltipByLabel.get(label)} inline className="w-fit">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">
+            {label}
+          </span>
+        </SimpleTooltip>
         <div className="flex items-baseline gap-1.5">
           <span className="text-[15px] font-bold tabular-nums text-foreground leading-none">
             {value}
@@ -255,7 +865,6 @@ function AnalyticsChartWidget({
   dauStackedData,
   visitorsData,
   revenueData,
-  outerStats,
   dauLabel,
   dauTotal,
   visitorsLabel,
@@ -274,7 +883,6 @@ function AnalyticsChartWidget({
   dauStackedData: StackedDataPoint[],
   visitorsData: VisitorsHoverDataPoint[],
   revenueData: RevenueHoverDataPoint[],
-  outerStats: AnalyticsStatPill[],
   dauLabel: string,
   dauTotal: string,
   visitorsLabel: string,
@@ -291,13 +899,6 @@ function AnalyticsChartWidget({
 }) {
   const [selectedMode, setSelectedMode] = useState<AnalyticsChartMode>('default');
   const [previewMode, setPreviewMode] = useState<AnalyticsChartMode | null>(null);
-  const [displayMode, setDisplayMode] = useState<AnalyticsChartMode>('default');
-  const [fadingOut, setFadingOut] = useState(false);
-  const [fadingIn, setFadingIn] = useState(false);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeInRaf1Ref = useRef<number | null>(null);
-  const fadeInRaf2Ref = useRef<number | null>(null);
-  const FADE_OUT_MS = 140;
 
   const tablistInstanceId = useId();
   const tabpanelId = `${tablistInstanceId}-panel`;
@@ -306,48 +907,9 @@ function AnalyticsChartWidget({
   const revenueTabId = `${tablistInstanceId}-tab-revenue`;
 
   const activeMode: AnalyticsChartMode = previewMode ?? selectedMode;
+  const displayMode: AnalyticsChartMode = activeMode;
 
-  const switchToMode = (mode: AnalyticsChartMode) => {
-    if (mode === displayMode) return;
-    if (fadeTimerRef.current != null) {
-      clearTimeout(fadeTimerRef.current);
-    }
-    setFadingOut(true);
-    fadeTimerRef.current = setTimeout(() => {
-      setDisplayMode(mode);
-      setFadingOut(false);
-      setFadingIn(true);
-      fadeInRaf1Ref.current = requestAnimationFrame(() => {
-        fadeInRaf2Ref.current = requestAnimationFrame(() => {
-          setFadingIn(false);
-          fadeInRaf2Ref.current = null;
-        });
-        fadeInRaf1Ref.current = null;
-      });
-      fadeTimerRef.current = null;
-    }, FADE_OUT_MS);
-  };
-
-  useEffect(() => {
-    switchToMode(activeMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- switchToMode closes over displayMode/fade state
-  }, [activeMode]);
-
-  useEffect(() => {
-    return () => {
-      if (fadeTimerRef.current != null) {
-        clearTimeout(fadeTimerRef.current);
-      }
-      if (fadeInRaf1Ref.current != null) {
-        cancelAnimationFrame(fadeInRaf1Ref.current);
-      }
-      if (fadeInRaf2Ref.current != null) {
-        cancelAnimationFrame(fadeInRaf2Ref.current);
-      }
-    };
-  }, []);
-
-  const handleHoverPreview = (mode: 'dau' | 'visitors' | 'revenue') => {
+  const handleHoverPreview = (mode: AnalyticsChartMetricMode) => {
     setPreviewMode(mode);
   };
 
@@ -355,22 +917,26 @@ function AnalyticsChartWidget({
     setPreviewMode(null);
   };
 
-  const handleSelect = (mode: AnalyticsChartMode) => {
+  const handleSelect = (mode: AnalyticsChartMetricMode) => {
     setSelectedMode(mode);
     setPreviewMode(null);
   };
 
-  const PILL_MODE_ORDER = ['dau', 'visitors', 'revenue'] as const;
-  const handleArrowNavigate = (current: 'dau' | 'visitors' | 'revenue', direction: 'next' | 'prev' | 'first' | 'last') => {
-    const idx = PILL_MODE_ORDER.indexOf(current);
+  const handleToggle = (mode: AnalyticsChartMetricMode) => {
+    setSelectedMode((currentMode) => toggleAnalyticsChartMetricMode(currentMode, mode));
+    setPreviewMode(null);
+  };
+
+  const handleArrowNavigate = (current: AnalyticsChartMetricMode, direction: 'next' | 'prev' | 'first' | 'last') => {
+    const idx = ANALYTICS_CHART_METRIC_MODE_ORDER.indexOf(current);
     let nextIdx: number;
     switch (direction) {
       case 'next': {
-        nextIdx = (idx + 1) % PILL_MODE_ORDER.length;
+        nextIdx = (idx + 1) % ANALYTICS_CHART_METRIC_MODE_ORDER.length;
         break;
       }
       case 'prev': {
-        nextIdx = (idx - 1 + PILL_MODE_ORDER.length) % PILL_MODE_ORDER.length;
+        nextIdx = (idx - 1 + ANALYTICS_CHART_METRIC_MODE_ORDER.length) % ANALYTICS_CHART_METRIC_MODE_ORDER.length;
         break;
       }
       case 'first': {
@@ -378,11 +944,11 @@ function AnalyticsChartWidget({
         break;
       }
       case 'last': {
-        nextIdx = PILL_MODE_ORDER.length - 1;
+        nextIdx = ANALYTICS_CHART_METRIC_MODE_ORDER.length - 1;
         break;
       }
     }
-    handleSelect(PILL_MODE_ORDER[nextIdx]);
+    handleSelect(ANALYTICS_CHART_METRIC_MODE_ORDER[nextIdx]);
   };
 
   const dauColor = "hsl(152, 38%, 52%)";
@@ -392,18 +958,9 @@ function AnalyticsChartWidget({
 
   return (
     <div className="flex flex-col gap-3 h-full">
-      <div className={cn(
-        "grid gap-3",
-        outerStats.length > 3 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3",
-      )}>
-        {outerStats.map((stat) => (
-          <StatCard key={stat.label} stat={stat} compact={compact} />
-        ))}
-      </div>
-
       <DesignAnalyticsCard
         gradient="blue"
-        className="flex-1 min-h-0"
+        className="h-full min-h-0"
         chart={{
           type: displayMode === "dau" ? "stacked-bar" : displayMode === "default" ? "composed" : "bar",
           tooltipType: displayMode === "dau"
@@ -425,9 +982,8 @@ function AnalyticsChartWidget({
           onMouseLeave={handleHoverEnd}
         >
           <div
-            role="tablist"
-            aria-label="Analytics chart"
-            aria-orientation="horizontal"
+            role="group"
+            aria-label="Analytics chart metrics"
             className="flex items-stretch mb-2 -mx-1"
           >
             <AnalyticsInChartPill
@@ -435,10 +991,11 @@ function AnalyticsChartWidget({
               value={dauTotal}
               delta={dauDelta}
               color={dauColor}
-              isSelected={activeMode === 'dau'}
+              isHighlighted={activeMode === 'dau'}
+              isSelected={selectedMode === 'dau'}
               tabId={dauTabId}
               controlsId={tabpanelId}
-              onActivate={() => handleSelect('dau')}
+              onToggle={() => handleToggle('dau')}
               onHoverPreview={() => handleHoverPreview('dau')}
               onHoverEnd={handleHoverEnd}
               onArrowNavigate={(direction) => handleArrowNavigate('dau', direction)}
@@ -449,10 +1006,11 @@ function AnalyticsChartWidget({
               value={visitorsTotal}
               delta={visitorsDelta}
               color={visitorsColor}
-              isSelected={activeMode === 'visitors'}
+              isHighlighted={activeMode === 'visitors'}
+              isSelected={selectedMode === 'visitors'}
               tabId={visitorsTabId}
               controlsId={tabpanelId}
-              onActivate={() => handleSelect('visitors')}
+              onToggle={() => handleToggle('visitors')}
               onHoverPreview={() => handleHoverPreview('visitors')}
               onHoverEnd={handleHoverEnd}
               onArrowNavigate={(direction) => handleArrowNavigate('visitors', direction)}
@@ -463,10 +1021,11 @@ function AnalyticsChartWidget({
               value={revenueTotal}
               delta={revenueDelta}
               color={revenueColor}
-              isSelected={activeMode === 'revenue'}
+              isHighlighted={activeMode === 'revenue'}
+              isSelected={selectedMode === 'revenue'}
               tabId={revenueTabId}
               controlsId={tabpanelId}
-              onActivate={() => handleSelect('revenue')}
+              onToggle={() => handleToggle('revenue')}
               onHoverPreview={() => handleHoverPreview('revenue')}
               onHoverEnd={handleHoverEnd}
               onArrowNavigate={(direction) => handleArrowNavigate('revenue', direction)}
@@ -475,25 +1034,12 @@ function AnalyticsChartWidget({
 
           <div
             id={tabpanelId}
-            role="tabpanel"
-            aria-labelledby={
-              activeMode === 'dau' ? dauTabId :
-                activeMode === 'visitors' ? visitorsTabId :
-                  activeMode === 'revenue' ? revenueTabId : undefined
-            }
+            role="region"
+            aria-label="Analytics chart"
             className="flex-1 min-h-0 relative"
             style={{ minHeight: chartViewportHeight }}
           >
-            <div
-              className={cn(
-                "h-full flex flex-col",
-                fadingOut
-                  ? "opacity-0 -translate-y-0.5 transition-[opacity,transform] duration-[140ms] ease-in"
-                  : fadingIn
-                    ? "opacity-0 translate-y-0.5"
-                    : "opacity-100 translate-y-0 transition-[opacity,transform] duration-[260ms] ease-out",
-              )}
-            >
+            <div className="h-full flex flex-col">
               {displayMode === 'default' && (
                 composedData.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
@@ -503,6 +1049,7 @@ function AnalyticsChartWidget({
                   <ComposedAnalyticsChart
                     datapoints={composedData}
                     showVisitors
+                    showPageViews={analyticsEnabled}
                     showRevenue={paymentsEnabled}
                     compact={compact}
                   />
@@ -661,6 +1208,7 @@ function TabbedEmailsCard({
           gradient="blue"
           className="flex-1 min-w-0 border-0 [&>button]:rounded-none [&>button]:px-3 [&>button]:py-3.5 [&>button]:text-xs"
         />
+        <SimpleTooltip tooltip="Shows sent email volume over time, with a recent-email list for delivery checks." type="info" className="ml-2" />
       </div>
       {view === 'chart' && (
         <DesignChartLegend items={emailLegendItems} compact={compact} />
@@ -727,7 +1275,9 @@ function EmailBreakdownCard({
   return (
     <DesignAnalyticsCard gradient="orange" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="px-4 py-3 border-b border-foreground/[0.05]">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email Delivery</span>
+        <SimpleTooltip tooltip="Counts recent email delivery outcomes to help spot bounces and sending issues." inline className="w-fit">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email Delivery</span>
+        </SimpleTooltip>
       </div>
       <div className="p-4 pt-3 flex-1 flex flex-col gap-2.5">
         {total === 0 ? (
@@ -772,98 +1322,6 @@ function EmailBreakdownCard({
             <div className="text-sm font-semibold tabular-nums">{clickRate}%</div>
           </div>
         </div>
-      </div>
-    </DesignAnalyticsCard>
-  );
-}
-
-function getReferrerHost(referrer: string): string | null {
-  if (!referrer) return null;
-  try {
-    const url = new URL(/^https?:\/\//i.test(referrer) ? referrer : `https://${referrer}`);
-    const host = url.hostname.toLowerCase();
-    if (!host || !host.includes(".")) return null;
-    return host;
-  } catch {
-    return null;
-  }
-}
-
-function ReferrerFavicon({ host }: { host: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm bg-foreground/[0.06]" />;
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
-      alt=""
-      width={16}
-      height={16}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-      className="h-4 w-4 shrink-0 rounded-sm object-contain"
-    />
-  );
-}
-
-function ReferrersWithAnalyticsCard({
-  topReferrers,
-  analyticsEnabled,
-  projectId,
-}: {
-  topReferrers: MetricsTopReferrer[],
-  analyticsEnabled: boolean,
-  projectId: string,
-}) {
-  const listWindow = useInfiniteListWindow(topReferrers.length);
-
-  return (
-    <DesignAnalyticsCard gradient="purple" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
-      <div className="px-4 py-3 border-b border-foreground/[0.05]">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Referrers</span>
-      </div>
-      <div ref={listWindow.scrollRef} className="p-4 pt-3 flex-1 min-h-0 max-h-[320px] overflow-y-auto flex flex-col gap-2">
-        {!analyticsEnabled ? (
-          <SetupAppPrompt projectId={projectId} appId="analytics" appLabel="Analytics" metricLabel="referrer metrics" />
-        ) : topReferrers.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Typography variant="secondary" className="text-xs">No referrer data</Typography>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {topReferrers.slice(0, listWindow.visibleCount).map((item) => {
-              const max = topReferrers[0].visitors;
-              const host = getReferrerHost(item.referrer);
-              return (
-                <div key={item.referrer} className="relative flex items-center justify-between rounded-lg px-2.5 py-1.5 overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-lg bg-purple-500/10 dark:bg-purple-400/10"
-                    style={{ width: max > 0 ? `${(item.visitors / max) * 100}%` : '0%' }}
-                  />
-                  <span className="relative flex items-center gap-2 min-w-0 max-w-[70%]">
-                    {host ? (
-                      <ReferrerFavicon host={host} />
-                    ) : (
-                      <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm bg-foreground/[0.06]" />
-                    )}
-                    <span className="text-[11px] text-foreground truncate">{item.referrer}</span>
-                  </span>
-                  <span className="relative text-[11px] font-medium text-foreground tabular-nums">{item.visitors.toLocaleString()}</span>
-                </div>
-              );
-            })}
-            {listWindow.hasMore && (
-              <div ref={listWindow.sentinelRef} className="py-2 text-center">
-                <Typography variant="secondary" className="text-[10px]">
-                  Loading more...
-                </Typography>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </DesignAnalyticsCard>
   );
@@ -942,35 +1400,91 @@ function QuickAccessApps({ projectId, installedApps }: { projectId: string, inst
   );
 }
 
-export default function MetricsPage(props: { toSetup: () => void }) {
+export default function MetricsPage() {
   const includeAnonymous = false;
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
+  const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsOverviewFilters>({});
+  const [loadedAnalyticsFilters, setLoadedAnalyticsFilters] = useState<AnalyticsOverviewFilters>({});
+  const [view, setView] = useState<"overview" | "globe">("overview");
   const user = useUser();
 
   const displayName = user?.displayName || user?.primaryEmail || null;
   const truncatedName = displayName && displayName.length > 30 ? `${displayName.slice(0, 30)}...` : displayName;
+  // The fetched filters combine the dimension chips with the date bounds from
+  // the time-range toggle, so range changes re-query the top-N breakdowns too.
+  const analyticsDateRange = useMemo(() => analyticsDateRangeForTimeRange(timeRange, customDateRange), [timeRange, customDateRange]);
+  const requestedAnalyticsFilters = useMemo(() => ({ ...analyticsFilters, ...analyticsDateRange }), [analyticsFilters, analyticsDateRange]);
+  const selectedFilterKey = analyticsFiltersKey(requestedAnalyticsFilters);
+  const loadedFilterKey = analyticsFiltersKey(loadedAnalyticsFilters);
+  const isUpdatingAnalyticsFilters = selectedFilterKey !== loadedFilterKey;
 
-  return (
-    <PageLayout
-      title={`Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`}
-      actions={
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+  const clearAnalyticsFilter = useCallback((dimension: keyof AnalyticsOverviewFilters) => {
+    setAnalyticsFilters((previous) => ({ ...previous, [dimension]: undefined }));
+  }, []);
+  const clearAllAnalyticsFilters = useCallback(() => setAnalyticsFilters({}), []);
+  const toggleAnalyticsFilter = useCallback((dimension: keyof AnalyticsOverviewFilters, value: string) => {
+    setAnalyticsFilters((previous) => ({ ...previous, [dimension]: previous[dimension] === value ? undefined : value }));
+  }, []);
+  const markAnalyticsFiltersLoaded = useCallback(() => {
+    setLoadedAnalyticsFilters(requestedAnalyticsFilters);
+  }, [requestedAnalyticsFilters]);
+  const headerTitle = `Welcome back${truncatedName ? `, ${truncatedName}` : ""}!`;
+  const headerActions = (
+    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      {view === "overview" && (
+        <>
+          <FilterChipsBar filters={analyticsFilters} onClear={clearAnalyticsFilter} onClearAll={clearAllAnalyticsFilters} />
+          <FilterMenu filters={analyticsFilters} onToggle={toggleAnalyticsFilter} />
           <TimeRangeToggle
             timeRange={timeRange}
             onTimeRangeChange={setTimeRange}
             customDateRange={customDateRange}
             onCustomDateRangeChange={setCustomDateRange}
           />
-        </div>
-      }
+        </>
+      )}
+      <ViewToggle view={view} onChange={setView} />
+    </div>
+  );
+
+  return (
+    <PageLayout
       fillWidth
       fullBleed
-      wrapHeaderInCard
+      containedHeight={view === "globe"}
     >
+      {/* The globe tab is a contained, no-scroll scene. A sticky top offset would
+          shift this bar over the globe card and clip the live-users badge. */}
+      <OverviewHeader title={headerTitle} actions={headerActions} sticky={view === "overview"} />
+      {view === "overview" && <AnalyticsEventLimitBanner />}
       <ErrorBoundary errorComponent={MetricsErrorComponent}>
+        {/* Inside the error boundary so a failed filtered fetch surfaces the
+            page's own error fallback instead of escaping to the layout. */}
+        {view === "overview" && isUpdatingAnalyticsFilters && (
+          <Suspense fallback={null}>
+            <MetricsFilterPreloader
+              includeAnonymous={includeAnonymous}
+              filters={requestedAnalyticsFilters}
+              filterKey={selectedFilterKey}
+              onReady={markAnalyticsFiltersLoaded}
+            />
+          </Suspense>
+        )}
         <Suspense fallback={<MetricsLoadingFallback />}>
-          <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} customDateRange={customDateRange} />
+          {view === "globe" ? (
+            <GlobeView includeAnonymous={includeAnonymous} />
+          ) : (
+            <MetricsContent
+              includeAnonymous={includeAnonymous}
+              timeRange={timeRange}
+              customDateRange={customDateRange}
+              analyticsFilters={loadedAnalyticsFilters}
+              selectedAnalyticsFilters={analyticsFilters}
+              isUpdatingAnalyticsFilters={isUpdatingAnalyticsFilters}
+              onToggleAnalyticsFilter={toggleAnalyticsFilter}
+            />
+          )}
         </Suspense>
       </ErrorBoundary>
     </PageLayout>
@@ -981,21 +1495,50 @@ function MetricsErrorComponent(props: { error: Error, reset?: () => void }) {
   return <MetricsErrorFallback error={props.error} onRetryAction={props.reset} />;
 }
 
+function MetricsFilterPreloader({
+  includeAnonymous,
+  filters,
+  filterKey,
+  onReady,
+}: {
+  includeAnonymous: boolean,
+  filters: AnalyticsOverviewFilters,
+  filterKey: string,
+  onReady: () => void,
+}) {
+  const adminApp = useAdminApp();
+  useMetricsOrThrow(adminApp, includeAnonymous, filters);
+
+  useEffect(() => {
+    onReady();
+  }, [filterKey, onReady]);
+
+  return null;
+}
+
 function MetricsContent({
   includeAnonymous,
   timeRange,
   customDateRange,
+  analyticsFilters,
+  selectedAnalyticsFilters,
+  isUpdatingAnalyticsFilters,
+  onToggleAnalyticsFilter,
 }: {
   includeAnonymous: boolean,
   timeRange: TimeRange,
   customDateRange: CustomDateRange | null,
+  analyticsFilters: AnalyticsOverviewFilters,
+  selectedAnalyticsFilters: AnalyticsOverviewFilters,
+  isUpdatingAnalyticsFilters: boolean,
+  onToggleAnalyticsFilter: (dimension: keyof AnalyticsOverviewFilters, value: string) => void,
 }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
   const projectId = useProjectId();
   const router = useRouter();
-  const data = useMetricsOrThrow(adminApp, includeAnonymous);
+  const data = useMetricsOrThrow(adminApp, includeAnonymous, analyticsFilters);
   const installedApps = useMemo(
     () => getEnabledAppIds(config.apps.installed),
     [config.apps.installed]
@@ -1010,6 +1553,8 @@ function MetricsContent({
 
   const recentEmails = email.recent_emails;
   const topReferrers = analytics.top_referrers;
+  const dailyBounceRate = analytics.daily_bounce_rate;
+  const dailyAvgSession = analytics.daily_avg_session_seconds;
 
   const dauSplit = auth.daily_active_users_split;
   const dauStackedData = useMemo<StackedDataPoint[]>(() => {
@@ -1029,17 +1574,24 @@ function MetricsContent({
     }));
   }, [dauSplit.new, dauSplit.retained, dauSplit.reactivated]);
   const signUpsStackedData = useMemo<StackedDataPoint[]>(
-    () => data.daily_users.map((point) => ({
+    () => (timeRange === "1d" ? data.hourly_users : data.daily_users).map((point) => ({
       date: point.date,
       new: point.activity,
       retained: 0,
       reactivated: 0,
     })),
-    [data.daily_users],
+    [data.daily_users, data.hourly_users, timeRange],
   );
   const filteredDauStackedData = useMemo<StackedDataPoint[]>(
-    () => filterStackedDatapointsByTimeRange(dauStackedData, timeRange, customDateRange),
-    [dauStackedData, timeRange, customDateRange],
+    () => timeRange === "1d"
+      ? data.hourly_active_users.map((point) => ({
+        date: point.date,
+        new: point.activity,
+        retained: 0,
+        reactivated: 0,
+      }))
+      : filterStackedDatapointsByTimeRange(dauStackedData, timeRange, customDateRange),
+    [data.hourly_active_users, dauStackedData, timeRange, customDateRange],
   );
   const dauTotalsByDate = useMemo<Map<string, number>>(
     () => new Map(dauStackedData.map((point) => [point.date, point.new + point.retained + point.reactivated])),
@@ -1053,16 +1605,19 @@ function MetricsContent({
 
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const dailyRev = analytics.daily_revenue;
+    const dailyPageViews = analytics.daily_page_views;
     // When the analytics app isn't installed there are no `$page-view` events,
     // so fall back to token-refresh-derived anonymous visitors so the card has
     // something meaningful to render instead of a flat zero line.
     const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
+    const pageViewMap = new Map(dailyPageViews.map(d => [d.date, d.activity]));
     const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
 
     const allDates = new Set([
       ...dailyVis.map(d => d.date),
+      ...dailyPageViews.map(d => d.date),
       ...dailyRev.map(d => d.date),
       ...dauStackedData.map(d => d.date),
     ]);
@@ -1070,38 +1625,64 @@ function MetricsContent({
     const points = [...allDates].map(date => ({
       date,
       visitors: visitorMap.get(date) ?? 0,
+      page_views: analyticsEnabled ? (pageViewMap.get(date) ?? 0) : 0,
       new_cents: paymentsEnabled ? (revenueMap.get(date)?.new_cents ?? 0) : 0,
       refund_cents: paymentsEnabled ? (revenueMap.get(date)?.refund_cents ?? 0) : 0,
       dau: dauTotalsByDate.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [analytics.daily_revenue, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_page_views, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  const hourlyComposedData = useMemo<ComposedDataPoint[]>(() => {
+    const activeUserMap = new Map(analytics.hourly_active_users.map((point) => [point.date, point.activity]));
+    const visitorMap = new Map(analytics.hourly_visitors.map((point) => [point.date, point.activity]));
+    const pageViewMap = new Map(analytics.hourly_page_views.map((point) => [point.date, point.activity]));
+    const allDates = new Set([
+      ...analytics.hourly_active_users.map((point) => point.date),
+      ...analytics.hourly_visitors.map((point) => point.date),
+      ...analytics.hourly_page_views.map((point) => point.date),
+    ]);
+
+    return [...allDates]
+      .map((date) => ({
+        date,
+        visitors: visitorMap.get(date) ?? 0,
+        page_views: pageViewMap.get(date) ?? 0,
+        new_cents: 0,
+        refund_cents: 0,
+        dau: activeUserMap.get(date) ?? 0,
+      }))
+      .sort((a, b) => stringCompare(a.date, b.date));
+  }, [analytics.hourly_active_users, analytics.hourly_page_views, analytics.hourly_visitors]);
   const composedData = useMemo<ComposedDataPoint[]>(
-    () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
-    [allComposedData, timeRange, customDateRange],
+    () => timeRange === "1d"
+      ? hourlyComposedData
+      : filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
+    [allComposedData, hourlyComposedData, timeRange, customDateRange],
+  );
+  const filteredDailyPageViews = useMemo(
+    () => timeRange === "1d"
+      ? analytics.hourly_page_views
+      : filterStackedDatapointsByTimeRange(analytics.daily_page_views, timeRange, customDateRange),
+    [analytics.daily_page_views, analytics.hourly_page_views, timeRange, customDateRange],
   );
 
   const topCountries = useMemo<Array<{ country_code: string, count: number }>>(() => {
-    const countries: Array<{ country_code: string, count: number }> = [];
-    for (const [countryCode, count] of Object.entries(data.users_by_country)) {
-      if (countryCode.length === 0) continue;
-      if (!Number.isFinite(count) || count <= 0) continue;
-      countries.push({ country_code: countryCode.toUpperCase(), count });
-    }
-
-    countries.sort((a, b) => b.count - a.count || stringCompare(a.country_code, b.country_code));
-    return countries.slice(0, 3);
-  }, [data.users_by_country]);
+    return analytics.top_regions
+      .filter((row) => row.country_code.length > 0 && Number.isFinite(row.count) && row.count > 0)
+      .map((row) => ({ country_code: row.country_code.toUpperCase(), count: row.count }))
+      .sort((a, b) => b.count - a.count || stringCompare(a.country_code, b.country_code))
+      .slice(0, 3);
+  }, [analytics.top_regions]);
 
   const visitorsHoverData = useMemo<VisitorsHoverDataPoint[]>(() => {
     if (!analyticsEnabled) {
       return [];
     }
-    const dailyPv = analytics.daily_page_views;
+    const pageViews = timeRange === "1d" ? analytics.hourly_page_views : analytics.daily_page_views;
 
-    const pvMap = new Map(dailyPv.map(d => [d.date, d.activity]));
-    const allDates = new Set(dailyPv.map(d => d.date));
+    const pvMap = new Map(pageViews.map(d => [d.date, d.activity]));
+    const allDates = new Set(pageViews.map(d => d.date));
 
     const points = [...allDates].map(date => ({
       date,
@@ -1109,8 +1690,8 @@ function MetricsContent({
       top_countries: topCountries,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
-    return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [analytics.daily_page_views, timeRange, customDateRange, topCountries, analyticsEnabled]);
+    return timeRange === "1d" ? points : filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
+  }, [analytics.daily_page_views, analytics.hourly_page_views, timeRange, customDateRange, topCountries, analyticsEnabled]);
 
   const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
     if (!paymentsEnabled) {
@@ -1126,26 +1707,6 @@ function MetricsContent({
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
   }, [analytics.daily_revenue, timeRange, customDateRange, paymentsEnabled]);
 
-  const analyticsOuterStats = useMemo<AnalyticsStatPill[]>(() => {
-    const totalUsers = data.total_users;
-    const mau = Math.min(auth.mau, totalUsers);
-    const totalEmailsSent = email.emails_sent;
-    return [
-      {
-        label: "Monthly active users",
-        value: formatCompact(mau),
-      },
-      {
-        label: "Total Emails Sent",
-        value: formatCompact(totalEmailsSent),
-      },
-      {
-        label: "Avg. Session time",
-        value: analyticsEnabled ? formatSeconds(analytics.avg_session_seconds) : "—",
-      },
-    ];
-  }, [auth.mau, email.emails_sent, analytics.avg_session_seconds, data.total_users, analyticsEnabled]);
-
   const inChartPillValues = useMemo(() => {
     const latestDauPoint = dauStackedData.at(-1);
     const latestDau = latestDauPoint == null
@@ -1156,7 +1717,10 @@ function MetricsContent({
       ? undefined
       : previousDauPoint.new + previousDauPoint.retained + previousDauPoint.reactivated;
     const visitorsTotalInRange = composedData.reduce((sum, row) => sum + row.visitors, 0);
-    const totalRevenueCentsInRange = composedData.reduce((sum, row) => sum + row.new_cents, 0);
+    // Revenue is only available at daily granularity, so derive the total from the
+    // daily revenue series (already filtered by the active range). The hourly composed
+    // data used in the 1d view has no revenue, which would otherwise zero this out.
+    const totalRevenueCentsInRange = revenueHoverData.reduce((sum, row) => sum + row.new_cents, 0);
 
     const composedIndexByDate = new Map(allComposedData.map((row, index) => [row.date, index]));
     const firstComposedPoint = composedData.at(0);
@@ -1175,8 +1739,11 @@ function MetricsContent({
       dauTotal: formatCompact(latestDau),
       dauLabel: "Daily Active Users",
       dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
+      // Sum of per-bucket uniques — a visitor active on several days counts
+      // once per day, so this is NOT deduplicated across the whole period.
+      // Labeled "Visitors" (not "Unique Visitors") for that reason.
       visitorsTotal: formatCompact(visitorsTotalInRange),
-      visitorsLabel: "Unique Visitors",
+      visitorsLabel: "Visitors",
       visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: paymentsEnabled
         ? formatUsdFromCents(totalRevenueCentsInRange)
@@ -1184,7 +1751,80 @@ function MetricsContent({
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, paymentsEnabled, revenueHoverData]);
+
+  const bounceByDate = useMemo(() => new Map(dailyBounceRate.map((point) => [point.date, point.activity])), [dailyBounceRate]);
+  const sessionByDate = useMemo(() => new Map(dailyAvgSession.map((point) => [point.date, point.activity])), [dailyAvgSession]);
+
+  const analyticsPeriodTotals = useMemo(() => {
+    const totalVisitors = composedData.reduce((sum, row) => sum + row.visitors, 0);
+    const totalPageViews = filteredDailyPageViews.reduce((sum, row) => sum + row.activity, 0);
+
+    const composedIndexByDate = new Map(allComposedData.map((row, index) => [row.date, index]));
+    const firstPoint = composedData.at(0);
+    const startIndex = firstPoint == null ? -1 : (composedIndexByDate.get(firstPoint.date) ?? -1);
+    const currentLength = composedData.length;
+    const previousStart = startIndex - currentLength;
+    const previousEnd = startIndex - 1;
+    const previousWindow = previousStart < 0 ? [] : allComposedData.slice(previousStart, previousEnd + 1);
+    const hasPreviousWindow = previousWindow.length === currentLength && currentLength > 0;
+    const previousVisitors = previousWindow.reduce((sum, row) => sum + row.visitors, 0);
+    const previousPageViews = previousWindow.reduce((sum, row) => sum + row.page_views, 0);
+
+    const avgOf = (rows: Array<{ date: string }>, source: Map<string, number>) => {
+      let sum = 0;
+      let count = 0;
+      for (const row of rows) {
+        const value = source.get(row.date);
+        if (value == null) continue;
+        sum += value;
+        count += 1;
+      }
+      return count > 0 ? sum / count : 0;
+    };
+    const avgBounce = avgOf(composedData, bounceByDate);
+    const avgSession = avgOf(composedData, sessionByDate);
+    const previousAvgBounce = avgOf(previousWindow, bounceByDate);
+    const previousAvgSession = avgOf(previousWindow, sessionByDate);
+
+    return {
+      totalVisitors,
+      pagesPerVisitor: pagesPerVisitor(totalPageViews, totalVisitors),
+      previousPagesPerVisitor: pagesPerVisitor(previousPageViews, previousVisitors),
+      avgBounce,
+      avgSession,
+      previousAvgBounce,
+      previousAvgSession,
+      hasPreviousWindow,
+    };
+  }, [allComposedData, bounceByDate, composedData, filteredDailyPageViews, sessionByDate]);
+
+  const pagesPerVisitorSparkValues = useMemo(
+    () => composedData.slice(-14).map((point) => pagesPerVisitor(point.page_views, point.visitors)),
+    [composedData],
+  );
+  const mauSparkValues = useMemo(
+    () => filteredDauStackedData.slice(-14).map((point) => point.new + point.retained + point.reactivated),
+    [filteredDauStackedData],
+  );
+  const emailSparkValues = useMemo(
+    () => filterStackedDatapointsByTimeRange(emailStackedData, timeRange, customDateRange)
+      .slice(-14)
+      .map((point) => point.ok + point.error + point.in_progress),
+    [emailStackedData, timeRange, customDateRange],
+  );
+  const sessionSparkValues = useMemo(
+    () => filterStackedDatapointsByTimeRange(dailyAvgSession, timeRange, customDateRange)
+      .slice(-14)
+      .map((point) => point.activity),
+    [dailyAvgSession, timeRange, customDateRange],
+  );
+  const topRegionsByCountry = useMemo(() => {
+    const entries = analytics.top_regions
+      .filter((row) => row.country_code.length > 0 && Number.isFinite(row.count) && row.count > 0)
+      .map((row) => [row.country_code.toUpperCase(), row.count]);
+    return Object.fromEntries(entries);
+  }, [analytics.top_regions]);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridContainerWidth, setGridContainerWidth] = useState(0);
@@ -1209,22 +1849,55 @@ function MetricsContent({
     return (availableWidth / 12) * 5 + gap * 4;
   })();
   const shouldShowGlobe = isLgViewport && globeColumnWidth >= GLOBE_MIN_WIDTH;
-  const analyticsOuterStatsForLayout = useMemo<AnalyticsStatPill[]>(() => {
-    if (shouldShowGlobe) {
-      return analyticsOuterStats;
-    }
-
-    return [
-      {
-        label: "Total Users",
-        value: formatCompact(data.total_users),
-      },
-      ...analyticsOuterStats,
-    ];
-  }, [shouldShowGlobe, analyticsOuterStats, data.total_users]);
-
   return (
-    <div className="pb-6 flex flex-col gap-5">
+    <div className={cn(
+      "pb-6 flex flex-col gap-5 transition-opacity duration-200 ease-out",
+      isUpdatingAnalyticsFilters ? "opacity-70" : "opacity-100",
+    )}>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <UserPageMetricCard
+          label="Pages / Visitor"
+          tooltip="Page views divided by unique visitors for the selected period."
+          value={analyticsEnabled ? formatPagesPerVisitor(analyticsPeriodTotals.pagesPerVisitor) : "—"}
+          description="avg in period"
+          gradient="blue"
+          delta={analyticsEnabled && analyticsPeriodTotals.hasPreviousWindow ? {
+            current: analyticsPeriodTotals.pagesPerVisitor,
+            previous: analyticsPeriodTotals.previousPagesPerVisitor,
+            comparisonLabel: "vs prev. period",
+          } : undefined}
+          spark={analyticsEnabled && pagesPerVisitorSparkValues.length >= 2 ? { values: pagesPerVisitorSparkValues } : undefined}
+        />
+        <UserPageMetricCard
+          label="Monthly Active Users"
+          tooltip="Unique users active during the current month."
+          value={formatCompact(Math.min(auth.mau, data.total_users))}
+          description="current"
+          gradient="green"
+          spark={mauSparkValues.length >= 2 ? { values: mauSparkValues } : undefined}
+        />
+        <UserPageMetricCard
+          label="Total Emails Sent"
+          tooltip="All emails sent by this project."
+          value={formatCompact(email.emails_sent)}
+          description="all time"
+          gradient="orange"
+          spark={emailSparkValues.length >= 2 ? { values: emailSparkValues } : undefined}
+        />
+        <UserPageMetricCard
+          label="Avg. Session Time"
+          tooltip="Average session duration from page views and clicks for the selected period."
+          value={analyticsEnabled ? formatSeconds(analyticsPeriodTotals.avgSession) : "—"}
+          description="in period"
+          gradient="purple"
+          delta={analyticsEnabled && analyticsPeriodTotals.hasPreviousWindow ? {
+            current: analyticsPeriodTotals.avgSession,
+            previous: analyticsPeriodTotals.previousAvgSession,
+            comparisonLabel: "vs prev. period",
+          } : undefined}
+          spark={sessionSparkValues.length >= 2 ? { values: sessionSparkValues } : undefined}
+        />
+      </div>
 
       <div
         ref={gridContainerRef}
@@ -1239,14 +1912,16 @@ function MetricsContent({
             "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
             "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
           )}>
-            <div className="absolute top-0 left-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0 pointer-events-none">
+            <div className="pointer-events-none absolute top-0 left-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Total Users
-                </span>
+                <SimpleTooltip tooltip="All project users, grouped by their latest known location." inline className="pointer-events-auto w-fit">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Total Users
+                  </span>
+                </SimpleTooltip>
               </div>
               <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
                 {data.total_users.toLocaleString()}
@@ -1268,7 +1943,6 @@ function MetricsContent({
             analyticsEnabled={analyticsEnabled}
             paymentsEnabled={paymentsEnabled}
             projectId={projectId}
-            outerStats={analyticsOuterStatsForLayout}
             dauLabel={inChartPillValues.dauLabel}
             dauTotal={inChartPillValues.dauTotal}
             visitorsLabel={inChartPillValues.visitorsLabel}
@@ -1289,7 +1963,7 @@ function MetricsContent({
         <div className="min-h-[340px] lg:min-h-0 lg:h-full">
           <TabbedMetricsCard
             config={dailySignUpsConfig}
-            chartData={data.daily_users}
+            chartData={timeRange === "1d" ? data.hourly_users : data.daily_users}
             stackedChartData={signUpsStackedData}
             stackedLegendItems={[
               { key: "new", label: "Sign-Ups", color: "hsl(152, 38%, 52%)" },
@@ -1302,6 +1976,8 @@ function MetricsContent({
             gradientColor="blue"
             timeRange={timeRange}
             customDateRange={customDateRange}
+            chartDataIsPreFiltered={timeRange === "1d"}
+            headerTooltip="New sign-ups over time, with recent users for quick follow-up."
           />
         </div>
         <div className="min-h-[340px] lg:min-h-0 lg:h-full">
@@ -1328,8 +2004,56 @@ function MetricsContent({
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
+          headerTooltip="Referrers that sent the most unique visitors to this project."
           analyticsEnabled={analyticsEnabled}
           projectId={projectId}
+          onSelectReferrer={(referrer) => onToggleAnalyticsFilter("referrer", referrer)}
+          selectedReferrer={selectedAnalyticsFilters.referrer}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <TopRegionsCard
+          usersByCountry={topRegionsByCountry}
+          headerTooltip="Unique page-view visitors grouped by latest known country."
+          onSelectCountry={(code) => onToggleAnalyticsFilter("country_code", code)}
+          selectedCountry={selectedAnalyticsFilters.country_code}
+        />
+        <TopNamedListCard
+          title="Top Browsers"
+          headerTooltip="Browsers used most often by unique visitors."
+          items={analytics.top_browsers}
+          gradient="green"
+          barClassName="bg-emerald-500/10 dark:bg-emerald-400/10"
+          Icon={MonitorIcon}
+          emptyLabel="No browser data"
+          getRowIcon={browserIcon}
+          onSelectItem={(name) => onToggleAnalyticsFilter("browser", name)}
+          selectedItem={selectedAnalyticsFilters.browser}
+        />
+        <TopNamedListCard
+          title="Operating Systems"
+          headerTooltip="Operating systems used most often by unique visitors."
+          items={analytics.top_operating_systems}
+          gradient="orange"
+          barClassName="bg-amber-500/10 dark:bg-amber-400/10"
+          Icon={GearIcon}
+          emptyLabel="No OS data"
+          getRowIcon={osIcon}
+          onSelectItem={(name) => onToggleAnalyticsFilter("os", name)}
+          selectedItem={selectedAnalyticsFilters.os}
+        />
+        <TopNamedListCard
+          title="Devices"
+          headerTooltip="Device types used most often by unique visitors."
+          items={analytics.top_devices}
+          gradient="slate"
+          barClassName="bg-slate-500/10 dark:bg-slate-400/10"
+          Icon={DesktopIcon}
+          emptyLabel="No device data"
+          getRowIcon={deviceIcon}
+          onSelectItem={(name) => onToggleAnalyticsFilter("device", name)}
+          selectedItem={selectedAnalyticsFilters.device}
         />
       </div>
     </div>

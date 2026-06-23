@@ -10,16 +10,16 @@ export type HexclaveConfig = StackConfigObject | typeof showOnboardingHexclaveCo
 
 type StrictConfigShape<Actual, Expected> =
   Expected extends readonly unknown[]
-    ? Actual extends readonly unknown[]
+      ? Actual extends readonly unknown[]
       ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
-      : Actual
+        : Actual
     : Expected extends object
-      ? Actual extends object
+        ? Actual extends object
         ? Exclude<keyof Actual, keyof Expected> extends never
           ? { [K in keyof Actual]: K extends keyof Expected ? StrictConfigShape<Actual[K], Expected[K]> : never }
-          : never
-        : Actual
-      : Actual;
+            : never
+          : Actual
+        : Actual;
 
 type StrictStackConfig<T extends StackConfig> =
   T extends StackConfigObject
@@ -27,11 +27,13 @@ type StrictStackConfig<T extends StackConfig> =
     : T;
 
 /** @deprecated Use `defineHexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
-export function defineStackConfig<const T extends StackConfig>(config: StrictStackConfig<T>): T {
+export function defineStackConfig(config: StrictStackConfig<StackConfig>): StackConfig {
   return config;
 }
 
-// Hexclave alias — separate function so it does not inherit the deprecation tag.
-export function defineHexclaveConfig<const T extends HexclaveConfig>(config: StrictStackConfig<T>): T {
+/**
+ * Defines a Hexclave project configuration as code. See the documentation at https://skill.hexclave.com for more information.
+ */
+export function defineHexclaveConfig(config: StrictStackConfig<HexclaveConfig>): HexclaveConfig {
   return config;
 }

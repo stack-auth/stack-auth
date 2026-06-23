@@ -6,7 +6,8 @@ import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
+import type { PlanUsageResponse } from "./plan-usage";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -26,6 +27,8 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, HexclaveServerInterface } from "./server-interface";
+
+export type { PlanUsageResponse } from "./plan-usage";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -361,11 +364,29 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async getMetrics(includeAnonymous: boolean = false): Promise<MetricsResponse> {
+  async getMetrics(
+    includeAnonymous: boolean = false,
+    filters?: {
+      country_code?: string,
+      referrer?: string,
+      browser?: string,
+      os?: string,
+      device?: string,
+      since?: string,
+      until?: string,
+    },
+  ): Promise<MetricsResponse> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
       params.append('include_anonymous', 'true');
     }
+    if (filters?.country_code) params.append('filter_country_code', filters.country_code);
+    if (filters?.referrer) params.append('filter_referrer', filters.referrer);
+    if (filters?.browser) params.append('filter_browser', filters.browser);
+    if (filters?.os) params.append('filter_os', filters.os);
+    if (filters?.device) params.append('filter_device', filters.device);
+    if (filters?.since) params.append('filter_since', filters.since);
+    if (filters?.until) params.append('filter_until', filters.until);
     const queryString = params.toString();
     const response = await this.sendAdminRequest(
       `/internal/metrics${queryString ? `?${queryString}` : ''}`,
@@ -374,7 +395,47 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       },
       null,
     );
-    return (await response.json()) as MetricsResponse;
+    const body = (await response.json()) as MetricsResponse;
+    // The yup schema's .optional().default(...) fallbacks only run during
+    // backend response validation, not on this client-side cast — apply them
+    // here too so the one-release-cycle tolerance for older servers that the
+    // schema comments promise actually holds for dashboard consumers. The
+    // Partial views widen the static type (which claims these are always
+    // defined) to match what an older server can actually send.
+    const rawBody: Partial<MetricsResponse> = body;
+    const rawAnalytics: Partial<MetricsResponse["analytics_overview"]> = body.analytics_overview;
+    return {
+      ...body,
+      live_users: rawBody.live_users ?? 0,
+      hourly_users: rawBody.hourly_users ?? [],
+      hourly_active_users: rawBody.hourly_active_users ?? [],
+      analytics_overview: {
+        ...body.analytics_overview,
+        hourly_page_views: rawAnalytics.hourly_page_views ?? [],
+        hourly_active_users: rawAnalytics.hourly_active_users ?? [],
+        hourly_visitors: rawAnalytics.hourly_visitors ?? [],
+        daily_anonymous_visitors_fallback: rawAnalytics.daily_anonymous_visitors_fallback ?? [],
+        anonymous_visitors_fallback: rawAnalytics.anonymous_visitors_fallback ?? 0,
+        top_regions: rawAnalytics.top_regions ?? [],
+        bounce_rate: rawAnalytics.bounce_rate ?? 0,
+        daily_bounce_rate: rawAnalytics.daily_bounce_rate ?? [],
+        daily_avg_session_seconds: rawAnalytics.daily_avg_session_seconds ?? [],
+        top_browsers: rawAnalytics.top_browsers ?? [],
+        top_operating_systems: rawAnalytics.top_operating_systems ?? [],
+        top_devices: rawAnalytics.top_devices ?? [],
+      },
+    };
+  }
+
+  async getPlanUsage(): Promise<PlanUsageResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/plan-usage",
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
   }
 
   async getUserActivity(userId: string): Promise<UserActivityResponse> {
@@ -386,6 +447,48 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return (await response.json()) as UserActivityResponse;
+  }
+
+  async getAnalyticsClickmap(options: {
+    kind: AnalyticsClickmapKind,
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    url_pattern?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsClickmapDevice,
+    viewport_width_min?: number,
+    viewport_width_max?: number,
+    sampling?: number,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsClickmapResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapResponse;
+  }
+
+  async createAnalyticsClickmapToken(options: {
+    origin: string,
+  }): Promise<AnalyticsClickmapTokenResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap-token",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapTokenResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {
@@ -1002,10 +1105,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, user_id?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.user_id) qs.set('user_id', options.user_id);
     if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
     if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(

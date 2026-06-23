@@ -3,6 +3,7 @@ import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
+import { getMcpSkillContextPrompt } from "@/lib/ai/mcp-skill-context";
 import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
@@ -61,14 +62,19 @@ export const POST = createSmartRouteHandler({
     if (isDocsOrSearch) {
       systemPrompt += await getVerifiedQaContext();
     }
-    const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
+    systemPrompt += await getMcpSkillContextPrompt(body.mcpCallMetadata?.toolName);
+    const tools = await getTools(toolNames, {
+      auth: fullReq.auth,
+      targetProjectId: projectId,
+      mcpToolName: body.mcpCallMetadata?.toolName,
+    });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const isCreateDashboard = systemPromptId === "create-dashboard";
     const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
     const stepLimit = toolsArg == null
       ? 1
       : isDocsOrSearch
-        ? 50
+        ? 75
         : isCreateDashboard
           ? 12
           : isBuildAnalyticsQuery
@@ -95,9 +101,9 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
-      const startedAt = Date.now();
+      const startedAt = performance.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120_000);
+      const timeoutId = setTimeout(() => controller.abort(), 180_000);
       const result = await generateText({
         model,
         system: systemPrompt,
@@ -148,7 +154,7 @@ export const POST = createSmartRouteHandler({
           response: result.text,
           stepCount: result.steps.length,
           innerToolCallsJson,
-          durationMs: BigInt(Date.now() - startedAt),
+          durationMs: BigInt(Math.round(performance.now() - startedAt)),
           modelId: String(model.modelId),
           errorMessage: undefined,
         });
