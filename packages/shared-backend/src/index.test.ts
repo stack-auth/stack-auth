@@ -78,6 +78,53 @@ describe("local config updater fast path", () => {
   });
 });
 
+describe("local config updater show-onboarding fast path", () => {
+  it("uses the fast path for show-onboarding sentinel (no agent invoked)", async () => {
+    const configPath = writeTempConfig(
+      'import type { HexclaveConfig } from "@hexclave/js/config";\n\nexport const config: HexclaveConfig = "show-onboarding";\n',
+    );
+    mockScriptedWrites = [{ tool_name: "Write", file_path: path.join(getTempDir(), "x.ts") }];
+
+    const { updateConfigObject, readConfigFile } = await import("./index");
+
+    await expect(
+      updateConfigObject(configPath, {
+        "apps.installed.authentication.enabled": true,
+        "apps.installed.emails.enabled": true,
+        "apps.installed.teams.enabled": true,
+        "apps.installed.analytics.enabled": false,
+        "auth.password.allowSignIn": true,
+        "auth.otp.allowSignIn": false,
+        "auth.passkey.allowSignIn": false,
+        "emails.selectedThemeId": "default",
+      }),
+    ).resolves.toBeUndefined();
+
+    // Agent was never called — the show-onboarding sentinel should be
+    // treated as {} on the fast path, just like readConfigFile does.
+    expect(mockHookDecisions).toEqual([]);
+
+    // The resulting config must be a proper nested object, not an array.
+    const { config } = await readConfigFile(configPath);
+    expect(config).toMatchObject({
+      apps: {
+        installed: {
+          authentication: { enabled: true },
+          emails: { enabled: true },
+          teams: { enabled: true },
+          analytics: { enabled: false },
+        },
+      },
+      auth: {
+        password: { allowSignIn: true },
+        otp: { allowSignIn: false },
+        passkey: { allowSignIn: false },
+      },
+      emails: { selectedThemeId: "default" },
+    });
+  });
+});
+
 describe("local config updater agent write boundary", () => {
   it("allows writes inside the config directory and captures them for rollback", async () => {
     const configPath = writeTempConfig(CUSTOM_CONFIG);
