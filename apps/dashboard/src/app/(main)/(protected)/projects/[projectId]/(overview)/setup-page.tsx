@@ -37,6 +37,8 @@ const SETUP_PROMPT = deindent`
 
   Do not change the dev script in package.json, even if the skill mentions doing that.
 
+  After setup finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. If it is not registered, add it manually so future agents have live access to Hexclave docs and APIs.
+
   Once setup is done, tell me to add the Hexclave environment variables to .env.local. After that, setup is complete.
 `;
 
@@ -648,6 +650,15 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                   Add these to your project&apos;s <InlineCode>.env.local</InlineCode> file.
                 </Typography>
                 <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type={selectedKeyType} />
+              </>,
+            },
+            {
+              step: 3,
+              title: "Done",
+              content: <>
+                <Typography>
+                  After starting your dev server, navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
+                </Typography>
               </>,
             },
           ] : [
