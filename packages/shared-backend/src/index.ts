@@ -1,5 +1,5 @@
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, parseHexclaveConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -130,20 +130,8 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   const content = readFileSync(configFilePath, "utf-8");
 
-  // Fast path: if the config is a plain static literal (no imports, no helpers),
-  // apply the update deterministically without invoking the AI agent.
-  const staticConfig = tryParseStaticConfigFileContent(content, configFilePath);
-  if (staticConfig != null && isValidConfig(staticConfig)) {
-    const merged = override(staticConfig, configUpdate);
-    if (!isValidConfig(merged)) {
-      throw new Error(`${LOG_PREFIX} Merged config is invalid after applying update to ${configFilePath}`);
-    }
-    renderConfigObjectToFile(configFilePath, merged);
-    return;
-  }
-
-  // Agent path: config has custom structure (imports, helpers, external files)
-  // that must be preserved — delegate to the AI agent.
+  // All config updates go through the AI agent so that custom structure
+  // (imports, helpers, wrappers like defineHexclaveConfig) is preserved.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
   const { snapshots, seen } = snapshotConfigFiles(configFilePath, content);
   try {
@@ -298,29 +286,19 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
     console.warn(`${LOG_PREFIX} Agent did not modify any file for ${configFilePath}; assuming values are already up to date.`);
   }
 
-  const content = readFileSync(configFilePath, "utf-8");
-  if (!configFileExportsConfig(content, configFilePath)) {
+  if (!(await configFileExportsConfig(configFilePath))) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
   }
 }
 
-function tryParseStaticConfigFileContent(content: string, configFilePath: string): Config | null {
+async function configFileExportsConfig(configFilePath: string): Promise<boolean> {
   try {
-    const parsed = parseHexclaveConfigFileContent(content, configFilePath);
-    return isValidConfig(parsed) ? parsed : null;
+    const module = await jiti.import<unknown>(configFilePath);
+    return isConfigModule(module) && module.config !== undefined;
   } catch {
-    return null;
-  }
-}
-
-function configFileExportsConfig(content: string, configFilePath: string): boolean {
-  try {
-    parseHexclaveConfigFileContent(content, configFilePath);
-    return true;
-  } catch {
-    // Dynamic configs can be valid even when the static parser cannot evaluate
-    // them. For the structural fallback we only need to know that a runtime
-    // config binding still exists after the agent edited the file.
+    // jiti can't load the file (missing deps, syntax errors in imports, etc.)
+    // Fall back to a lightweight regex check for `export const config`.
+    const content = readFileSync(configFilePath, "utf-8");
     return /\bexport\s+const\s+config\b/.test(content);
   }
 }

@@ -1,13 +1,17 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { parseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import fs from "fs/promises";
+import { createJiti } from "jiti";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import os from "os";
 import path from "path";
+
+const jiti = createJiti(import.meta.url, { moduleCache: false });
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
@@ -19,6 +23,14 @@ export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOU
 export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = showOnboardingHexclaveConfigValue;
 
 type LocalEmulatorConfigValue = Record<string, unknown> | typeof LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE;
+
+type ConfigModule = {
+  config?: unknown,
+};
+
+function isConfigModule(value: unknown): value is ConfigModule {
+  return value !== null && typeof value === "object";
+}
 
 export function isLocalEmulatorEnabled() {
   return getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
@@ -56,7 +68,7 @@ export function resolveEmulatorPath(filePath: string): string {
   return filePath;
 }
 
-async function readConfigContent(filePath: string): Promise<string> {
+async function readConfigContent(filePath: string): Promise<string | null> {
   // Check for base64-encoded config content override from env var
   const envContent = getEnvVariable("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", "");
   if (envContent) {
@@ -67,7 +79,7 @@ async function readConfigContent(filePath: string): Promise<string> {
     return await fs.readFile(resolvedPath, "utf-8");
   } catch (e: any) {
     if (e?.code === "ENOENT") {
-      return "";
+      return null;
     }
     throw e;
   }
@@ -75,11 +87,48 @@ async function readConfigContent(filePath: string): Promise<string> {
 
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
+  if (content == null || content.trim() === "") {
+    return {};
+  }
+
+  // Determine which file to import: if content came from env var, write a temp
+  // file so jiti can import it; otherwise import the file directly from disk.
+  const envContent = getEnvVariable("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", "");
+  let importPath: string;
+  let tempDir: string | null = null;
+  if (envContent) {
+    tempDir = mkdtempSync(path.join(os.tmpdir(), "hexclave-config-"));
+    importPath = path.join(tempDir, "stack.config.ts");
+    writeFileSync(importPath, content, "utf-8");
+  } else {
+    importPath = resolveEmulatorPath(filePath);
+  }
+
   try {
-    return parseHexclaveConfigFileContent(content, filePath);
+    const configModule = await jiti.import<unknown>(importPath);
+    if (!isConfigModule(configModule)) {
+      throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+    }
+    const config = configModule.config;
+    if (config === showOnboardingHexclaveConfigValue) {
+      return LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE;
+    }
+    if (!isValidConfig(config)) {
+      throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The exported \`config\` is not a valid config object.`);
+    }
+    return config;
   } catch (e) {
+    if (e instanceof StatusError) throw e;
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
+  } finally {
+    if (tempDir != null) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
   }
 }
 

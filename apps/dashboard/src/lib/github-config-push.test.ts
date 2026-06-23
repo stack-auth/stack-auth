@@ -41,14 +41,14 @@ function snapshotGithubCall(call: { path: string, init?: RequestInit }) {
 }
 
 describe("buildUpdatedConfigFileContent", () => {
-  it("merges a flat dot-notation update into the existing config", () => {
+  it("merges a flat dot-notation update into the existing config", async () => {
     const current = `import type { HexclaveConfig } from "@hexclave/next";
 
 export const config: HexclaveConfig = {
   teams: { allowClientTeamCreation: false },
 };
 `;
-    const result = buildUpdatedConfigFileContent(current, { "teams.allowClientTeamCreation": true });
+    const result = await buildUpdatedConfigFileContent(current, { "teams.allowClientTeamCreation": true });
     expect(result).toMatchInlineSnapshot(`
       "import type { HexclaveConfig } from "@hexclave/next/config";
 
@@ -61,12 +61,12 @@ export const config: HexclaveConfig = {
     `);
   });
 
-  it("preserves the existing @hexclave/* import package when re-rendering", () => {
+  it("preserves the existing @hexclave/* import package when re-rendering", async () => {
     const current = `import type { HexclaveConfig } from "@hexclave/react";
 
 export const config: HexclaveConfig = {};
 `;
-    const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
+    const result = await buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
       "import type { HexclaveConfig } from "@hexclave/react/config";
 
@@ -79,7 +79,7 @@ export const config: HexclaveConfig = {};
     `);
   });
 
-  it("preserves a legacy @stackframe/* import package when re-rendering", () => {
+  it("preserves a legacy @stackframe/* import package when re-rendering", async () => {
     // Projects pinned to the last @stackframe/* release (before the Hexclave
     // rebrand) still have config files importing from the legacy scope. The
     // dashboard must not silently rewrite their imports — keep what's there.
@@ -87,7 +87,7 @@ export const config: HexclaveConfig = {};
 
 export const config: StackConfig = {};
 `;
-    const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
+    const result = await buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
       "import type { HexclaveConfig } from "@stackframe/react";
 
@@ -100,9 +100,9 @@ export const config: StackConfig = {};
     `);
   });
 
-  it("defaults to @hexclave/js when no recognizable import is present", () => {
+  it("defaults to @hexclave/js when no recognizable import is present", async () => {
     const current = `export const config = {};\n`;
-    const result = buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
+    const result = await buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true });
     expect(result).toMatchInlineSnapshot(`
       "import type { HexclaveConfig } from "@hexclave/js/config";
 
@@ -115,11 +115,11 @@ export const config: StackConfig = {};
     `);
   });
 
-  it("adds new top-level keys to an empty config", () => {
+  it("adds new top-level keys to an empty config", async () => {
     const current = `import type { HexclaveConfig } from "@hexclave/js";
 export const config: HexclaveConfig = {};
 `;
-    const result = buildUpdatedConfigFileContent(current, {
+    const result = await buildUpdatedConfigFileContent(current, {
       "payments.items.todos.displayName": "Todos",
       "payments.items.todos.customerType": "user",
     });
@@ -140,13 +140,13 @@ export const config: HexclaveConfig = {};
     `);
   });
 
-  it("replaces an existing nested value via dot notation", () => {
+  it("replaces an existing nested value via dot notation", async () => {
     const current = `import type { HexclaveConfig } from "@hexclave/js";
 export const config: HexclaveConfig = {
   payments: { items: { todos: { displayName: "Old" } } },
 };
 `;
-    const result = buildUpdatedConfigFileContent(current, {
+    const result = await buildUpdatedConfigFileContent(current, {
       "payments.items.todos.displayName": "New",
     });
     expect(result).toMatchInlineSnapshot(`
@@ -165,15 +165,15 @@ export const config: HexclaveConfig = {
     `);
   });
 
-  it("refuses to mutate a show-onboarding placeholder file", () => {
+  it("refuses to mutate a show-onboarding placeholder file", async () => {
     const current = `export const config = "show-onboarding";`;
-    expect(() => buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true }))
-      .toThrowErrorMatchingInlineSnapshot(`[Error: The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes.]`);
+    await expect(buildUpdatedConfigFileContent(current, { "auth.allowSignUp": true }))
+      .rejects.toThrowErrorMatchingInlineSnapshot(`[Error: The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes.]`);
   });
 
-  it("throws when the file does not export a `config` binding", () => {
-    expect(() => buildUpdatedConfigFileContent(`export const other = {};`, { "a": 1 }))
-      .toThrowErrorMatchingInlineSnapshot(`[Error: Invalid config in stack.config.ts. The file must export a plain \`config\` object or "show-onboarding".]`);
+  it("throws when the file does not export a `config` binding", async () => {
+    await expect(buildUpdatedConfigFileContent(`export const other = {};`, { "a": 1 }))
+      .rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Existing GitHub config file does not parse as a valid Hexclave config object.]`);
   });
 });
 

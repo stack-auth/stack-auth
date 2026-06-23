@@ -1,7 +1,38 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
-export { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent };
+import { isValidConfig, normalize } from "./config/format";
+
+export { showOnboardingHexclaveConfigValue } from "./hexclave-config-file";
+
+const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
+
+/**
+ * Renders a config object into the source text of a `stack.config.ts` file.
+ */
+export function renderConfigFileContent(config: unknown, importPackage?: string): string {
+  if (!isValidConfig(config)) {
+    throw new Error("Invalid config: expected a plain object.");
+  }
+
+  const droppedKeys: string[] = [];
+  const normalizedConfig = normalize(config, {
+    onDotIntoNonObject: "ignore",
+    onDotIntoNull: "empty-object",
+    droppedKeys,
+  });
+  if (droppedKeys.length > 0) {
+    throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
+  }
+  const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
+  // Import the `HexclaveConfig` type from the package's lightweight `/config`
+  // entrypoint, which is free of framework runtime code and therefore safe for
+  // tooling (e.g. the local dashboard) to load in a plain Node context. Only the
+  // Hexclave-branded packages expose this subpath; legacy `@stackframe/*`
+  // releases predate it, so fall back to their package root.
+  const importSpecifier = pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
+  const importLine = `import type { HexclaveConfig } from "${importSpecifier}";`;
+  return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
+}
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.
@@ -77,55 +108,6 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
     }
   }
 };`);
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent parses static config exports", ({ expect }) => {
-  expect(parseHexclaveConfigFileContent(`
-    import type { StackConfig } from "@hexclave/js";
-    export const config: StackConfig = {
-      auth: { allowSignUp: true },
-      payments: { testMode: false },
-    };
-  `, "stack.config.ts")).toMatchInlineSnapshot(`
-    {
-      "auth": {
-        "allowSignUp": true,
-      },
-      "payments": {
-        "testMode": false,
-      },
-    }
-  `);
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent parses show-onboarding", ({ expect }) => {
-  expect(parseHexclaveConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent rejects dynamic config exports", ({ expect }) => {
-  expect(() => parseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
-});
-
-import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns the config for static exports", ({ expect }) => {
-  expect(tryParseHexclaveConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
-    auth: { allowSignUp: true },
-  });
-});
-
-import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns null for non-static exports", ({ expect }) => {
-  // Wrapped in a helper call (e.g. defineStackConfig) -> not a plain literal.
-  expect(tryParseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toBeNull();
-  // References an imported value -> has structure to preserve.
-  expect(tryParseHexclaveConfigFileContent('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBeNull();
-  // Syntax error.
-  expect(tryParseHexclaveConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
-});
-
-import.meta.vitest?.test("hexclaveConfigFileExportsConfig detects a config export", ({ expect }) => {
-  expect(hexclaveConfigFileExportsConfig("export const config = { a: 1 };", "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig("export const notConfig = { a: 1 };", "stack.config.ts")).toBe(false);
-  expect(hexclaveConfigFileExportsConfig("export const config = {", "stack.config.ts")).toBe(false);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {

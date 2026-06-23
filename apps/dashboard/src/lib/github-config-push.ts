@@ -12,13 +12,27 @@
 import type { PushedConfigSource } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
-import { parseHexclaveConfigFileContent, renderConfigFileContent, showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/hexclave-config-file";
+import { renderConfigFileContent, showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-rendering";
+import { createJiti } from "jiti";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import os from "os";
+import path from "path";
 
 import {
   commitFile,
   getFileContent,
   type GithubFetch,
 } from "./github-api";
+
+const jiti = createJiti(import.meta.url, { moduleCache: false });
+
+type ConfigModule = {
+  config?: unknown,
+};
+
+function isConfigModule(value: unknown): value is ConfigModule {
+  return value !== null && typeof value === "object";
+}
 
 /**
  * Detects the `@hexclave/*` or legacy `@stackframe/*` import package used by
@@ -39,6 +53,29 @@ function detectImportPackage(currentFileContent: string): string | undefined {
 }
 
 /**
+ * Evaluates a config file content string by writing it to a temp file and
+ * importing it with jiti. Returns the exported config value.
+ */
+async function evaluateConfigContent(content: string): Promise<unknown> {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "hexclave-config-"));
+  const tempFile = path.join(tempDir, "stack.config.ts");
+  writeFileSync(tempFile, content, "utf-8");
+  try {
+    const configModule = await jiti.import<unknown>(tempFile);
+    if (!isConfigModule(configModule)) {
+      throw new Error("The config file must export a plain `config` object or \"show-onboarding\".");
+    }
+    return configModule.config;
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
+}
+
+/**
  * Pure: given the existing contents of a `stack.config.ts` file and a config
  * update (the same dot-notation override shape that flows through
  * `updatePushedConfig`), returns the new file contents.
@@ -47,11 +84,11 @@ function detectImportPackage(currentFileContent: string): string | undefined {
  * `StackConfig` from a known `@hexclave/*` or legacy `@stackframe/*` package;
  * otherwise the renderer uses its own default.
  */
-export function buildUpdatedConfigFileContent(
+export async function buildUpdatedConfigFileContent(
   currentFileContent: string,
   configUpdate: EnvironmentConfigOverrideOverride,
-): string {
-  const parsed = parseHexclaveConfigFileContent(currentFileContent, "stack.config.ts");
+): Promise<string> {
+  const parsed = await evaluateConfigContent(currentFileContent);
   if (parsed === showOnboardingHexclaveConfigValue) {
     throw new Error(
       "The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes."
@@ -92,7 +129,7 @@ export async function pushConfigUpdateToGitHub(options: PushConfigUpdateOptions)
     );
   }
 
-  const newContent = buildUpdatedConfigFileContent(existing.text, configUpdate);
+  const newContent = await buildUpdatedConfigFileContent(existing.text, configUpdate);
   if (newContent === existing.text) {
     // Nothing changed in the rendered file — no need to commit. The dashboard
     // will still update the cloud-side override for immediate feedback.

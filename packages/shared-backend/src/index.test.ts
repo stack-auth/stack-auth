@@ -57,24 +57,26 @@ afterEach(() => {
   }
 });
 
-// Config with an import triggers the agent path (tryParseHexclaveConfigFileContent returns null)
 const CUSTOM_CONFIG = `import emailHtml from "./emails/welcome.html" with { type: "text" };
 export const config = { auth: { allowSignUp: true }, emails: { welcomeHtml: emailHtml } };
 `;
 
-describe("local config updater fast path", () => {
-  it("uses the fast path for plain static configs (no agent invoked)", async () => {
+describe("local config updater agent path", () => {
+  it("always invokes the agent, even for plain static configs", async () => {
     const configPath = writeTempConfig("export const config = { auth: { allowSignUp: true } };\n");
     mockScriptedWrites = [{ tool_name: "Write", file_path: path.join(getTempDir(), "x.ts") }];
+    mockAfterWrites = () => {
+      writeFileSync(configPath, "export const config = { auth: { allowSignUp: false } };\n", "utf-8");
+    };
 
     const { updateConfigObject } = await import("./index");
 
     await expect(updateConfigObject(configPath, { "auth.allowSignUp": false })).resolves.toBeUndefined();
 
-    // Agent was never called, so no hook decisions were recorded
-    expect(mockHookDecisions).toEqual([]);
-    // The config file was updated deterministically
-    expect(readFileSync(configPath, "utf-8")).toContain('"allowSignUp": false');
+    // Agent was called — hook decisions were recorded
+    expect(mockHookDecisions).toEqual([{ continue: true }]);
+    // The config file was updated by the agent
+    expect(readFileSync(configPath, "utf-8")).toContain("allowSignUp: false");
   });
 });
 
