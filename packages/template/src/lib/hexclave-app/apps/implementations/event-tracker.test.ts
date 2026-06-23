@@ -387,6 +387,39 @@ describe("EventTracker", () => {
     }
   });
 
+  it("silently ignores network errors caused by ad blockers", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button>Click me</button>";
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.error(new TypeError("Failed to fetch"));
+      },
+    });
+
+    try {
+      tracker.start();
+
+      await advancePastFlush();
+      expect(sentBodies).toHaveLength(1);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      // Unlike ANALYTICS_NOT_ENABLED, ad blocker errors do NOT disable the
+      // tracker — subsequent flushes continue attempting delivery.
+      document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await advancePastFlush();
+      expect(sentBodies).toHaveLength(2);
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      tracker.stop();
+      warnSpy.mockRestore();
+    }
+  });
+
   it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Click me</button>";

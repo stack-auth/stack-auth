@@ -79,7 +79,7 @@ InputOTPGroup.displayName = "InputOTPGroup";
 const InputOTPSlot = forwardRefIfNeeded<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & { index: number, size?: "default" | "lg" }>(
   ({ index, className, size = "default", ...props }, ref) => {
     const context = useInputOTPContext();
-    const char = context.value[index] ?? "";
+    const char = context.value.at(index) ?? "";
     const isActive = context.value.length === index && context.value.length < context.maxLength && !context.disabled;
 
     return (

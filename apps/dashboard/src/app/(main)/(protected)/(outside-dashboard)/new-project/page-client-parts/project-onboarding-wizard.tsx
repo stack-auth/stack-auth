@@ -96,12 +96,13 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry: "US",
       developmentEnvironment: isDevelopmentEnvironment,
+      isLocalEmulator,
     });
     if (onboardingState == null) {
       return defaultState;
     }
-    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
-  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment, isLocalEmulator });
+  }, [completeConfig, isDevelopmentEnvironment, isLocalEmulator, onboardingState, project]);
   const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
@@ -282,8 +283,9 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry,
       developmentEnvironment: isDevelopmentEnvironment,
+      isLocalEmulator,
     });
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
   const persistOnboardingState = useCallback(async () => {
     await setOnboardingState(buildOnboardingState());
@@ -300,7 +302,7 @@ export function ProjectOnboardingWizard(props: {
     for (const appId of ALL_APP_IDS) {
       configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
     }
-    if (isDevelopmentEnvironment) {
+    if (isLocalEmulator) {
       configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
         type: "google",
         allowSignIn: true,
@@ -318,7 +320,7 @@ export function ProjectOnboardingWizard(props: {
       } : null;
     }
     return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isLocalEmulator, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
     const configUpdate: EnvironmentConfigOverrideOverride = {};
@@ -347,7 +349,7 @@ export function ProjectOnboardingWizard(props: {
           return;
         }
 
-        if (!isDevelopmentEnvironment) {
+        if (!isLocalEmulator) {
           const providersUpdated = await updateConfig({
             adminApp: props.project.app,
             configUpdate: buildEnvironmentOAuthConfigUpdate(),
@@ -368,7 +370,7 @@ export function ProjectOnboardingWizard(props: {
     buildEnvironmentOAuthConfigUpdate,
     finishProjectOnboarding,
     isLinkExistingMode,
-    isDevelopmentEnvironment,
+    isLocalEmulator,
     persistOnboardingState,
     props.project.app,
     clearOnboardingState,
@@ -463,12 +465,11 @@ export function ProjectOnboardingWizard(props: {
 
   if (props.status === "config_choice") {
     if (isDevelopmentEnvironment) {
-      const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
       return (
         <OnboardingPage
           stepKey="config-choice"
           title="Welcome to Hexclave!"
-          subtitle={`You are running Hexclave in the ${developmentEnvironmentName}.`}
+          subtitle={`You are running Hexclave with the local dashboard.`}
           steps={timelineSteps}
           currentStep="config_choice"
           onStepClick={handleTimelineStepClick}
@@ -488,10 +489,10 @@ export function ProjectOnboardingWizard(props: {
         >
           <div className="mx-auto max-w-xl rounded-2xl bg-white/70 p-6 text-center ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06]">
             <Typography className="text-base leading-relaxed">
-              This development-environment project is ready for onboarding.
+              This local project is running locally and ready to get started.
             </Typography>
             <Typography variant="secondary" className="mt-3 text-sm leading-relaxed">
-              Next, we will guide you through the onboarding flow to set up your Hexclave configuration.
+              Next, we will guide you through the onboarding flow to set up your hexclave.config.ts file.
             </Typography>
           </div>
         </OnboardingPage>
@@ -698,7 +699,7 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
-    const availableSignInMethods = isDevelopmentEnvironment
+    const availableSignInMethods = isLocalEmulator
       ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
       : SIGN_IN_METHODS;
 
