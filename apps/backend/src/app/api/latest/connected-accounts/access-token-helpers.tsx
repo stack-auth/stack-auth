@@ -45,7 +45,7 @@ export function isSharedAccessTokenBlocked(providerIsShared: boolean): boolean {
 import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
   const { test, expect, beforeEach, afterEach, vi } = import.meta.vitest!;
   beforeEach(() => {
-    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
+    vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -53,7 +53,7 @@ import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
 
   test("non-shared provider is never blocked, regardless of env var", () => {
     expect(isSharedAccessTokenBlocked(false)).toBe(false);
-    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+    vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
     expect(isSharedAccessTokenBlocked(false)).toBe(false);
   });
 
@@ -63,22 +63,22 @@ import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
 
   test("shared provider is blocked for any value other than the literal 'true'", () => {
     for (const v of ["false", "1", "TRUE", "yes", " true "]) {
-      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", v);
+      vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", v);
       expect(isSharedAccessTokenBlocked(true)).toBe(true);
     }
   });
 
   test("shared provider is allowed only when env var === 'true'", () => {
-    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+    vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
     expect(isSharedAccessTokenBlocked(true)).toBe(false);
   });
 
   test("result does not depend on NODE_ENV", () => {
     for (const nodeEnv of ["production", "development", "test", "preview", ""]) {
       vi.stubEnv("NODE_ENV", nodeEnv);
-      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
+      vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
       expect(isSharedAccessTokenBlocked(true)).toBe(true);
-      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+      vi.stubEnv("HEXCLAVE_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
       expect(isSharedAccessTokenBlocked(true)).toBe(false);
     }
   });

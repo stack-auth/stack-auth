@@ -31,13 +31,13 @@ export type ProjectAuth = (ProjectAuthWithRefreshToken | ProjectAuthWithSecretSe
 };
 
 function resolveApiUrl(): string {
-  return process.env.STACK_API_URL
+  return resolveHexclaveStackEnvVar("HEXCLAVE_API_URL", "STACK_API_URL")
     ?? readConfigValue("STACK_API_URL")
     ?? DEFAULT_API_URL;
 }
 
 function resolveDashboardUrl(): string {
-  return process.env.STACK_DASHBOARD_URL
+  return resolveHexclaveStackEnvVar("HEXCLAVE_DASHBOARD_URL", "STACK_DASHBOARD_URL")
     ?? readConfigValue("STACK_DASHBOARD_URL")
     ?? DEFAULT_DASHBOARD_URL;
 }
@@ -51,8 +51,17 @@ function resolveRefreshToken(): string {
   return token;
 }
 
+function resolveHexclaveStackEnvVar(hexclaveName: string, stackName: string): string | undefined {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new CliError(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 function resolveSecretServerKey(): string | null {
-  return process.env.HEXCLAVE_SECRET_SERVER_KEY ?? process.env.STACK_SECRET_SERVER_KEY ?? null;
+  return resolveHexclaveStackEnvVar("HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY") || null;
 }
 
 export function resolveLoginConfig(): LoginConfig {
@@ -91,10 +100,12 @@ export function resolveAuth(projectId: string): ProjectAuth {
 // STACK_PROJECT_ID name). Empty strings are treated as absent so callers can
 // pass through optional option values directly.
 export function resolveProjectId(projectIdOption?: string): string {
-  for (const candidate of [projectIdOption, process.env.HEXCLAVE_PROJECT_ID, process.env.STACK_PROJECT_ID]) {
-    if (candidate != null && candidate !== "") {
-      return candidate;
-    }
+  if (projectIdOption != null && projectIdOption !== "") {
+    return projectIdOption;
+  }
+  const projectIdFromEnv = resolveHexclaveStackEnvVar("HEXCLAVE_PROJECT_ID", "STACK_PROJECT_ID");
+  if (projectIdFromEnv != null && projectIdFromEnv !== "") {
+    return projectIdFromEnv;
   }
   throw new CliError("No project ID provided. Pass --cloud-project-id <id> or set the HEXCLAVE_PROJECT_ID environment variable.");
 }

@@ -166,6 +166,21 @@ export function isAnalyticsNotEnabledError(error: unknown): boolean {
   return KnownErrors.AnalyticsNotEnabled.isInstance(error);
 }
 
+/**
+ * Whether the error looks like a network failure caused by an ad blocker or
+ * similar extension blocking analytics requests. These are expected in
+ * production and should be silently ignored rather than logged as warnings.
+ */
+export function isAdBlockerNetworkError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.message.includes("Failed to fetch")
+      || error.message.includes("NetworkError")
+      || error.message.includes("Load failed")
+      || error.message.includes("network connection");
+  }
+  return false;
+}
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -272,6 +287,11 @@ export class SessionRecorder {
       if (res.status === "error") {
         if (isAnalyticsNotEnabledError(res.error)) {
           this._disable();
+          return;
+        }
+        // Ad blockers commonly block analytics endpoints, causing network
+        // errors. These are expected and should not pollute the console.
+        if (isAdBlockerNetworkError(res.error)) {
           return;
         }
         captureWarning("SessionRecorder.flush", res.error);

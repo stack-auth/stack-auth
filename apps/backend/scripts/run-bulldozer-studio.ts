@@ -525,14 +525,16 @@ function createTableRegistry(schema: Record<string, unknown>): {
   return { tables, tableById, idByTable, categories };
 }
 
-const AVAILABLE_SCHEMAS: Record<string, () => Record<string, unknown>> = {
+const AVAILABLE_SCHEMAS: Partial<Record<string, () => Record<string, unknown>>> = {
   "example": () => exampleFungibleLedgerSchema,
   "payments": () => createPaymentsSchema(),
 };
 let currentSchemaName = getEnvVariable("STACK_BULLDOZER_STUDIO_SCHEMA", "example");
-let registry = createTableRegistry(
-  (AVAILABLE_SCHEMAS[currentSchemaName] ?? AVAILABLE_SCHEMAS["example"])()
-);
+const schemaFactory = AVAILABLE_SCHEMAS[currentSchemaName] ?? AVAILABLE_SCHEMAS["example"];
+if (!schemaFactory) {
+  throw new Error(`Schema not found: ${currentSchemaName}. Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}`);
+}
+let registry = createTableRegistry(schemaFactory());
 function switchSchema(name: string): void {
   const factory = Reflect.get(AVAILABLE_SCHEMAS, name);
   if (typeof factory !== "function") {

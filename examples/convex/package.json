@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/convex-example",
-  "version": "1.0.22",
+  "version": "1.0.25",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
@@ -38,7 +38,7 @@
     "prettier": "^3.5.3",
     "rimraf": "^5.0.5",
     "tailwindcss": "^4",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "wait-on": "^8.0.1"
   },
   "packageManager": "pnpm@11.5.0"

@@ -24,23 +24,9 @@ import {
   CLICKMAP_OVERLAY_TOKEN_STORAGE_KEY,
   CLICKMAP_OVERLAY_TOKEN_UPDATED_EVENT,
 } from "@hexclave/shared/dist/utils/analytics-clickmap-overlay";
-import { typedEntries } from "@hexclave/shared/dist/utils/objects";
-import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { ArrowRight, GlobeHemisphereWest } from "@phosphor-icons/react";
+import { ArrowRight, GlobeHemisphereWest, InfoIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-
-type ClickmapOrigin = {
-  id: string,
-  origin: string,
-};
-
-function normalizeOrigin(baseUrl: string): string | null {
-  try {
-    return new URL(baseUrl).origin;
-  } catch {
-    return null;
-  }
-}
+import { getClickmapOriginOptions, normalizeClickmapOrigin, type ClickmapOrigin } from "./clickmap-origins";
 
 // The clickmap token is a self-describing JWT (its payload carries the project
 // and origin it was minted for), so the snippet only has to hand over the token
@@ -118,19 +104,8 @@ export default function PageClient() {
     setCustomOrigin(window.location.origin);
   }, []);
 
-  const origins = useMemo(() => {
-    const byOrigin = new Map<string, ClickmapOrigin>();
-    for (const [id, domain] of typedEntries(config.domains.trustedDomains)) {
-      if (domain.baseUrl == null) {
-        continue;
-      }
-      const origin = normalizeOrigin(domain.baseUrl);
-      if (origin == null) {
-        continue;
-      }
-      byOrigin.set(origin, { id, origin });
-    }
-    return Array.from(byOrigin.values()).sort((a, b) => stringCompare(a.origin, b.origin));
+  const { origins, wildcardDomains } = useMemo(() => {
+    return getClickmapOriginOptions(config.domains.trustedDomains);
   }, [config.domains.trustedDomains]);
 
   async function showClickmap(origin: ClickmapOrigin) {
@@ -166,39 +141,49 @@ export default function PageClient() {
         description="Launch the clickmap toolbar on a trusted domain."
         fillWidth
       >
-        {config.domains.allowLocalhost && (
-          <DesignAnalyticsCard gradient="slate" className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1 space-y-1">
-                <Typography className="font-medium">Localhost origin</Typography>
-                <Typography type="p" variant="secondary" className="text-xs">
-                  Use the exact origin shown in the browser address bar for your local site.
-                </Typography>
-                <Input value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="http://localhost:3000" />
-              </div>
+        <DesignAnalyticsCard gradient="slate" className="p-4">
+          <div className="space-y-1">
+            <Typography className="font-medium">Exact page origin</Typography>
+            <Typography type="p" variant="secondary" className="text-xs">
+              Use the exact origin shown in the browser address bar, including for domains matched by a wildcard.
+            </Typography>
+            <div className="flex items-center gap-2">
+              <Input className="flex-1" value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} placeholder="https://app.example.com" />
               <Button
-                className="gap-1.5"
+                className="shrink-0 gap-1.5"
                 disabled={customOrigin.trim() === ""}
                 onClick={async () => {
-                  const origin = normalizeOrigin(customOrigin);
+                  const origin = normalizeClickmapOrigin(customOrigin);
                   if (origin == null) {
-                    window.alert("Enter a valid HTTP(S) origin, for example http://localhost:3000.");
+                    window.alert("Enter a valid HTTP(S) origin, for example https://app.example.com.");
                     return;
                   }
-                  await showClickmap({ id: "localhost", origin });
+                  await showClickmap({ id: "exact-origin", origin });
                 }}
               >
                 Show clickmap
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
-          </DesignAnalyticsCard>
-        )}
+            {wildcardDomains.length > 0 && (
+              <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                <InfoIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  {wildcardDomains.map((d) => d.baseUrl).join(", ")} can match real pages, but cannot be opened directly as a clickmap target.
+                </span>
+              </div>
+            )}
+          </div>
+        </DesignAnalyticsCard>
 
         {origins.length === 0 ? (
           <Alert className="rounded-2xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span>Add a trusted domain before launching a production clickmap.</span>
+              <span>
+                {wildcardDomains.length === 0
+                  ? "Add a trusted domain before launching a production clickmap."
+                  : "Enter an exact origin that matches a wildcard domain, or add a concrete trusted domain."}
+              </span>
               <Button
                 className="shrink-0 gap-1.5"
                 onClick={() => router.push(`/projects/${project.id}/domains`)}

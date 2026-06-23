@@ -11,8 +11,17 @@ const PLACEHOLDER = "__SPACETIMEDB_LOG_TOKEN__";
 
 const action = process.argv[2];
 
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 if (action === "inject") {
-  const token = process.env.STACK_MCP_LOG_TOKEN || "change-me";
+  const token = resolveHexclaveStackEnvVar("HEXCLAVE_MCP_LOG_TOKEN", "STACK_MCP_LOG_TOKEN") || "change-me";
   if (existsSync(BACKUP)) {
     console.error("Refusing to inject: backup already exists. Run restore first.");
     process.exit(1);

@@ -9,7 +9,7 @@ import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
 import { cliVersion } from "../lib/own-package.js";
-import { maybeReexecToLatest } from "../lib/self-update.js";
+import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -788,14 +788,18 @@ child.on("error", (error) => {
 `;
 
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+  // Scrub the internal re-exec handshake marker so it never leaks into the user's
+  // command. Done here (not in the wrapper script) to cover both spawn paths.
+  const childEnv = { ...env };
+  delete childEnv[REEXEC_MARKER_ENV];
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      ? spawn(command.command, command.args, { stdio: "inherit", env: childEnv })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
         env: {
-          ...env,
+          ...childEnv,
           [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
           [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
           [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),

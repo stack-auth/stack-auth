@@ -321,15 +321,16 @@ it("should not allow duplicate accounts with same normalized email", async ({ ex
     NiceResponse {
       "status": 409,
       "body": {
-        "code": "USER_EMAIL_ALREADY_EXISTS",
+        "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
         "details": {
-          "email": "duplicate.test-<stripped UUID>@example.com",
+          "contact_channel_value": "duplicate.test-<stripped UUID>@example.com",
+          "type": "email",
           "would_work_if_email_was_verified": false,
         },
-        "error": "A user with email \\"duplicate.test-<stripped UUID>@example.com\\" already exists.",
+        "error": "This email \\"(duplicate.test-<stripped UUID>@example.com)\\" is already used for authentication by another account.",
       },
       "headers": Headers {
-        "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
+        "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
         <some fields may have been hidden>,
       },
     }
