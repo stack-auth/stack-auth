@@ -133,7 +133,7 @@
     "chokidar-cli": "^3.0.0",
     "esbuild": "^0.20.2",
     "i18next": "^23.14.0",
-    "i18next-cli": "^1.64.1",
+    "i18next-parser": "^9.0.2",
     "@tanstack/react-router": "^1.167.4",
     "@tanstack/react-start": "^1.166.15",
     "postcss": "^8.4.38",
