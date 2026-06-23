@@ -1,8 +1,8 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { stepCountIs } from "ai";
-import { vokerGenerateText } from "@/lib/ai/voker";
+import { generateText, stepCountIs } from "ai";
+import { getVokerClient, buildChatCompletionOutput } from "@/lib/ai/voker";
 import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
 import { getVerifiedQaContext } from "./verified-qa";
@@ -103,14 +103,26 @@ export async function reviewMcpCall(entry: {
 
     const verifiedQa = await getVerifiedQaContext();
 
-    const result = await vokerGenerateText({
-      vokerAgent: "hexclave-qa-reviewer",
-      vokerSession: entry.correlationId,
+    const result = await generateText({
       model,
       system: QA_SYSTEM_PROMPT + verifiedQa,
-      tools: devinTools as Parameters<typeof vokerGenerateText>[0]["tools"],
+      tools: devinTools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(10),
       messages: [{ role: "user", content: userMessage }],
+    });
+
+    getVokerClient().events.create({
+      vokerAgent: "hexclave-qa-reviewer",
+      vokerSession: entry.correlationId,
+      eventName: "llm",
+      properties: {
+        api: "openai-chat-completions",
+        inputs: {
+          model: REVIEW_MODEL_ID,
+          messages: [{ role: "user", content: userMessage }],
+        },
+        output: buildChatCompletionOutput(result.text, REVIEW_MODEL_ID),
+      },
     });
 
     const conversation = result.steps.map((step, i) => {

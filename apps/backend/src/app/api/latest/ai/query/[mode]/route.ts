@@ -16,8 +16,8 @@ import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fie
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { Json } from "@hexclave/shared/dist/utils/json";
-import { stepCountIs, streamText, type ModelMessage } from "ai";
-import { vokerGenerateText, getVokerClient } from "@/lib/ai/voker";
+import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
+import { getVokerClient, buildChatCompletionOutput } from "@/lib/ai/voker";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -109,10 +109,9 @@ export const POST = createSmartRouteHandler({
             api: "openai-chat-completions",
             inputs: {
               model: String(model.modelId),
-              system: systemPrompt,
               messages: modelMessages,
             },
-            output: text,
+            output: buildChatCompletionOutput(text, String(model.modelId)),
           },
         });
       });
@@ -126,9 +125,7 @@ export const POST = createSmartRouteHandler({
       const startedAt = performance.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180_000);
-      const result = await vokerGenerateText({
-        vokerAgent: "hexclave-ai-assistant",
-        vokerSession,
+      const result = await generateText({
         model,
         system: systemPrompt,
         messages: modelMessages,
@@ -136,6 +133,22 @@ export const POST = createSmartRouteHandler({
         abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),
       }).finally(() => clearTimeout(timeoutId));
+
+      runAsynchronouslyAndWaitUntil(async () => {
+        getVokerClient().events.create({
+          vokerAgent: "hexclave-ai-assistant",
+          vokerSession,
+          eventName: "llm",
+          properties: {
+            api: "openai-chat-completions",
+            inputs: {
+              model: String(model.modelId),
+              messages: modelMessages,
+            },
+            output: buildChatCompletionOutput(result.text, String(model.modelId)),
+          },
+        });
+      });
 
       const content: ChatContent = result.steps.flatMap((step) => {
         const blocks: ChatContent = [];
