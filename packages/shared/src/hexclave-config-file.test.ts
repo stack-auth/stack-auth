@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseHexclaveConfigFileContent } from "./hexclave-config-file";
+import { parseHexclaveConfigFileContent, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
 
 describe("parseHexclaveConfigFileContent", () => {
   it("parses a plain object config", () => {
@@ -75,5 +75,32 @@ describe("parseHexclaveConfigFileContent", () => {
         allowSignUp: true,
       },
     });
+  });
+
+  it("rejects unknown single-argument wrapper calls", () => {
+    const content = `
+      export const config = mergeWithDefaults({
+        auth: { allowSignUp: false },
+      });
+    `;
+    expect(() => parseHexclaveConfigFileContent(content, "test.ts")).toThrow();
+    expect(tryParseHexclaveConfigFileContent(content, "test.ts")).toBeNull();
+  });
+
+  it("rejects multi-argument calls", () => {
+    const content = `
+      export const config = someHelper({ auth: {} }, { teams: {} });
+    `;
+    expect(() => parseHexclaveConfigFileContent(content, "test.ts")).toThrow();
+    expect(tryParseHexclaveConfigFileContent(content, "test.ts")).toBeNull();
+  });
+
+  it("rejects wrapper call with non-static argument", () => {
+    const content = `
+      import { someValue } from "./other";
+      export const config = defineHexclaveConfig(someValue);
+    `;
+    expect(() => parseHexclaveConfigFileContent(content, "test.ts")).toThrow();
+    expect(tryParseHexclaveConfigFileContent(content, "test.ts")).toBeNull();
   });
 });

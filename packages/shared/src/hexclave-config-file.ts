@@ -99,10 +99,15 @@ function evaluateStaticConfigExpression(expression: t.Expression): unknown {
   }
   // Handle wrapper calls like defineHexclaveConfig({...}) and defineStackConfig({...}).
   // These are identity functions so we can statically evaluate their single argument.
+  // Only known identity wrappers are accepted; unknown callees still throw so that
+  // tryParseHexclaveConfigFileContent correctly returns null for non-static configs.
   if (t.isCallExpression(unwrapped) && unwrapped.arguments.length === 1) {
-    const arg = unwrapped.arguments[0];
-    if (t.isExpression(arg)) {
-      return evaluateStaticConfigExpression(arg);
+    const callee = unwrapped.callee;
+    if (t.isIdentifier(callee) && (callee.name === "defineHexclaveConfig" || callee.name === "defineStackConfig")) {
+      const arg = unwrapped.arguments[0];
+      if (t.isExpression(arg)) {
+        return evaluateStaticConfigExpression(arg);
+      }
     }
   }
   throw new Error(`Unsupported config expression: ${unwrapped.type}`);
