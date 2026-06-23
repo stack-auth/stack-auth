@@ -78,8 +78,9 @@ describe("local config updater fast path", () => {
   });
 });
 
-describe("local config updater show-onboarding fast path", () => {
-  it("uses the fast path for show-onboarding sentinel (no agent invoked)", async () => {
+describe("onboarding wizard config update e2e", () => {
+  it("applies the full onboarding config to a show-onboarding sentinel file", async () => {
+    // Simulate the initial hexclave.config.ts created by `hexclave dev`
     const configPath = writeTempConfig(
       'import type { HexclaveConfig } from "@hexclave/js/config";\n\nexport const config: HexclaveConfig = "show-onboarding";\n',
     );
@@ -87,25 +88,30 @@ describe("local config updater show-onboarding fast path", () => {
 
     const { updateConfigObject, readConfigFile } = await import("./index");
 
-    await expect(
-      updateConfigObject(configPath, {
-        "apps.installed.authentication.enabled": true,
-        "apps.installed.emails.enabled": true,
-        "apps.installed.teams.enabled": true,
-        "apps.installed.analytics.enabled": false,
-        "auth.password.allowSignIn": true,
-        "auth.otp.allowSignIn": false,
-        "auth.passkey.allowSignIn": false,
-        "emails.selectedThemeId": "default",
-      }),
-    ).resolves.toBeUndefined();
+    // This is the same shape the onboarding wizard's buildBranchConfigUpdate()
+    // produces — dot-notation paths for apps, auth methods, and email theme.
+    const onboardingConfigUpdate = {
+      "apps.installed.authentication.enabled": true,
+      "apps.installed.emails.enabled": true,
+      "apps.installed.teams.enabled": true,
+      "apps.installed.analytics.enabled": false,
+      "auth.password.allowSignIn": true,
+      "auth.otp.allowSignIn": false,
+      "auth.passkey.allowSignIn": false,
+      "emails.selectedThemeId": "default",
+    };
 
-    // Agent was never called — the show-onboarding sentinel should be
-    // treated as {} on the fast path, just like readConfigFile does.
+    await updateConfigObject(configPath, onboardingConfigUpdate);
+
+    // 1. No agent should have been invoked — the sentinel is replaced with {}
+    //    and then the normal static-update path handles the rest.
     expect(mockHookDecisions).toEqual([]);
 
-    // The resulting config must be a proper nested object, not an array.
-    const { config } = await readConfigFile(configPath);
+    // 2. The on-disk file must be a valid config that can be loaded back.
+    const { config, showOnboarding } = await readConfigFile(configPath);
+    expect(showOnboarding).toBe(false);
+
+    // 3. `apps` must be a nested object, NOT an array of IDs.
     expect(config).toMatchObject({
       apps: {
         installed: {
@@ -122,6 +128,11 @@ describe("local config updater show-onboarding fast path", () => {
       },
       emails: { selectedThemeId: "default" },
     });
+
+    // 4. The file should contain a proper export (not the sentinel).
+    const fileContent = readFileSync(configPath, "utf-8");
+    expect(fileContent).toContain("export const config");
+    expect(fileContent).not.toContain("show-onboarding");
   });
 });
 

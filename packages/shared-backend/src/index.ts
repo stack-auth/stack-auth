@@ -128,6 +128,22 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   if (flattenConfigUpdate(configUpdate).length === 0) return;
 
+  // The "show-onboarding" sentinel means "not yet configured" — semantically
+  // equivalent to an empty config.  Replace it with a real empty config file
+  // before applying the update so the normal static-update path can handle it
+  // (matching readConfigFile, which already treats the sentinel as {}).
+  try {
+    const rawParsed = parseHexclaveConfigFileContent(
+      readFileSync(configFilePath, "utf-8"),
+      configFilePath,
+    );
+    if (rawParsed === showOnboardingHexclaveConfigValue) {
+      renderConfigObjectToFile(configFilePath, {});
+    }
+  } catch {
+    // Not a statically parseable config — will be handled below.
+  }
+
   const content = readFileSync(configFilePath, "utf-8");
 
   // Fast path: if the config is a plain static literal (no imports, no helpers),
@@ -307,12 +323,6 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
 function tryParseStaticConfigFileContent(content: string, configFilePath: string): Config | null {
   try {
     const parsed = parseHexclaveConfigFileContent(content, configFilePath);
-    // The "show-onboarding" sentinel is a valid config file value but not a Config
-    // object. Treat it as an empty config — matching readConfigFile's behavior — so
-    // the fast path can apply updates without falling through to the AI agent.
-    if (parsed === showOnboardingHexclaveConfigValue) {
-      return {};
-    }
     return isValidConfig(parsed) ? parsed : null;
   } catch {
     return null;
