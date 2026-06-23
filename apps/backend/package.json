@@ -87,7 +87,6 @@
     "@simplewebauthn/server": "^13.3.0",
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
-    "@hexclave/shared-backend": "workspace:*",
     "@upstash/qstash": "^2.8.2",
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",

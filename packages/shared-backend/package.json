@@ -18,13 +18,6 @@
         "default": "./dist/config-agent.js"
       },
       "default": "./dist/esm/config-agent.js"
-    },
-    "./dist/esbuild": {
-      "types": "./dist/esbuild.d.ts",
-      "require": {
-        "default": "./dist/esbuild.js"
-      },
-      "default": "./dist/esm/esbuild.js"
     }
   },
   "scripts": {
@@ -44,7 +37,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.73",
     "@hexclave/shared": "workspace:*",
-    "esbuild-wasm": "^0.20.2",
     "jiti": "^2.4.2"
   },
   "devDependencies": {
