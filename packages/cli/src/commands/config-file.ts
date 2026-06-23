@@ -1,5 +1,5 @@
 import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
-import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering-node";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";

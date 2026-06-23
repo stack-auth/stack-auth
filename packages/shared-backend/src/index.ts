@@ -1,5 +1,6 @@
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering-node";
+import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";

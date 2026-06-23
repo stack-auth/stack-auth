@@ -13,7 +13,8 @@ import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering-node";
+import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;

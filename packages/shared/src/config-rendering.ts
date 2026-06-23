@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from "fs";
-import path from "path";
 import { isValidConfig, normalize } from "./config/format";
 
 export { showOnboardingHexclaveConfigValue } from "./hexclave-config-file";
@@ -67,32 +65,8 @@ export function detectConfigImportPackage(dependencies: string[]): string | unde
   return undefined;
 }
 
-/**
- * Walks up from `dir` to find the nearest `package.json` and returns the
- * best SDK package to use for the `HexclaveConfig` type import.
- */
-export function detectImportPackageFromDir(dir: string): string | undefined {
-  let current = dir;
-  while (true) {
-    const pkgPath = path.join(current, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        const deps = [
-          ...Object.keys(pkg.dependencies ?? {}),
-          ...Object.keys(pkg.devDependencies ?? {}),
-        ];
-        return detectConfigImportPackage(deps);
-      } catch {
-        return undefined;
-      }
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return undefined;
-}
+// `detectImportPackageFromDir` lives in `config-rendering-node.ts` to avoid
+// pulling Node.js `fs`/`path` into browser bundles.
 
 import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({ expect }) => {
   expect(renderConfigFileContent({
