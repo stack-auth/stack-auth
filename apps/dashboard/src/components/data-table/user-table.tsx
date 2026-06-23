@@ -108,6 +108,7 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     width: 180,
     flex: 1,
     sortable: false,
+    accessor: (row) => row.displayName ?? row.primaryEmail ?? "",
     renderCell: ({ row }) => <UserIdentityCell user={row} />,
   },
   {
@@ -116,6 +117,7 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     width: 180,
     flex: 1,
     sortable: false,
+    accessor: (row) => row.primaryEmail ?? "",
     renderCell: ({ row }) => <UserEmailCell user={row} />,
   },
   {
@@ -123,6 +125,7 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     header: "User ID",
     width: 130,
     sortable: false,
+    accessor: (row) => row.id,
     renderCell: ({ row }) => <UserIdCell user={row} />,
   },
   {
@@ -130,12 +133,15 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     header: "Email Verified",
     width: 110,
     sortable: false,
+    accessor: (row) => row.primaryEmailVerified,
+    formatValue: (val) => val ? "Yes" : "No",
     renderCell: ({ row }) => <EmailStatusCell user={row} />,
   },
   {
     id: "lastActiveAt",
     header: "Last active",
     width: 110,
+    accessor: (row) => row.lastActiveAt,
     renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
   },
   {
@@ -144,12 +150,14 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     width: 150,
     sortable: false,
     cellOverflow: "wrap",
+    accessor: (row) => row.authTypes.join(", "),
     renderCell: ({ row }) => <AuthMethodsCell user={row} />,
   },
   {
     id: "signedUpAt",
     header: "Signed up",
     width: 110,
+    accessor: (row) => row.signedUpAt,
     renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
   },
   {
