@@ -109,6 +109,7 @@ export const POST = createSmartRouteHandler({
             api: "openai-chat-completions",
             inputs: {
               model: String(model.modelId),
+              system: systemPrompt,
               messages: modelMessages,
             },
             output: text,
