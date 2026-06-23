@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-middleware-demo",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {

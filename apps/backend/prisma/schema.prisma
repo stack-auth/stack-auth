@@ -30,6 +30,8 @@ model Project {
   onboardingStatus String  @default("completed")
   onboardingState  Json?
 
+  isAvailableAsPreviewProject Boolean @default(false)
+
   logoUrl             String?
   logoFullUrl         String?
   logoDarkModeUrl     String?
