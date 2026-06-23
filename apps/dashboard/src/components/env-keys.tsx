@@ -90,6 +90,7 @@ function getEnvFileContent(props: {
   superSecretAdminKey?: string,
 }) {
   const envFileContent = Object.entries({
+    NEXT_PUBLIC_HEXCLAVE_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
     NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: props.projectId,
     NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
     HEXCLAVE_SECRET_SERVER_KEY: props.secretServerKey,

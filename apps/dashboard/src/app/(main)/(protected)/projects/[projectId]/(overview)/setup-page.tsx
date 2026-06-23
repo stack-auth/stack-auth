@@ -577,7 +577,6 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     }
   ];
 
-  const selectedInstallPrompt = SETUP_PROMPT;
   const selectedKeyType = selectedFramework === 'nextjs' ? 'next' : selectedFramework === 'tanstackStart' ? 'vite' : 'raw';
 
   return (
@@ -618,7 +617,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
 
       <div className="flex justify-end mt-8 mx-4">
-        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : "recommended")}>
+        <Tabs value={setupMode} onValueChange={(value) => {
+          if (value === "manual" || value === "recommended") {
+              setSetupMode(value);
+          }
+        }}>
           <TabsList>
             <TabsTrigger value="recommended">Recommended</TabsTrigger>
             <TabsTrigger value="manual">Manual setup</TabsTrigger>
@@ -635,7 +638,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               content: <div className="flex min-w-0 flex-col gap-4">
                 <CodeBlock
                   language="text"
-                  content={selectedInstallPrompt}
+                  content={SETUP_PROMPT}
                   title="Prompt for your AI agent"
                   icon="code"
                   maxHeight={260}
@@ -649,7 +652,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 <Typography>
                   Add these to your project&apos;s <InlineCode>.env.local</InlineCode> file.
                 </Typography>
-                <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type={selectedKeyType} />
+                <HexclaveKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
               </>,
             },
             {
