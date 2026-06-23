@@ -15,19 +15,16 @@ export function SsrScript(props: { script: string, nonce?: string }) {
 
   // Embed the <script> in a span's innerHTML rather than as a React <script> JSX element to
   // avoid React 19's "Scripts inside React components are never executed when rendering on the
-  // client" warning. The browser still executes the script during SSR HTML parsing.
-  // suppressHydrationWarning hides the SSR-vs-client innerHTML difference (server has the
-  // script tag, client has empty string).
-  const isServer = typeof window === 'undefined';
+  // client" warning. The browser still executes the script during SSR HTML parsing, and on the
+  // client React sets innerHTML but the browser won't re-execute the script (innerHTML scripts
+  // don't run). Using the same HTML on both sides avoids hydration mismatches.
   const nonceAttr = props.nonce ? ` nonce="${escapeHtmlAttr(props.nonce)}"` : '';
 
   return (
     <span
-      suppressHydrationWarning
+      suppressHydrationWarning  // the transpiler is setup differently for client/server targets, so if `script` was generated with Function.toString they will differ
       dangerouslySetInnerHTML={{
-        __html: isServer
-          ? `<script${nonceAttr}>${props.script}</script>`
-          : '',
+        __html: `<script${nonceAttr}>${props.script}</script>`,
       }}
     />
   );
