@@ -9,6 +9,15 @@ export function SsrScript(props: { script: string, nonce?: string }) {
     (0, eval)(props.script);
   }, []);
 
+  // Only render the <script> tag during SSR — the browser executes it immediately when parsing
+  // the server HTML. On the client, useLayoutEffect handles execution instead. React 19 warns
+  // about <script> tags rendered on the client ("Scripts inside React components are never
+  // executed when rendering on the client"), and hydration skips <script> tags so omitting it
+  // here doesn't cause a mismatch.
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+
   return (
     <script
       suppressHydrationWarning  // the transpiler is setup differently for client/server targets, so if `script` was generated with Function.toString they will differ
