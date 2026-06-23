@@ -4,9 +4,8 @@ import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { isActiveSubscription } from "@/lib/payments";
 import {
   getBillingTeamId,
-  getOwnedProjectIdsForBillingTeam,
-  getOwnedTenancyIdsForBillingTeam,
-  getTeamWideNonAnonymousUserCount,
+  getNonAnonymousUserCountForTenancies,
+  getOwnedProjectAndTenancyIdsForBillingTeam,
 } from "@/lib/plan-entitlements";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
@@ -18,6 +17,10 @@ import type { SubscriptionRow } from "./payments/schema/types";
 type PlanUsageKind = PlanUsageResponse["rows"][number]["kind"];
 type PlanUsageRow = PlanUsageResponse["rows"][number];
 type UsageLimit = number | null;
+type TenancyMeteredUsage = {
+  emails: number,
+  sessionReplays: number,
+};
 
 type UsagePeriod = {
   start: Date,
@@ -45,6 +48,8 @@ const PLAN_LABELS = new Map<PlanId, string>([
   ["team", "Team"],
   ["growth", "Growth"],
 ]);
+
+const PLAN_USAGE_TENANCY_COUNTER_CONCURRENCY = 4;
 
 export function getNextPlanId(planId: PlanId): "team" | "growth" | null {
   if (planId === "free") {
@@ -202,38 +207,57 @@ async function getOwnerTeamDisplayName(internalTenancy: Tenancy, ownerTeamId: st
   return team?.displayName ?? throwErr(`Owner team ${ownerTeamId} not found in the internal tenancy`);
 }
 
-async function countEmailsForTenancy(tenancyId: string, period: UsagePeriod): Promise<number> {
-  const tenancy = await getTenancy(tenancyId) ?? throwErr(`Tenancy ${tenancyId} not found while counting email usage`);
+async function countMeteredUsageForTenancy(tenancyId: string, period: UsagePeriod): Promise<TenancyMeteredUsage> {
+  const tenancy = await getTenancy(tenancyId) ?? throwErr(`Tenancy ${tenancyId} not found while counting plan usage`);
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const rows = await prisma.$replica().$queryRaw<[{ count: number }]>`
-    SELECT COUNT(*)::int AS count
-    FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
-    WHERE "tenancyId" = ${tenancy.id}::uuid
-      AND "startedSendingAt" IS NOT NULL
-      AND "startedSendingAt" >= ${period.start}
-      AND "startedSendingAt" < ${period.end}
+  const rows = await prisma.$replica().$queryRaw<Array<{ emails: number, sessionReplays: number }>>`
+    SELECT
+      (
+        SELECT COUNT(*)::int
+        FROM ${sqlQuoteIdent(schema)}."EmailOutbox"
+        WHERE "tenancyId" = ${tenancy.id}::uuid
+          AND "startedSendingAt" IS NOT NULL
+          AND "startedSendingAt" >= ${period.start}
+          AND "startedSendingAt" < ${period.end}
+      ) AS "emails",
+      (
+        SELECT COUNT(*)::int
+        FROM ${sqlQuoteIdent(schema)}."SessionReplay"
+        WHERE "tenancyId" = ${tenancy.id}::uuid
+          AND "startedAt" >= ${period.start}
+          AND "startedAt" < ${period.end}
+      ) AS "sessionReplays"
   `;
-  return Number(rows[0].count);
+  const row = rows[0] ?? throwErr(`Missing plan usage count row for tenancy ${tenancy.id}`);
+  return {
+    emails: Number(row.emails),
+    sessionReplays: Number(row.sessionReplays),
+  };
 }
 
-async function countSessionReplaysForTenancy(tenancyId: string, period: UsagePeriod): Promise<number> {
-  const tenancy = await getTenancy(tenancyId) ?? throwErr(`Tenancy ${tenancyId} not found while counting session replay usage`);
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const rows = await prisma.$replica().$queryRaw<[{ count: number }]>`
-    SELECT COUNT(*)::int AS count
-    FROM ${sqlQuoteIdent(schema)}."SessionReplay"
-    WHERE "tenancyId" = ${tenancy.id}::uuid
-      AND "startedAt" >= ${period.start}
-      AND "startedAt" < ${period.end}
-  `;
-  return Number(rows[0].count);
-}
+async function sumTenancyMeteredUsage(tenancyIds: string[], period: UsagePeriod): Promise<TenancyMeteredUsage> {
+  const totals: TenancyMeteredUsage = {
+    emails: 0,
+    sessionReplays: 0,
+  };
+  let nextIndex = 0;
 
-async function sumTenancyUsage(tenancyIds: string[], counter: (tenancyId: string) => Promise<number>): Promise<number> {
-  const counts = await Promise.all(tenancyIds.map(counter));
-  return counts.reduce((sum, count) => sum + count, 0);
+  // Keep this page from turning a team with many tenancies into an unbounded burst of replica COUNTs.
+  async function worker(): Promise<void> {
+    while (nextIndex < tenancyIds.length) {
+      const index = nextIndex;
+      nextIndex++;
+      const tenancyId = tenancyIds[index] ?? throwErr(`Missing tenancy ID at index ${index} while counting plan usage`);
+      const usage = await countMeteredUsageForTenancy(tenancyId, period);
+      totals.emails += usage.emails;
+      totals.sessionReplays += usage.sessionReplays;
+    }
+  }
+
+  const workerCount = Math.min(PLAN_USAGE_TENANCY_COUNTER_CONCURRENCY, tenancyIds.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => await worker()));
+  return totals;
 }
 
 async function countAnalyticsEventsForProjects(projectIds: string[], period: UsagePeriod): Promise<number> {
@@ -336,18 +360,16 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
   const planId = resolveActivePlanId(activePlanSubscription);
   const period = getPlanUsagePeriod(activePlanSubscription, now);
 
-  const [ownerTeamDisplayName, ownedProjectIds, ownedTenancyIds, dashboardAdmins, authUsers] = await Promise.all([
+  const [ownerTeamDisplayName, ownedScope, dashboardAdmins] = await Promise.all([
     getOwnerTeamDisplayName(internalTenancy, ownerTeamId),
-    getOwnedProjectIdsForBillingTeam(ownerTeamId),
-    getOwnedTenancyIdsForBillingTeam(ownerTeamId),
+    getOwnedProjectAndTenancyIdsForBillingTeam(ownerTeamId),
     countDashboardAdmins(internalTenancy, ownerTeamId, now),
-    getTeamWideNonAnonymousUserCount(ownerTeamId),
   ]);
 
-  const [emails, analyticsEvents, sessionReplays] = await Promise.all([
-    sumTenancyUsage(ownedTenancyIds, async (tenancyId) => await countEmailsForTenancy(tenancyId, period)),
-    countAnalyticsEventsForProjects(ownedProjectIds, period),
-    sumTenancyUsage(ownedTenancyIds, async (tenancyId) => await countSessionReplaysForTenancy(tenancyId, period)),
+  const [authUsers, meteredUsage, analyticsEvents] = await Promise.all([
+    getNonAnonymousUserCountForTenancies(ownedScope.tenancyIds),
+    sumTenancyMeteredUsage(ownedScope.tenancyIds, period),
+    countAnalyticsEventsForProjects(ownedScope.projectIds, period),
   ]);
 
   return {
@@ -362,9 +384,9 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
       planId,
       dashboardAdmins,
       authUsers,
-      emails,
+      emails: meteredUsage.emails,
       analyticsEvents,
-      sessionReplays,
+      sessionReplays: meteredUsage.sessionReplays,
     }),
   };
 }
