@@ -97,15 +97,24 @@ function evaluateStaticConfigExpression(expression: t.Expression): unknown {
     }
     return result;
   }
+  // Handle wrapper calls like defineHexclaveConfig({...}) and defineStackConfig({...}).
+  // These are identity functions so we can statically evaluate their single argument.
+  if (t.isCallExpression(unwrapped) && unwrapped.arguments.length === 1) {
+    const arg = unwrapped.arguments[0];
+    if (t.isExpression(arg)) {
+      return evaluateStaticConfigExpression(arg);
+    }
+  }
   throw new Error(`Unsupported config expression: ${unwrapped.type}`);
 }
 
 /**
  * Like {@link parseHexclaveConfigFileContent}, but returns `null` instead of
- * throwing when the file is not a plain static config (e.g. it wraps the config
- * in a helper call, references imported values, or has a syntax error). Useful
- * for deciding whether a config file can be safely regenerated deterministically
- * or whether it has custom structure that must be preserved.
+ * throwing when the file is not a plain static config (e.g. it references
+ * imported values or has a syntax error). Single-argument wrapper calls like
+ * `defineHexclaveConfig(...)` are supported. Useful for deciding whether a
+ * config file can be safely regenerated deterministically or whether it has
+ * custom structure that must be preserved.
  */
 export function tryParseHexclaveConfigFileContent(content: string, filePath: string): ParsedStackConfig | null {
   try {

@@ -919,3 +919,40 @@ it("should trigger team webhook when a team is deleted", async ({ expect }) => {
     }
   `);
 });
+
+it("creates a personal team on sign-up when createPersonalTeamOnSignUp is set via pushConfig", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  // Enable createPersonalTeamOnSignUp via branch-level pushConfig (simulates hexclave.config.ts)
+  await Project.pushConfig({
+    'teams.createPersonalTeamOnSignUp': true,
+  });
+
+  // Sign up a new user via password
+  await bumpEmailAddress();
+  await Auth.Password.signUpWithEmail();
+
+  // Verify the user has a personal team
+  const teamsResponse = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "client" });
+  expect(teamsResponse.status).toBe(200);
+  expect(teamsResponse.body.items.length).toBe(1);
+  expect(teamsResponse.body.items[0].display_name).toContain("Team");
+});
+
+it("creates a personal team on server-side user creation when createPersonalTeamOnSignUp is set via pushConfig", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  // Enable createPersonalTeamOnSignUp via branch-level pushConfig
+  await Project.pushConfig({
+    'teams.createPersonalTeamOnSignUp': true,
+  });
+
+  // Create user via server-side API (simulates Dev Tools "Quick Sign Up")
+  await Auth.fastSignUp();
+
+  // Verify the user has a personal team
+  const teamsResponse = await niceBackendFetch("/api/v1/teams?user_id=me", { accessType: "client" });
+  expect(teamsResponse.status).toBe(200);
+  expect(teamsResponse.body.items.length).toBe(1);
+  expect(teamsResponse.body.items[0].display_name).toContain("Team");
+});
