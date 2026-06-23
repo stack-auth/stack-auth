@@ -189,7 +189,7 @@ export function ProjectOnboardingWizard(props: {
 
     runAsynchronously(async () => {
       const themes = await project.app.listEmailThemes();
-      await Promise.all(themes.map((theme) =>
+      await Promise.allSettled(themes.map((theme) =>
         project.app.getEmailPreview({ themeId: theme.id, templateTsxSource: previewTemplateSource })
       ));
     }, { noErrorLogging: true });
