@@ -16,7 +16,8 @@ import { yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fie
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { Json } from "@hexclave/shared/dist/utils/json";
-import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
+import { stepCountIs, streamText, type ModelMessage } from "ai";
+import { vokerGenerateText, vokerClient } from "@/lib/ai/voker";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -87,6 +88,8 @@ export const POST = createSmartRouteHandler({
     // client-supplied system messages — see schema.ts.
     const modelMessages = messages as unknown as ModelMessage[];
 
+    const vokerSession = body.mcpCallMetadata?.conversationId ?? crypto.randomUUID();
+
     if (mode === "stream") {
       const result = streamText({
         model,
@@ -95,6 +98,25 @@ export const POST = createSmartRouteHandler({
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       });
+
+      runAsynchronouslyAndWaitUntil(
+        result.text.then((text) => {
+          vokerClient.events.create({
+            vokerAgent: "hexclave-ai-assistant",
+            vokerSession,
+            eventName: "llm",
+            properties: {
+              api: "openai-chat-completions",
+              inputs: {
+                model: String(model.modelId),
+                messages: modelMessages,
+              },
+              output: text,
+            },
+          });
+        })
+      );
+
       return {
         statusCode: 200,
         bodyType: "response" as const,
@@ -104,7 +126,9 @@ export const POST = createSmartRouteHandler({
       const startedAt = performance.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180_000);
-      const result = await generateText({
+      const result = await vokerGenerateText({
+        vokerAgent: "hexclave-ai-assistant",
+        vokerSession,
         model,
         system: systemPrompt,
         messages: modelMessages,

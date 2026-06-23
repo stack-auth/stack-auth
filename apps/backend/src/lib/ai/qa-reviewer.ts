@@ -1,7 +1,8 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { generateText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { vokerGenerateText } from "@/lib/ai/voker";
 import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
 import { getVerifiedQaContext } from "./verified-qa";
@@ -102,10 +103,12 @@ export async function reviewMcpCall(entry: {
 
     const verifiedQa = await getVerifiedQaContext();
 
-    const result = await generateText({
+    const result = await vokerGenerateText({
+      vokerAgent: "hexclave-qa-reviewer",
+      vokerSession: entry.correlationId,
       model,
       system: QA_SYSTEM_PROMPT + verifiedQa,
-      tools: devinTools as Parameters<typeof generateText>[0]["tools"],
+      tools: devinTools as Parameters<typeof vokerGenerateText>[0]["tools"],
       stopWhen: stepCountIs(10),
       messages: [{ role: "user", content: userMessage }],
     });
