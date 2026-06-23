@@ -6,7 +6,7 @@ description: "Set up Microsoft as an authentication provider with Hexclave"
 This guide explains how to set up Microsoft as an authentication provider with Hexclave. Microsoft OAuth allows users to sign in to your application using their Microsoft account.
 
 <Info>
-  For Development purposes, Hexclave uses shared keys for this provider. Shared keys are automatically created by Stack, but show Stack's logo on the OAuth sign-in page.
+  For Development purposes, Hexclave uses shared keys for this provider. Shared keys are automatically created by Hexclave, but show Hexclave's logo on the OAuth sign-in page.
   You should replace these before you go into production.
 </Info>
 
@@ -34,6 +34,11 @@ This guide explains how to set up Microsoft as an authentication provider with H
     3. Set the **Client ID** (Application ID) and **Client Secret** you obtained from the Microsoft Entra admin center.
   </Step>
 </Steps>
+
+## Things to Know About Microsoft OAuth
+
+- **Emails are not marked as verified.** Microsoft doesn't attest that the user controls the email it returns, so Hexclave treats Microsoft emails as unverified. See Microsoft's [claims validation guidance](https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation#validate-the-subject).
+- **Supported account types control who can sign in** (custom OAuth keys only). When using your own Microsoft OAuth app, you can set the tenant type in the Hexclave dashboard or config. The value maps to the `{tenant}` segment of Microsoft's authorize/token endpoints: `common` (work/school **and** personal accounts), `organizations` (work/school only), `consumers` (personal only, the default), or a specific tenant ID/domain. See [Microsoft's endpoint reference](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols#endpoints). This setting does not apply to the shared development keys.
 
 ### Need More Help?
 

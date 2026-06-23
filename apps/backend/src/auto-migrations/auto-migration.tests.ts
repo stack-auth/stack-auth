@@ -6,11 +6,25 @@ import { applyMigrations, runMigrationNeeded } from "./index";
 
 const TEST_DB_PREFIX = 'stack_auth_test_db';
 
+const getDatabaseConnectionString = (): string => {
+  // @ts-ignore - ImportMeta.env is provided by Vite
+  const hexclaveValue: string | undefined = import.meta.env.HEXCLAVE_DATABASE_CONNECTION_STRING;
+  // @ts-ignore - ImportMeta.env is provided by Vite
+  const stackValue: string | undefined = import.meta.env.STACK_DATABASE_CONNECTION_STRING;
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error("Environment variables HEXCLAVE_DATABASE_CONNECTION_STRING and STACK_DATABASE_CONNECTION_STRING are both set to different values. Remove one of them or set them to the same value.");
+  }
+  const value = hexclaveValue || stackValue;
+  if (!value) {
+    throw new Error("Missing environment variable HEXCLAVE_DATABASE_CONNECTION_STRING or STACK_DATABASE_CONNECTION_STRING.");
+  }
+  return value;
+};
+
 const getTestDbURL = (testDbName: string) => {
-  // @ts-ignore - ImportMeta.env is provided by Vite
-  const base = import.meta.env.STACK_DATABASE_CONNECTION_STRING.replace(/\/[^/]*$/, '');
-  // @ts-ignore - ImportMeta.env is provided by Vite
-  const query = import.meta.env.STACK_DATABASE_CONNECTION_STRING.split('?')[1] ?? '';
+  const connString = getDatabaseConnectionString();
+  const base = connString.replace(/\/[^/]*$/, '');
+  const query = connString.split('?')[1] ?? '';
   return {
     full: `${base}/${testDbName}`,
     base,

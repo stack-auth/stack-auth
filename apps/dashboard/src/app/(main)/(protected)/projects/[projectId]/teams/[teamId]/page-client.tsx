@@ -12,7 +12,7 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { yupResolver } from '@hookform/resolvers/yup';
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
-import { ServerTeam } from '@hexclave/next';
+import { ServerTeam, hexclaveAppInternalsSymbol } from '@hexclave/next';
 import { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { strictEmailSchema, yupObject } from '@hexclave/shared/dist/schema-fields';
 import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
@@ -60,7 +60,7 @@ export function AddUserDialog(props: {
       }
       await props.team.inviteUser({
         email: values.email,
-        callbackUrl: new URL(adminApp.urls.teamInvitation, domain).toString(),
+        callbackUrl: new URL(adminApp[hexclaveAppInternalsSymbol].getUrls().teamInvitation, domain).toString(),
       });
       setSubmitted(true);
     } finally {

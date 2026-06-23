@@ -1,11 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { EventEmitter } from "events";
+import * as childProcess from "child_process";
+import * as ownPackage from "./own-package.js";
+
+// `spawn` is a non-configurable built-in export, so it can't be vi.spyOn'd;
+// replace it with a vi.fn. Everything else in child_process stays real.
+vi.mock("child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("child_process")>();
+  return { ...actual, spawn: vi.fn() };
+});
+
 import {
   buildNpxInvocation,
+  decidePostReexec,
   decideReexec,
   DISABLE_AUTO_UPDATE_ENV,
   isEnvFlagEnabled,
   maybeReexecToLatest,
+  REEXEC_MARKER_ENV,
   shouldAutoUpdate,
+  signalReexecStartedIfChild,
   SKIP_AUTO_UPDATE_ENV,
 } from "./self-update.js";
 import type { OwnPackage } from "./own-package.js";
@@ -177,5 +194,161 @@ describe("maybeReexecToLatest", () => {
     // hanging proves we did not re-exec into `npx @latest`.
     process.env[DISABLE_AUTO_UPDATE_ENV] = "1";
     await expect(maybeReexecToLatest({ forwardArgs: ["dev"] })).resolves.toBeUndefined();
+  });
+});
+
+describe("decidePostReexec", () => {
+  it("propagates the exit code when the CLI ran to completion (code 0)", () => {
+    expect(decidePostReexec({ result: { exited: true, code: 0, signal: null }, started: true }))
+      .toEqual({ kind: "exit", code: 0 });
+  });
+
+  it("propagates a nonzero exit code when the CLI actually started (real command failure)", () => {
+    // The re-exec'd CLI ran (marker present) and the wrapped command failed — we
+    // must surface that failure, not silently re-run it.
+    expect(decidePostReexec({ result: { exited: true, code: 1, signal: null }, started: true }))
+      .toEqual({ kind: "exit", code: 1 });
+  });
+
+  it("falls back when npx exits nonzero before the CLI starts (e.g. Lock compromised)", () => {
+    // npm errored during install/lock; our CLI never ran. Don't take down dev —
+    // run the installed CLI instead.
+    const action = decidePostReexec({ result: { exited: true, code: 1, signal: null }, started: false });
+    expect(action.kind).toBe("fallback");
+  });
+
+  it("propagates (does not fall back) when npx was killed by a signal before the CLI started", () => {
+    // e.g. the user pressed Ctrl-C during the download. They want to abort, not
+    // get a fresh dev session launched on the installed CLI.
+    expect(decidePostReexec({ result: { exited: true, code: 130, signal: "SIGINT" }, started: false }))
+      .toEqual({ kind: "exit", code: 130 });
+  });
+
+  it("falls back when npx cannot be spawned at all", () => {
+    const action = decidePostReexec({ result: { exited: false, error: "spawn npx ENOENT" }, started: false });
+    expect(action.kind).toBe("fallback");
+  });
+});
+
+describe("signalReexecStartedIfChild", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hexclave-reexec-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes the marker file when the marker env var is set (we are the child)", () => {
+    const marker = join(dir, "started");
+    signalReexecStartedIfChild({ [REEXEC_MARKER_ENV]: marker });
+    expect(existsSync(marker)).toBe(true);
+    expect(readFileSync(marker, "utf8")).toBe("1");
+  });
+
+  it("does nothing when no marker env var is set (normal top-level run)", () => {
+    const marker = join(dir, "started");
+    signalReexecStartedIfChild({});
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("does not throw when the marker path is unwritable (best-effort)", () => {
+    const marker = join(dir, "nonexistent-subdir", "started");
+    expect(() => signalReexecStartedIfChild({ [REEXEC_MARKER_ENV]: marker })).not.toThrow();
+    expect(existsSync(marker)).toBe(false);
+  });
+});
+
+// End-to-end wiring of maybeReexecToLatest (marker -> spawn -> existence check ->
+// decidePostReexec). The decision functions are pure-tested above; these guard
+// against the glue regressing.
+describe("maybeReexecToLatest fallback wiring", () => {
+  const managedKeys = [SKIP_AUTO_UPDATE_ENV, DISABLE_AUTO_UPDATE_ENV, REEXEC_MARKER_ENV];
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of managedKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    vi.spyOn(ownPackage, "getOwnPackage").mockReturnValue({
+      name: "@hexclave/cli",
+      version: "1.0.0",
+      binName: "hexclave",
+    });
+  });
+
+  afterEach(() => {
+    for (const key of managedKeys) {
+      if (savedEnv[key] == null) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+    vi.restoreAllMocks();
+  });
+
+  // Fake npx child. `writeMarker` simulates whether the re-exec'd CLI touched the
+  // marker (as signalReexecStartedIfChild would) before the process closes.
+  function mockNpxChild(opts: { writeMarker: boolean }): EventEmitter & { pid: number, kill: () => void } {
+    const child = Object.assign(new EventEmitter(), { pid: 4242, kill: () => {} });
+    vi.mocked(childProcess.spawn).mockImplementation(((
+      _command: string,
+      _args: readonly string[],
+      spawnOpts: { env?: NodeJS.ProcessEnv },
+    ) => {
+      if (opts.writeMarker) {
+        const markerFile = spawnOpts.env?.[REEXEC_MARKER_ENV];
+        if (markerFile != null) writeFileSync(markerFile, "1");
+      }
+      return child;
+    }) as unknown as typeof childProcess.spawn);
+    return child;
+  }
+
+  it("falls back (never calls process.exit) when npx exits nonzero without the CLI starting", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((() => {
+      throw new Error("process.exit should not have been called");
+    }) as never));
+    const child = mockNpxChild({ writeMarker: false });
+
+    const promise = maybeReexecToLatest({ forwardArgs: ["dev"] });
+    child.emit("close", 1, null);
+
+    await expect(promise).resolves.toBeUndefined();
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("propagates the exit code (calls process.exit) when the CLI started then failed", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((() => {
+      // Throw so we don't actually exit the test runner; the SUT's catch swallows it.
+      throw new Error("__exit__");
+    }) as never));
+    const child = mockNpxChild({ writeMarker: true });
+
+    const promise = maybeReexecToLatest({ forwardArgs: ["dev"] });
+    child.emit("close", 1, null);
+
+    await promise;
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("propagates a nonzero, non-NaN code when killed by a signal missing from os.constants", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((() => {
+      throw new Error("__exit__");
+    }) as never));
+    const child = mockNpxChild({ writeMarker: false });
+
+    const promise = maybeReexecToLatest({ forwardArgs: ["dev"] });
+    // SIGSTKFLT is absent from os.constants.signals on macOS (present on Linux).
+    // Either way the abort must surface as a real nonzero code, never NaN.
+    child.emit("close", null, "SIGSTKFLT");
+
+    await promise;
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    const code = exitSpy.mock.calls[0][0];
+    expect(typeof code).toBe("number");
+    expect(Number.isNaN(code as number)).toBe(false);
+    expect(code as number).toBeGreaterThan(0);
   });
 });

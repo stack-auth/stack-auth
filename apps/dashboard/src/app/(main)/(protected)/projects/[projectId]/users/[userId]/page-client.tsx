@@ -38,7 +38,7 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { DeleteUserDialog, generateImpersonateSnippet, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
@@ -52,7 +52,7 @@ import { normalizeCountryCode } from "@hexclave/shared/dist/schema-fields";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { captureError, HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { deindent } from "@hexclave/shared/dist/utils/strings";
+
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -148,12 +148,13 @@ function UserHeader({ user }: UserHeaderProps) {
                 runAsynchronouslyWithAlert(async () => {
                   const expiresInMillis = 1000 * 60 * 60 * 2;
                   const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                  const session = await user.createSession({ expiresInMillis });
+                  const session = await user.createSession({ expiresInMillis, isImpersonation: true });
                   const tokens = await session.getTokens();
-                  setImpersonateSnippet(deindent`
-                    document.cookie = 'stack-refresh-${hexclaveAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
-                    window.location.reload();
-                  `);
+                  setImpersonateSnippet(generateImpersonateSnippet(
+                    hexclaveAdminApp.projectId,
+                    tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
+                    expiresAtDate,
+                  ));
                 });
               },
             },

@@ -115,17 +115,17 @@ import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
 import.meta.vitest?.describe("visible bot challenge sign-up policy", () => {
   const { expect, test, beforeEach, afterEach } = import.meta.vitest!;
   const processEnv = Reflect.get(process, "env");
-  const originalFlag = Reflect.get(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+  const originalFlag = Reflect.get(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
 
   beforeEach(() => {
-    Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+    Reflect.deleteProperty(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
   });
 
   afterEach(() => {
     if (originalFlag === undefined) {
-      Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+      Reflect.deleteProperty(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
     } else {
-      Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
+      Reflect.set(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
     }
   });
 
@@ -137,7 +137,7 @@ import.meta.vitest?.describe("visible bot challenge sign-up policy", () => {
   });
 
   test("allows sign-up when visible challenge failure override is enabled", () => {
-    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+    Reflect.set(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
 
     expect(() => assertVisibleBotChallengePassedForSignUp({
       status: "error",
@@ -146,7 +146,7 @@ import.meta.vitest?.describe("visible bot challenge sign-up policy", () => {
   });
 
   test("treats invalid visible challenges as bypassable failures when the override is enabled", () => {
-    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+    Reflect.set(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
 
     expect(() => assertVisibleBotChallengePassedForSignUp({
       status: "invalid",

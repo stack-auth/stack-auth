@@ -56,6 +56,7 @@ let intersectionObserverRecords: ObserverRecord[] = [];
 class MockIntersectionObserver implements IntersectionObserver {
   readonly root: Element | Document | null;
   readonly rootMargin: string;
+  readonly scrollMargin: string;
   readonly thresholds: ReadonlyArray<number>;
   private readonly callback: IntersectionObserverCallback;
   private readonly record: ObserverRecord;
@@ -67,6 +68,7 @@ class MockIntersectionObserver implements IntersectionObserver {
     this.callback = callback;
     this.root = options?.root ?? null;
     this.rootMargin = options?.rootMargin ?? "";
+    this.scrollMargin = "";
     this.thresholds = Array.isArray(options?.threshold)
       ? options.threshold
       : [options?.threshold ?? 0];
