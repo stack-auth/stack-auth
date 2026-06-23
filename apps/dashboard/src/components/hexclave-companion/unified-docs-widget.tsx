@@ -19,9 +19,15 @@ type DocType = 'dashboard' | 'docs' | 'api';
 
 const PROD_DOCS_ORIGIN = 'https://docs.hexclave.com';
 const LOCAL_DOCS_ORIGIN = 'http://localhost:8104';
+const LOCAL_DOCS_PORT_SUFFIX = '04';
+const LEGACY_LOCAL_DOCS_PORT_SUFFIX = '26';
 
 const isLocalHostname = (hostname: string): boolean => {
-  return hostname === 'localhost' || hostname === '127.0.0.1';
+  const normalizedHostname = hostname.toLowerCase();
+  return normalizedHostname === 'localhost'
+    || normalizedHostname.endsWith('.localhost')
+    || normalizedHostname === '127.0.0.1'
+    || normalizedHostname === '::1';
 };
 
 const isAllowedDocsUrl = (url: URL): boolean => {
@@ -46,6 +52,12 @@ const isLocalEnvironment = (): boolean => {
   return process.env.NODE_ENV === 'development';
 };
 
+const getLocalDocsUrlFromLegacyEnvUrl = (url: URL): string => {
+  const docsUrl = new URL(url);
+  docsUrl.port = `${url.port.slice(0, -LEGACY_LOCAL_DOCS_PORT_SUFFIX.length)}${LOCAL_DOCS_PORT_SUFFIX}`;
+  return docsUrl.origin;
+};
+
 // Get the docs base URL from environment variable with fallback
 const getDocsBaseUrl = (): string => {
   const fallbackOrigin = isLocalEnvironment() ? LOCAL_DOCS_ORIGIN : PROD_DOCS_ORIGIN;
@@ -57,6 +69,14 @@ const getDocsBaseUrl = (): string => {
       const parsedUrl = new URL(docsBaseUrl);
 
       if (isAllowedDocsUrl(parsedUrl)) {
+        if (
+          isLocalEnvironment()
+          && isLocalHostname(parsedUrl.hostname)
+          && parsedUrl.port.endsWith(LEGACY_LOCAL_DOCS_PORT_SUFFIX)
+        ) {
+          return getLocalDocsUrlFromLegacyEnvUrl(parsedUrl);
+        }
+
         return parsedUrl.origin;
       }
 
