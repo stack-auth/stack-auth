@@ -70,8 +70,11 @@ describe("SessionRecorder flush", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
+      const event1 = { type: 2, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 2, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event1];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event1).length];
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
@@ -82,8 +85,11 @@ describe("SessionRecorder flush", () => {
 
       // Unlike ANALYTICS_NOT_ENABLED, ad blocker errors do NOT disable the
       // recorder — subsequent flushes continue attempting delivery.
+      const event2 = { type: 3, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 3, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event2).length];
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
@@ -229,8 +235,11 @@ describe("SessionRecorder flush", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
+      const event1 = { type: 2, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 2, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event1];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event1).length];
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
@@ -239,8 +248,11 @@ describe("SessionRecorder flush", () => {
       expect(sentBodies).toHaveLength(1);
       expect(warnSpy).not.toHaveBeenCalled();
 
+      const event2 = { type: 3, timestamp: Date.now(), data: {} };
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      (recorder as any)._events = [{ type: 3, timestamp: Date.now(), data: {} }];
+      (recorder as any)._events = [event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [JSON.stringify(event2).length];
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
