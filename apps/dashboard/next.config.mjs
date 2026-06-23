@@ -1,12 +1,8 @@
 import { withSentryConfig } from "@sentry/nextjs";
-import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const sharedBackendRequire = createRequire(path.join(__dirname, "../../packages/shared-backend/package.json"));
-const claudeAgentSdkDir = path.dirname(sharedBackendRequire.resolve("@anthropic-ai/claude-agent-sdk"));
-const claudeAgentSdkTraceDir = path.relative(__dirname, claudeAgentSdkDir);
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -67,15 +63,11 @@ const nextConfig = {
   output: process.env.NEXT_CONFIG_OUTPUT,
   distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
   outputFileTracingRoot: path.join(__dirname, "../.."),
-  outputFileTracingIncludes: {
-    "/api/remote-development-environment/config/apply-update": [
-      path.join(claudeAgentSdkTraceDir, "cli.js"),
-      path.join(claudeAgentSdkTraceDir, "manifest.json"),
-      path.join(claudeAgentSdkTraceDir, "manifest.zst.json"),
-      path.join(claudeAgentSdkTraceDir, "resvg.wasm"),
-      path.join(claudeAgentSdkTraceDir, "vendor/**/*"),
-    ],
-  },
+  // The claude-agent-sdk spawns cli.js as a child process (resolved via
+  // import.meta.url). Keeping it external ensures the entire package directory
+  // is included in the standalone trace and hoisted to top-level node_modules/
+  // by copy-runtime-assets — so cli.js, vendor/, etc. survive .pnpm removal.
+  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
