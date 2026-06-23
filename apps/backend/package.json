@@ -90,7 +90,7 @@
     "@vercel/functions": "^2.0.0",
     "@vercel/otel": "^1.10.4",
     "@vercel/sandbox": "^1.2.0",
-    "@voker/voker": "^0.0.14",
+    "@voker/voker": "0.0.13",
     "ai": "^6.0.0",
     "bcrypt": "^6.0.0",
     "cel-js": "^0.8.2",
