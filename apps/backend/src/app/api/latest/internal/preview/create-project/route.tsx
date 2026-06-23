@@ -33,12 +33,6 @@ async function claimPoolProject(ownerTeamId: string): Promise<string | null> {
 }
 
 /**
- * Maximum number of pre-seeded projects to keep in the pool. Prevents
- * unbounded growth when multiple concurrent requests find an empty pool.
- */
-const TARGET_POOL_SIZE = 3;
-
-/**
  * Asynchronously seeds a new preview project into the pool (with
  * isAvailableAsPreviewProject = true) so a future request can claim it
  * instantly.
@@ -49,12 +43,6 @@ const TARGET_POOL_SIZE = 3;
  */
 function replenishPreviewProjectPool(ownerTeamId: string): void {
   runAsynchronouslyAndWaitUntil(async () => {
-    // Cap pool size to avoid unbounded growth from concurrent empty-pool hits.
-    const currentPoolSize = await globalPrismaClient.project.count({
-      where: { isAvailableAsPreviewProject: true },
-    });
-    if (currentPoolSize >= TARGET_POOL_SIZE) return;
-
     const clickhouseClient = getClickhouseAdminClient();
     const projectId = await seedDummyProject({
       ownerTeamId,
