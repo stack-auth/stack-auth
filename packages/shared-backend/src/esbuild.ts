@@ -1,11 +1,19 @@
+/**
+ * esbuild utilities live in shared-backend instead of stack-shared because esbuild-wasm
+ * has a runtime postinstall script. When esbuild-wasm is a transitive dependency of
+ * stack-shared, pnpm emits a warning on every `pnpm install` for any package that depends
+ * on stack-shared — including the CLI, which never uses esbuild at all. Moving it here
+ * keeps the warning out of end-user installs.
+ */
+
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
-import { getProcessEnv, isBrowserLike } from './env';
-import { captureError, HexclaveAssertionError, throwErr } from "./errors";
-import { createGlobalAsync } from './globals';
-import { ignoreUnhandledRejection, runAsynchronously } from './promises';
-import { Result } from "./results";
-import { traceSpan, withTraceSpan } from './telemetry';
+import { getProcessEnv, isBrowserLike } from '@hexclave/shared/dist/utils/env';
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { createGlobalAsync } from '@hexclave/shared/dist/utils/globals';
+import { ignoreUnhandledRejection, runAsynchronously } from '@hexclave/shared/dist/utils/promises';
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { traceSpan, withTraceSpan } from '@hexclave/shared/dist/utils/telemetry';
 
 
 // esbuild requires self property to be set, and it is not set by default in nodejs
@@ -135,7 +143,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
               const res = await fetch(args.path, { redirect: "follow" });
               if (!res.ok) throw new Error(`Fetch ${res.status} ${res.statusText} for ${args.path}`);
               const finalUrl = new URL(res.url);
-              // Defensive: follow shouldn’t leave esm.sh, but re-check.
+              // Defensive: follow shouldn't leave esm.sh, but re-check.
               if (finalUrl.host !== "esm.sh") {
                 throw new Error(`Redirect escaped esm.sh: ${finalUrl.href}`);
               }
@@ -161,7 +169,7 @@ export async function bundleJavaScript(sourceFiles: Record<string, string> & { '
               const result = {
                 contents,
                 loader,
-                // Ensures relative imports inside that module resolve against the file’s URL
+                // Ensures relative imports inside that module resolve against the file's URL
                 resolveDir: new URL(".", finalUrl.href).toString(),
                 watchFiles: [finalUrl.href],
               };

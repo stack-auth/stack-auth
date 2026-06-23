@@ -6,7 +6,7 @@ import { DndContext, closestCenter, pointerWithin, useDraggable, useDroppable } 
 import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@hexclave/shared/dist/utils/arrays';
 import { HexclaveAssertionError, errorToNiceString, throwErr } from '@hexclave/shared/dist/utils/errors';
-import { bundleJavaScript } from '@hexclave/shared/dist/utils/esbuild';
+import { bundleJavaScript } from '@hexclave/shared-backend/dist/esbuild';
 import { Json, isJsonSerializable } from '@hexclave/shared/dist/utils/json';
 import { deepPlainEquals, filterUndefined, isNotNull } from '@hexclave/shared/dist/utils/objects';
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@hexclave/shared/dist/utils/promises';

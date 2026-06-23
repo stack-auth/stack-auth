@@ -1,7 +1,7 @@
 import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@hexclave/shared/dist/helpers/emails';
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
-import { bundleJavaScript } from '@hexclave/shared/dist/utils/esbuild';
+import { bundleJavaScript } from '@hexclave/shared-backend/dist/esbuild';
 import { get, has } from '@hexclave/shared/dist/utils/objects';
 import {
   type EditableMetadata,
