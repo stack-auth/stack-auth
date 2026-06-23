@@ -129,7 +129,7 @@
     "@types/three": "^0.169.0",
     "autoprefixer": "^10.4.17",
     "concurrently": "^8.2.2",
-    "glob": "^10.4.1",
+    "glob": "^13.0.0",
     "import-in-the-middle": "1.14.2",
     "postcss": "^8.4.38",
     "require-in-the-middle": "^7.4.0",
