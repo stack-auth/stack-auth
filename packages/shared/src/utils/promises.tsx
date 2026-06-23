@@ -1,6 +1,6 @@
 import { KnownError } from "..";
 import { getProcessEnv } from "./env";
-import { HexclaveAssertionError, captureError, concatStacktraces, errorToNiceString, throwErr } from "./errors";
+import { HexclaveAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
 import { traceSpan } from "./telemetry";
@@ -461,7 +461,8 @@ export async function mapWithConcurrency<T, R>(
       const index = nextIndex++;
       if (index >= items.length) return;
       try {
-        results[index] = await fn(items[index] ?? throwErr(`mapWithConcurrency: index ${index} out of bounds for items of length ${items.length}`), index);
+        // Bounds-checked above; `?? throwErr(…)` is unsuitable because T may legitimately be null/undefined
+        results[index] = await fn(items[index] as T, index);
       } catch (error) {
         aborted = true;
         throw error;
