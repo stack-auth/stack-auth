@@ -1,13 +1,6 @@
-import { existsSync, readFileSync } from "fs";
-import { createJiti } from "jiti";
-import path from "path";
 import { isValidConfig, normalize } from "./config/format";
-import { hexclaveConfigFileExportsConfig } from "./hexclave-config-file";
-export { hexclaveConfigFileExportsConfig };
 
 const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
-
-const jiti = createJiti(import.meta.url, { moduleCache: false });
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.
@@ -43,33 +36,6 @@ export function detectConfigImportPackage(dependencies: string[]): string | unde
 }
 
 /**
- * Walks up from `dir` to find the nearest `package.json` and returns the
- * best SDK package to use for the `HexclaveConfig` type import.
- */
-export function detectImportPackageFromDir(dir: string): string | undefined {
-  let current = dir;
-  while (true) {
-    const pkgPath = path.join(current, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        const deps = [
-          ...Object.keys(pkg.dependencies ?? {}),
-          ...Object.keys(pkg.devDependencies ?? {}),
-        ];
-        return detectConfigImportPackage(deps);
-      } catch {
-        return undefined;
-      }
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return undefined;
-}
-
-/**
  * Renders a config object into the source text of a `stack.config.ts` file.
  */
 export function renderConfigFileContent(config: unknown, importPackage?: string): string {
@@ -92,38 +58,37 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
-type ParsedConfigValue = Record<string, unknown> | string;
-
-/**
- * Evaluates config file content using jiti and returns the exported `config`
- * value. Replaces the old Babel AST-based `parseHexclaveConfigFileContent`.
- */
-export function evalConfigFileContent(content: string, filePath: string): ParsedConfigValue {
-  if (content.trim() === "") return {};
-  const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
-  const mod = jiti.evalModule(content, { filename: resolvedPath }) as Record<string, unknown>;
-  const config = mod.config;
-  if (config === undefined) {
-    throw new Error(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
-  }
-  if (typeof config === "string") return config;
-  if (config !== null && typeof config === "object" && !Array.isArray(config)) {
-    return config as Record<string, unknown>;
-  }
-  throw new Error(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
- * Like {@link evalConfigFileContent}, but returns `null` instead of throwing
- * when the content cannot be evaluated.
+ * Parses a config file that was produced by {@link renderConfigFileContent}.
+ * Extracts the JSON object literal after the `export const config` assignment
+ * and parses it with `JSON.parse`. This is intentionally limited to the exact
+ * format we emit — it never executes code, so it is safe for untrusted input
+ * such as content fetched from a remote repository.
+ *
+ * Returns `null` when the content does not match the expected static format.
  */
-export function tryEvalConfigFileContent(content: string, filePath: string): ParsedConfigValue | null {
+export function parseStaticConfigLiteral(content: string): Record<string, unknown> | null {
+  // Match `export const config ... = <json>;` — the type annotation is optional.
+  const match = content.match(/export\s+const\s+config(?:\s*:\s*\w+)?\s*=\s*([\s\S]+);?\s*$/m);
+  if (match == null) return null;
+
+  // Trim any trailing semicolons and whitespace from the captured JSON body.
+  const jsonBody = match[1].replace(/;\s*$/, "").trim();
+
   try {
-    return evalConfigFileContent(content, filePath);
+    const parsed: unknown = JSON.parse(jsonBody);
+    if (isRecord(parsed)) return parsed;
+    return null;
   } catch {
     return null;
   }
 }
+
+// --- inline vitest tests ---
 
 import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({ expect }) => {
   expect(renderConfigFileContent({
@@ -139,50 +104,6 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
     }
   }
 };`);
-});
-
-import.meta.vitest?.test("evalConfigFileContent parses static config exports", ({ expect }) => {
-  expect(evalConfigFileContent(`
-    import type { StackConfig } from "@hexclave/js";
-    export const config: StackConfig = {
-      auth: { allowSignUp: true },
-      payments: { testMode: false },
-    };
-  `, "stack.config.ts")).toMatchInlineSnapshot(`
-    {
-      "auth": {
-        "allowSignUp": true,
-      },
-      "payments": {
-        "testMode": false,
-      },
-    }
-  `);
-});
-
-import.meta.vitest?.test("evalConfigFileContent parses show-onboarding", ({ expect }) => {
-  expect(evalConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
-});
-
-import.meta.vitest?.test("evalConfigFileContent rejects content without config export", ({ expect }) => {
-  expect(() => evalConfigFileContent("export const other = {};", "stack.config.ts")).toThrow(/must export/);
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns the config for valid exports", ({ expect }) => {
-  expect(tryEvalConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
-    auth: { allowSignUp: true },
-  });
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns null on failure", ({ expect }) => {
-  expect(tryEvalConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
-});
-
-import.meta.vitest?.test("hexclaveConfigFileExportsConfig detects a config export", ({ expect }) => {
-  expect(hexclaveConfigFileExportsConfig("export const config = { a: 1 };", "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig("export const notConfig = { a: 1 };", "stack.config.ts")).toBe(false);
-  expect(hexclaveConfigFileExportsConfig("export const config = {", "stack.config.ts")).toBe(false);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {
@@ -209,8 +130,6 @@ import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ 
 });
 
 import.meta.vitest?.test("renderConfigFileContent keeps legacy @stackframe packages on their root entrypoint", ({ expect }) => {
-  // The lightweight `/config` subpath only exists on Hexclave-branded packages;
-  // already-published @stackframe/* releases predate it.
   const content = renderConfigFileContent({}, "@stackframe/next");
   expect(content).toContain('import type { HexclaveConfig } from "@stackframe/next";');
 });
@@ -220,11 +139,24 @@ import.meta.vitest?.test("detectConfigImportPackage picks first matching package
   expect(detectConfigImportPackage(["@hexclave/react", "@hexclave/js"])).toBe("@hexclave/react");
   expect(detectConfigImportPackage(["@hexclave/js"])).toBe("@hexclave/js");
   expect(detectConfigImportPackage(["@hexclave/tanstack-start"])).toBe("@hexclave/tanstack-start");
-  // Hexclave names take priority over legacy stackframe names when both appear.
   expect(detectConfigImportPackage(["@stackframe/stack", "@hexclave/next"])).toBe("@hexclave/next");
-  // Legacy fallback still works for projects pinned to the last @stackframe/* release.
   expect(detectConfigImportPackage(["@stackframe/stack"])).toBe("@stackframe/stack");
   expect(detectConfigImportPackage(["@stackframe/template"])).toBe("@stackframe/template");
   expect(detectConfigImportPackage(["lodash", "express"])).toBeUndefined();
   expect(detectConfigImportPackage([])).toBeUndefined();
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral extracts JSON from rendered config", ({ expect }) => {
+  const rendered = renderConfigFileContent({ auth: { allowSignUp: true } });
+  expect(parseStaticConfigLiteral(rendered)).toEqual({ auth: { allowSignUp: true } });
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral returns null for non-static content", ({ expect }) => {
+  expect(parseStaticConfigLiteral("export const config = someFunction();")).toBeNull();
+  expect(parseStaticConfigLiteral("export const other = {};")).toBeNull();
+  expect(parseStaticConfigLiteral("")).toBeNull();
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral returns null for show-onboarding string", ({ expect }) => {
+  expect(parseStaticConfigLiteral('export const config = "show-onboarding";')).toBeNull();
 });

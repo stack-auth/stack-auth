@@ -1,5 +1,6 @@
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, evalConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir, evalConfigFileContent } from "@hexclave/shared/dist/config-eval";
 import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dist/config/format";
 import { isValidConfig, normalize, override } from "@hexclave/shared/dist/config/format";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -130,7 +131,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   const content = readFileSync(configFilePath, "utf-8");
 
-  // Fast path: if the config is a plain static literal (no imports, no helpers),
+  // Fast path: if the config can be evaluated by jiti (no unresolvable imports),
   // apply the update deterministically without invoking the AI agent.
   const staticConfig = tryParseConfigFileContent(content, configFilePath);
   if (staticConfig != null && isValidConfig(staticConfig)) {
@@ -318,6 +319,10 @@ function configFileExportsConfig(content: string, configFilePath: string): boole
     evalConfigFileContent(content, configFilePath);
     return true;
   } catch {
+    // jiti may fail to resolve imports that are valid in the user's project but
+    // absent from the current process (e.g. relative asset imports, workspace
+    // packages). For the structural sanity check we only need to know a runtime
+    // `config` binding still exists after the agent edited the file.
     return /\bexport\s+const\s+config\b/.test(content);
   }
 }

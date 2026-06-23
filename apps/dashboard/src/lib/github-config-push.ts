@@ -12,8 +12,7 @@
 import type { PushedConfigSource } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
-import { evalConfigFileContent, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/hexclave-config-file";
+import { parseStaticConfigLiteral, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 
 import {
   commitFile,
@@ -52,10 +51,10 @@ export function buildUpdatedConfigFileContent(
   currentFileContent: string,
   configUpdate: EnvironmentConfigOverrideOverride,
 ): string {
-  const parsed = evalConfigFileContent(currentFileContent, "stack.config.ts");
-  if (parsed === showOnboardingHexclaveConfigValue) {
+  const parsed = parseStaticConfigLiteral(currentFileContent);
+  if (parsed == null) {
     throw new Error(
-      "The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes."
+      "Could not parse the existing config file. The file must be a static JSON config object (as produced by the dashboard). Config files with dynamic expressions or imports are not supported for dashboard-driven updates."
     );
   }
   if (!isValidConfig(parsed)) {
