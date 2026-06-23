@@ -13,26 +13,13 @@ import type { PushedConfigSource } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isValidConfig, override } from "@hexclave/shared/dist/config/format";
 import { renderConfigFileContent, showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-rendering";
-import { createJiti } from "jiti";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
-import os from "os";
-import path from "path";
 
 import {
   commitFile,
   getFileContent,
   type GithubFetch,
 } from "./github-api";
-
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-
-type ConfigModule = {
-  config?: unknown,
-};
-
-function isConfigModule(value: unknown): value is ConfigModule {
-  return value !== null && typeof value === "object";
-}
+import { evaluateConfigContent } from "./github-config-push-server";
 
 /**
  * Detects the `@hexclave/*` or legacy `@stackframe/*` import package used by
@@ -50,29 +37,6 @@ function detectImportPackage(currentFileContent: string): string | undefined {
   if (hexclave) return `@hexclave/${hexclave[1]}`;
   const stackframe = currentFileContent.match(/from\s+["']@stackframe\/([a-z0-9-]+)(?:\/config)?["']/i);
   return stackframe ? `@stackframe/${stackframe[1]}` : undefined;
-}
-
-/**
- * Evaluates a config file content string by writing it to a temp file and
- * importing it with jiti. Returns the exported config value.
- */
-async function evaluateConfigContent(content: string): Promise<unknown> {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "hexclave-config-"));
-  const tempFile = path.join(tempDir, "stack.config.ts");
-  writeFileSync(tempFile, content, "utf-8");
-  try {
-    const configModule = await jiti.import<unknown>(tempFile);
-    if (!isConfigModule(configModule)) {
-      throw new Error("The config file must export a plain `config` object or \"show-onboarding\".");
-    }
-    return configModule.config;
-  } finally {
-    try {
-      rmSync(tempDir, { recursive: true, force: true });
-    } catch {
-      /* best-effort cleanup */
-    }
-  }
 }
 
 /**
