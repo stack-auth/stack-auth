@@ -132,16 +132,18 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // equivalent to an empty config.  Replace it with a real empty config file
   // before applying the update so the normal static-update path can handle it
   // (matching readConfigFile, which already treats the sentinel as {}).
+  let parsedSentinel = false;
   try {
     const rawParsed = parseHexclaveConfigFileContent(
       readFileSync(configFilePath, "utf-8"),
       configFilePath,
     );
-    if (rawParsed === showOnboardingHexclaveConfigValue) {
-      renderConfigObjectToFile(configFilePath, {});
-    }
+    parsedSentinel = rawParsed === showOnboardingHexclaveConfigValue;
   } catch {
     // Not a statically parseable config — will be handled below.
+  }
+  if (parsedSentinel) {
+    renderConfigObjectToFile(configFilePath, {});
   }
 
   const content = readFileSync(configFilePath, "utf-8");
