@@ -108,11 +108,12 @@
                       "guides/apps/authentication/auth-providers/google",
                       "guides/apps/authentication/auth-providers/linkedin",
                       "guides/apps/authentication/auth-providers/microsoft",
-                      "guides/apps/authentication/auth-providers/passkey",
                       "guides/apps/authentication/auth-providers/spotify",
                       "guides/apps/authentication/auth-providers/twitch",
+                      "guides/apps/authentication/auth-providers/x-twitter",
+                      "guides/apps/authentication/auth-providers/passkey",
                       "guides/apps/authentication/auth-providers/two-factor-auth",
-                      "guides/apps/authentication/auth-providers/x-twitter"
+                      "guides/apps/authentication/auth-providers/custom-oidc"
                     ]
                   }
                 ]
