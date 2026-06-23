@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
-const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations";
 
 describe("POST /api/v1/internal/feedback", () => {

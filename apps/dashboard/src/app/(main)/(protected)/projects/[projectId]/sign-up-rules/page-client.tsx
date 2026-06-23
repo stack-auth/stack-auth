@@ -717,6 +717,15 @@ function RejectMessageField({ state, size = "sm", className }: { state: RuleEdit
   );
 }
 
+function RejectActionNote({ state }: { state: RuleEditorState }) {
+  if (state.actionType !== 'reject') return null;
+  return (
+    <p className="text-[11px] leading-snug text-muted-foreground/70">
+      Reject will prevent users from signing up completely. Consider using Restrict instead — it still creates the user account but blocks app access, and you can unrestrict users later from the dashboard.
+    </p>
+  );
+}
+
 function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, size?: "sm" | "lg" }) {
   return (
     <>
@@ -797,6 +806,7 @@ function RuleEditor(props: {
           <ActionDropdown state={state} />
           <RejectMessageField state={state} />
         </div>
+        <RejectActionNote state={state} />
       </NumberedStep>
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-foreground/[0.06]">
         <SaveCancelButtons state={state} />

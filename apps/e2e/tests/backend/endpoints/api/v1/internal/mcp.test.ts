@@ -128,7 +128,7 @@ it("public MCP endpoint should expose prompts and resources without method-not-f
     result: {
       resources: [
         {
-          uri: "https://skill.hexclave.com",
+          uri: "https://skill.hexclave.com/full",
           name: "skill",
         },
       ],

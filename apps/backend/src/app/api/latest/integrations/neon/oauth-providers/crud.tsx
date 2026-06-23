@@ -69,9 +69,21 @@ const oauthProvidersCrud = createCrud({
   },
 });
 
+/**
+ * Returns only standard/shared providers for the legacy Neon integration API.
+ * Custom OIDC providers are excluded since they don't fit the legacy schema.
+ */
+function getStandardProviders(config: Tenancy['config']) {
+  return Object.values(config.auth.oauth.providers).filter(p => p.type !== "custom_oidc");
+}
+
 function oauthProviderConfigToLegacyConfig(provider: Tenancy['config']['auth']['oauth']['providers'][string]) {
+  const providerType = provider.type;
+  if (providerType === "custom_oidc") {
+    throwErr("oauthProviderConfigToLegacyConfig must not be called with custom_oidc providers");
+  }
   return {
-    id: provider.type || throwErr('Provider type is required'),
+    id: providerType || throwErr('Provider type is required'),
     type: provider.isShared ? 'shared' : 'standard',
     client_id: provider.clientId,
     client_secret: provider.clientSecret,
@@ -104,7 +116,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       data: {
         config: {
           oauth_providers: [
-            ...Object.values(auth.tenancy.config.auth.oauth.providers).map(oauthProviderConfigToLegacyConfig),
+            ...getStandardProviders(auth.tenancy.config).map(oauthProviderConfigToLegacyConfig),
             {
               id: data.id,
               type: data.type ?? 'shared',
@@ -130,7 +142,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       branchId: auth.branchId,
       data: {
         config: {
-          oauth_providers: Object.values(auth.tenancy.config.auth.oauth.providers)
+          oauth_providers: getStandardProviders(auth.tenancy.config)
             .map(provider => provider.type === params.oauth_provider_id ? {
               ...oauthProviderConfigToLegacyConfig(provider),
               ...data,
@@ -144,7 +156,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
   },
   onList: async ({ auth }) => {
     return {
-      items: Object.values(auth.tenancy.config.auth.oauth.providers).map(oauthProviderConfigToLegacyConfig),
+      items: getStandardProviders(auth.tenancy.config).map(oauthProviderConfigToLegacyConfig),
       is_paginated: false,
     };
   },
@@ -159,7 +171,7 @@ export const oauthProvidersCrudHandlers = createLazyProxy(() => createCrudHandle
       branchId: auth.branchId,
       data: {
         config: {
-          oauth_providers: Object.values(auth.tenancy.config.auth.oauth.providers)
+          oauth_providers: getStandardProviders(auth.tenancy.config)
             .filter(provider => provider.type !== params.oauth_provider_id)
             .map(oauthProviderConfigToLegacyConfig),
         }

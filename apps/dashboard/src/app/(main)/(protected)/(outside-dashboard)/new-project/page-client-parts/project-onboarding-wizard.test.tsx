@@ -147,7 +147,7 @@ vi.mock("./link-existing-onboarding", () => ({
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
-import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();
@@ -180,6 +180,34 @@ describe("ProjectOnboardingWizard", () => {
     expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
   });
 
+  it("preserves OAuth sign-in methods when developmentEnvironment is true but isLocalEmulator is false (RDE)", () => {
+    const normalizedState = normalizeProjectOnboardingState({
+      selected_config_choice: "create-new",
+      selected_apps: [],
+      selected_sign_in_methods: ["credential", "google", "github"],
+      selected_email_theme_id: null,
+      selected_payments_country: "US",
+    }, { developmentEnvironment: true, isLocalEmulator: false });
+
+    expect(normalizedState.selected_sign_in_methods).toContain("google");
+    expect(normalizedState.selected_sign_in_methods).toContain("github");
+  });
+
+  it("strips OAuth sign-in methods when isLocalEmulator is true", () => {
+    const normalizedState = normalizeProjectOnboardingState({
+      selected_config_choice: "create-new",
+      selected_apps: [],
+      selected_sign_in_methods: ["credential", "google", "github", "microsoft"],
+      selected_email_theme_id: null,
+      selected_payments_country: "US",
+    }, { developmentEnvironment: true, isLocalEmulator: true });
+
+    expect(normalizedState.selected_sign_in_methods).toContain("credential");
+    expect(normalizedState.selected_sign_in_methods).not.toContain("google");
+    expect(normalizedState.selected_sign_in_methods).not.toContain("github");
+    expect(normalizedState.selected_sign_in_methods).not.toContain("microsoft");
+  });
+
   it("does not offer alpha apps during app selection", () => {
     const alphaAppIds = Object.entries(ALL_APPS)
       .filter(([, app]) => app.stage === "alpha")
@@ -187,6 +215,14 @@ describe("ProjectOnboardingWizard", () => {
 
     for (const alphaAppId of alphaAppIds) {
       expect(orderedAppIds()).not.toContain(alphaAppId);
+    }
+  });
+
+  it("does not offer sub-apps during app selection", () => {
+    const subAppIds = (Object.keys(ALL_APPS) as AppId[]).filter((appId) => getParentAppId(appId) != null);
+
+    for (const subAppId of subAppIds) {
+      expect(orderedAppIds()).not.toContain(subAppId);
     }
   });
 

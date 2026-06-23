@@ -11,7 +11,7 @@ import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { HexclaveAssertionError } from "../utils/errors";
-import { allProviders } from "../utils/oauth";
+import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
@@ -23,6 +23,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+const providerIdRegex = /^[a-z0-9_-]+$/;
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -116,7 +117,7 @@ const branchAuthSchema = yupObject({
     providers: yupRecord(
       yupString().matches(permissionRegex),
       yupObject({
-        type: yupString().oneOf(allProviders).optional(),
+        type: yupString().oneOf(allProviderTypes).optional(),
         allowSignIn: yupBoolean(),
         allowConnectedAccounts: yupBoolean(),
       }),
@@ -376,9 +377,9 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
-        yupString().matches(permissionRegex),
+        yupString().matches(providerIdRegex),
         yupObject({
-          type: yupString().oneOf(allProviders).optional(),
+          type: yupString().oneOf(allProviderTypes).optional(),
           isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
@@ -395,6 +396,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
               bundleId: schemaFields.oauthAppleBundleIdSchema,
             }),
           ).optional(),
+          // Custom OIDC provider fields (only used when type is "custom_oidc")
+          issuerUrl: schemaFields.oauthIssuerUrlSchema.optional(),
+          scope: schemaFields.oauthScopeSchema.optional(),
+          displayName: yupString().optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),

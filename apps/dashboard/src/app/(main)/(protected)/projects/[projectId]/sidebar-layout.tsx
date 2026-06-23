@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  DatabaseIcon,
   ChartBarIcon,
   CubeIcon,
   GearIcon,
@@ -108,6 +109,25 @@ const dashboardsItem: Item = {
   type: 'item',
 };
 
+// Internal-only pages that are rendered solely for the internal project.
+const internalToolsItem: AppSection = {
+  name: "Internal tools",
+  icon: DatabaseIcon,
+  firstItemHref: "/platform-analytics",
+  items: [
+    {
+      name: "External DB Sync",
+      href: "/external-db-sync",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/external-db-sync(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Platform Analytics",
+      href: "/platform-analytics",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/platform-analytics(\/.*)?$/.test(fullUrl.pathname),
+    },
+  ],
+};
+
 const projectSettingsItem: AppSection = {
   name: "Project Settings",
   icon: GearIcon,
@@ -116,7 +136,12 @@ const projectSettingsItem: AppSection = {
     {
       name: "General",
       href: "/project-settings",
-      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings(\/.*)?$/.test(fullUrl.pathname),
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Usage",
+      href: "/project-settings/usage",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
     },
     {
       name: "Project Keys",
@@ -319,8 +344,8 @@ function NavItem({
               : "0px",
           }}
           className={cn(
-            "ml-[0.5px] w-[calc(100%-1px)] transition-[height] duration-200",
-            !isExpanded && "h-0 overflow-hidden"
+            "ml-[0.5px] w-[calc(100%-1px)] overflow-hidden transition-[height] duration-200",
+            !isExpanded && "h-0"
           )}
         >
           <div className="space-y-2 py-2 pl-3">
@@ -479,6 +504,17 @@ function SidebarContent({
   const [isProjectSettingsExpanded, setIsProjectSettingsExpanded] = useState(() =>
     /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
+  const [isInternalToolsExpanded, setIsInternalToolsExpanded] = useState(() =>
+    /^\/projects\/[^\/]+\/(platform-analytics|external-db-sync)(\/.*)?$/.test(pathname)
+  );
+  const internalToolsSection = useMemo<AppSection>(() => ({
+    ...internalToolsItem,
+    firstItemHref: `/projects/${projectId}${internalToolsItem.firstItemHref ?? "/platform-analytics"}`,
+    items: internalToolsItem.items.map((item) => ({
+      ...item,
+      href: `/projects/${projectId}${item.href}`,
+    })),
+  }), [projectId]);
   const projectSettingsSection = useMemo<AppSection>(() => ({
     ...projectSettingsItem,
     firstItemHref: `/projects/${projectId}${projectSettingsItem.firstItemHref ?? "/project-settings"}`,
@@ -528,6 +564,15 @@ function SidebarContent({
             href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
+          {projectId === "internal" && (
+            <NavItem
+              item={internalToolsSection}
+              onClick={onNavigate}
+              isExpanded={isInternalToolsExpanded}
+              onToggle={() => setIsInternalToolsExpanded((value) => !value)}
+              isCollapsed={isCollapsed}
+            />
+          )}
         </div>
 
         <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>

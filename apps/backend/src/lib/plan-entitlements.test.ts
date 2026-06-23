@@ -194,25 +194,25 @@ describe("arePlanLimitsEnforced", () => {
   });
 
   it("returns true when env var is unset (default-on enforcement)", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns false when env var is exactly 'true'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "true");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "true");
     expect(arePlanLimitsEnforced()).toBe(false);
   });
 
   it("returns true when env var is 'false'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "false");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "false");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns true for any non-'true' value (e.g. '1', 'yes', 'TRUE')", () => {
     // Explicit string match is intentional — we don't want to risk a typo
-    // like STACK_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
+    // like HEXCLAVE_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
     for (const value of ["1", "yes", "TRUE", "True", " true", "true ", "trueee"]) {
-      vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", value);
+      vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", value);
       expect(arePlanLimitsEnforced()).toBe(true);
     }
   });

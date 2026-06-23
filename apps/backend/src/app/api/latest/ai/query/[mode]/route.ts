@@ -3,6 +3,7 @@ import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
+import { getMcpSkillContextPrompt } from "@/lib/ai/mcp-skill-context";
 import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
@@ -61,7 +62,12 @@ export const POST = createSmartRouteHandler({
     if (isDocsOrSearch) {
       systemPrompt += await getVerifiedQaContext();
     }
-    const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
+    systemPrompt += await getMcpSkillContextPrompt(body.mcpCallMetadata?.toolName);
+    const tools = await getTools(toolNames, {
+      auth: fullReq.auth,
+      targetProjectId: projectId,
+      mcpToolName: body.mcpCallMetadata?.toolName,
+    });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const isCreateDashboard = systemPromptId === "create-dashboard";
     const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";

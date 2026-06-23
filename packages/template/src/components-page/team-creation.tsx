@@ -26,7 +26,6 @@ export function TeamCreation(props: { fullPage?: boolean }) {
   const project = app.useProject();
   const user = useUser({ or: 'redirect' });
   const [loading, setLoading] = useState(false);
-  const navigate = app.useNavigate();
 
   if (!project.config.clientTeamCreationEnabled) {
     return <MessageCard title={t('Team creation is not enabled')} />;
@@ -36,8 +35,8 @@ export function TeamCreation(props: { fullPage?: boolean }) {
     setLoading(true);
 
     try {
-      const team = await user.createTeam({ displayName: data.displayName });
-      navigate(`${app.urls.handler}/team-settings/${team.id}`);
+      await user.createTeam({ displayName: data.displayName });
+      await app.redirectToAccountSettings();
     } finally {
       setLoading(false);
     }

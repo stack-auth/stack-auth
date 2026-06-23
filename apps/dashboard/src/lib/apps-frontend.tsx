@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import { Link } from "@/components/link";
 import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
-import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
@@ -10,7 +10,7 @@ import NeonLogo from "../../public/neon-logo.png";
 import TanStackStartLogo from "../../public/tanstack-start-logo.png";
 import VercelLogo from "../../public/vercel-logo.svg";
 
-export type AppId = keyof typeof ALL_APPS;
+export type { AppId };
 
 // Helper to generate screenshot paths
 const getScreenshots = (appName: string, count: number): string[] => {
@@ -46,19 +46,14 @@ export type AppFrontend = {
     getBreadcrumbItems?: (hexclaveAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
   }
   | {
-    parentAppId: AppId,
+    navigationItems?: undefined,
   }
 )
 
 export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNavigationItem[] }>;
-export type SubAppFrontend = Extract<AppFrontend, { parentAppId: AppId }>;
 
 export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
   return "navigationItems" in appFrontend;
-}
-
-export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFrontend {
-  return "parentAppId" in appFrontend;
 }
 
 export function getDocumentationHref(appFrontend: AppFrontend): string | null {
@@ -128,7 +123,6 @@ export const ALL_APPS_FRONTEND = {
   "fraud-protection": {
     icon: ShieldCheckIcon,
     href: "sign-up-rules",
-    parentAppId: "authentication",
     screenshots: [],
     storeDescription: <>
       <p>Fraud Protection helps you protect your project from fraud and abuse.</p>
@@ -409,7 +403,6 @@ export const ALL_APPS_FRONTEND = {
   clickmaps: {
     icon: CursorClickIcon,
     href: "analytics/clickmaps",
-    parentAppId: "analytics",
     screenshots: [],
     storeDescription: (
       <>
@@ -421,7 +414,6 @@ export const ALL_APPS_FRONTEND = {
   "session-replays": {
     icon: MonitorPlayIcon,
     href: "session-replays",
-    parentAppId: "analytics",
     screenshots: [],
     storeDescription: (
       <>

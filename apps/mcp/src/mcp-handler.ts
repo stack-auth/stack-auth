@@ -24,7 +24,7 @@ type AiQueryResponse = {
   conversationId?: string,
 };
 
-const skillResourceUri = "https://skill.hexclave.com";
+const skillResourceUri = "https://skill.hexclave.com/full";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

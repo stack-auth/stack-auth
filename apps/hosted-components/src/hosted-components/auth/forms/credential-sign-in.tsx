@@ -64,7 +64,7 @@ export function CredentialSignIn() {
       <div className="mb-1.5 mt-4 flex items-center justify-between">
         <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
         <a
-          href={app.urls.forgotPassword}
+          href="#"
           className="text-xs text-muted-foreground hover:text-foreground"
           onClick={(event) => {
             event.preventDefault();

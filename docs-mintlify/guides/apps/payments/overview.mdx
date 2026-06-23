@@ -74,7 +74,7 @@ To sell a product, generate a checkout URL and redirect the user to it. The `cre
   <Tab title="Client Component">
     ```typescript title="app/components/purchase-button.tsx"
     "use client";
-    import { useUser } from "@hexclave/next";
+    import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
     export default function PurchaseButton({ productId }: { productId: string }) {
       const user = useUser({ or: 'redirect' });
@@ -163,7 +163,7 @@ Here's a practical example - showing a credits counter:
 
 ```typescript title="app/components/credits-widget.tsx"
 "use client";
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function CreditsWidget() {
   const user = useUser({ or: 'redirect' });
@@ -214,7 +214,7 @@ When products belong to the same product line, customers can switch between them
 
 ```typescript title="app/components/upgrade-button.tsx"
 "use client";
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function UpgradeButton() {
   const user = useUser({ or: 'redirect' });
@@ -244,7 +244,7 @@ export default function UpgradeButton() {
   <Tab title="Client Component">
     ```typescript
     "use client";
-    import { useHexclaveApp } from "@hexclave/next";
+    import { useHexclaveApp } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
     export default function CancelButton({ productId }: { productId: string }) {
       const app = useHexclaveApp();

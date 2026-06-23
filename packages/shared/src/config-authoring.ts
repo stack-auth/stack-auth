@@ -27,11 +27,11 @@ type StrictStackConfig<T extends StackConfig> =
     : T;
 
 /** @deprecated Use `defineHexclaveConfig` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
-export function defineStackConfig<const T extends StackConfig>(config: StrictStackConfig<T>): T {
+export function defineStackConfig(config: StrictStackConfig<StackConfig>): StackConfig {
   return config;
 }
 
 // Hexclave alias — separate function so it does not inherit the deprecation tag.
-export function defineHexclaveConfig<const T extends HexclaveConfig>(config: StrictStackConfig<T>): T {
+export function defineHexclaveConfig(config: StrictStackConfig<HexclaveConfig>): HexclaveConfig {
   return config;
 }

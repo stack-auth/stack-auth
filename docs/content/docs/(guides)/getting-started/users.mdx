@@ -142,7 +142,7 @@ You can also store custom user data in the `clientMetadata`, `serverMetadata`, o
 
 ## Signing out
 
-You can sign out the user by redirecting them to `/handler/sign-out` or simply by calling `user.signOut()`. They will be redirected to the URL [configured as `afterSignOut` in the `StackServerApp`](../sdk/objects/stack-app).
+You can sign out the user by calling `user.signOut()` or by using the app's redirect helper. They will be redirected to the URL [configured as `afterSignOut` in the `StackServerApp`](../sdk/objects/stack-app).
 
 <Tabs defaultValue="signout">
   <TabsList>
@@ -163,12 +163,13 @@ You can sign out the user by redirecting them to `/handler/sign-out` or simply b
   </TabsContent>
 
   <TabsContent value="redirect">
-    ```tsx title="sign-out-link.tsx"
-    import { stackServerApp } from "@/stack/server";
+    ```tsx title="sign-out-button.tsx"
+    "use client";
+    import { useStackApp } from "@stackframe/stack";
 
-    export default async function SignOutLink() {
-      // stackServerApp.urls.signOut is equal to /handler/sign-out
-      return <a href={stackServerApp.urls.signOut}>Sign Out</a>;
+    export default function SignOutButton() {
+      const app = useStackApp();
+      return <button onClick={async () => await app.redirectToSignOut()}>Sign Out</button>;
     }
     ```
   </TabsContent>
@@ -228,13 +229,12 @@ Stack automatically creates a user profile on sign-up. Let's build a page that d
               <UserButton />
               <p>Welcome, {user.displayName ?? "unnamed user"}</p>
               <p>Your e-mail: {user.primaryEmail}</p>
-              <p><a href={stackServerApp.urls.signOut}>Sign Out</a></p>
+              <UserButton />
             </div>
           ) : (
             <div>
               <p>You are not logged in</p>
-              <p><a href={stackServerApp.urls.signIn}>Sign in</a></p>
-              <p><a href={stackServerApp.urls.signUp}>Sign up</a></p>
+              <p>Render a client component that calls <code>stackApp.redirectToSignIn()</code> or <code>stackApp.redirectToSignUp()</code>.</p>
             </div>
           )}
         </div>

@@ -735,9 +735,9 @@ export async function GET(request: Request) {
         code: `import { StackServerApp } from "@stackframe/js";
 
 const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });
 
@@ -768,9 +768,9 @@ app.get('/api/protected', async (req, res) => {
         code: `import { StackServerApp } from "@stackframe/js";
 
 const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });
 
@@ -929,9 +929,9 @@ export async function POST(request: Request) {
         code: `import { StackServerApp } from "@stackframe/js";
 
 const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });
 
@@ -962,9 +962,9 @@ app.post('/api/team-protected', async (req, res) => {
         code: `import { StackServerApp } from "@stackframe/js";
 
 const stackServerApp = new StackServerApp({
-  projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
-  secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  projectId: process.env.HEXCLAVE_PROJECT_ID,
+  publishableClientKey: process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY,
+  secretServerKey: process.env.HEXCLAVE_SECRET_SERVER_KEY,
   tokenStore: "memory",
 });
 

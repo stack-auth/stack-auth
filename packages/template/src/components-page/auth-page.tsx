@@ -143,7 +143,7 @@ function Inner(props: Props) {
             project.config.signUpEnabled && (
               <Typography>
                 {t("Don't have an account?")}{" "}
-                <StyledLink href={hexclaveApp.urls.signUp} onClick={(e) => {
+                <StyledLink href="#" onClick={(e) => {
                   runAsynchronously(hexclaveApp.redirectToSignUp());
                   e.preventDefault();
                 }}>{t("Sign up")}</StyledLink>
@@ -152,7 +152,7 @@ function Inner(props: Props) {
           ) : (
             <Typography>
               {t("Already have an account?")}{" "}
-              <StyledLink href={hexclaveApp.urls.signIn} onClick={(e) => {
+              <StyledLink href="#" onClick={(e) => {
                 runAsynchronously(hexclaveApp.redirectToSignIn());
                 e.preventDefault();
               }}>{t("Sign in")}</StyledLink>

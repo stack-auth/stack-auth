@@ -44,8 +44,7 @@ function DashboardUserAvatar(props: {
 }) {
   const size = props.size ?? 34;
   const user = props.user;
-  const label = user?.displayName ?? user?.primaryEmail ?? "User";
-  const initials = label.slice(0, 2).toUpperCase();
+  const initials = user == null ? null : (user.displayName ?? user.primaryEmail)?.slice(0, 2).toUpperCase();
 
   return (
     <Avatar
@@ -53,10 +52,14 @@ function DashboardUserAvatar(props: {
       style={{ height: size, width: size }}
     >
       <AvatarImage src={user?.profileImageUrl ?? ""} />
-      <AvatarFallback>
-        <span className="font-medium" style={{ fontSize: size * 0.4 }}>
-          {initials}
-        </span>
+      <AvatarFallback className="text-zinc-500 dark:text-zinc-400">
+        {initials == null ? (
+          <UserCircleIcon size={size * 0.65} />
+        ) : (
+          <span className="font-medium" style={{ fontSize: size * 0.4 }}>
+            {initials}
+          </span>
+        )}
       </AvatarFallback>
     </Avatar>
   );
@@ -174,7 +177,11 @@ function DashboardUserButtonInner(props: DashboardUserButtonProps) {
               text="Sign out"
               variant="destructive"
               onClick={async () => await user.signOut()}
-              icon={<SignOutIcon {...iconProps} className={cn(menuIconClassName, "text-red-500/80 dark:text-red-400/80")} />}
+              icon={(
+                <span className={cn(menuIconClassName, "text-red-500/80 dark:text-red-400/80")}>
+                  <SignOutIcon size={16} />
+                </span>
+              )}
             />
           </>
         )}

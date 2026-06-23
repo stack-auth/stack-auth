@@ -72,6 +72,14 @@ export type AdminOAuthProviderConfig = {
       microsoftTenantId?: string,
       appleBundleIds?: string[],
     }
+    | {
+      type: 'custom_oidc',
+      clientId: string,
+      clientSecret: string,
+      issuerUrl: string,
+      scope?: string,
+      displayName?: string,
+    }
   ) & OAuthProviderConfig;
 
 export type AdminProjectConfigUpdateOptions = {
