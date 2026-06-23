@@ -620,7 +620,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         <Tabs value={setupMode} onValueChange={(value) => {
           if (value === "manual" || value === "recommended") {
               setSetupMode(value);
+              return;
           }
+          throw new Error(`Unexpected setup mode: ${value}`);
         }}>
           <TabsList>
             <TabsTrigger value="recommended">Recommended</TabsTrigger>
