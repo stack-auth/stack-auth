@@ -269,7 +269,12 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
     if (!buffer.includes("STACK_ENV_VAR_SENTINEL")) {
       continue;
     }
-    writeFileSync(path, replaceSentinels(buffer.toString("utf-8"), env));
+    try {
+      writeFileSync(path, replaceSentinels(buffer.toString("utf-8"), env));
+    } catch (error) {
+      if (hasErrnoCode(error, "ENOENT")) continue;
+      throw error;
+    }
   }
 }
 
