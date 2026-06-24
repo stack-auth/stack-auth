@@ -1,0 +1,34 @@
+packages/shared-backend/src/config-agent.ts
+  s_3ca41eaf8feaf8::t_a47232ff1b1b19 73
+packages/shared-backend/src/index.ts
+  s_3ca41eaf8feaf8::t_198c49adcd9282 134-138
+apps/backend/src/lib/ai/models.ts
+  s_3ca41eaf8feaf8::t_3ed0a171e2468b 54
+packages/shared-backend/src/index.test.ts
+  s_3ca41eaf8feaf8::t_72c91fad8cdfdd 60-61,66-70,72-82,85-86,100
+  s_3ca41eaf8feaf8::t_4254d40d09bff9 84,87-93,99,101-103
+apps/backend/src/lib/config-update-repo-agent.tsx
+  s_3ca41eaf8feaf8::t_cda4fa9f13836a 13
+  s_3ca41eaf8feaf8::t_b593a60ae3a72a 90-99
+  s_3ca41eaf8feaf8::t_224b1072998e7c 306
+  s_3ca41eaf8feaf8::t_9729f366bbed95 322
+  s_3ca41eaf8feaf8::t_8225e119a1447a 350-351
+  s_3ca41eaf8feaf8::t_95cf1cee8c401f 31
+  s_3ca41eaf8feaf8::t_0882080b077b3e 1-12,14-30,32-89,100-305,307-321,323-349,352-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "f2b5cbd0b3be9ba14a60a8c96a4b08bbda9c2d97",
+  "prompts": {},
+  "sessions": {
+    "s_3ca41eaf8feaf8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1b487ae-b227-4663-a2ef-0f76a35fb945",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
