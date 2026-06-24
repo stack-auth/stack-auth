@@ -1,7 +1,7 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
 import { Prisma } from "@/generated/prisma/client";
-import { globalPrismaClient, retryOnSerializationFailure } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
 import {
@@ -489,8 +489,7 @@ export const GET = createSmartRouteHandler({
           }
 
           try {
-            // Retry the (idempotent) backfill on transient deadlocks between concurrent batches.
-            const didUpdate = await retryOnSerializationFailure(() => backfillSequenceIds(batchSize));
+            const didUpdate = await backfillSequenceIds(batchSize);
             iterationSpan.setAttribute("stack.external-db-sync.did-update", didUpdate);
           } catch (error) {
             iterationSpan.setAttribute("stack.external-db-sync.iteration-error", true);

@@ -632,44 +632,10 @@ export const PRISMA_ERROR_CODES = {
   // Thrown by `delete`/`update` (and relation requirements) when the targeted row
   // doesn't exist — e.g. when two requests race to consume the same single-use row.
   DEPENDENT_RECORD_NOT_FOUND: "P2025",
-  // Wraps a raw database error; the underlying PostgreSQL SQLSTATE is in `meta.code`.
-  RAW_QUERY_FAILED: "P2010",
 } as const;
 
 export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES[code];
-}
-
-// 40P01 = deadlock_detected, 40001 = serialization_failure
-const RETRYABLE_PG_SQLSTATES = new Set(["40P01", "40001"]);
-
-// Transient PostgreSQL deadlock/serialization failure, safe to retry on an idempotent statement.
-// Raw-query failures surface the SQLSTATE at `meta.code` (P2010 KnownRequestError); ORM-level
-// deadlocks inside an interactive transaction come back as UnknownRequestError with only a message,
-// so we also match on the error message.
-export function isRetryableSerializationError(error: unknown): boolean {
-  const isKnown = error instanceof Prisma.PrismaClientKnownRequestError;
-  const isUnknown = error instanceof Prisma.PrismaClientUnknownRequestError;
-  if (!isKnown && !isUnknown) return false;
-  if (isKnown) {
-    const code = error.meta?.code;
-    if (typeof code === "string" && RETRYABLE_PG_SQLSTATES.has(code)) return true;
-  }
-  const metaMessage = isKnown && typeof error.meta?.message === "string" ? error.meta.message : "";
-  return /deadlock detected|could not serialize access/i.test(`${metaMessage} ${error.message}`);
-}
-
-// Retries `fn` on transient deadlock/serialization failures with a jittered backoff. Only use around idempotent statements.
-export async function retryOnSerializationFailure<T>(fn: (attemptIndex: number) => Promise<T>, totalAttempts = 3): Promise<T> {
-  const res = await Result.retry(async (attemptIndex) => {
-    try {
-      return Result.ok(await fn(attemptIndex));
-    } catch (e) {
-      if (isRetryableSerializationError(e)) return Result.error(e);
-      throw e;
-    }
-  }, totalAttempts, { exponentialDelayBase: 50 });
-  return Result.orThrow(res);
 }
 
 export function isPrismaUniqueConstraintViolation(error: unknown, modelName: string, target: string | string[]): error is Prisma.PrismaClientKnownRequestError {
