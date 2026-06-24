@@ -38,16 +38,16 @@ describe("stripe webhook event idempotency (real DB)", () => {
     expect(row?.payload).toMatchObject({ id: event.id, type: event.type });
   });
 
-  it("allows reprocessing while the prior delivery is still PENDING", async ({ expect }) => {
+  it("skips a redelivery while the prior delivery is still in-flight (PENDING)", async ({ expect }) => {
     const event = makeEvent();
 
     const first = await claimStripeEvent(event);
     expect(first.shouldProcess).toBe(true);
 
-    // Redelivery before the background work finished: we must NOT skip, otherwise
-    // a crash between claim and processing would silently drop the event forever.
+    // Single-flight: a redelivery that arrives while the first attempt is still
+    // PENDING must not spin up a second processor (that would double the fan-out).
     const second = await claimStripeEvent(event);
-    expect(second.shouldProcess).toBe(true);
+    expect(second.shouldProcess).toBe(false);
   });
 
   it("deduplicates once the event has been fully PROCESSED", async ({ expect }) => {
@@ -83,5 +83,40 @@ describe("stripe webhook event idempotency (real DB)", () => {
     // FAILED rows must reprocess so a manual Stripe "Resend" can recover them.
     const recovery = await claimStripeEvent(event);
     expect(recovery.shouldProcess).toBe(true);
+
+    // ...but reclaiming a FAILED row flips it back to in-flight (PENDING), so a
+    // further redelivery during that retry is once again skipped (single-flight).
+    const concurrentRetry = await claimStripeEvent(event);
+    expect(concurrentRetry.shouldProcess).toBe(false);
+  });
+
+  it("scrubs a stale processedAt when a row leaves the PROCESSED state", async ({ expect }) => {
+    const event = makeEvent();
+
+    await claimStripeEvent(event);
+    await markStripeEventProcessed(event.id);
+
+    // markStripeEventFailed must clear processedAt so a recovered/re-failed row is
+    // never readable as "completed at <time>".
+    await markStripeEventFailed(event.id, new Error("late failure after success"));
+    const failedRow = await globalPrismaClient.stripeWebhookEvent.findUnique({
+      where: { stripeEventId: event.id },
+    });
+    expect(failedRow?.status).toBe(StripeWebhookEventStatus.FAILED);
+    expect(failedRow?.processedAt).toBeNull();
+
+    // Force a stale processedAt on a FAILED row, then prove the FAILED -> PENDING
+    // recovery transition scrubs it too.
+    await globalPrismaClient.stripeWebhookEvent.update({
+      where: { stripeEventId: event.id },
+      data: { processedAt: new Date() },
+    });
+    const recovery = await claimStripeEvent(event);
+    expect(recovery.shouldProcess).toBe(true);
+    const recoveredRow = await globalPrismaClient.stripeWebhookEvent.findUnique({
+      where: { stripeEventId: event.id },
+    });
+    expect(recoveredRow?.status).toBe(StripeWebhookEventStatus.PENDING);
+    expect(recoveredRow?.processedAt).toBeNull();
   });
 });
