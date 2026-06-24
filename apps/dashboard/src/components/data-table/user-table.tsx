@@ -500,10 +500,10 @@ function EmailDomainFilter(props: {
           variant="outline"
           size="sm"
           className="h-8 rounded-xl border-black/[0.08] bg-white/85 px-3 text-xs shadow-sm ring-1 ring-black/[0.08] hover:bg-white dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]"
-          aria-label="Email domain filter"
+          aria-label="Exclude email domains"
         >
           <FunnelSimpleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-          Email domain
+          Exclude by Email
           {active ? (
             <Badge variant="secondary" className="ml-2 rounded-full px-1.5 py-0 text-[10px] font-medium">
               {domains.length}
@@ -518,6 +518,9 @@ function EmailDomainFilter(props: {
         <div className="space-y-3">
           <div>
             <div className="text-sm font-medium text-foreground">Exclude email domains</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Hide users whose primary email uses one of these domains.
+            </p>
           </div>
           <Input
             size="sm"
