@@ -5,13 +5,14 @@ import { ActionCell, ActionDialog, Typography } from "@/components/ui";
 import { ServerTeam } from '@hexclave/next';
 import {
   DataGrid,
-  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
+  type DataGridExportField,
+  type DataGridExportScope,
 } from "@hexclave/dashboard-ui-components";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
@@ -152,10 +153,13 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
   },
 ];
 
-export function TeamTable(props?: {
-  onFilterChange?: (filters: { search?: string, createdAtOrder: "asc" | "desc" }) => void,
-  onExportClick?: () => void,
-}) {
+const TEAM_EXPORT_FIELDS: DataGridExportField<ServerTeam>[] = [
+  { key: "id", label: "Team ID", enabled: true, getValue: (team) => team.id },
+  { key: "displayName", label: "Display Name", enabled: true, getValue: (team) => team.displayName },
+  { key: "createdAt", label: "Created At", enabled: true, getValue: (team) => new Date(team.createdAt).toISOString() },
+];
+
+export function TeamTable() {
   const router = useRouter();
   const hexclaveAdminApp = useAdminApp();
 
@@ -168,14 +172,6 @@ export function TeamTable(props?: {
 
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
   const createdAtOrder = gridState.sorting.find((s) => s.columnId === "createdAt")?.direction ?? "desc";
-
-  const onFilterChange = props?.onFilterChange;
-  useEffect(() => {
-    onFilterChange?.({
-      search: debouncedQuickSearch || undefined,
-      createdAtOrder,
-    });
-  }, [debouncedQuickSearch, createdAtOrder, onFilterChange]);
 
   const dataSource = useMemo<DataGridDataSource<ServerTeam>>(
     () => async function* (params) {
@@ -202,7 +198,6 @@ export function TeamTable(props?: {
   );
 
   const getRowId = useCallback((row: ServerTeam) => row.id, []);
-  const onExportClick = props?.onExportClick;
 
   const gridData = useDataSource({
     dataSource,
@@ -213,6 +208,32 @@ export function TeamTable(props?: {
     pagination: gridState.pagination,
     paginationMode: "infinite",
   });
+
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allTeams: ServerTeam[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+    const useFilters = options.scope === "filtered";
+
+    do {
+      const batch = await hexclaveAdminApp.listTeams({
+        limit,
+        orderBy: "createdAt",
+        desc: createdAtOrder !== "asc",
+        cursor,
+        query: useFilters ? (debouncedQuickSearch || undefined) : undefined,
+      });
+
+      allTeams.push(...batch);
+      options.onProgress(allTeams.length);
+      cursor = batch.nextCursor ?? undefined;
+    } while (cursor);
+
+    return allTeams;
+  }, [createdAtOrder, debouncedQuickSearch, hexclaveAdminApp]);
 
   return (
     <DataGrid
@@ -231,11 +252,28 @@ export function TeamTable(props?: {
       estimatedRowHeight={44}
       footer={false}
       fillHeight={false}
-      toolbar={onExportClick == null ? undefined : (ctx) => (
-        <DataGridToolbar
-          ctx={{ ...ctx, exportCsv: onExportClick }}
-        />
-      )}
+      exportOptions={{
+        title: "Export Teams",
+        description: "Configure and download team data from your project",
+        entityName: "team",
+        entityNamePlural: "teams",
+        filenamePrefix: "stack-teams-export",
+        fields: TEAM_EXPORT_FIELDS,
+        fetchRows: fetchExportRows,
+        emptyExportTitle: "No teams to export",
+        emptyExportDescription: "There are no teams matching the current filters",
+        allScopeLabel: "Export all teams in the project",
+        filteredScopeLabel: (
+          <>
+            Export only filtered/searched teams
+            {debouncedQuickSearch && (
+              <span className="text-muted-foreground ml-1">
+                (search: &quot;{debouncedQuickSearch}&quot;)
+              </span>
+            )}
+          </>
+        ),
+      }}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
       }}

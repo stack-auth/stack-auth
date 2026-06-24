@@ -3,18 +3,18 @@
 import { DesignBadge } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
 import { DesignPillToggle } from "@/components/design-components";
-import { ExportEmailsDialog } from "@/components/export-emails-dialog";
 import { useRouter } from "@/components/router";
-import { Button, Spinner, Typography } from "@/components/ui";
-import { DownloadSimpleIcon, Envelope } from "@phosphor-icons/react";
+import { Spinner, Typography } from "@/components/ui";
+import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@hexclave/next";
 import {
   DataGrid,
-  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
+  type DataGridExportField,
+  type DataGridExportScope,
 } from "@hexclave/dashboard-ui-components";
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -117,12 +117,18 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
 
 const OUTBOX_PAGE_SIZE = 50;
 
-function EmailSendDataTable(props: {
-  onExportClick?: () => void,
-}) {
+const EMAIL_EXPORT_FIELDS: DataGridExportField<AdminEmailOutbox>[] = [
+  { key: "id", label: "Email ID", enabled: true, getValue: (email) => email.id },
+  { key: "subject", label: "Subject", enabled: true, getValue: (email) => getSubjectDisplay(email) },
+  { key: "recipient", label: "Recipient", enabled: true, getValue: (email) => getRecipientDisplay(email) },
+  { key: "status", label: "Status", enabled: true, getValue: (email) => STATUS_LABELS[email.status] },
+  { key: "scheduledAt", label: "Scheduled At", enabled: true, getValue: (email) => email.scheduledAt.toISOString() },
+  { key: "createdAt", label: "Created At", enabled: true, getValue: (email) => email.createdAt.toISOString() },
+];
+
+function EmailSendDataTable() {
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
-  const onExportClick = props.onExportClick;
 
   const [gridState, setGridState] = useDataGridUrlState(emailTableColumns, {
     paramPrefix: "sentemails",
@@ -157,6 +163,28 @@ function EmailSendDataTable(props: {
     paginationMode: "infinite",
   });
 
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allEmails: AdminEmailOutbox[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+
+    do {
+      const result = await hexclaveAdminApp.listOutboxEmails({
+        limit,
+        cursor,
+      });
+
+      allEmails.push(...result.items);
+      options.onProgress(allEmails.length);
+      cursor = result.nextCursor ?? undefined;
+    } while (cursor);
+
+    return allEmails;
+  }, [hexclaveAdminApp]);
+
   if (gridData.isLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-8">
@@ -184,9 +212,19 @@ function EmailSendDataTable(props: {
         onLoadMore={gridData.loadMore}
         fillHeight={false}
         footer={false}
-        toolbar={onExportClick == null ? undefined : (ctx) => (
-          <DataGridToolbar ctx={{ ...ctx, exportCsv: onExportClick }} />
-        )}
+        exportOptions={{
+          title: "Export Sent Emails",
+          description: "Configure and download sent email log data from your project",
+          entityName: "email",
+          entityNamePlural: "emails",
+          filenamePrefix: "stack-email-sent-export",
+          fields: EMAIL_EXPORT_FIELDS,
+          fetchRows: fetchExportRows,
+          emptyExportTitle: "No emails to export",
+          emptyExportDescription: "There are no emails matching the current filters",
+          allScopeLabel: "Export all emails in the project",
+          filteredScopeLabel: "Export only filtered/searched emails",
+        }}
         onRowClick={(row) => {
           router.push(`email-viewer/${row.id}`);
         }}
@@ -197,32 +235,12 @@ function EmailSendDataTable(props: {
 
 export default function PageClient() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const openExportDialog = useCallback(() => {
-    setExportDialogOpen(true);
-  }, []);
 
   return (
     <AppEnabledGuard appId="emails">
       <PageLayout
         title="Sent"
         description="View email logs and domain reputation"
-        actions={
-          <ExportEmailsDialog
-            trigger={
-              <Button variant="outline">
-                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            }
-            open={exportDialogOpen}
-            onOpenChange={setExportDialogOpen}
-            title="Export Sent Emails"
-            description="Configure and download sent email log data from your project"
-            filenamePrefix="stack-email-sent-export"
-            filteredScopeLabel="Export only filtered/searched emails"
-          />
-        }
       >
         <div data-walkthrough="emails-sent" className="flex flex-col xl:flex-row gap-6 min-w-0">
           {/* Left side: Email Log with toggle inside card */}
@@ -250,7 +268,7 @@ export default function PageClient() {
                   gradient="default"
                 />
               </div>
-              {viewMode === "list" ? <EmailSendDataTable onExportClick={openExportDialog} /> : <GroupedEmailTable />}
+              {viewMode === "list" ? <EmailSendDataTable /> : <GroupedEmailTable />}
             </DesignCard>
           </div>
 

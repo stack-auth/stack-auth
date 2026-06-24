@@ -1,11 +1,10 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
-import { ExportEmailsDialog, type ExportEmailsOptions } from "@/components/export-emails-dialog";
 import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
-import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from "@hexclave/dashboard-ui-components";
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridExportField, type DataGridExportScope } from "@hexclave/dashboard-ui-components";
 import { cn } from "@/lib/utils";
-import { DotsThreeIcon, DownloadSimpleIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
+import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@hexclave/next";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -598,20 +597,21 @@ function EmailDetailSheet({
 
 const EMAIL_PAGE_SIZE = 50;
 
+const EMAIL_EXPORT_FIELDS: DataGridExportField<AdminEmailOutbox>[] = [
+  { key: "id", label: "Email ID", enabled: true, getValue: (email) => email.id },
+  { key: "subject", label: "Subject", enabled: true, getValue: (email) => getEmailDisplayData(email).subject ?? "(Not yet rendered)" },
+  { key: "recipient", label: "Recipient", enabled: true, getValue: (email) => getRecipientDisplay(email) },
+  { key: "status", label: "Status", enabled: true, getValue: (email) => STATUS_LABELS[email.status] },
+  { key: "scheduledAt", label: "Scheduled At", enabled: true, getValue: (email) => email.scheduledAt.toISOString() },
+  { key: "createdAt", label: "Created At", enabled: true, getValue: (email) => email.createdAt.toISOString() },
+];
+
 export default function PageClient() {
   const hexclaveAdminApp = useAdminApp();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [simpleStatusFilter, setSimpleStatusFilter] = useState<string>("all");
   const [selectedEmail, setSelectedEmail] = useState<AdminEmailOutbox | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const exportOptions = useMemo<ExportEmailsOptions>(() => ({
-    status: statusFilter === "all" ? undefined : statusFilter,
-    simpleStatus: simpleStatusFilter === "all" ? undefined : simpleStatusFilter,
-  }), [statusFilter, simpleStatusFilter]);
-  const openExportDialog = useCallback(() => {
-    setExportDialogOpen(true);
-  }, []);
 
   // Server-side infinite data source — cursor pagination against
   // `listOutboxEmails`. Closure captures `statusFilter`/`simpleStatusFilter`
@@ -740,41 +740,39 @@ export default function PageClient() {
   const emails = emailGridData.rows;
   const statusFilterLabel = statusFilter === "all" ? null : getSelectedStatusLabel(statusFilter);
   const simpleStatusFilterLabel = simpleStatusFilter === "all" ? null : getSelectedSimpleStatusLabel(simpleStatusFilter);
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allEmails: AdminEmailOutbox[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+    const useFilters = options.scope === "filtered";
+
+    do {
+      const result = await hexclaveAdminApp.listOutboxEmails({
+        limit,
+        cursor,
+        status: useFilters && statusFilter !== "all" ? statusFilter : undefined,
+        simpleStatus: useFilters && simpleStatusFilter !== "all" ? simpleStatusFilter : undefined,
+      });
+
+      allEmails.push(...result.items);
+      options.onProgress(allEmails.length);
+      cursor = result.nextCursor ?? undefined;
+    } while (cursor);
+
+    return allEmails;
+  }, [hexclaveAdminApp, simpleStatusFilter, statusFilter]);
 
   return (
     <PageLayout
       title="Email Outbox"
       description="View and manage scheduled and sent emails"
       actions={
-        <div className="flex gap-2">
-          <ExportEmailsDialog
-            trigger={
-              <Button variant="outline">
-                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            }
-            exportOptions={exportOptions}
-            open={exportDialogOpen}
-            onOpenChange={setExportDialogOpen}
-            title="Export Email Outbox"
-            description="Configure and download email outbox data from your project"
-            filenamePrefix="stack-email-outbox-export"
-            filteredScopeLabel={(
-              <>
-                Export only filtered emails
-                {statusFilterLabel || simpleStatusFilterLabel ? (
-                  <span className="text-muted-foreground ml-1">
-                    ({[statusFilterLabel, simpleStatusFilterLabel].filter((label) => label != null).join(", ")})
-                  </span>
-                ) : null}
-              </>
-            )}
-          />
-          <Button onClick={() => runAsynchronouslyWithAlert(handleRefresh)} variant="outline">
-            Refresh
-          </Button>
-        </div>
+        <Button onClick={() => runAsynchronouslyWithAlert(handleRefresh)} variant="outline">
+          Refresh
+        </Button>
       }
     >
       <SettingCard title="Email Queue" description="All emails in the outbox">
@@ -839,7 +837,29 @@ export default function PageClient() {
             footer={false}
             fillHeight={false}
             maxHeight={500}
-            toolbar={(ctx) => <DataGridToolbar ctx={{ ...ctx, exportCsv: openExportDialog }} hideQuickSearch />}
+            toolbar={(ctx) => <DataGridToolbar ctx={ctx} hideQuickSearch />}
+            exportOptions={{
+              title: "Export Email Outbox",
+              description: "Configure and download email outbox data from your project",
+              entityName: "email",
+              entityNamePlural: "emails",
+              filenamePrefix: "stack-email-outbox-export",
+              fields: EMAIL_EXPORT_FIELDS,
+              fetchRows: fetchExportRows,
+              emptyExportTitle: "No emails to export",
+              emptyExportDescription: "There are no emails matching the current filters",
+              allScopeLabel: "Export all emails in the project",
+              filteredScopeLabel: (
+                <>
+                  Export only filtered emails
+                  {statusFilterLabel || simpleStatusFilterLabel ? (
+                    <span className="text-muted-foreground ml-1">
+                      ({[statusFilterLabel, simpleStatusFilterLabel].filter((label) => label != null).join(", ")})
+                    </span>
+                  ) : null}
+                </>
+              ),
+            }}
             onRowClick={(row) => {
               setSelectedEmail(row);
               setDetailSheetOpen(true);

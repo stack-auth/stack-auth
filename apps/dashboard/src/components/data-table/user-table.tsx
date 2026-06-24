@@ -29,11 +29,12 @@ import { CheckCircleIcon, CopyIcon, DotsThreeIcon, FunnelSimpleIcon, MagnifyingG
 import type { ServerUser } from "@hexclave/next";
 import {
   DataGrid,
-  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
+  type DataGridExportField,
+  type DataGridExportScope,
 } from "@hexclave/dashboard-ui-components";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -193,26 +194,31 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
   },
 ];
 
+const USER_EXPORT_FIELDS: DataGridExportField<ExtendedServerUser>[] = [
+  { key: "id", label: "User ID", enabled: true, getValue: (user) => user.id },
+  { key: "displayName", label: "Display Name", enabled: true, getValue: (user) => user.displayName ?? "" },
+  { key: "primaryEmail", label: "Email", enabled: true, getValue: (user) => user.primaryEmail ?? "" },
+  { key: "primaryEmailVerified", label: "Email Verified", enabled: true, getValue: (user) => user.primaryEmailVerified ? "Yes" : "No" },
+  { key: "signedUpAt", label: "Signed Up At", enabled: true, getValue: (user) => new Date(user.signedUpAt).toISOString() },
+  { key: "lastActiveAt", label: "Last Active At", enabled: true, getValue: (user) => new Date(user.lastActiveAt).toISOString() },
+  { key: "isAnonymous", label: "Is Anonymous", enabled: false, getValue: (user) => user.isAnonymous ? "Yes" : "No" },
+  { key: "hasPassword", label: "Has Password", enabled: false, getValue: (user) => user.hasPassword ? "Yes" : "No" },
+  { key: "otpAuthEnabled", label: "OTP Auth Enabled", enabled: false, getValue: (user) => user.otpAuthEnabled ? "Yes" : "No" },
+  { key: "passkeyAuthEnabled", label: "Passkey Auth Enabled", enabled: false, getValue: (user) => user.passkeyAuthEnabled ? "Yes" : "No" },
+  { key: "isMultiFactorRequired", label: "Multi-Factor Required", enabled: false, getValue: (user) => user.isMultiFactorRequired ? "Yes" : "No" },
+  { key: "oauthProviders", label: "OAuth Providers", enabled: false, getValue: (user) => user.oauthProviders.map((provider) => provider.id).join(", ") },
+  { key: "profileImageUrl", label: "Profile Image URL", enabled: false, getValue: (user) => user.profileImageUrl ?? "" },
+  { key: "clientMetadata", label: "Client Metadata", enabled: false, getValue: (user) => JSON.stringify(user.clientMetadata ?? {}) },
+  { key: "clientReadOnlyMetadata", label: "Client Read-Only Metadata", enabled: false, getValue: (user) => JSON.stringify(user.clientReadOnlyMetadata ?? {}) },
+  { key: "serverMetadata", label: "Server Metadata", enabled: false, getValue: (user) => JSON.stringify(user.serverMetadata ?? {}) },
+];
+
 // ─── UserTable ───────────────────────────────────────────────────────
 
-export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean, excludedEmailDomains: string[] }) => void,
-  onExportClick?: () => void,
-}) {
+export function UserTable() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
-  const onFilterChange = props?.onFilterChange;
-  useEffect(() => {
-    onFilterChange?.({
-      search: filters.search || undefined,
-      includeRestricted: filters.includeRestricted,
-      includeAnonymous: filters.includeAnonymous,
-      onlyAnonymous: filters.onlyAnonymous,
-      excludedEmailDomains: filters.excludedEmailDomains,
-    });
-  }, [filters.search, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, filters.excludedEmailDomains, onFilterChange]);
-
-  return <UserTableBody filters={filters} setFilters={setFilters} onExportClick={props?.onExportClick} />;
+  return <UserTableBody filters={filters} setFilters={setFilters} />;
 }
 
 // ─── Body (imperative fetching — no Suspense flash) ──────────────────
@@ -220,9 +226,8 @@ export function UserTable(props?: {
 function UserTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
-  onExportClick?: () => void,
 }) {
-  const { filters, setFilters, onExportClick } = props;
+  const { filters, setFilters } = props;
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
@@ -324,6 +329,39 @@ function UserTableBody(props: {
   }, [setFilters, setGridState]);
 
   const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allUsers: ServerUser[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+    const useFilters = options.scope === "filtered";
+
+    do {
+      type ListUsersOptions = Exclude<Parameters<typeof hexclaveAdminApp.listUsers>[0], undefined>;
+      const baseListUsersOptions = {
+        limit,
+        cursor,
+        query: useFilters ? (filters.search || undefined) : undefined,
+        excludedEmailDomains: useFilters ? filters.excludedEmailDomains : undefined,
+        includeRestricted: useFilters ? filters.includeRestricted : undefined,
+        orderBy: "signedUpAt",
+        desc: true,
+      } satisfies Omit<ListUsersOptions, "includeAnonymous" | "onlyAnonymous">;
+      const listUsersOptions: ListUsersOptions = useFilters && filters.onlyAnonymous
+        ? { ...baseListUsersOptions, includeAnonymous: true, onlyAnonymous: true }
+        : { ...baseListUsersOptions, includeAnonymous: useFilters ? filters.includeAnonymous : true };
+      const batch = await hexclaveAdminApp.listUsers(listUsersOptions);
+
+      allUsers.push(...batch);
+      options.onProgress(allUsers.length);
+      cursor = batch.nextCursor ?? undefined;
+    } while (cursor);
+
+    return extendUsers(allUsers);
+  }, [hexclaveAdminApp, filters.excludedEmailDomains, filters.includeAnonymous, filters.includeRestricted, filters.onlyAnonymous, filters.search]);
+
   const toolbarExtra = (
     <div className="flex items-center gap-2">
       <EmailDomainFilter
@@ -374,14 +412,29 @@ function UserTableBody(props: {
       estimatedRowHeight={44}
       footer={false}
       fillHeight={false}
-
-      toolbar={onExportClick == null ? undefined : (ctx) => (
-        <DataGridToolbar
-          ctx={{ ...ctx, exportCsv: onExportClick }}
-          extra={toolbarExtra}
-        />
-      )}
-      toolbarExtra={onExportClick == null ? toolbarExtra : undefined}
+      toolbarExtra={toolbarExtra}
+      exportOptions={{
+        title: "Export Users",
+        description: "Configure and download user data from your project",
+        entityName: "user",
+        entityNamePlural: "users",
+        filenamePrefix: "stack-users-export",
+        fields: USER_EXPORT_FIELDS,
+        fetchRows: fetchExportRows,
+        emptyExportTitle: "No users to export",
+        emptyExportDescription: "There are no users matching the current filters",
+        allScopeLabel: "Export all users in the project",
+        filteredScopeLabel: (
+          <>
+            Export only filtered/searched users
+            {filters.search && (
+              <span className="text-muted-foreground ml-1">
+                (search: &quot;{filters.search}&quot;)
+              </span>
+            )}
+          </>
+        ),
+      }}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
       }}

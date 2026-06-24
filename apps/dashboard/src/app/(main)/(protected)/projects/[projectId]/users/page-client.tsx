@@ -1,15 +1,14 @@
 "use client";
 
 import { UserTable } from "@/components/data-table/user-table";
-import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
 import { useMetricsUserCountsOrThrow } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -59,19 +58,7 @@ function TotalUsersErrorComponent(props: { error: Error }) {
 export default function PageClient() {
   const hexclaveAdminApp = useAdminApp();
   const firstUserPage = hexclaveAdminApp.useUsers({ limit: 1 });
-  const [exportOptions, setExportOptions] = useState<{
-    search?: string,
-    includeRestricted: boolean,
-    includeAnonymous: boolean,
-    onlyAnonymous: boolean,
-    excludedEmailDomains: string[],
-  }>({ includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, excludedEmailDomains: [] });
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  const openExportDialog = useCallback(() => {
-    setExportDialogOpen(true);
-  }, []);
 
   const handleRefresh = async () => {
     await (hexclaveAdminApp as any)._refreshUsers();
@@ -97,17 +84,6 @@ export default function PageClient() {
                 <ArrowsClockwiseIcon className="h-4 w-4" />
               </Button>
             </SimpleTooltip>
-            <ExportUsersDialog
-              trigger={
-                <Button variant="outline">
-                  <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-                  Export
-                </Button>
-              }
-              exportOptions={exportOptions}
-              open={exportDialogOpen}
-              onOpenChange={setExportDialogOpen}
-            />
             <UserDialog
               type="create"
               trigger={<Button>Create User</Button>}
@@ -124,7 +100,7 @@ export default function PageClient() {
         <UsersKpiCards />
 
         <div data-walkthrough="users-table">
-          <UserTable key={refreshKey} onFilterChange={setExportOptions} onExportClick={openExportDialog} />
+          <UserTable key={refreshKey} />
         </div>
       </PageLayout>
     </AppEnabledGuard>

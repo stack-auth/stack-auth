@@ -8,15 +8,14 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@hexclave/dashboard-ui-components';
-import type { ExportTransactionsOptions } from "@/components/export-transactions-dialog";
+import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridExportField, type DataGridExportScope } from '@hexclave/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@hexclave/shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@hexclave/shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@hexclave/shared/dist/schema-fields';
 import { moneyAmountToStripeUnits } from '@hexclave/shared/dist/utils/currencies';
 import type { MoneyAmount } from '@hexclave/shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@hexclave/shared/dist/utils/currency-constants';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
@@ -401,32 +400,31 @@ type FilterState = {
 const PAGE_SIZE = 25;
 const CUSTOMER_TYPE_OPTIONS = ["user", "team", "custom"] as const satisfies ReadonlyArray<NonNullable<FilterState["customerType"]>>;
 
-export function TransactionTable(props?: {
-  onFilterChange?: (filters: ExportTransactionsOptions) => void,
-  onExportClick?: () => void,
-}) {
+const TRANSACTION_EXPORT_FIELDS: DataGridExportField<Transaction>[] = [
+  { key: "id", label: "Transaction ID", enabled: true, getValue: (transaction) => transaction.id },
+  { key: "type", label: "Type", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).displayType.label },
+  { key: "customerType", label: "Customer Type", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).customerType ?? "" },
+  { key: "customerId", label: "Customer ID", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).customerId ?? "" },
+  { key: "amount", label: "Amount", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).amountDisplay },
+  { key: "detail", label: "Detail", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).detail },
+  { key: "createdAt", label: "Created At", enabled: true, getValue: (transaction) => new Date(transaction.created_at_millis).toISOString() },
+  { key: "refunded", label: "Refunded", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).refunded ? "Yes" : "No" },
+];
+
+export function TransactionTable() {
   const [filters, setFilters] = useState<FilterState>({});
 
   return (
-    <TransactionTableBody filters={filters} setFilters={setFilters} onFilterChange={props?.onFilterChange} onExportClick={props?.onExportClick} />
+    <TransactionTableBody filters={filters} setFilters={setFilters} />
   );
 }
 
 function TransactionTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
-  onFilterChange?: (filters: ExportTransactionsOptions) => void,
-  onExportClick?: () => void,
 }) {
   const app = useAdminApp();
-  const { filters, setFilters, onFilterChange, onExportClick } = props;
-
-  useEffect(() => {
-    onFilterChange?.({
-      type: filters.type,
-      customerType: filters.customerType,
-    });
-  }, [filters.type, filters.customerType, onFilterChange]);
+  const { filters, setFilters } = props;
 
   const dataSource = useMemo<DataGridDataSource<Transaction>>(
     () => async function* (params) {
@@ -634,6 +632,31 @@ function TransactionTableBody(props: {
     });
   }, [setFilters]);
 
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allTransactions: Transaction[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+    const useFilters = options.scope === "filtered";
+
+    do {
+      const result = await app.listTransactions({
+        limit,
+        cursor,
+        type: useFilters ? filters.type : undefined,
+        customerType: useFilters ? filters.customerType : undefined,
+      });
+
+      allTransactions.push(...result.transactions);
+      options.onProgress(allTransactions.length);
+      cursor = result.nextCursor ?? undefined;
+    } while (cursor);
+
+    return allTransactions;
+  }, [app, filters.customerType, filters.type]);
+
   return (
     <DataGrid
       columns={columns}
@@ -650,10 +673,22 @@ function TransactionTableBody(props: {
       fillHeight={false}
       footer={false}
       rowHeight={56}
-
+      exportOptions={{
+        title: "Export Transactions",
+        description: "Configure and download transaction data from your project",
+        entityName: "transaction",
+        entityNamePlural: "transactions",
+        filenamePrefix: "stack-transactions-export",
+        fields: TRANSACTION_EXPORT_FIELDS,
+        fetchRows: fetchExportRows,
+        emptyExportTitle: "No transactions to export",
+        emptyExportDescription: "There are no transactions matching the current filters",
+        allScopeLabel: "Export all transactions in the project",
+        filteredScopeLabel: "Export only filtered transactions",
+      }}
       toolbar={(ctx) => (
         <DataGridToolbar
-          ctx={onExportClick == null ? ctx : { ...ctx, exportCsv: onExportClick }}
+          ctx={ctx}
           hideQuickSearch
           extra={
             <div className="flex items-center gap-2">
