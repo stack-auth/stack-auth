@@ -1,29 +1,11 @@
 import { existsSync, readFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
+import { detectConfigImportPackage } from "./config-rendering";
 
 export { hexclaveConfigFileExportsConfig } from "./hexclave-config-file";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
-
-/**
- * Packages that export the `HexclaveConfig` type, in priority order.
- * The first match found in a project's dependencies wins. Hexclave-branded
- * packages come first (canonical); the legacy `@stackframe/*` names remain
- * so projects pinned to the last legacy release still render a config file
- * that compiles against their installed SDK.
- */
-const CONFIG_IMPORT_PACKAGES = [
-  "@hexclave/next",
-  "@hexclave/react",
-  "@hexclave/tanstack-start",
-  "@hexclave/js",
-  "@hexclave/template",
-  "@stackframe/stack",
-  "@stackframe/react",
-  "@stackframe/js",
-  "@stackframe/template",
-] as const;
 
 /**
  * Walks up from `dir` to find the nearest `package.json` and returns the
@@ -40,12 +22,7 @@ export function detectImportPackageFromDir(dir: string): string | undefined {
           ...Object.keys(pkg.dependencies ?? {}),
           ...Object.keys(pkg.devDependencies ?? {}),
         ];
-        for (const known of CONFIG_IMPORT_PACKAGES) {
-          if (deps.includes(known)) {
-            return known;
-          }
-        }
-        return undefined;
+        return detectConfigImportPackage(deps);
       } catch {
         return undefined;
       }

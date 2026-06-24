@@ -60,6 +60,10 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
  * Statically evaluates a Babel AST node representing a JSON-like literal
  * (objects, arrays, strings, numbers, booleans, null). Returns `undefined`
@@ -67,10 +71,15 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
  * identifiers, template literals, etc.).
  */
 function evaluateLiteralNode(node: t.Node): unknown {
+  // Unwrap TS type assertions so `{ ... } satisfies T` / `{ ... } as const` resolve.
+  if (t.isTSAsExpression(node) || t.isTSSatisfiesExpression(node)) {
+    return evaluateLiteralNode(node.expression);
+  }
   if (t.isObjectExpression(node)) {
     const result: Record<string, unknown> = {};
     for (const prop of node.properties) {
       if (t.isSpreadElement(prop) || !t.isObjectProperty(prop)) return undefined;
+      if (prop.computed) return undefined;
       const key = t.isIdentifier(prop.key)
         ? prop.key.name
         : t.isStringLiteral(prop.key)
@@ -79,7 +88,7 @@ function evaluateLiteralNode(node: t.Node): unknown {
             ? String(prop.key.value)
             : undefined;
       if (key === undefined) return undefined;
-      const value = evaluateLiteralNode(prop.value as t.Expression);
+      const value = evaluateLiteralNode(prop.value);
       if (value === undefined) return undefined;
       result[key] = value;
     }
@@ -136,9 +145,7 @@ export function parseStaticConfigLiteral(content: string): Record<string, unknow
       const value = evaluateLiteralNode(decl.init);
       if (value === undefined) return null;
       if (typeof value === "string") return value;
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        return value as Record<string, unknown>;
-      }
+      if (isRecord(value)) return value;
       return null;
     }
   }
@@ -224,4 +231,18 @@ export const config: HexclaveConfig = {
   teams: { allowClientTeamCreation: false },
 };`;
   expect(parseStaticConfigLiteral(content)).toEqual({ teams: { allowClientTeamCreation: false } });
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral rejects computed property keys", ({ expect }) => {
+  expect(parseStaticConfigLiteral('const key = "a"; export const config = { [key]: true };')).toBeNull();
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral unwraps TS `satisfies` assertion", ({ expect }) => {
+  const content = `import type { HexclaveConfig } from "@hexclave/next";
+export const config = { auth: { allowSignUp: true } } satisfies HexclaveConfig;`;
+  expect(parseStaticConfigLiteral(content)).toEqual({ auth: { allowSignUp: true } });
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral unwraps TS `as const` assertion", ({ expect }) => {
+  expect(parseStaticConfigLiteral('export const config = { enabled: true } as const;')).toEqual({ enabled: true });
 });
