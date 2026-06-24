@@ -1,5 +1,6 @@
 "use client";
 
+import { codePanelHeaderClasses, codePanelShellClasses } from '@/components/code-block';
 import { getPublicEnvVar } from '@/lib/env';
 import { Button, CopyButton, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import React, { useState } from "react";
@@ -10,10 +11,6 @@ type EnvFileViewerProps = {
   filename: string;
   value: string;
 }
-
-export const codePanelShellClasses = "overflow-hidden transition-all duration-150 hover:transition-none rounded-xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] shadow-none border border-black/[0.06] dark:border-white/[0.06]";
-
-const codePanelHeaderClasses = "text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center bg-black/[0.015] dark:bg-white/[0.015] py-2.5 border-b border-black/[0.06] dark:border-white/[0.06]";
 
 export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
   const [revealAll, setRevealAll] = useState(false);
@@ -83,7 +80,7 @@ export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
   );
 }
 
-function getEnvFileContent(props: {
+export function getEnvFileContent(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
