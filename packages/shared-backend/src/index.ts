@@ -131,20 +131,11 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
 
   const content = readFileSync(configFilePath, "utf-8");
 
-  // Fast path: if the config can be evaluated by jiti (no unresolvable imports),
-  // apply the update deterministically without invoking the AI agent.
-  const staticConfig = tryParseConfigFileContent(content, configFilePath);
-  if (staticConfig != null && isValidConfig(staticConfig)) {
-    const merged = override(staticConfig, configUpdate);
-    if (!isValidConfig(merged)) {
-      throw new Error(`${LOG_PREFIX} Merged config is invalid after applying update to ${configFilePath}`);
-    }
-    renderConfigObjectToFile(configFilePath, merged);
-    return;
-  }
-
-  // Agent path: config has custom structure (imports, helpers, external files)
-  // that must be preserved — delegate to the AI agent.
+  // One write path, always: hand the change to the AI agent so it edits the file
+  // in place and preserves its authoring (helper wrappers, imports, comments,
+  // layout). There is deliberately no deterministic "fast path" — re-rendering a
+  // config would flatten and destroy hand-authored files. Reads use jiti
+  // (see readConfigFile); writes go through the agent.
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
   const { snapshots, seen } = snapshotConfigFiles(configFilePath, content);
   try {
@@ -302,15 +293,6 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
   const content = readFileSync(configFilePath, "utf-8");
   if (!configFileExportsConfig(content, configFilePath)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
-  }
-}
-
-function tryParseConfigFileContent(content: string, configFilePath: string): Config | null {
-  try {
-    const parsed = evalConfigFileContent(content, configFilePath);
-    return isValidConfig(parsed) ? parsed : null;
-  } catch {
-    return null;
   }
 }
 

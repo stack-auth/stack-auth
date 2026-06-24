@@ -51,6 +51,7 @@ const MODEL_SELECTION_MATRIX: Record<
 // All unique model IDs referenced in the selection matrix, plus sonnet as the proxy default
 export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
   "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-haiku-4.5",
   ...Object.values(MODEL_SELECTION_MATRIX).flatMap(quality =>
     Object.values(quality).flatMap(speed =>
       Object.values(speed).map(config => config.modelId)
