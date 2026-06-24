@@ -477,6 +477,17 @@ function ok() {
   return { success: true };
 }
 
+let lastTickMillis = 0;
+async function runTickLoop(): Promise<void> {
+  try {
+    lastTickMillis = Math.max(Date.now(), lastTickMillis);
+    await bulldozerDb.withSnapshotReplicated(async (snapshot) => await snapshot.tick(new Date(lastTickMillis)));
+  } catch (error) {
+    console.error("Bulldozer JS tick loop error:", error);
+  }
+  setTimeout(() => { void runTickLoop(); }, 1000);
+}
+
 const app = new Elysia({ adapter: node() })
   .get("/health", () => ({ ok: true }))
   .post("/internal/payments/init", () => handler(async () => ok()))
@@ -565,5 +576,7 @@ const app = new Elysia({ adapter: node() })
   .listen(port);
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
+
+void runTickLoop();
 
 export type App = typeof app;
