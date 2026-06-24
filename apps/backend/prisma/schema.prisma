@@ -30,6 +30,8 @@ model Project {
   onboardingStatus String  @default("completed")
   onboardingState  Json?
 
+  isAvailableAsPreviewProject Boolean @default(false)
+
   logoUrl             String?
   logoFullUrl         String?
   logoDarkModeUrl     String?
@@ -135,6 +137,7 @@ model BranchConfigOverride {
 
   config Json
   source Json?
+  pushedConfigError Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -404,6 +407,7 @@ model SessionReplay {
 
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId, startedAt])
+  @@index([tenancyId, startedAt], name: "SessionReplay_tenancyId_startedAt_idx")
   @@index([tenancyId, lastEventAt])
   // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
@@ -1066,6 +1070,7 @@ model EmailOutbox {
 
   @@id([tenancyId, id])
   @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
+  @@index([tenancyId, startedSendingAt], name: "EmailOutbox_tenancyId_startedSendingAt_idx")
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
   @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
   @@index([isQueued], map: "EmailOutbox_isQueued_idx")
@@ -1422,6 +1427,32 @@ model OutgoingRequest {
   // is created in a custom migration (not expressible in Prisma schema)
   @@index([startedFulfillingAt, createdAt])
   @@index([startedFulfillingAt, deduplicationKey])
+}
+
+enum StripeWebhookEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+// Idempotency + recovery log for incoming Stripe webhook events. Each event is
+// persisted synchronously (keyed on the Stripe `event.id`) before we ack 200 to
+// Stripe, so redeliveries are deduped and the full `payload` of any
+// PENDING/FAILED row can be replayed manually. Not tenancy-scoped: the Stripe
+// account -> tenancy resolution happens during processing, not here.
+model StripeWebhookEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  stripeEventId   String                   @unique
+  eventType       String
+  stripeAccountId String?
+  payload         Json
+  status          StripeWebhookEventStatus @default(PENDING)
+  lastError       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
 }
 
 // BulldozerStorageEngine is managed externally (see prisma.config.ts

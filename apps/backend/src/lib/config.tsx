@@ -11,11 +11,17 @@ import { Result } from "@hexclave/shared/dist/utils/results";
 import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
-import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason } from "./development-environment";
+import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "./development-environment";
 import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
+export type BranchConfigPushedError = {
+  message: string,
+};
+export type ConfigWarning = {
+  message: string,
+};
 
 type ProjectOptions = { projectId: string };
 type BranchOptions = ProjectOptions & { branchId: string };
@@ -316,6 +322,88 @@ export async function setBranchConfigOverride(options: {
       config: newConfig,
     },
   });
+  await clearBranchConfigPushedError({
+    projectId: options.projectId,
+    branchId: options.branchId,
+  });
+}
+
+function isBranchConfigPushedError(value: unknown): value is BranchConfigPushedError {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "message" in value &&
+    typeof value.message === "string"
+  );
+}
+
+export async function getBranchConfigPushedError(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<BranchConfigPushedError | null> {
+  const rows = await globalPrismaClient.$replica().$queryRaw<Array<{ pushedConfigError: unknown }>>(Prisma.sql`
+    SELECT "pushedConfigError"
+    FROM "BranchConfigOverride"
+    WHERE "projectId" = ${options.projectId}
+      AND "branchId" = ${options.branchId}
+    LIMIT 1
+  `);
+  const error = rows[0]?.pushedConfigError;
+  return isBranchConfigPushedError(error) ? error : null;
+}
+
+export async function setBranchConfigPushedError(options: {
+  projectId: string,
+  branchId: string,
+  error: BranchConfigPushedError,
+}): Promise<void> {
+  const errorJson = JSON.stringify(options.error);
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    INSERT INTO "BranchConfigOverride" ("projectId", "branchId", "config", "pushedConfigError", "updatedAt")
+    VALUES (${options.projectId}, ${options.branchId}, '{}'::jsonb, ${errorJson}::jsonb, NOW())
+    ON CONFLICT ("projectId", "branchId") DO UPDATE SET
+      "pushedConfigError" = EXCLUDED."pushedConfigError",
+      "updatedAt" = NOW()
+  `);
+}
+
+export async function clearBranchConfigPushedError(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<void> {
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    UPDATE "BranchConfigOverride"
+    SET "pushedConfigError" = NULL,
+        "updatedAt" = NOW()
+    WHERE "projectId" = ${options.projectId}
+      AND "branchId" = ${options.branchId}
+      AND "pushedConfigError" IS NOT NULL
+  `);
+}
+
+export async function getDevelopmentEnvironmentConfigWarnings(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+}): Promise<ConfigWarning[]> {
+  if (!(await isDevelopmentEnvironmentProject(options.projectId))) {
+    return [];
+  }
+
+  const incompleteConfig = await rawQuery(globalPrismaClient, getIncompleteOrganizationConfigQuery({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    organizationId: options.organizationId,
+  }));
+  const warnings = await getIncompleteConfigWarnings(organizationConfigSchema, incompleteConfig);
+  if (warnings.status === "ok") {
+    return [];
+  }
+  return warnings.error
+    .split("\n")
+    .filter((message) => message.length > 0)
+    .map((message) => ({ message }));
 }
 
 /**

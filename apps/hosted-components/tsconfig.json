@@ -5,6 +5,7 @@
     "lib": ["DOM", "DOM.Iterable", "ES2021"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "noUncheckedSideEffectImports": false,
     "strict": true,
     "skipLibCheck": true,
     "isolatedModules": true,

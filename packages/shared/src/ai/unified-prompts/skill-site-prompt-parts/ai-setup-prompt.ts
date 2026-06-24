@@ -1,6 +1,7 @@
 import { ALL_APPS, type AppId } from "../../../apps/apps-config";
 import { typedEntries } from "../../../utils/objects";
 import { deindent } from "../../../utils/strings";
+import { remindersPrompt } from "../reminders";
 
 export const convexSetupPrompt = deindent`
   ## Convex Setup
@@ -593,6 +594,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add handler/auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
   "fraud-protection": deindent`
+    Key concepts: sign-up rules are ordered checks that decide whether a sign-up should be allowed, rejected, restricted, or logged; rule priority decides which matching rule wins when multiple rules apply.
+
     Start by writing the first sign-up rules in \`hexclave.config.ts\`. For a company-only product, default to reject and explicitly allow the company domain:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -633,6 +636,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     In the app, use team IDs in deep links wherever possible, then add a team switcher for navigation convenience. If team-specific authorization matters, configure RBAC next and enforce checks on the server. See [Teams](https://docs.hexclave.com/guides/apps/teams/overview), [Team Selection](https://docs.hexclave.com/guides/apps/teams/team-selection), and [hexclave.config.ts: Teams and Users](https://docs.hexclave.com/guides/going-further/hexclave-config#teams-and-users).
   `,
   "rbac": deindent`
+    Key concepts: permissions are stable IDs your app checks before protected actions; scopes decide whether a permission applies globally or within a team; contained permissions let one permission include other permissions recursively.
+
     Start with the permission IDs the product will check in code. For a basic team app, define reader/writer permissions and an admin-style composed permission:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -663,6 +668,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Use \`scope: "project"\` only for global project-level actions. Client-side permission checks are UX only; always enforce the same permissions on the server. See [RBAC Permissions](https://docs.hexclave.com/guides/apps/rbac/overview) and [hexclave.config.ts: RBAC](https://docs.hexclave.com/guides/going-further/hexclave-config#rbac).
   `,
   "api-keys": deindent`
+    API keys allow you to programmatically create API keys for your own users. This is useful if you have an API yourself that you want to authenticate users against.
+
     Start by enabling only the owner types the product actually needs. For a platform with both personal and workspace APIs:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -681,6 +688,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Then expose built-in account/team settings UI or build focused create/list/revoke screens. Always validate API keys on a trusted backend before serving protected requests. See [API Keys](https://docs.hexclave.com/guides/apps/api-keys/overview) and [hexclave.config.ts: API Keys](https://docs.hexclave.com/guides/going-further/hexclave-config#api-keys).
   `,
   "payments": deindent`
+    Key concepts: products are the sellable plans or one-time offers customers buy; product lines group mutually exclusive products such as pricing tiers; items are quantifiable entitlements such as credits, seats, or API calls granted by products; customers are the users, teams, or custom entities that own purchases and item balances.
+
     Start with a minimal catalog. For a user-plan SaaS with monthly credits:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -691,6 +700,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
         },
         items: {
           credits: { displayName: "Credits", customerType: "user" },
+          access: { displayName: "Product Access", customerType: "user" },
         },
         products: {
           pro: {
@@ -702,6 +712,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
             },
             includedItems: {
               credits: { quantity: 1000, repeat: [1, "month"], expires: "when-repeated" },
+              access: { quantity: 1, expires: "when-purchase-expires" },
             },
           },
         },
@@ -714,6 +725,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Keep purchases in test mode while building; Stripe connection and \`payments.testMode\` are environment-specific, so configure them in the dashboard/environment rather than hard-coding secrets. In code, generate checkout URLs and read products/items to gate access. See [Payments: Getting started](https://docs.hexclave.com/guides/apps/payments/overview#getting-started), [Defining products](https://docs.hexclave.com/guides/apps/payments/overview#defining-products), and [Checking item balances](https://docs.hexclave.com/guides/apps/payments/overview#checking-item-balances).
   `,
   "emails": deindent`
+    Key concepts: templates define reusable email content with variables; themes provide shared branding around templates; transactional emails are required product emails, while marketing emails must respect opt-out expectations.
+
     Start with delivery: shared delivery is fine for development, but production should use Managed, Resend, or custom SMTP from **Emails -> Email Settings**. Delivery credentials and sender settings are environment-specific, so do not put secrets in \`hexclave.config.ts\`.
 
     Use config for versioned content. For example, add a product-specific template once you have the copy:
@@ -1271,6 +1284,8 @@ export const aiSetupPrompt = deindent`
   This prompt explains how to set up Hexclave in your project. This is the authoritative source of truth on how to set up Hexclave, and you should follow these guidelines exactly.
 
   To use it, you can use the sections below to set up Hexclave in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
+
+  ${remindersPrompt}
 
   ${getSdkSetupPrompt("ai-prompt")}
 

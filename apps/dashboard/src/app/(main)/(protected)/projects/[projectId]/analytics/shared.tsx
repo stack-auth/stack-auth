@@ -15,6 +15,7 @@ import {
   WarningCircleIcon
 } from "@phosphor-icons/react";
 import { Alert, AlertDescription, Button } from "@/components/ui";
+import { Link } from "@/components/link";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -340,7 +341,7 @@ export function AnalyticsEventLimitBanner() {
     return null;
   }
 
-  return <AnalyticsEventLimitBannerInner team={ownerTeam} />;
+  return <AnalyticsEventLimitBannerInner team={ownerTeam} projectId={project.id} />;
 }
 
 /**
@@ -395,7 +396,7 @@ function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: str
   );
 }
 
-function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type?: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> } }) {
+function AnalyticsEventLimitBannerInner({ team, projectId }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type?: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> }, projectId: string }) {
   const eventsItem = team.useItem("analytics_events");
   const products = team.useProducts();
   const planId = resolvePlanId(products);
@@ -433,15 +434,26 @@ function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: st
           }
           {canUpgrade && !isExhausted && " Consider upgrading your plan."}
         </span>
-        {canUpgrade && (
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             size="sm"
-            variant={isExhausted ? "destructive" : "outline"}
-            onClick={handleUpgrade}
+            variant="outline"
+            asChild
           >
-            Upgrade plan
+            <Link href={`/projects/${projectId}/project-settings/usage`}>
+              View usage
+            </Link>
           </Button>
-        )}
+          {canUpgrade && (
+            <Button
+              size="sm"
+              variant={isExhausted ? "destructive" : "outline"}
+              onClick={handleUpgrade}
+            >
+              Upgrade plan
+            </Button>
+          )}
+        </div>
       </AlertDescription>
     </Alert>
   );

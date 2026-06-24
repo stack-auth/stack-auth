@@ -434,6 +434,71 @@ import.meta.vitest?.test("timeoutThrow", async ({ expect }) => {
 });
 
 
+/**
+ * Maps over `items` with `fn`, running at most `concurrency` invocations at a time.
+ *
+ * Unlike `Promise.all(items.map(fn))`, this bounds the number of in-flight
+ * promises, which matters when `fn` hits a shared resource (e.g. a database) and
+ * an unbounded fan-out could exhaust connections or overload a replica. Results
+ * are returned in input order regardless of completion order, and the first
+ * rejection aborts further scheduling — already in-flight workers still settle
+ * but no new items are started.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new HexclaveAssertionError(`mapWithConcurrency requires a positive integer concurrency, got ${concurrency}`);
+  }
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let aborted = false;
+  const worker = async () => {
+    while (!aborted) {
+      // Claim an index synchronously before awaiting so workers never process the same item.
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try {
+        // Bounds-checked above; `?? throwErr(…)` is unsuitable because T may legitimately be null/undefined
+        results[index] = await fn(items[index] as T, index);
+      } catch (error) {
+        aborted = true;
+        throw error;
+      }
+    }
+  };
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+import.meta.vitest?.test("mapWithConcurrency", async ({ expect }) => {
+  // Preserves input order regardless of completion order.
+  const ordered = await mapWithConcurrency([30, 10, 20], 3, async (ms, index) => {
+    await wait(ms);
+    return `${index}:${ms}`;
+  });
+  expect(ordered).toEqual(["0:30", "1:10", "2:20"]);
+
+  // Never exceeds the configured concurrency.
+  let inFlight = 0;
+  let maxInFlight = 0;
+  await mapWithConcurrency(Array.from({ length: 10 }, (_, i) => i), 3, async () => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await wait(5);
+    inFlight--;
+  });
+  expect(maxInFlight).toBe(3);
+
+  // Empty input spawns no workers and returns an empty array.
+  expect(await mapWithConcurrency([], 4, async () => 1)).toEqual([]);
+
+  // Invalid concurrency fails loudly.
+  await expect(mapWithConcurrency([1], 0, async (x) => x)).rejects.toThrow("positive integer concurrency");
+});
+
 export type RateLimitOptions = {
   /**
    * The number of requests to process in parallel. Currently only 1 is supported.
