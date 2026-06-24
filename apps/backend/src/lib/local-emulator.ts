@@ -76,7 +76,14 @@ async function readConfigContent(filePath: string): Promise<string> {
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
   try {
-    return evalConfigFileContent(content, filePath);
+    const result = evalConfigFileContent(content, filePath);
+    if (typeof result === "string") {
+      if (result !== LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE) {
+        throw new Error(`Unexpected string config value: ${JSON.stringify(result)}`);
+      }
+      return result;
+    }
+    return result;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);
