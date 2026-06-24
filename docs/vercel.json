@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "",
+  "outputDirectory": "public",
   "redirects": [
     {
       "source": "/api/client/anonymous/auth/anonymous/sign-up",

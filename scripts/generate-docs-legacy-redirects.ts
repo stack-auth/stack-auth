@@ -8,6 +8,16 @@ type Redirect = {
 
 const NEW_DOCS_ORIGIN = "https://docs.hexclave.com";
 
+const VERCEL_REDIRECTS_PROJECT_CONFIG = {
+  $schema: "https://openapi.vercel.sh/vercel.json",
+  framework: null,
+  installCommand: "",
+  buildCommand: "",
+  outputDirectory: "public",
+} as const;
+
+const VERCEL_JSON_OUTPUT_PATH = "docs/vercel.json";
+
 const AUTH_PROVIDERS = [
   "apple",
   "bitbucket",
@@ -311,9 +321,16 @@ function buildLegacyPathRedirects(repoRoot: string): Redirect[] {
     .map(([source, destination]) => ({ source, destination }));
 }
 
+function writeVercelRedirectProject(repoRoot: string, vercelRedirects: Redirect[]) {
+  writeFileSync(
+    path.join(repoRoot, VERCEL_JSON_OUTPUT_PATH),
+    `${JSON.stringify({ ...VERCEL_REDIRECTS_PROJECT_CONFIG, redirects: vercelRedirects }, null, 2)}\n`,
+    "utf-8",
+  );
+}
+
 function main() {
   const repoRoot = path.resolve(__dirname, "..");
-  const vercelJsonPath = path.join(repoRoot, "docs-legacy-redirects/vercel.json");
 
   const pathRedirects = buildLegacyPathRedirects(repoRoot);
   const vercelRedirects = [
@@ -334,12 +351,8 @@ function main() {
     },
   ];
 
-  writeFileSync(
-    vercelJsonPath,
-    `${JSON.stringify({ $schema: "https://openapi.vercel.sh/vercel.json", redirects: vercelRedirects }, null, 2)}\n`,
-    "utf-8",
-  );
-  console.log(`Updated ${pathRedirects.length} legacy redirects in docs-legacy-redirects/vercel.json`);
+  writeVercelRedirectProject(repoRoot, vercelRedirects);
+  console.log(`Updated ${pathRedirects.length} legacy redirects in ${VERCEL_JSON_OUTPUT_PATH}`);
 }
 
 main();
