@@ -1,5 +1,7 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
+import { claimStripeEvent, markStripeEventFailed, markStripeEventProcessed } from "@/lib/stripe-webhook-events";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { listPermissions } from "@/lib/permissions";
 import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
@@ -466,12 +468,28 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "Invalid stripe-signature header");
     }
 
-    try {
-      await processStripeWebhookEvent(event);
-    } catch (error) {
-      captureError("stripe-webhook-receiver", error);
-      throw error;
+    // Persist the event for idempotency + recovery BEFORE acking. Stripe
+    // delivers at-least-once
+    const { shouldProcess } = await claimStripeEvent(event);
+    if (!shouldProcess) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { received: true, deduplicated: true },
+      };
     }
+
+    // Ack Stripe immediately and process in the background.
+    // Stripe recommends ACKing ASAP to avoid timeouts and redeliveries
+    runAsynchronouslyAndWaitUntil(async () => {
+      try {
+        await processStripeWebhookEvent(event);
+        await markStripeEventProcessed(event.id);
+      } catch (error) {
+        captureError("stripe-webhook-receiver", error);
+        await markStripeEventFailed(event.id, error);
+      }
+    });
 
     return {
       statusCode: 200,
