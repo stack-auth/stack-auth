@@ -15,8 +15,11 @@ import type { DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
+import type { CustomerType } from "./customer-selector";
 
-export type CustomerType = "user" | "team" | "custom";
+// Re-export so existing consumers of this module keep working, while the
+// canonical definition lives in customer-selector.tsx.
+export type { CustomerType };
 
 // Cap for metrics computation. Most customers have well under this; if we hit
 // it, the UI shows a banner so the user knows lifetime metrics are bounded.
@@ -278,7 +281,7 @@ function MetricsRow({ customerType, customerId, transactions, truncated }: { cus
       </div>
       {truncated && (
         <div className="text-xs text-muted-foreground">
-          Metrics computed over the most recent {METRICS_TRANSACTION_CAP.toLocaleString()} transactions. Older history is excluded.
+          Metrics, active products, and transaction history below reflect only the most recent {METRICS_TRANSACTION_CAP.toLocaleString()} transactions. Older history is excluded.
         </div>
       )}
     </div>

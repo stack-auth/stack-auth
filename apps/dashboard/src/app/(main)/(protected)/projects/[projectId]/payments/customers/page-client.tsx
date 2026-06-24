@@ -32,6 +32,11 @@ const PAGE_SIZE = 25;
 // Custom customers aren't enumerable directly — we derive distinct ids from
 // recent transactions, scanning this many per page.
 const CUSTOM_TX_PAGE_SIZE = 100;
+// Bound the transaction scan so a no-match search (or a project with a very
+// long history) can't walk the entire transaction log page-by-page. Custom
+// customers are derived from the most recent CUSTOM_TX_PAGE_SIZE *
+// MAX_CUSTOM_SCAN_PAGES transactions.
+const MAX_CUSTOM_SCAN_PAGES = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
 type CustomerFilter = "all" | CustomerType;
@@ -53,7 +58,7 @@ const TYPE_BADGE: Record<CustomerType, { label: string, color: DesignBadgeColor 
 // page and points the cursor at the next phase once a source is exhausted.
 type Phase = "user" | "team" | "custom";
 
-type CursorState = { phase: Phase, inner?: string };
+type CursorState = { phase: Phase, inner?: string, scanned?: number };
 
 export default function PageClient() {
   const [selected, setSelected] = useState<CustomerRow | null>(null);
@@ -129,7 +134,15 @@ function CustomerListView({ onOpen }: { onOpen: (customer: CustomerRow) => void 
       }
 
       const firstPhase: Phase = filter === "all" ? "user" : filter;
-      const state: CursorState = cursorRaw ? JSON.parse(cursorRaw) as CursorState : { phase: firstPhase };
+      // The cursor is opaque pagination state we encode ourselves, but guard the
+      // parse anyway so a corrupted value just restarts from the first page
+      // instead of throwing inside the async generator.
+      let state: CursorState;
+      try {
+        state = cursorRaw ? JSON.parse(cursorRaw) as CursorState : { phase: firstPhase };
+      } catch {
+        state = { phase: firstPhase };
+      }
 
       const nextPhase = (phase: Phase): Phase | null => {
         if (filter !== "all") return null;
@@ -168,7 +181,10 @@ function CustomerListView({ onOpen }: { onOpen: (customer: CustomerRow) => void 
         return;
       }
 
-      // custom: derive distinct customer ids from transactions
+      // custom: derive distinct customer ids from the most recent transactions.
+      // Bounded by MAX_CUSTOM_SCAN_PAGES so we never page through the entire
+      // transaction history (e.g. for a search that matches nothing).
+      const scanned = (state.scanned ?? 0) + 1;
       const result = await adminApp.listTransactions({ limit: CUSTOM_TX_PAGE_SIZE, customerType: "custom", cursor: state.inner });
       const rows: CustomerRow[] = [];
       for (const transaction of result.transactions) {
@@ -179,7 +195,12 @@ function CustomerListView({ onOpen }: { onOpen: (customer: CustomerRow) => void 
         if (query && !id.toLowerCase().includes(query.toLowerCase())) continue;
         rows.push({ type: "custom", id, label: id });
       }
-      yield advance(rows, "custom", result.nextCursor ?? undefined);
+      const innerNext = scanned < MAX_CUSTOM_SCAN_PAGES ? (result.nextCursor ?? undefined) : undefined;
+      if (innerNext) {
+        yield { rows, hasMore: true, nextCursor: JSON.stringify({ phase: "custom", inner: innerNext, scanned } satisfies CursorState) };
+      } else {
+        yield { rows, hasMore: false, nextCursor: undefined };
+      }
     },
     [adminApp, filter],
   );

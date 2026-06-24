@@ -22,7 +22,7 @@ export function TeamPaymentsSection({ team }: { team: ServerTeam }) {
       <CreateCheckoutDialog
         open={isCheckoutOpen}
         onOpenChange={setIsCheckoutOpen}
-        customer={{ type: "team", id: team.id, label: team.displayName }}
+        customer={{ type: "team", id: team.id, label: team.displayName || team.id }}
       />
     </div>
   );

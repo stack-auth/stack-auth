@@ -1480,23 +1480,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
+  private _resolveCustomer(
+    options: { userId: string } | { teamId: string } | { customCustomerId: string }
+  ): { customerType: "user" | "team" | "custom", customerId: string } {
+    if ("userId" in options) {
+      return { customerType: "user", customerId: options.userId };
+    }
+    if ("teamId" in options) {
+      return { customerType: "team", customerId: options.teamId };
+    }
+    return { customerType: "custom", customerId: options.customCustomerId };
+  }
+
   async grantProduct(options: (
     ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
     ({ productId: string } | { product: InlineProduct }) &
     { quantity?: number }
   )): Promise<void> {
-    let customerType: "user" | "team" | "custom";
-    let customerId: string;
-    if ("userId" in options) {
-      customerType = "user";
-      customerId = options.userId;
-    } else if ("teamId" in options) {
-      customerType = "team";
-      customerId = options.teamId;
-    } else {
-      customerType = "custom";
-      customerId = options.customCustomerId;
-    }
+    const { customerType, customerId } = this._resolveCustomer(options);
 
     await this._interface.grantProduct({
       customerType,
@@ -1519,18 +1520,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     ({ productId: string } | { product: InlineProduct }) &
     { returnUrl?: string }
   )): Promise<string> {
-    let customerType: "user" | "team" | "custom";
-    let customerId: string;
-    if ("userId" in options) {
-      customerType = "user";
-      customerId = options.userId;
-    } else if ("teamId" in options) {
-      customerType = "team";
-      customerId = options.teamId;
-    } else {
-      customerType = "custom";
-      customerId = options.customCustomerId;
-    }
+    const { customerType, customerId } = this._resolveCustomer(options);
 
     const productIdOrInline = "productId" in options ? options.productId : options.product;
     return await this._interface.createCheckoutUrl(customerType, customerId, productIdOrInline, null, options.returnUrl, "server");

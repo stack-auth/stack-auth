@@ -134,7 +134,7 @@ export function CreateCheckoutDialog(props: Props) {
   };
 
   const noProducts = !fixedProduct && productOptions.length === 0;
-  const createDisabled = isCreating || !activeCustomer || (props.lockProduct ? false : noProducts);
+  const createDisabled = isCreating || !activeCustomer || (props.lockProduct ? !props.productId : noProducts);
 
   return (
     <>
