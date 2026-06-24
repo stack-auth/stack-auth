@@ -54,9 +54,6 @@ const ignoredEvents = [
   "invoice_payment.paid",
   "payout.created",
   "payout.paid",
-  "payout.failed",
-  "payout.canceled",
-  "payout.updated",
   "payout.reconciliation_completed",
 ] as const satisfies Stripe.Event.Type[];
 
