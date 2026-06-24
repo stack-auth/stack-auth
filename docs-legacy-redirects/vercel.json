@@ -522,6 +522,11 @@
       "permanent": true
     },
     {
+      "source": "/docs/sdk/hooks/use-user",
+      "destination": "https://docs.hexclave.com/sdk/hooks/use-user",
+      "permanent": true
+    },
+    {
       "source": "/docs/sdk/index",
       "destination": "https://docs.hexclave.com/sdk/overview",
       "permanent": true

@@ -141,6 +141,7 @@ function buildLegacyPathRedirects(): Redirect[] {
   addRedirect(redirects, "/docs/sdk/overview-new", "/sdk/overview");
   addRedirect(redirects, "/docs/sdk/objects/stack-app", "/sdk/objects/hexclave-app");
   addRedirect(redirects, "/docs/sdk/hooks/use-stack-app", "/sdk/hooks/use-hexclave-app");
+  addRedirect(redirects, "/docs/sdk/hooks/use-user", "/sdk/hooks/use-user");
   for (const sdkType of SDK_TYPES) {
     addRedirect(redirects, `/docs/sdk/types/${sdkType}`, `/sdk/types/${sdkType}`);
   }
