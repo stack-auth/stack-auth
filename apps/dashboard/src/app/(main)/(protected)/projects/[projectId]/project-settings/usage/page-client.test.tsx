@@ -106,8 +106,8 @@ describe("Usage settings page", () => {
   it("renders the plan, usage rows, and overage state", () => {
     render(<PageClient />);
 
-    // The page title and usage card share this label.
-    expect(screen.getAllByText("Usage").length).toBeGreaterThan(0);
+    // The page title
+    expect(screen.getAllByText("Billing & Usage").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Free").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Owner").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Dashboard admins").length).toBeGreaterThan(0);

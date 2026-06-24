@@ -742,7 +742,6 @@ Reference surfaces:
 - `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]`
 - `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails`
 - `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-drafts`
-- `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-outbox`
 - `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-templates`
 - `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-themes`
 
@@ -803,21 +802,7 @@ Keep:
 
 - specialized editor layout systems if no design-components equivalent exists
 
-### 5.4 `/projects/[projectId]/email-outbox`
-
-Use:
-
-- section cards: `DesignCard` (preferred for visual consistency with other email screens)
-- filters: `DesignSelectorDropdown`, `DesignInput`
-- status badges: `DesignBadge`
-- action buttons/menus: `DesignButton`, `DesignMenu`
-- data grid/list table: `DataGrid` + `useDataSource` + `createDefaultDataGridState`
-
-Avoid:
-
-- mixed badge systems (`Badge` in some places, custom badges elsewhere)
-
-### 5.5 `/projects/[projectId]/email-templates`
+### 5.4 `/projects/[projectId]/email-templates`
 
 Use:
 
@@ -830,7 +815,7 @@ Avoid:
 
 - inline repeated glass class blocks for each template card
 
-### 5.6 `/projects/[projectId]/email-templates/[templateId]`
+### 5.5 `/projects/[projectId]/email-templates/[templateId]`
 
 Use:
 
@@ -838,7 +823,7 @@ Use:
 - top actions: `DesignButton`
 - state tags: `DesignBadge` where needed
 
-### 5.7 `/projects/[projectId]/email-themes`
+### 5.6 `/projects/[projectId]/email-themes`
 
 Use:
 
@@ -852,7 +837,7 @@ Avoid:
 
 - custom `ViewportSelector` if `DesignPillToggle` supports the same behavior
 
-### 5.8 `/projects/[projectId]/email-themes/[themeId]`
+### 5.7 `/projects/[projectId]/email-themes/[themeId]`
 
 Use:
 

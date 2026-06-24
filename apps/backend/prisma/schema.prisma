@@ -1427,6 +1427,32 @@ model OutgoingRequest {
   @@index([startedFulfillingAt, deduplicationKey])
 }
 
+enum StripeWebhookEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+// Idempotency + recovery log for incoming Stripe webhook events. Each event is
+// persisted synchronously (keyed on the Stripe `event.id`) before we ack 200 to
+// Stripe, so redeliveries are deduped and the full `payload` of any
+// PENDING/FAILED row can be replayed manually. Not tenancy-scoped: the Stripe
+// account -> tenancy resolution happens during processing, not here.
+model StripeWebhookEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  stripeEventId   String                   @unique
+  eventType       String
+  stripeAccountId String?
+  payload         Json
+  status          StripeWebhookEventStatus @default(PENDING)
+  lastError       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+}
+
 // BulldozerStorageEngine is managed externally (see prisma.config.ts
 // `tables.external`). It's created by migrations and interacted with
 // via raw SQL — not through the Prisma client. Keeping it out of the
