@@ -3,12 +3,14 @@
 import { DesignBadge } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
 import { DesignPillToggle } from "@/components/design-components";
+import { ExportEmailsDialog } from "@/components/export-emails-dialog";
 import { useRouter } from "@/components/router";
-import { Spinner, Typography } from "@/components/ui";
-import { Envelope } from "@phosphor-icons/react";
+import { Button, Spinner, Typography } from "@/components/ui";
+import { DownloadSimpleIcon, Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@hexclave/next";
 import {
   DataGrid,
+  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
@@ -115,9 +117,12 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
 
 const OUTBOX_PAGE_SIZE = 50;
 
-function EmailSendDataTable() {
+function EmailSendDataTable(props: {
+  onExportClick?: () => void,
+}) {
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
+  const onExportClick = props.onExportClick;
 
   const [gridState, setGridState] = useDataGridUrlState(emailTableColumns, {
     paramPrefix: "sentemails",
@@ -179,6 +184,9 @@ function EmailSendDataTable() {
         onLoadMore={gridData.loadMore}
         fillHeight={false}
         footer={false}
+        toolbar={onExportClick == null ? undefined : (ctx) => (
+          <DataGridToolbar ctx={{ ...ctx, exportCsv: onExportClick }} />
+        )}
         onRowClick={(row) => {
           router.push(`email-viewer/${row.id}`);
         }}
@@ -189,12 +197,32 @@ function EmailSendDataTable() {
 
 export default function PageClient() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const openExportDialog = useCallback(() => {
+    setExportDialogOpen(true);
+  }, []);
 
   return (
     <AppEnabledGuard appId="emails">
       <PageLayout
         title="Sent"
         description="View email logs and domain reputation"
+        actions={
+          <ExportEmailsDialog
+            trigger={
+              <Button variant="outline">
+                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            }
+            open={exportDialogOpen}
+            onOpenChange={setExportDialogOpen}
+            title="Export Sent Emails"
+            description="Configure and download sent email log data from your project"
+            filenamePrefix="stack-email-sent-export"
+            filteredScopeLabel="Export only filtered/searched emails"
+          />
+        }
       >
         <div data-walkthrough="emails-sent" className="flex flex-col xl:flex-row gap-6 min-w-0">
           {/* Left side: Email Log with toggle inside card */}
@@ -222,7 +250,7 @@ export default function PageClient() {
                   gradient="default"
                 />
               </div>
-              {viewMode === "list" ? <EmailSendDataTable /> : <GroupedEmailTable />}
+              {viewMode === "list" ? <EmailSendDataTable onExportClick={openExportDialog} /> : <GroupedEmailTable />}
             </DesignCard>
           </div>
 

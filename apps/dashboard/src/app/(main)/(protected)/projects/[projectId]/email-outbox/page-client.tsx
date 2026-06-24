@@ -1,10 +1,11 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
+import { ExportEmailsDialog, type ExportEmailsOptions } from "@/components/export-emails-dialog";
 import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
 import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from "@hexclave/dashboard-ui-components";
 import { cn } from "@/lib/utils";
-import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
+import { DotsThreeIcon, DownloadSimpleIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@hexclave/next";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -80,6 +81,14 @@ function canPauseEmail(email: AdminEmailOutbox): boolean {
 function canCancelEmail(email: AdminEmailOutbox): boolean {
   const cancellableStatuses = ["paused", "preparing", "rendering", "scheduled", "queued", "render-error", "server-error"];
   return cancellableStatuses.includes(email.status);
+}
+
+function getSelectedStatusLabel(value: string): string | null {
+  return Object.entries(STATUS_LABELS).find(([status]) => status === value)?.[1] ?? null;
+}
+
+function getSelectedSimpleStatusLabel(value: string): string | null {
+  return Object.entries(SIMPLE_STATUS_LABELS).find(([status]) => status === value)?.[1] ?? null;
 }
 
 function EmailActions({
@@ -595,6 +604,14 @@ export default function PageClient() {
   const [simpleStatusFilter, setSimpleStatusFilter] = useState<string>("all");
   const [selectedEmail, setSelectedEmail] = useState<AdminEmailOutbox | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const exportOptions = useMemo<ExportEmailsOptions>(() => ({
+    status: statusFilter === "all" ? undefined : statusFilter,
+    simpleStatus: simpleStatusFilter === "all" ? undefined : simpleStatusFilter,
+  }), [statusFilter, simpleStatusFilter]);
+  const openExportDialog = useCallback(() => {
+    setExportDialogOpen(true);
+  }, []);
 
   // Server-side infinite data source — cursor pagination against
   // `listOutboxEmails`. Closure captures `statusFilter`/`simpleStatusFilter`
@@ -721,15 +738,43 @@ export default function PageClient() {
   }, [emailGridData]);
 
   const emails = emailGridData.rows;
+  const statusFilterLabel = statusFilter === "all" ? null : getSelectedStatusLabel(statusFilter);
+  const simpleStatusFilterLabel = simpleStatusFilter === "all" ? null : getSelectedSimpleStatusLabel(simpleStatusFilter);
 
   return (
     <PageLayout
       title="Email Outbox"
       description="View and manage scheduled and sent emails"
       actions={
-        <Button onClick={() => runAsynchronouslyWithAlert(handleRefresh)} variant="outline">
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <ExportEmailsDialog
+            trigger={
+              <Button variant="outline">
+                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            }
+            exportOptions={exportOptions}
+            open={exportDialogOpen}
+            onOpenChange={setExportDialogOpen}
+            title="Export Email Outbox"
+            description="Configure and download email outbox data from your project"
+            filenamePrefix="stack-email-outbox-export"
+            filteredScopeLabel={(
+              <>
+                Export only filtered emails
+                {statusFilterLabel || simpleStatusFilterLabel ? (
+                  <span className="text-muted-foreground ml-1">
+                    ({[statusFilterLabel, simpleStatusFilterLabel].filter((label) => label != null).join(", ")})
+                  </span>
+                ) : null}
+              </>
+            )}
+          />
+          <Button onClick={() => runAsynchronouslyWithAlert(handleRefresh)} variant="outline">
+            Refresh
+          </Button>
+        </div>
       }
     >
       <SettingCard title="Email Queue" description="All emails in the outbox">
@@ -794,7 +839,7 @@ export default function PageClient() {
             footer={false}
             fillHeight={false}
             maxHeight={500}
-            toolbar={(ctx) => <DataGridToolbar ctx={ctx} hideQuickSearch />}
+            toolbar={(ctx) => <DataGridToolbar ctx={{ ...ctx, exportCsv: openExportDialog }} hideQuickSearch />}
             onRowClick={(row) => {
               setSelectedEmail(row);
               setDetailSheetOpen(true);
@@ -832,4 +877,3 @@ export default function PageClient() {
     </PageLayout>
   );
 }
-

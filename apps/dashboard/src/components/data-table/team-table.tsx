@@ -5,12 +5,13 @@ import { ActionCell, ActionDialog, Typography } from "@/components/ui";
 import { ServerTeam } from '@hexclave/next';
 import {
   DataGrid,
+  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
 } from "@hexclave/dashboard-ui-components";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
@@ -151,7 +152,10 @@ const columns: DataGridColumnDef<ServerTeam>[] = [
   },
 ];
 
-export function TeamTable() {
+export function TeamTable(props?: {
+  onFilterChange?: (filters: { search?: string, createdAtOrder: "asc" | "desc" }) => void,
+  onExportClick?: () => void,
+}) {
   const router = useRouter();
   const hexclaveAdminApp = useAdminApp();
 
@@ -163,6 +167,15 @@ export function TeamTable() {
   });
 
   const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
+  const createdAtOrder = gridState.sorting.find((s) => s.columnId === "createdAt")?.direction ?? "desc";
+
+  const onFilterChange = props?.onFilterChange;
+  useEffect(() => {
+    onFilterChange?.({
+      search: debouncedQuickSearch || undefined,
+      createdAtOrder,
+    });
+  }, [debouncedQuickSearch, createdAtOrder, onFilterChange]);
 
   const dataSource = useMemo<DataGridDataSource<ServerTeam>>(
     () => async function* (params) {
@@ -189,6 +202,7 @@ export function TeamTable() {
   );
 
   const getRowId = useCallback((row: ServerTeam) => row.id, []);
+  const onExportClick = props?.onExportClick;
 
   const gridData = useDataSource({
     dataSource,
@@ -217,6 +231,11 @@ export function TeamTable() {
       estimatedRowHeight={44}
       footer={false}
       fillHeight={false}
+      toolbar={onExportClick == null ? undefined : (ctx) => (
+        <DataGridToolbar
+          ctx={{ ...ctx, exportCsv: onExportClick }}
+        />
+      )}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
       }}

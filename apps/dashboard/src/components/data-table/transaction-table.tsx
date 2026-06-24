@@ -9,13 +9,14 @@ import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, I
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource } from '@hexclave/dashboard-ui-components';
+import type { ExportTransactionsOptions } from "@/components/export-transactions-dialog";
 import type { Transaction, TransactionEntry, TransactionType } from '@hexclave/shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@hexclave/shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@hexclave/shared/dist/schema-fields';
 import { moneyAmountToStripeUnits } from '@hexclave/shared/dist/utils/currencies';
 import type { MoneyAmount } from '@hexclave/shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@hexclave/shared/dist/utils/currency-constants';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '../link';
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
@@ -400,20 +401,32 @@ type FilterState = {
 const PAGE_SIZE = 25;
 const CUSTOMER_TYPE_OPTIONS = ["user", "team", "custom"] as const satisfies ReadonlyArray<NonNullable<FilterState["customerType"]>>;
 
-export function TransactionTable() {
+export function TransactionTable(props?: {
+  onFilterChange?: (filters: ExportTransactionsOptions) => void,
+  onExportClick?: () => void,
+}) {
   const [filters, setFilters] = useState<FilterState>({});
 
   return (
-    <TransactionTableBody filters={filters} setFilters={setFilters} />
+    <TransactionTableBody filters={filters} setFilters={setFilters} onFilterChange={props?.onFilterChange} onExportClick={props?.onExportClick} />
   );
 }
 
 function TransactionTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
+  onFilterChange?: (filters: ExportTransactionsOptions) => void,
+  onExportClick?: () => void,
 }) {
   const app = useAdminApp();
-  const { filters, setFilters } = props;
+  const { filters, setFilters, onFilterChange, onExportClick } = props;
+
+  useEffect(() => {
+    onFilterChange?.({
+      type: filters.type,
+      customerType: filters.customerType,
+    });
+  }, [filters.type, filters.customerType, onFilterChange]);
 
   const dataSource = useMemo<DataGridDataSource<Transaction>>(
     () => async function* (params) {
@@ -640,7 +653,7 @@ function TransactionTableBody(props: {
 
       toolbar={(ctx) => (
         <DataGridToolbar
-          ctx={ctx}
+          ctx={onExportClick == null ? ctx : { ...ctx, exportCsv: onExportClick }}
           hideQuickSearch
           extra={
             <div className="flex items-center gap-2">
