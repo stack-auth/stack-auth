@@ -3966,6 +3966,11 @@
                     "example": 1,
                     "description": "The quantity to purchase",
                     "default": 1
+                  },
+                  "promo_code": {
+                    "type": "string",
+                    "example": "PROMO-SUMMER",
+                    "description": "Optional promo code to apply to the purchase. Discounts are validated and computed on the server."
                   }
                 },
                 "required": [
@@ -3975,7 +3980,8 @@
                 "example": {
                   "full_code": "proj_abc123_def456ghi789",
                   "price_id": "price_1234567890abcdef",
-                  "quantity": 1
+                  "quantity": 1,
+                  "promo_code": "PROMO-SUMMER"
                 }
               }
             }
@@ -4162,6 +4168,106 @@
                     "already_bought_non_stackable",
                     "conflicting_products",
                     "test_mode"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/purchases/validate-promo-code": {
+      "post": {
+        "summary": "Validate Promo Code",
+        "description": "Validates a promo code against a purchase code and returns a backend-computed discount quote.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "full_code": {
+                    "type": "string"
+                  },
+                  "price_id": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "default": 1
+                  },
+                  "promo_code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "full_code",
+                  "price_id",
+                  "promo_code"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Payments"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/payments/purchases/validate-promo-code",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "promo_code_id": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": "string"
+                    },
+                    "discount_type": {
+                      "type": "string",
+                      "enum": [
+                        "percent",
+                        "amount_off_usd"
+                      ]
+                    },
+                    "percent_off_bps": {
+                      "type": "integer"
+                    },
+                    "amount_off_usd_cents": {
+                      "type": "integer"
+                    },
+                    "original_amount_usd_cents": {
+                      "type": "integer"
+                    },
+                    "discount_amount_usd_cents": {
+                      "type": "integer"
+                    },
+                    "final_amount_usd_cents": {
+                      "type": "integer"
+                    },
+                    "subscription_duration": {
+                      "type": "string",
+                      "enum": [
+                        "first_invoice",
+                        "forever"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "valid"
                   ]
                 }
               }

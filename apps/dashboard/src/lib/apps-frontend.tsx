@@ -199,6 +199,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
+      { displayName: "Promo Codes", href: "./promo-codes" },
       { displayName: "Payouts", href: "./payouts" },
       { displayName: "Settings", href: "./settings" },
     ],

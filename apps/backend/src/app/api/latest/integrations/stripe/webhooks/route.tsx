@@ -1,5 +1,6 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
+import { markPromoCodeRedemptionApplied, voidExpiredOrFailedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { listPermissions } from "@/lib/permissions";
 import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
@@ -231,6 +232,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
     });
     await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
+    await markPromoCodeRedemptionApplied({
+      prisma,
+      tenancyId: tenancy.id,
+      redemptionId: metadata.promoCodeRedemptionId || null,
+      stripePaymentIntentId,
+      oneTimePurchaseId: upsertedPurchase.id,
+    });
 
     const recipients = await getPaymentRecipients({
       tenancy,
@@ -264,6 +272,14 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
+    if (metadata.promoCodeRedemptionId) {
+      await voidExpiredOrFailedPromoCodeRedemption({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: metadata.promoCodeRedemptionId,
+        reason: "stripe_payment_intent_failed",
+      });
+    }
     if (!metadata.customerId || !metadata.customerType) {
       throw new HexclaveAssertionError("Missing customer metadata for one-time purchase failure", { event });
     }

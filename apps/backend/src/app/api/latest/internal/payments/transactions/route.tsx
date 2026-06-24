@@ -547,6 +547,121 @@ function buildAdjustedByFromRefunds(options: {
   return adjustedByFromRefunds ?? [];
 }
 
+type PromoDiscountLookup = {
+  oneTimePurchases: Map<string, number>,
+  subscriptions: Map<string, number>,
+  subscriptionInvoices: Map<string, number>,
+};
+
+function centsToLedgerMoney(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
+function promoDiscountKeyForRow(row: QueriedLedgerTransactionRow): keyof PromoDiscountLookup | null {
+  if (row.type === "one-time-purchase") {
+    return "oneTimePurchases";
+  }
+  if (row.type === "subscription-start") {
+    return "subscriptions";
+  }
+  if (row.type === "subscription-renewal") {
+    return "subscriptionInvoices";
+  }
+  return null;
+}
+
+function getPromoDiscountForRow(options: {
+  row: QueriedLedgerTransactionRow,
+  lookup: PromoDiscountLookup,
+}): number | null {
+  const key = promoDiscountKeyForRow(options.row);
+  if (key == null) {
+    return null;
+  }
+  return options.lookup[key].get(options.row.sourceId) ?? null;
+}
+
+function applyPromoDiscountToEntries(options: {
+  entries: TransactionEntry[],
+  finalAmountUsdCents: number | null,
+}): TransactionEntry[] {
+  if (options.finalAmountUsdCents == null) {
+    return options.entries;
+  }
+  const finalUsd = centsToLedgerMoney(options.finalAmountUsdCents);
+  return options.entries.map((entry) => {
+    if (entry.type !== "money_transfer") {
+      return entry;
+    }
+    return {
+      ...entry,
+      charged_amount: {
+        ...entry.charged_amount,
+        USD: finalUsd,
+      },
+      net_amount: {
+        USD: finalUsd,
+      },
+    };
+  });
+}
+
+async function buildPromoDiscountLookup(options: {
+  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
+  tenancyId: string,
+  rows: QueriedLedgerTransactionRow[],
+}): Promise<PromoDiscountLookup> {
+  const oneTimePurchaseIds = options.rows.filter((row) => row.type === "one-time-purchase").map((row) => row.sourceId);
+  const subscriptionIds = options.rows.filter((row) => row.type === "subscription-start").map((row) => row.sourceId);
+  const subscriptionInvoiceIds = options.rows.filter((row) => row.type === "subscription-renewal").map((row) => row.sourceId);
+
+  const lookup: PromoDiscountLookup = {
+    oneTimePurchases: new Map(),
+    subscriptions: new Map(),
+    subscriptionInvoices: new Map(),
+  };
+  if (oneTimePurchaseIds.length === 0 && subscriptionIds.length === 0 && subscriptionInvoiceIds.length === 0) {
+    return lookup;
+  }
+
+  const clauses: Prisma.Sql[] = [];
+  if (oneTimePurchaseIds.length > 0) {
+    clauses.push(Prisma.sql`"oneTimePurchaseId" IN (${Prisma.join(oneTimePurchaseIds.map((id) => Prisma.sql`${id}::uuid`))})`);
+  }
+  if (subscriptionIds.length > 0) {
+    clauses.push(Prisma.sql`"subscriptionId" IN (${Prisma.join(subscriptionIds.map((id) => Prisma.sql`${id}::uuid`))})`);
+  }
+  if (subscriptionInvoiceIds.length > 0) {
+    clauses.push(Prisma.sql`"subscriptionInvoiceId" IN (${Prisma.join(subscriptionInvoiceIds.map((id) => Prisma.sql`${id}::uuid`))})`);
+  }
+
+  const rows = await options.prisma.$replica().$queryRaw<Array<{
+    oneTimePurchaseId: string | null,
+    subscriptionId: string | null,
+    subscriptionInvoiceId: string | null,
+    finalAmountUsdCents: number,
+  }>>`
+    SELECT "oneTimePurchaseId", "subscriptionId", "subscriptionInvoiceId", "finalAmountUsdCents"
+    FROM "PromoCodeRedemption"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "status" = 'APPLIED'::"PromoCodeRedemptionStatus"
+      AND (${Prisma.join(clauses, " OR ")})
+  `;
+
+  for (const row of rows) {
+    if (row.oneTimePurchaseId != null) {
+      lookup.oneTimePurchases.set(row.oneTimePurchaseId, row.finalAmountUsdCents);
+    }
+    if (row.subscriptionId != null) {
+      lookup.subscriptions.set(row.subscriptionId, row.finalAmountUsdCents);
+    }
+    if (row.subscriptionInvoiceId != null) {
+      lookup.subscriptionInvoices.set(row.subscriptionInvoiceId, row.finalAmountUsdCents);
+    }
+  }
+  return lookup;
+}
+
 /**
  * Builds the source-txn → refunds lookup. New-format refunds are linked by
  * parsing the txnId (`refund:<sourceTxnId>:<uuid>`). Legacy refund rows
@@ -714,11 +829,23 @@ async function getTransactions(options: {
     refundRows = await options.prisma.$replica().$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(refundSql)}`;
   }
   const resolvedAdjustedByLookup = buildAdjustedByLookupFromRefundRows(refundRows.map((row) => row.rowData));
+  const promoDiscountLookup = await buildPromoDiscountLookup({
+    prisma: options.prisma,
+    tenancyId: options.tenancyId,
+    rows: pageRows,
+  });
 
   const transactions: Transaction[] = pageRows.map((row): Transaction => {
-    const entries = row.entries.flatMap((entry): TransactionEntry[] => {
+    const mappedEntries = row.entries.flatMap((entry): TransactionEntry[] => {
       const mapped = mapLedgerEntry(entry);
       return mapped ? [mapped] : [];
+    });
+    const entries = applyPromoDiscountToEntries({
+      entries: mappedEntries,
+      finalAmountUsdCents: getPromoDiscountForRow({
+        row,
+        lookup: promoDiscountLookup,
+      }),
     });
     return {
       id: row.sourceId,

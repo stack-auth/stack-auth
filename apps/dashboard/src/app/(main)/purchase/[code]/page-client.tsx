@@ -7,12 +7,14 @@ import { isFreePrice, shortenedInterval } from "@/components/payments/purchase-u
 import { StripeElementsProvider } from "@/components/payments/stripe-elements-provider";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
-import { Skeleton, Typography } from "@/components/ui";
+import { Button, Input, Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,6 +31,63 @@ type ProductData = {
   charges_enabled: boolean | null,
 };
 
+type PromoQuote = {
+  valid: true,
+  promo_code_id: string,
+  display_name?: string | null,
+  discount_type: "percent" | "amount_off_usd",
+  percent_off_bps?: number | null,
+  amount_off_usd_cents?: number | null,
+  original_amount_usd_cents: number,
+  discount_amount_usd_cents: number,
+  final_amount_usd_cents: number,
+  subscription_duration: "first_invoice" | "forever",
+};
+
+type InvalidPromoQuote = {
+  valid: false,
+  error?: string,
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parsePromoQuote(value: unknown): PromoQuote | InvalidPromoQuote {
+  if (!isObject(value) || typeof value.valid !== "boolean") {
+    return { valid: false, error: "Promo validation returned an unexpected response." };
+  }
+  if (!value.valid) {
+    return { valid: false, error: typeof value.error === "string" ? value.error : undefined };
+  }
+  if (
+    typeof value.promo_code_id !== "string" ||
+    (value.discount_type !== "percent" && value.discount_type !== "amount_off_usd") ||
+    typeof value.original_amount_usd_cents !== "number" ||
+    typeof value.discount_amount_usd_cents !== "number" ||
+    typeof value.final_amount_usd_cents !== "number" ||
+    (value.subscription_duration !== "first_invoice" && value.subscription_duration !== "forever")
+  ) {
+    return { valid: false, error: "Promo validation returned an unexpected quote." };
+  }
+  return {
+    valid: true,
+    promo_code_id: value.promo_code_id,
+    display_name: typeof value.display_name === "string" || value.display_name === null ? value.display_name : undefined,
+    discount_type: value.discount_type,
+    percent_off_bps: typeof value.percent_off_bps === "number" || value.percent_off_bps === null ? value.percent_off_bps : undefined,
+    amount_off_usd_cents: typeof value.amount_off_usd_cents === "number" || value.amount_off_usd_cents === null ? value.amount_off_usd_cents : undefined,
+    original_amount_usd_cents: value.original_amount_usd_cents,
+    discount_amount_usd_cents: value.discount_amount_usd_cents,
+    final_amount_usd_cents: value.final_amount_usd_cents,
+    subscription_duration: value.subscription_duration,
+  };
+}
+
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
@@ -39,6 +98,11 @@ export default function PageClient({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoQuote, setPromoQuote] = useState<PromoQuote | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("return_url");
 
@@ -64,11 +128,14 @@ export default function PageClient({ code }: { code: string }) {
   const isTooLarge = rawAmountCents > MAX_STRIPE_AMOUNT_CENTS;
 
   const elementsAmountCents = useMemo(() => {
+    if (promoQuote && promoQuote.final_amount_usd_cents > 0) {
+      return promoQuote.final_amount_usd_cents;
+    }
     if (!unitCents) return 0;
     if (rawAmountCents < 1) return unitCents;
     if (isTooLarge) return MAX_STRIPE_AMOUNT_CENTS;
     return rawAmountCents;
-  }, [unitCents, rawAmountCents, isTooLarge]);
+  }, [promoQuote, unitCents, rawAmountCents, isTooLarge]);
 
   const elementsMode = useMemo<"subscription" | "payment">(() => {
     if (!selectedPriceId || !data?.product?.prices) return "subscription";
@@ -102,12 +169,19 @@ export default function PageClient({ code }: { code: string }) {
 
   useEffect(() => {
     setLoading(true);
-    validateCode().catch((err) => {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    }).finally(() => {
+    runAsynchronously(Result.fromPromise(validateCode()).then((result) => {
+      if (result.status === "error") {
+        setError(result.error instanceof Error ? result.error.message : "An error occurred");
+      }
       setLoading(false);
-    });
+    }));
   }, [validateCode]);
+
+  useEffect(() => {
+    setPromoQuote(null);
+    setAppliedPromoCode(null);
+    setPromoError(null);
+  }, [selectedPriceId, quantityNumber]);
 
   const isFreeSelected = useMemo<boolean>(() => {
     if (!selectedPriceId || !data?.product?.prices) return false;
@@ -120,11 +194,61 @@ export default function PageClient({ code }: { code: string }) {
     return data.product.prices[selectedPriceId];
   }, [data, selectedPriceId]);
 
+  const isFreeForCheckout = useMemo<boolean>(() => {
+    return isFreeSelected || (elementsMode === "subscription" && promoQuote?.final_amount_usd_cents === 0);
+  }, [elementsMode, isFreeSelected, promoQuote]);
+
+  const applyPromoCode = async () => {
+    if (!selectedPriceId || quantityNumber < 1 || !promoCodeInput.trim()) {
+      return;
+    }
+    setPromoLoading(true);
+    const responseResult = await Result.fromPromise(fetch(`${baseUrl}/payments/purchases/validate-promo-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        full_code: code,
+        price_id: selectedPriceId,
+        quantity: quantityNumber,
+        promo_code: promoCodeInput,
+      }),
+    }));
+    setPromoLoading(false);
+    if (responseResult.status === "error") {
+      setPromoQuote(null);
+      setAppliedPromoCode(null);
+      setPromoError("Failed to validate promo code.");
+      return;
+    }
+    const bodyResult = await Result.fromPromise(responseResult.data.json());
+    if (bodyResult.status === "error") {
+      setPromoQuote(null);
+      setAppliedPromoCode(null);
+      setPromoError("Failed to read promo validation response.");
+      return;
+    }
+    const quote = parsePromoQuote(bodyResult.data);
+    if (!quote.valid) {
+      setPromoQuote(null);
+      setAppliedPromoCode(null);
+      setPromoError(quote.error ?? "Promo code is not valid for this purchase.");
+      return;
+    }
+    setPromoError(null);
+    setPromoQuote(quote);
+    setAppliedPromoCode(promoCodeInput.trim());
+  };
+
   const setupSubscription = async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
+      body: JSON.stringify({
+        full_code: code,
+        price_id: selectedPriceId,
+        quantity: quantityNumber,
+        ...(appliedPromoCode ? { promo_code: appliedPromoCode } : {}),
+      }),
     });
     const result = await response.json();
 
@@ -132,7 +256,7 @@ export default function PageClient({ code }: { code: string }) {
       throw new Error(result?.error?.message ?? "Failed to setup subscription");
     }
 
-    if (!result.client_secret && !isFreeSelected) {
+    if (!result.client_secret && !isFreeForCheckout) {
       throw new Error("Failed to setup subscription");
     }
     return result.client_secret;
@@ -149,6 +273,7 @@ export default function PageClient({ code }: { code: string }) {
         full_code: code,
         price_id: selectedPriceId,
         quantity: quantityNumber,
+        ...(appliedPromoCode ? { promo_code: appliedPromoCode } : {}),
       }),
     });
     if (!response.ok) {
@@ -161,9 +286,9 @@ export default function PageClient({ code }: { code: string }) {
       url.searchParams.set("return_url", returnUrl);
     }
     window.location.assign(url.toString());
-  }, [code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
+  }, [appliedPromoCode, code, selectedPriceId, quantityNumber, isTooLarge, returnUrl]);
 
-  const checkoutDisabled = quantityNumber < 1 || isTooLarge || data?.already_bought_non_stackable === true;
+  const checkoutDisabled = quantityNumber < 1 || isTooLarge || promoLoading || data?.already_bought_non_stackable === true;
   const showInvalidPurchaseCode = !loading && error != null;
 
   if (showInvalidPurchaseCode) {
@@ -310,6 +435,52 @@ export default function PageClient({ code }: { code: string }) {
               </div>
             ) : data ? (
               <div className="space-y-4">
+                {selectedPriceId && (
+                  <DesignCard glassmorphic contentClassName="space-y-3 p-4">
+                    <div className="space-y-1">
+                      <Typography type="label" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Promo Code
+                      </Typography>
+                      <div className="flex gap-2">
+                        <Input
+                          value={promoCodeInput}
+                          onChange={(event) => setPromoCodeInput(event.target.value)}
+                          placeholder="Enter code"
+                          className="bg-white dark:bg-zinc-950"
+                        />
+                        <Button
+                          variant="outline"
+                          loading={promoLoading}
+                          disabled={checkoutDisabled || !promoCodeInput.trim()}
+                          onClick={applyPromoCode}
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    </div>
+                    {promoError && (
+                      <Typography type="p" className="text-sm text-destructive">
+                        {promoError}
+                      </Typography>
+                    )}
+                    {promoQuote && (
+                      <div className="grid grid-cols-3 gap-2 rounded-md border border-border/60 bg-white/70 p-3 text-sm dark:bg-zinc-950/70">
+                        <div>
+                          <Typography type="p" variant="secondary" className="text-xs">Original</Typography>
+                          <div className="font-medium">{formatCents(promoQuote.original_amount_usd_cents)}</div>
+                        </div>
+                        <div>
+                          <Typography type="p" variant="secondary" className="text-xs">Discount</Typography>
+                          <div className="font-medium text-green-700 dark:text-green-300">-{formatCents(promoQuote.discount_amount_usd_cents)}</div>
+                        </div>
+                        <div>
+                          <Typography type="p" variant="secondary" className="text-xs">Due now</Typography>
+                          <div className="font-semibold">{formatCents(promoQuote.final_amount_usd_cents)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </DesignCard>
+                )}
                 {data.test_mode ? (
                   <TestModeBypassForm
                     onBypass={handleBypass}
@@ -330,7 +501,7 @@ export default function PageClient({ code }: { code: string }) {
                       returnUrl={returnUrl ?? undefined}
                       disabled={checkoutDisabled}
                       chargesEnabled={data.charges_enabled ?? false}
-                      isFree={isFreeSelected}
+                      isFree={isFreeForCheckout}
                     />
                   </StripeElementsProvider>
                 )}

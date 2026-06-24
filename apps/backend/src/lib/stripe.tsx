@@ -1,6 +1,7 @@
 import { CustomerType } from "@/generated/prisma/client";
 import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
+import { markPromoCodeRedemptionApplied } from "@/lib/payments/promo-codes";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -339,6 +340,13 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
     });
     await bulldozerWriteSubscription(prisma, upsertedSub);
+    await markPromoCodeRedemptionApplied({
+      prisma,
+      tenancyId: tenancy.id,
+      redemptionId: subscription.metadata.promoCodeRedemptionId || null,
+      stripeSubscriptionId: subscription.id,
+      subscriptionId: upsertedSub.id,
+    });
   }
 
   // If this was a cancellation on our own billing (internal tenancy hosts the
@@ -396,4 +404,11 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
     },
   });
   await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
+  await markPromoCodeRedemptionApplied({
+    prisma,
+    tenancyId: tenancy.id,
+    stripeSubscriptionId,
+    stripeInvoiceId: invoice.id,
+    subscriptionInvoiceId: upsertedInvoice.id,
+  });
 }

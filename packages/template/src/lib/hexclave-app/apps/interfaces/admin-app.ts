@@ -1,5 +1,6 @@
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
+import type { PromoCodeCreate, PromoCodeCreateResponse, PromoCodeListResponse, PromoCodeRead, PromoCodeRedemptionListResponse, PromoCodeUpdate } from "@hexclave/shared/dist/interface/crud/promo-codes";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
@@ -142,6 +143,12 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null>,
     updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void>,
+    listPromoCodes(params?: { includeDeleted?: boolean, limit?: number }): Promise<PromoCodeListResponse>,
+    createPromoCode(data: PromoCodeCreate): Promise<PromoCodeCreateResponse>,
+    getPromoCode(promoCodeId: string): Promise<PromoCodeRead>,
+    updatePromoCode(promoCodeId: string, data: PromoCodeUpdate): Promise<PromoCodeRead>,
+    deletePromoCode(promoCodeId: string): Promise<void>,
+    listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,

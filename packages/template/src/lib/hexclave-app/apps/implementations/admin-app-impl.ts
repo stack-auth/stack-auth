@@ -6,6 +6,7 @@ import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import type { PromoCodeCreate, PromoCodeCreateResponse, PromoCodeListResponse, PromoCodeRead, PromoCodeRedemptionListResponse, PromoCodeUpdate } from "@hexclave/shared/dist/interface/crud/promo-codes";
 import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
@@ -1208,6 +1209,30 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
     return Result.orThrow(await this._stripeAccountInfoCache.getOrWait([], "write-only"));
+  }
+
+  async listPromoCodes(params?: { includeDeleted?: boolean, limit?: number }): Promise<PromoCodeListResponse> {
+    return await this._interface.listPromoCodes(params);
+  }
+
+  async createPromoCode(data: PromoCodeCreate): Promise<PromoCodeCreateResponse> {
+    return await this._interface.createPromoCode(data);
+  }
+
+  async getPromoCode(promoCodeId: string): Promise<PromoCodeRead> {
+    return await this._interface.getPromoCode(promoCodeId);
+  }
+
+  async updatePromoCode(promoCodeId: string, data: PromoCodeUpdate): Promise<PromoCodeRead> {
+    return await this._interface.updatePromoCode(promoCodeId, data);
+  }
+
+  async deletePromoCode(promoCodeId: string): Promise<void> {
+    await this._interface.deletePromoCode(promoCodeId);
+  }
+
+  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse> {
+    return await this._interface.listPromoCodeRedemptions(promoCodeId, params);
   }
 
   // IF_PLATFORM react-like

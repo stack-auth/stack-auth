@@ -14,6 +14,7 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
+import type { PromoCodeCreate, PromoCodeCreateResponse, PromoCodeListResponse, PromoCodeRead, PromoCodeRedemptionListResponse, PromoCodeUpdate } from "./crud/promo-codes";
 import type {
   AdminGetSessionReplayResponse,
   AdminGetSessionReplayAllEventsResponse,
@@ -960,6 +961,72 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
     const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
+  }
+
+  async listPromoCodes(params?: { includeDeleted?: boolean, limit?: number }): Promise<PromoCodeListResponse> {
+    const qs = new URLSearchParams();
+    if (params?.includeDeleted === true) qs.set("include_deleted", "true");
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/payments/promo-codes${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async createPromoCode(data: PromoCodeCreate): Promise<PromoCodeCreateResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/payments/promo-codes",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getPromoCode(promoCodeId: string): Promise<PromoCodeRead> {
+    const response = await this.sendAdminRequest(
+      `/internal/payments/promo-codes/${encodeURIComponent(promoCodeId)}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updatePromoCode(promoCodeId: string, data: PromoCodeUpdate): Promise<PromoCodeRead> {
+    const response = await this.sendAdminRequest(
+      `/internal/payments/promo-codes/${encodeURIComponent(promoCodeId)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deletePromoCode(promoCodeId: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/payments/promo-codes/${encodeURIComponent(promoCodeId)}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse> {
+    const qs = new URLSearchParams();
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/payments/promo-codes/${encodeURIComponent(promoCodeId)}/redemptions${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
   }
 
   async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {

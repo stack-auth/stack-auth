@@ -1285,6 +1285,22 @@ enum PurchaseCreationSource {
   API_GRANT
 }
 
+enum PromoCodeDiscountType {
+  PERCENT
+  AMOUNT_OFF_USD
+}
+
+enum PromoCodeSubscriptionDuration {
+  FIRST_INVOICE
+  FOREVER
+}
+
+enum PromoCodeRedemptionStatus {
+  RESERVED
+  APPLIED
+  VOIDED
+}
+
 model Subscription {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
@@ -1318,6 +1334,7 @@ model Subscription {
   updatedAt      DateTime               @updatedAt
 
   SubscriptionInvoices SubscriptionInvoice[]
+  promoCodeRedemptions PromoCodeRedemption[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
@@ -1329,6 +1346,8 @@ model ProductVersion {
   productId        String?
   productJson      Json
   createdAt        DateTime @default(now())
+
+  promoCodeRedemptions PromoCodeRedemption[]
 
   @@id([tenancyId, productVersionId])
 }
@@ -1362,6 +1381,8 @@ model OneTimePurchase {
   revokedAt             DateTime?
   refundedAt            DateTime?
   creationSource        PurchaseCreationSource
+
+  promoCodeRedemptions PromoCodeRedemption[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripePaymentIntentId])
@@ -1407,9 +1428,100 @@ model SubscriptionInvoice {
   updatedAt DateTime @updatedAt
 
   subscription Subscription @relation(fields: [tenancyId, stripeSubscriptionId], references: [tenancyId, stripeSubscriptionId])
+  promoCodeRedemptions PromoCodeRedemption[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
+}
+
+model PromoCode {
+  id        String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+
+  displayName String?
+  codeHash    String
+  codePrefix  String?
+  codeLast4   String?
+
+  discountType      PromoCodeDiscountType
+  percentOffBps     Int?
+  amountOffUsdCents Int?
+
+  subscriptionDuration PromoCodeSubscriptionDuration
+
+  customerType  CustomerType?
+  customerId    String?
+  productLineId String?
+  productId     String?
+  priceId       String?
+
+  maxRedemptions            Int?
+  maxRedemptionsPerCustomer Int?
+  startsAt                  DateTime?
+  expiresAt                 DateTime?
+  disabledAt                DateTime?
+  deletedAt                 DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  redemptions PromoCodeRedemption[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, codeHash])
+  @@index([tenancyId, deletedAt, disabledAt], map: "PromoCode_tenancy_deleted_disabled_idx")
+  @@index([tenancyId, productId], map: "PromoCode_tenancy_product_idx")
+  @@index([tenancyId, customerType, customerId], map: "PromoCode_tenancy_customer_idx")
+  @@index([tenancyId, expiresAt], map: "PromoCode_tenancy_expires_idx")
+}
+
+model PromoCodeRedemption {
+  id          String @default(uuid()) @db.Uuid
+  tenancyId   String @db.Uuid
+  promoCodeId String @db.Uuid
+
+  customerType CustomerType
+  customerId   String
+  productId    String?
+  priceId      String?
+  productVersionId String?
+  quantity     Int
+
+  currency               String @default("usd")
+  originalAmountUsdCents Int
+  discountAmountUsdCents Int
+  finalAmountUsdCents    Int
+
+  subscriptionDuration PromoCodeSubscriptionDuration?
+
+  status               PromoCodeRedemptionStatus
+  reservationExpiresAt DateTime?
+  appliedAt            DateTime?
+  voidedAt             DateTime?
+  voidReason           String?
+
+  stripePaymentIntentId String?
+  stripeSubscriptionId  String?
+  stripeInvoiceId       String?
+  subscriptionId        String? @db.Uuid
+  oneTimePurchaseId     String? @db.Uuid
+  subscriptionInvoiceId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  promoCode           PromoCode            @relation(fields: [tenancyId, promoCodeId], references: [tenancyId, id])
+  subscription        Subscription?        @relation(fields: [tenancyId, subscriptionId], references: [tenancyId, id], onDelete: NoAction)
+  oneTimePurchase     OneTimePurchase?     @relation(fields: [tenancyId, oneTimePurchaseId], references: [tenancyId, id], onDelete: NoAction)
+  subscriptionInvoice SubscriptionInvoice? @relation(fields: [tenancyId, subscriptionInvoiceId], references: [tenancyId, id], onDelete: NoAction)
+  productVersion      ProductVersion?      @relation(fields: [tenancyId, productVersionId], references: [tenancyId, productVersionId], onDelete: NoAction)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, stripePaymentIntentId])
+  @@unique([tenancyId, stripeSubscriptionId, promoCodeId])
+  @@index([tenancyId, promoCodeId, createdAt], map: "PromoCodeRedemption_tenancy_promo_created_idx")
+  @@index([tenancyId, customerType, customerId, promoCodeId], map: "PromoCodeRedemption_tenancy_customer_promo_idx")
+  @@index([tenancyId, status, reservationExpiresAt], map: "PromoCodeRedemption_tenancy_status_reservation_idx")
 }
 
 model OutgoingRequest {

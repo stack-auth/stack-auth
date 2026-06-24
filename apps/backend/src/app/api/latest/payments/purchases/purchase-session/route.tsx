@@ -2,6 +2,7 @@ import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
+import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -40,6 +41,12 @@ export const POST = createSmartRouteHandler({
           exampleValue: 1
         }
       }),
+      promo_code: yupString().optional().meta({
+        openapiField: {
+          description: "Optional promo code to apply to the purchase. Discounts are validated and computed on the server.",
+          exampleValue: "PROMO-SUMMER",
+        },
+      }),
     }),
   }),
   response: yupObject({
@@ -55,7 +62,7 @@ export const POST = createSmartRouteHandler({
     }),
   }),
   async handler({ body }) {
-    const { full_code, price_id, quantity } = body;
+    const { full_code, price_id, quantity, promo_code } = body;
     const { data, id: codeId } = await purchaseUrlVerificationCodeHandler.validateCode(full_code);
     const tenancy = await getTenancy(data.tenancyId);
     if (!tenancy) {
@@ -113,6 +120,30 @@ export const POST = createSmartRouteHandler({
       productId: data.productId ?? null,
       productJson: data.product,
     });
+    const promoRedemption = promo_code ? await reservePromoCodeRedemption({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
+      priceId: price_id,
+      selectedPrice,
+      quantity,
+      productVersionId,
+      promoCode: promo_code,
+    }) : null;
+    const originalAmountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+    const effectiveAmountCents = promoRedemption?.finalAmountUsdCents ?? originalAmountCents;
+    const isFreeAfterPromo = effectiveAmountCents === 0;
+
+    const createPromoCoupon = async (redemption: ReservedPromoCodeRedemption) => {
+      const coupon = await stripe.coupons.create(createStripeCouponParamsForPromoCode({
+        quote: redemption,
+        promoCode: promo_code ?? "",
+      }));
+      return coupon.id;
+    };
 
     if (conflictingSubscriptions.length > 0) {
       const conflicting = conflictingSubscriptions[0];
@@ -122,6 +153,7 @@ export const POST = createSmartRouteHandler({
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
           const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
+          const couponId = promoRedemption ? await createPromoCoupon(promoRedemption) : null;
           // TODO(default-plans): $0 subs currently piggyback on the Stripe
           // subscription lifecycle. Once default plans land, free subs should be
           // granted directly (Prisma insert + bulldozer write, mirroring
@@ -148,10 +180,20 @@ export const POST = createSmartRouteHandler({
               productId: data.productId ?? null,
               productVersionId,
               priceId: price_id,
+              ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
             },
+            ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
             ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
           });
-          if (isFreePrice) {
+          if (promoRedemption) {
+            await attachStripeSubscriptionToPromoRedemption({
+              prisma,
+              tenancyId: tenancy.id,
+              redemptionId: promoRedemption.redemptionId,
+              stripeSubscriptionId: updated.id,
+            });
+          }
+          if (isFreePrice || isFreeAfterPromo) {
             // Stripe activates $0 subs synchronously (status=active, invoice=paid)
             // and produces no PaymentIntent / confirmation_secret, so we have
             // nothing to hand to Stripe Elements. The DB row is written when
@@ -193,7 +235,25 @@ export const POST = createSmartRouteHandler({
     }
     // One-time payment path after conflicts handled
     if (!selectedPrice.interval) {
-      const amountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+      const amountCents = effectiveAmountCents;
+      if (promoRedemption && amountCents <= 0) {
+        await voidExpiredOrFailedPromoCodeRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          reason: "discounted_one_time_total_zero",
+        });
+        throw new StatusError(400, "Promo code discounts this one-time purchase below the minimum charge amount.");
+      }
+      if (promoRedemption && amountCents < stripeOneTimeMin * 100) {
+        await voidExpiredOrFailedPromoCodeRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          reason: "discounted_one_time_total_below_stripe_minimum",
+        });
+        throw new StatusError(400, `Discounted one-time total must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum).`);
+      }
       const applicationFeeAmount = computeApplicationFeeAmount({
         amountStripeUnits: amountCents,
         projectId: tenancy.project.id,
@@ -212,9 +272,18 @@ export const POST = createSmartRouteHandler({
           purchaseKind: "ONE_TIME",
           tenancyId: data.tenancyId,
           priceId: price_id,
+          ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
         },
         ...(applicationFeeAmount > 0 ? { application_fee_amount: applicationFeeAmount } : {}),
       });
+      if (promoRedemption) {
+        await attachStripePaymentIntentToPromoRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          stripePaymentIntentId: paymentIntent.id,
+        });
+      }
       const clientSecret = paymentIntent.client_secret;
       if (typeof clientSecret !== "string") {
         throwErr(500, "No client secret returned from Stripe for payment intent");
@@ -227,6 +296,7 @@ export const POST = createSmartRouteHandler({
       name: data.product.displayName ?? "Subscription",
     });
     const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
+    const couponId = promoRedemption ? await createPromoCoupon(promoRedemption) : null;
     // TODO(default-plans): $0 subs currently piggyback on the Stripe
     // subscription lifecycle. Once default plans land, free subs should be
     // granted directly (Prisma insert + bulldozer write, mirroring
@@ -256,10 +326,20 @@ export const POST = createSmartRouteHandler({
         productId: data.productId ?? null,
         productVersionId,
         priceId: price_id,
+        ...(promoRedemption ? promoRedemptionMetadata(promoRedemption) : {}),
       },
+      ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
       ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
     });
-    if (isFreePrice) {
+    if (promoRedemption) {
+      await attachStripeSubscriptionToPromoRedemption({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: promoRedemption.redemptionId,
+        stripeSubscriptionId: created.id,
+      });
+    }
+    if (isFreePrice || isFreeAfterPromo) {
       // Stripe activates $0 subs synchronously (status=active, invoice=paid)
       // and produces no PaymentIntent / confirmation_secret, so we have
       // nothing to hand to Stripe Elements. The DB row is written when the
