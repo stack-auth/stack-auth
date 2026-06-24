@@ -286,6 +286,20 @@ export class SessionRecorder {
         // When _flushInProgress blocked earlier flushes, events can accumulate
         // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
         // exceed the server's 1MB body limit (413).
+        // A single event that exceeds the limit on its own can never be sent
+        // (rrweb events aren't splittable) and would 413 if shipped alone.
+        // Drop it with a warning and advance past it so the loop keeps making
+        // progress instead of stalling or sending a doomed request.
+        const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
+        if (firstSize > MAX_FLUSH_PAYLOAD_BYTES) {
+          captureWarning(
+            "SessionRecorder.flush",
+            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${MAX_FLUSH_PAYLOAD_BYTES} byte limit); it cannot be sent without a 413.`),
+          );
+          offset += 1;
+          continue;
+        }
+
         let batchBytes = 0;
         let batchEnd = offset;
         for (let i = offset; i < allEvents.length; i++) {
@@ -384,7 +398,12 @@ export class SessionRecorder {
           }
         }
 
-        const eventSize = JSON.stringify(event).length;
+        // Measure the true UTF-8 byte length (not UTF-16 code-unit count) so
+        // the accumulated size matches what the server weighs against its 1MB
+        // body limit. JSON.stringify(...).length undercounts multi-byte content
+        // (emoji, non-Latin text), which previously let a batch the client
+        // thought was ~900KB exceed the server limit and 413.
+        const eventSize = new TextEncoder().encode(JSON.stringify(event)).byteLength;
         this._events.push(event);
         this._eventSizes.push(eventSize);
         this._approxBytes += eventSize;

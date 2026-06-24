@@ -632,10 +632,57 @@ export const PRISMA_ERROR_CODES = {
   // Thrown by `delete`/`update` (and relation requirements) when the targeted row
   // doesn't exist — e.g. when two requests race to consume the same single-use row.
   DEPENDENT_RECORD_NOT_FOUND: "P2025",
+  // Wraps a raw database error (e.g. from $queryRaw/$executeRaw). The underlying
+  // PostgreSQL SQLSTATE is surfaced in `meta.code`.
+  RAW_QUERY_FAILED: "P2010",
 } as const;
 
 export function isPrismaError(error: unknown, code: keyof typeof PRISMA_ERROR_CODES): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_ERROR_CODES[code];
+}
+
+// PostgreSQL SQLSTATEs that signal a transient concurrency conflict the database
+// resolved by aborting one of the contending transactions. Re-running the same
+// statement on a fresh snapshot is the standard remedy.
+//   40P01 = deadlock_detected
+//   40001 = serialization_failure
+const RETRYABLE_PG_SQLSTATES = new Set(["40P01", "40001"]);
+
+/**
+ * Returns true if `error` is a transient PostgreSQL serialization/deadlock
+ * failure that is safe to retry on an *idempotent* statement.
+ *
+ * Prisma wraps raw-query database errors in a `PrismaClientKnownRequestError`
+ * with code `P2010` and surfaces the underlying SQLSTATE in `meta.code`. The
+ * exact location has varied across Prisma versions, so we also fall back to a
+ * message-substring check as a defensive net.
+ */
+export function isRetryableSerializationError(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  const meta = error.meta as { code?: unknown, message?: unknown } | undefined;
+  const sqlState = typeof meta?.code === "string" ? meta.code : undefined;
+  if (sqlState && RETRYABLE_PG_SQLSTATES.has(sqlState)) return true;
+  const message = `${typeof meta?.message === "string" ? meta.message : ""} ${error.message}`;
+  return /deadlock detected|could not serialize access/i.test(message);
+}
+
+/**
+ * Runs `fn`, retrying on transient PostgreSQL serialization/deadlock failures
+ * (see {@link isRetryableSerializationError}) with a small jittered backoff.
+ *
+ * IMPORTANT: only use this around statements that are idempotent on retry, since
+ * a deadlock can abort after some work has been observed by other transactions.
+ */
+export async function retryOnSerializationFailure<T>(fn: (attemptIndex: number) => Promise<T>, totalAttempts = 3): Promise<T> {
+  const res = await Result.retry(async (attemptIndex) => {
+    try {
+      return Result.ok(await fn(attemptIndex));
+    } catch (e) {
+      if (isRetryableSerializationError(e)) return Result.error(e);
+      throw e;
+    }
+  }, totalAttempts, { exponentialDelayBase: 50 });
+  return Result.orThrow(res);
 }
 
 export function isPrismaUniqueConstraintViolation(error: unknown, modelName: string, target: string | string[]): error is Prisma.PrismaClientKnownRequestError {

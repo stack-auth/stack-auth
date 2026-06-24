@@ -51,6 +51,7 @@ const ignoredEvents = [
   "balance.available",
   "customer.updated",
   "customer.created",
+  "invoice_payment.paid",
   "payout.created",
   "payout.reconciliation_completed",
 ] as const satisfies Stripe.Event.Type[];
@@ -330,7 +331,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     if (typeof customerId !== 'string') {
-      throw new HexclaveAssertionError("Stripe webhook bad customer id", { event });
+      // Some events in this branch can legitimately have no customer (e.g.
+      // standalone or Stripe-CLI test payment intents). They aren't
+      // subscription-relevant without a customer, so skip them gracefully.
+      return;
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);

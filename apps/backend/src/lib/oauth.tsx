@@ -4,7 +4,7 @@ import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/
 import { PrismaClientTransaction } from "@/prisma-client";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
-import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * Find an existing OAuth account for sign-in.
@@ -87,13 +87,18 @@ export async function handleOAuthEmailMergeStrategy(
         }
 
         if (!emailVerified) {
-          // TODO: Handle this case
-          const err = new HexclaveAssertionError(
-            "OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now",
-            { existingContactChannel, email, emailVerified }
-          );
-          captureError("oauth-link-method-email-not-verified", err);
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email);
+          // The new OAuth identity presents an email that matches an existing verified,
+          // auth-enabled account, but the new email itself is NOT verified. We must NOT
+          // auto-link here: doing so would be an account-takeover vector (anyone able to
+          // mint an OAuth identity with an unverified copy of the victim's email could
+          // hijack the account). This is a foreseeable, expected condition - not an
+          // internal bug - so surface a clean known error rather than an assertion page.
+          //
+          // We reuse `wouldWorkIfEmailWasVerified: true` so the user is told they can sign
+          // in to their existing account and verify this email to enable this login method.
+          // Follow-up product decision (out of scope here): offer an explicit
+          // verification-email flow to complete the link safely.
+          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email, true);
         }
 
         // Link to existing user
