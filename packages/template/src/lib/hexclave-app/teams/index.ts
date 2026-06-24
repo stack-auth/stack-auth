@@ -136,6 +136,10 @@ type ServerListUsersOptionsBase = {
    */
   query?: string,
   /**
+   * Exclude users whose primary email domain matches one of these exact domains.
+   */
+  excludedEmailDomains?: string[],
+  /**
    * Only return users who are members of the given team.
    */
   teamId?: string,

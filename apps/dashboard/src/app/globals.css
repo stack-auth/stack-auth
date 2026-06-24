@@ -206,10 +206,30 @@
   animation-delay: calc(var(--cascade-i, 0) * 80ms + 60ms);
 }
 
+@keyframes export-progress-shimmer {
+  0% {
+    transform: translateX(-105%);
+  }
+
+  100% {
+    transform: translateX(245%);
+  }
+}
+
+.export-progress-shimmer {
+  animation: export-progress-shimmer 1.35s ease-in-out infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .onboarding-cascade {
     animation: none;
     opacity: 1;
+  }
+
+  .export-progress-shimmer {
+    animation: none;
+    transform: translateX(75%);
   }
 }
 

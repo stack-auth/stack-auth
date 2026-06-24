@@ -13,6 +13,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -21,10 +25,11 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, CopyIcon, DotsThreeIcon, FunnelSimpleIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@hexclave/next";
 import {
   DataGrid,
+  DataGridToolbar,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
@@ -52,16 +57,19 @@ type FilterState = {
   includeRestricted: boolean,
   includeAnonymous: boolean,
   onlyAnonymous: boolean,
+  excludedEmailDomains: string[],
   signedUpOrder: "asc" | "desc",
 };
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
+const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const DEFAULT_FILTERS: FilterState = {
   search: "",
   includeRestricted: true,
   includeAnonymous: false,
   onlyAnonymous: false,
+  excludedEmailDomains: [],
   signedUpOrder: "desc",
 };
 
@@ -97,6 +105,25 @@ function titleCase(value: string) {
 function formatUserId(id: string) {
   if (id.length <= 10) return id;
   return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+function normalizeEmailDomain(domain: string) {
+  return domain.trim().replace(/^@/, "").toLowerCase();
+}
+
+function parseEmailDomains(input: string) {
+  const domains = input.split(/[,\n]+/).map(normalizeEmailDomain).filter((domain) => domain !== "");
+  const invalidDomain = domains.find((domain) => !emailDomainRegex.test(domain));
+  if (invalidDomain != null) {
+    return {
+      domains: [],
+      error: `Use exact domains like gmail.com. "${invalidDomain}" is not valid.`,
+    };
+  }
+  return {
+    domains,
+    error: null,
+  };
 }
 
 // ─── Column definitions ──────────────────────────────────────────────
@@ -169,7 +196,8 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
 // ─── UserTable ───────────────────────────────────────────────────────
 
 export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean }) => void,
+  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean, excludedEmailDomains: string[] }) => void,
+  onExportClick?: () => void,
 }) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
@@ -180,10 +208,11 @@ export function UserTable(props?: {
       includeRestricted: filters.includeRestricted,
       includeAnonymous: filters.includeAnonymous,
       onlyAnonymous: filters.onlyAnonymous,
+      excludedEmailDomains: filters.excludedEmailDomains,
     });
-  }, [filters.search, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, onFilterChange]);
+  }, [filters.search, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, filters.excludedEmailDomains, onFilterChange]);
 
-  return <UserTableBody filters={filters} setFilters={setFilters} />;
+  return <UserTableBody filters={filters} setFilters={setFilters} onExportClick={props?.onExportClick} />;
 }
 
 // ─── Body (imperative fetching — no Suspense flash) ──────────────────
@@ -191,8 +220,9 @@ export function UserTable(props?: {
 function UserTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
+  onExportClick?: () => void,
 }) {
-  const { filters, setFilters } = props;
+  const { filters, setFilters, onExportClick } = props;
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
 
@@ -247,6 +277,7 @@ function UserTableBody(props: {
           orderBy,
           desc: sortDesc,
           query: search,
+          excludedEmailDomains: filters.excludedEmailDomains,
           includeRestricted: filters.includeRestricted,
           includeAnonymous: true,
           onlyAnonymous: true,
@@ -257,6 +288,7 @@ function UserTableBody(props: {
           orderBy,
           desc: sortDesc,
           query: search,
+          excludedEmailDomains: filters.excludedEmailDomains,
           includeRestricted: filters.includeRestricted,
           includeAnonymous: filters.includeAnonymous,
           cursor,
@@ -267,7 +299,7 @@ function UserTableBody(props: {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [hexclaveAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous],
+    [hexclaveAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, filters.excludedEmailDomains],
   );
 
   const getRowId = useCallback((row: ExtendedServerUser) => row.id, []);
@@ -292,6 +324,38 @@ function UserTableBody(props: {
   }, [setFilters, setGridState]);
 
   const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";
+  const toolbarExtra = (
+    <div className="flex items-center gap-2">
+      <EmailDomainFilter
+        domains={filters.excludedEmailDomains}
+        onChange={(excludedEmailDomains) => setFilters((prev) => ({ ...prev, excludedEmailDomains }))}
+      />
+      <Select
+        value={filterValue}
+        onValueChange={(value) => {
+          if (value === "anonymous-only") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true }));
+          } else if (value === "anonymous") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false }));
+          } else if (value === "restricted") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false }));
+          } else {
+            setFilters((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false }));
+          }
+        }}
+      >
+        <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="User list filter">
+          <SelectValue placeholder="Signups" />
+        </SelectTrigger>
+        <SelectContent align="start">
+          <SelectItem value="standard">Exclude restricted</SelectItem>
+          <SelectItem value="restricted">Signups</SelectItem>
+          <SelectItem value="anonymous">Signups & anonymous</SelectItem>
+          <SelectItem value="anonymous-only">Only anonymous</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
 
   return (
     <DataGrid
@@ -311,32 +375,13 @@ function UserTableBody(props: {
       footer={false}
       fillHeight={false}
 
-      toolbarExtra={
-        <Select
-          value={filterValue}
-          onValueChange={(value) => {
-            if (value === "anonymous-only") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true }));
-            } else if (value === "anonymous") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false }));
-            } else if (value === "restricted") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false }));
-            } else {
-              setFilters((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false }));
-            }
-          }}
-        >
-          <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="User list filter">
-            <SelectValue placeholder="Signups" />
-          </SelectTrigger>
-          <SelectContent align="start">
-            <SelectItem value="standard">Exclude restricted</SelectItem>
-            <SelectItem value="restricted">Signups</SelectItem>
-            <SelectItem value="anonymous">Signups & anonymous</SelectItem>
-            <SelectItem value="anonymous-only">Only anonymous</SelectItem>
-          </SelectContent>
-        </Select>
-      }
+      toolbar={onExportClick == null ? undefined : (ctx) => (
+        <DataGridToolbar
+          ctx={{ ...ctx, exportCsv: onExportClick }}
+          extra={toolbarExtra}
+        />
+      )}
+      toolbarExtra={onExportClick == null ? toolbarExtra : undefined}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
       }}
@@ -356,6 +401,131 @@ function UserTableBody(props: {
         </div>
       }
     />
+  );
+}
+
+function EmailDomainFilter(props: {
+  domains: string[],
+  onChange: (domains: string[]) => void,
+}) {
+  const { domains, onChange } = props;
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const addDomains = useCallback((rawInput: string) => {
+    const parsed = parseEmailDomains(rawInput);
+    if (parsed.error != null) {
+      setError(parsed.error);
+      return;
+    }
+    if (parsed.domains.length === 0) {
+      setInput("");
+      setError(null);
+      return;
+    }
+
+    const nextDomains = new Map(domains.map((domain) => [domain, true]));
+    for (const domain of parsed.domains) {
+      nextDomains.set(domain, true);
+    }
+    onChange([...nextDomains.keys()]);
+    setInput("");
+    setError(null);
+  }, [domains, onChange]);
+
+  const removeDomain = useCallback((domainToRemove: string) => {
+    onChange(domains.filter((domain) => domain !== domainToRemove));
+    setError(null);
+  }, [domains, onChange]);
+
+  const active = domains.length > 0;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 rounded-xl border-black/[0.08] bg-white/85 px-3 text-xs shadow-sm ring-1 ring-black/[0.08] hover:bg-white dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]"
+          aria-label="Email domain filter"
+        >
+          <FunnelSimpleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+          Email domain
+          {active ? (
+            <Badge variant="secondary" className="ml-2 rounded-full px-1.5 py-0 text-[10px] font-medium">
+              {domains.length}
+            </Badge>
+          ) : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[320px] rounded-xl border-black/[0.08] bg-white/95 p-3 shadow-md ring-1 ring-black/[0.08] backdrop-blur-xl dark:border-white/[0.06] dark:bg-background/95 dark:ring-white/[0.06]"
+      >
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Exclude email domains</div>
+          </div>
+          <Input
+            size="sm"
+            value={input}
+            placeholder="gmail.com, yahoo.com"
+            aria-label="Excluded email domains"
+            onChange={(event) => {
+              setInput(event.target.value);
+              setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                addDomains(input);
+              }
+            }}
+            onPaste={(event) => {
+              const pastedText = event.clipboardData.getData("text");
+              if (pastedText.includes(",") || pastedText.includes("\n")) {
+                event.preventDefault();
+                addDomains(pastedText);
+              }
+            }}
+            onBlur={() => {
+              if (input.trim() !== "") {
+                addDomains(input);
+              }
+            }}
+          />
+          {error != null ? (
+            <div className="text-xs text-destructive">{error}</div>
+          ) : null}
+          {domains.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {domains.map((domain) => (
+                <Badge key={domain} variant="secondary" className="gap-1 rounded-full px-2 py-0.5 text-xs">
+                  {domain}
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => removeDomain(domain)}
+                    aria-label={`Remove ${domain}`}
+                  >
+                    <XCircleIcon className="h-3.5 w-3.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No domains excluded.</div>
+          )}
+          {domains.length > 0 ? (
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => onChange([])}>
+                Clear
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

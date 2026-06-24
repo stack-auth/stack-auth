@@ -23,7 +23,7 @@ import {
   toast,
 } from "@/components/ui";
 import { download, generateCsv, mkConfig } from "export-to-csv";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 type ExportFormat = "csv" | "json";
 type ExportScope = "all" | "filtered";
@@ -36,9 +36,22 @@ type ExportField = {
 
 type ExportOptions = {
   search?: string,
+  includeRestricted: boolean,
   includeAnonymous: boolean,
   onlyAnonymous?: boolean,
+  excludedEmailDomains: string[],
 };
+
+type ExportProgress = {
+  phase: "idle" | "fetching" | "generating" | "complete",
+  fetched: number,
+};
+
+const idleExportProgress: ExportProgress = {
+  phase: "idle",
+  fetched: 0,
+};
+const exportCompletionDisplayMs = 800;
 
 const DEFAULT_FIELDS: ExportField[] = [
   { key: "id", label: "User ID", enabled: true },
@@ -60,16 +73,28 @@ const DEFAULT_FIELDS: ExportField[] = [
 ];
 
 export function ExportUsersDialog(props: {
-  trigger: React.ReactNode,
+  trigger?: React.ReactNode,
   exportOptions?: ExportOptions,
+  open?: boolean,
+  onOpenChange?: (open: boolean) => void,
 }) {
   const { trigger, exportOptions } = props;
   const hexclaveAdminApp = useAdminApp();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = props.open ?? uncontrolledOpen;
+  const setOpen = props.onOpenChange ?? setUncontrolledOpen;
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [scope, setScope] = useState<ExportScope>("all");
   const [fields, setFields] = useState<ExportField[]>(DEFAULT_FIELDS);
   const [isExporting, setIsExporting] = useState(false);
+  const [progress, setProgress] = useState<ExportProgress>(idleExportProgress);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (isExporting && !nextOpen) {
+      return;
+    }
+    setOpen(nextOpen);
+  }, [isExporting, setOpen]);
 
   const toggleField = (key: string) => {
     setFields((prev) =>
@@ -99,11 +124,13 @@ export function ExportUsersDialog(props: {
     }
 
     setIsExporting(true);
+    setProgress({ phase: "fetching", fetched: 0 });
     try {
       // Fetch all users
       const allUsers = await fetchAllUsers(
         hexclaveAdminApp,
-        scope === "filtered" ? exportOptions : undefined
+        scope === "filtered" ? exportOptions : undefined,
+        (fetched) => setProgress({ phase: "fetching", fetched }),
       );
 
       if (allUsers.length === 0) {
@@ -113,8 +140,11 @@ export function ExportUsersDialog(props: {
           variant: "destructive",
         });
         setIsExporting(false);
+        setProgress(idleExportProgress);
         return;
       }
+
+      setProgress({ phase: "generating", fetched: allUsers.length });
 
       // Transform user data based on selected fields
       const transformedData = allUsers.map((user) =>
@@ -127,6 +157,9 @@ export function ExportUsersDialog(props: {
       } else {
         exportToJson(transformedData);
       }
+
+      setProgress({ phase: "complete", fetched: allUsers.length });
+      await new Promise<void>((resolve) => setTimeout(resolve, exportCompletionDisplayMs));
 
       toast({
         title: "Export successful",
@@ -144,146 +177,217 @@ export function ExportUsersDialog(props: {
       });
     } finally {
       setIsExporting(false);
+      setProgress(idleExportProgress);
     }
   };
 
   return (
     <>
-      <div onClick={() => setOpen(true)}>
-        {trigger}
-      </div>
-      <Dialog open={open} onOpenChange={setOpen}>
+      {trigger == null ? null : (
+        <div onClick={() => setOpen(true)}>
+          {trigger}
+        </div>
+      )}
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Export Users</DialogTitle>
-            <DialogDescription>
-              Configure and download user data from your project
-            </DialogDescription>
-          </DialogHeader>
+          {isExporting ? (
+            <ExportProgressContent progress={progress} format={format} />
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Export Users</DialogTitle>
+                <DialogDescription>
+                  Configure and download user data from your project
+                </DialogDescription>
+              </DialogHeader>
 
-          <div className="space-y-6 py-4">
-            {/* Export Format */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Export Format</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="csv">CSV (Comma-separated values)</SelectItem>
-                  <SelectItem value="json">JSON (JavaScript Object Notation)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-6 py-4">
+                {/* Export Format */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Export Format</Label>
+                  <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="csv">CSV (Comma-separated values)</SelectItem>
+                      <SelectItem value="json">JSON (JavaScript Object Notation)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {/* Export Scope */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Export Scope</Label>
-              <RadioGroup value={scope} onValueChange={(v) => setScope(v as ExportScope)}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="all" id="scope-all" />
-                  <Label htmlFor="scope-all" className="font-normal cursor-pointer">
-                    Export all users in the project
-                  </Label>
+                {/* Export Scope */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Export Scope</Label>
+                  <RadioGroup value={scope} onValueChange={(v) => setScope(v as ExportScope)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="all" id="scope-all" />
+                      <Label htmlFor="scope-all" className="font-normal cursor-pointer">
+                        Export all users in the project
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="filtered" id="scope-filtered" />
+                      <Label htmlFor="scope-filtered" className="font-normal cursor-pointer">
+                        Export only filtered/searched users
+                        {exportOptions?.search && (
+                          <span className="text-muted-foreground ml-1">
+                            (search: &quot;{exportOptions.search}&quot;)
+                          </span>
+                        )}
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="filtered" id="scope-filtered" />
-                  <Label htmlFor="scope-filtered" className="font-normal cursor-pointer">
-                    Export only filtered/searched users
-                    {exportOptions?.search && (
-                      <span className="text-muted-foreground ml-1">
-                        (search: &quot;{exportOptions.search}&quot;)
-                      </span>
-                    )}
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
 
-            {/* Field Selection */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Fields to Export</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={selectAllFields}
-                    className="h-7 text-xs"
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={deselectAllFields}
-                    className="h-7 text-xs"
-                  >
-                    Deselect All
-                  </Button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto border border-border rounded-lg p-4">
-                {fields.map((field) => (
-                  <div key={field.key} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`field-${field.key}`}
-                      checked={field.enabled}
-                      onCheckedChange={() => toggleField(field.key)}
-                    />
-                    <Label
-                      htmlFor={`field-${field.key}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {field.label}
-                    </Label>
+                {/* Field Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Fields to Export</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={selectAllFields}
+                        className="h-7 text-xs"
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={deselectAllFields}
+                        className="h-7 text-xs"
+                      >
+                        Deselect All
+                      </Button>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto border border-border rounded-lg p-4">
+                    {fields.map((field) => (
+                      <div key={field.key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`field-${field.key}`}
+                          checked={field.enabled}
+                          onCheckedChange={() => toggleField(field.key)}
+                        />
+                        <Label
+                          htmlFor={`field-${field.key}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {field.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Export Button */}
-            <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setOpen(false)} disabled={isExporting}>
-                Cancel
-              </Button>
-              <Button onClick={() => runAsynchronouslyWithAlert(handleExport)} disabled={isExporting}>
-                <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-                {isExporting ? "Exporting..." : "Export Users"}
-              </Button>
-            </div>
-          </div>
+                {/* Export Button */}
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button variant="outline" onClick={() => setOpen(false)} disabled={isExporting}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => runAsynchronouslyWithAlert(handleExport)} disabled={isExporting}>
+                    <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+                    Export Users
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
+function ExportProgressContent(props: {
+  progress: ExportProgress,
+  format: ExportFormat,
+}) {
+  const { progress, format } = props;
+  const fileLabel = format.toUpperCase();
+  const isComplete = progress.phase === "complete";
+  const title = isComplete ? "Export complete" : "Exporting users";
+  const description = isComplete
+    ? `Your ${fileLabel} is ready and the download should begin automatically.`
+    : `Your ${fileLabel} is being prepared from matching users.`;
+  const statusLabel = progress.phase === "complete"
+    ? "Download ready"
+    : progress.phase === "generating"
+      ? `Preparing ${fileLabel}`
+      : "Fetching user records";
+  const countLabel = `${progress.fetched.toLocaleString()} ${isComplete ? "exported" : "fetched"}`;
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>
+          {description}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 py-4">
+        <div className="rounded-xl border border-border bg-muted/35 p-4">
+          <div className="mb-3 flex items-center justify-between gap-4 text-sm">
+            <span className="font-medium text-foreground">{statusLabel}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {countLabel}
+            </span>
+          </div>
+          <div className="relative h-2 overflow-hidden rounded-full bg-foreground/10">
+            {isComplete ? (
+              <div className="h-full w-full rounded-full bg-success/80" />
+            ) : (
+              <div className="export-progress-shimmer absolute inset-y-0 left-0 w-2/5 rounded-full bg-gradient-to-r from-transparent via-foreground/65 to-transparent" />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Do not reload this page until the export finishes. The download will start automatically.
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" disabled>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 async function fetchAllUsers(
   hexclaveAdminApp: ReturnType<typeof useAdminApp>,
-  options?: ExportOptions
+  options?: ExportOptions,
+  onProgress?: (fetched: number) => void,
 ): Promise<ServerUser[]> {
   const allUsers: ServerUser[] = [];
   let cursor: string | undefined = undefined;
   const limit = 100; // Fetch in batches of 100
 
   do {
-    const listUsersOptions: Parameters<typeof hexclaveAdminApp.listUsers>[0] = {
+    type ListUsersOptions = Exclude<Parameters<typeof hexclaveAdminApp.listUsers>[0], undefined>;
+    const baseListUsersOptions = {
       limit,
       cursor,
       query: options?.search,
-      includeAnonymous: options?.onlyAnonymous ? true : (options?.includeAnonymous ?? true),
+      excludedEmailDomains: options?.excludedEmailDomains,
+      includeRestricted: options?.includeRestricted,
       orderBy: "signedUpAt",
       desc: true,
-    };
-    if (options?.onlyAnonymous) {
-      Object.assign(listUsersOptions, { onlyAnonymous: true });
-    }
+    } satisfies Omit<ListUsersOptions, "includeAnonymous" | "onlyAnonymous">;
+    const listUsersOptions: ListUsersOptions = options?.onlyAnonymous
+      ? { ...baseListUsersOptions, includeAnonymous: true, onlyAnonymous: true }
+      : { ...baseListUsersOptions, includeAnonymous: options?.includeAnonymous ?? true };
     const batch = await hexclaveAdminApp.listUsers(listUsersOptions);
 
     allUsers.push(...batch);
+    onProgress?.(allUsers.length);
     cursor = batch.nextCursor ?? undefined;
   } while (cursor);
 

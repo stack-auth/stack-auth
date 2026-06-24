@@ -9,7 +9,7 @@ import { useMetricsUserCountsOrThrow } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -64,8 +64,14 @@ export default function PageClient() {
     includeRestricted: boolean,
     includeAnonymous: boolean,
     onlyAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
+    excludedEmailDomains: string[],
+  }>({ includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, excludedEmailDomains: [] });
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const openExportDialog = useCallback(() => {
+    setExportDialogOpen(true);
+  }, []);
 
   const handleRefresh = async () => {
     await (hexclaveAdminApp as any)._refreshUsers();
@@ -99,6 +105,8 @@ export default function PageClient() {
                 </Button>
               }
               exportOptions={exportOptions}
+              open={exportDialogOpen}
+              onOpenChange={setExportDialogOpen}
             />
             <UserDialog
               type="create"
@@ -116,7 +124,7 @@ export default function PageClient() {
         <UsersKpiCards />
 
         <div data-walkthrough="users-table">
-          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} onExportClick={openExportDialog} />
         </div>
       </PageLayout>
     </AppEnabledGuard>
