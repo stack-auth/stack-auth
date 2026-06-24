@@ -72,11 +72,141 @@ const COMPONENTS = [
 
 const PLATFORM_PREFIXES = ["next", "react", "js", "python"] as const;
 
+const OPENAPI_AUDIENCES = ["client", "server"] as const;
+
+const OPENAPI_HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"] as const;
+
+// Matches the folder names used by the old Fumadocs OpenAPI generator (docs/scripts/generate-functional-api-docs.mjs).
+const FUMADOCS_TAG_FOLDERS: Record<string, string> = {
+  "Oauth": "oauth",
+  "API Keys": "api-keys",
+  "CLI Authentication": "cli-authentication",
+  "Contact Channels": "contact-channels",
+  "OTP": "otp",
+};
+
+// Internal-only endpoints that existed on docs.stack-auth.com but were removed from the public OpenAPI specs.
+const REMOVED_INTERNAL_API_PATH_SUFFIXES = [
+  "ai-conversations/get",
+  "ai-conversations/post",
+  "conversations/get",
+  "conversations/post",
+  "ai-conversations/conversationid/delete",
+  "ai-conversations/conversationid/get",
+  "ai-conversations/conversationid/messages",
+  "ai-conversations/conversationid/patch",
+  "conversations/conversationid/get",
+  "conversations/conversationid/patch",
+] as const;
+
+type OpenApiOperation = {
+  summary?: string,
+  tags?: string[],
+};
+
+type OpenApiSpec = {
+  paths?: Record<string, Partial<Record<(typeof OPENAPI_HTTP_METHODS)[number], OpenApiOperation>>>,
+  webhooks?: Record<string, Partial<Record<string, OpenApiOperation>>>,
+};
+
 function addRedirect(redirects: Map<string, string>, source: string, destination: string) {
+  if (source === destination) {
+    return;
+  }
   redirects.set(source, destination);
 }
 
-function buildLegacyPathRedirects(): Redirect[] {
+function fumadocsTagFolder(tag: string) {
+  return FUMADOCS_TAG_FOLDERS[tag] ?? tag.toLowerCase().replace(/\s+/g, "-");
+}
+
+function mintlifyTagSlug(tag: string) {
+  return tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function mintlifyOperationSlug(summary: string) {
+  return summary.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function mintlifyWebhookSlug(summary: string) {
+  return summary.replace(/\./g, "");
+}
+
+function legacyOpenApiPathSegments(openApiPath: string) {
+  return openApiPath
+    .replace(/^\//, "")
+    .split("/")
+    .map((segment) => segment.replace(/^\{/, "").replace(/\}$/, ""));
+}
+
+function buildApiPathRedirects(redirects: Map<string, string>, repoRoot: string) {
+  const openApiDir = path.join(repoRoot, "docs-mintlify/openapi");
+
+  for (const audience of OPENAPI_AUDIENCES) {
+    const spec = JSON.parse(
+      readFileSync(path.join(openApiDir, `${audience}.json`), "utf-8"),
+    ) as OpenApiSpec;
+    const base = `/api/${audience}`;
+
+    for (const [openApiPath, methodsByVerb] of Object.entries(spec.paths ?? {})) {
+      const legacyPathSegments = legacyOpenApiPathSegments(openApiPath);
+
+      for (const method of OPENAPI_HTTP_METHODS) {
+        const operation = methodsByVerb[method];
+        if (operation == null) {
+          continue;
+        }
+
+        const tag = operation.tags?.[0];
+        if (tag == null) {
+          continue;
+        }
+
+        const summary = operation.summary ?? `${method}-untitled`;
+        const legacyFolder = fumadocsTagFolder(tag);
+        const destination = `${base}/${mintlifyTagSlug(tag)}/${mintlifyOperationSlug(summary)}`;
+        const legacyCandidates = [
+          `${base}/${legacyFolder}/${legacyPathSegments.join("/")}/${method}`,
+          `${base}/${legacyFolder}/${legacyPathSegments.join("/")}`,
+        ];
+
+        for (const source of legacyCandidates) {
+          addRedirect(redirects, source, destination);
+        }
+      }
+    }
+  }
+
+  const webhooksSpec = JSON.parse(
+    readFileSync(path.join(openApiDir, "webhooks.json"), "utf-8"),
+  ) as OpenApiSpec;
+
+  for (const [eventName, methodsByVerb] of Object.entries(webhooksSpec.webhooks ?? {})) {
+    for (const operation of Object.values(methodsByVerb)) {
+      if (operation == null) {
+        continue;
+      }
+
+      const tag = operation.tags?.[0];
+      if (tag == null || operation.summary == null) {
+        continue;
+      }
+
+      const legacyFolder = fumadocsTagFolder(tag);
+      const source = `/api/webhooks/${legacyFolder}/${eventName}`;
+      const destination = `/api/webhooks/${mintlifyTagSlug(tag)}/${mintlifyWebhookSlug(operation.summary)}`;
+      addRedirect(redirects, source, destination);
+    }
+  }
+
+  for (const audience of ["client", "server"] as const) {
+    for (const suffix of REMOVED_INTERNAL_API_PATH_SUFFIXES) {
+      addRedirect(redirects, `/api/${audience}/others/internal/${suffix}`, "/api/overview");
+    }
+  }
+}
+
+function buildLegacyPathRedirects(repoRoot: string): Redirect[] {
   const redirects = new Map<string, string>();
 
   addRedirect(redirects, "/docs", "/");
@@ -174,6 +304,8 @@ function buildLegacyPathRedirects(): Redirect[] {
     addRedirect(redirects, `/docs/${platform}/sdk/objects/stack-app`, "/sdk/objects/hexclave-app");
   }
 
+  buildApiPathRedirects(redirects, repoRoot);
+
   return [...redirects.entries()]
     .sort(([sourceA], [sourceB]) => sourceA.localeCompare(sourceB))
     .map(([source, destination]) => ({ source, destination }));
@@ -183,13 +315,18 @@ function main() {
   const repoRoot = path.resolve(__dirname, "..");
   const vercelJsonPath = path.join(repoRoot, "docs-legacy-redirects/vercel.json");
 
-  const pathRedirects = buildLegacyPathRedirects();
+  const pathRedirects = buildLegacyPathRedirects(repoRoot);
   const vercelRedirects = [
     ...pathRedirects.map(({ source, destination }) => ({
       source,
       destination: `${NEW_DOCS_ORIGIN}${destination}`,
       permanent: true,
     })),
+    {
+      source: "/api/admin/:path*",
+      destination: `${NEW_DOCS_ORIGIN}/api/overview`,
+      permanent: true,
+    },
     {
       source: "/:path*",
       destination: `${NEW_DOCS_ORIGIN}/`,
