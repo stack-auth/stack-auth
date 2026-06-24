@@ -234,6 +234,7 @@ describe("ProjectOnboardingWizard", () => {
       throw new Error("Stripe account info should not load on the app selection step.");
     });
     const listEmailThemes = vi.fn(async () => []);
+    const getEmailPreview = vi.fn(async () => "");
     const getStripeAccountInfo = vi.fn(async () => null);
 
     render(
@@ -265,6 +266,7 @@ describe("ProjectOnboardingWizard", () => {
           app: {
             setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
             listEmailThemes,
+            getEmailPreview,
             getStripeAccountInfo,
             useEmailThemes,
             useStripeAccountInfo,
@@ -280,6 +282,7 @@ describe("ProjectOnboardingWizard", () => {
     );
 
     expect(listEmailThemes).toHaveBeenCalledOnce();
+    expect(getEmailPreview).not.toHaveBeenCalled();
     expect(getStripeAccountInfo).not.toHaveBeenCalled();
     expect(useEmailThemes).not.toHaveBeenCalled();
     expect(useStripeAccountInfo).not.toHaveBeenCalled();

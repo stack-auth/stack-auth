@@ -1,8 +1,41 @@
+import { randomUUID } from "node:crypto";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, bumpEmailAddress, niceBackendFetch, Payments, Project, Team } from "../../../backend-helpers";
 import { getOutboxEmails } from "./emails/email-helpers";
+
+// Stripe webhook events are now deduplicated globally by their `event.id` (see
+// the StripeWebhookEvent table). The dev DB is NOT reset between test runs, so
+// every claimed event needs a per-run unique id, otherwise a second run would
+// hit the dedupe path and skip processing.
+function uniqueEventId(prefix: string) {
+  return `evt_${prefix}_${randomUUID()}`;
+}
+
+// Webhook processing now happens in the background after a fast 200 ack, so DB
+// state is eventually-consistent from the test's perspective. Poll instead of
+// reading immediately after the webhook returns.
+async function waitForItemQuantity(
+  args: { customerType: "user" | "team", customerId: string, itemId: string, expected: number },
+) {
+  let last: number | undefined;
+  for (let i = 0; i < 30; i++) {
+    const res = await niceBackendFetch(
+      `/api/latest/payments/items/${args.customerType}/${args.customerId}/${args.itemId}`,
+      { accessType: "client" },
+    );
+    if (res.status !== 200) {
+      throw new Error(`Unexpected ${res.status} reading item ${args.itemId}`);
+    }
+    last = res.body.quantity;
+    if (last === args.expected) {
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Item ${args.itemId} quantity never reached ${args.expected} (last seen: ${last})`);
+}
 
 async function waitForOutboxEmail(subject: string) {
   for (let i = 0; i < 30; i++) {
@@ -26,14 +59,20 @@ async function waitForNoOutboxEmail(subject: string) {
 }
 
 
-it("rejects signed mock_event.succeeded webhook", async ({ expect }) => {
+it("acks unknown signed webhook types (errors handled in background)", async ({ expect }) => {
+  // We now persist + ack the event synchronously and process it in the
+  // background, so an unknown type no longer surfaces a 500 to Stripe. The
+  // "Unknown stripe webhook type" error is captured async and the event row is
+  // marked FAILED (covered deterministically in stripe-webhook-events.test.ts).
   const payload = {
-    id: "evt_test_1",
+    id: uniqueEventId("mock_event_succeeded"),
     type: "mock_event.succeeded",
     account: "acct_test123",
     data: { object: { customer: "cus_test123", metadata: {} } },
   };
-  await expect(Payments.sendStripeWebhook(payload)).rejects.toThrow(/Unknown stripe webhook type received/);
+  const res = await Payments.sendStripeWebhook(payload);
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ received: true });
 });
 
 it("returns 400 on invalid signature", async ({ expect }) => {
@@ -53,15 +92,17 @@ it("returns 400 on invalid signature", async ({ expect }) => {
   `);
 });
 
-it("returns 500 on unknown webhook type", async ({ expect }) => {
+it("acks unknown webhook types with 200 (errors handled in background)", async ({ expect }) => {
   const payload = {
-    id: "evt_test_unknown",
+    id: uniqueEventId("unknown_event"),
     type: "unknown.event",
     account: "acct_test123",
     data: { object: {} },
   };
 
-  await expect(Payments.sendStripeWebhook(payload)).rejects.toThrow(/Unknown stripe webhook type received/);
+  const res = await Payments.sendStripeWebhook(payload);
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ received: true });
 });
 
 it("returns 400 when signature header is missing (schema validation)", async ({ expect }) => {
@@ -86,7 +127,7 @@ it("accepts chargeback webhooks", async ({ expect }) => {
   const accountId: string = accountInfo.body.account_id;
 
   const payload = {
-    id: "evt_chargeback_test",
+    id: uniqueEventId("chargeback"),
     type: "charge.dispute.created",
     account: accountId,
     data: {
@@ -172,7 +213,7 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
   const fullCode = purchaseUrl.split("/purchase/")[1];
   const stackTestTenancyId = fullCode.split("_")[0];
   const payloadObj = {
-    id: "evt_retry_test",
+    id: uniqueEventId("retry"),
     type: "payment_intent.succeeded",
     account: accountId,
     data: {
@@ -198,18 +239,18 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
   };
   const res = await Payments.sendStripeWebhook(payloadObj);
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ received: true });
+  expect(res.body.received).toBe(true);
+
+  // First grant must land before we redeliver, so the duplicate deterministically
+  // hits the event-dedupe path (PROCESSED) rather than racing in-flight work.
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 
   const res2 = await Payments.sendStripeWebhook(payloadObj);
   expect(res2.status).toBe(200);
-  expect(res2.body).toEqual({ received: true });
+  expect(res2.body).toEqual({ received: true, deduplicated: true });
 
-  // After duplicate deliveries, quantity should reflect a single OneTimePurchase grant
-  const getAfter = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
-    accessType: "client",
-  });
-  expect(getAfter.status).toBe(200);
-  expect(getAfter.body.quantity).toBe(1);
+  // After the deduplicated redelivery, quantity stays at a single grant.
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 });
 
 it("sends a payment receipt email for one-time purchases", async ({ expect }) => {
@@ -268,7 +309,7 @@ it("sends a payment receipt email for one-time purchases", async ({ expect }) =>
   const receiptLink = "https://example.com/receipt/pi_test_receipt_1";
   const paymentIntentId = "pi_test_receipt_1";
   const payloadObj = {
-    id: "evt_receipt_test_1",
+    id: uniqueEventId("receipt"),
     type: "payment_intent.succeeded",
     account: accountId,
     data: {
@@ -311,6 +352,117 @@ it("sends a payment receipt email for one-time purchases", async ({ expect }) =>
       "receiptLink": "https://example.com/receipt/pi_test_receipt_1",
     }
   `);
+});
+
+it("sends exactly one receipt when Stripe redelivers the same event", async ({ expect }) => {
+  // Regression test for the duplicate-receipt bug: Stripe delivers at-least-once,
+  // and slow synchronous processing used to time out and trigger redeliveries,
+  // each re-sending the receipt fan-out. The StripeWebhookEvent dedupe must keep
+  // the fan-out to exactly once per event id.
+  const projectDisplayName = `Receipt Idempotency ${randomUUID()}`;
+  await Project.createAndSwitch({ display_name: projectDisplayName });
+  await Payments.setup();
+
+  const itemId = "idem-receipt-credits";
+  const productId = "idem-receipt-ot";
+  const product = {
+    displayName: "Idem Receipt Pack",
+    customerType: "user",
+    serverOnly: false,
+    stackable: true,
+    prices: { one: { USD: "500" } },
+    includedItems: { [itemId]: { quantity: 1 } },
+  };
+
+  await Project.updateConfig({
+    payments: {
+      items: {
+        [itemId]: { displayName: "Credits", customerType: "user" },
+      },
+      products: {
+        [productId]: product,
+      },
+    },
+  });
+
+  const mailbox = await bumpEmailAddress();
+  const { userId } = await Auth.fastSignUp({
+    primary_email: mailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: productId,
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const purchaseUrl = (createUrlResponse.body as { url: string }).url;
+  const fullCode = purchaseUrl.split("/purchase/")[1];
+  const stackTestTenancyId = fullCode.split("_")[0];
+
+  const receiptLink = "https://example.com/receipt/pi_idem_receipt";
+  const eventId = uniqueEventId("idem_receipt");
+  const payloadObj = {
+    id: eventId,
+    type: "payment_intent.succeeded",
+    account: accountId,
+    data: {
+      object: {
+        id: "pi_idem_receipt",
+        customer: userId,
+        amount_received: 500,
+        currency: "usd",
+        charges: { data: [{ receipt_url: receiptLink }] },
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": { data: [] },
+        },
+        metadata: {
+          productId,
+          product: JSON.stringify(product),
+          customerId: userId,
+          customerType: "user",
+          purchaseQuantity: "1",
+          purchaseKind: "ONE_TIME",
+          priceId: "one",
+        },
+      },
+    },
+  };
+
+  const first = await Payments.sendStripeWebhook(payloadObj);
+  expect(first.status).toBe(200);
+  expect(first.body).toEqual({ received: true });
+
+  // Wait for the receipt to land, which proves the first event finished
+  // processing (and is now PROCESSED), so the redeliveries deterministically
+  // take the dedupe path.
+  const subject = `Your receipt from ${projectDisplayName}`;
+  await waitForOutboxEmail(subject);
+
+  for (let i = 0; i < 2; i++) {
+    const redelivery = await Payments.sendStripeWebhook(payloadObj);
+    expect(redelivery.status).toBe(200);
+    expect(redelivery.body).toEqual({ received: true, deduplicated: true });
+  }
+
+  // Give any (incorrectly) re-triggered fan-out a chance to show up, then assert
+  // there is still exactly one receipt email for this project.
+  await wait(1500);
+  const receipts = await getOutboxEmails({ subject });
+  expect(receipts.length).toBe(1);
 });
 
 it("sends a payment failed email for invoice.payment_failed", async ({ expect }) => {
@@ -365,7 +517,7 @@ it("sends a payment failed email for invoice.payment_failed", async ({ expect })
   const invoiceId = "in_test_failed_1";
   const invoiceUrl = "https://example.com/billing/update";
   const payloadObj = {
-    id: "evt_invoice_failed_1",
+    id: uniqueEventId("invoice_failed"),
     type: "invoice.payment_failed",
     account: accountId,
     data: {
@@ -458,7 +610,7 @@ it("skips payment failed email when invoice is not uncollectible", async ({ expe
   const invoiceId = "in_test_failed_open_1";
   const invoiceUrl = "https://example.com/billing/open";
   const payloadObj = {
-    id: "evt_invoice_failed_open_1",
+    id: uniqueEventId("invoice_failed_open"),
     type: "invoice.payment_failed",
     account: accountId,
     data: {
@@ -569,7 +721,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
   };
 
   const payloadObj = {
-    id: "evt_sub_sync_1",
+    id: uniqueEventId("sub_sync"),
     type: "invoice.paid",
     account: accountId,
     data: {
@@ -586,23 +738,16 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
 
   const res = await Payments.sendStripeWebhook(payloadObj);
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ received: true });
+  expect(res.body.received).toBe(true);
 
-  const getAfter1 = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
-    accessType: "client",
-  });
-  expect(getAfter1.status).toBe(200);
-  expect(getAfter1.body.quantity).toBe(1);
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 
+  // Redelivery of the same event id is deduplicated and leaves state untouched.
   const res2 = await Payments.sendStripeWebhook(payloadObj);
   expect(res2.status).toBe(200);
-  expect(res2.body).toEqual({ received: true });
+  expect(res2.body).toEqual({ received: true, deduplicated: true });
 
-  const getAfter2 = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
-    accessType: "client",
-  });
-  expect(getAfter2.status).toBe(200);
-  expect(getAfter2.body.quantity).toBe(1);
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 });
 
 
@@ -682,7 +827,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   };
 
   const payloadAdd = {
-    id: "evt_sub_add",
+    id: uniqueEventId("sub_add"),
     type: "invoice.paid",
     account: accountId,
     data: {
@@ -701,11 +846,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   expect(resAdd.status).toBe(200);
   expect(resAdd.body).toEqual({ received: true });
 
-  const afterAdd = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
-    accessType: "client",
-  });
-  expect(afterAdd.status).toBe(200);
-  expect(afterAdd.body.quantity).toBe(1);
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 
   const canceledSubscription = {
     ...activeSubscription,
@@ -722,7 +863,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   };
 
   const payloadRemove = {
-    id: "evt_sub_remove",
+    id: uniqueEventId("sub_remove"),
     type: "customer.subscription.updated",
     account: accountId,
     data: {
@@ -741,11 +882,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   expect(resRemove.status).toBe(200);
   expect(resRemove.body).toEqual({ received: true });
 
-  const afterRemove = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
-    accessType: "client",
-  });
-  expect(afterRemove.status).toBe(200);
-  expect(afterRemove.body.quantity).toBe(0);
+  await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 0 });
 });
 
 
@@ -796,7 +933,7 @@ it("does NOT auto-grant `free` when a non-internal tenancy's sub is canceled via
 
   const nowSec = Math.floor(Date.now() / 1000);
   const webhookResponse = await Payments.sendStripeWebhook({
-    id: "evt_customer_cancel",
+    id: uniqueEventId("customer_cancel"),
     type: "customer.subscription.deleted",
     account: accountId,
     data: {

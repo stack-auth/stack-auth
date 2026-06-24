@@ -33,6 +33,7 @@ import {
 import { AuthPage, type AdminOwnedProject } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -187,7 +188,10 @@ export function ProjectOnboardingWizard(props: {
     }
 
     runAsynchronously(async () => {
-      await project.app.listEmailThemes();
+      const themes = await project.app.listEmailThemes();
+      await Promise.allSettled(themes.map((theme) =>
+        project.app.getEmailPreview({ themeId: theme.id, templateTsxSource: previewTemplateSource })
+      ));
     }, { noErrorLogging: true });
   }, [isLinkExistingMode, project.app, status]);
 
