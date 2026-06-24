@@ -141,6 +141,16 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
             } as const);
           }
 
+          // nodemailer surfaces a refused connection as code 'ESOCKET' with 'ECONNREFUSED' in the message.
+          if (code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
+            return Result.error({
+              rawError: error,
+              errorType: 'CONNECTION_REFUSED',
+              canRetry: false,
+              message: 'The email server refused the connection. Please make sure the email host and port configuration are correct.',
+            } as const);
+          }
+
           if (responseCode === 535 || code === 'EAUTH') {
             return Result.error({
               rawError: error,

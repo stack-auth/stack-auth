@@ -13,7 +13,7 @@ import {
   yupTuple,
 } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, captureWarning, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import type { PublishBatchRequest } from "@upstash/qstash";
 
@@ -134,7 +134,9 @@ export const GET = createSmartRouteHandler({
 
           if (total > 0) {
             const ID_SAMPLE_LIMIT = 10;
-            captureError(
+            // Stale rows are recovered automatically here, so this is an informational
+            // recovery notice, not an error. It only matters if it fires repeatedly.
+            captureWarning(
               "poller-stale-outgoing-requests",
               new HexclaveAssertionError(
                 [
