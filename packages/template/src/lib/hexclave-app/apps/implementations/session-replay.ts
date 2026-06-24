@@ -1,5 +1,6 @@
+import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
-import { captureWarning } from "@hexclave/shared/dist/utils/errors";
+import { captureWarning, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
@@ -105,6 +106,9 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
+// The server rejects payloads > 1MB. Stay well under to account for JSON
+// envelope overhead (browser_session_id, timestamps, wrapper keys, etc.).
+const MAX_FLUSH_PAYLOAD_BYTES = 900_000;
 
 export type StoredSession = {
   session_id: string,
@@ -161,6 +165,25 @@ export type SessionRecorderDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export function isAnalyticsNotEnabledError(error: unknown): boolean {
+  return KnownErrors.AnalyticsNotEnabled.isInstance(error);
+}
+
+/**
+ * Whether the error looks like a network failure caused by an ad blocker or
+ * similar extension blocking analytics requests. These are expected in
+ * production and should be silently ignored rather than logged as warnings.
+ */
+export function isAdBlockerNetworkError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.message.includes("Failed to fetch")
+      || error.message.includes("NetworkError")
+      || error.message.includes("Load failed")
+      || error.message.includes("network connection");
+  }
+  return false;
+}
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -169,6 +192,7 @@ export class SessionRecorder {
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: unknown[] = [];
+  private _eventSizes: number[] = [];
   private _approxBytes = 0;
   private _lastPersistActivity = 0;
   private _recording = false;
@@ -219,6 +243,7 @@ export class SessionRecorder {
 
   clearBuffer() {
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
   }
 
@@ -244,49 +269,82 @@ export class SessionRecorder {
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
 
-    const batchId = generateUuid();
-    const payload = {
-      browser_session_id: stored.session_id,
-      session_replay_segment_id: this._sessionReplaySegmentId,
-      batch_id: batchId,
-      started_at_ms: stored.created_at_ms,
-      sent_at_ms: nowMs,
-      events: this._events,
-    };
-
+    // Capture all buffered events upfront (before any await) so that
+    // stop() / _stopCurrentRecording() clearing this._events cannot race
+    // with the async send loop below and silently discard overflow batches.
+    const allEvents = this._events;
+    const allSizes = this._eventSizes;
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
 
     this._flushInProgress = true;
     try {
-      const res = await this._deps.sendBatch(
-        JSON.stringify(payload),
-        { keepalive: options.keepalive },
-      );
+      let offset = 0;
+      while (offset < allEvents.length) {
+        // Build a batch that fits under the server's payload limit.
+        // When _flushInProgress blocked earlier flushes, events can accumulate
+        // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
+        // exceed the server's 1MB body limit (413).
+        let batchBytes = 0;
+        let batchEnd = offset;
+        for (let i = offset; i < allEvents.length; i++) {
+          const nextSize = allSizes[i] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
+          if (batchBytes + nextSize > MAX_FLUSH_PAYLOAD_BYTES && batchEnd > offset) break;
+          batchBytes += nextSize;
+          batchEnd = i + 1;
+        }
 
-      if (res.status === "error") {
-        captureWarning("SessionRecorder.flush", res.error);
-        return;
-      }
+        const batchEvents = allEvents.slice(offset, batchEnd);
+        offset = batchEnd;
 
-      if (!res.data.ok) {
-        // If the server tells us analytics is not enabled for this project,
-        // silently disable the recorder — no point retrying or warning the user.
-        const knownError = res.data.headers.get("x-hexclave-known-error") ?? res.data.headers.get("x-stack-known-error");
-        if (knownError === "ANALYTICS_NOT_ENABLED") {
-          this._disabled = true;
-          if (this._flushTimer !== null) {
-            clearInterval(this._flushTimer);
-            this._flushTimer = null;
+        const batchId = generateUuid();
+        const payload = {
+          browser_session_id: stored.session_id,
+          session_replay_segment_id: this._sessionReplaySegmentId,
+          batch_id: batchId,
+          started_at_ms: stored.created_at_ms,
+          sent_at_ms: nowMs,
+          events: batchEvents,
+        };
+
+        const res = await this._deps.sendBatch(
+          JSON.stringify(payload),
+          { keepalive: options.keepalive },
+        );
+
+        if (res.status === "error") {
+          if (isAnalyticsNotEnabledError(res.error)) {
+            this._disable();
+            return;
           }
-          this._stopCurrentRecording();
+          // Ad blockers commonly block analytics endpoints, causing network
+          // errors. These are expected and should not pollute the console.
+          if (isAdBlockerNetworkError(res.error)) {
+            return;
+          }
+          captureWarning("SessionRecorder.flush", res.error);
           return;
         }
-        captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
+
+        if (!res.data.ok) {
+          captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
+          return;
+        }
       }
     } finally {
       this._flushInProgress = false;
     }
+  }
+
+  private _disable() {
+    this._disabled = true;
+    this.clearBuffer();
+    if (this._flushTimer !== null) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = null;
+    }
+    this._stopCurrentRecording();
   }
 
   private async _startRecording() {
@@ -326,8 +384,10 @@ export class SessionRecorder {
           }
         }
 
+        const eventSize = JSON.stringify(event).length;
         this._events.push(event);
-        this._approxBytes += JSON.stringify(event).length;
+        this._eventSizes.push(eventSize);
+        this._approxBytes += eventSize;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }));
         }
@@ -360,6 +420,7 @@ export class SessionRecorder {
       this._stopRecording = null;
     }
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
     this._recording = false;
   }

@@ -13,17 +13,13 @@ import {
   toQueryableSqlQuery,
 } from "@/lib/bulldozer/db/index";
 import { loadProcessQueueFunctionSql } from "@/lib/bulldozer/db/test-sql-loaders";
+import { resolveTestDatabaseConnectionString } from "@/lib/bulldozer/db/test-db-env";
 
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
 
 function getConnectionString(): string {
-  const env = Reflect.get(import.meta, "env");
-  const connectionString = Reflect.get(env, "STACK_DATABASE_CONNECTION_STRING");
-  if (typeof connectionString !== "string" || connectionString.length === 0) {
-    throw new Error("Missing STACK_DATABASE_CONNECTION_STRING");
-  }
-  return connectionString;
+  return resolveTestDatabaseConnectionString();
 }
 
 export type CreateTestDbOptions = {

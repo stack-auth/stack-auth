@@ -360,8 +360,12 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
   test("uses development secret key when none is configured", async ({ expect }) => {
     const processEnv = Reflect.get(process, "env");
     const originalNodeEnv = Reflect.get(processEnv, "NODE_ENV");
-    const originalKey = Reflect.get(processEnv, "STACK_TURNSTILE_SECRET_KEY");
+    const originalHexclaveKey = Reflect.get(processEnv, "HEXCLAVE_TURNSTILE_SECRET_KEY");
+    const originalStackKey = Reflect.get(processEnv, "STACK_TURNSTILE_SECRET_KEY");
     Reflect.set(processEnv, "NODE_ENV", "development");
+    // Clear both spellings so the value resolves to the dev-key default; the
+    // canonical HEXCLAVE_ name is set in .env.development and otherwise wins.
+    Reflect.set(processEnv, "HEXCLAVE_TURNSTILE_SECRET_KEY", "");
     Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", "");
 
     let postedSecret = "";
@@ -380,7 +384,16 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
         .resolves.toEqual({ status: "ok" });
     } finally {
       Reflect.set(processEnv, "NODE_ENV", originalNodeEnv);
-      Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", originalKey);
+      for (const [key, original] of [
+        ["HEXCLAVE_TURNSTILE_SECRET_KEY", originalHexclaveKey],
+        ["STACK_TURNSTILE_SECRET_KEY", originalStackKey],
+      ] as const) {
+        if (original === undefined) {
+          Reflect.deleteProperty(processEnv, key);
+        } else {
+          Reflect.set(processEnv, key, original);
+        }
+      }
     }
 
     expect(postedSecret).toBe(turnstileDevelopmentKeys.secretKey);
@@ -390,25 +403,25 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
 import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(...)", () => {
   const { vi, test, afterEach, beforeEach } = import.meta.vitest!;
   const processEnv = Reflect.get(process, "env");
-  const originalFlag = Reflect.get(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
-  const originalDisableFlag = Reflect.get(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
+  const originalFlag = Reflect.get(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+  const originalDisableFlag = Reflect.get(processEnv, "HEXCLAVE_DISABLE_BOT_CHALLENGE");
 
   beforeEach(() => {
-    Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
-    Reflect.deleteProperty(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
+    Reflect.deleteProperty(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+    Reflect.deleteProperty(processEnv, "HEXCLAVE_DISABLE_BOT_CHALLENGE");
   });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     if (originalFlag === undefined) {
-      Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+      Reflect.deleteProperty(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
     } else {
-      Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
+      Reflect.set(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
     }
     if (originalDisableFlag === undefined) {
-      Reflect.deleteProperty(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
+      Reflect.deleteProperty(processEnv, "HEXCLAVE_DISABLE_BOT_CHALLENGE");
     } else {
-      Reflect.set(processEnv, "STACK_DISABLE_BOT_CHALLENGE", originalDisableFlag);
+      Reflect.set(processEnv, "HEXCLAVE_DISABLE_BOT_CHALLENGE", originalDisableFlag);
     }
   });
 
@@ -448,7 +461,7 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
   });
 
   test("skips all bot challenge verification when disabled", async ({ expect }) => {
-    Reflect.set(processEnv, "STACK_DISABLE_BOT_CHALLENGE", "true");
+    Reflect.set(processEnv, "HEXCLAVE_DISABLE_BOT_CHALLENGE", "true");
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -463,7 +476,7 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
   });
 
   test("can downgrade visible invalid responses into a scored assessment when bypass is enabled", async ({ expect }) => {
-    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+    Reflect.set(processEnv, "HEXCLAVE_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false }), {
       status: 200, headers: { "Content-Type": "application/json" },
     }));

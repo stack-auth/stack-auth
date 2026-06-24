@@ -26,6 +26,8 @@ export type PushConfigOptions = {
 export type Project = {
   readonly id: string,
   readonly displayName: string,
+  readonly pushedConfigError: { message: string } | null,
+  readonly configWarnings: { message: string }[],
   readonly config: ProjectConfig,
 };
 
@@ -38,6 +40,7 @@ export type AdminProject = {
   readonly isDevelopmentEnvironment: boolean,
   readonly ownerTeamId: string | null,
   readonly onboardingStatus: ProjectOnboardingStatus,
+  readonly onboardingState: NonNullable<ProjectsCrud["Admin"]["Read"]["onboarding_state"]> | null,
   readonly logoUrl: string | null | undefined,
   readonly logoFullUrl: string | null | undefined,
   readonly logoDarkModeUrl: string | null | undefined,

@@ -31,13 +31,14 @@ import {
   type DataGridDataSource,
 } from "@hexclave/dashboard-ui-components";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { deindent } from "@hexclave/shared/dist/utils/strings";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
-import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
+import { DeleteUserDialog, generateImpersonateSnippet, ImpersonateUserDialog } from "../user-dialogs";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -394,12 +395,11 @@ function UserActions(props: { user: ExtendedServerUser }) {
                 const expiresAtDate = new Date(Date.now() + expiresInMillis);
                 const session = await user.createSession({ expiresInMillis, isImpersonation: true });
                 const tokens = await session.getTokens();
-                setImpersonateSnippet(
-                  deindent`
-                    document.cookie = 'stack-refresh-${hexclaveAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/';
-                    window.location.reload();
-                  `,
-                );
+                setImpersonateSnippet(generateImpersonateSnippet(
+                  hexclaveAdminApp.projectId,
+                  tokens.refreshToken ?? throwErr("Expected refresh token for newly created impersonation session"),
+                  expiresAtDate,
+                ));
               })
             }
           >

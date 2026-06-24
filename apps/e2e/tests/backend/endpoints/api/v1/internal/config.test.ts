@@ -1312,6 +1312,106 @@ describe("pushConfig and updateConfig behavior", () => {
   });
 });
 
+describe("pushed config errors", () => {
+  it("sets pushed config errors only for development-environment projects and clears them after a successful branch config push", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const nonRdeResponse = await niceBackendFetch("/api/v1/internal/config/pushed-error", {
+      method: "PUT",
+      accessType: "server",
+      body: {
+        error_message: "Config file error: Example failure. Please check your config file.",
+      },
+    });
+    expect(nonRdeResponse.status).toBe(403);
+
+    await Project.createAndSwitch({
+      is_development_environment: true,
+    });
+    const setErrorResponse = await niceBackendFetch("/api/v1/internal/config/pushed-error", {
+      method: "PUT",
+      accessType: "server",
+      body: {
+        error_message: "Config file error: The key \"abcd\" is not valid. Please check your config file.",
+      },
+    });
+    expect(setErrorResponse.status).toBe(200);
+
+    const projectWithErrorResponse = await niceBackendFetch("/api/v1/projects/current", {
+      accessType: "client",
+    });
+    expect(projectWithErrorResponse.status).toBe(200);
+    expect(projectWithErrorResponse.body.pushed_config_error).toEqual({
+      message: "Config file error: The key \"abcd\" is not valid. Please check your config file.",
+    });
+
+    const pushConfigResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+      method: "PUT",
+      accessType: "server",
+      body: {
+        config_string: JSON.stringify({
+          "auth.allowSignUp": true,
+        }),
+        source: { type: "pushed-from-unknown" },
+      },
+    });
+    expect(pushConfigResponse.status).toBe(200);
+
+    const projectAfterPushResponse = await niceBackendFetch("/api/v1/projects/current", {
+      accessType: "client",
+    });
+    expect(projectAfterPushResponse.status).toBe(200);
+    expect(projectAfterPushResponse.body.pushed_config_error).toBeNull();
+  });
+});
+
+describe("config warnings", () => {
+  it("only exposes config warnings on development-environment project responses", async ({ expect }) => {
+    const warningConfig = {
+      "auth.oauth.providers.google.type": "google",
+    };
+
+    await Project.createAndSwitch();
+    const nonRdePushResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+      method: "PUT",
+      accessType: "server",
+      body: {
+        config_string: JSON.stringify(warningConfig),
+        source: { type: "pushed-from-unknown" },
+      },
+    });
+    expect(nonRdePushResponse.status).toBe(200);
+
+    const nonRdeProjectResponse = await niceBackendFetch("/api/v1/projects/current", {
+      accessType: "client",
+    });
+    expect(nonRdeProjectResponse.status).toBe(200);
+    expect(nonRdeProjectResponse.body.config_warnings).toEqual([]);
+
+    await Project.createAndSwitch({
+      is_development_environment: true,
+    });
+    const rdePushResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+      method: "PUT",
+      accessType: "server",
+      body: {
+        config_string: JSON.stringify(warningConfig),
+        source: { type: "pushed-from-unknown" },
+      },
+    });
+    expect(rdePushResponse.status).toBe(200);
+
+    const rdeProjectResponse = await niceBackendFetch("/api/v1/projects/current", {
+      accessType: "client",
+    });
+    expect(rdeProjectResponse.status).toBe(200);
+    expect(rdeProjectResponse.body.config_warnings).toEqual([
+      {
+        message: "Dot-notation key \"auth.oauth.providers.google.type\" will be silently ignored because it references non-existent parent \"auth.oauth.providers.google\". Instead of dot notation, use nested object notation like this: { \"auth.oauth.providers.google\": { \"type\": ... } }",
+      },
+    ]);
+  });
+});
+
 
 describe("test helpers", () => {
   it("Project.updateConfig helper sets environment level config", async ({ expect }) => {

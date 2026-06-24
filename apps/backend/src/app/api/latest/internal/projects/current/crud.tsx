@@ -1,4 +1,4 @@
-import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
+import { getBranchConfigPushedError, getDevelopmentEnvironmentConfigWarnings, renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { createOrUpdateProjectWithLegacyConfig } from "@/lib/projects";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -26,12 +26,30 @@ export const projectsCrudHandlers = createLazyProxy(() => createCrudHandlers(pro
     const tenancy = await getTenancy(auth.tenancy.id) ?? throwErr("Tenancy not found after project update?"); // since we updated the project, we need to re-fetch the new tenancy config
     return {
       ...project,
+      pushed_config_error: await getBranchConfigPushedError({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+      }),
+      config_warnings: await getDevelopmentEnvironmentConfigWarnings({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+        organizationId: auth.tenancy.organization?.id ?? null,
+      }),
       config: renderedOrganizationConfigToProjectCrud(tenancy.config),
     };
   },
   onRead: async ({ auth }) => {
     return {
       ...auth.project,
+      pushed_config_error: await getBranchConfigPushedError({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+      }),
+      config_warnings: await getDevelopmentEnvironmentConfigWarnings({
+        projectId: auth.project.id,
+        branchId: auth.tenancy.branchId,
+        organizationId: auth.tenancy.organization?.id ?? null,
+      }),
       config: renderedOrganizationConfigToProjectCrud(auth.tenancy.config),
     };
   },

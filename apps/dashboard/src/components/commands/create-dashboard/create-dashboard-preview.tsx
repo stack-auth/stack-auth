@@ -124,7 +124,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     systemPrompt: "create-dashboard",
     tools: ["update-dashboard"],
     quality: "smart",
-    speed: "slow",
+    speed: "fast",
     projectId: projectIdRef.current,
     transformMessages: async (userMessages) => {
       const contextMessages = await buildDashboardMessages(

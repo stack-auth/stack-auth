@@ -83,7 +83,11 @@ export const GET = createSmartRouteHandler({
       if (!hasIntervalPrice) continue;
       if (isAddOnProduct(product)) continue;
 
-      const inlineProduct = productToInlineProduct(product);
+      const inlineProduct = productToInlineProduct(product, {
+        productId,
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+      });
       const intervalPrices = typedFromEntries(
         typedEntries(inlineProduct.prices).filter(([, price]) => price.interval),
       );
@@ -114,7 +118,11 @@ export const GET = createSmartRouteHandler({
             id: productId === "__null__" ? null : productId,
             quantity: p.quantity,
             // ProductSnapshot uses null where the Yup productSchema uses undefined; the data is equivalent
-            product: productToInlineProduct(p.product as Parameters<typeof productToInlineProduct>[0]),
+            product: productToInlineProduct(p.product as Parameters<typeof productToInlineProduct>[0], {
+              productId,
+              customerType: params.customer_type,
+              customerId: params.customer_id,
+            }),
             type,
             subscription: sub ? {
               subscription_id: sub.id,

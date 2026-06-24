@@ -2,8 +2,17 @@
 
 /** Minimal `stack login` flow for local demos. Usage: `node cli-sim.mjs` */
 
-const API_URL = process.env.STACK_API_URL || "http://localhost:8102";
-const APP_URL = process.env.STACK_APP_URL || "http://localhost:8103";
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
+const API_URL = resolveHexclaveStackEnvVar("HEXCLAVE_API_URL", "STACK_API_URL") || "http://localhost:8102";
+const APP_URL = resolveHexclaveStackEnvVar("HEXCLAVE_APP_URL", "STACK_APP_URL") || "http://localhost:8103";
 const PROJECT_ID = "internal";
 const PUBLISHABLE_KEY = "this-publishable-client-key-is-for-local-development-only";
 

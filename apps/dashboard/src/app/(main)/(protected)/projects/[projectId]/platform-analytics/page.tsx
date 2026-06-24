@@ -1,13 +1,9 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Email Outbox",
+  title: "Platform Analytics",
 };
 
 export default function Page() {
-  return (
-    <PageClient />
-  );
+  return <PageClient />;
 }
-
-

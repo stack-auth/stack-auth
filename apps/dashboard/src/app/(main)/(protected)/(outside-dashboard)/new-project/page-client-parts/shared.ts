@@ -1,7 +1,8 @@
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject } from "@hexclave/next";
-import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+export type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
@@ -23,7 +24,7 @@ export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
 export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
-export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha");
+export const ONBOARDING_APP_IDS = ALL_APP_IDS.filter((appId) => ALL_APPS[appId].stage !== "alpha" && getParentAppId(appId) == null);
 export const OAUTH_SIGN_IN_METHODS = ["google", "github", "microsoft"] satisfies SignInMethod[];
 export const SHARED_OAUTH_SIGN_IN_METHODS = sharedProviders.filter((provider): provider is (typeof sharedProviders)[number] & SignInMethod => {
   return OAUTH_SIGN_IN_METHODS.some((method) => method === provider);
@@ -36,6 +37,10 @@ export type ProjectOnboardingState = {
   selected_email_theme_id: string | null,
   selected_payments_country: OnboardingPaymentsCountry,
 };
+
+export type OnboardingProgressUpdate =
+  | { status: ProjectOnboardingStatus, onboardingState?: ProjectOnboardingState | null }
+  | { status?: ProjectOnboardingStatus, onboardingState: ProjectOnboardingState | null };
 
 export type HexclaveAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -84,7 +89,7 @@ export function isProjectOnboardingState(value: unknown): value is ProjectOnboar
 
 export function normalizeProjectOnboardingState(
   value: ProjectOnboardingState,
-  options?: { developmentEnvironment: boolean },
+  options?: { developmentEnvironment: boolean, isLocalEmulator?: boolean },
 ): ProjectOnboardingState {
   const selectedApps = ALL_APP_IDS.filter((appId) => (
     value.selected_apps.some((selectedAppId) => selectedAppId === appId)
@@ -94,7 +99,11 @@ export function normalizeProjectOnboardingState(
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
   const developmentEnvironment = options?.developmentEnvironment === true;
-  const normalizedSignInMethods = developmentEnvironment
+  const isLocalEmulator = options?.isLocalEmulator === true;
+  // Only strip OAuth sign-in methods for the local emulator, which lacks real OAuth
+  // infrastructure. The RDE connects to the production backend where shared OAuth
+  // providers work normally.
+  const normalizedSignInMethods = isLocalEmulator
     ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
     : selectedSignInMethods;
   return {
@@ -113,6 +122,7 @@ export function createProjectOnboardingState(options: {
   selectedEmailThemeId: string | null,
   selectedPaymentsCountry: OnboardingPaymentsCountry,
   developmentEnvironment: boolean,
+  isLocalEmulator?: boolean,
 }): ProjectOnboardingState {
   return normalizeProjectOnboardingState({
     selected_config_choice: options.selectedConfigChoice,
@@ -122,7 +132,7 @@ export function createProjectOnboardingState(options: {
       .filter((methodId) => options.selectedSignInMethods.has(methodId)),
     selected_email_theme_id: options.selectedEmailThemeId,
     selected_payments_country: options.selectedPaymentsCountry,
-  }, { developmentEnvironment: options.developmentEnvironment });
+  }, { developmentEnvironment: options.developmentEnvironment, isLocalEmulator: options.isLocalEmulator });
 }
 
 export function isStackAppInternals(value: unknown): value is HexclaveAppInternals {
