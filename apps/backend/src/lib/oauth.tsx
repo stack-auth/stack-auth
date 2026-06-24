@@ -87,17 +87,7 @@ export async function handleOAuthEmailMergeStrategy(
         }
 
         if (!emailVerified) {
-          // The new OAuth identity presents an email that matches an existing verified,
-          // auth-enabled account, but the new email itself is NOT verified. We must NOT
-          // auto-link here: doing so would be an account-takeover vector (anyone able to
-          // mint an OAuth identity with an unverified copy of the victim's email could
-          // hijack the account). This is a foreseeable, expected condition - not an
-          // internal bug - so surface a clean known error rather than an assertion page.
-          //
-          // We reuse `wouldWorkIfEmailWasVerified: true` so the user is told they can sign
-          // in to their existing account and verify this email to enable this login method.
-          // Follow-up product decision (out of scope here): offer an explicit
-          // verification-email flow to complete the link safely.
+          // Don't auto-link an unverified email to an existing verified account (account-takeover vector).
           throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email, true);
         }
 

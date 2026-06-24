@@ -110,6 +110,9 @@ const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 // envelope overhead (browser_session_id, timestamps, wrapper keys, etc.).
 const MAX_FLUSH_PAYLOAD_BYTES = 900_000;
 
+// Reused across the emit hot path to avoid per-event allocation.
+const textEncoder = new TextEncoder();
+
 export type StoredSession = {
   session_id: string,
   created_at_ms: number,
@@ -286,10 +289,7 @@ export class SessionRecorder {
         // When _flushInProgress blocked earlier flushes, events can accumulate
         // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
         // exceed the server's 1MB body limit (413).
-        // A single event that exceeds the limit on its own can never be sent
-        // (rrweb events aren't splittable) and would 413 if shipped alone.
-        // Drop it with a warning and advance past it so the loop keeps making
-        // progress instead of stalling or sending a doomed request.
+        // A single event over the limit can't be sent (rrweb events aren't splittable); drop it and move on.
         const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
         if (firstSize > MAX_FLUSH_PAYLOAD_BYTES) {
           captureWarning(
@@ -398,12 +398,8 @@ export class SessionRecorder {
           }
         }
 
-        // Measure the true UTF-8 byte length (not UTF-16 code-unit count) so
-        // the accumulated size matches what the server weighs against its 1MB
-        // body limit. JSON.stringify(...).length undercounts multi-byte content
-        // (emoji, non-Latin text), which previously let a batch the client
-        // thought was ~900KB exceed the server limit and 413.
-        const eventSize = new TextEncoder().encode(JSON.stringify(event)).byteLength;
+        // Measure UTF-8 byte length to match the server's byte limit (.length counts UTF-16 units, undercounting multibyte content).
+        const eventSize = textEncoder.encode(JSON.stringify(event)).byteLength;
         this._events.push(event);
         this._eventSizes.push(eventSize);
         this._approxBytes += eventSize;

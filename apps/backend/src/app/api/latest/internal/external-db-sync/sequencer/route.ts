@@ -489,12 +489,7 @@ export const GET = createSmartRouteHandler({
           }
 
           try {
-            // Concurrent sequencer batches contend on the same rows / the
-            // OutgoingRequest dedup index, which Postgres occasionally resolves
-            // by aborting one batch with a deadlock (SQLSTATE 40P01). Each
-            // statement in backfillSequenceIds is idempotent (all guarded by
-            // `shouldUpdateSequenceId = TRUE` / `ON CONFLICT DO NOTHING`), so the
-            // whole backfill is safe to retry on a transient serialization failure.
+            // Retry the (idempotent) backfill on transient deadlocks between concurrent batches.
             const didUpdate = await retryOnSerializationFailure(() => backfillSequenceIds(batchSize));
             iterationSpan.setAttribute("stack.external-db-sync.did-update", didUpdate);
           } catch (error) {

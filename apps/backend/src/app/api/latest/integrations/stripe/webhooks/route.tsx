@@ -331,9 +331,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     if (typeof customerId !== 'string') {
-      // Some events in this branch can legitimately have no customer (e.g.
-      // standalone or Stripe-CLI test payment intents). They aren't
-      // subscription-relevant without a customer, so skip them gracefully.
+      // Some events here legitimately have no customer (e.g. standalone/CLI payment intents); skip them.
       return;
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
