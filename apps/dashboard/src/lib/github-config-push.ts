@@ -54,7 +54,12 @@ export function buildUpdatedConfigFileContent(
   const parsed = parseStaticConfigLiteral(currentFileContent);
   if (parsed == null) {
     throw new Error(
-      "Could not parse the existing config file. The file must be a static JSON config object (as produced by the dashboard). Config files with dynamic expressions or imports are not supported for dashboard-driven updates."
+      "Invalid config in stack.config.ts. The file must export a plain `config` object or \"show-onboarding\"."
+    );
+  }
+  if (typeof parsed === "string") {
+    throw new Error(
+      "The config file currently exports the onboarding placeholder. Finish setting up Hexclave in your repo before pushing dashboard changes."
     );
   }
   if (!isValidConfig(parsed)) {

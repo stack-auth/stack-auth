@@ -1,3 +1,5 @@
+import * as babelParser from "@babel/parser";
+import * as t from "@babel/types";
 import { isValidConfig, normalize } from "./config/format";
 
 const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
@@ -58,34 +60,89 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === "object" && !Array.isArray(value);
+/**
+ * Statically evaluates a Babel AST node representing a JSON-like literal
+ * (objects, arrays, strings, numbers, booleans, null). Returns `undefined`
+ * for nodes that can't be resolved without execution (function calls,
+ * identifiers, template literals, etc.).
+ */
+function evaluateLiteralNode(node: t.Node): unknown {
+  if (t.isObjectExpression(node)) {
+    const result: Record<string, unknown> = {};
+    for (const prop of node.properties) {
+      if (t.isSpreadElement(prop) || !t.isObjectProperty(prop)) return undefined;
+      const key = t.isIdentifier(prop.key)
+        ? prop.key.name
+        : t.isStringLiteral(prop.key)
+          ? prop.key.value
+          : t.isNumericLiteral(prop.key)
+            ? String(prop.key.value)
+            : undefined;
+      if (key === undefined) return undefined;
+      const value = evaluateLiteralNode(prop.value as t.Expression);
+      if (value === undefined) return undefined;
+      result[key] = value;
+    }
+    return result;
+  }
+  if (t.isArrayExpression(node)) {
+    const result: unknown[] = [];
+    for (const element of node.elements) {
+      if (element == null || t.isSpreadElement(element)) return undefined;
+      const value = evaluateLiteralNode(element);
+      if (value === undefined) return undefined;
+      result.push(value);
+    }
+    return result;
+  }
+  if (t.isStringLiteral(node)) return node.value;
+  if (t.isNumericLiteral(node)) return node.value;
+  if (t.isBooleanLiteral(node)) return node.value;
+  if (t.isNullLiteral(node)) return null;
+  if (t.isUnaryExpression(node) && node.operator === "-" && t.isNumericLiteral(node.argument)) {
+    return -node.argument.value;
+  }
+  return undefined;
 }
 
 /**
- * Parses a config file that was produced by {@link renderConfigFileContent}.
- * Extracts the JSON object literal after the `export const config` assignment
- * and parses it with `JSON.parse`. This is intentionally limited to the exact
- * format we emit — it never executes code, so it is safe for untrusted input
- * such as content fetched from a remote repository.
+ * Parses a config file and extracts the exported `config` value by statically
+ * evaluating the AST. Handles both JSON-formatted and JavaScript object literal
+ * syntax (unquoted keys, trailing commas). Never executes code, so it is safe
+ * for untrusted input such as content fetched from a remote repository.
  *
- * Returns `null` when the content does not match the expected static format.
+ * Returns:
+ * - `Record<string, unknown>` when the config exports an object literal
+ * - `string` when the config exports a string literal (e.g. "show-onboarding")
+ * - `null` when no `config` export is found or the expression can't be
+ *   statically resolved
  */
-export function parseStaticConfigLiteral(content: string): Record<string, unknown> | null {
-  // Match `export const config ... = <json>;` — the type annotation is optional.
-  const match = content.match(/export\s+const\s+config(?:\s*:\s*\w+)?\s*=\s*([\s\S]+);?\s*$/m);
-  if (match == null) return null;
-
-  // Trim any trailing semicolons and whitespace from the captured JSON body.
-  const jsonBody = match[1].replace(/;\s*$/, "").trim();
-
+export function parseStaticConfigLiteral(content: string): Record<string, unknown> | string | null {
+  let ast: babelParser.ParseResult<t.File>;
   try {
-    const parsed: unknown = JSON.parse(jsonBody);
-    if (isRecord(parsed)) return parsed;
-    return null;
+    ast = babelParser.parse(content, {
+      sourceType: "module",
+      plugins: ["typescript", "importAttributes"],
+    });
   } catch {
     return null;
   }
+
+  for (const statement of ast.program.body) {
+    if (!t.isExportNamedDeclaration(statement)) continue;
+    if (!t.isVariableDeclaration(statement.declaration)) continue;
+    for (const decl of statement.declaration.declarations) {
+      if (!t.isIdentifier(decl.id) || decl.id.name !== "config" || decl.init == null) continue;
+      const value = evaluateLiteralNode(decl.init);
+      if (value === undefined) return null;
+      if (typeof value === "string") return value;
+      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+      return null;
+    }
+  }
+  return null;
 }
 
 // --- inline vitest tests ---
@@ -157,6 +214,14 @@ import.meta.vitest?.test("parseStaticConfigLiteral returns null for non-static c
   expect(parseStaticConfigLiteral("")).toBeNull();
 });
 
-import.meta.vitest?.test("parseStaticConfigLiteral returns null for show-onboarding string", ({ expect }) => {
-  expect(parseStaticConfigLiteral('export const config = "show-onboarding";')).toBeNull();
+import.meta.vitest?.test("parseStaticConfigLiteral returns the string for show-onboarding export", ({ expect }) => {
+  expect(parseStaticConfigLiteral('export const config = "show-onboarding";')).toBe("show-onboarding");
+});
+
+import.meta.vitest?.test("parseStaticConfigLiteral handles JS object syntax (unquoted keys, trailing commas)", ({ expect }) => {
+  const content = `import type { HexclaveConfig } from "@hexclave/next";
+export const config: HexclaveConfig = {
+  teams: { allowClientTeamCreation: false },
+};`;
+  expect(parseStaticConfigLiteral(content)).toEqual({ teams: { allowClientTeamCreation: false } });
 });
