@@ -1514,6 +1514,28 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await cache.refresh([customerId, null, null]);
   }
 
+  async createCheckoutUrl(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    ({ productId: string } | { product: InlineProduct }) &
+    { returnUrl?: string }
+  )): Promise<string> {
+    let customerType: "user" | "team" | "custom";
+    let customerId: string;
+    if ("userId" in options) {
+      customerType = "user";
+      customerId = options.userId;
+    } else if ("teamId" in options) {
+      customerType = "team";
+      customerId = options.teamId;
+    } else {
+      customerType = "custom";
+      customerId = options.customCustomerId;
+    }
+
+    const productIdOrInline = "productId" in options ? options.productId : options.product;
+    return await this._interface.createCheckoutUrl(customerType, customerId, productIdOrInline, null, options.returnUrl, "server");
+  }
+
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
     await this._serverTeamsCache.refreshWhere(() => true);
