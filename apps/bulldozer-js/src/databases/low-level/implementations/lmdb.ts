@@ -1,5 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
+import { traceSpan } from "../../../otel.js";
 import * as lmdb from "lmdb";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
@@ -86,18 +87,18 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     return promise;
   };
   const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
-    const availability = promise.then(() => {
+    const availability = traceSpan({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
       availableSeqIds.add(seqId);
       seqToAvailability.delete(seqId);
-    });
+    }));
     availability.catch(() => {});
     seqToAvailability.set(seqId, availability);
   };
   const rememberDurability = (seqId: string, promise: Promise<unknown>) => {
-    const durability = promise.then(async () => await root.flushed).then(() => {
+    const durability = traceSpan({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(async () => await root.flushed).then(() => {
       durableSeqIds.add(seqId);
       seqToDurability.delete(seqId);
-    });
+    }));
     durability.catch(() => {});
     seqToDurability.set(seqId, durability);
   };
@@ -109,12 +110,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const commit = (requiresSeq: DatabaseSeq, action: (version: number) => Promise<void>) => {
     const version = nextVersion();
     const seqId = nextSeqId();
-    const promise = waitUntilAvailable(requiresSeq).then(async () => await root.transaction(() => {
+    const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.commit", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilAvailable(requiresSeq).then(async () => await root.transaction(() => {
       return (async () => {
         await action(version);
         await meta.put("seq", version);
       })();
-    }));
+    })));
     return trackCommit(seqId, promise);
   };
   const commitIfVersion = async (db: BinaryDatabase, key: Buffer, version: number, action: (version: number) => Promise<void>) => {
@@ -151,6 +152,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
 
   const declareLmdbLowLevelKvStoreOrDump = (storeOrDump: "store" | "dump", id: string): LowLevelKvStore & LowLevelKvDump => {
     const debugStoreId = `${storeOrDump}-${id}` as const;
+    const attributes = { "bulldozer.low_level.backend": "lmdb", "bulldozer.low_level.kind": storeOrDump, "bulldozer.low_level.id": id };
     const db = root.openDB<Buffer, Uint8Array>({
       name: `${dbId}:${storeOrDump}:${id}`,
       encoding: "binary",
@@ -160,69 +162,79 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
-        validateKey(key);
-        if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
-        const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
-        return {
-          buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,
-          seq: initialSeq,
-        };
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
+          validateKey(key);
+          if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
+          const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
+          return {
+            buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,
+            seq: initialSeq,
+          };
+        });
       },
       async setAll(entries, setOptions) {
-        for (const { key, value } of entries) {
-          validateKey(key);
-          validateValue("value", value);
-        }
-        if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
-        return {
-          seq: commit(setOptions?.requiresSeq ?? initialSeq, async version => {
-            for (const { key, value } of entries) {
-              await putWithVersion(db, bufferFromArrayBuffer(key), bufferFromArrayBuffer(value), version);
-            }
-          }),
-        };
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+          for (const { key, value } of entries) {
+            validateKey(key);
+            validateValue("value", value);
+          }
+          if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
+          return {
+            seq: commit(setOptions?.requiresSeq ?? initialSeq, async version => {
+              for (const { key, value } of entries) {
+                await putWithVersion(db, bufferFromArrayBuffer(key), bufferFromArrayBuffer(value), version);
+              }
+            }),
+          };
+        });
       },
       async deleteAll(keys) {
-        for (const key of keys) validateKey(key);
-        if (keys.length === 0) return { seq: initialSeq };
-        return {
-          seq: commit(initialSeq, async () => {
-            for (const key of keys) await db.remove(bufferFromArrayBuffer(key));
-          }),
-        };
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
+          for (const key of keys) validateKey(key);
+          if (keys.length === 0) return { seq: initialSeq };
+          return {
+            seq: commit(initialSeq, async () => {
+              for (const key of keys) await db.remove(bufferFromArrayBuffer(key));
+            }),
+          };
+        });
       },
       async insertAll(values, insertOptions) {
-        for (const value of values) validateValue("value", value);
-        if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
-        const version = nextVersion();
-        const seqId = nextSeqId();
-        const keys = values.map((_, index) => dumpKeyForVersion(version, index));
-        const promise = waitUntilAvailable(insertOptions?.requiresSeq ?? initialSeq).then(async () => await root.transaction(() => {
-          return (async () => {
-            for (let i = 0; i < values.length; i++) {
-              await putWithVersion(db, bufferFromArrayBuffer(keys[i]), bufferFromArrayBuffer(values[i]), version);
-            }
-            await meta.put("seq", version);
-          })();
-        }));
-        return { keys, seq: trackCommit(seqId, promise) };
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
+          for (const value of values) validateValue("value", value);
+          if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
+          const version = nextVersion();
+          const seqId = nextSeqId();
+          const keys = values.map((_, index) => dumpKeyForVersion(version, index));
+          const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll.commit", attributes }, async () => await waitUntilAvailable(insertOptions?.requiresSeq ?? initialSeq).then(async () => await root.transaction(() => {
+            return (async () => {
+              for (let i = 0; i < values.length; i++) {
+                await putWithVersion(db, bufferFromArrayBuffer(keys[i]), bufferFromArrayBuffer(values[i]), version);
+              }
+              await meta.put("seq", version);
+            })();
+          })));
+          return { keys, seq: trackCommit(seqId, promise) };
+        });
       },
       async compareAndSet(key, compare, value, casOptions) {
-        validateKey(key);
-        validateValue("compare", compare);
-        validateValue("value", value);
-        await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
-        await waitUntilAllAvailable();
-        const keyBuffer = bufferFromArrayBuffer(key);
-        const existing = db.getEntry(keyBuffer);
-        if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
-          return { wasSet: false, seq: null };
-        }
-        const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
-        return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
+          validateKey(key);
+          validateValue("compare", compare);
+          validateValue("value", value);
+          await waitUntilAvailable(casOptions?.requiresSeq ?? initialSeq);
+          await waitUntilAllAvailable();
+          const keyBuffer = bufferFromArrayBuffer(key);
+          const existing = db.getEntry(keyBuffer);
+          if (!existing || existing.version === undefined || !arrayBuffersAreEqual(arrayBufferFromUint8Array(existing.value), compare)) {
+            return { wasSet: false, seq: null };
+          }
+          const seq = await commitIfVersion(db, keyBuffer, existing.version, async version => await putWithVersion(db, keyBuffer, bufferFromArrayBuffer(value), version));
+          return seq === null ? { wasSet: false, seq: null } : { wasSet: true, seq };
+        });
       },
       async debugEntries() {
-        return await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
+        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
           const keyBuffer = Buffer.from(key);
           const valueBuffer = Buffer.from(value);
           return {
@@ -233,7 +245,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
             valueUtf8: decodeUtf8(arrayBufferFromUint8Array(valueBuffer)),
             valueByteLength: valueBuffer.byteLength,
           };
-        }).asArray;
+        }).asArray);
       },
     };
     debugEntriesByStoreId.set(debugStoreId, () => result.debugEntries!());
@@ -247,13 +259,17 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     declareKvStore(storeId) {
       return declareLmdbLowLevelKvStoreOrDump("store", storeId);
     },
-    waitUntilAvailable,
+    async waitUntilAvailable(seq) {
+      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilAvailable(seq));
+    },
     async waitUntilDurable(seq) {
-      await getDurabilityPromise(getSeqId(seq));
+      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await getDurabilityPromise(getSeqId(seq)));
     },
     async waitUntilReplicated(seq) {
-      await this.waitUntilAvailable(seq);
-      await this.waitUntilDurable(seq);
+      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+        await this.waitUntilAvailable(seq);
+        await this.waitUntilDurable(seq);
+      });
     },
     combineSeqs(...seqs) {
       if (seqs.length === 0) return initialSeq;
@@ -263,16 +279,18 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       return toSeq(seqId);
     },
     async debugSnapshot() {
-      const stores: Record<string, LowLevelDatabaseDebugEntry[]> = {};
-      const dumps: Record<string, LowLevelDatabaseDebugEntry[]> = {};
-      for (const [storeId, entries] of debugEntriesByStoreId.entries()) {
-        if (storeId.startsWith("store-")) {
-          stores[storeId.slice("store-".length)] = await entries();
-        } else {
-          dumps[storeId.slice("dump-".length)] = await entries();
+      return await traceSpan({ description: "bulldozer-js.low-level.lmdb.debugSnapshot", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+        const stores: Record<string, LowLevelDatabaseDebugEntry[]> = {};
+        const dumps: Record<string, LowLevelDatabaseDebugEntry[]> = {};
+        for (const [storeId, entries] of debugEntriesByStoreId.entries()) {
+          if (storeId.startsWith("store-")) {
+            stores[storeId.slice("store-".length)] = await entries();
+          } else {
+            dumps[storeId.slice("dump-".length)] = await entries();
+          }
         }
-      }
-      return { stores, dumps };
+        return { stores, dumps };
+      });
     },
     initialSeq,
   };

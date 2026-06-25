@@ -5,7 +5,7 @@ import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
-import { mkdtempSync, mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
@@ -14,8 +14,9 @@ import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-leve
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
-import type { CustomerType, Json, ProductSnapshot, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
+import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
 import { initSentry } from "./sentry.js";
 
 initSentry();
@@ -62,7 +63,7 @@ const bulldozerDb = declareBulldozerDatabase(
   }),
   { migrations: schema.migrations },
 );
-await bulldozerDb.applyRemainingMigrations();
+await traceSpan("bulldozer-js.applyRemainingMigrations", async () => await bulldozerDb.applyRemainingMigrations());
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -85,12 +86,14 @@ function timingHeaders(startedAt: number): HeadersInit | undefined {
 
 async function handler(operation: () => Promise<unknown>) {
   const startedAt = performance.now();
-  try {
-    return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown Bulldozer server error";
-    return jsonResponse({ error: "bulldozer_server_error", message }, { status: 500, headers: timingHeaders(startedAt) });
-  }
+  return await traceSpan("bulldozer-js.http.handler", async () => {
+    try {
+      return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Bulldozer server error";
+      return jsonResponse({ error: "bulldozer_server_error", message }, { status: 500, headers: timingHeaders(startedAt) });
+    }
+  });
 }
 
 function parseCustomerType(value: string): CustomerType {
@@ -511,6 +514,7 @@ function ok() {
 }
 
 const app = new Elysia({ adapter: node() })
+  .use(instrumentation)
   .get("/health", () => ({ ok: true }))
   .post("/internal/payments/init", () => handler(async () => ok()))
   .post("/internal/payments/verify-data-integrity", () => handler(async () => ok()))
@@ -604,13 +608,15 @@ console.log(`Bulldozer JS server listening on http://localhost:${app.server?.por
 runAsynchronously(async () => {
   let lastTickMillis = 0;
   while (true) {
-    try {
-      lastTickMillis = Math.max(Date.now(), lastTickMillis);
-      await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
-    } catch (error) {
-      captureError("bulldozer-js-tick-loop", error);
-    }
-    await wait(1000);
+    await traceSpan("bulldozer-js-tick-loop-iteration", async () => {
+      try {
+        lastTickMillis = Math.max(Date.now(), lastTickMillis);
+        await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
+      } catch (error) {
+        captureError("bulldozer-js-tick-loop", error);
+      }
+      await wait(1000);
+    });
   }
 });
 

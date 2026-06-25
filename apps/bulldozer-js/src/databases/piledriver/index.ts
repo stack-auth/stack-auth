@@ -1,4 +1,5 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { traceSpan } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 
@@ -97,12 +98,14 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       // A heap object starts a fresh plain-object path; plain object cycles can't span heap
       // boundaries without also forming a heap cycle, which is tracked separately.
       const childPath: SerializationPath = { objects: new Set(), heapObjects: new Set(path.heapObjects).add(heapObj) };
-      const serialized = await serializePiledriverObject(await heapObj.get(), childPath);
-      const inserted = await heapDump.insertAll([serialized.buffer]);
-      return {
-        key: inserted.keys[0],
-        seq: lowLevelDb.combineSeqs(serialized.seq, inserted.seq),
-      };
+      return await traceSpan("bulldozer-js.piledriver.heap.serializeAndInsert", async () => {
+        const serialized = await serializePiledriverObject(await heapObj.get(), childPath);
+        const inserted = await heapDump.insertAll([serialized.buffer]);
+        return {
+          key: inserted.keys[0],
+          seq: lowLevelDb.combineSeqs(serialized.seq, inserted.seq),
+        };
+      });
     })();
     heapKeysAndSeqByHeapObjects.set(heapObj, promise);
     let result;
@@ -138,10 +141,12 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     }
 
     const promise = (async () => {
-      const { buffer, seq } = await heapDump.get(key);
-      if (buffer === null) return { object: null, seq };
-      const deserialized = await deserializePiledriverObject(buffer);
-      return { object: asHeapObject(deserialized.object), seq: lowLevelDb.combineSeqs(deserialized.seq, seq) };
+      return await traceSpan({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
+        const { buffer, seq } = await heapDump.get(key);
+        if (buffer === null) return { object: null, seq };
+        const deserialized = await deserializePiledriverObject(buffer);
+        return { object: asHeapObject(deserialized.object), seq: lowLevelDb.combineSeqs(deserialized.seq, seq) };
+      });
     })();
     const refIdentity = crypto.randomUUID();
     if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.set(keyBase64, [refIdentity, promise.then(p => p.object === null ? null : { object: new WeakRef(p.object), seq: p.seq })]);
@@ -285,34 +290,40 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
 
   return {
     async getRootObject(key): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> {
-      const { buffer, seq: rootSeq } = await rootStore.get(key);
-      if (buffer === null) throw new Error("Root object not found");
-      const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer);
-      return { object, seq: lowLevelDb.combineSeqs(deserializeSeq, rootSeq) };
+      return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
+        const { buffer, seq: rootSeq } = await rootStore.get(key);
+        if (buffer === null) throw new Error("Root object not found");
+        const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer);
+        return { object, seq: lowLevelDb.combineSeqs(deserializeSeq, rootSeq) };
+      });
     },
     async setRootObject(key, value): Promise<{ seq: DatabaseSeq }> {
-      const { buffer, seq } = await serializePiledriverObject(value);
-      const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: seq });
-      return { seq: rootSeq };
+      return await traceSpan("bulldozer-js.piledriver.setRootObject", async () => {
+        const { buffer, seq } = await serializePiledriverObject(value);
+        const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: seq });
+        return { seq: rootSeq };
+      });
     },
     async deleteRootObject(key): Promise<{ seq: DatabaseSeq }> {
-      const { seq } = await rootStore.deleteAll([key]);
-      return { seq };
+      return await traceSpan("bulldozer-js.piledriver.deleteRootObject", async () => {
+        const { seq } = await rootStore.deleteAll([key]);
+        return { seq };
+      });
     },
     combineSeqs(...seqs) {
       return lowLevelDb.combineSeqs(...seqs);
     },
     waitUntilAvailable(seq) {
-      return lowLevelDb.waitUntilAvailable(seq);
+      return traceSpan("bulldozer-js.piledriver.waitUntilAvailable", async () => await lowLevelDb.waitUntilAvailable(seq));
     },
     waitUntilDurable(seq) {
-      return lowLevelDb.waitUntilDurable(seq);
+      return traceSpan("bulldozer-js.piledriver.waitUntilDurable", async () => await lowLevelDb.waitUntilDurable(seq));
     },
     waitUntilReplicated(seq) {
-      return lowLevelDb.waitUntilReplicated(seq);
+      return traceSpan("bulldozer-js.piledriver.waitUntilReplicated", async () => await lowLevelDb.waitUntilReplicated(seq));
     },
     async debugSnapshot() {
-      return {
+      return await traceSpan("bulldozer-js.piledriver.debugSnapshot", async () => ({
         roots: (await rootStore.debugEntries?.() ?? []).map(entry => ({
           keyBase64: entry.keyBase64,
           keyUtf8: entry.keyUtf8,
@@ -327,10 +338,10 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           serializedJson: parseDebugEntryValue(entry.valueUtf8),
           valueByteLength: entry.valueByteLength,
         })),
-      };
+      }));
     },
     async debugLowLevelSnapshot() {
-      return await lowLevelDb.debugSnapshot?.() ?? { stores: {}, dumps: {} };
+      return await traceSpan("bulldozer-js.piledriver.debugLowLevelSnapshot", async () => await lowLevelDb.debugSnapshot?.() ?? { stores: {}, dumps: {} });
     },
     initialSeq: lowLevelDb.initialSeq,
   };

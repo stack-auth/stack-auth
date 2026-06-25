@@ -1,4 +1,5 @@
 import { isShallowEqual } from "@hexclave/shared/dist/utils/arrays";
+import { traceSpan } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { AugmentedTreeMap, AugmentedTreeMultiMap } from "../piledriver/data-structures/augmented-tree-map.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
@@ -401,30 +402,31 @@ class BulldozerDatabaseSnapshot {
       inputTables: Record<string, BulldozerTableImplementationInputTable>,
     }) => Promise<{ newSerializedTable: PiledriverObject, outputChanges: TableChanges }>,
   ): Promise<BulldozerDatabaseSnapshot> {
-    const tablesState = this.tablesState;
-    const serializedTables = { ...this.serialized.serializedTables };
-    const pending = new Map<string, Record<string, TableChanges>>();
-    const remainingInputs = new Map<string, number>();
-    const inputTables = (id: string) => createInputTables(tablesState.tables, inputId => serializedTables[inputId], id);
+    return await traceSpan({ description: "bulldozer-js.bulldozer.applyTableMutation", attributes: { "bulldozer.table_id": tableId } }, async () => {
+      const tablesState = this.tablesState;
+      const serializedTables = { ...this.serialized.serializedTables };
+      const pending = new Map<string, Record<string, TableChanges>>();
+      const remainingInputs = new Map<string, number>();
+      const inputTables = (id: string) => createInputTables(tablesState.tables, inputId => serializedTables[inputId], id);
 
-    const emptyChanges = (): TableChanges => ({ addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] });
-    const hasChanges = (changes: TableChanges) => changes.addedRows.length || changes.modifiedRows.length || changes.deletedRows.length || changes.addedGroups.length || changes.deletedGroups.length;
-    const addPending = (tableId: string, inputTableKey: string, changes: TableChanges) => {
-      if (!hasChanges(changes)) return;
+      const emptyChanges = (): TableChanges => ({ addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] });
+      const hasChanges = (changes: TableChanges) => changes.addedRows.length || changes.modifiedRows.length || changes.deletedRows.length || changes.addedGroups.length || changes.deletedGroups.length;
+      const addPending = (tableId: string, inputTableKey: string, changes: TableChanges) => {
+        if (!hasChanges(changes)) return;
       pending.set(tableId, { ...pending.get(tableId), [inputTableKey]: changes });
-    };
+      };
 
-    for (const queue = [tableId], seen = new Set<string>([tableId]); queue.length;) {
-      for (const outputTable of tablesState.tables[queue.shift()!].outputTables) {
+      for (const queue = [tableId], seen = new Set<string>([tableId]); queue.length;) {
+        for (const outputTable of tablesState.tables[queue.shift()!].outputTables) {
         remainingInputs.set(outputTable.tableId, (remainingInputs.get(outputTable.tableId) ?? 0) + 1);
         if (!seen.has(outputTable.tableId)) {
           seen.add(outputTable.tableId);
           queue.push(outputTable.tableId);
         }
+        }
       }
-    }
 
-    const first = await mutate({ serializedTable: serializedTables[tableId], inputTables: inputTables(tableId) });
+      const first = await traceSpan({ description: "bulldozer-js.bulldozer.mutateSourceTable", attributes: { "bulldozer.table_id": tableId } }, async () => await mutate({ serializedTable: serializedTables[tableId], inputTables: inputTables(tableId) }));
     validateTableChanges(first.outputChanges, `Table ${tableId} output`);
     serializedTables[tableId] = first.newSerializedTable;
     for (const outputTable of tablesState.tables[tableId].outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, first.outputChanges);
@@ -437,11 +439,11 @@ class BulldozerDatabaseSnapshot {
       const table = tablesState.tables[downstreamTableId];
       const changes = pending.get(downstreamTableId);
       if (changes) {
-        const result = await table.table.emitInputChanges({
+        const result = await traceSpan({ description: "bulldozer-js.bulldozer.emitInputChanges", attributes: { "bulldozer.table_id": downstreamTableId } }, async () => await table.table.emitInputChanges({
           serializedTable: serializedTables[downstreamTableId],
           inputTables: inputTables(downstreamTableId),
           changes: Object.fromEntries(Object.keys(table.inputTableIds).map(inputTableKey => [inputTableKey, changes[inputTableKey] ?? emptyChanges()])),
-        });
+        }));
         validateTableChanges(result.outputChanges, `Table ${downstreamTableId} output`);
         serializedTables[downstreamTableId] = result.newSerializedTable;
         for (const outputTable of table.outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, result.outputChanges);
@@ -452,6 +454,7 @@ class BulldozerDatabaseSnapshot {
     }
 
     return new BulldozerDatabaseSnapshot({ ...this.serialized, serializedTables, uniqueSnapshotIdentifier: crypto.randomUUID() }, this.tablesState);
+    });
   }
 }
 
@@ -554,26 +557,28 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     { tablesState },
   );
 
-  const getSnapshot = async () => {
+  const getSnapshot = async () => await traceSpan("bulldozer-js.bulldozer.getSnapshot", async () => {
     const root = await getRoot();
     return {
       snapshot: deserializeSnapshot(root.object.snapshot as BulldozerDatabaseSnapshotSerialized),
       seq: root.seq,
     };
-  };
+  });
   const withSnapshot = async (
     updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot>,
     options: { replicated: boolean },
   ) => {
-    const result = await withWriteLock(async () => {
-      const { snapshot } = await getSnapshot();
-      const newSnapshot = await updateSnapshot(snapshot);
-      const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
-      await piledriverDatabase.waitUntilAvailable(seq);
-      return { snapshot: newSnapshot, seq };
+    return await traceSpan({ description: "bulldozer-js.bulldozer.withSnapshot", attributes: { "bulldozer.replicated": options.replicated } }, async () => {
+      const result = await withWriteLock(async () => {
+        const { snapshot } = await getSnapshot();
+        const newSnapshot = await updateSnapshot(snapshot);
+        const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
+        await piledriverDatabase.waitUntilAvailable(seq);
+        return { snapshot: newSnapshot, seq };
+      });
+      if (options.replicated) await piledriverDatabase.waitUntilReplicated(result.seq);
+      return result;
     });
-    if (options.replicated) await piledriverDatabase.waitUntilReplicated(result.seq);
-    return result;
   };
 
   return {
@@ -591,7 +596,7 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     getSnapshot,
     withSnapshot: async (updateSnapshot) => await withSnapshot(updateSnapshot, { replicated: false }),
     withSnapshotReplicated: async (updateSnapshot) => await withSnapshot(updateSnapshot, { replicated: true }),
-    applyRemainingMigrations: async () => await withWriteLock(async () => {
+    applyRemainingMigrations: async () => await traceSpan("bulldozer-js.bulldozer.applyRemainingMigrations", async () => await withWriteLock(async () => {
       let snapshot: BulldozerDatabaseSnapshotSerialized;
       let currentSeq = piledriverDatabase.initialSeq;
       let foundExistingRoot = true;
@@ -653,7 +658,7 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
       });
       await piledriverDatabase.waitUntilReplicated(seq);
       return { seq };
-    }),
+    })),
   };
 }
 
