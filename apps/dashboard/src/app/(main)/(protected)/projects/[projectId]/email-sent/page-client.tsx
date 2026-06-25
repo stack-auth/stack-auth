@@ -9,6 +9,8 @@ import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@hexclave/next";
 import {
   DataGrid,
+  applyQuickSearch,
+  buildRowComparator,
   useDataGridUrlState,
   useDataSource,
   type DataGridColumnDef,
@@ -182,8 +184,14 @@ function EmailSendDataTable() {
       cursor = result.nextCursor ?? undefined;
     } while (cursor);
 
+    if (options.scope === "filtered") {
+      const searchedEmails = applyQuickSearch(allEmails, gridState.quickSearch, emailTableColumns);
+      const comparator = buildRowComparator(gridState.sorting, emailTableColumns);
+      return comparator == null ? searchedEmails : [...searchedEmails].sort(comparator);
+    }
+
     return allEmails;
-  }, [hexclaveAdminApp]);
+  }, [gridState.quickSearch, gridState.sorting, hexclaveAdminApp]);
 
   if (gridData.isLoading) {
     return (

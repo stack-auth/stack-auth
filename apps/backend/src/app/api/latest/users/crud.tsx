@@ -61,7 +61,8 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 };
 
 const personalTeamDefaultDisplayName = "Personal Team";
-// validates domain names for email addresses
+// Keep in sync with the Users table parser. This validates exact domains only;
+// excluding gmail.com intentionally does not exclude mail.gmail.com.
 const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const maxExcludedEmailDomains = 100; // to prevent abuse
 
@@ -71,14 +72,17 @@ function getSignedUpAtMillis(signedUpAt: Date): number {
 
 // lowercases, strips leading @, handles duplicates to validate domains
 function normalizeExcludedEmailDomains(rawDomains: string | undefined): string[] {
-  if (rawDomains === undefined) {
+  if (rawDomains === undefined || rawDomains.trim() === "") {
     return [];
   }
 
   const normalizedDomains = new Map<string, true>();
   for (const rawDomain of rawDomains.split(",")) { // expects comma-separated list of domains
     const domain = rawDomain.trim().replace(/^@/, "").toLowerCase();
-    if (domain === "" || !emailDomainRegex.test(domain)) {
+    if (domain === "") {
+      continue;
+    }
+    if (!emailDomainRegex.test(domain)) {
       throw new StatusError(StatusError.BadRequest, "excluded_email_domains must be a comma-separated list of valid domains");
     }
     normalizedDomains.set(domain, true);
@@ -626,7 +630,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               isPrimary: 'TRUE' as const,
               OR: excludedEmailDomains.map((domain) => ({
                 value: {
-                  endsWith: `@${domain}`, // filters by domain suffix (tradeoff, change later?)
+                  // Exact-domain match: @gmail.com matches user@gmail.com, not user@mail.gmail.com.
+                  endsWith: `@${domain}`,
                   mode: 'insensitive' as const,
                 },
               })),

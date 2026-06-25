@@ -1063,6 +1063,30 @@ describe("with server access", () => {
     expect(response.body).toBe("excluded_email_domains must be a comma-separated list of valid domains");
   });
 
+  it("treats empty excluded email domains as omitted", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const userResponse = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        primary_email: "included@example.com",
+        primary_email_verified: true,
+      },
+    });
+
+    const emptyResponse = await niceBackendFetch("/api/v1/users?excluded_email_domains=", {
+      accessType: "server",
+    });
+    const trailingCommaResponse = await niceBackendFetch("/api/v1/users?excluded_email_domains=,", {
+      accessType: "server",
+    });
+
+    expect(emptyResponse.status).toBe(200);
+    expect(trailingCommaResponse.status).toBe(200);
+    expect(emptyResponse.body.items.map((user: { id: string }) => user.id)).toContain(userResponse.body.id);
+    expect(trailingCommaResponse.body.items.map((user: { id: string }) => user.id)).toContain(userResponse.body.id);
+  });
+
   it("lists users with pagination", async ({ expect }) => {
     await Project.createAndSwitch();
     for (let i = 0; i < 5; i++) {

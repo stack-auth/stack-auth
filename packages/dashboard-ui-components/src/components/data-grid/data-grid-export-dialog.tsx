@@ -20,8 +20,10 @@ type ExportProgress = {
 };
 
 type ExportCellValue = string | number | boolean | null | undefined;
-type ExportRow = {
-  [key: string]: ExportCellValue;
+type ExportTable = {
+  csvHeaders: string[];
+  jsonKeys: string[];
+  rows: ExportCellValue[][];
 };
 
 type DataGridExportDialogProps<TRow> = {
@@ -39,11 +41,18 @@ const idleExportProgress: ExportProgress = {
 };
 const exportCompletionDisplayMs = 800;
 
-export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow>) {
-  const hasServerExport = props.exportOptions?.fetchRows != null;
+export function DataGridExportDialog<TRow>({
+  open,
+  onOpenChange,
+  rows,
+  columns,
+  exportFilename,
+  exportOptions,
+}: DataGridExportDialogProps<TRow>) {
+  const hasServerExport = exportOptions?.fetchRows != null;
   const resolvedFields = useMemo(
-    () => props.exportOptions?.fields ?? buildColumnExportFields(props.columns),
-    [props.exportOptions?.fields, props.columns],
+    () => exportOptions?.fields ?? buildColumnExportFields(columns),
+    [exportOptions?.fields, columns],
   );
   const [format, setFormat] = useState<DataGridExportFormat>("csv");
   const [scope, setScope] = useState<DataGridExportScope>("all");
@@ -58,27 +67,34 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
     }
   }, [isExporting, resolvedFields]);
 
-  const entityName = props.exportOptions?.entityName ?? "row";
-  const entityNamePlural = props.exportOptions?.entityNamePlural ?? "rows";
-  const filenamePrefix = props.exportOptions?.filenamePrefix ?? props.exportFilename;
-  const title = props.exportOptions?.title ?? "Export data";
-  const description = props.exportOptions?.description ?? (
+  const entityName = exportOptions?.entityName ?? "row";
+  const entityNamePlural = exportOptions?.entityNamePlural ?? "rows";
+  const filenamePrefix = exportOptions?.filenamePrefix ?? exportFilename;
+  const title = exportOptions?.title ?? "Export data";
+  const description = exportOptions?.description ?? (
     hasServerExport
       ? "Configure and download data from this table"
       : "Configure and download the rows currently loaded in this table"
   );
-  const progressSubjectLabel = props.exportOptions?.progressSubjectLabel ?? entityNamePlural;
+  const progressSubjectLabel = exportOptions?.progressSubjectLabel ?? entityNamePlural;
   const progressTitle = progress.phase === "complete" ? "Export complete" : `Exporting ${progressSubjectLabel}`;
+  const fetchExportRows = exportOptions?.fetchRows;
+
+  const closeDialog = useCallback(() => {
+    onOpenChange(false);
+    setErrorMessage(null);
+  }, [onOpenChange]);
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (isExporting && !nextOpen) {
       return;
     }
-    props.onOpenChange(nextOpen);
-    if (!nextOpen) {
-      setErrorMessage(null);
+    if (nextOpen) {
+      onOpenChange(true);
+    } else {
+      closeDialog();
     }
-  }, [isExporting, props]);
+  }, [closeDialog, isExporting, onOpenChange]);
 
   const toggleField = useCallback((key: string) => {
     setFields((prev) =>
@@ -97,16 +113,16 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
   }, []);
 
   const fetchRows = useCallback(async () => {
-    if (props.exportOptions?.fetchRows != null) {
-      return await props.exportOptions.fetchRows({
+    if (fetchExportRows != null) {
+      return await fetchExportRows({
         scope,
         onProgress: (fetched) => setProgress({ phase: "fetching", fetched }),
       });
     }
 
-    setProgress({ phase: "fetching", fetched: props.rows.length });
-    return props.rows;
-  }, [props.exportOptions, props.rows, scope]);
+    setProgress({ phase: "fetching", fetched: rows.length });
+    return rows;
+  }, [fetchExportRows, rows, scope]);
 
   const handleExport = async () => {
     const enabledFields = fields.filter((field) => field.enabled);
@@ -123,7 +139,7 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
 
       if (exportRows.length === 0) {
         setErrorMessage(
-          props.exportOptions?.emptyExportDescription
+          exportOptions?.emptyExportDescription
           ?? `There are no ${entityNamePlural} to export.`,
         );
         setIsExporting(false);
@@ -132,7 +148,7 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
       }
 
       setProgress({ phase: "generating", fetched: exportRows.length });
-      const transformedData = exportRows.map((row) => transformRowData(row, enabledFields));
+      const transformedData = buildExportTable(exportRows, enabledFields);
 
       if (format === "csv") {
         exportToCsv(transformedData, filenamePrefix);
@@ -142,9 +158,9 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
 
       setProgress({ phase: "complete", fetched: exportRows.length });
       await new Promise<void>((resolve) => setTimeout(resolve, exportCompletionDisplayMs));
-      props.onOpenChange(false);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Export failed with an unknown error.");
+      closeDialog();
+    } catch {
+      setErrorMessage("Something went wrong while exporting. Please try again.");
     } finally {
       setIsExporting(false);
       setProgress(idleExportProgress);
@@ -153,7 +169,7 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
 
   return (
     <DesignDialog
-      open={props.open}
+      open={open}
       onOpenChange={handleOpenChange}
       title={isExporting ? progressTitle : title}
       description={isExporting ? `Preparing export for ${progressSubjectLabel}.` : description}
@@ -196,7 +212,7 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
                   checked={scope === "all"}
                   onChange={() => setScope("all")}
                 />
-                <span>{props.exportOptions?.allScopeLabel ?? `Export all ${entityNamePlural} in the project`}</span>
+                <span>{exportOptions.allScopeLabel ?? `Export all ${entityNamePlural} in the project`}</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <input
@@ -206,7 +222,7 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
                   checked={scope === "filtered"}
                   onChange={() => setScope("filtered")}
                 />
-                <span>{props.exportOptions?.filteredScopeLabel ?? `Export only filtered/searched ${entityNamePlural}`}</span>
+                <span>{exportOptions.filteredScopeLabel ?? `Export only filtered/searched ${entityNamePlural}`}</span>
               </label>
             </fieldset>
           ) : null}
@@ -239,13 +255,13 @@ export function DataGridExportDialog<TRow>(props: DataGridExportDialogProps<TRow
 
           {errorMessage != null ? (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <div className="font-medium">{props.exportOptions?.emptyExportTitle ?? "Export unavailable"}</div>
+              <div className="font-medium">{exportOptions?.emptyExportTitle ?? "Export unavailable"}</div>
               <div>{errorMessage}</div>
             </div>
           ) : null}
 
           <div className="flex justify-end gap-3 pt-2">
-            <DesignButton variant="outline" onClick={() => props.onOpenChange(false)}>
+            <DesignButton variant="outline" onClick={closeDialog}>
               Cancel
             </DesignButton>
             <DesignButton onClick={handleExport}>
@@ -280,24 +296,6 @@ function ExportProgressContent(props: {
 
   return (
     <div className="space-y-4">
-      <style>
-        {`
-          @keyframes data-grid-export-progress-shimmer {
-            0% { transform: translateX(-105%); }
-            100% { transform: translateX(245%); }
-          }
-          .data-grid-export-progress-shimmer {
-            animation: data-grid-export-progress-shimmer 1.35s ease-in-out infinite;
-            will-change: transform;
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .data-grid-export-progress-shimmer {
-              animation: none;
-              transform: translateX(75%);
-            }
-          }
-        `}
-      </style>
       <div className="space-y-1">
         <h2 className="text-base font-semibold leading-snug">{title}</h2>
         <p className="text-sm text-muted-foreground">{description}</p>
@@ -371,17 +369,40 @@ function formatColumnExportValue<TRow>(
   return value;
 }
 
-function transformRowData<TRow>(
-  row: TRow,
+function buildExportTable<TRow>(
+  rows: readonly TRow[],
   enabledFields: readonly DataGridExportField<TRow>[],
-): ExportRow {
-  const data: ExportRow = {};
+): ExportTable {
+  return {
+    csvHeaders: enabledFields.map((field) => field.label),
+    jsonKeys: buildJsonKeys(enabledFields),
+    rows: rows.map((row) => enabledFields.map((field) => toExportCellValue(field.getValue(row)))),
+  };
+}
 
-  for (const field of enabledFields) {
-    data[field.label] = toExportCellValue(field.getValue(row));
+function buildJsonKeys<TRow>(
+  fields: readonly DataGridExportField<TRow>[],
+): string[] {
+  const labelCounts = new Map<string, number>();
+  for (const field of fields) {
+    labelCounts.set(field.label, (labelCounts.get(field.label) ?? 0) + 1);
   }
 
-  return data;
+  const usedKeys = new Map<string, true>();
+  const keys: string[] = [];
+  for (const field of fields) {
+    const baseKey = labelCounts.get(field.label) === 1 ? field.label : `${field.label} (${field.key})`;
+    let key = baseKey;
+    let suffix = 2;
+    while (usedKeys.has(key)) {
+      key = `${baseKey} ${suffix}`;
+      suffix++;
+    }
+    usedKeys.set(key, true);
+    keys.push(key);
+  }
+
+  return keys;
 }
 
 function toExportCellValue(value: unknown): ExportCellValue {
@@ -403,25 +424,32 @@ function toExportCellValue(value: unknown): ExportCellValue {
   return String(value);
 }
 
-function exportToCsv(data: readonly ExportRow[], filenamePrefix: string) {
-  const headers = Object.keys(data[0] ?? {});
+function exportToCsv(data: ExportTable, filenamePrefix: string) {
   const csvContent = "\uFEFF" + [
-    headers.map(escapeCsvCell).join(","),
-    ...data.map((row) => headers.map((header) => escapeCsvCell(row[header] ?? "")).join(",")),
+    data.csvHeaders.map(escapeCsvCell).join(","),
+    ...data.rows.map((row) => row.map(escapeCsvCell).join(",")),
   ].join("\n");
   downloadFile(csvContent, `${buildExportFilename(filenamePrefix)}.csv`, "text/csv;charset=utf-8;");
 }
 
 function escapeCsvCell(value: ExportCellValue): string {
-  const text = String(value ?? "");
-  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+  const rawText = String(value ?? "");
+  const text = typeof value === "string" && /^[=+\-@\t\r]/.test(rawText.trimStart()) ? `'${rawText}` : rawText;
+  if (text.includes(",") || text.includes('"') || text.includes("\n") || text.includes("\r")) {
     return `"${text.replace(/"/g, '""')}"`;
   }
   return text;
 }
 
-function exportToJson(data: readonly ExportRow[], filenamePrefix: string) {
-  const jsonString = JSON.stringify(data, null, 2);
+function exportToJson(data: ExportTable, filenamePrefix: string) {
+  const rows = data.rows.map((row) => {
+    const jsonRow: Record<string, ExportCellValue> = {};
+    for (let i = 0; i < data.jsonKeys.length; i++) {
+      jsonRow[data.jsonKeys[i]] = row[i] ?? "";
+    }
+    return jsonRow;
+  });
+  const jsonString = JSON.stringify(rows, null, 2);
   downloadFile(jsonString, `${buildExportFilename(filenamePrefix)}.json`, "application/json");
 }
 

@@ -64,7 +64,10 @@ type FilterState = {
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
+// Keep in sync with the backend list-users parser. This validates exact domains only;
+// excluding gmail.com intentionally does not exclude mail.gmail.com.
 const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const maxExcludedEmailDomains = 100;
 const DEFAULT_FILTERS: FilterState = {
   search: "",
   includeRestricted: true,
@@ -480,6 +483,10 @@ function EmailDomainFilter(props: {
     const nextDomains = new Map(domains.map((domain) => [domain, true]));
     for (const domain of parsed.domains) {
       nextDomains.set(domain, true);
+    }
+    if (nextDomains.size > maxExcludedEmailDomains) {
+      setError(`You can exclude at most ${maxExcludedEmailDomains} domains.`);
+      return;
     }
     onChange([...nextDomains.keys()]);
     setInput("");
