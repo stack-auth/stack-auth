@@ -6,8 +6,8 @@
  * snapshot if STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID is set, else cold-install the
  * agent SDK), clone the repo, agent edits the config, COMMIT + PUSH to the branch.
  *
- * WARNING: this pushes a commit to `main` of the target repo. Point it at a
- * throwaway repo (default: hexclave/stackframe-website-2026).
+ * WARNING: this pushes a commit to the target repo. Point SPIKE_OWNER,
+ * SPIKE_REPO, and SPIKE_BRANCH at a throwaway repo/branch.
  *
  * Run from apps/backend:
  *   pnpm dlx dotenv-cli -e .env.development.local -e .env.development -- \

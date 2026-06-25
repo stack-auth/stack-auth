@@ -190,7 +190,9 @@ function configFileExportsConfig(content: string, configFilePath: string): boole
     // packages). For the structural sanity check we only need to know a runtime
     // `config` binding still exists after the agent edited the file. Covers
     // `export const config`, `export let config`, `export { config }`, etc.
-    return /\bexport\s+(?:const|let|var)\s+config\b/.test(content) || /\bexport\s*\{[^}]*\bconfig\b/.test(content);
+    // Excludes type-only exports (`export { type config }`) which have no
+    // runtime binding.
+    return /\bexport\s+(?:const|let|var)\s+config\b/.test(content) || /\bexport\s*\{[^}]*(?<!\btype\s)\bconfig\b/.test(content);
   }
 }
 
