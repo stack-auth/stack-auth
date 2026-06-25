@@ -3,14 +3,8 @@ import { registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 
-/**
- * Initializes Sentry for the bulldozer-js server process and wires it into the shared
- * `captureError`/`captureWarning` sink registry, so errors reported from background tasks (e.g. the
- * periodic tick loop) reach Sentry rather than only the console.
- *
- * No-ops when no DSN is configured (local dev / tests); in that case `captureError` still reaches the
- * default console sink registered in `@hexclave/shared`.
- */
+// Init Sentry for the bulldozer-js process and route `captureError`/`captureWarning` to it. No-ops
+// without a DSN, in which case errors still hit the default console sink.
 export function initSentry(): void {
   const dsn = process.env.BULLDOZER_JS_SENTRY_DSN ?? process.env.SENTRY_DSN ?? "";
   if (!dsn) return;

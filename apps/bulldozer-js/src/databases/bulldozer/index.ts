@@ -426,12 +426,6 @@ class BulldozerDatabaseSnapshot {
 
     const first = await mutate({ serializedTable: serializedTables[tableId], inputTables: inputTables(tableId) });
     validateTableChanges(first.outputChanges, `Table ${tableId} output`);
-    // No-op fast path: if the mutation left the source table's serialized form untouched and emitted no
-    // output changes, nothing can propagate downstream either, so the snapshot is unchanged. Returning the
-    // same instance lets callers (e.g. the periodic tick loop) skip persisting/replicating no-op ticks.
-    if (first.newSerializedTable === this.serialized.serializedTables[tableId] && !hasChanges(first.outputChanges)) {
-      return this;
-    }
     serializedTables[tableId] = first.newSerializedTable;
     for (const outputTable of tablesState.tables[tableId].outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, first.outputChanges);
 
@@ -572,17 +566,14 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     options: { replicated: boolean },
   ) => {
     const result = await withWriteLock(async () => {
-      const { snapshot, seq: currentSeq } = await getSnapshot();
+      const { snapshot } = await getSnapshot();
       const newSnapshot = await updateSnapshot(snapshot);
-      // Skip the write (and replication wait) entirely when the update didn't change anything, so no-op
-      // operations like an idle periodic tick don't churn the database or replication stream.
-      if (newSnapshot === snapshot) return { snapshot, seq: currentSeq, changed: false };
       const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
       await piledriverDatabase.waitUntilAvailable(seq);
-      return { snapshot: newSnapshot, seq, changed: true };
+      return { snapshot: newSnapshot, seq };
     });
-    if (options.replicated && result.changed) await piledriverDatabase.waitUntilReplicated(result.seq);
-    return { snapshot: result.snapshot, seq: result.seq };
+    if (options.replicated) await piledriverDatabase.waitUntilReplicated(result.seq);
+    return result;
   };
 
   return {
@@ -2356,9 +2347,6 @@ export function declareTimeFoldTable(options: {
       const state = deserialize(serializedTable, inputTables);
       const outputChanges = emptyTableChanges();
       const nextState = await processDue(state, now, outputChanges);
-      // `processDue` returns the same `state` reference when nothing was due; preserve the original
-      // serialized table so `_applyTableMutation` can detect the no-op and avoid a spurious write.
-      if (nextState === state) return { newSerializedTable: serializedTable, outputChanges };
       return { newSerializedTable: serialize(nextState), outputChanges };
     },
     async emitInputChanges({ serializedTable, inputTables, changes }) {

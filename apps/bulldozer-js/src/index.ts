@@ -570,9 +570,8 @@ const app = new Elysia({ adapter: node() })
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
 
-// Periodically advance the bulldozer clock so timefold-queued rows (subscription renewals, expiries, …)
-// are processed. `lastTickMillis` is clamped monotonically so a backwards wall-clock jump can't rewind it,
-// and no-op ticks are cheap because `withSnapshotReplicated` skips the write when nothing changed.
+// Periodically tick the bulldozer clock to process timefold-queued rows; clamp monotonically so a
+// backwards wall-clock jump can't rewind it.
 runAsynchronously(async () => {
   let lastTickMillis = 0;
   while (true) {
