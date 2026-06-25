@@ -945,7 +945,7 @@ export const branchConfigSourceSchema = yupUnion(
       status: yupString().oneOf(["running", "success", "no-change", "error", "cancelled"]).defined(),
       started_at: yupNumber().defined(),
       finished_at: yupNumber().optional(),
-      commit_url: yupString().optional(),
+      commit_url: urlSchema.optional(),
       error: yupString().optional(),
       // Vercel Sandbox id of the in-flight run, recorded while `status === "running"`
       // so a cancel request (a different invocation) can hard-stop the sandbox.

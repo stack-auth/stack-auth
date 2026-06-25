@@ -6,15 +6,17 @@ import { stopConfigAgentSandbox } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const maxDuration = 60;
 
 /**
  * Cancels the in-flight dashboard→GitHub config run. Atomically flips the run to
  * the terminal `cancelled` status (so the original run's late result is ignored)
- * and hard-stops its sandbox. There is no revert: if the agent hadn't pushed yet
- * the change is undone; if a commit already landed it stays (and the repo's
+ * and hard-stops its sandbox when available. If the sandbox id was never recorded
+ * (e.g. the run failed before booting a sandbox), the status is still flipped but
+ * no sandbox stop is attempted. There is no revert: if the agent hadn't pushed
+ * yet the change is undone; if a commit already landed it stays (and the repo's
  * config-sync workflow will eventually reconcile it).
  */
 export const POST = createSmartRouteHandler({
@@ -54,6 +56,8 @@ export const POST = createSmartRouteHandler({
 
     if (sandboxId) {
       runAsynchronouslyAndWaitUntil(stopConfigAgentSandbox(sandboxId));
+    } else {
+      captureError("config-github-cancel", new Error("Cancelled a config agent run but no sandboxId was recorded; the sandbox may still be running."));
     }
 
     return { statusCode: 200, bodyType: "json", body: { status: "cancelling" } };

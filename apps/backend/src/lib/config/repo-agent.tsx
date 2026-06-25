@@ -64,7 +64,7 @@ export type GithubRepoRef = { owner: string, repo: string, branch: string };
 export type GithubTokenProvider = () => Promise<string>;
 
 export type ConfigUpdatePushResult =
-  | { mode: "commit-to-branch", branch: string, commitUrl: string }
+  | { mode: "commit-to-branch", branch: string, commitUrl: string, commitSha: string }
   | { mode: "no-change" };
 
 export class ConfigRepoAgentError extends Error {
@@ -138,6 +138,10 @@ async function ensureTls(sandbox: Sandbox): Promise<void> {
 
 function tokenUrl(token: string, ref: Pick<GithubRepoRef, "owner" | "repo">): string {
   return `https://x-access-token:${token}@github.com/${ref.owner}/${ref.repo}.git`;
+}
+
+function tokenlessUrl(ref: Pick<GithubRepoRef, "owner" | "repo">): string {
+  return `https://github.com/${ref.owner}/${ref.repo}.git`;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,11 +417,13 @@ export async function applyConfigUpdate(options: {
     await run(sandbox, "git", ["config", "--global", "user.email", GIT_BOT_EMAIL]);
     await run(sandbox, "git", ["config", "--global", "user.name", GIT_BOT_NAME]);
 
-    // Fresh shallow clone of just the target branch. `origin` keeps the tokenized
-    // URL so the agent's git (and our push) are authenticated; it dies with this
-    // sandbox, which is never snapshotted, so the token is never persisted.
+    // Fresh shallow clone of just the target branch. The tokenized URL is used
+    // only for the clone; immediately after, we reset `origin` to a tokenless URL
+    // so the agent (which has Bash access) cannot read the token from `.git/config`
+    // or `git remote -v`. The token is re-injected only for our own push command.
     await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
     await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
+    await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
 
     // Agent writes the COMPLETE config to the file — no dependency install, no
     // typecheck (the linked repo's CI validates the committed change). See buildUpdatePrompt.
@@ -431,8 +437,9 @@ export async function applyConfigUpdate(options: {
     await run(sandbox, "git", ["-C", REPO_DIR, "commit", "-m", commitMessage]);
     const commitSha = await gitHead(sandbox);
     await step("Pushing the commit…");
-    await run(sandbox, "git", ["-C", REPO_DIR, "push", "origin", `HEAD:refs/heads/${ref.branch}`]);
-    return { mode: "commit-to-branch", branch: ref.branch, commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}` };
+    // Re-inject the token for the push only (origin was reset to tokenless after clone).
+    await run(sandbox, "git", ["-C", REPO_DIR, "push", tokenUrl(githubToken, ref), `HEAD:refs/heads/${ref.branch}`]);
+    return { mode: "commit-to-branch", branch: ref.branch, commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}`, commitSha };
   } finally {
     await sandbox.stop().catch(() => {});
   }

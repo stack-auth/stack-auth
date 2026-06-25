@@ -70,7 +70,12 @@ export function evalConfigFileContent(content: string, filePath: string): Parsed
   if (config === undefined) {
     throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }
-  if (typeof config === "string") return config;
+  if (typeof config === "string") {
+    if (config !== "show-onboarding") {
+      throw new ConfigFileEvalError(`Invalid config in ${filePath}. String config values must be "show-onboarding", got "${config}".`);
+    }
+    return config;
+  }
   if (isRecord(config)) return config;
   throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
 }
@@ -114,6 +119,10 @@ import.meta.vitest?.test("evalConfigFileContent parses show-onboarding", ({ expe
 
 import.meta.vitest?.test("evalConfigFileContent rejects content without config export", ({ expect }) => {
   expect(() => evalConfigFileContent("export const other = {};", "stack.config.ts")).toThrow(/must export/);
+});
+
+import.meta.vitest?.test("evalConfigFileContent rejects arbitrary string config values", ({ expect }) => {
+  expect(() => evalConfigFileContent('export const config = "arbitrary-string";', "stack.config.ts")).toThrow(/must be "show-onboarding"/);
 });
 
 import.meta.vitest?.test("tryEvalConfigFileContent returns the config for valid exports", ({ expect }) => {

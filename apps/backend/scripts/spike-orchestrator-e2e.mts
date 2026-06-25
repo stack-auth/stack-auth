@@ -21,10 +21,14 @@ import {
   type GithubRepoRef,
 } from "../src/lib/config/repo-agent";
 
+if (!process.env.SPIKE_OWNER || !process.env.SPIKE_REPO || !process.env.SPIKE_BRANCH) {
+  console.error("SPIKE_OWNER, SPIKE_REPO, and SPIKE_BRANCH must all be set explicitly.\nThis script pushes commits to a real repo — refusing to fall back to defaults.");
+  process.exit(1);
+}
 const REF: GithubRepoRef = {
-  owner: process.env.SPIKE_OWNER ?? "hexclave",
-  repo: process.env.SPIKE_REPO ?? "stackframe-website-2026",
-  branch: process.env.SPIKE_BRANCH ?? "main",
+  owner: process.env.SPIKE_OWNER,
+  repo: process.env.SPIKE_REPO,
+  branch: process.env.SPIKE_BRANCH,
 };
 
 // The COMPLETE config we want the repo's config file to reflect (the real flow

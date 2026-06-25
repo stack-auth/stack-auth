@@ -550,7 +550,7 @@ function GithubPushBody({
         onRunPhaseChange("idle");
         dialogContext?.setGithubRunActive(false);
         if (run.status === "error") {
-          setErrorMessage(run.error ?? "The config agent failed to apply your change.");
+          setErrorMessage("The config agent failed to apply your change.");
           return "prevent-close";
         }
         if (run.status === "cancelled") {
@@ -569,7 +569,6 @@ function GithubPushBody({
       setErrorMessage("Timed out waiting for the config agent. Your change may still be in progress — check the linked repository.");
       return "prevent-close";
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error pushing to GitHub.";
       captureError("config-update-github-agent", {
         projectId,
         owner: source.owner,
@@ -581,7 +580,7 @@ function GithubPushBody({
       setProgressMessage(null);
       onRunPhaseChange("idle");
       dialogContext?.setGithubRunActive(false);
-      setErrorMessage(message);
+      setErrorMessage("Unknown error pushing to GitHub.");
       return "prevent-close";
     }
   }, [adminApp, commitMessage, configUpdate, dialogContext, onRunPhaseChange, onSettle, projectId, scopeCheck, source]);

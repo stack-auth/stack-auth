@@ -123,8 +123,7 @@ export const POST = createSmartRouteHandler({
           branchId,
           nowMs: Date.now(),
           outcome: result.mode === "commit-to-branch"
-            // The pushed commit sha is the last path segment of the commit URL.
-            ? { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitUrl.split("/").pop() }
+            ? { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha }
             : { status: "no-change" },
         });
       } catch (error) {
@@ -133,7 +132,7 @@ export const POST = createSmartRouteHandler({
           projectId,
           branchId,
           nowMs: Date.now(),
-          outcome: { status: "error", error: error instanceof Error ? error.message : "The config agent failed to apply the change." },
+          outcome: { status: "error", error: "The config agent failed to apply the change." },
         }).catch((e) => captureError("config-github-apply-record-error", e));
       }
     });

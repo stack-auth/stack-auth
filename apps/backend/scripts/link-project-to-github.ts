@@ -14,6 +14,7 @@
  *   LINK_BRANCH=main
  *   LINK_CONFIG_PATH=hexclave.config.ts
  *   LINK_WORKFLOW_PATH=.github/workflows/hexclave-config-sync.yml
+ *   LINK_BRANCH_ID=<branch-id>                                   (defaults to DEFAULT_BRANCH_ID)
  *   LINK_COMMIT=<head sha>                                       (informational; the agent pulls latest)
  */
 import { setBranchConfigOverrideSource } from "@/lib/config";
@@ -30,9 +31,10 @@ async function main() {
   const workflowPath = getEnvVariable("LINK_WORKFLOW_PATH", ".github/workflows/hexclave-config-sync.yml");
   const commitHash = getEnvVariable("LINK_COMMIT", "") || "0".repeat(40);
 
+  const branchId = getEnvVariable("LINK_BRANCH_ID", "") || DEFAULT_BRANCH_ID;
   await setBranchConfigOverrideSource({
     projectId,
-    branchId: DEFAULT_BRANCH_ID,
+    branchId,
     source: {
       type: "pushed-from-github",
       owner,

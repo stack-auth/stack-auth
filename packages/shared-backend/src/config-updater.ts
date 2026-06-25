@@ -188,8 +188,9 @@ function configFileExportsConfig(content: string, configFilePath: string): boole
     // jiti may fail to resolve imports that are valid in the user's project but
     // absent from the current process (e.g. relative asset imports, workspace
     // packages). For the structural sanity check we only need to know a runtime
-    // `config` binding still exists after the agent edited the file.
-    return /\bexport\s+const\s+config\b/.test(content);
+    // `config` binding still exists after the agent edited the file. Covers
+    // `export const config`, `export let config`, `export { config }`, etc.
+    return /\bexport\s+(?:const|let|var)\s+config\b/.test(content) || /\bexport\s*\{[^}]*\bconfig\b/.test(content);
   }
 }
 
