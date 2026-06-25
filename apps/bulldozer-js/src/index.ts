@@ -580,7 +580,7 @@ runAsynchronously(async () => {
       lastTickMillis = Math.max(Date.now(), lastTickMillis);
       await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
     } catch (error) {
-      captureError("Bulldozer JS tick loop", error);
+      captureError("bulldozer-js-tick-loop", error);
     }
     await wait(1000);
   }
