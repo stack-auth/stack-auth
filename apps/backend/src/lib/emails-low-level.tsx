@@ -142,11 +142,14 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           }
 
           // nodemailer surfaces a refused connection as code 'ESOCKET' with 'ECONNREFUSED' in the message.
+          // Safe to retry: the connection was refused before any SMTP exchange, so the message was never
+          // handed off — there's no duplicate-delivery risk, and a transient refusal (server restarting /
+          // overloaded) can recover. A persistent misconfig still fails after MAX_SEND_ATTEMPTS.
           if (code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
             return Result.error({
               rawError: error,
               errorType: 'CONNECTION_REFUSED',
-              canRetry: false,
+              canRetry: true,
               message: 'The email server refused the connection. Please make sure the email host and port configuration are correct.',
             } as const);
           }
