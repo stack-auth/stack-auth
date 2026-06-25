@@ -39,6 +39,11 @@ type GlobalPrismaLike = {
   },
 };
 
+type OwnedBillingScope = {
+  projectIds: string[],
+  tenancyIds: string[],
+};
+
 type ItemCapacityReaders = {
   getPrismaForTenancy: (tenancy: Tenancy) => Promise<unknown>,
   getItemQuantityForCustomer: (options: {
@@ -85,13 +90,16 @@ export async function getOwnedProjectIdsForBillingTeam(
   return projects.map((project) => project.id);
 }
 
-export async function getOwnedTenancyIdsForBillingTeam(
+export async function getOwnedProjectAndTenancyIdsForBillingTeam(
   billingTeamId: string,
   globalPrisma: GlobalPrismaLike = globalPrismaClient,
-): Promise<string[]> {
+): Promise<OwnedBillingScope> {
   const projectIds = await getOwnedProjectIdsForBillingTeam(billingTeamId, globalPrisma);
   if (projectIds.length === 0) {
-    return [];
+    return {
+      projectIds,
+      tenancyIds: [],
+    };
   }
   const tenancies = await globalPrisma.tenancy.findMany({
     where: {
@@ -103,16 +111,23 @@ export async function getOwnedTenancyIdsForBillingTeam(
       id: true,
     },
   });
-  return tenancies.map((tenancy) => tenancy.id);
+  return {
+    projectIds,
+    tenancyIds: tenancies.map((tenancy) => tenancy.id),
+  };
 }
 
-export async function getTeamWideNonAnonymousUserCount(
+export async function getOwnedTenancyIdsForBillingTeam(
   billingTeamId: string,
   globalPrisma: GlobalPrismaLike = globalPrismaClient,
+): Promise<string[]> {
+  return (await getOwnedProjectAndTenancyIdsForBillingTeam(billingTeamId, globalPrisma)).tenancyIds;
+}
+
+export async function getNonAnonymousUserCountForTenancies(
+  tenancyIds: string[],
+  globalPrisma: GlobalPrismaLike = globalPrismaClient,
 ): Promise<number> {
-  // Usage metric: how many non-anonymous users are currently consumed by this billing team.
-  // This is compared against auth user capacity to determine over-limit conditions.
-  const tenancyIds = await getOwnedTenancyIdsForBillingTeam(billingTeamId, globalPrisma);
   if (tenancyIds.length === 0) {
     return 0;
   }
@@ -124,6 +139,16 @@ export async function getTeamWideNonAnonymousUserCount(
       isAnonymous: false,
     },
   });
+}
+
+export async function getTeamWideNonAnonymousUserCount(
+  billingTeamId: string,
+  globalPrisma: GlobalPrismaLike = globalPrismaClient,
+): Promise<number> {
+  // Usage metric: how many non-anonymous users are currently consumed by this billing team.
+  // This is compared against auth user capacity to determine over-limit conditions.
+  const tenancyIds = await getOwnedTenancyIdsForBillingTeam(billingTeamId, globalPrisma);
+  return await getNonAnonymousUserCountForTenancies(tenancyIds, globalPrisma);
 }
 
 async function getTeamWideItemCapacity(

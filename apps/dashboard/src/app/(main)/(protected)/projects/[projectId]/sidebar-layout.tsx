@@ -139,7 +139,7 @@ const projectSettingsItem: AppSection = {
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/?$/.test(fullUrl.pathname),
     },
     {
-      name: "Usage",
+      name: "Billing & Usage",
       href: "/project-settings/usage",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
     },

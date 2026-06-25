@@ -528,7 +528,10 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
     });
   };
 
-  refresh();
+  // This is mounted from the base client-app constructor, which also runs
+  // before subclass field initializers. Defer the first app call so overridden
+  // methods like adminApp.getProject() can safely touch subclass caches.
+  queueMicrotask(refresh);
   const interval = setInterval(refresh, REFRESH_INTERVAL_MS);
 
   const cleanup = () => {
