@@ -332,8 +332,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
     }
     if (typeof customerId !== 'string') {
-      // Some events here legitimately have no customer (e.g. standalone/CLI payment intents); skip them.
-      return;
+      throw new HexclaveAssertionError("Stripe webhook bad customer id", { event });
     }
     const stripe = await getStripeForAccount({ accountId }, mockData);
     await syncStripeSubscriptions(stripe, accountId, customerId);
