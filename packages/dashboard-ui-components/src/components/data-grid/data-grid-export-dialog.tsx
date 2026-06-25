@@ -76,6 +76,8 @@ export function DataGridExportDialog<TRow>({
       ? "Configure and download data from this table"
       : "Configure and download the rows currently loaded in this table"
   );
+  const allScopeLabel = exportOptions?.allScopeLabel ?? `Export all ${entityNamePlural} in the project`;
+  const filteredScopeLabel = exportOptions?.filteredScopeLabel ?? `Export only filtered/searched ${entityNamePlural}`;
   const progressSubjectLabel = exportOptions?.progressSubjectLabel ?? entityNamePlural;
   const progressTitle = progress.phase === "complete" ? "Export complete" : `Exporting ${progressSubjectLabel}`;
   const fetchExportRows = exportOptions?.fetchRows;
@@ -212,7 +214,7 @@ export function DataGridExportDialog<TRow>({
                   checked={scope === "all"}
                   onChange={() => setScope("all")}
                 />
-                <span>{exportOptions.allScopeLabel ?? `Export all ${entityNamePlural} in the project`}</span>
+                <span>{allScopeLabel}</span>
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <input
@@ -222,7 +224,7 @@ export function DataGridExportDialog<TRow>({
                   checked={scope === "filtered"}
                   onChange={() => setScope("filtered")}
                 />
-                <span>{exportOptions.filteredScopeLabel ?? `Export only filtered/searched ${entityNamePlural}`}</span>
+                <span>{filteredScopeLabel}</span>
               </label>
             </fieldset>
           ) : null}

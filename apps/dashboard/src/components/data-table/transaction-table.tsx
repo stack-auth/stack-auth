@@ -400,15 +400,27 @@ type FilterState = {
 const PAGE_SIZE = 25;
 const CUSTOMER_TYPE_OPTIONS = ["user", "team", "custom"] as const satisfies ReadonlyArray<NonNullable<FilterState["customerType"]>>;
 
+const transactionExportSummaryCache = new WeakMap<Transaction, TransactionSummary>();
+function getTransactionExportSummary(transaction: Transaction): TransactionSummary {
+  const cached = transactionExportSummaryCache.get(transaction);
+  if (cached != null) {
+    return cached;
+  }
+
+  const summary = getTransactionSummary(transaction);
+  transactionExportSummaryCache.set(transaction, summary);
+  return summary;
+}
+
 const TRANSACTION_EXPORT_FIELDS: DataGridExportField<Transaction>[] = [
   { key: "id", label: "Transaction ID", enabled: true, getValue: (transaction) => transaction.id },
-  { key: "type", label: "Type", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).displayType.label },
-  { key: "customerType", label: "Customer Type", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).customerType ?? "" },
-  { key: "customerId", label: "Customer ID", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).customerId ?? "" },
-  { key: "amount", label: "Amount", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).amountDisplay },
-  { key: "detail", label: "Detail", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).detail },
+  { key: "type", label: "Type", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).displayType.label },
+  { key: "customerType", label: "Customer Type", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).customerType ?? "" },
+  { key: "customerId", label: "Customer ID", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).customerId ?? "" },
+  { key: "amount", label: "Amount", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).amountDisplay },
+  { key: "detail", label: "Detail", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).detail },
   { key: "createdAt", label: "Created At", enabled: true, getValue: (transaction) => new Date(transaction.created_at_millis).toISOString() },
-  { key: "refunded", label: "Refunded", enabled: true, getValue: (transaction) => getTransactionSummary(transaction).refunded ? "Yes" : "No" },
+  { key: "refunded", label: "Refunded", enabled: true, getValue: (transaction) => getTransactionExportSummary(transaction).refunded ? "Yes" : "No" },
 ];
 
 export function TransactionTable() {
