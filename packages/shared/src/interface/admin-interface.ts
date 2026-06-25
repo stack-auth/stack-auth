@@ -834,6 +834,47 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
+  /**
+   * Applies a dashboard config change to the linked GitHub repo by running the
+   * config agent in a sandbox (server-side). Returns immediately; poll
+   * `getPushedConfigSource().agent_run` for progress. The GitHub access token is
+   * the caller's own OAuth token and is used transiently server-side.
+   */
+  async applyConfigViaAgent(options: { configUpdate: any, commitMessage?: string, githubAccessToken: string }): Promise<{ status: "started" | "already-running" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/apply`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          github_access_token: options.githubAccessToken,
+          config_update_string: JSON.stringify(options.configUpdate),
+          ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Cancels the in-flight agent-driven config write: hard-stops the sandbox so
+   * the agent stops mid-work. No revert — if the agent already pushed, the commit
+   * stays. Returns `not-running` if no run is in flight.
+   */
+  async cancelConfigAgentRun(): Promise<{ status: "cancelling" | "not-running" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/cancel`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}/reset-keys`,

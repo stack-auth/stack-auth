@@ -3,7 +3,10 @@ const publicVars = require("../../configs/eslint/extra-rules.js");
 
 module.exports = {
   extends: ["../../configs/eslint/defaults.js", "../../configs/eslint/next.js"],
-  ignorePatterns: ["/*", "!/src", "!/scripts", "!/prisma"],
+  // `/scripts` is linted, except throwaway e2e spikes: they're `.mts` (the only
+  // such files in the repo, so the parser isn't set up with extraFileExtensions
+  // and typed rules crash on them) and intentionally hit real external services.
+  ignorePatterns: ["/*", "!/src", "!/scripts", "!/prisma", "/scripts/spike-*.mts"],
   rules: {
     "no-restricted-syntax": [
       ...defaults.rules["no-restricted-syntax"],

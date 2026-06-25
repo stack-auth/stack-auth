@@ -3,9 +3,20 @@ import { createJiti } from "jiti";
 import path from "path";
 import { detectConfigImportPackage } from "./config-rendering";
 
-export { hexclaveConfigFileExportsConfig } from "./hexclave-config-file";
-
 const jiti = createJiti(import.meta.url, { moduleCache: false });
+
+/**
+ * Thrown when a config file evaluates successfully but its exported `config`
+ * isn't a usable shape (missing, or not an object / "show-onboarding" string).
+ * Distinct from the underlying loader errors jiti throws, so callers can tell a
+ * malformed config apart from a file that simply failed to load.
+ */
+export class ConfigFileEvalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigFileEvalError";
+  }
+}
 
 /**
  * Walks up from `dir` to find the nearest `package.json` and returns the
@@ -53,15 +64,15 @@ export function evalConfigFileContent(content: string, filePath: string): Parsed
   const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
   const mod: unknown = jiti.evalModule(content, { filename: resolvedPath });
   if (!isRecord(mod)) {
-    throw new Error(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+    throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }
   const config = mod.config;
   if (config === undefined) {
-    throw new Error(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+    throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
   }
   if (typeof config === "string") return config;
   if (isRecord(config)) return config;
-  throw new Error(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+  throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
 }
 
 /**

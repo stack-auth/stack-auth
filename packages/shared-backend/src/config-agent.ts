@@ -70,7 +70,7 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
     for await (const message of query({
       prompt: options.prompt,
       options: {
-        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+        model: "anthropic/claude-haiku-4.5",
         ...(options.strictIsolation === true ? {
           settingSources: [],
           strictMcpConfig: true,
