@@ -15,6 +15,7 @@ async function setupProjectWithPromoProducts() {
       testMode: true,
       productLines: {
         promo: { displayName: "Promo Products" },
+        other: { displayName: "Other Products" },
       },
       products: {
         "promo-subscription": {
@@ -27,6 +28,10 @@ async function setupProjectWithPromoProducts() {
             monthly: {
               USD: "20",
               interval: [1, "month"],
+            },
+            yearly: {
+              USD: "200",
+              interval: [1, "year"],
             },
           },
           includedItems: {},
@@ -44,47 +49,125 @@ async function setupProjectWithPromoProducts() {
           },
           includedItems: {},
         },
+        "other-one-time": {
+          displayName: "Other One-Time",
+          customerType: "user",
+          serverOnly: false,
+          productLineId: "other",
+          stackable: true,
+          prices: {
+            single: {
+              USD: "30",
+            },
+          },
+          includedItems: {},
+        },
       },
     },
   });
 }
 
-async function createPercentPromoCode(options: {
+type CreatePromoCodeOptions = {
   code?: string,
+  displayName?: string,
+  discountType?: "percent" | "amount_off_usd",
+  percentOffBps?: number,
+  amountOffUsdCents?: number,
+  subscriptionDuration?: "first_invoice" | "forever",
+  customerType?: "user" | "team" | "custom",
+  customerId?: string,
+  productLineId?: string,
   productId?: string,
   priceId?: string,
+  maxRedemptions?: number,
+  maxRedemptionsPerCustomer?: number,
+  startsAtMillis?: number,
   expiresAtMillis?: number,
-} = {}) {
+};
+
+async function createPromoCode(options: CreatePromoCodeOptions = {}) {
   const response = await niceBackendFetch("/api/latest/internal/payments/promo-codes", {
     method: "POST",
     accessType: "admin",
     body: {
       code: options.code ?? uniquePromoCode("PERCENT"),
-      display_name: "E2E percent promo",
-      discount_type: "percent",
-      percent_off_bps: 2500,
-      subscription_duration: "first_invoice",
+      display_name: options.displayName ?? "E2E percent promo",
+      discount_type: options.discountType ?? "percent",
+      percent_off_bps: options.percentOffBps,
+      amount_off_usd_cents: options.amountOffUsdCents,
+      subscription_duration: options.subscriptionDuration ?? "first_invoice",
+      customer_type: options.customerType,
+      customer_id: options.customerId,
+      product_line_id: options.productLineId,
       product_id: options.productId,
       price_id: options.priceId,
+      max_redemptions: options.maxRedemptions,
+      max_redemptions_per_customer: options.maxRedemptionsPerCustomer,
+      starts_at_millis: options.startsAtMillis,
       expires_at_millis: options.expiresAtMillis,
     },
   });
   return response;
 }
 
+async function createPercentPromoCode(options: CreatePromoCodeOptions = {}) {
+  return await createPromoCode({
+    ...options,
+    discountType: "percent",
+    percentOffBps: options.percentOffBps ?? 2500,
+  });
+}
+
 async function createAmountOffPromoCode(options: { code?: string } = {}) {
-  const response = await niceBackendFetch("/api/latest/internal/payments/promo-codes", {
+  return await createPromoCode({
+    code: options.code ?? uniquePromoCode("AMOUNT"),
+    displayName: "E2E fixed promo",
+    discountType: "amount_off_usd",
+    amountOffUsdCents: 1250,
+    subscriptionDuration: "forever",
+  });
+}
+
+async function quotePromoCode(options: {
+  fullCode: string,
+  priceId: string,
+  quantity?: number,
+  promoCode: string,
+}) {
+  return await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: options.fullCode,
+      price_id: options.priceId,
+      quantity: options.quantity ?? 1,
+      promo_code: options.promoCode,
+    },
+  });
+}
+
+async function redeemTestModePurchase(options: {
+  fullCode: string,
+  priceId: string,
+  quantity?: number,
+  promoCode?: string,
+}) {
+  return await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     method: "POST",
     accessType: "admin",
     body: {
-      code: options.code ?? uniquePromoCode("AMOUNT"),
-      display_name: "E2E fixed promo",
-      discount_type: "amount_off_usd",
-      amount_off_usd_cents: 1250,
-      subscription_duration: "forever",
+      full_code: options.fullCode,
+      price_id: options.priceId,
+      quantity: options.quantity,
+      promo_code: options.promoCode,
     },
   });
-  return response;
+}
+
+async function listPromoRedemptions(promoCodeId: string) {
+  return await niceBackendFetch(`/api/latest/internal/payments/promo-codes/${promoCodeId}/redemptions`, {
+    accessType: "admin",
+  });
 }
 
 it("should manage promo codes with admin CRUD and soft-delete", async ({ expect }) => {
@@ -158,6 +241,72 @@ it("should manage promo codes with admin CRUD and soft-delete", async ({ expect 
   });
 });
 
+it("should reject invalid admin promo-code mutations", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const validCode = uniquePromoCode("MUTATION");
+
+  const missingPercent = await createPromoCode({
+    code: validCode,
+    discountType: "percent",
+    subscriptionDuration: "first_invoice",
+  });
+  expect(missingPercent).toMatchObject({
+    status: 400,
+    body: "percent_off_bps must be between 1 and 10000 for percent promo codes.",
+  });
+
+  const conflictingPercent = await createPromoCode({
+    code: uniquePromoCode("CONFLICT"),
+    discountType: "percent",
+    percentOffBps: 1000,
+    amountOffUsdCents: 100,
+    subscriptionDuration: "first_invoice",
+  });
+  expect(conflictingPercent).toMatchObject({
+    status: 400,
+    body: "amount_off_usd_cents must not be set for percent promo codes.",
+  });
+
+  const customerWithoutType = await createPromoCode({
+    code: uniquePromoCode("CUSTOMER"),
+    discountType: "amount_off_usd",
+    amountOffUsdCents: 100,
+    customerId: "customer-without-type",
+    subscriptionDuration: "forever",
+  });
+  expect(customerWithoutType).toMatchObject({
+    status: 400,
+    body: "customer_type is required when customer_id is set.",
+  });
+
+  const invalidWindow = await createPromoCode({
+    code: uniquePromoCode("WINDOW"),
+    discountType: "amount_off_usd",
+    amountOffUsdCents: 100,
+    startsAtMillis: 2_000,
+    expiresAtMillis: 1_000,
+    subscriptionDuration: "forever",
+  });
+  expect(invalidWindow).toMatchObject({
+    status: 400,
+    body: "expires_at_millis must be after starts_at_millis.",
+  });
+
+  const shortCode = await createPercentPromoCode({
+    code: "ABC",
+  });
+  expect(shortCode).toMatchObject({
+    status: 400,
+    body: "Promo code must be at least 4 characters.",
+  });
+
+  const unauthorizedList = await niceBackendFetch("/api/latest/internal/payments/promo-codes", {
+    accessType: "client",
+  });
+  expect(unauthorizedList.status).toBeGreaterThanOrEqual(400);
+  expect(unauthorizedList.status).toBeLessThan(500);
+});
+
 it("should validate promo code quotes and reject invalid, disabled, deleted, and expired codes", async ({ expect }) => {
   await setupProjectWithPromoProducts();
   const { userId } = await Auth.fastSignUp();
@@ -165,15 +314,10 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
   const createRes = await createPercentPromoCode({ code: uniquePromoCode("VALIDATE") });
   expect(createRes.status).toBe(200);
 
-  const validQuote = await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: purchaseCode,
-      price_id: "monthly",
-      quantity: 1,
-      promo_code: createRes.body.code,
-    },
+  const validQuote = await quotePromoCode({
+    fullCode: purchaseCode,
+    priceId: "monthly",
+    promoCode: createRes.body.code,
   });
   expect(validQuote.status).toBe(200);
   if (validQuote.body.valid !== true) {
@@ -190,15 +334,10 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
     subscription_duration: "first_invoice",
   });
 
-  const invalidQuote = await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: purchaseCode,
-      price_id: "monthly",
-      quantity: 1,
-      promo_code: uniquePromoCode("MISSING"),
-    },
+  const invalidQuote = await quotePromoCode({
+    fullCode: purchaseCode,
+    priceId: "monthly",
+    promoCode: uniquePromoCode("MISSING"),
   });
   expect(invalidQuote).toMatchObject({
     status: 200,
@@ -217,15 +356,10 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
   });
   expect(disabledRes.status).toBe(200);
 
-  const disabledQuote = await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: purchaseCode,
-      price_id: "monthly",
-      quantity: 1,
-      promo_code: createRes.body.code,
-    },
+  const disabledQuote = await quotePromoCode({
+    fullCode: purchaseCode,
+    priceId: "monthly",
+    promoCode: createRes.body.code,
   });
   expect(disabledQuote).toMatchObject({
     status: 200,
@@ -241,15 +375,10 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
   });
   expect(expiredRes.status).toBe(200);
 
-  const expiredQuote = await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: purchaseCode,
-      price_id: "monthly",
-      quantity: 1,
-      promo_code: expiredRes.body.code,
-    },
+  const expiredQuote = await quotePromoCode({
+    fullCode: purchaseCode,
+    priceId: "monthly",
+    promoCode: expiredRes.body.code,
   });
   expect(expiredQuote).toMatchObject({
     status: 200,
@@ -267,21 +396,116 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
   });
   expect(deleteRes.status).toBe(200);
 
-  const deletedQuote = await niceBackendFetch("/api/latest/payments/purchases/validate-promo-code", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      full_code: purchaseCode,
-      price_id: "monthly",
-      quantity: 1,
-      promo_code: deletedRes.body.code,
-    },
+  const deletedQuote = await quotePromoCode({
+    fullCode: purchaseCode,
+    priceId: "monthly",
+    promoCode: deletedRes.body.code,
   });
   expect(deletedQuote).toMatchObject({
     status: 200,
     body: {
       valid: false,
       error: "Promo code does not exist.",
+    },
+  });
+});
+
+it("should enforce promo-code start windows and customer/product scopes", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const { userId: allowedUserId } = await Auth.fastSignUp();
+  const subscriptionCode = await createPurchaseCode({ userId: allowedUserId, productId: "promo-subscription" });
+  const otherLineCode = await createPurchaseCode({ userId: allowedUserId, productId: "other-one-time" });
+  const { userId: otherUserId } = await Auth.fastSignUp();
+  const otherCustomerCode = await createPurchaseCode({ userId: otherUserId, productId: "promo-subscription" });
+
+  const notStarted = await createPercentPromoCode({
+    code: uniquePromoCode("FUTURE"),
+    startsAtMillis: Date.now() + 60_000,
+  });
+  expect(notStarted.status).toBe(200);
+  const notStartedQuote = await quotePromoCode({
+    fullCode: subscriptionCode,
+    priceId: "monthly",
+    promoCode: notStarted.body.code,
+  });
+  expect(notStartedQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code is not active yet.",
+    },
+  });
+
+  const productLineScoped = await createPercentPromoCode({
+    code: uniquePromoCode("LINE"),
+    productLineId: "promo",
+  });
+  expect(productLineScoped.status).toBe(200);
+  const wrongLineQuote = await quotePromoCode({
+    fullCode: otherLineCode,
+    priceId: "single",
+    promoCode: productLineScoped.body.code,
+  });
+  expect(wrongLineQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code is not available for this product line.",
+    },
+  });
+
+  const productScoped = await createPercentPromoCode({
+    code: uniquePromoCode("PRODUCT"),
+    productId: "promo-subscription",
+  });
+  expect(productScoped.status).toBe(200);
+  const wrongProductQuote = await quotePromoCode({
+    fullCode: otherLineCode,
+    priceId: "single",
+    promoCode: productScoped.body.code,
+  });
+  expect(wrongProductQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code is not available for this product.",
+    },
+  });
+
+  const priceScoped = await createPercentPromoCode({
+    code: uniquePromoCode("PRICE"),
+    priceId: "monthly",
+  });
+  expect(priceScoped.status).toBe(200);
+  const wrongPriceQuote = await quotePromoCode({
+    fullCode: subscriptionCode,
+    priceId: "yearly",
+    promoCode: priceScoped.body.code,
+  });
+  expect(wrongPriceQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code is not available for this price.",
+    },
+  });
+
+  const customerScoped = await createPercentPromoCode({
+    code: uniquePromoCode("CUSTOMERSCOPE"),
+    customerType: "user",
+    customerId: allowedUserId,
+  });
+  expect(customerScoped.status).toBe(200);
+  const wrongCustomerQuote = await quotePromoCode({
+    fullCode: otherCustomerCode,
+    priceId: "monthly",
+    promoCode: customerScoped.body.code,
+  });
+  expect(wrongCustomerQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code is not available for this customer.",
     },
   });
 });
@@ -320,39 +544,34 @@ it("should keep checkout unchanged without promo_code and apply promo codes in t
 
   const { userId: defaultUserId } = await Auth.fastSignUp();
   const defaultPurchaseCode = await createPurchaseCode({ userId: defaultUserId, productId: "promo-one-time" });
-  const defaultCheckout = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      full_code: defaultPurchaseCode,
-      price_id: "single",
-      quantity: 1,
-    },
+  const fixedPromo = await createAmountOffPromoCode({ code: uniquePromoCode("CHECKOUT") });
+  expect(fixedPromo.status).toBe(200);
+
+  const defaultCheckout = await redeemTestModePurchase({
+    fullCode: defaultPurchaseCode,
+    priceId: "single",
+    quantity: 1,
   });
   expect(defaultCheckout.status).toBe(200);
   expect(defaultCheckout.body).toEqual({ success: true });
 
-  const fixedPromo = await createAmountOffPromoCode({ code: uniquePromoCode("CHECKOUT") });
-  expect(fixedPromo.status).toBe(200);
+  const defaultRedemptions = await listPromoRedemptions(fixedPromo.body.id);
+  expect(defaultRedemptions.status).toBe(200);
+  expect(defaultRedemptions.body.items).toHaveLength(0);
+
   const { userId: discountedUserId } = await Auth.fastSignUp();
   const discountedPurchaseCode = await createPurchaseCode({ userId: discountedUserId, productId: "promo-one-time" });
 
-  const discountedCheckout = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
-    method: "POST",
-    accessType: "admin",
-    body: {
-      full_code: discountedPurchaseCode,
-      price_id: "single",
-      quantity: 2,
-      promo_code: fixedPromo.body.code,
-    },
+  const discountedCheckout = await redeemTestModePurchase({
+    fullCode: discountedPurchaseCode,
+    priceId: "single",
+    quantity: 2,
+    promoCode: fixedPromo.body.code,
   });
   expect(discountedCheckout.status).toBe(200);
   expect(discountedCheckout.body).toEqual({ success: true });
 
-  const redemptions = await niceBackendFetch(`/api/latest/internal/payments/promo-codes/${fixedPromo.body.id}/redemptions`, {
-    accessType: "admin",
-  });
+  const redemptions = await listPromoRedemptions(fixedPromo.body.id);
   expect(redemptions.status).toBe(200);
   expect(redemptions.body.items).toHaveLength(1);
   expect(redemptions.body.items[0]).toMatchObject({
@@ -366,6 +585,180 @@ it("should keep checkout unchanged without promo_code and apply promo codes in t
     discount_amount_usd_cents: 1250,
     final_amount_usd_cents: 8750,
     subscription_duration: "forever",
+    status: "applied",
+    applied_at_millis: expect.any(Number),
+  });
+});
+
+it("should enforce redemption limits during validation and checkout", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const limitedPromo = await createPercentPromoCode({
+    code: uniquePromoCode("LIMIT"),
+    maxRedemptions: 1,
+    maxRedemptionsPerCustomer: 1,
+  });
+  expect(limitedPromo.status).toBe(200);
+
+  const { userId: firstUserId } = await Auth.fastSignUp();
+  const firstCode = await createPurchaseCode({ userId: firstUserId, productId: "promo-one-time" });
+  const firstCheckout = await redeemTestModePurchase({
+    fullCode: firstCode,
+    priceId: "single",
+    promoCode: limitedPromo.body.code,
+  });
+  expect(firstCheckout.status).toBe(200);
+
+  const firstUserSecondCode = await createPurchaseCode({ userId: firstUserId, productId: "promo-one-time" });
+  const perCustomerQuote = await quotePromoCode({
+    fullCode: firstUserSecondCode,
+    priceId: "single",
+    promoCode: limitedPromo.body.code,
+  });
+  expect(perCustomerQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code has reached its redemption limit.",
+    },
+  });
+
+  const { userId: secondUserId } = await Auth.fastSignUp();
+  const secondCode = await createPurchaseCode({ userId: secondUserId, productId: "promo-one-time" });
+  const globalLimitCheckout = await redeemTestModePurchase({
+    fullCode: secondCode,
+    priceId: "single",
+    promoCode: limitedPromo.body.code,
+  });
+  expect(globalLimitCheckout).toMatchObject({
+    status: 400,
+    body: "Promo code has reached its redemption limit.",
+  });
+});
+
+it("should enforce per-customer redemption limits independently from global limits", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const perCustomerPromo = await createPercentPromoCode({
+    code: uniquePromoCode("PERUSER"),
+    maxRedemptionsPerCustomer: 1,
+  });
+  expect(perCustomerPromo.status).toBe(200);
+
+  const { userId: firstUserId } = await Auth.fastSignUp();
+  const firstCode = await createPurchaseCode({ userId: firstUserId, productId: "promo-one-time" });
+  const firstCheckout = await redeemTestModePurchase({
+    fullCode: firstCode,
+    priceId: "single",
+    promoCode: perCustomerPromo.body.code,
+  });
+  expect(firstCheckout.status).toBe(200);
+
+  const firstUserSecondCode = await createPurchaseCode({ userId: firstUserId, productId: "promo-one-time" });
+  const perCustomerQuote = await quotePromoCode({
+    fullCode: firstUserSecondCode,
+    priceId: "single",
+    promoCode: perCustomerPromo.body.code,
+  });
+  expect(perCustomerQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: false,
+      error: "Promo code has already been used by this customer.",
+    },
+  });
+
+  const { userId: secondUserId } = await Auth.fastSignUp();
+  const secondCode = await createPurchaseCode({ userId: secondUserId, productId: "promo-one-time" });
+  const secondCheckout = await redeemTestModePurchase({
+    fullCode: secondCode,
+    priceId: "single",
+    promoCode: perCustomerPromo.body.code,
+  });
+  expect(secondCheckout.status).toBe(200);
+});
+
+it("should cap fixed discounts and round percent discounts", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const cappedPromo = await createPromoCode({
+    code: uniquePromoCode("CAP"),
+    displayName: "E2E cap promo",
+    discountType: "amount_off_usd",
+    amountOffUsdCents: 10_000,
+    subscriptionDuration: "forever",
+  });
+  expect(cappedPromo.status).toBe(200);
+
+  const { userId: cappedUserId } = await Auth.fastSignUp();
+  const cappedCode = await createPurchaseCode({ userId: cappedUserId, productId: "promo-one-time" });
+  const cappedQuote = await quotePromoCode({
+    fullCode: cappedCode,
+    priceId: "single",
+    promoCode: cappedPromo.body.code,
+  });
+  expect(cappedQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: true,
+      original_amount_usd_cents: 5000,
+      discount_amount_usd_cents: 5000,
+      final_amount_usd_cents: 0,
+    },
+  });
+
+  const roundedPromo = await createPercentPromoCode({
+    code: uniquePromoCode("ROUND"),
+    percentOffBps: 3333,
+  });
+  expect(roundedPromo.status).toBe(200);
+  const { userId: roundedUserId } = await Auth.fastSignUp();
+  const roundedCode = await createPurchaseCode({ userId: roundedUserId, productId: "other-one-time" });
+  const roundedQuote = await quotePromoCode({
+    fullCode: roundedCode,
+    priceId: "single",
+    promoCode: roundedPromo.body.code,
+  });
+  expect(roundedQuote).toMatchObject({
+    status: 200,
+    body: {
+      valid: true,
+      original_amount_usd_cents: 3000,
+      discount_amount_usd_cents: 999,
+      final_amount_usd_cents: 2001,
+    },
+  });
+});
+
+it("should apply percent promo codes to subscription checkout in test mode", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const promo = await createPercentPromoCode({
+    code: uniquePromoCode("SUB"),
+    subscriptionDuration: "first_invoice",
+  });
+  expect(promo.status).toBe(200);
+
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "promo-subscription" });
+  const checkout = await redeemTestModePurchase({
+    fullCode: code,
+    priceId: "monthly",
+    promoCode: promo.body.code,
+  });
+  expect(checkout.status).toBe(200);
+  expect(checkout.body).toEqual({ success: true });
+
+  const redemptions = await listPromoRedemptions(promo.body.id);
+  expect(redemptions.status).toBe(200);
+  expect(redemptions.body.items).toHaveLength(1);
+  expect(redemptions.body.items[0]).toMatchObject({
+    promo_code_id: promo.body.id,
+    customer_type: "user",
+    customer_id: userId,
+    product_id: "promo-subscription",
+    price_id: "monthly",
+    quantity: 1,
+    original_amount_usd_cents: 2000,
+    discount_amount_usd_cents: 500,
+    final_amount_usd_cents: 1500,
+    subscription_duration: "first_invoice",
     status: "applied",
     applied_at_millis: expect.any(Number),
   });
