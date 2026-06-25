@@ -18,6 +18,7 @@
   "dependencies": {
     "@elysiajs/node": "^1.4.5",
     "@hexclave/shared": "workspace:*",
+    "@sentry/node": "^10.42.0",
     "@sinclair/typebox": "^0.34.49",
     "elkjs": "^0.11.1",
     "elysia": "^1.4.28",

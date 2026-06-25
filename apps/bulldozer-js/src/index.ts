@@ -1,7 +1,8 @@
 import { node } from "@elysiajs/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
 import { mkdtempSync, mkdirSync } from "node:fs";
@@ -13,6 +14,9 @@ import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementatio
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
 import type { CustomerType, Json, ProductSnapshot, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
+import { initSentry } from "./sentry.js";
+
+initSentry();
 
 const REFUND_TXN_PREFIX = "refund:";
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
@@ -477,17 +481,6 @@ function ok() {
   return { success: true };
 }
 
-let lastTickMillis = 0;
-async function runTickLoop(): Promise<void> {
-  try {
-    lastTickMillis = Math.max(Date.now(), lastTickMillis);
-    await bulldozerDb.withSnapshotReplicated(async (snapshot) => await snapshot.tick(new Date(lastTickMillis)));
-  } catch (error) {
-    console.error("Bulldozer JS tick loop error:", error);
-  }
-  setTimeout(() => { void runTickLoop(); }, 1000);
-}
-
 const app = new Elysia({ adapter: node() })
   .get("/health", () => ({ ok: true }))
   .post("/internal/payments/init", () => handler(async () => ok()))
@@ -577,6 +570,20 @@ const app = new Elysia({ adapter: node() })
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
 
-void runTickLoop();
+// Periodically advance the bulldozer clock so timefold-queued rows (subscription renewals, expiries, …)
+// are processed. `lastTickMillis` is clamped monotonically so a backwards wall-clock jump can't rewind it,
+// and no-op ticks are cheap because `withSnapshotReplicated` skips the write when nothing changed.
+runAsynchronously(async () => {
+  let lastTickMillis = 0;
+  while (true) {
+    try {
+      lastTickMillis = Math.max(Date.now(), lastTickMillis);
+      await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
+    } catch (error) {
+      captureError("Bulldozer JS tick loop", error);
+    }
+    await wait(1000);
+  }
+});
 
 export type App = typeof app;
