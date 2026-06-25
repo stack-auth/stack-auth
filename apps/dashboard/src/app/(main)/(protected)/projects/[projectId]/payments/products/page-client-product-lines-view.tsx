@@ -28,7 +28,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
-import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
+import type { CustomerType } from "@/components/payments/customer-selector";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
 import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
@@ -538,6 +540,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
   const router = useRouter();
   const customerType = product.customerType;
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
   const [currentHash, setCurrentHash] = useState<string | null>(null);
   const hashAnchor = `#product-${id}`;
   const isHashTarget = currentHash === hashAnchor;
@@ -976,6 +979,12 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
                 >
                   View Details
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  icon={<ShoppingCartIcon className="h-4 w-4" />}
+                  onClick={() => setShowCheckoutDialog(true)}
+                >
+                  Create checkout
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   icon={<PencilSimpleIcon className="h-4 w-4" />}
@@ -1120,6 +1129,13 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
       >
         Are you sure you want to delete this product?
       </ActionDialog>
+      <CreateCheckoutDialog
+        open={showCheckoutDialog}
+        onOpenChange={setShowCheckoutDialog}
+        customerType={customerType as CustomerType}
+        productId={id}
+        lockProduct
+      />
     </div >
   );
 }
