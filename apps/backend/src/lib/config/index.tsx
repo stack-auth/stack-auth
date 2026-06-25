@@ -10,10 +10,10 @@ import { filterUndefined, typedEntries } from "@hexclave/shared/dist/utils/objec
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
 import * as yup from "yup";
-import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
-import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "./development-environment";
-import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
-import { listPermissionDefinitionsFromConfig } from "./permissions";
+import { RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../../prisma-client";
+import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "../development-environment";
+import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "../local-emulator";
+import { listPermissionDefinitionsFromConfig } from "../permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 export type BranchConfigPushedError = {
@@ -472,6 +472,129 @@ export async function unlinkBranchConfigOverrideSource(options: {
     projectId: options.projectId,
     branchId: options.branchId,
     source: { type: "unlinked" },
+  });
+}
+
+export type GithubConfigSource = Extract<BranchConfigSourceApi, { type: "pushed-from-github" }>;
+
+/**
+ * Single-flight guard for the dashboard→GitHub config agent. Reads the source
+ * row `FOR UPDATE` and, unless a fresh run is already in flight, atomically
+ * marks `agent_run.status = "running"`. The long agent work runs OUTSIDE this
+ * short transaction; {@link recordConfigAgentRunResult} writes the terminal
+ * status when it finishes. A `running` marker older than `staleMs` is treated
+ * as abandoned (e.g. the server died mid-run) and may be taken over.
+ */
+export async function tryStartConfigAgentRun(options: {
+  projectId: string,
+  branchId: string,
+  staleMs: number,
+  nowMs: number,
+}): Promise<{ started: boolean, source: GithubConfigSource }> {
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: any }[]>`
+      SELECT "source" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const source = rows[0]?.source;
+    if (!source || source.type !== "pushed-from-github") {
+      throw new HexclaveAssertionError("Config source is not linked to GitHub; cannot run the config agent.");
+    }
+    const run = source.agent_run;
+    if (run && run.status === "running" && options.nowMs - run.started_at < options.staleMs) {
+      return { started: false, source: source as GithubConfigSource };
+    }
+    const newSource: GithubConfigSource = {
+      ...source,
+      agent_run: { status: "running", started_at: options.nowMs },
+    };
+    await tx.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+      data: { source: newSource as any },
+    });
+    return { started: true, source: newSource };
+  });
+}
+
+/**
+ * Records the outcome of a config agent run: stamps the terminal `agent_run`
+ * status and, on success/no-change, refreshes the cached `latest_snapshot` (and
+ * `commit_hash` when a commit was pushed). Read-modify-write under `FOR UPDATE`
+ * so it never clobbers a concurrent re-link. No-ops if the row was unlinked
+ * meanwhile.
+ */
+export async function recordConfigAgentRunResult(options: {
+  projectId: string,
+  branchId: string,
+  nowMs: number,
+  outcome:
+    | { status: "success", commitUrl?: string, snapshot: { snapshotId: string, baseCommitSha: string }, newCommitHash?: string }
+    | { status: "no-change", snapshot: { snapshotId: string, baseCommitSha: string } }
+    | { status: "error", error: string },
+}): Promise<void> {
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: any }[]>`
+      SELECT "source" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const source = rows[0]?.source;
+    if (!source || source.type !== "pushed-from-github") return;
+    const startedAt = source.agent_run?.started_at ?? options.nowMs;
+    const next: GithubConfigSource = { ...source };
+    if (options.outcome.status === "error") {
+      next.agent_run = { status: "error", started_at: startedAt, finished_at: options.nowMs, error: options.outcome.error };
+    } else {
+      next.latest_snapshot = {
+        snapshot_id: options.outcome.snapshot.snapshotId,
+        base_commit_sha: options.outcome.snapshot.baseCommitSha,
+        updated_at: options.nowMs,
+      };
+      if (options.outcome.status === "success") {
+        next.agent_run = { status: "success", started_at: startedAt, finished_at: options.nowMs, commit_url: options.outcome.commitUrl };
+        if (options.outcome.newCommitHash) next.commit_hash = options.outcome.newCommitHash;
+      } else {
+        next.agent_run = { status: "no-change", started_at: startedAt, finished_at: options.nowMs };
+      }
+    }
+    await tx.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+      data: { source: next as any },
+    });
+  });
+}
+
+/**
+ * Persists a freshly-prepared repo snapshot into the source (without touching
+ * `agent_run`). Used by the snapshot-prep route to warm the cache on link.
+ */
+export async function recordConfigRepoSnapshot(options: {
+  projectId: string,
+  branchId: string,
+  nowMs: number,
+  snapshot: { snapshotId: string, baseCommitSha: string },
+}): Promise<void> {
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: any }[]>`
+      SELECT "source" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const source = rows[0]?.source;
+    if (!source || source.type !== "pushed-from-github") return;
+    const next: GithubConfigSource = {
+      ...source,
+      latest_snapshot: {
+        snapshot_id: options.snapshot.snapshotId,
+        base_commit_sha: options.snapshot.baseCommitSha,
+        updated_at: options.nowMs,
+      },
+    };
+    await tx.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+      data: { source: next as any },
+    });
   });
 }
 
@@ -1173,7 +1296,7 @@ import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes for develop
     throw new HexclaveAssertionError("Vitest context is required for in-source tests.");
   }
 
-  const developmentEnvironment = await import("./development-environment");
+  const developmentEnvironment = await import("../development-environment");
 
   // Spy on getEnvironmentConfigWriteBlockReason directly, because spying on
   // isDevelopmentEnvironmentProject does not intercept intra-module calls

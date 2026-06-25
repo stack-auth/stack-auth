@@ -1,5 +1,3 @@
-import * as babelParser from "@babel/parser";
-import * as t from "@babel/types";
 import { isValidConfig, normalize } from "./config/format";
 
 const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
@@ -60,98 +58,6 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * Statically evaluates a Babel AST node representing a JSON-like literal
- * (objects, arrays, strings, numbers, booleans, null). Returns `undefined`
- * for nodes that can't be resolved without execution (function calls,
- * identifiers, template literals, etc.).
- */
-function evaluateLiteralNode(node: t.Node): unknown {
-  // Unwrap TS type assertions so `{ ... } satisfies T` / `{ ... } as const` resolve.
-  if (t.isTSAsExpression(node) || t.isTSSatisfiesExpression(node)) {
-    return evaluateLiteralNode(node.expression);
-  }
-  if (t.isObjectExpression(node)) {
-    const result: Record<string, unknown> = {};
-    for (const prop of node.properties) {
-      if (t.isSpreadElement(prop) || !t.isObjectProperty(prop)) return undefined;
-      if (prop.computed) return undefined;
-      const key = t.isIdentifier(prop.key)
-        ? prop.key.name
-        : t.isStringLiteral(prop.key)
-          ? prop.key.value
-          : t.isNumericLiteral(prop.key)
-            ? String(prop.key.value)
-            : undefined;
-      if (key === undefined) return undefined;
-      const value = evaluateLiteralNode(prop.value);
-      if (value === undefined) return undefined;
-      result[key] = value;
-    }
-    return result;
-  }
-  if (t.isArrayExpression(node)) {
-    const result: unknown[] = [];
-    for (const element of node.elements) {
-      if (element == null || t.isSpreadElement(element)) return undefined;
-      const value = evaluateLiteralNode(element);
-      if (value === undefined) return undefined;
-      result.push(value);
-    }
-    return result;
-  }
-  if (t.isStringLiteral(node)) return node.value;
-  if (t.isNumericLiteral(node)) return node.value;
-  if (t.isBooleanLiteral(node)) return node.value;
-  if (t.isNullLiteral(node)) return null;
-  if (t.isUnaryExpression(node) && node.operator === "-" && t.isNumericLiteral(node.argument)) {
-    return -node.argument.value;
-  }
-  return undefined;
-}
-
-/**
- * Parses a config file and extracts the exported `config` value by statically
- * evaluating the AST. Handles both JSON-formatted and JavaScript object literal
- * syntax (unquoted keys, trailing commas). Never executes code, so it is safe
- * for untrusted input such as content fetched from a remote repository.
- *
- * Returns:
- * - `Record<string, unknown>` when the config exports an object literal
- * - `string` when the config exports a string literal (e.g. "show-onboarding")
- * - `null` when no `config` export is found or the expression can't be
- *   statically resolved
- */
-export function parseStaticConfigLiteral(content: string): Record<string, unknown> | string | null {
-  let ast: babelParser.ParseResult<t.File>;
-  try {
-    ast = babelParser.parse(content, {
-      sourceType: "module",
-      plugins: ["typescript", "importAttributes"],
-    });
-  } catch {
-    return null;
-  }
-
-  for (const statement of ast.program.body) {
-    if (!t.isExportNamedDeclaration(statement)) continue;
-    if (!t.isVariableDeclaration(statement.declaration)) continue;
-    for (const decl of statement.declaration.declarations) {
-      if (!t.isIdentifier(decl.id) || decl.id.name !== "config" || decl.init == null) continue;
-      const value = evaluateLiteralNode(decl.init);
-      if (value === undefined) return null;
-      if (typeof value === "string") return value;
-      if (isRecord(value)) return value;
-      return null;
-    }
-  }
-  return null;
-}
-
 // --- inline vitest tests ---
 
 import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({ expect }) => {
@@ -210,39 +116,3 @@ import.meta.vitest?.test("detectConfigImportPackage picks first matching package
   expect(detectConfigImportPackage([])).toBeUndefined();
 });
 
-import.meta.vitest?.test("parseStaticConfigLiteral extracts JSON from rendered config", ({ expect }) => {
-  const rendered = renderConfigFileContent({ auth: { allowSignUp: true } });
-  expect(parseStaticConfigLiteral(rendered)).toEqual({ auth: { allowSignUp: true } });
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral returns null for non-static content", ({ expect }) => {
-  expect(parseStaticConfigLiteral("export const config = someFunction();")).toBeNull();
-  expect(parseStaticConfigLiteral("export const other = {};")).toBeNull();
-  expect(parseStaticConfigLiteral("")).toBeNull();
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral returns the string for show-onboarding export", ({ expect }) => {
-  expect(parseStaticConfigLiteral('export const config = "show-onboarding";')).toBe("show-onboarding");
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral handles JS object syntax (unquoted keys, trailing commas)", ({ expect }) => {
-  const content = `import type { HexclaveConfig } from "@hexclave/next";
-export const config: HexclaveConfig = {
-  teams: { allowClientTeamCreation: false },
-};`;
-  expect(parseStaticConfigLiteral(content)).toEqual({ teams: { allowClientTeamCreation: false } });
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral rejects computed property keys", ({ expect }) => {
-  expect(parseStaticConfigLiteral('const key = "a"; export const config = { [key]: true };')).toBeNull();
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral unwraps TS `satisfies` assertion", ({ expect }) => {
-  const content = `import type { HexclaveConfig } from "@hexclave/next";
-export const config = { auth: { allowSignUp: true } } satisfies HexclaveConfig;`;
-  expect(parseStaticConfigLiteral(content)).toEqual({ auth: { allowSignUp: true } });
-});
-
-import.meta.vitest?.test("parseStaticConfigLiteral unwraps TS `as const` assertion", ({ expect }) => {
-  expect(parseStaticConfigLiteral('export const config = { enabled: true } as const;')).toEqual({ enabled: true });
-});

@@ -834,6 +834,46 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
+  /**
+   * Applies a dashboard config change to the linked GitHub repo by running the
+   * config agent in a sandbox (server-side). Returns immediately; poll
+   * `getPushedConfigSource().agent_run` for progress. The GitHub access token is
+   * the caller's own OAuth token and is used transiently server-side.
+   */
+  async applyConfigViaAgent(options: { configUpdate: any, commitMessage?: string, githubAccessToken: string }): Promise<{ status: "started" | "already-running" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/apply`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          github_access_token: options.githubAccessToken,
+          config_update_string: JSON.stringify(options.configUpdate),
+          ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Warms the sandbox snapshot for the linked repo so the next config write
+   * warm-boots. Fire-and-forget; safe to call whenever a repo is linked.
+   */
+  async prepareConfigSnapshot(options: { githubAccessToken: string }): Promise<{ status: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/snapshot`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ github_access_token: options.githubAccessToken }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}/reset-keys`,

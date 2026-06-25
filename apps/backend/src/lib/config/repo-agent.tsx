@@ -231,7 +231,7 @@ async function runAgent(sandbox: Sandbox, update: EnvironmentConfigOverrideOverr
   const statusBuf = await sandbox.readFileToBuffer({ path: `${TOOLS_DIR}/status.json` }).catch(() => null);
   const status = statusBuf ? JSON.parse(statusBuf.toString()) : null;
   if (!status?.ok) {
-    captureError("config-update-repo-agent", new ConfigRepoAgentError("Sandbox agent did not complete", { cause: { error: status?.error, stage: status?.stage } }));
+    captureError("config-repo-agent", new ConfigRepoAgentError("Sandbox agent did not complete", { cause: { error: status?.error, stage: status?.stage } }));
     throw new ConfigRepoAgentError("The config agent could not apply the changes inside the sandbox.");
   }
 }
@@ -250,7 +250,7 @@ async function deleteSnapshot(creds: SandboxCreds, snapshotId: string): Promise<
     const snap = await Snapshot.get({ snapshotId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
     await snap.delete();
   } catch (error) {
-    captureError("config-update-repo-agent-snapshot-cleanup", error);
+    captureError("config-repo-agent-snapshot-cleanup", error);
   }
 }
 

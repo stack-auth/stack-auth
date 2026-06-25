@@ -528,7 +528,14 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
     });
   };
 
-  refresh();
+  // Defer the first refresh out of the current call stack. This overlay is
+  // mounted from a base-class (client app) constructor, but `refresh` calls
+  // `app.getProject()`, which synchronously reads `_adminProjectCache` — a field
+  // initialized only by the *admin* subclass, after the base constructor returns.
+  // Calling it synchronously here would throw "Cannot read properties of
+  // undefined (reading 'getOrWait')". By the next tick the instance is fully
+  // constructed, so the field exists.
+  setTimeout(refresh, 0);
   const interval = setInterval(refresh, REFRESH_INTERVAL_MS);
 
   const cleanup = () => {

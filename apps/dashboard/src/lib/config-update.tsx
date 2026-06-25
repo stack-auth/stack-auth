@@ -9,10 +9,9 @@ import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@hexcla
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { createGithubFetch, GITHUB_SCOPE_REQUIREMENTS } from "./github-api";
-import { pushConfigUpdateToGitHub } from "./github-config-push";
+import { GITHUB_SCOPE_REQUIREMENTS } from "./github-api";
 
 type GithubPushedSource = Extract<PushedConfigSource, { type: "pushed-from-github" }>;
 
@@ -102,6 +101,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
         return (
           <GithubPushDialog
             open={dialogState.isOpen}
+            adminApp={dialogState.adminApp}
             source={dialogState.source}
             configUpdate={dialogState.configUpdate}
             projectId={projectId}
@@ -169,6 +169,7 @@ function useConfigUpdateDialog() {
 
 type GithubPushDialogProps = {
   open: boolean,
+  adminApp: StackAdminApp<false> | null,
   source: GithubPushedSource,
   configUpdate: EnvironmentConfigOverrideOverride | null,
   projectId: string | undefined,
@@ -209,7 +210,7 @@ function projectSettingsHref(projectId: string | undefined): string {
  * `Suspense` boundary whose fallback mirrors the dialog body except that the
  * "Push to GitHub" button stays disabled while we resolve.
  */
-function GithubPushDialog({ open, source, configUpdate, projectId, onSettle }: GithubPushDialogProps) {
+function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onSettle }: GithubPushDialogProps) {
   // Status starts as "checking" so the initial render shows a disabled
   // "Push to GitHub" button — matching what we want during Suspense fallback.
   const [scopeStatus, setScopeStatus] = useState<ScopeCheck["status"]>("checking");
@@ -279,6 +280,7 @@ function GithubPushDialog({ open, source, configUpdate, projectId, onSettle }: G
     >
       <Suspense fallback={<GithubPushBodyFallback projectId={projectId} />}>
         <GithubPushBody
+          adminApp={adminApp}
           source={source}
           configUpdate={configUpdate}
           projectId={projectId}
@@ -310,6 +312,7 @@ function GithubPushBodyFallback({ projectId }: { projectId: string | undefined }
 }
 
 type GithubPushBodyProps = {
+  adminApp: StackAdminApp<false> | null,
   source: GithubPushedSource,
   configUpdate: EnvironmentConfigOverrideOverride | null,
   projectId: string | undefined,
@@ -319,6 +322,7 @@ type GithubPushBodyProps = {
 };
 
 function GithubPushBody({
+  adminApp,
   source,
   configUpdate,
   projectId,
@@ -338,6 +342,7 @@ function GithubPushBody({
   );
   const [commitMessage, setCommitMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
   const placeholderCommitMessage = "Update Hexclave configuration";
 
@@ -390,31 +395,79 @@ function GithubPushBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- githubAccountsKey is the stable identity for githubAccounts
   }, [githubAccountsKey]);
 
-  const githubFetch = useMemo(
-    () => (scopeCheck.status === "ok" ? createGithubFetch(scopeCheck.account) : null),
-    [scopeCheck],
-  );
-
   const handlePush = useCallback(async (): Promise<"prevent-close" | undefined> => {
     if (configUpdate == null) {
       setErrorMessage("No configuration changes to push.");
       return "prevent-close";
     }
-    if (githubFetch == null) {
+    if (scopeCheck.status !== "ok") {
       setErrorMessage("Connect a GitHub account with the required scopes before pushing changes.");
       return "prevent-close";
     }
+    // The admin app's underlying interface carries the new agent endpoints. We
+    // reach it directly (rather than via a generated app method) to keep this
+    // feature self-contained in `@hexclave/shared`.
+    const adminInterface = (adminApp as any)?._interface;
+    if (adminInterface == null || typeof adminInterface.applyConfigViaAgent !== "function") {
+      setErrorMessage("This dashboard build can't push config to GitHub. Please refresh and try again.");
+      return "prevent-close";
+    }
+
     setErrorMessage(null);
+    setProgressMessage("Starting the config agent…");
     try {
-      await pushConfigUpdateToGitHub({
-        source,
+      // The dashboard user's own GitHub token, used transiently server-side for
+      // the sandbox's git push — never persisted, never sent to the agent.
+      const tokenResult = await scopeCheck.account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
+      if (tokenResult.status !== "ok") {
+        setProgressMessage(null);
+        setErrorMessage("Could not get a GitHub token with the required permissions. Reconnect your GitHub account and try again.");
+        return "prevent-close";
+      }
+
+      const start = await adminInterface.applyConfigViaAgent({
         configUpdate,
         commitMessage: commitMessage.trim().length > 0 ? commitMessage : placeholderCommitMessage,
-        githubFetch,
+        githubAccessToken: tokenResult.data.accessToken,
       });
+      if (start.status === "already-running") {
+        setProgressMessage(null);
+        setErrorMessage("Another configuration update is already running for this project. Wait for it to finish, then try again.");
+        return "prevent-close";
+      }
+
+      // Poll the source's agent_run until the background job reports a terminal
+      // status. The agent does real repo work (edit + typecheck + commit), so
+      // this can take a couple of minutes.
+      setProgressMessage("Applying your change in a sandbox and committing to GitHub…");
+      const deadline = Date.now() + 8 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        let latest: any;
+        try {
+          latest = await adminInterface.getPushedConfigSource();
+        } catch {
+          continue; // transient — keep polling
+        }
+        const run = latest?.type === "pushed-from-github" ? latest.agent_run : null;
+        if (run == null || run.status === "running") continue;
+
+        setProgressMessage(null);
+        if (run.status === "error") {
+          setErrorMessage(run.error ?? "The config agent failed to apply your change.");
+          return "prevent-close";
+        }
+        // success or no-change: mirror into cloud config for immediate UI feedback.
+        onSettle(true);
+        return undefined;
+      }
+
+      setProgressMessage(null);
+      setErrorMessage("Timed out waiting for the config agent. Your change may still be in progress — check the linked repository.");
+      return "prevent-close";
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error pushing to GitHub.";
-      captureError("config-update-github-push", {
+      captureError("config-update-github-agent", {
         projectId,
         owner: source.owner,
         repo: source.repo,
@@ -422,12 +475,11 @@ function GithubPushBody({
         configFilePath: source.configFilePath,
         cause: error,
       });
+      setProgressMessage(null);
       setErrorMessage(message);
       return "prevent-close";
     }
-    onSettle(true);
-    return undefined;
-  }, [commitMessage, configUpdate, githubFetch, onSettle, projectId, source]);
+  }, [adminApp, commitMessage, configUpdate, onSettle, projectId, scopeCheck, source]);
 
   const handleConnect = useCallback(async (): Promise<"prevent-close" | undefined> => {
     // Full-page redirect to the OAuth provider. When scopes are missing on
@@ -471,6 +523,11 @@ function GithubPushBody({
             <code className="text-xs">{source.branch}</code>.
           </p>
         </div>
+      )}
+      {progressMessage != null && (
+        <p className="text-sm text-muted-foreground">
+          {progressMessage}
+        </p>
       )}
       {errorMessage != null && (
         <p className="text-sm text-destructive">
