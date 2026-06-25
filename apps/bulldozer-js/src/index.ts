@@ -9,8 +9,10 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
+import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
+import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
 import type { CustomerType, Json, ProductSnapshot, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
@@ -33,10 +35,31 @@ function defaultLmdbPath() {
   return join(process.cwd(), ".data", "bulldozer-js-lmdb");
 }
 
-const lmdbPath = defaultLmdbPath();
-mkdirSync(lmdbPath, { recursive: true });
+function readOptionalNonNegativeNumberEnv(name: string): number | undefined {
+  const value = process.env[name];
+  if (value === undefined || value.length === 0) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative finite number`);
+  return parsed;
+}
+
+function createLowLevelDatabase(): LowLevelDatabase {
+  if (process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND === "in-memory") {
+    return declareInMemoryLowLevelDatabase(crypto.randomUUID());
+  }
+
+  const lmdbPath = defaultLmdbPath();
+  mkdirSync(lmdbPath, { recursive: true });
+  return declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({
+    path: lmdbPath,
+    simulateReadMissDelayMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_SIMULATE_READ_MISS_DELAY_MS"),
+  }));
+}
+
 const bulldozerDb = declareBulldozerDatabase(
-  declarePiledriverDatabase(declareInstantAvailabilityLowLevelDatabase(declareLmdbLowLevelDatabase({ path: lmdbPath }))),
+  declarePiledriverDatabase(createLowLevelDatabase(), {
+    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  }),
   { migrations: schema.migrations },
 );
 await bulldozerDb.applyRemainingMigrations();
@@ -55,12 +78,18 @@ function notImplemented(operation: string) {
   return jsonResponse({ error: "not_implemented", operation }, { status: 501 });
 }
 
+function timingHeaders(startedAt: number): HeadersInit | undefined {
+  if (process.env.HEXCLAVE_BULLDOZER_EMIT_HANDLER_TIMING !== "1") return undefined;
+  return { "x-bulldozer-handler-ms": (performance.now() - startedAt).toFixed(3) };
+}
+
 async function handler(operation: () => Promise<unknown>) {
+  const startedAt = performance.now();
   try {
-    return jsonResponse(await operation());
+    return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Bulldozer server error";
-    return jsonResponse({ error: "bulldozer_server_error", message }, { status: 500 });
+    return jsonResponse({ error: "bulldozer_server_error", message }, { status: 500, headers: timingHeaders(startedAt) });
   }
 }
 

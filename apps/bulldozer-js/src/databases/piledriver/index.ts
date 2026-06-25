@@ -61,6 +61,9 @@ export type PiledriverDatabaseDebugSnapshot = {
   roots: Array<{ keyBase64: string, keyUtf8: string | null, keyHex: string, serializedJson: unknown, valueByteLength: number }>,
   heap: Array<{ keyBase64: string, keyUtf8: string | null, keyHex: string, serializedJson: unknown, valueByteLength: number }>,
 };
+export type PiledriverDatabaseOptions = {
+  disableHeapReadCache?: boolean,
+};
 
 // Tracks the chain of objects currently being serialized, so cycles fail fast with a clear
 // error instead of hanging (a heap cycle would deadlock on its own memoized promise, and a
@@ -72,7 +75,7 @@ type SerializationPath = {
 };
 const emptySerializationPath: SerializationPath = { objects: new Set(), heapObjects: new Set() };
 
-export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase): PiledriverDatabase {
+export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options: PiledriverDatabaseOptions = {}): PiledriverDatabase {
   // TODO actually support cycles both for heap and non-heap objects (right now they are detected and rejected)
 
   const rootStore = lowLevelDb.declareKvStore("root");
@@ -120,7 +123,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase): Piledri
   const getHeapObjectByKey = async (key: ArrayBuffer): Promise<{ object: PiledriverHeapObject | null, seq: DatabaseSeq }> => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const existingEntry = heapObjectsByHeapKeyBase64.get(keyBase64);
-    if (existingEntry) {
+    if (!options.disableHeapReadCache && existingEntry) {
       const existing = (await existingEntry[1]);
       if (existing === null) return { object: null, seq: lowLevelDb.initialSeq };
       const existingObject = existing.object.deref();
@@ -141,19 +144,21 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase): Piledri
       return { object: asHeapObject(deserialized.object), seq: lowLevelDb.combineSeqs(deserialized.seq, seq) };
     })();
     const refIdentity = crypto.randomUUID();
-    heapObjectsByHeapKeyBase64.set(keyBase64, [refIdentity, promise.then(p => p.object === null ? null : { object: new WeakRef(p.object), seq: p.seq })]);
+    if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.set(keyBase64, [refIdentity, promise.then(p => p.object === null ? null : { object: new WeakRef(p.object), seq: p.seq })]);
     let heapObjAndSeq;
     try {
       heapObjAndSeq = await promise;
     } catch (error) {
-      heapObjectsByHeapKeyBase64.delete(keyBase64);
+      if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.delete(keyBase64);
       throw error;
     }
     if (heapObjAndSeq.object === null) {
-      heapObjectsByHeapKeyBase64.delete(keyBase64);
+      if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.delete(keyBase64);
       return { object: null, seq: lowLevelDb.initialSeq };
     }
-    heapObjectsByHeapKeyFinalizer.register(heapObjAndSeq.object, [keyBase64, refIdentity]);
+    if (!options.disableHeapReadCache) {
+      heapObjectsByHeapKeyFinalizer.register(heapObjAndSeq.object, [keyBase64, refIdentity]);
+    }
     heapKeysAndSeqByHeapObjects.set(heapObjAndSeq.object, Promise.resolve({ key, seq: heapObjAndSeq.seq }));
     return heapObjAndSeq;
   };

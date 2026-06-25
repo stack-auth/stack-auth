@@ -1,5 +1,6 @@
-import * as lmdb from "lmdb";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { wait } from "@hexclave/shared/dist/utils/promises";
+import * as lmdb from "lmdb";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
@@ -49,8 +50,10 @@ function validateValue(name: string, value: ArrayBuffer) {
   if (value.byteLength > 2_000_000_000) throw new Error(`KV store ${name} must be <= 2GB`);
 }
 
-export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string }): LowLevelDatabase {
+export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string, simulateReadMissDelayMs?: number }): LowLevelDatabase {
   const dbId = options.dbId ?? "default";
+  const simulateReadMissDelayMs = options.simulateReadMissDelayMs ?? 0;
+  if (!Number.isFinite(simulateReadMissDelayMs) || simulateReadMissDelayMs < 0) throw new Error("simulateReadMissDelayMs must be a non-negative finite number");
   const root = lmdb.open({ path: options.path, maxDbs: 1024, separateFlushed: true });
   const meta = root.openDB<number, string>({ name: `${dbId}:meta`, encoding: "json" });
   let currentVersion = meta.get("seq") ?? 0;
@@ -158,6 +161,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
         validateKey(key);
+        if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
         const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
         return {
           buffer: buffer ? arrayBufferFromUint8Array(buffer) : null,

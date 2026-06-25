@@ -37,16 +37,22 @@ function notImplemented(operation: string) {
   }, { status: 501 });
 }
 
+function timingHeaders(startedAt: number): HeadersInit | undefined {
+  if (process.env.HEXCLAVE_BULLDOZER_EMIT_HANDLER_TIMING !== "1") return undefined;
+  return { "x-bulldozer-handler-ms": (performance.now() - startedAt).toFixed(3) };
+}
+
 async function handler(operation: () => Promise<unknown>) {
+  const startedAt = performance.now();
   try {
-    return jsonResponse(await operation());
+    return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Bulldozer server error";
     console.error("[Bulldozer Server] Request failed", error);
     return jsonResponse({
       error: "bulldozer_server_error",
       message,
-    }, { status: 500 });
+    }, { status: 500, headers: timingHeaders(startedAt) });
   }
 }
 
