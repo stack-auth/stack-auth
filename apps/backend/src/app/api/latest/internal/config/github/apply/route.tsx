@@ -10,6 +10,7 @@ import { applyConfigUpdate, type GithubRepoRef } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { getInvalidConfigReason } from "@hexclave/shared/dist/config/format";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
@@ -68,8 +69,15 @@ export const POST = createSmartRouteHandler({
 
     let configUpdate: EnvironmentConfigOverrideOverride;
     try {
-      configUpdate = JSON.parse(req.body.config_update_string);
-    } catch {
+      const parsed: unknown = JSON.parse(req.body.config_update_string);
+      const reason = getInvalidConfigReason(parsed, { configName: "config_update_string" });
+      if (reason) {
+        throw new StatusError(StatusError.BadRequest, reason);
+      }
+      // Safe after getInvalidConfigReason confirms it's a valid config object
+      configUpdate = parsed as EnvironmentConfigOverrideOverride;
+    } catch (e) {
+      if (e instanceof StatusError) throw e;
       throw new StatusError(StatusError.BadRequest, "config_update_string is not valid JSON.");
     }
 

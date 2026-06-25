@@ -523,6 +523,7 @@ function GithubPushBody({
       // The run is now in flight. Lock the dialog (non-dismissible; Cancel aborts)
       // and flag the run as managed by this tab so the page-load watcher stays out
       // of the way until we settle.
+      const runStartedAt = Date.now();
       dialogContext?.setGithubRunActive(true);
       onRunPhaseChange("running");
       setActivity(null);
@@ -541,8 +542,10 @@ function GithubPushBody({
           continue; // transient — keep polling
         }
         const run = latest?.type === "pushed-from-github" ? latest.agent_run : null;
-        if (run == null || run.status === "running") {
-          if (typeof run?.progress === "string") setActivity(run.progress);
+        // Ignore stale agent_run entries from a previous run (or read-replica lag).
+        // The run we just started must have started_at >= our request timestamp.
+        if (run == null || run.status === "running" || (typeof run.started_at === "number" && run.started_at < runStartedAt - 5000)) {
+          if (run != null && run.status === "running" && typeof run?.progress === "string") setActivity(run.progress);
           continue;
         }
 
