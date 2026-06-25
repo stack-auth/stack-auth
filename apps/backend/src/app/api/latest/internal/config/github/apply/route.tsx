@@ -1,18 +1,21 @@
 import {
   getBranchConfigOverrideSource,
+  getCompleteBranchConfigForFile,
+  recordConfigAgentRunProgress,
   recordConfigAgentRunResult,
+  recordConfigAgentRunSandbox,
   tryStartConfigAgentRun,
 } from "@/lib/config";
-import { applyConfigUpdateInSnapshot, prepareConfigRepoSnapshot, type ConfigRepoSnapshot, type GithubRepoRef } from "@/lib/config/repo-agent";
+import { applyConfigUpdate, type GithubRepoRef } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// The whole flow (cold snapshot prep + agent edit + typecheck + push) can take a
-// few minutes; the response returns immediately and the work continues via
-// waitUntil. Give the serverless invocation room to finish the background work.
+// The whole flow (sandbox boot + clone + agent edit + push) can take a few minutes;
+// the response returns immediately and the work continues via waitUntil. Give the
+// serverless invocation room to finish the background work.
 export const maxDuration = 800;
 
 // A `running` marker older than this is treated as abandoned (server died mid-run).
@@ -72,30 +75,47 @@ export const POST = createSmartRouteHandler({
 
     const githubToken = req.body.github_access_token;
     const commitMessage = req.body.commit_message;
-    const ref: GithubRepoRef = { owner: source.owner, repo: source.repo, branch: source.branch };
 
     const nowMs = Date.now();
-    const { started } = await tryStartConfigAgentRun({ projectId, branchId, staleMs: RUN_STALE_MS, nowMs });
+    const { started, source: lockedSource } = await tryStartConfigAgentRun({ projectId, branchId, staleMs: RUN_STALE_MS, nowMs });
     if (!started) {
       return { statusCode: 200, bodyType: "json", body: { status: "already-running" } };
     }
+    // Use the source read UNDER the lock (not the pre-lock read above) so a
+    // concurrent re-link can't make us push to a stale repo/branch.
+    const ref: GithubRepoRef = { owner: lockedSource.owner, repo: lockedSource.repo, branch: lockedSource.branch };
+
+    // Fetched fresh per boot. The dashboard already refetches the user's OAuth
+    // token right before calling this route, so this is the freshest token we
+    // can produce server-side (a target-project admin route has no authority to
+    // mint GitHub tokens for the internal user — that would be a priv-esc).
+    const getGithubToken = async () => githubToken;
+    // Record the live sandbox id while running so a cancel (another invocation)
+    // can hard-stop it.
+    const onSandboxId = async (sandboxId: string) => {
+      await recordConfigAgentRunSandbox({ projectId, branchId, sandboxId });
+    };
+    // Sanitized live activity feed surfaced to the dashboard (no secrets/tokens).
+    const onProgress = async (activity: string) => {
+      await recordConfigAgentRunProgress({ projectId, branchId, progress: activity });
+    };
 
     runAsynchronouslyAndWaitUntil(async () => {
       try {
-        // Warm-boot from the cached snapshot if we have one; otherwise prepare it now.
-        let snapshot: ConfigRepoSnapshot;
-        if (source.latest_snapshot) {
-          snapshot = { snapshotId: source.latest_snapshot.snapshot_id, baseCommitSha: source.latest_snapshot.base_commit_sha };
-        } else {
-          snapshot = await prepareConfigRepoSnapshot({ githubToken, ref });
-        }
+        // The file mirrors the COMPLETE branch config, not just this one change —
+        // so the agent writes the user's whole config (apps, full sign-up rules, …),
+        // computed from the current branch override merged with this change.
+        const completeConfig = await getCompleteBranchConfigForFile({ projectId, branchId, configUpdate });
 
-        const { result, snapshot: refreshed } = await applyConfigUpdateInSnapshot({
-          githubToken,
+        // Boot a sandbox (warm from the shared base snapshot if configured, else
+        // cold-install the agent SDK), clone the repo fresh, edit + commit + push.
+        const result = await applyConfigUpdate({
+          getGithubToken,
           ref,
-          snapshot,
-          configUpdate,
+          completeConfig,
           commitMessage,
+          onSandboxId,
+          onProgress,
         });
 
         await recordConfigAgentRunResult({
@@ -103,8 +123,9 @@ export const POST = createSmartRouteHandler({
           branchId,
           nowMs: Date.now(),
           outcome: result.mode === "commit-to-branch"
-            ? { status: "success", commitUrl: result.commitUrl, snapshot: refreshed, newCommitHash: refreshed.baseCommitSha }
-            : { status: "no-change", snapshot: refreshed },
+            // The pushed commit sha is the last path segment of the commit URL.
+            ? { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitUrl.split("/").pop() }
+            : { status: "no-change" },
         });
       } catch (error) {
         captureError("config-github-apply", error);

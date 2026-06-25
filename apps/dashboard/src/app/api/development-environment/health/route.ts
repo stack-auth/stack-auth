@@ -17,9 +17,9 @@ function shellQuote(value: string): string {
 
 function devRestartCommand(configFilePath: string | undefined): string {
   if (configFilePath == null) {
-    return "stack dev --config-file <path-to-stack.config.ts> -- <your app command>";
+    return "hexclave dev --config-file <path-to-hexclave.config.ts> -- <your app command>";
   }
-  return `stack dev --config-file ${shellQuote(configFilePath)} -- <your app command>`;
+  return `hexclave dev --config-file ${shellQuote(configFilePath)} -- <your app command>`;
 }
 
 function healthResponse(body: HealthResponse, status: number): NextResponse<HealthResponse> {

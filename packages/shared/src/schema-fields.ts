@@ -939,22 +939,22 @@ export const branchConfigSourceSchema = yupUnion(
     commit_hash: yupString().defined(),
     config_file_path: yupString().defined(),
     workflow_path: yupString().optional(),
-    // Cached Vercel Sandbox snapshot of the linked repo (clone + deps + agent SDK
-    // installed) so each dashboard-driven config write warm-boots instead of
-    // re-cloning. Backend-managed; absent until the first snapshot is prepared.
-    latest_snapshot: yupObject({
-      snapshot_id: yupString().defined(),
-      base_commit_sha: yupString().defined(),
-      updated_at: yupNumber().defined(),
-    }).optional(),
     // Status of the most recent agent-driven config write, so the dashboard can
     // poll for progress and surface the resulting commit (or error) across tabs.
     agent_run: yupObject({
-      status: yupString().oneOf(["running", "success", "no-change", "error"]).defined(),
+      status: yupString().oneOf(["running", "success", "no-change", "error", "cancelled"]).defined(),
       started_at: yupNumber().defined(),
       finished_at: yupNumber().optional(),
       commit_url: yupString().optional(),
       error: yupString().optional(),
+      // Vercel Sandbox id of the in-flight run, recorded while `status === "running"`
+      // so a cancel request (a different invocation) can hard-stop the sandbox.
+      // Cleared/ignored once the run reaches a terminal status.
+      sandbox_id: yupString().optional(),
+      // A short, SANITIZED live activity feed (recent agent actions, e.g.
+      // "Editing hexclave.config.ts", "Running: git push") so the dashboard can
+      // show what's happening. Never contains file contents, tool inputs, or tokens.
+      progress: yupString().optional(),
     }).optional(),
   }),
   yupObject({

@@ -858,16 +858,17 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /**
-   * Warms the sandbox snapshot for the linked repo so the next config write
-   * warm-boots. Fire-and-forget; safe to call whenever a repo is linked.
+   * Cancels the in-flight agent-driven config write: hard-stops the sandbox so
+   * the agent stops mid-work. No revert — if the agent already pushed, the commit
+   * stays. Returns `not-running` if no run is in flight.
    */
-  async prepareConfigSnapshot(options: { githubAccessToken: string }): Promise<{ status: string }> {
+  async cancelConfigAgentRun(): Promise<{ status: "cancelling" | "not-running" }> {
     const response = await this.sendAdminRequest(
-      `/internal/config/github/snapshot`,
+      `/internal/config/github/cancel`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ github_access_token: options.githubAccessToken }),
+        body: JSON.stringify({}),
       },
       null,
     );

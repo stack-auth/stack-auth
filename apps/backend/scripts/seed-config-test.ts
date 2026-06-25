@@ -23,7 +23,7 @@
  *   STACK_CONFIG_TEST_REPO=config-test
  *   STACK_CONFIG_TEST_BRANCH=main
  *   STACK_CONFIG_TEST_CONFIG_PATH=hexclave.config.ts
- *   STACK_CONFIG_TEST_WORKFLOW_PATH=.github/workflows/stack-auth-config-sync.yml
+ *   STACK_CONFIG_TEST_WORKFLOW_PATH=.github/workflows/hexclave-config-sync.yml
  *   STACK_CONFIG_TEST_COMMIT=<head sha>            (informational; the agent pulls latest anyway)
  *   STACK_CONFIG_TEST_PROJECT_ID=<uuid>            (reuse/refresh an existing seeded project)
  *   STACK_SEED_OWNER_TEAM_ID=<uuid>                (override the auto-resolved owner team)
@@ -59,7 +59,7 @@ async function main() {
   const repo = getEnvVariable("STACK_CONFIG_TEST_REPO", "config-test");
   const branch = getEnvVariable("STACK_CONFIG_TEST_BRANCH", "main");
   const configFilePath = getEnvVariable("STACK_CONFIG_TEST_CONFIG_PATH", "hexclave.config.ts");
-  const workflowPath = getEnvVariable("STACK_CONFIG_TEST_WORKFLOW_PATH", ".github/workflows/stack-auth-config-sync.yml");
+  const workflowPath = getEnvVariable("STACK_CONFIG_TEST_WORKFLOW_PATH", ".github/workflows/hexclave-config-sync.yml");
   const commitHash = getEnvVariable("STACK_CONFIG_TEST_COMMIT", "") || "0".repeat(40);
   const projectIdEnv = getEnvVariable("STACK_CONFIG_TEST_PROJECT_ID", "");
 

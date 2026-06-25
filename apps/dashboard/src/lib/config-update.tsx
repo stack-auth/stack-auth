@@ -26,7 +26,43 @@ type ConfigUpdateDialogState = {
 
 const ConfigUpdateDialogContext = createContext<{
   showPushableDialog: (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride) => Promise<boolean>,
+  // True while THIS tab's push dialog is actively managing a started run, so the
+  // page-load watcher (ConfigAgentRunWatcher) doesn't also pop its own modal for
+  // the same run. The watcher owns the modal only for runs this tab didn't start
+  // (other tabs / reloads).
+  githubRunActive: boolean,
+  setGithubRunActive: (active: boolean) => void,
 } | null>(null);
+
+/** Read-only accessor for the watcher (mounted below this provider). */
+export function useGithubRunActive(): boolean {
+  return useContext(ConfigUpdateDialogContext)?.githubRunActive ?? false;
+}
+
+/**
+ * Renders the agent's live activity feed (a sanitized, server-provided list of
+ * recent actions like "Editing hexclave.config.ts" / "Running: git push"). Shared
+ * between the push dialog and the page-load watcher.
+ */
+export function ConfigAgentActivityFeed({ activity }: { activity: string }) {
+  const lines = activity.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <div className="max-h-28 space-y-1 overflow-y-auto rounded-md border border-border/40 bg-muted/30 p-2.5 font-mono text-xs text-muted-foreground">
+      {lines.map((line, index) => {
+        const isLast = index === lines.length - 1;
+        return (
+          <div key={`${index}-${line}`} className={`flex items-center gap-2 truncate ${isLast ? "text-foreground" : "opacity-70"}`}>
+            <span className={isLast ? "text-primary" : "text-muted-foreground"}>{isLast ? "▸" : "·"}</span>
+            <span className="truncate">{line}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Provider component that enables the config update dialog functionality.
@@ -41,11 +77,31 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     source: null,
     isLoadingSource: false,
   });
+  const [githubRunActive, setGithubRunActive] = useState(false);
 
   const showPushableDialog = useCallback(async (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride): Promise<boolean> => {
     // Fetch the source first
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
+
+    // If a config-agent run is already in flight for this project, don't open the
+    // push dialog at all — the page-load watcher already shows a non-dismissible
+    // progress modal and the backend would reject a second run anyway. The mapped
+    // `PushedConfigSource` drops `agent_run`, so read the raw interface source.
+    if (source.type === "pushed-from-github") {
+      const iface = (adminApp as any)?._interface;
+      if (iface != null && typeof iface.getPushedConfigSource === "function") {
+        let rawSource: any = null;
+        try {
+          rawSource = await iface.getPushedConfigSource();
+        } catch {
+          // transient — fall through to the normal dialog rather than blocking
+        }
+        if (rawSource?.type === "pushed-from-github" && rawSource.agent_run?.status === "running") {
+          return false;
+        }
+      }
+    }
 
     let shouldUpdate = true;
     if (source.type !== "unlinked") {
@@ -152,7 +208,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
   };
 
   return (
-    <ConfigUpdateDialogContext.Provider value={{ showPushableDialog }}>
+    <ConfigUpdateDialogContext.Provider value={{ showPushableDialog, githubRunActive, setGithubRunActive }}>
       {children}
       {renderDialog()}
     </ConfigUpdateDialogContext.Provider>
@@ -196,7 +252,12 @@ type ScopeCheck =
 type GithubPushHandlers = {
   push: () => Promise<"prevent-close" | undefined>,
   connect: () => Promise<"prevent-close" | undefined>,
+  cancel: () => Promise<"prevent-close" | undefined>,
 };
+
+// "idle" before/after the run; "running" once the agent is started (dialog is
+// non-dismissible, Cancel aborts the run); "cancelling" after Cancel is clicked.
+type RunPhase = "idle" | "running" | "cancelling";
 
 function projectSettingsHref(projectId: string | undefined): string {
   return `/projects/${projectId}/project-settings`;
@@ -214,6 +275,7 @@ function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onS
   // Status starts as "checking" so the initial render shows a disabled
   // "Push to GitHub" button — matching what we want during Suspense fallback.
   const [scopeStatus, setScopeStatus] = useState<ScopeCheck["status"]>("checking");
+  const [runPhase, setRunPhase] = useState<RunPhase>("idle");
   const handlersRef = useRef<GithubPushHandlers | null>(null);
 
   const dispatch = useCallback(
@@ -226,7 +288,12 @@ function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onS
     [],
   );
 
+  // Once the run is in flight the dialog is non-dismissible: the only exit is
+  // Cancel (which aborts + reverts) or the run reaching a terminal status.
+  const isRunning = runPhase !== "idle";
+
   const okButton = (() => {
+    if (isRunning) return undefined;
     switch (scopeStatus) {
       case "no-account": {
         return { label: "Connect with GitHub", onClick: dispatch("connect") };
@@ -247,7 +314,23 @@ function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onS
     }
   })();
 
+  const cancelButton = isRunning
+    ? {
+      label: runPhase === "cancelling" ? "Cancelling…" : "Cancel update",
+      onClick: dispatch("cancel"),
+      props: { disabled: runPhase === "cancelling" },
+    }
+    : {
+      label: "Cancel",
+      onClick: async () => {
+        onSettle(false);
+      },
+    };
+
   const description = (() => {
+    if (isRunning) {
+      return `Updating ${source.owner}/${source.repo}@${source.branch} via the config agent. This can take a couple of minutes.`;
+    }
     switch (scopeStatus) {
       case "no-account": {
         return "Connect a GitHub account to push configuration changes to this repository.";
@@ -268,15 +351,11 @@ function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onS
     <ActionDialog
       open={open}
       onClose={() => onSettle(false)}
+      preventClose={isRunning}
       title="Push Configuration to GitHub"
       description={description}
       okButton={okButton}
-      cancelButton={{
-        label: "Cancel",
-        onClick: async () => {
-          onSettle(false);
-        },
-      }}
+      cancelButton={cancelButton}
     >
       <Suspense fallback={<GithubPushBodyFallback projectId={projectId} />}>
         <GithubPushBody
@@ -286,6 +365,7 @@ function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onS
           projectId={projectId}
           onSettle={onSettle}
           onScopeStatusChange={setScopeStatus}
+          onRunPhaseChange={setRunPhase}
           handlersRef={handlersRef}
         />
       </Suspense>
@@ -318,6 +398,7 @@ type GithubPushBodyProps = {
   projectId: string | undefined,
   onSettle: (result: boolean) => void,
   onScopeStatusChange: (status: ScopeCheck["status"]) => void,
+  onRunPhaseChange: (phase: RunPhase) => void,
   handlersRef: React.MutableRefObject<GithubPushHandlers | null>,
 };
 
@@ -328,8 +409,10 @@ function GithubPushBody({
   projectId,
   onSettle,
   onScopeStatusChange,
+  onRunPhaseChange,
   handlersRef,
 }: GithubPushBodyProps) {
+  const dialogContext = useContext(ConfigUpdateDialogContext);
   const user = useDashboardInternalUser();
   const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
 
@@ -343,6 +426,7 @@ function GithubPushBody({
   const [commitMessage, setCommitMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [activity, setActivity] = useState<string | null>(null);
 
   const placeholderCommitMessage = "Update Hexclave configuration";
 
@@ -436,6 +520,13 @@ function GithubPushBody({
         return "prevent-close";
       }
 
+      // The run is now in flight. Lock the dialog (non-dismissible; Cancel aborts)
+      // and flag the run as managed by this tab so the page-load watcher stays out
+      // of the way until we settle.
+      dialogContext?.setGithubRunActive(true);
+      onRunPhaseChange("running");
+      setActivity(null);
+
       // Poll the source's agent_run until the background job reports a terminal
       // status. The agent does real repo work (edit + typecheck + commit), so
       // this can take a couple of minutes.
@@ -450,12 +541,22 @@ function GithubPushBody({
           continue; // transient — keep polling
         }
         const run = latest?.type === "pushed-from-github" ? latest.agent_run : null;
-        if (run == null || run.status === "running") continue;
+        if (run == null || run.status === "running") {
+          if (typeof run?.progress === "string") setActivity(run.progress);
+          continue;
+        }
 
         setProgressMessage(null);
+        onRunPhaseChange("idle");
+        dialogContext?.setGithubRunActive(false);
         if (run.status === "error") {
           setErrorMessage(run.error ?? "The config agent failed to apply your change.");
           return "prevent-close";
+        }
+        if (run.status === "cancelled") {
+          // Cancelled (here or from another tab): discard the pending edit.
+          onSettle(false);
+          return undefined;
         }
         // success or no-change: mirror into cloud config for immediate UI feedback.
         onSettle(true);
@@ -463,6 +564,8 @@ function GithubPushBody({
       }
 
       setProgressMessage(null);
+      onRunPhaseChange("idle");
+      dialogContext?.setGithubRunActive(false);
       setErrorMessage("Timed out waiting for the config agent. Your change may still be in progress — check the linked repository.");
       return "prevent-close";
     } catch (error) {
@@ -476,10 +579,34 @@ function GithubPushBody({
         cause: error,
       });
       setProgressMessage(null);
+      onRunPhaseChange("idle");
+      dialogContext?.setGithubRunActive(false);
       setErrorMessage(message);
       return "prevent-close";
     }
-  }, [adminApp, commitMessage, configUpdate, onSettle, projectId, scopeCheck, source]);
+  }, [adminApp, commitMessage, configUpdate, dialogContext, onRunPhaseChange, onSettle, projectId, scopeCheck, source]);
+
+  // Cancel an in-flight run: hard-stops the sandbox server-side. The poll loop
+  // above then observes the terminal `cancelled` status and settles the dialog
+  // (discarding the pending edit). No revert — if the agent already pushed, the
+  // commit stays.
+  const handleCancel = useCallback(async (): Promise<"prevent-close" | undefined> => {
+    const adminInterface = (adminApp as any)?._interface;
+    if (adminInterface == null || typeof adminInterface.cancelConfigAgentRun !== "function") {
+      setErrorMessage("This dashboard build can't cancel a config run. Please refresh and try again.");
+      return "prevent-close";
+    }
+    onRunPhaseChange("cancelling");
+    setProgressMessage("Cancelling the update…");
+    try {
+      await adminInterface.cancelConfigAgentRun();
+    } catch (error) {
+      // Best-effort: the poll loop still observes the terminal status if the
+      // cancel landed; surface nothing and keep the dialog open.
+      captureError("config-update-github-cancel", error);
+    }
+    return "prevent-close";
+  }, [adminApp, onRunPhaseChange]);
 
   const handleConnect = useCallback(async (): Promise<"prevent-close" | undefined> => {
     // Full-page redirect to the OAuth provider. When scopes are missing on
@@ -500,8 +627,8 @@ function GithubPushBody({
   // calling up via state) avoids re-rendering the shell on every handler
   // identity change, which would also reset the okButton onClick reference.
   useEffect(() => {
-    handlersRef.current = { push: handlePush, connect: handleConnect };
-  }, [handlersRef, handlePush, handleConnect]);
+    handlersRef.current = { push: handlePush, connect: handleConnect, cancel: handleCancel };
+  }, [handlersRef, handlePush, handleConnect, handleCancel]);
 
   return (
     <div className="space-y-4">
@@ -528,6 +655,9 @@ function GithubPushBody({
         <p className="text-sm text-muted-foreground">
           {progressMessage}
         </p>
+      )}
+      {progressMessage != null && activity != null && activity.trim().length > 0 && (
+        <ConfigAgentActivityFeed activity={activity} />
       )}
       {errorMessage != null && (
         <p className="text-sm text-destructive">

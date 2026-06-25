@@ -2178,8 +2178,8 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
         repo: "config-test",
         branch: "main",
         commit_hash: "abc123def456789",
-        config_file_path: "stack.config.json",
-        workflow_path: ".github/workflows/stack-auth-config-sync.yml",
+        config_file_path: "hexclave.config.ts",
+        workflow_path: ".github/workflows/hexclave-config-sync.yml",
       },
     })],
     globalPrismaClient.project.update({
