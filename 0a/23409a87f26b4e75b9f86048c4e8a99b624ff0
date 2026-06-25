@@ -1,0 +1,151 @@
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/page-client.tsx
+  s_3ca41eaf8feaf8::t_89dc5c283229ef 494
+  s_3ca41eaf8feaf8::t_8db19f5cf27442 467
+  s_3ca41eaf8feaf8::t_b02406745ad932 296
+  s_3ca41eaf8feaf8::t_b0e9dd4bae23b3 320
+  s_3ca41eaf8feaf8::t_ec5cfafed82095 287
+  s_3ca41eaf8feaf8::t_b9f34a276cdab4 279,281
+  s_3ca41eaf8feaf8::t_df58c90a4a7cb6 464
+apps/backend/src/lib/seed-dummy-data.ts
+  s_3ca41eaf8feaf8::t_70c923b324582f 2182
+  s_3ca41eaf8feaf8::t_29571db5b20e24 2181
+apps/backend/scripts/seed-config-test.ts
+  s_3ca41eaf8feaf8::t_b32a7fbf4d0c46 26,62
+apps/dashboard/src/app/api/development-environment/health/route.ts
+  s_3ca41eaf8feaf8::t_bc5b30b834557f 20,22
+apps/backend/.env.development
+  s_3ca41eaf8feaf8::t_3da7c8b2d93963 82-85
+apps/backend/scripts/spike-orchestrator-e2e.mts
+  s_3ca41eaf8feaf8::t_7c76a633459a9f 47-49,55
+  s_3ca41eaf8feaf8::t_75ce903ff4fa50 30-32
+  s_3ca41eaf8feaf8::t_d4251faaf37199 52,54,60
+  s_3ca41eaf8feaf8::t_ea78aec672cb6d 57
+  s_3ca41eaf8feaf8::t_901e12abb26a69 5-7,9,20
+apps/backend/scripts/build-config-agent-image.ts
+  s_3ca41eaf8feaf8::t_3fb6f4c1f9e02a 1-29,33-34
+  s_3ca41eaf8feaf8::t_87b8ad9fcb32a5 30-32
+apps/backend/scripts/link-project-to-github.ts
+  s_3ca41eaf8feaf8::t_9b6afc1d19a662 1-55
+apps/backend/src/app/api/latest/internal/config/github/apply/route.tsx
+  s_3ca41eaf8feaf8::t_887e640ebab8a4 88-97,113,117
+  s_3ca41eaf8feaf8::t_16ac37cd1a59d8 110-112,126-128
+  s_3ca41eaf8feaf8::t_041bd126d23836 6
+  s_3ca41eaf8feaf8::t_70a856bde72c65 105-108,115
+  s_3ca41eaf8feaf8::t_79e0b0d9d89626 9,16
+  s_3ca41eaf8feaf8::t_af3afbe5ac8b54 3
+  s_3ca41eaf8feaf8::t_58e1c5e93d2971 17-18
+  s_3ca41eaf8feaf8::t_a4a2a30789ec55 4
+  s_3ca41eaf8feaf8::t_f972c07448aa80 80,84-86
+  s_3ca41eaf8feaf8::t_3445e93ce96bd2 98-101,118
+  s_3ca41eaf8feaf8::t_0fc4995b720799 87
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding-workflow.test.ts
+  s_3ca41eaf8feaf8::t_0f910526ac7aaf 20-23
+  s_3ca41eaf8feaf8::t_e32f03ac3e8ccc 35-37
+apps/backend/src/lib/config/repo-agent.tsx
+  s_3ca41eaf8feaf8::t_e77be676957488 315,321
+  s_3ca41eaf8feaf8::t_84fa406ea291df 398,400
+  s_3ca41eaf8feaf8::t_6e4b5e1a4f8c3c 424
+  s_3ca41eaf8feaf8::t_465a7630ed8af3 174-176,181,183-195,211-215
+  s_3ca41eaf8feaf8::t_7554831b730123 252
+  s_3ca41eaf8feaf8::t_9c2f5c0e657d5c 2,10-17,19-23,25-32,35-38,43,98-100,284-285,308,316-320,322-335,337-346,350,353-360,362-363,373,376,378-381,383,389,392,399,403-405,408-409,412-420,428,430-435
+  s_3ca41eaf8feaf8::t_9a9d44e6ca1eca 393,397,406,411,439-441,443,445-447,450-458
+  s_3ca41eaf8feaf8::t_d7ba286b7689a8 422-423
+  s_3ca41eaf8feaf8::t_ac30ba5c9c6270 24,33-34
+  s_3ca41eaf8feaf8::t_266c4774cf263f 177-180,182
+  s_3ca41eaf8feaf8::t_0964503bce184b 249-251
+  s_3ca41eaf8feaf8::t_465d6a7f3a6677 5-8,95-97,101-105,120,301-302,374-375,421,442,448-449
+  s_3ca41eaf8feaf8::t_9e7ca33a33fc51 147-149,151,153,156-160
+  s_3ca41eaf8feaf8::t_d05b075792df93 57-64
+  s_3ca41eaf8feaf8::t_674bfa88246707 232-234,236-237,242,246-247,262,273,275-277,292-293,295-297
+  s_3ca41eaf8feaf8::t_fe8fd0026fdecc 235,238-241,243-245,248,253-261,263-272,274,287,290-291,294
+  s_3ca41eaf8feaf8::t_90c323aba79fdb 279
+  s_3ca41eaf8feaf8::t_b43b75cb93ef4a 395
+  s_3ca41eaf8feaf8::t_091ae88bb5b2d6 311-312
+apps/backend/src/lib/config/index.tsx
+  s_3ca41eaf8feaf8::t_c03d5430d9222f 480,637,641-646,649-650,652-658,663-666,670,672-679
+  s_3ca41eaf8feaf8::t_0e80a5598037f2 541-543,545,548,558-562,601-603,607-636
+  s_3ca41eaf8feaf8::t_fad9b9e3b68b33 662
+  s_3ca41eaf8feaf8::t_c16b8ea9780ae0 604-606
+  s_3ca41eaf8feaf8::t_e0e2309c8bfe2b 571-573,575,578,588,591,600
+  s_3ca41eaf8feaf8::t_373692541ce15a 638-640,647-648,659-661,667-669,671
+  s_3ca41eaf8feaf8::t_652613414a2ec5 481-499
+  s_3ca41eaf8feaf8::t_230b6eaaf7b3a5 651
+packages/shared/src/schema-fields.ts
+  s_3ca41eaf8feaf8::t_7a98f2373a1307 954-957
+  s_3ca41eaf8feaf8::t_0b79e621a64620 945,950-953
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/layout.tsx
+  s_3ca41eaf8feaf8::t_903af1cb9eb94c 1,16-17
+  s_3ca41eaf8feaf8::t_f27e6452073ae8 18
+apps/backend/src/app/api/latest/internal/config/github/cancel/route.tsx
+  s_3ca41eaf8feaf8::t_9e59505f190afd 5,9,11,15-18,23,55-57
+  s_3ca41eaf8feaf8::t_a51fc04022d205 2,14,22,38,47,50-53,59
+packages/shared/src/interface/admin-interface.ts
+  s_3ca41eaf8feaf8::t_4ef4d49855478b 861-863,865,871
+  s_3ca41eaf8feaf8::t_52d66926732ee6 867
+apps/backend/.eslintrc.cjs
+  s_3ca41eaf8feaf8::t_9552c38c8ce018 6-9
+apps/dashboard/src/lib/config-update.tsx
+  s_3ca41eaf8feaf8::t_8bdc8a21d7d7d8 528
+  s_3ca41eaf8feaf8::t_b6a58c6b963370 544-547
+  s_3ca41eaf8feaf8::t_1b61a3fa2fa624 255,258-260
+  s_3ca41eaf8feaf8::t_3afa9e3e9c3b45 211
+  s_3ca41eaf8feaf8::t_cbcdeeaedda7a0 87-105
+  s_3ca41eaf8feaf8::t_c8fd32dfa1e76a 523-527,529,550-551,556-560,567-568
+  s_3ca41eaf8feaf8::t_a1aa495a6ec6b4 43-66
+  s_3ca41eaf8feaf8::t_9390a6c18b7ecb 29-34,37-40
+  s_3ca41eaf8feaf8::t_b118ecd9936f9d 630-631
+  s_3ca41eaf8feaf8::t_054660887ab096 401,412,415
+  s_3ca41eaf8feaf8::t_6c9b964806e49c 80
+  s_3ca41eaf8feaf8::t_3b815b12fd6538 659-661
+  s_3ca41eaf8feaf8::t_f77b01199878ad 589-592,600,602,605,609
+  s_3ca41eaf8feaf8::t_2f432cecabb074 582-583,587-588,593-599,601,603-604,606-608
+  s_3ca41eaf8feaf8::t_0666bdc7c7c5ce 429
+  s_3ca41eaf8feaf8::t_2118efed8eb15a 278,291-294,296,317-329,331-333,354,358,368
+  s_3ca41eaf8feaf8::t_18771ca749ff64 41-42
+  s_3ca41eaf8feaf8::t_e25a3e58b007d3 261
+apps/dashboard/src/lib/config-agent-run.tsx
+  s_3ca41eaf8feaf8::t_b3c247f0b8dd8d 8
+  s_3ca41eaf8feaf8::t_10587745c5287f 156-158
+  s_3ca41eaf8feaf8::t_13655a223c55b9 71-73
+  s_3ca41eaf8feaf8::t_7373476ec59dc6 1-5,7,9-14,16-37,39-44,46-60,62-66,68-70,74-89,91-106,108,110-111,113,115-152,154-155,159-165
+  s_3ca41eaf8feaf8::t_ddb4be46016e9e 90
+  s_3ca41eaf8feaf8::t_6d2d98e287bc12 109,112,114
+  s_3ca41eaf8feaf8::t_fb81973552b4d9 6,15,38,61,67,153
+  s_3ca41eaf8feaf8::t_bddfff67d82069 107
+  s_3ca41eaf8feaf8::t_e8c855b2f5d351 45
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding.tsx
+  s_3ca41eaf8feaf8::t_fc28426367acee 1708
+  s_3ca41eaf8feaf8::t_f1be69568adf21 789
+  s_3ca41eaf8feaf8::t_cccbb97207b1c3 1751
+  s_3ca41eaf8feaf8::t_b3e63383bfc409 790-792
+  s_3ca41eaf8feaf8::t_6de8adb9ccef11 1371
+  s_3ca41eaf8feaf8::t_ed1299c82c4a71 1729
+  s_3ca41eaf8feaf8::t_e1a32504668f7f 486
+  s_3ca41eaf8feaf8::t_f970dfc5b63951 1412
+  s_3ca41eaf8feaf8::t_ef1b8c4a81a247 146
+  s_3ca41eaf8feaf8::t_6a1803ba4072d4 503
+  s_3ca41eaf8feaf8::t_616db11ee9d3d3 15
+apps/dashboard/src/app/layout-client.tsx
+  s_3ca41eaf8feaf8::t_34f2f11b4e8e41 97
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding-workflow.ts
+  s_3ca41eaf8feaf8::t_e080f365932b9a 57-62
+  s_3ca41eaf8feaf8::t_99ccd93e927339 1
+  s_3ca41eaf8feaf8::t_22e4d193ceb112 44
+  s_3ca41eaf8feaf8::t_079d0aee7b464a 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0a23409a87f26b4e75b9f86048c4e8a99b624ff0",
+  "prompts": {},
+  "sessions": {
+    "s_3ca41eaf8feaf8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1b487ae-b227-4663-a2ef-0f76a35fb945",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
