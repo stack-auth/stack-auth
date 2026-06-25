@@ -4,7 +4,7 @@
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {
-    "clean": "rimraf .next && rimraf node_modules",
+    "clean": "rimraf .next .next-development-environment node_modules",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
@@ -12,7 +12,7 @@
     "dev:rde-production": "node scripts/dev-rde-production.mjs",
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",
-    "build": "pnpm run bundle-type-definitions && next build",
+    "build": "rimraf .next/types .next/dev/types .next-development-environment/types .next-development-environment/dev/types && pnpm run bundle-type-definitions && next build",
     "build:rde-standalone": "NEXT_CONFIG_OUTPUT=standalone STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT=true pnpm run build",
     "docker-build": "pnpm run bundle-type-definitions && next build --experimental-build-mode compile",
     "analyze-bundle": "next experimental-analyze",
