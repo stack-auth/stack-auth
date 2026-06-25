@@ -1,7 +1,8 @@
 import { node } from "@elysiajs/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
 import { mkdtempSync, mkdirSync } from "node:fs";
@@ -13,6 +14,9 @@ import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementatio
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
 import type { CustomerType, Json, ProductSnapshot, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
+import { initSentry } from "./sentry.js";
+
+initSentry();
 
 const REFUND_TXN_PREFIX = "refund:";
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
@@ -565,5 +569,20 @@ const app = new Elysia({ adapter: node() })
   .listen(port);
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
+
+// Periodically tick the bulldozer clock to process timefold-queued rows; clamp monotonically so a
+// backwards wall-clock jump can't rewind it.
+runAsynchronously(async () => {
+  let lastTickMillis = 0;
+  while (true) {
+    try {
+      lastTickMillis = Math.max(Date.now(), lastTickMillis);
+      await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
+    } catch (error) {
+      captureError("bulldozer-js-tick-loop", error);
+    }
+    await wait(1000);
+  }
+});
 
 export type App = typeof app;
