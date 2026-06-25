@@ -1,0 +1,74 @@
+apps/backend/src/lib/config/index.tsx
+  s_3ca41eaf8feaf8::t_30cbc47c630552 13-16
+  s_3ca41eaf8feaf8::t_4644fa9727f413 1299
+apps/backend/src/lib/config/repo-agent.tsx
+  s_3ca41eaf8feaf8::t_044c4ca8841b7c 253
+  s_3ca41eaf8feaf8::t_9f63c7d8f1e44e 234
+apps/backend/src/lib/seed-dummy-data.ts
+  h_8c1b79571cf22c 12,2177-2178
+packages/shared/src/schema-fields.ts
+  s_3ca41eaf8feaf8::t_765d552c297ce6 942-958
+packages/shared-backend/src/index.ts
+  s_3ca41eaf8feaf8::t_c6f4f045b00da3 1-7
+apps/backend/scripts/seed-config-test.ts
+  s_3ca41eaf8feaf8::t_56fd405145cad8 1-2,4-21,23-25,27-57,59-61,63-88,90-99
+  s_3ca41eaf8feaf8::t_9e717a23289752 22,26
+  s_3ca41eaf8feaf8::t_f609a230d14a91 89
+  s_3ca41eaf8feaf8::t_823e0855cbddbc 3
+  s_3ca41eaf8feaf8::t_12434700d836f1 58,62
+  s_3ca41eaf8feaf8::t_2bac27ca39d806 100-104
+apps/dashboard/src/lib/config-update.tsx
+  s_3ca41eaf8feaf8::t_bb45c3a86aba91 315,325
+  s_3ca41eaf8feaf8::t_8d313dedc089b6 12
+  s_3ca41eaf8feaf8::t_4fc1d739fb0fcf 14
+  s_3ca41eaf8feaf8::t_bcde31b98f97fd 213
+  s_3ca41eaf8feaf8::t_8cb1fd29eb2c5c 345
+  s_3ca41eaf8feaf8::t_4048982e7abe52 527-531
+  s_3ca41eaf8feaf8::t_401fecc04a5e4a 104
+  s_3ca41eaf8feaf8::t_04c2d162b504c6 172
+  s_3ca41eaf8feaf8::t_c3a0de3bf5d5d7 283
+  s_3ca41eaf8feaf8::t_219c89def71cf1 403,407-415,417,419-428,431,433-467,470,478,482
+packages/shared-backend/src/config-updater.ts
+  s_3ca41eaf8feaf8::t_4833fe94d291ca 1-291
+packages/shared-backend/src/config-file.ts
+  s_3ca41eaf8feaf8::t_d0312764877034 1-111
+apps/backend/src/app/api/latest/internal/config/github/snapshot/route.tsx
+  s_3ca41eaf8feaf8::t_f970ef21d9d927 1-4,6-70
+  s_3ca41eaf8feaf8::t_10b097e63a84a3 5
+apps/backend/src/app/api/latest/internal/config/github/apply/route.tsx
+  s_3ca41eaf8feaf8::t_40430af235ec7c 6
+  s_3ca41eaf8feaf8::t_792cefd293cf82 1-5,7-122
+packages/template/src/pushed-config-error-overlay/index.ts
+  s_3ca41eaf8feaf8::t_cf639ebb04b53d 531-538
+packages/shared/src/interface/admin-interface.ts
+  s_3ca41eaf8feaf8::t_efd2937340db95 837-876
+apps/backend/scripts/spike-orchestrator-e2e.mts
+  s_3ca41eaf8feaf8::t_7e6743153c4948 24
+  s_3ca41eaf8feaf8::t_ce0bfaa18f5400 1-23,25-79
+packages/shared/src/config-eval.ts
+  s_3ca41eaf8feaf8::t_dfd5894c99a871 8-19
+  s_3ca41eaf8feaf8::t_a8d32cd9903403 67,71,75
+.claude/settings.json
+  s_3ca41eaf8feaf8::t_574d8379362e74 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "2f477aba1e7008b705e933f2779b97b2a317ca85",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3ca41eaf8feaf8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1b487ae-b227-4663-a2ef-0f76a35fb945",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
