@@ -4204,6 +4204,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       signInWithTokens: async (tokens: { accessToken: string, refreshToken: string }) => {
         await this._signInToAccountWithTokens(tokens);
       },
+      awaitPendingAuthResolutions: async () => {
+        await this._awaitPendingAuthResolutions();
+      },
     };
   };
 
