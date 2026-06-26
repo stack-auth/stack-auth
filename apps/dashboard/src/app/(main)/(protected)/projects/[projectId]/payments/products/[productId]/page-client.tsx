@@ -41,7 +41,9 @@ import {
 } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
+import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
+import type { CustomerType } from "@/components/payments/customer-selector";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
@@ -145,6 +147,7 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const router = useRouter();
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const displayName = product.displayName || productId;
   const isAddOn = product.isAddOnTo !== false && typeof product.isAddOnTo === 'object';
 
@@ -198,6 +201,13 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
             <PencilSimpleIcon className="h-4 w-4" />
             Edit
           </Button>
+          <CreateCheckoutDialog
+            open={isCheckoutOpen}
+            onOpenChange={setIsCheckoutOpen}
+            customerType={product.customerType as CustomerType}
+            productId={productId}
+            lockProduct
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0">
@@ -205,6 +215,9 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem icon={<ShoppingCartIcon className="h-4 w-4" />} onClick={() => setIsCheckoutOpen(true)}>
+                Create checkout
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
                 View in Product Lines
               </DropdownMenuItem>

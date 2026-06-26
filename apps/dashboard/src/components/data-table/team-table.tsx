@@ -80,7 +80,11 @@ function TeamActions({ team }: { team: ServerTeam }) {
     <>
       <EditDialog team={team} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
       <DeleteDialog team={team} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
-      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={team} />
+      <CreateCheckoutDialog
+        open={isCreateCheckoutModalOpen}
+        onOpenChange={setIsCreateCheckoutModalOpen}
+        customer={{ type: "team", id: team.id, label: team.displayName }}
+      />
       <ActionCell
         items={[
           {
