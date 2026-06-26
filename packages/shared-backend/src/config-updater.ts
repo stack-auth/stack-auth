@@ -3,7 +3,7 @@ import type { Config, ConfigValue, NormalizedConfig } from "@hexclave/shared/dis
 import { normalize, override } from "@hexclave/shared/dist/config/format";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import path from "path";
-import { ClaudeAgentFailureError, ClaudeAgentTimeoutError, getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
+import { buildCompleteConfigAgentPrompt, buildPartialConfigAgentPrompt, ClaudeAgentFailureError, ClaudeAgentTimeoutError, CONFIG_AGENT_FILE_TOOLS, getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
 import { ensureConfigFileExists, readConfigFile } from "./config-file";
 
 const LOG_PREFIX = "[Stack config updater]";
@@ -57,7 +57,7 @@ async function runConfigUpdateAgent(options: {
     await runHeadlessClaudeAgent({
       prompt: options.prompt,
       cwd: options.cwd,
-      allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
+      allowedTools: [...CONFIG_AGENT_FILE_TOOLS],
       strictIsolation: true,
       timeoutMs,
       stderr: (data) => { console.warn(`${LOG_PREFIX} [agent] ${data}`); },
@@ -232,36 +232,19 @@ function flattenConfigUpdate(update: Config): ConfigChange[] {
 
 function buildConfigUpdatePrompt(configFileName: string, configUpdate: Config, baselineConfig: Config | null): string {
   const changes = flattenConfigUpdate(configUpdate);
-  const changeLines = changes.map(({ path: configPath, value }) => {
-    return `- ${JSON.stringify(configPath)}: set to ${JSON.stringify(value)}`;
-  }).join("\n");
-  const expectedConfig = baselineConfig == null ? null : canonicalizeConfig(override(baselineConfig, configUpdate));
-  const expectedConfigSection = expectedConfig == null ? "" : `
-After the edit, evaluating the exported \`config\` must produce this exact JSON value:
-
-${JSON.stringify(expectedConfig, null, 2)}
-`;
-
-  return `You are editing a Hexclave / Stack Auth configuration file in place. Apply a set of configuration changes WITHOUT changing how the file is written.
-
-Config file: ${JSON.stringify(configFileName)} (in the current working directory).
-
-The file exports a \`config\` object (it may be wrapped in a helper such as \`defineStackConfig(...)\`). Some config values may be sourced from other files via imports, for example:
-
-    import welcomeEmail from "./welcome-email.tsx" with { type: "text" };
-    export const config = { emails: { templates: { welcome: welcomeEmail } } };
-
-Apply EXACTLY these changes. Paths use dot notation, so \`a.b.c\` refers to \`config.a.b.c\`:
-
-${changeLines}
-${expectedConfigSection}
-
-Rules:
-- Change ONLY the config paths listed above. Leave every other part of the file byte-for-byte unchanged: imports, comments, formatting, helper wrappers, and any config fields not listed.
-- If a listed path's value is currently provided by an imported external file (like the \`import ... with { type: "text" }\` example above), DO NOT inline the new value into the config file. Instead, overwrite that external file with the new value and keep the import statement intact.
-- If a listed path's value is a plain inline literal, edit it inline.
-- Keep the file valid: it must still export a \`config\` that, once evaluated, reflects the new values exactly.
-- Do not run any shell commands and do not create files other than what is required to apply these changes.`;
+  const commandPolicy = "Do not run shell commands and do not create files other than what is required to apply the config changes.";
+  if (baselineConfig != null) {
+    return buildCompleteConfigAgentPrompt({
+      scope: { mode: "known-file", configFileName },
+      completeConfig: canonicalizeConfig(override(baselineConfig, configUpdate)),
+      commandPolicy,
+    });
+  }
+  return buildPartialConfigAgentPrompt({
+    configFileName,
+    changes,
+    commandPolicy,
+  });
 }
 
 function canonicalizeConfig(config: Config): NormalizedConfig {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Link } from "@/components/link";
-import { DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
+import { DesignAlert, DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { ArrowsClockwise, GitBranch, GitCommit } from "@phosphor-icons/react";
 import type { OAuthConnection, StackAdminApp } from "@hexclave/next";
@@ -180,7 +180,7 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
             loading={scopeStatus === "checking"}
           >
             <ArrowsClockwise className="h-3.5 w-3.5 mr-1.5" />
-            Start update
+            {errorMessage != null && configUpdate != null ? "Retry update" : "Start update"}
           </DesignButton>
         )}
       </div>
@@ -345,6 +345,9 @@ function GithubPushBody({
     }
 
     onErrorChange(null);
+    onDiffChange(null);
+    onActivityChange(null);
+    onStageChange(null);
     try {
       const tokenResult = await scopeCheck.account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
       if (tokenResult.status !== "ok") {
@@ -404,7 +407,7 @@ function GithubPushBody({
         if (run.status === "error") {
           onPhaseChange("idle");
           onStageChange(null);
-          onErrorChange("The config agent failed to apply your change.");
+          onErrorChange(run.error ?? "The config agent failed to apply your change.");
           return;
         }
         if (run.status === "cancelled") {
@@ -488,11 +491,13 @@ function GithubPushBody({
       });
       if (result.status === "sandbox-expired") {
         onPhaseChange("idle");
+        onStageChange(null);
         onErrorChange("The sandbox session expired. Please retry the update.");
         return;
       }
       if (result.status === "not-awaiting-review") {
         onPhaseChange("idle");
+        onStageChange(null);
         onErrorChange("There is no config diff waiting to commit. Start the update again.");
         return;
       }
@@ -515,8 +520,9 @@ function GithubPushBody({
           return;
         }
         if (run.status === "error") {
-          onPhaseChange("awaiting_review");
-          onErrorChange("Failed to commit and push the changes. Please try again.");
+          onPhaseChange("idle");
+          onStageChange(null);
+          onErrorChange(run.error ?? "Failed to commit and push the changes. Please try again.");
           return;
         }
         if (run.status === "cancelled") {
@@ -529,10 +535,11 @@ function GithubPushBody({
       onErrorChange("Timed out waiting for the commit. Check the repository for status.");
     } catch (error) {
       captureError("config-update-github-commit", error);
-      onPhaseChange("awaiting_review");
+      onPhaseChange("idle");
+      onStageChange(null);
       onErrorChange("Unknown error committing to GitHub.");
     }
-  }, [adminApp, commitMessage, onErrorChange, onPhaseChange, onSettle, scopeCheck]);
+  }, [adminApp, commitMessage, onErrorChange, onPhaseChange, onSettle, onStageChange, scopeCheck]);
 
   const handleConnect = useCallback(async () => {
     try {
@@ -567,7 +574,7 @@ function GithubPushBody({
 
       {/* Error */}
       {phase !== "running" && phase !== "cancelling" && errorMessage != null && (
-        <p className="rounded-lg bg-destructive/8 px-3 py-2 text-sm text-destructive">{errorMessage}</p>
+        <DesignAlert variant="error" description={errorMessage} />
       )}
 
       {/* Unlink hint — shown in idle state */}

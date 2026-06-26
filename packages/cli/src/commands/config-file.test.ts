@@ -41,8 +41,8 @@ describe("resolveConfigFilePathForPull", () => {
     expect(resolveConfigFilePathForPull({ configFile: "" }, tmpDir)).toBe(expected);
   });
 
-  it("throws a CliError with help text when neither --config-file nor cwd stack.config.ts exists", () => {
-    expect(() => resolveConfigFilePathForPull({}, tmpDir)).toThrow(/Pass --config-file/);
+  it("defaults to ./hexclave.config.ts when neither --config-file nor cwd config file exists", () => {
+    expect(resolveConfigFilePathForPull({}, tmpDir)).toBe(path.join(tmpDir, "hexclave.config.ts"));
   });
 });
 

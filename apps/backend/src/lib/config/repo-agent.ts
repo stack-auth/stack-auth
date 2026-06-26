@@ -42,6 +42,7 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Sandbox } from "@vercel/sandbox";
+import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "../../../../../packages/shared-backend/src/config-agent";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
 
 const AGENT_SDK_VERSION = "0.2.73";
@@ -66,12 +67,28 @@ export type GithubRepoRef = { owner: string, repo: string, branch: string };
 export type GithubTokenProvider = () => Promise<string>;
 
 export type ConfigUpdateCommitResult = { mode: "commit-to-branch", branch: string, commitUrl: string, commitSha: string };
+export const CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR = "The GitHub branch changed before the config commit could be pushed. Retry the update to apply the same changes on the latest branch.";
 
 export class ConfigRepoAgentError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = "ConfigRepoAgentError";
   }
+}
+
+export class ConfigRepoCommitConflictError extends ConfigRepoAgentError {
+  constructor(options?: { cause?: unknown }) {
+    super(CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, options);
+    this.name = "ConfigRepoCommitConflictError";
+  }
+}
+
+export function isGitBranchConflictOutput(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return normalized.includes("non-fast-forward")
+    || normalized.includes("fetch first")
+    || normalized.includes("stale info")
+    || (normalized.includes("failed to push some refs") && normalized.includes("updates were rejected"));
 }
 
 // ---------------------------------------------------------------------------
@@ -193,22 +210,6 @@ function tokenlessUrl(ref: Pick<GithubRepoRef, "owner" | "repo">): string {
 // Agent
 // ---------------------------------------------------------------------------
 
-function buildUpdatePrompt(completeConfig: Record<string, unknown>): string {
-  const json = JSON.stringify(completeConfig, null, 2);
-  return `You are writing the Hexclave / Stack Auth configuration for this repository (your current working directory is the repo root). The dashboard is the source of truth, and the repo's config file must reflect the COMPLETE configuration below — this is the full desired config, NOT a partial change.
-
-Find where the config lives (a \`*.config.ts\` that exports \`config\`, typically wrapped in \`defineHexclaveConfig(...)\` imported from \`@hexclave/react/config\` or a similar path; it may pull values from helper modules/imported files). Rewrite the exported config so it is structurally equal to this object — add anything missing (e.g. the full content of every sign-up rule, every enabled app), update changed values, and REMOVE config that is not present here:
-
-${json}
-
-Rules:
-- The exported config must end up deep-equal to the object above. Do NOT drop nested content (e.g. a sign-up rule must keep its condition/action/displayName, not collapse to just an \`enabled\` flag).
-- Write it as idiomatic TypeScript inside the existing \`defineHexclaveConfig({ ... })\` wrapper, keeping that import. Use unquoted identifier keys where valid; keep keys that aren't valid identifiers (e.g. ids containing "-") quoted.
-- If the config currently exports the placeholder string "show-onboarding" (or is otherwise a stub), replace it with \`defineHexclaveConfig({ ... })\` containing this object.
-- If a value is conventionally sourced from an imported external file, you may keep that indirection as long as the resolved config matches. Preserve the file header comment and any genuinely-used helper imports. Do not touch unrelated files or application code.
-- Make the edits, then stop. Do NOT install dependencies, run builds, or run a type check — the repository's own CI validates the change after we push. Dependencies are intentionally NOT installed in this sandbox, so build/typecheck commands will fail; don't run them.`;
-}
-
 /** Runner executed INSIDE the sandbox (no token in its env). Reads input from a
  * file and persists status to a file; process handlers catch the SDK's async errors. */
 function buildRunnerScript(): string {
@@ -253,7 +254,7 @@ for await (const m of query({
   prompt: input.prompt,
   options: {
     model: input.model,
-    allowedTools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
+    allowedTools: ${JSON.stringify([...CONFIG_AGENT_REPO_TOOLS])},
     permissionMode: "dontAsk",
     cwd: ${JSON.stringify(REPO_DIR)},
     env: { ...process.env, ANTHROPIC_BASE_URL: input.baseUrl, ANTHROPIC_API_KEY: input.apiKey, CLAUDECODE: "" },
@@ -362,6 +363,23 @@ async function runAgent(sandbox: Sandbox, prompt: string, onProgress?: AgentProg
 
 async function gitHead(sandbox: Sandbox): Promise<string> {
   return (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", "HEAD"])).stdout.trim();
+}
+
+async function assertRemoteBranchStillAtClonedHead(sandbox: Sandbox, githubToken: string, ref: GithubRepoRef): Promise<void> {
+  const clonedHead = await gitHead(sandbox);
+  await run(sandbox, "git", [
+    "-C",
+    REPO_DIR,
+    "fetch",
+    "--depth",
+    "1",
+    tokenUrl(githubToken, ref),
+    `+refs/heads/${ref.branch}:refs/remotes/origin/${ref.branch}`,
+  ]);
+  const remoteHead = (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", `refs/remotes/origin/${ref.branch}`])).stdout.trim();
+  if (remoteHead !== clonedHead) {
+    throw new ConfigRepoCommitConflictError();
+  }
 }
 
 /**
@@ -490,10 +508,14 @@ export async function applyConfigUpdate(options: {
   await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
 
   // Agent writes the COMPLETE config to the file — no dependency install, no
-  // typecheck (the linked repo's CI validates the committed change). See buildUpdatePrompt.
+  // typecheck (the linked repo's CI validates the committed change).
   await reportConfigAgentStage(onStage, "agent_making_changes");
   await step("Agent editing config…");
-  await runAgent(sandbox, buildUpdatePrompt(completeConfig), onProgress);
+  await runAgent(sandbox, buildCompleteConfigAgentPrompt({
+    scope: { mode: "repo" },
+    completeConfig,
+    commandPolicy: "Do NOT install dependencies, run builds, or run a type check. The repository's own CI validates the change after we push, and dependencies are intentionally not installed in this sandbox.",
+  }), onProgress);
 
   const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
   if (dirty === "") {
@@ -529,11 +551,19 @@ export async function commitConfigUpdate(options: {
   const githubToken = await options.getGithubToken();
   const sandbox = await getConfigAgentSandbox(sandboxId);
   try {
+    await assertRemoteBranchStillAtClonedHead(sandbox, githubToken, ref);
     await run(sandbox, "git", ["-C", REPO_DIR, "add", "-A"]);
     await run(sandbox, "git", ["-C", REPO_DIR, "commit", "-m", commitMessage]);
     const commitSha = await gitHead(sandbox);
     // Re-inject the token for the push only.
-    await run(sandbox, "git", ["-C", REPO_DIR, "push", tokenUrl(githubToken, ref), `HEAD:refs/heads/${ref.branch}`]);
+    try {
+      await run(sandbox, "git", ["-C", REPO_DIR, "push", tokenUrl(githubToken, ref), `HEAD:refs/heads/${ref.branch}`]);
+    } catch (error) {
+      if (isGitBranchConflictOutput(error instanceof Error ? error.message : String(error))) {
+        throw new ConfigRepoCommitConflictError({ cause: error });
+      }
+      throw error;
+    }
     return { mode: "commit-to-branch", branch: ref.branch, commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}`, commitSha };
   } finally {
     await stopSandboxWithContext(sandboxId, "config-repo-agent-commit-stop");

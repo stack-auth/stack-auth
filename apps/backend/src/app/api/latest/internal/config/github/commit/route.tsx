@@ -2,7 +2,7 @@ import {
   getBranchConfigOverrideSource,
   recordConfigAgentRunResult,
 } from "@/lib/config";
-import { commitConfigUpdate, stopConfigAgentSandbox, type GithubRepoRef } from "@/lib/config/repo-agent";
+import { CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, ConfigRepoCommitConflictError, commitConfigUpdate, stopConfigAgentSandbox, type GithubRepoRef } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -83,13 +83,18 @@ export const POST = createSmartRouteHandler({
           outcome: { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha },
         });
       } catch (error) {
-        captureError("config-github-commit", error);
+        if (!(error instanceof ConfigRepoCommitConflictError)) {
+          captureError("config-github-commit", error);
+        }
         await stopConfigAgentSandbox(sandboxId);
         await recordConfigAgentRunResult({
           projectId,
           branchId,
           nowMs: Date.now(),
-          outcome: { status: "error", error: "Failed to commit and push the config changes." },
+          outcome: {
+            status: "error",
+            error: error instanceof ConfigRepoCommitConflictError ? CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR : "Failed to commit and push the config changes.",
+          },
         }).catch((e) => captureError("config-github-commit-record-error", e));
       }
     });

@@ -888,6 +888,7 @@ export const configAgentSafeErrorMessages = [
   "The config agent failed to apply the change.",
   "Sandbox session expired. Please retry the update.",
   "Failed to commit and push the config changes.",
+  "The GitHub branch changed before the config commit could be pushed. Retry the update to apply the same changes on the latest branch.",
 ] as const;
 export type ConfigAgentSafeErrorMessage = typeof configAgentSafeErrorMessages[number];
 export const configAgentSafeErrorMessageSchema = yupString().oneOf(configAgentSafeErrorMessages);
