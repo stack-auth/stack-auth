@@ -8111,6 +8111,16 @@
             "required": false
           },
           {
+            "name": "excluded_email_domains",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A comma-separated list of primary email domains to exclude from the results."
+            },
+            "description": "A comma-separated list of primary email domains to exclude from the results.",
+            "required": false
+          },
+          {
             "name": "include_anonymous",
             "in": "query",
             "schema": {

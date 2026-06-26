@@ -13,6 +13,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -21,7 +25,7 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, CopyIcon, DotsThreeIcon, FunnelSimpleIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@hexclave/next";
 import {
   DataGrid,
@@ -29,6 +33,8 @@ import {
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
+  type DataGridExportField,
+  type DataGridExportScope,
 } from "@hexclave/dashboard-ui-components";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -52,16 +58,22 @@ type FilterState = {
   includeRestricted: boolean,
   includeAnonymous: boolean,
   onlyAnonymous: boolean,
+  excludedEmailDomains: string[],
   signedUpOrder: "asc" | "desc",
 };
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
+// Keep in sync with the backend list-users parser. This validates exact domains only;
+// excluding gmail.com intentionally does not exclude mail.gmail.com.
+const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const maxExcludedEmailDomains = 100;
 const DEFAULT_FILTERS: FilterState = {
   search: "",
   includeRestricted: true,
   includeAnonymous: false,
   onlyAnonymous: false,
+  excludedEmailDomains: [],
   signedUpOrder: "desc",
 };
 
@@ -97,6 +109,25 @@ function titleCase(value: string) {
 function formatUserId(id: string) {
   if (id.length <= 10) return id;
   return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+function normalizeEmailDomain(domain: string) {
+  return domain.trim().replace(/^@/, "").toLowerCase();
+}
+
+function parseEmailDomains(input: string) {
+  const domains = input.split(/[,\n]+/).map(normalizeEmailDomain).filter((domain) => domain !== "");
+  const invalidDomain = domains.find((domain) => !emailDomainRegex.test(domain));
+  if (invalidDomain != null) {
+    return {
+      domains: [],
+      error: `Use exact domains like gmail.com. "${invalidDomain}" is not valid.`,
+    };
+  }
+  return {
+    domains,
+    error: null,
+  };
 }
 
 // ─── Column definitions ──────────────────────────────────────────────
@@ -166,22 +197,29 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
   },
 ];
 
+const USER_EXPORT_FIELDS: DataGridExportField<ExtendedServerUser>[] = [
+  { key: "id", label: "User ID", enabled: true, getValue: (user) => user.id },
+  { key: "displayName", label: "Display Name", enabled: true, getValue: (user) => user.displayName ?? "" },
+  { key: "primaryEmail", label: "Email", enabled: true, getValue: (user) => user.primaryEmail ?? "" },
+  { key: "primaryEmailVerified", label: "Email Verified", enabled: true, getValue: (user) => user.primaryEmailVerified ? "Yes" : "No" },
+  { key: "signedUpAt", label: "Signed Up At", enabled: true, getValue: (user) => new Date(user.signedUpAt).toISOString() },
+  { key: "lastActiveAt", label: "Last Active At", enabled: true, getValue: (user) => new Date(user.lastActiveAt).toISOString() },
+  { key: "isAnonymous", label: "Is Anonymous", enabled: false, getValue: (user) => user.isAnonymous ? "Yes" : "No" },
+  { key: "hasPassword", label: "Has Password", enabled: false, getValue: (user) => user.hasPassword ? "Yes" : "No" },
+  { key: "otpAuthEnabled", label: "OTP Auth Enabled", enabled: false, getValue: (user) => user.otpAuthEnabled ? "Yes" : "No" },
+  { key: "passkeyAuthEnabled", label: "Passkey Auth Enabled", enabled: false, getValue: (user) => user.passkeyAuthEnabled ? "Yes" : "No" },
+  { key: "isMultiFactorRequired", label: "Multi-Factor Required", enabled: false, getValue: (user) => user.isMultiFactorRequired ? "Yes" : "No" },
+  { key: "oauthProviders", label: "OAuth Providers", enabled: false, getValue: (user) => user.oauthProviders.map((provider) => provider.id).join(", ") },
+  { key: "profileImageUrl", label: "Profile Image URL", enabled: false, getValue: (user) => user.profileImageUrl ?? "" },
+  { key: "clientMetadata", label: "Client Metadata", enabled: false, getValue: (user) => JSON.stringify(user.clientMetadata ?? {}) },
+  { key: "clientReadOnlyMetadata", label: "Client Read-Only Metadata", enabled: false, getValue: (user) => JSON.stringify(user.clientReadOnlyMetadata ?? {}) },
+  { key: "serverMetadata", label: "Server Metadata", enabled: false, getValue: (user) => JSON.stringify(user.serverMetadata ?? {}) },
+];
+
 // ─── UserTable ───────────────────────────────────────────────────────
 
-export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean }) => void,
-}) {
+export function UserTable() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-
-  const onFilterChange = props?.onFilterChange;
-  useEffect(() => {
-    onFilterChange?.({
-      search: filters.search || undefined,
-      includeRestricted: filters.includeRestricted,
-      includeAnonymous: filters.includeAnonymous,
-      onlyAnonymous: filters.onlyAnonymous,
-    });
-  }, [filters.search, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, onFilterChange]);
 
   return <UserTableBody filters={filters} setFilters={setFilters} />;
 }
@@ -247,6 +285,7 @@ function UserTableBody(props: {
           orderBy,
           desc: sortDesc,
           query: search,
+          excludedEmailDomains: filters.excludedEmailDomains,
           includeRestricted: filters.includeRestricted,
           includeAnonymous: true,
           onlyAnonymous: true,
@@ -257,6 +296,7 @@ function UserTableBody(props: {
           orderBy,
           desc: sortDesc,
           query: search,
+          excludedEmailDomains: filters.excludedEmailDomains,
           includeRestricted: filters.includeRestricted,
           includeAnonymous: filters.includeAnonymous,
           cursor,
@@ -267,7 +307,7 @@ function UserTableBody(props: {
         nextCursor: result.nextCursor ?? undefined,
       };
     },
-    [hexclaveAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous],
+    [hexclaveAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, filters.excludedEmailDomains],
   );
 
   const getRowId = useCallback((row: ExtendedServerUser) => row.id, []);
@@ -292,6 +332,71 @@ function UserTableBody(props: {
   }, [setFilters, setGridState]);
 
   const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";
+  const fetchExportRows = useCallback(async (options: {
+    scope: DataGridExportScope,
+    onProgress: (fetched: number) => void,
+  }) => {
+    const allUsers: ServerUser[] = [];
+    let cursor: string | undefined = undefined;
+    const limit = 100;
+    const useFilters = options.scope === "filtered";
+
+    do {
+      type ListUsersOptions = Exclude<Parameters<typeof hexclaveAdminApp.listUsers>[0], undefined>;
+      const baseListUsersOptions = {
+        limit,
+        cursor,
+        query: useFilters ? (filters.search || undefined) : undefined,
+        excludedEmailDomains: useFilters ? filters.excludedEmailDomains : undefined,
+        includeRestricted: useFilters ? filters.includeRestricted : undefined,
+        orderBy: "signedUpAt",
+        desc: true,
+      } satisfies Omit<ListUsersOptions, "includeAnonymous" | "onlyAnonymous">;
+      const listUsersOptions: ListUsersOptions = useFilters && filters.onlyAnonymous
+        ? { ...baseListUsersOptions, includeAnonymous: true, onlyAnonymous: true }
+        : { ...baseListUsersOptions, includeAnonymous: useFilters ? filters.includeAnonymous : true };
+      const batch = await hexclaveAdminApp.listUsers(listUsersOptions);
+
+      allUsers.push(...batch);
+      options.onProgress(allUsers.length);
+      cursor = batch.nextCursor ?? undefined;
+    } while (cursor);
+
+    return extendUsers(allUsers);
+  }, [hexclaveAdminApp, filters.excludedEmailDomains, filters.includeAnonymous, filters.includeRestricted, filters.onlyAnonymous, filters.search]);
+
+  const toolbarExtra = (
+    <div className="flex items-center gap-2">
+      <EmailDomainFilter
+        domains={filters.excludedEmailDomains}
+        onChange={(excludedEmailDomains) => setFilters((prev) => ({ ...prev, excludedEmailDomains }))}
+      />
+      <Select
+        value={filterValue}
+        onValueChange={(value) => {
+          if (value === "anonymous-only") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true }));
+          } else if (value === "anonymous") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false }));
+          } else if (value === "restricted") {
+            setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false }));
+          } else {
+            setFilters((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false }));
+          }
+        }}
+      >
+        <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="User list filter">
+          <SelectValue placeholder="Signups" />
+        </SelectTrigger>
+        <SelectContent align="start">
+          <SelectItem value="standard">Exclude restricted</SelectItem>
+          <SelectItem value="restricted">Signups</SelectItem>
+          <SelectItem value="anonymous">Signups & anonymous</SelectItem>
+          <SelectItem value="anonymous-only">Only anonymous</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
 
   return (
     <DataGrid
@@ -310,33 +415,29 @@ function UserTableBody(props: {
       estimatedRowHeight={44}
       footer={false}
       fillHeight={false}
-
-      toolbarExtra={
-        <Select
-          value={filterValue}
-          onValueChange={(value) => {
-            if (value === "anonymous-only") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true }));
-            } else if (value === "anonymous") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false }));
-            } else if (value === "restricted") {
-              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false }));
-            } else {
-              setFilters((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false }));
-            }
-          }}
-        >
-          <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="User list filter">
-            <SelectValue placeholder="Signups" />
-          </SelectTrigger>
-          <SelectContent align="start">
-            <SelectItem value="standard">Exclude restricted</SelectItem>
-            <SelectItem value="restricted">Signups</SelectItem>
-            <SelectItem value="anonymous">Signups & anonymous</SelectItem>
-            <SelectItem value="anonymous-only">Only anonymous</SelectItem>
-          </SelectContent>
-        </Select>
-      }
+      toolbarExtra={toolbarExtra}
+      exportOptions={{
+        title: "Export Users",
+        description: "Configure and download user data from your project",
+        entityName: "user",
+        entityNamePlural: "users",
+        filenamePrefix: "stack-users-export",
+        fields: USER_EXPORT_FIELDS,
+        fetchRows: fetchExportRows,
+        emptyExportTitle: "No users to export",
+        emptyExportDescription: "There are no users matching the current filters",
+        allScopeLabel: "Export all users in the project",
+        filteredScopeLabel: (
+          <>
+            Export only filtered/searched users
+            {filters.search && (
+              <span className="text-muted-foreground ml-1">
+                (search: &quot;{filters.search}&quot;)
+              </span>
+            )}
+          </>
+        ),
+      }}
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
       }}
@@ -356,6 +457,138 @@ function UserTableBody(props: {
         </div>
       }
     />
+  );
+}
+
+function EmailDomainFilter(props: {
+  domains: string[],
+  onChange: (domains: string[]) => void,
+}) {
+  const { domains, onChange } = props;
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const addDomains = useCallback((rawInput: string) => {
+    const parsed = parseEmailDomains(rawInput);
+    if (parsed.error != null) {
+      setError(parsed.error);
+      return;
+    }
+    if (parsed.domains.length === 0) {
+      setInput("");
+      setError(null);
+      return;
+    }
+
+    const nextDomains = new Map(domains.map((domain) => [domain, true]));
+    for (const domain of parsed.domains) {
+      nextDomains.set(domain, true);
+    }
+    if (nextDomains.size > maxExcludedEmailDomains) {
+      setError(`You can exclude at most ${maxExcludedEmailDomains} domains.`);
+      return;
+    }
+    onChange([...nextDomains.keys()]);
+    setInput("");
+    setError(null);
+  }, [domains, onChange]);
+
+  const removeDomain = useCallback((domainToRemove: string) => {
+    onChange(domains.filter((domain) => domain !== domainToRemove));
+    setError(null);
+  }, [domains, onChange]);
+
+  const active = domains.length > 0;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 rounded-xl border-black/[0.08] bg-white/85 px-3 text-xs shadow-sm ring-1 ring-black/[0.08] hover:bg-white dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]"
+          aria-label="Exclude email domains"
+        >
+          <FunnelSimpleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+          Exclude by Email
+          {active ? (
+            <Badge variant="secondary" className="ml-2 rounded-full px-1.5 py-0 text-[10px] font-medium">
+              {domains.length}
+            </Badge>
+          ) : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[320px] rounded-xl border-black/[0.08] bg-white/95 p-3 shadow-md ring-1 ring-black/[0.08] backdrop-blur-xl dark:border-white/[0.06] dark:bg-background/95 dark:ring-white/[0.06]"
+      >
+        <div className="space-y-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Exclude email domains</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Hide users whose primary email uses one of these domains.
+            </p>
+          </div>
+          <Input
+            size="sm"
+            value={input}
+            placeholder="gmail.com, yahoo.com"
+            aria-label="Excluded email domains"
+            onChange={(event) => {
+              setInput(event.target.value);
+              setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                addDomains(input);
+              }
+            }}
+            onPaste={(event) => {
+              const pastedText = event.clipboardData.getData("text");
+              if (pastedText.includes(",") || pastedText.includes("\n")) {
+                event.preventDefault();
+                addDomains(pastedText);
+              }
+            }}
+            onBlur={() => {
+              if (input.trim() !== "") {
+                addDomains(input);
+              }
+            }}
+          />
+          {error != null ? (
+            <div className="text-xs text-destructive">{error}</div>
+          ) : null}
+          {domains.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {domains.map((domain) => (
+                <Badge key={domain} variant="secondary" className="gap-1 rounded-full px-2 py-0.5 text-xs">
+                  {domain}
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => removeDomain(domain)}
+                    aria-label={`Remove ${domain}`}
+                  >
+                    <XCircleIcon className="h-3.5 w-3.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No domains excluded.</div>
+          )}
+          {domains.length > 0 ? (
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => onChange([])}>
+                Clear
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

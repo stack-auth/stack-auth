@@ -2761,16 +2761,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return clientVersion;
   }
 
-  private _botChallengeSiteKeysWarned = false;
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
     const visibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
-      if (!this._botChallengeSiteKeysWarned) {
-        this._botChallengeSiteKeysWarned = true;
-        console.warn("[stack-auth] HEXCLAVE_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
-      }
       return null;
     }
 
