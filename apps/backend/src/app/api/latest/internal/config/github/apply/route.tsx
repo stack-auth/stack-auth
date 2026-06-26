@@ -100,9 +100,13 @@ export const POST = createSmartRouteHandler({
     // can produce server-side (a target-project admin route has no authority to
     // mint GitHub tokens for the internal user — that would be a priv-esc).
     const getGithubToken = async () => githubToken;
+    let runningSandboxId: string | null = null;
     // Record the live sandbox id while running so a cancel (another invocation)
-    // can hard-stop it.
+    // can hard-stop it. Keep an in-memory copy too: if the agent fails after
+    // boot, the background catch path must stop the sandbox before marking the
+    // run terminal.
     const onSandboxId = async (sandboxId: string) => {
+      runningSandboxId = sandboxId;
       await recordConfigAgentRunSandbox({ projectId, branchId, sandboxId });
     };
     // Sanitized live activity feed surfaced to the dashboard (no secrets/tokens).
@@ -149,6 +153,9 @@ export const POST = createSmartRouteHandler({
         }
       } catch (error) {
         captureError("config-github-apply", error);
+        if (runningSandboxId != null) {
+          await stopConfigAgentSandbox(runningSandboxId).catch((e) => captureError("config-github-apply-stop-sandbox", e));
+        }
         await recordConfigAgentRunResult({
           projectId,
           branchId,
