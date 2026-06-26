@@ -19,7 +19,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import {
   ArrowsClockwiseIcon,
   ChartBarIcon,

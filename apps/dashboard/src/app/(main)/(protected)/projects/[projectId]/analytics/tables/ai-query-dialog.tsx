@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { CreateDashboardPreview } from "@/components/commands/create-dashboard/create-dashboard-preview";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { AssistantRuntimeProvider, type ToolCallContentPartProps } from "@assistant-ui/react";
 import {
   ArrowClockwiseIcon,

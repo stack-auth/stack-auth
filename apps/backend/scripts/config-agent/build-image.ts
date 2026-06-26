@@ -5,7 +5,7 @@
  * one). Every dashboard config write warm-boots from it and then clones the repo
  * fresh, so you only pay the SDK install once — here.
  *
- *   cd apps/backend && pnpm run with-env:dev tsx scripts/build-config-agent-image.ts
+ *   cd apps/backend && pnpm run with-env:dev tsx scripts/config-agent/build-image.ts
  *
  * Then set the printed id so config writes warm-boot from it (either spelling works;
  * the env shim maps STACK_* <-> HEXCLAVE_*):
@@ -13,7 +13,7 @@
  *   HEXCLAVE_CONFIG_AGENT_BASE_SNAPSHOT_ID=<printed id>
  *
  * Needs HEXCLAVE_VERCEL_SANDBOX_TOKEN (+ team/project ids) configured. Re-run this
- * whenever AGENT_SDK_VERSION in repo-agent.tsx changes; old base snapshots can be
+ * whenever AGENT_SDK_VERSION in repo-agent.ts changes; old base snapshots can be
  * deleted from the Vercel dashboard.
  */
 import { buildConfigAgentBaseSnapshot } from "@/lib/config/repo-agent";

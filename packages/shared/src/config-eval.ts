@@ -118,3 +118,14 @@ import.meta.vitest?.test("evalConfigFileContent rejects content without config e
 import.meta.vitest?.test("evalConfigFileContent rejects arbitrary string config values", ({ expect }) => {
   expect(() => evalConfigFileContent('export const config = "arbitrary-string";', "stack.config.ts")).toThrow(/must be "show-onboarding"/);
 });
+
+import.meta.vitest?.test("evalConfigFileContent rejects unresolvable config factories", ({ expect }) => {
+  expect(() => evalConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow();
+});
+
+import.meta.vitest?.test("evalConfigFileContent rejects missing config import targets", ({ expect }) => {
+  expect(() => evalConfigFileContent(`
+    import missingConfigPart from "./missing-config-part";
+    export const config = { auth: missingConfigPart };
+  `, "/tmp/hexclave-missing-import-config.ts")).toThrow();
+});

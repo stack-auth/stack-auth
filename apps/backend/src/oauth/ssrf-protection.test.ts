@@ -1,6 +1,6 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { describe, expect, it } from "vitest";
-import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress } from "./ssrf-protection";
+import { describe, expect, it, vi } from "vitest";
+import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./ssrf-protection";
 
 describe("isBlockedOAuthIpAddress", () => {
   it("blocks AWS metadata, loopback, and private IPv4 ranges", () => {
@@ -50,3 +50,46 @@ describe("assertSafeOAuthResolvedAddress", () => {
   });
 });
 
+describe("safeOAuthDnsLookup", () => {
+  async function withProductionOAuthSsrfProtection<T>(fn: () => Promise<T>): Promise<T> {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      return await fn();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
+
+  it("passes blocked single-address DNS results to the callback as errors", async () => {
+    await withProductionOAuthSsrfProtection(async () => {
+      await new Promise<void>((resolve, reject) => {
+        safeOAuthDnsLookup("127.0.0.1", { all: false }, (error, address, family) => {
+          try {
+            expect(error).toBeInstanceOf(StatusError);
+            expect(address).toBe("");
+            expect(family).toBe(0);
+            resolve();
+          } catch (assertionError) {
+            reject(assertionError);
+          }
+        });
+      });
+    });
+  });
+
+  it("passes blocked multi-address DNS results to the callback as errors", async () => {
+    await withProductionOAuthSsrfProtection(async () => {
+      await new Promise<void>((resolve, reject) => {
+        safeOAuthDnsLookup("127.0.0.1", { all: true }, (error, addresses) => {
+          try {
+            expect(error).toBeInstanceOf(StatusError);
+            expect(addresses).toEqual([]);
+            resolve();
+          } catch (assertionError) {
+            reject(assertionError);
+          }
+        });
+      });
+    });
+  });
+});

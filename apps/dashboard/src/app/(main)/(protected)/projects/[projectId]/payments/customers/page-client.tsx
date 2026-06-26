@@ -20,7 +20,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { KnownErrors } from "@hexclave/shared";

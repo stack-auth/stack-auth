@@ -1,4 +1,4 @@
-import { ConfigAgentRunWatcher } from "@/lib/config-agent-run";
+import { ConfigAgentRunWatcher } from "@/components/config-update/config-agent-run-watcher";
 import { UrlPrefetcher } from "@/lib/prefetch/url-prefetcher";
 import SidebarLayout from "./sidebar-layout";
 import { AdminAppProvider } from "./use-admin-app";

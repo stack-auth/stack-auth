@@ -12,7 +12,7 @@
  *
  * Run from apps/backend:
  *   pnpm dlx dotenv-cli -e .env.development.local -e .env.development -- \
- *     pnpm tsx scripts/spike-orchestrator-e2e.mts
+ *     pnpm tsx scripts/config-agent/spike-orchestrator-e2e.mts
  *
  * The GitHub token comes from $GITHUB_TOKEN, falling back to `gh auth token`.
  */
@@ -21,7 +21,7 @@ import {
   applyConfigUpdate,
   commitConfigUpdate,
   type GithubRepoRef,
-} from "../src/lib/config/repo-agent";
+} from "../../src/lib/config/repo-agent";
 
 if (!process.env.SPIKE_OWNER || !process.env.SPIKE_REPO || !process.env.SPIKE_BRANCH) {
   console.error("SPIKE_OWNER, SPIKE_REPO, and SPIKE_BRANCH must all be set explicitly.\nThis script pushes commits to a real repo — refusing to fall back to defaults.");

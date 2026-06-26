@@ -11,7 +11,7 @@
  * so the closest analog is a single SHARED, repo-independent base snapshot that
  * bakes in only the agent's OWN runtime (node + the Claude Agent SDK + git bot
  * identity) — never any repo or token. Build it once with
- * `scripts/build-config-agent-image.ts` and point `STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID`
+ * `scripts/config-agent/build-image.ts` and point `STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID`
  * at the printed id; every config write warm-boots from it. If the env var is
  * unset (local/dev, or before the image is built) we cold-boot a node24 sandbox
  * and install the SDK inline — slower, but self-sufficient.
@@ -399,7 +399,7 @@ async function bootAgentSandbox(creds: SandboxCreds): Promise<Sandbox> {
 }
 
 // ---------------------------------------------------------------------------
-// Base snapshot build (one-off, via scripts/build-config-agent-image.ts)
+// Base snapshot build (one-off, via scripts/config-agent/build-image.ts)
 // ---------------------------------------------------------------------------
 
 /**

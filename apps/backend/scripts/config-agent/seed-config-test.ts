@@ -16,7 +16,7 @@
  *      config directly.
  *
  * Run it (clickhouse + postgres must be up, i.e. the local stack running):
- *   pnpm --filter @hexclave/backend run with-env:dev tsx scripts/seed-config-test.ts
+ *   pnpm --filter @hexclave/backend run with-env:dev tsx scripts/config-agent/seed-config-test.ts
  *
  * Override the target repo / config file via env (defaults shown):
  *   STACK_CONFIG_TEST_OWNER=mantrakp04

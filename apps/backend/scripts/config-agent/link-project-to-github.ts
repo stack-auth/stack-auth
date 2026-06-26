@@ -5,7 +5,7 @@
  * GitHub Actions runner can't POST to localhost, so the `config push` CI step
  * fails and the project never advances to "linked"). Run this to set the state.
  *
- *   cd apps/backend && LINK_PROJECT_ID=<uuid> pnpm run with-env:dev tsx scripts/link-project-to-github.ts
+ *   cd apps/backend && LINK_PROJECT_ID=<uuid> pnpm run with-env:dev tsx scripts/config-agent/link-project-to-github.ts
  *
  * Env (defaults shown):
  *   LINK_PROJECT_ID=<uuid>                                       (REQUIRED)

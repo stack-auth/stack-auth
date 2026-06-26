@@ -108,9 +108,14 @@ export async function assertSafeOAuthUrl(urlString: string): Promise<void> {
 }
 
 export function assertSafeOAuthResolvedAddress(address: string): void {
-  if (isBlockedOAuthIpAddress(address)) {
-    throw new StatusError(StatusError.BadRequest, OAUTH_SSRF_PROTECTION_ERROR);
-  }
+  const error = getUnsafeOAuthResolvedAddressError(address);
+  if (error != null) throw error;
+}
+
+function getUnsafeOAuthResolvedAddressError(address: string): StatusError | null {
+  return isBlockedOAuthIpAddress(address)
+    ? new StatusError(StatusError.BadRequest, OAUTH_SSRF_PROTECTION_ERROR)
+    : null;
 }
 
 type DnsLookupCallback = (
@@ -134,7 +139,11 @@ export function safeOAuthDnsLookup(hostname: string, options: dns.LookupOptions,
       }
 
       for (const address of addresses) {
-        assertSafeOAuthResolvedAddress(address.address);
+        const unsafeAddressError = getUnsafeOAuthResolvedAddressError(address.address);
+        if (unsafeAddressError != null) {
+          callback(unsafeAddressError, []);
+          return;
+        }
       }
       callback(null, addresses);
     });
@@ -148,7 +157,11 @@ export function safeOAuthDnsLookup(hostname: string, options: dns.LookupOptions,
       return;
     }
 
-    assertSafeOAuthResolvedAddress(address);
+    const unsafeAddressError = getUnsafeOAuthResolvedAddressError(address);
+    if (unsafeAddressError != null) {
+      callback(unsafeAddressError, "", 0);
+      return;
+    }
     callback(null, address, family);
   });
 }

@@ -884,6 +884,14 @@ export const oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ ope
 export const oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: 'Account ID of the OAuth provider. This uniquely identifies the account on the provider side.', exampleValue: 'google-account-id-12345' } });
 export const oauthProviderProviderConfigIdSchema = yupString().meta({ openapiField: { description: 'Provider config ID of the OAuth provider. This uniquely identifies the provider config on config.json file', exampleValue: 'google' } });
 
+export const configAgentSafeErrorMessages = [
+  "The config agent failed to apply the change.",
+  "Sandbox session expired. Please retry the update.",
+  "Failed to commit and push the config changes.",
+] as const;
+export type ConfigAgentSafeErrorMessage = typeof configAgentSafeErrorMessages[number];
+export const configAgentSafeErrorMessageSchema = yupString().oneOf(configAgentSafeErrorMessages);
+
 // Headers
 export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authorization-header', 'Authorization header must be in the format "Basic <base64>"', (value) => {
   if (!value) return true;
@@ -948,7 +956,7 @@ export const branchConfigSourceSchema = yupUnion(
       started_at: yupNumber().defined(),
       finished_at: yupNumber().optional(),
       commit_url: urlSchema.optional(),
-      error: yupString().optional(),
+      error: configAgentSafeErrorMessageSchema.optional(),
       // Vercel Sandbox id of the in-flight run, recorded while `status === "running"` or `"awaiting_review"`
       // so a cancel request (a different invocation) can hard-stop the sandbox.
       // Cleared/ignored once the run reaches a terminal status.
@@ -972,3 +980,32 @@ export const branchConfigSourceSchema = yupUnion(
     type: yupString().oneOf(["unlinked"]).defined(),
   }),
 );
+
+import.meta.vitest?.test("branchConfigSourceSchema only allows safe config-agent error messages", async ({ expect }) => {
+  const source = {
+    type: "pushed-from-github",
+    owner: "hexclave",
+    repo: "hexclave",
+    branch: "dev",
+    commit_hash: "abc123",
+    config_file_path: "hexclave.config.ts",
+  };
+
+  expect(await branchConfigSourceSchema.isValid({
+    ...source,
+    agent_run: {
+      status: "error",
+      started_at: 1,
+      error: "The config agent failed to apply the change.",
+    },
+  })).toMatchInlineSnapshot(`true`);
+
+  expect(await branchConfigSourceSchema.isValid({
+    ...source,
+    agent_run: {
+      status: "error",
+      started_at: 1,
+      error: "ENOENT: tokenized internal failure",
+    },
+  })).toMatchInlineSnapshot(`false`);
+});

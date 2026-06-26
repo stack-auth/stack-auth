@@ -86,7 +86,7 @@ vi.mock("@/lib/env", () => ({
   getPublicEnvVar: () => "false",
 }));
 
-vi.mock("@/lib/config-update", () => ({
+vi.mock("@/components/config-update", () => ({
   useUpdateConfig: () => mockUpdateConfig,
 }));
 

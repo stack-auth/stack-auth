@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@hexclave/shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@hexclave/shared/dist/config/schema";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
-import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { branchConfigSourceSchema, type ConfigAgentSafeErrorMessage, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
 import { isTruthy } from "@hexclave/shared/dist/utils/booleans";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
@@ -720,7 +720,7 @@ export async function recordConfigAgentRunResult(options: {
   outcome:
     | { status: "success", commitUrl?: string, newCommitHash?: string }
     | { status: "no-change" }
-    | { status: "error", error: string },
+    | { status: "error", error: ConfigAgentSafeErrorMessage },
 }): Promise<void> {
   await retryTransaction(globalPrismaClient, async (tx) => {
     const rows = await tx.$queryRaw<{ source: any }[]>`

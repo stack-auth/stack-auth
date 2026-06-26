@@ -7,7 +7,8 @@ import type { StackAdminApp } from "@hexclave/next";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { ConfigAgentRunProgressContent, type AgentStage, getAdminInterface, isGithubPushedSourceWithAgentRun, useGithubRunActive, type GithubPushedSourceWithAgentRun } from "./config-update";
+import { ConfigAgentRunProgressContent } from "./progress-content";
+import { type AgentStage, getAdminInterface, isGithubPushedSourceWithAgentRun, useGithubRunActive, type GithubPushedSourceWithAgentRun } from "./shared";
 
 /**
  * Watches the linked-GitHub config source for an in-flight agent run and, when
