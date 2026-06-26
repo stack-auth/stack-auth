@@ -1,6 +1,27 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import dns from "node:dns";
 import { describe, expect, it, vi } from "vitest";
 import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./ssrf-protection";
+
+async function withProductionOAuthSsrfProtection<T>(callback: () => Promise<T>): Promise<T> {
+  vi.stubEnv("NODE_ENV", "production");
+  try {
+    return await callback();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+}
+
+type SingleLookupResult = {
+  error: NodeJS.ErrnoException | null,
+  address: string | dns.LookupAddress[],
+  family?: number,
+};
+
+type AllLookupResult = {
+  error: NodeJS.ErrnoException | null,
+  addresses: string | dns.LookupAddress[],
+};
 
 describe("isBlockedOAuthIpAddress", () => {
   it("blocks AWS metadata, loopback, and private IPv4 ranges", () => {
@@ -51,45 +72,28 @@ describe("assertSafeOAuthResolvedAddress", () => {
 });
 
 describe("safeOAuthDnsLookup", () => {
-  async function withProductionOAuthSsrfProtection<T>(fn: () => Promise<T>): Promise<T> {
-    vi.stubEnv("NODE_ENV", "production");
-    try {
-      return await fn();
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  }
-
-  it("passes blocked single-address DNS results to the callback as errors", async () => {
-    await withProductionOAuthSsrfProtection(async () => {
-      await new Promise<void>((resolve, reject) => {
+  it("reports blocked single-address lookup results through the callback", async () => {
+    const result = await withProductionOAuthSsrfProtection(async () =>
+      await new Promise<SingleLookupResult>((resolve) => {
         safeOAuthDnsLookup("127.0.0.1", { all: false }, (error, address, family) => {
-          try {
-            expect(error).toBeInstanceOf(StatusError);
-            expect(address).toBe("");
-            expect(family).toBe(0);
-            resolve();
-          } catch (assertionError) {
-            reject(assertionError);
-          }
+          resolve({ error, address, family });
         });
-      });
-    });
+      }));
+
+    expect(result.error).toBeInstanceOf(StatusError);
+    expect(result.address).toBe("");
+    expect(result.family).toBe(0);
   });
 
-  it("passes blocked multi-address DNS results to the callback as errors", async () => {
-    await withProductionOAuthSsrfProtection(async () => {
-      await new Promise<void>((resolve, reject) => {
-        safeOAuthDnsLookup("127.0.0.1", { all: true }, (error, addresses) => {
-          try {
-            expect(error).toBeInstanceOf(StatusError);
-            expect(addresses).toEqual([]);
-            resolve();
-          } catch (assertionError) {
-            reject(assertionError);
-          }
+  it("reports blocked all-address lookup results through the callback", async () => {
+    const result = await withProductionOAuthSsrfProtection(async () =>
+      await new Promise<AllLookupResult>((resolve) => {
+        safeOAuthDnsLookup("127.0.0.1", { all: true, verbatim: true } satisfies dns.LookupAllOptions, (error, addresses) => {
+          resolve({ error, addresses });
         });
-      });
-    });
+      }));
+
+    expect(result.error).toBeInstanceOf(StatusError);
+    expect(result.addresses).toEqual([]);
   });
 });

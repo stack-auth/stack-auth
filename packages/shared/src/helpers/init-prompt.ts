@@ -26,7 +26,7 @@ HEXCLAVE SETUP INSTRUCTIONS
 
 These instructions describe how to set up Hexclave.
 ${web ? `
-First of all, if you have access to a terminal, it is better to use \`npx @hexclave/cli init\`.
+First of all, use the full setup prompt below as the source of truth. Do not run the Hexclave CLI initializer unless the user explicitly asks for the CLI workflow.
 ` : ""}
 
 ${getCliProjectSetupContext(configPath)}

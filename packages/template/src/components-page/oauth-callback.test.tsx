@@ -5,6 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StackClientApp } from "../lib/hexclave-app/apps/interfaces/client-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
 import { TranslationProviderClient } from "../providers/translation-provider-client";
 import { OAuthCallback } from "./oauth-callback";
 
@@ -40,6 +41,9 @@ function createAppTestDouble(options: {
     callOAuthCallback: options.callOAuthCallback,
     redirectToSignIn: vi.fn(async () => {}),
     redirectToHome: vi.fn(async () => {}),
+    [hexclaveAppInternalsSymbol]: {
+      awaitPendingAuthResolutions: vi.fn(async () => {}),
+    },
   };
 
   // This test double intentionally implements only the StackClientApp surface

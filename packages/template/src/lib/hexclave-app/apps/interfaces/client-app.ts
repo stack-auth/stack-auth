@@ -136,6 +136,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
       redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
+      awaitPendingAuthResolutions(): Promise<void>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

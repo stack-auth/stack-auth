@@ -304,6 +304,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       orderBy?: 'signedUpAt' | 'lastActiveAt',
       desc?: boolean,
       query?: string,
+      excludedEmailDomains?: string[],
       includeRestricted?: boolean,
       teamId?: string,
     }
@@ -331,6 +332,9 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.excludedEmailDomains && options.excludedEmailDomains.length > 0 ? {
+        excluded_email_domains: options.excludedEmailDomains.join(","), // backend expects comma-separated list of domains.
       } : {},
       ...options.includeRestricted ? {
         include_restricted: 'true',

@@ -1,7 +1,6 @@
 "use client";
 
 import { useStackApp, useUser } from "@hexclave/next";
-import { ITEM_IDS, PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@hexclave/ui";
 import Link from "next/link";
@@ -38,7 +37,7 @@ async function readJson(response: Response): Promise<unknown> {
   return value;
 }
 
-async function createCheckoutUrl(options: { teamId: string, productId: "team" | "growth", returnUrl: string }): Promise<string> {
+async function createCheckoutUrl(options: { teamId: string, productId: "team_pro" | "extra_seats", returnUrl: string }): Promise<string> {
   const response = await fetch("/payments-demo/api/create-checkout-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,10 +50,17 @@ async function createCheckoutUrl(options: { teamId: string, productId: "team" | 
   return data.url;
 }
 
+function resolveTeamPlan(products: ReadonlyArray<{ id: string | null, type?: string }>): string {
+  const activeSubscriptionIds = new Set(
+    products.filter((p) => p.type === "subscription" && p.id != null).map((p) => p.id),
+  );
+  return activeSubscriptionIds.has("team_pro") ? "team_pro" : "none";
+}
+
 function ProductList(props: { team: ReturnType<NonNullable<ReturnType<typeof useUser>>["useTeams"]>[number] }) {
   const products = props.team.useProducts();
-  const emails = props.team.useItem(ITEM_IDS.emailsPerMonth);
-  const activePlan = resolvePlanId(products);
+  const seats = props.team.useItem("seats");
+  const activePlan = resolveTeamPlan(products);
 
   return (
     <Card className="overflow-hidden">
@@ -73,10 +79,9 @@ function ProductList(props: { team: ReturnType<NonNullable<ReturnType<typeof use
         </div>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Metric label="Emails remaining" value={emails.nonNegativeQuantity.toLocaleString()} />
-          <Metric label="Raw email quantity" value={emails.quantity.toLocaleString()} />
-          <Metric label="Expected free quota" value={PLAN_LIMITS.free.emailsPerMonth.toLocaleString()} />
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Seats granted" value={seats.quantity.toLocaleString()} />
+          <Metric label="Seats available" value={seats.nonNegativeQuantity.toLocaleString()} />
         </div>
 
         <div className="overflow-auto rounded-md border">
@@ -118,8 +123,8 @@ function ProductList(props: { team: ReturnType<NonNullable<ReturnType<typeof use
         </div>
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
-        <CheckoutButton team={props.team} productId="team" label="Buy Team" />
-        <CheckoutButton team={props.team} productId="growth" label="Buy Growth" />
+        <CheckoutButton team={props.team} productId="team_pro" label="Buy Team Pro" />
+        <CheckoutButton team={props.team} productId="extra_seats" label="Buy Extra Seat (add-on)" />
       </CardFooter>
     </Card>
   );
@@ -136,7 +141,7 @@ function Metric(props: { label: string, value: string }) {
 
 function CheckoutButton(props: {
   team: ReturnType<NonNullable<ReturnType<typeof useUser>>["useTeams"]>[number],
-  productId: "team" | "growth",
+  productId: "team_pro" | "extra_seats",
   label: string,
 }) {
   const [loading, setLoading] = useState(false);
@@ -186,7 +191,7 @@ export default function PaymentsDemoPage() {
     await user.setSelectedTeam(team);
     setResult({
       label: "Created team",
-      detail: `${team.displayName} (${team.id}). Free plan should appear after the billing grant job/webhook path catches up.`,
+      detail: `${team.displayName} (${team.id}). The team starts with no products — buy Team Pro below to start a subscription.`,
     });
     setTeamName(`Payments demo ${new Date().toISOString()}`);
   };
@@ -224,7 +229,7 @@ export default function PaymentsDemoPage() {
           <div>
             <Typography type="h1">Payments Demo</Typography>
             <Typography className="max-w-3xl text-gray-600 dark:text-gray-400">
-              Manual test surface for Hexclave internal team plans, Stripe checkout, subscription ending, and email quota deductions.
+              Manual test surface for the demo team plans (Team Pro + Extra Seats add-on), Stripe checkout, subscription ending, and seat item quantities.
             </Typography>
           </div>
           <Link className="text-sm font-medium underline" href={internalDashboardUrl}>
@@ -244,7 +249,7 @@ export default function PaymentsDemoPage() {
 
             <div className="grid gap-3 md:grid-cols-[160px_auto_1fr]">
               <Input value={emailCount} onChange={(e) => setEmailCount(e.target.value)} inputMode="numeric" />
-              <Button onClick={() => runAsynchronouslyWithAlert(sendTestEmails)}>Send quota emails</Button>
+              <Button onClick={() => runAsynchronouslyWithAlert(sendTestEmails)}>Send test emails</Button>
               <Button variant="secondary" onClick={() => runAsynchronouslyWithAlert(runConfigCheck)}>
                 Check free/config guardrails
               </Button>
@@ -253,7 +258,7 @@ export default function PaymentsDemoPage() {
             <div className="rounded-md border bg-white p-3 text-sm dark:bg-black">
               <div><span className="font-medium">Project:</span> {project.displayName} ({project.id})</div>
               <div><span className="font-medium">Selected team:</span> {user.selectedTeam?.displayName ?? "none"}</div>
-              <div><span className="font-medium">Manual Stripe end test:</span> buy Team/Growth, end that customer subscription in Stripe Connect, wait for the webhook, then refresh here. The paid plan should disappear and Free should return.</div>
+              <div><span className="font-medium">Manual Stripe end test:</span> buy Team Pro, end that customer subscription in Stripe Connect, wait for the webhook, then refresh here. The paid plan should disappear.</div>
             </div>
 
             {result && (

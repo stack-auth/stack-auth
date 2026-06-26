@@ -124,6 +124,18 @@ type DnsLookupCallback = (
   family?: number,
 ) => void;
 
+function getLookupValidationError(validate: () => void): NodeJS.ErrnoException | null {
+  try {
+    validate();
+    return null;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    return new Error("OAuth DNS lookup failed while validating resolved address.");
+  }
+}
+
 export function safeOAuthDnsLookup(hostname: string, options: dns.LookupOptions, callback: DnsLookupCallback): void {
   if (!shouldEnforceOAuthSsrfProtection()) {
     dns.lookup(hostname, options, callback);
@@ -138,12 +150,14 @@ export function safeOAuthDnsLookup(hostname: string, options: dns.LookupOptions,
         return;
       }
 
-      for (const address of addresses) {
-        const unsafeAddressError = getUnsafeOAuthResolvedAddressError(address.address);
-        if (unsafeAddressError != null) {
-          callback(unsafeAddressError, []);
-          return;
+      const validationError = getLookupValidationError(() => {
+        for (const address of addresses) {
+          assertSafeOAuthResolvedAddress(address.address);
         }
+      });
+      if (validationError !== null) {
+        callback(validationError, []);
+        return;
       }
       callback(null, addresses);
     });
@@ -157,9 +171,9 @@ export function safeOAuthDnsLookup(hostname: string, options: dns.LookupOptions,
       return;
     }
 
-    const unsafeAddressError = getUnsafeOAuthResolvedAddressError(address);
-    if (unsafeAddressError != null) {
-      callback(unsafeAddressError, "", 0);
+    const validationError = getLookupValidationError(() => assertSafeOAuthResolvedAddress(address));
+    if (validationError !== null) {
+      callback(validationError, "", 0);
       return;
     }
     callback(null, address, family);
