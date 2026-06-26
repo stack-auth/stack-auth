@@ -176,7 +176,8 @@ function RdeProjectsListPage() {
     if (search) {
       projects = projects.filter((project) => {
         const configPath = projectConfigPaths.get(project.id);
-        return configPath != null && configPath.toLowerCase().includes(search.toLowerCase());
+        const searchTarget = configPath ?? project.id;
+        return searchTarget.toLowerCase().includes(search.toLowerCase());
       });
     }
     return projects.sort((a, b) => a.createdAt > b.createdAt ? -1 : 1);
@@ -222,7 +223,7 @@ function RdeProjectsListPage() {
                   <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
                     {configPath ?? project.id}
                   </span>
-                  {onboardingStatus !== "completed" && (
+                  {onboardingStatus != null && onboardingStatus !== "completed" && (
                     <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                       Setup incomplete
                     </span>
