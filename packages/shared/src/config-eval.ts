@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
+import { showOnboardingHexclaveConfigValue } from "./config-authoring";
 import { detectConfigImportPackage } from "./config-rendering";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
@@ -49,11 +50,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-type ParsedConfigValue = Record<string, unknown> | string;
+/** A config object, or the `"show-onboarding"` sentinel that stands in for one. */
+export type ParsedConfigValue = Record<string, unknown> | typeof showOnboardingHexclaveConfigValue;
+
+function invalidConfigShape(filePath: string): ConfigFileEvalError {
+  return new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "${showOnboardingHexclaveConfigValue}".`);
+}
 
 /**
  * Evaluates config file content using jiti and returns the exported `config`
- * value. Replaces the old Babel AST-based `parseHexclaveConfigFileContent`.
+ * value.
  *
  * WARNING: This executes arbitrary code via `jiti.evalModule` — only use on
  * content that is fully operator-controlled (local filesystem). Never call
@@ -64,32 +70,20 @@ export function evalConfigFileContent(content: string, filePath: string): Parsed
   const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
   const mod: unknown = jiti.evalModule(content, { filename: resolvedPath });
   if (!isRecord(mod)) {
-    throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+    throw invalidConfigShape(filePath);
   }
   const config = mod.config;
   if (config === undefined) {
-    throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
+    throw invalidConfigShape(filePath);
   }
   if (typeof config === "string") {
-    if (config !== "show-onboarding") {
-      throw new ConfigFileEvalError(`Invalid config in ${filePath}. String config values must be "show-onboarding", got "${config}".`);
+    if (config !== showOnboardingHexclaveConfigValue) {
+      throw new ConfigFileEvalError(`Invalid config in ${filePath}. String config values must be "${showOnboardingHexclaveConfigValue}", got "${config}".`);
     }
     return config;
   }
   if (isRecord(config)) return config;
-  throw new ConfigFileEvalError(`Invalid config in ${filePath}. The file must export a plain \`config\` object or "show-onboarding".`);
-}
-
-/**
- * Like {@link evalConfigFileContent}, but returns `null` instead of throwing
- * when the content cannot be evaluated.
- */
-export function tryEvalConfigFileContent(content: string, filePath: string): ParsedConfigValue | null {
-  try {
-    return evalConfigFileContent(content, filePath);
-  } catch {
-    return null;
-  }
+  throw invalidConfigShape(filePath);
 }
 
 // --- inline vitest tests ---
@@ -123,22 +117,4 @@ import.meta.vitest?.test("evalConfigFileContent rejects content without config e
 
 import.meta.vitest?.test("evalConfigFileContent rejects arbitrary string config values", ({ expect }) => {
   expect(() => evalConfigFileContent('export const config = "arbitrary-string";', "stack.config.ts")).toThrow(/must be "show-onboarding"/);
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns the config for valid exports", ({ expect }) => {
-  expect(tryEvalConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
-    auth: { allowSignUp: true },
-  });
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns null on unresolvable function call", ({ expect }) => {
-  expect(tryEvalConfigFileContent("export const config = someUndefinedFunction();", "stack.config.ts")).toBeNull();
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns null on unresolvable import", ({ expect }) => {
-  expect(tryEvalConfigFileContent('import x from "./nonexistent-file";\nexport const config = { a: x };', "stack.config.ts")).toBeNull();
-});
-
-import.meta.vitest?.test("tryEvalConfigFileContent returns null on syntax error", ({ expect }) => {
-  expect(tryEvalConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
 });

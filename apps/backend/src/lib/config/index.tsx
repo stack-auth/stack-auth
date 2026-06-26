@@ -494,7 +494,10 @@ export async function getCompleteBranchConfigForFile(options: {
 }): Promise<Record<string, unknown>> {
   const current = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery({ projectId: options.projectId, branchId: options.branchId }));
   const merged = override(current as Config, options.configUpdate as Config);
-  return normalize(merged, { onDotIntoNonObject: "ignore" }) as Record<string, unknown>;
+  // Dashboard saves usually arrive as dot-notation deltas (for example
+  // `auth.allowSignUp: false`). The branch override can be empty, so missing
+  // parents must be materialized instead of silently dropping the pending edit.
+  return normalize(merged, { onDotIntoNonObject: "ignore", onDotIntoNull: "empty-object" }) as Record<string, unknown>;
 }
 
 /**
@@ -587,6 +590,10 @@ export async function recordConfigAgentRunProgress(options: {
     if (!source || source.type !== "pushed-from-github") return;
     if (source.agent_run?.status !== "running") return;
     const next: GithubConfigSource = {
+      // Stored cap (2000 chars): a coarse DB-size guard on the persisted feed.
+      // The runner already trims each line to 100 chars and keeps only the last
+      // ~6 lines (see buildRunnerScript), so this only bites pathological input;
+      // the two limits are independent on purpose (storage vs. in-sandbox feed).
       ...source,
       agent_run: { ...source.agent_run, progress: options.progress.slice(0, 2000) },
     };
@@ -598,12 +605,79 @@ export async function recordConfigAgentRunProgress(options: {
 }
 
 /**
+ * Records the current stage of an in-flight run for the dashboard progress bar.
+ * No-ops unless a run is still `running`.
+ */
+export async function recordConfigAgentRunStage(options: {
+  projectId: string,
+  branchId: string,
+  stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes",
+}): Promise<void> {
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: any }[]>`
+      SELECT "source" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const source = rows[0]?.source;
+    if (!source || source.type !== "pushed-from-github") return;
+    if (source.agent_run?.status !== "running") return;
+    const next: GithubConfigSource = {
+      ...source,
+      agent_run: { ...source.agent_run, stage: options.stage },
+    };
+    await tx.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+      data: { source: next as any },
+    });
+  });
+}
+
+/**
+ * Transitions a `running` agent run to `awaiting_review`: the agent has finished
+ * editing the config but has not yet committed or pushed. The diff is stored so
+ * the dashboard can display it. The sandbox_id must still be set (the sandbox
+ * stays alive — it will be used to commit+push when the user confirms, or
+ * hard-stopped on cancel).
+ */
+export async function setConfigAgentRunAwaitingReview(options: {
+  projectId: string,
+  branchId: string,
+  diff: string,
+}): Promise<{ sandboxId: string | undefined }> {
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: any }[]>`
+      SELECT "source" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const source = rows[0]?.source;
+    if (!source || source.type !== "pushed-from-github") return { sandboxId: undefined };
+    if (source.agent_run?.status !== "running") return { sandboxId: undefined };
+    const next: GithubConfigSource = {
+      ...source,
+      agent_run: {
+        ...source.agent_run,
+        status: "awaiting_review",
+        stage: "awaiting_review",
+        diff: options.diff.slice(0, 100_000),
+      },
+    };
+    await tx.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+      data: { source: next as any },
+    });
+    return { sandboxId: source.agent_run?.sandbox_id };
+  });
+}
+
+/**
  * Requests cancellation of the in-flight config agent run. Atomically flips a
- * `running` run to the terminal `cancelled` status (so the original run's late
- * result is ignored — see {@link recordConfigAgentRunResult}) and returns the
- * sandbox id (if recorded) so the caller can hard-stop the sandbox. Returns
- * `{ cancelled: false }` when no fresh run is in flight. (No revert: stopping the
- * sandbox before the push undoes the change; a commit that already landed stays.)
+ * `running` or `awaiting_review` run to the terminal `cancelled` status and
+ * returns the sandbox id (if recorded) so the caller can hard-stop the sandbox.
+ * Returns `{ cancelled: false }` when no fresh run is in flight. (No revert:
+ * stopping the sandbox before the push undoes the change; a commit that already
+ * landed stays.)
  */
 export async function cancelConfigAgentRun(options: {
   projectId: string,
@@ -619,7 +693,7 @@ export async function cancelConfigAgentRun(options: {
     const source = rows[0]?.source;
     if (!source || source.type !== "pushed-from-github") return { cancelled: false };
     const run = source.agent_run;
-    if (!run || run.status !== "running") return { cancelled: false };
+    if (!run || (run.status !== "running" && run.status !== "awaiting_review")) return { cancelled: false };
     const sandboxId: string | undefined = run.sandbox_id;
     const next: GithubConfigSource = {
       ...source,

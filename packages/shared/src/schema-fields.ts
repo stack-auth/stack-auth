@@ -942,12 +942,14 @@ export const branchConfigSourceSchema = yupUnion(
     // Status of the most recent agent-driven config write, so the dashboard can
     // poll for progress and surface the resulting commit (or error) across tabs.
     agent_run: yupObject({
-      status: yupString().oneOf(["running", "success", "no-change", "error", "cancelled"]).defined(),
+      // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for user to commit;
+      // "success" | "no-change" | "error" | "cancelled": terminal.
+      status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),
       started_at: yupNumber().defined(),
       finished_at: yupNumber().optional(),
       commit_url: urlSchema.optional(),
       error: yupString().optional(),
-      // Vercel Sandbox id of the in-flight run, recorded while `status === "running"`
+      // Vercel Sandbox id of the in-flight run, recorded while `status === "running"` or `"awaiting_review"`
       // so a cancel request (a different invocation) can hard-stop the sandbox.
       // Cleared/ignored once the run reaches a terminal status.
       sandbox_id: yupString().optional(),
@@ -955,6 +957,12 @@ export const branchConfigSourceSchema = yupUnion(
       // "Editing hexclave.config.ts", "Running: git push") so the dashboard can
       // show what's happening. Never contains file contents, tool inputs, or tokens.
       progress: yupString().optional(),
+      // Current stage of the run, for showing a progress bar in the dashboard.
+      // Cleared on terminal status.
+      stage: yupString().oneOf(["initializing_sandbox", "cloning_repo", "agent_making_changes", "awaiting_review"]).optional(),
+      // The git unified diff produced by the agent, set when status becomes "awaiting_review".
+      // Displayed in the dashboard for review before the user commits.
+      diff: yupString().optional(),
     }).optional(),
   }),
   yupObject({

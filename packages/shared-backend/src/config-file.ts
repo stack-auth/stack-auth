@@ -56,7 +56,7 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
   // user-facing message (the raw jiti/framework error is captured for diagnostics
   // but not attached as `cause` — dashboard error formatting renders causes
   // recursively and would leak framework internals).
-  let parsed: Record<string, unknown> | string;
+  let parsed: ReturnType<typeof evalConfigFileContent>;
   try {
     parsed = evalConfigFileContent(content, configFilePath);
   } catch (error) {

@@ -2,9 +2,10 @@
  * End-to-end smoke test for the config-update repo agent against a REAL Vercel
  * Sandbox and a REAL GitHub repo. This is a scratch script, not a unit test.
  *
- * It runs the single-phase apply flow: boot a sandbox (warm from the shared base
+ * It runs the two-phase review flow: boot a sandbox (warm from the shared base
  * snapshot if STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID is set, else cold-install the
- * agent SDK), clone the repo, agent edits the config, COMMIT + PUSH to the branch.
+ * agent SDK), clone the repo, agent edits the config, print the generated diff,
+ * then explicitly COMMIT + PUSH to the branch.
  *
  * WARNING: this pushes a commit to the target repo. Point SPIKE_OWNER,
  * SPIKE_REPO, and SPIKE_BRANCH at a throwaway repo/branch.
@@ -18,6 +19,7 @@
 import { execFileSync } from "child_process";
 import {
   applyConfigUpdate,
+  commitConfigUpdate,
   type GithubRepoRef,
 } from "../src/lib/config/repo-agent";
 
@@ -53,21 +55,27 @@ async function main() {
   const getGithubToken = async () => githubToken();
   log(`Target: ${REF.owner}/${REF.repo}@${REF.branch}`);
 
-  log("applyConfigUpdate (boot + clone + agent edit + push)…");
-  const t2 = Date.now();
+  log("applyConfigUpdate (boot + clone + agent edit)…");
+  const t2 = performance.now();
   const result = await applyConfigUpdate({
     getGithubToken,
     ref: REF,
     completeConfig: COMPLETE_CONFIG,
-    commitMessage: "chore(hexclave): e2e smoke — set auth.allowSignUp=false",
   });
-  log(`Done in ${((Date.now() - t2) / 1000).toFixed(0)}s`);
+  log(`Done in ${((performance.now() - t2) / 1000).toFixed(0)}s`);
   log(`Result: ${JSON.stringify(result)}`);
 
-  if (result.mode === "commit-to-branch") {
-    log(`✅ Pushed: ${result.commitUrl}`);
-  } else {
+  if (result.mode === "no-change") {
     log("⚠️  Agent produced no change (config already matched).");
+  } else {
+    log(`Review diff has ${result.diff.length} characters. Committing reviewed changes…`);
+    const commit = await commitConfigUpdate({
+      sandboxId: result.sandboxId,
+      getGithubToken,
+      ref: REF,
+      commitMessage: "chore(hexclave): e2e smoke — set auth.allowSignUp=false",
+    });
+    log(`✅ Pushed: ${commit.commitUrl}`);
   }
 }
 

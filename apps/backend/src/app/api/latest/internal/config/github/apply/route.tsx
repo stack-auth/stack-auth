@@ -4,9 +4,11 @@ import {
   recordConfigAgentRunProgress,
   recordConfigAgentRunResult,
   recordConfigAgentRunSandbox,
+  recordConfigAgentRunStage,
+  setConfigAgentRunAwaitingReview,
   tryStartConfigAgentRun,
 } from "@/lib/config";
-import { applyConfigUpdate, type GithubRepoRef } from "@/lib/config/repo-agent";
+import { applyConfigUpdate, stopConfigAgentSandbox, type GithubRepoRef } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
@@ -107,6 +109,10 @@ export const POST = createSmartRouteHandler({
     const onProgress = async (activity: string) => {
       await recordConfigAgentRunProgress({ projectId, branchId, progress: activity });
     };
+    // Stage updates drive the dashboard progress bar.
+    const onStage = async (stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => {
+      await recordConfigAgentRunStage({ projectId, branchId, stage });
+    };
 
     runAsynchronouslyAndWaitUntil(async () => {
       try {
@@ -115,25 +121,32 @@ export const POST = createSmartRouteHandler({
         // computed from the current branch override merged with this change.
         const completeConfig = await getCompleteBranchConfigForFile({ projectId, branchId, configUpdate });
 
-        // Boot a sandbox (warm from the shared base snapshot if configured, else
-        // cold-install the agent SDK), clone the repo fresh, edit + commit + push.
+        // Boot a sandbox, clone the repo, run the agent. The sandbox stays alive
+        // in `awaiting_review` so the user can inspect the diff before committing.
         const result = await applyConfigUpdate({
           getGithubToken,
           ref,
           completeConfig,
-          commitMessage,
           onSandboxId,
+          onStage,
           onProgress,
         });
 
-        await recordConfigAgentRunResult({
-          projectId,
-          branchId,
-          nowMs: Date.now(),
-          outcome: result.mode === "commit-to-branch"
-            ? { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha }
-            : { status: "no-change" },
-        });
+        if (result.mode === "no-change") {
+          await recordConfigAgentRunResult({
+            projectId,
+            branchId,
+            nowMs: Date.now(),
+            outcome: { status: "no-change" },
+          });
+        } else {
+          // Transition to awaiting_review — sandbox stays alive.
+          await setConfigAgentRunAwaitingReview({
+            projectId,
+            branchId,
+            diff: result.diff,
+          });
+        }
       } catch (error) {
         captureError("config-github-apply", error);
         await recordConfigAgentRunResult({

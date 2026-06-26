@@ -18,8 +18,9 @@
  *
  * Each update then does a FRESH shallow clone of the target branch inside the
  * sandbox (we take that clone cost per write instead of caching it), runs the
- * agent, commits, and pushes. The sandbox is destroyed afterwards and is NEVER
- * snapshotted, so the token that lives in `origin` for the clone/push dies with it.
+ * agent, keeps the sandbox alive for review, then either commits/pushes or
+ * stops it on discard. The sandbox is NEVER snapshotted, so the token that lives
+ * in `origin` for the clone/push dies with it.
  *
  * Phases:
  *   buildConfigAgentBaseSnapshot — one-off (build script): node24 + agent SDK + git
@@ -49,6 +50,7 @@ const TOOLS_DIR = BASE; // agent SDK + runner live here, separate from the repo
 const DEFAULT_AGENT_MODEL = "anthropic/claude-haiku-4.5";
 const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 const SANDBOX_TIMEOUT_MS = 900_000;
+const REVIEW_SANDBOX_KEEPALIVE_MS = 5 * 60_000;
 const GIT_BOT_NAME = "Hexclave Config Bot";
 const GIT_BOT_EMAIL = "config-bot@hexclave.com";
 
@@ -63,9 +65,7 @@ export type GithubRepoRef = { owner: string, repo: string, branch: string };
  */
 export type GithubTokenProvider = () => Promise<string>;
 
-export type ConfigUpdatePushResult =
-  | { mode: "commit-to-branch", branch: string, commitUrl: string, commitSha: string }
-  | { mode: "no-change" };
+export type ConfigUpdateCommitResult = { mode: "commit-to-branch", branch: string, commitUrl: string, commitSha: string };
 
 export class ConfigRepoAgentError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -90,6 +90,51 @@ function sandboxCreds(): SandboxCreds {
     projectId: getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID", "") || undefined,
     token,
   };
+}
+
+async function getConfigAgentSandbox(sandboxId: string): Promise<Sandbox> {
+  const creds = sandboxCreds();
+  return await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
+}
+
+async function stopSandboxWithContext(sandboxId: string, context: string): Promise<void> {
+  try {
+    const sandbox = await getConfigAgentSandbox(sandboxId);
+    await sandbox.stop();
+  } catch (error) {
+    captureError(context, error);
+  }
+}
+
+async function keepSandboxAliveForReview(sandbox: Sandbox): Promise<void> {
+  // The review UI needs the live sandbox because commit runs from the edited
+  // working tree. Top it back up to a five-minute review window once the diff is
+  // ready instead of relying on whatever time is left after agent execution.
+  const timeoutRemainingMs = sandbox.timeout;
+  if (timeoutRemainingMs < REVIEW_SANDBOX_KEEPALIVE_MS) {
+    await sandbox.extendTimeout(REVIEW_SANDBOX_KEEPALIVE_MS - timeoutRemainingMs);
+  }
+}
+
+async function reportConfigAgentProgress(onProgress: AgentProgressSink | undefined, progress: string, context: string): Promise<void> {
+  if (!onProgress) return;
+  try {
+    await onProgress(progress);
+  } catch (error) {
+    captureError(context, error);
+  }
+}
+
+async function reportConfigAgentStage(
+  onStage: ((stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => Promise<void>) | undefined,
+  stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes",
+): Promise<void> {
+  if (!onStage) return;
+  try {
+    await onStage(stage);
+  } catch (error) {
+    captureError("config-repo-agent-stage", error);
+  }
 }
 
 /**
@@ -183,6 +228,9 @@ process.on("unhandledRejection", (e) => { status({ ok: false, error: "unhandledR
 const PROGRESS = ${JSON.stringify(`${TOOLS_DIR}/progress.json`)};
 const recent = [];
 const base = (p) => (typeof p === "string" ? (p.split("/").pop() || p) : "");
+// In-sandbox feed cap: 100 chars/line, last 6 lines. Separate from the coarser
+// 2000-char storage cap in recordConfigAgentRunProgress (config/index.tsx) —
+// this one shapes what the user sees live; that one guards DB size.
 const emit = (s) => { recent.push(String(s).replace(/[\\r\\n]+/g, " ").slice(0, 100)); while (recent.length > 6) recent.shift(); try { writeFileSync(PROGRESS, JSON.stringify(recent)); } catch {} };
 const describeTool = (name, inp) => {
   inp = inp || {};
@@ -268,7 +316,7 @@ async function pollAgentProgress(
     const text = redactTokens(lines.map((l) => String(l)).join("\n")).trim();
     if (text && text !== last) {
       last = text;
-      await onProgress(text).catch(() => {});
+      await reportConfigAgentProgress(onProgress, text, "config-repo-agent-progress-record");
     }
   };
   while (!finished) {
@@ -393,55 +441,102 @@ export async function buildConfigAgentBaseSnapshot(onProgress?: (msg: string) =>
 // Apply update (on save)
 // ---------------------------------------------------------------------------
 
+/**
+ * The result of `applyConfigUpdate`. When the agent found and edited the config
+ * file, the sandbox is left alive (status `awaiting_review`) and the caller is
+ * responsible for either calling `commitConfigUpdate` or `stopConfigAgentSandbox`.
+ */
+export type ConfigUpdateApplyResult =
+  | {
+    mode: "awaiting_review",
+    sandboxId: string,
+    /** Unified git diff of the agent's changes; never contains secrets. */
+    diff: string,
+  }
+  | { mode: "no-change" };
+
 export async function applyConfigUpdate(options: {
   getGithubToken: GithubTokenProvider,
   ref: GithubRepoRef,
   completeConfig: Record<string, unknown>,
-  commitMessage?: string,
   onSandboxId?: (sandboxId: string) => Promise<void>,
+  onStage?: (stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => Promise<void>,
   onProgress?: AgentProgressSink,
-}): Promise<ConfigUpdatePushResult> {
-  const { getGithubToken, ref, completeConfig, onSandboxId, onProgress } = options;
+}): Promise<ConfigUpdateApplyResult> {
+  const { getGithubToken, ref, completeConfig, onSandboxId, onStage, onProgress } = options;
   const creds = sandboxCreds();
-  const commitMessage = options.commitMessage?.trim() || "chore(hexclave): update config from dashboard";
   const step = async (msg: string) => {
-    if (onProgress) await onProgress(msg).catch(() => {});
+    await reportConfigAgentProgress(onProgress, msg, "config-repo-agent-step-record");
   };
   const githubToken = await getGithubToken(); // fresh token for this boot
 
-  await step("Starting the config agent…");
+  await reportConfigAgentStage(onStage, "initializing_sandbox");
+  await step("Initializing the sandbox…");
   const sandbox = await bootAgentSandbox(creds);
+  // Do NOT stop the sandbox in a finally block — when changes are found, we leave
+  // it alive for the user to review and commit. The caller must stop it.
+  await onSandboxId?.(sandbox.sandboxId);
+  // Configure the bot identity for the commit (idempotent; cheap on a warm boot).
+  await run(sandbox, "git", ["config", "--global", "user.email", GIT_BOT_EMAIL]);
+  await run(sandbox, "git", ["config", "--global", "user.name", GIT_BOT_NAME]);
+
+  // Fresh shallow clone of just the target branch. The tokenized URL is used
+  // only for the clone; immediately after, we reset `origin` to a tokenless URL
+  // so the agent (which has Bash access) cannot read the token from `.git/config`
+  // or `git remote -v`. The token is re-injected only for our own push command.
+  await reportConfigAgentStage(onStage, "cloning_repo");
+  await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
+  await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
+  await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
+
+  // Agent writes the COMPLETE config to the file — no dependency install, no
+  // typecheck (the linked repo's CI validates the committed change). See buildUpdatePrompt.
+  await reportConfigAgentStage(onStage, "agent_making_changes");
+  await step("Agent editing config…");
+  await runAgent(sandbox, buildUpdatePrompt(completeConfig), onProgress);
+
+  const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
+  if (dirty === "") {
+    // No changes — stop the sandbox immediately (nothing to review).
+    await stopSandboxWithContext(sandbox.sandboxId, "config-repo-agent-no-change-stop");
+    return { mode: "no-change" };
+  }
+
+  // Capture the diff before staging so the user can review it. Redact tokens
+  // (defensive; the diff shouldn't contain any, but be safe).
+  const diff = redactTokens(
+    (await runRaw(sandbox, "git", ["-C", REPO_DIR, "diff"])).stdout,
+  );
+
+  await keepSandboxAliveForReview(sandbox);
+  // Leave the sandbox alive — the user must confirm before we commit+push.
+  return { mode: "awaiting_review", sandboxId: sandbox.sandboxId, diff };
+}
+
+/**
+ * Commits and pushes the agent's already-applied changes from an existing sandbox
+ * that is currently in `awaiting_review` state. The sandbox is stopped afterwards.
+ * The GitHub token is obtained freshly — the user may have been reviewing for a
+ * while so we don't reuse the token from the original `applyConfigUpdate` call.
+ */
+export async function commitConfigUpdate(options: {
+  sandboxId: string,
+  getGithubToken: GithubTokenProvider,
+  ref: GithubRepoRef,
+  commitMessage: string,
+}): Promise<ConfigUpdateCommitResult> {
+  const { sandboxId, ref, commitMessage } = options;
+  const githubToken = await options.getGithubToken();
+  const sandbox = await getConfigAgentSandbox(sandboxId);
   try {
-    await onSandboxId?.(sandbox.sandboxId);
-    // Configure the bot identity for the commit (idempotent; cheap on a warm boot).
-    await run(sandbox, "git", ["config", "--global", "user.email", GIT_BOT_EMAIL]);
-    await run(sandbox, "git", ["config", "--global", "user.name", GIT_BOT_NAME]);
-
-    // Fresh shallow clone of just the target branch. The tokenized URL is used
-    // only for the clone; immediately after, we reset `origin` to a tokenless URL
-    // so the agent (which has Bash access) cannot read the token from `.git/config`
-    // or `git remote -v`. The token is re-injected only for our own push command.
-    await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
-    await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
-    await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
-
-    // Agent writes the COMPLETE config to the file — no dependency install, no
-    // typecheck (the linked repo's CI validates the committed change). See buildUpdatePrompt.
-    await runAgent(sandbox, buildUpdatePrompt(completeConfig), onProgress);
-
-    const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
-    if (dirty === "") {
-      return { mode: "no-change" };
-    }
     await run(sandbox, "git", ["-C", REPO_DIR, "add", "-A"]);
     await run(sandbox, "git", ["-C", REPO_DIR, "commit", "-m", commitMessage]);
     const commitSha = await gitHead(sandbox);
-    await step("Pushing the commit…");
-    // Re-inject the token for the push only (origin was reset to tokenless after clone).
+    // Re-inject the token for the push only.
     await run(sandbox, "git", ["-C", REPO_DIR, "push", tokenUrl(githubToken, ref), `HEAD:refs/heads/${ref.branch}`]);
     return { mode: "commit-to-branch", branch: ref.branch, commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}`, commitSha };
   } finally {
-    await sandbox.stop().catch(() => {});
+    await stopSandboxWithContext(sandboxId, "config-repo-agent-commit-stop");
   }
 }
 
@@ -456,11 +551,5 @@ export async function applyConfigUpdate(options: {
  * undoes the change; if a commit already landed, it stays (no revert).
  */
 export async function stopConfigAgentSandbox(sandboxId: string): Promise<void> {
-  const creds = sandboxCreds();
-  try {
-    const sandbox = await Sandbox.get({ sandboxId, token: creds.token, teamId: creds.teamId, projectId: creds.projectId });
-    await sandbox.stop();
-  } catch (error) {
-    captureError("config-repo-agent-cancel-stop", error);
-  }
+  await stopSandboxWithContext(sandboxId, "config-repo-agent-cancel-stop");
 }

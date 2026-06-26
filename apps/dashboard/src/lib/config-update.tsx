@@ -3,17 +3,73 @@
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
 import { fetchWithRemoteDevelopmentEnvironmentBrowserSecret, RemoteDevelopmentEnvironmentBrowserSecretRedirectingError } from "@/app/remote-development-environment-browser-secret-client";
+import { DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
+import { ArrowsClockwise, GitBranch, GitCommit } from "@phosphor-icons/react";
 import type { OAuthConnection, PushedConfigSource, StackAdminApp } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import type { HexclaveAdminInterface } from "@hexclave/shared/dist/interface/admin-interface";
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { FileDiffProps } from "@pierre/diffs/react";
+import type { FileDiffMetadata } from "@pierre/diffs";
 
 import { GITHUB_SCOPE_REQUIREMENTS } from "./github-api";
 
+/**
+ * Reaches the admin app's underlying `HexclaveAdminInterface`, which carries the
+ * config-agent endpoints (`applyConfigViaAgent`, `cancelConfigAgentRun`,
+ * `getPushedConfigSource`) we call directly — rather than via generated app
+ * methods — to keep this feature self-contained. `_interface` is a protected
+ * member, so we read it reflectively (the same pattern the SDK's own cross-domain
+ * tests use). Returns `null` if the app doesn't expose one.
+ *
+ * NOTE: these methods exist on the type, but the installed `@hexclave/next` build
+ * could predate them, so callers still runtime-check the specific method before
+ * use and degrade gracefully ("refresh and try again").
+ */
+export function getAdminInterface(adminApp: StackAdminApp<false> | null | undefined): HexclaveAdminInterface | null {
+  if (adminApp == null) return null;
+  // `Reflect.get` returns `any`; the typed annotation documents the contract
+  // without an explicit cast (and without an `instanceof`, which is unreliable
+  // across package-boundary copies of the class).
+  const iface: HexclaveAdminInterface | undefined = Reflect.get(adminApp, "_interface");
+  return iface ?? null;
+}
+
 type GithubPushedSource = Extract<PushedConfigSource, { type: "pushed-from-github" }>;
+
+export type ConfigAgentRunStatus = "running" | "awaiting_review" | "success" | "no-change" | "error" | "cancelled";
+export type AgentStage = "initializing_sandbox" | "cloning_repo" | "agent_making_changes" | "awaiting_review";
+
+export type GithubPushedSourceWithAgentRun = GithubPushedSource & {
+  agent_run?: {
+    status: ConfigAgentRunStatus,
+    started_at: number,
+    finished_at?: number,
+    progress?: string,
+    sandbox_id?: string,
+    commit_url?: string,
+    new_commit_hash?: string,
+    error?: string,
+    stage?: AgentStage,
+    diff?: string,
+  },
+};
+
+function isAgentStage(value: unknown): value is AgentStage {
+  return value === "initializing_sandbox" || value === "cloning_repo" || value === "agent_making_changes" || value === "awaiting_review";
+}
+
+export function isGithubPushedSourceWithAgentRun(source: unknown): source is GithubPushedSourceWithAgentRun {
+  return typeof source === "object" && source != null && "type" in source && source.type === "pushed-from-github";
+}
+
+function currentEpochMsFromPerformance(): number {
+  return performance.timeOrigin + performance.now();
+}
 
 type ConfigUpdateDialogState = {
   isOpen: boolean,
@@ -39,28 +95,188 @@ export function useGithubRunActive(): boolean {
   return useContext(ConfigUpdateDialogContext)?.githubRunActive ?? false;
 }
 
+type StepDef = { key: AgentStage, label: string, subLabel?: string };
+const STAGE_STEPS: StepDef[] = [
+  { key: "initializing_sandbox", label: "Initializing sandbox" },
+  { key: "cloning_repo", label: "Cloning repo" },
+  { key: "agent_making_changes", label: "Agent making changes", subLabel: "Editing config file" },
+  { key: "awaiting_review", label: "Ready to review" },
+];
+
+function stageIndex(stage: AgentStage | null | undefined): number {
+  if (stage == null) return -1;
+  return STAGE_STEPS.findIndex((s) => s.key === stage);
+}
+
 /**
- * Renders the agent's live activity feed (a sanitized, server-provided list of
- * recent actions like "Editing hexclave.config.ts" / "Running: git push"). Shared
- * between the push dialog and the page-load watcher.
+ * A compact stage tracker shown while the agent is running. Each step shows
+ * elapsed seconds and a live activity sub-label for the active step.
  */
-export function ConfigAgentActivityFeed({ activity }: { activity: string }) {
-  const lines = activity.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-  if (lines.length === 0) {
-    return null;
-  }
+export function AgentStageProgress({
+  stage,
+  startedAt,
+  activity,
+}: {
+  stage: AgentStage | null | undefined,
+  /** Unix ms timestamp of when the run started (from agent_run.started_at). */
+  startedAt: number,
+  activity?: string | null,
+}) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const performanceStartedAt = performance.now();
+    const t = setInterval(() => setElapsedMs(performance.now() - performanceStartedAt), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const activeIdx = stageIndex(stage);
+  // Server-side run timestamps are wall-clock epoch values. Once mounted, keep
+  // the visible elapsed counter on a monotonic clock so local clock jumps don't
+  // make the progress UI move backwards.
+  const initialElapsedMs = Math.max(0, currentEpochMsFromPerformance() - startedAt);
+  const overallElapsed = Math.max(0, Math.floor((initialElapsedMs + elapsedMs) / 1000));
+
   return (
-    <div className="max-h-28 space-y-1 overflow-y-auto rounded-md border border-border/40 bg-muted/30 p-2.5 font-mono text-xs text-muted-foreground">
-      {lines.map((line, index) => {
-        const isLast = index === lines.length - 1;
+    <div className="space-y-2">
+      {STAGE_STEPS.map((step, idx) => {
+        const isDone = idx < activeIdx;
+        const isActive = idx === activeIdx;
+        const isPending = idx > activeIdx;
+
         return (
-          <div key={`${index}-${line}`} className={`flex items-center gap-2 truncate ${isLast ? "text-foreground" : "opacity-70"}`}>
-            <span className={isLast ? "text-primary" : "text-muted-foreground"}>{isLast ? "▸" : "·"}</span>
-            <span className="truncate">{line}</span>
+          <div key={step.key} className="flex items-start gap-3">
+            {/* Step indicator */}
+            <div className={`mt-0.5 h-5 w-5 rounded-full flex items-center justify-center shrink-0 transition-colors duration-150 ${
+              isDone
+                ? "bg-primary/15 text-primary"
+                : isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-foreground/[0.06] text-muted-foreground"
+            }`}>
+              {isDone ? (
+                <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <span className={`text-[9px] font-semibold leading-none ${isPending ? "opacity-40" : ""}`}>{idx + 1}</span>
+              )}
+            </div>
+
+            {/* Step label */}
+            <div className="flex-1 min-w-0 pt-0.5">
+              <div className={`text-xs font-medium leading-snug flex items-center gap-2 ${
+                isPending ? "text-muted-foreground opacity-50" : "text-foreground"
+              }`}>
+                <span>{step.label}</span>
+                {isActive && (
+                  <span className="text-muted-foreground font-normal tabular-nums">
+                    {overallElapsed}s
+                  </span>
+                )}
+              </div>
+              {isActive && activity != null && activity.trim().length > 0 && (
+                <div className="mt-1 font-mono text-[11px] text-muted-foreground leading-relaxed truncate">
+                  <span className="text-primary mr-1.5">▸</span>
+                  {activity.split("\n").filter((l) => l.trim()).at(-1)}
+                </div>
+              )}
+            </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+export function ConfigAgentRunProgressContent({
+  isCancelling,
+  stage,
+  startedAt,
+  activity,
+  errorMessage,
+}: {
+  isCancelling: boolean,
+  stage: AgentStage | null | undefined,
+  startedAt: number,
+  activity?: string | null,
+  errorMessage?: string | null,
+}) {
+  return (
+    <div className="space-y-3">
+      {isCancelling ? (
+        <p className="text-sm text-muted-foreground">Cancelling the update and stopping the agent…</p>
+      ) : (
+        <AgentStageProgress stage={stage} startedAt={startedAt} activity={activity} />
+      )}
+      {errorMessage != null && (
+        <p className="text-sm text-destructive">{errorMessage}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Diff viewer
+// ---------------------------------------------------------------------------
+
+/**
+ * Lazy-loaded diff viewer. We parse the sandbox's full `git diff` into file
+ * diffs, then render each file with Pierre's React renderer. `PatchDiff` only
+ * accepts a single-file patch, while the config agent may legitimately edit
+ * helpers/imported config files too.
+ */
+export function AgentDiffViewer({ diff }: { diff: string }) {
+  const [renderer, setRenderer] = useState<{
+    FileDiff: React.ComponentType<FileDiffProps<undefined>>,
+    files: FileDiffMetadata[],
+  } | null>(null);
+
+  useEffect(() => {
+    const cancelToken = { cancelled: false };
+    runAsynchronously(async () => {
+      try {
+        const [{ parsePatchFiles }, reactMod] = await Promise.all([
+          import("@pierre/diffs"),
+          import("@pierre/diffs/react"),
+        ]);
+        if (cancelToken.cancelled) return;
+        const files = parsePatchFiles(diff, "config-agent-review", true).flatMap((patch) => patch.files);
+        if (files.length === 0) return;
+        setRenderer({ FileDiff: reactMod.FileDiff, files });
+      } catch {
+        // Module failed to load — fall back to raw diff text
+      }
+    });
+    return () => {
+      cancelToken.cancelled = true;
+    };
+  }, [diff]);
+
+  if (renderer != null) {
+    const { FileDiff } = renderer;
+    return (
+      <div className="max-h-[60vh] space-y-3 overflow-auto rounded-xl border border-border/30 bg-background/60 p-2">
+        {renderer.files.map((fileDiff, index) => (
+          <FileDiff
+            key={fileDiff.cacheKey ?? `${fileDiff.name}-${index}`}
+            fileDiff={fileDiff}
+            options={{
+              theme: { dark: "github-dark", light: "github-light" },
+              diffStyle: "unified",
+              hunkSeparators: "line-info-basic",
+              overflow: "scroll",
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Fallback: raw monospace diff
+  return (
+    <pre className="max-h-96 overflow-auto rounded-xl border border-border/30 bg-muted/20 p-4 font-mono text-[11px] text-foreground leading-relaxed whitespace-pre">
+      {diff}
+    </pre>
   );
 }
 
@@ -89,15 +305,15 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     // progress modal and the backend would reject a second run anyway. The mapped
     // `PushedConfigSource` drops `agent_run`, so read the raw interface source.
     if (source.type === "pushed-from-github") {
-      const iface = (adminApp as any)?._interface;
+      const iface = getAdminInterface(adminApp);
       if (iface != null && typeof iface.getPushedConfigSource === "function") {
-        let rawSource: any = null;
+        let rawSource: unknown = null;
         try {
           rawSource = await iface.getPushedConfigSource();
         } catch {
           // transient — fall through to the normal dialog rather than blocking
         }
-        if (rawSource?.type === "pushed-from-github" && rawSource.agent_run?.status === "running") {
+        if (isGithubPushedSourceWithAgentRun(rawSource) && rawSource.agent_run?.status === "running") {
           return false;
         }
       }
@@ -233,161 +449,213 @@ type GithubPushDialogProps = {
 };
 
 /**
- * Renders the "Push to GitHub" dialog. Detects whether the dashboard user has
- * a GitHub account connected; if not, walks them through linking one first.
- * Once a connection is available, commits a config-file edit to the linked
- * repo/branch via the Contents API.
- *
- * On success, `onSettle(true)` is called so the surrounding
- * `ConfigUpdateDialogProvider` then mirrors the change into Hexclave's
- * cloud config for immediate UI feedback. Eventually the GitHub Actions
- * workflow will re-push the canonical config from the freshly-committed file.
+ * The new GitHub push dialog: shows a staged progress bar while the agent
+ * runs, then a diff review panel once the agent is done. The user must
+ * explicitly click "Commit" to push. No auto-commit.
  */
+
 type ScopeCheck =
   | { status: "no-account" }
   | { status: "checking" }
   | { status: "ok", account: OAuthConnection }
   | { status: "missing-scopes" };
 
-type GithubPushHandlers = {
-  push: () => Promise<"prevent-close" | undefined>,
-  connect: () => Promise<"prevent-close" | undefined>,
-  cancel: () => Promise<"prevent-close" | undefined>,
-};
-
-// "idle" before/after the run; "running" once the agent is started (dialog is
-// non-dismissible, Cancel aborts the run); "cancelling" after Cancel is clicked.
-type RunPhase = "idle" | "running" | "cancelling";
+// "idle": waiting for user to start.
+// "running": agent is in flight (non-dismissible; Cancel stops the sandbox).
+// "cancelling": user clicked Cancel, waiting for terminal status.
+// "awaiting_review": agent done, diff loaded, waiting for user to commit.
+// "committing": user clicked Commit, pushing to GitHub.
+type DialogPhase = "idle" | "running" | "cancelling" | "awaiting_review" | "committing";
 
 function projectSettingsHref(projectId: string | undefined): string {
   return `/projects/${projectId}/project-settings`;
 }
 
 /**
- * Outer shell. Renders `ActionDialog` synchronously (no suspending hooks) so
- * opening the dialog doesn't bubble a Suspense promise up to the dashboard
- * root and blank the page. The suspending pieces (current user, connected
- * accounts, OAuth token probe) live in `GithubPushBody`, wrapped in a local
- * `Suspense` boundary whose fallback mirrors the dialog body except that the
- * "Push to GitHub" button stays disabled while we resolve.
+ * Outer shell: renders the DesignDialog synchronously; the Suspense-suspending
+ * body (scope check) is isolated inside.
  */
 function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onSettle }: GithubPushDialogProps) {
-  // Status starts as "checking" so the initial render shows a disabled
-  // "Push to GitHub" button — matching what we want during Suspense fallback.
   const [scopeStatus, setScopeStatus] = useState<ScopeCheck["status"]>("checking");
-  const [runPhase, setRunPhase] = useState<RunPhase>("idle");
-  const handlersRef = useRef<GithubPushHandlers | null>(null);
+  const [phase, setPhase] = useState<DialogPhase>("idle");
+  const [stage, setStage] = useState<AgentStage | null>(null);
+  const [startedAt, setStartedAt] = useState<number>(0);
+  const [activity, setActivity] = useState<string | null>(null);
+  const [diff, setDiff] = useState<string | null>(null);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const dispatch = useCallback(
-    (key: keyof GithubPushHandlers) => async (): Promise<"prevent-close" | undefined> => {
-      // While the Suspense fallback is showing, handlers aren't registered
-      // yet. In that window the button is disabled anyway, but we guard
-      // defensively and prevent close if somehow clicked.
-      return (await handlersRef.current?.[key]()) ?? "prevent-close";
-    },
-    [],
-  );
+  // Expose imperative handles from the body (which can suspend) to the outer shell.
+  const handlersRef = useRef<{
+    push: () => Promise<void>,
+    connect: () => Promise<void>,
+    cancel: () => Promise<void>,
+    commit: () => Promise<void>,
+  } | null>(null);
 
-  // Once the run is in flight the dialog is non-dismissible: the only exit is
-  // Cancel (which aborts + reverts) or the run reaching a terminal status.
-  const isRunning = runPhase !== "idle";
-
-  const okButton = (() => {
-    if (isRunning) return undefined;
-    switch (scopeStatus) {
-      case "no-account": {
-        return { label: "Connect with GitHub", onClick: dispatch("connect") };
-      }
-      case "checking": {
-        return {
-          label: "Push to GitHub",
-          onClick: async (): Promise<"prevent-close" | undefined> => "prevent-close",
-          props: { disabled: true },
-        };
-      }
-      case "ok": {
-        return { label: "Push to GitHub", onClick: dispatch("push") };
-      }
-      case "missing-scopes": {
-        return { label: "Reconnect with GitHub", onClick: dispatch("connect") };
-      }
-    }
-  })();
-
-  const cancelButton = isRunning
-    ? {
-      label: runPhase === "cancelling" ? "Cancelling…" : "Cancel update",
-      onClick: dispatch("cancel"),
-      props: { disabled: runPhase === "cancelling" },
-    }
-    : {
-      label: "Cancel",
-      onClick: async () => {
-        onSettle(false);
-      },
-    };
+  const dialogContext = useContext(ConfigUpdateDialogContext);
+  const isNonDismissible = phase === "running" || phase === "cancelling" || phase === "committing";
 
   const description = (() => {
-    if (isRunning) {
-      return `Updating ${source.owner}/${source.repo}@${source.branch} via the config agent. This can take a couple of minutes.`;
-    }
-    switch (scopeStatus) {
-      case "no-account": {
-        return "Connect a GitHub account to push configuration changes to this repository.";
+    switch (phase) {
+      case "idle": {
+        switch (scopeStatus) {
+          case "no-account": { return "Connect a GitHub account to push configuration changes to this repository."; }
+          case "checking": { return "Checking GitHub permissions…"; }
+          case "ok": { return `This will apply your change to ${source.owner}/${source.repo}@${source.branch}.`; }
+          case "missing-scopes": { return `Your linked GitHub account is missing the "repo" and "workflow" permissions. Reconnect to grant them.`; }
+        }
+        break;
       }
-      case "checking": {
-        return "Checking GitHub permissions...";
+      case "running":
+      case "cancelling": {
+        return `Applying your change in a sandbox — ${source.owner}/${source.repo}@${source.branch}`;
       }
-      case "ok": {
-        return `This will commit your change to ${source.owner}/${source.repo}@${source.branch}.`;
+      case "awaiting_review": {
+        return `Review the changes before committing to ${source.branch}.`;
       }
-      case "missing-scopes": {
-        return "Your linked GitHub account is missing the \"repo\" and \"workflow\" permissions required to push configuration changes. Reconnect to grant them.";
+      case "committing": {
+        return `Pushing to ${source.owner}/${source.repo}@${source.branch}…`;
       }
     }
   })();
 
+  // Footer buttons
+  const footer = (() => {
+    if (phase === "running") {
+      return (
+        <div className="flex items-center gap-2">
+          <DesignButton
+            variant="outline"
+            size="sm"
+            onClick={async () => { await handlersRef.current?.cancel(); }}
+          >
+            Cancel
+          </DesignButton>
+        </div>
+      );
+    }
+    if (phase === "cancelling") {
+      return (
+        <DesignButton variant="outline" size="sm" disabled>
+          Cancelling…
+        </DesignButton>
+      );
+    }
+    if (phase === "awaiting_review") {
+      return (
+        <div className="flex items-center gap-2 w-full">
+          <DesignButton
+            variant="outline"
+            size="sm"
+            onClick={async () => { await handlersRef.current?.cancel(); }}
+          >
+            Discard
+          </DesignButton>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2">
+            <label htmlFor="push-commit-msg" className="text-xs text-muted-foreground whitespace-nowrap">
+              Commit message
+            </label>
+            <input
+              id="push-commit-msg"
+              type="text"
+              className="h-8 rounded-lg border border-border/50 bg-background px-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 transition-colors duration-150 hover:transition-none w-52"
+              placeholder="chore(hexclave): update config from dashboard"
+              value={commitMessage}
+              onChange={(e) => setCommitMessage(e.target.value)}
+            />
+            <DesignButton
+              size="sm"
+              onClick={async () => { await handlersRef.current?.commit(); }}
+            >
+              <GitCommit className="h-3.5 w-3.5 mr-1.5" />
+              Commit
+            </DesignButton>
+          </div>
+        </div>
+      );
+    }
+    if (phase === "committing") {
+      return (
+        <div className="flex items-center gap-2">
+          <DesignButton size="sm" disabled loading>
+            Committing…
+          </DesignButton>
+        </div>
+      );
+    }
+    // idle
+    return (
+      <div className="flex items-center gap-2">
+        <DesignDialogClose asChild>
+          <DesignButton variant="outline" size="sm" onClick={async () => { onSettle(false); }}>
+            Cancel
+          </DesignButton>
+        </DesignDialogClose>
+        {scopeStatus === "no-account" || scopeStatus === "missing-scopes" ? (
+          <DesignButton size="sm" onClick={async () => { await handlersRef.current?.connect(); }}>
+            {scopeStatus === "no-account" ? "Connect with GitHub" : "Reconnect with GitHub"}
+          </DesignButton>
+        ) : (
+          <DesignButton
+            size="sm"
+            onClick={async () => { await handlersRef.current?.push(); }}
+            disabled={scopeStatus === "checking"}
+            loading={scopeStatus === "checking"}
+          >
+            <ArrowsClockwise className="h-3.5 w-3.5 mr-1.5" />
+            Start update
+          </DesignButton>
+        )}
+      </div>
+    );
+  })();
+
+  // Dialog size grows when showing the diff
+  const dialogSize = phase === "awaiting_review" ? "3xl" : "lg";
+
   return (
-    <ActionDialog
+    <DesignDialog
       open={open}
-      onClose={() => onSettle(false)}
-      preventClose={isRunning}
-      title="Push Configuration to GitHub"
+      onOpenChange={(o) => {
+        if (o || isNonDismissible) return;
+        onSettle(false);
+      }}
+      size={dialogSize}
+      icon={GitBranch}
+      title="Push configuration to GitHub"
       description={description}
-      okButton={okButton}
-      cancelButton={cancelButton}
+      hideTopCloseButton={isNonDismissible}
+      footer={footer}
+      contentProps={{ onPointerDownOutside: isNonDismissible ? (e) => e.preventDefault() : undefined, onEscapeKeyDown: isNonDismissible ? (e) => e.preventDefault() : undefined }}
     >
-      <Suspense fallback={<GithubPushBodyFallback projectId={projectId} />}>
+      <Suspense fallback={<div className="py-2 text-sm text-muted-foreground">Loading…</div>}>
         <GithubPushBody
           adminApp={adminApp}
           source={source}
           configUpdate={configUpdate}
           projectId={projectId}
           onSettle={onSettle}
+          phase={phase}
+          stage={stage}
+          startedAt={startedAt}
+          activity={activity}
+          diff={diff}
+          commitMessage={commitMessage}
+          errorMessage={errorMessage}
           onScopeStatusChange={setScopeStatus}
-          onRunPhaseChange={setRunPhase}
+          onPhaseChange={setPhase}
+          onStageChange={setStage}
+          onStartedAtChange={setStartedAt}
+          onActivityChange={setActivity}
+          onDiffChange={setDiff}
+          onErrorChange={setErrorMessage}
           handlersRef={handlersRef}
+          dialogContext={dialogContext}
         />
       </Suspense>
-    </ActionDialog>
-  );
-}
-
-function GithubPushBodyFallback({ projectId }: { projectId: string | undefined }) {
-  // Static body shown during the initial Suspense — no commit input yet
-  // (we don't know whether push is even available), just the unlink hint
-  // so the dialog "looks normal except the button is disabled".
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        <em>
-          If your configuration is no longer on GitHub, you can unlink it in{" "}
-          <Link href={projectSettingsHref(projectId)} className="underline">
-            Project Settings
-          </Link>.
-        </em>
-      </p>
-    </div>
+    </DesignDialog>
   );
 }
 
@@ -397,9 +665,27 @@ type GithubPushBodyProps = {
   configUpdate: EnvironmentConfigOverrideOverride | null,
   projectId: string | undefined,
   onSettle: (result: boolean) => void,
-  onScopeStatusChange: (status: ScopeCheck["status"]) => void,
-  onRunPhaseChange: (phase: RunPhase) => void,
-  handlersRef: React.MutableRefObject<GithubPushHandlers | null>,
+  phase: DialogPhase,
+  stage: AgentStage | null,
+  startedAt: number,
+  activity: string | null,
+  diff: string | null,
+  commitMessage: string,
+  errorMessage: string | null,
+  onScopeStatusChange: (s: ScopeCheck["status"]) => void,
+  onPhaseChange: (p: DialogPhase) => void,
+  onStageChange: (s: AgentStage | null) => void,
+  onStartedAtChange: (ms: number) => void,
+  onActivityChange: (a: string | null) => void,
+  onDiffChange: (d: string | null) => void,
+  onErrorChange: (e: string | null) => void,
+  handlersRef: React.MutableRefObject<{
+    push: () => Promise<void>,
+    connect: () => Promise<void>,
+    cancel: () => Promise<void>,
+    commit: () => Promise<void>,
+  } | null>,
+  dialogContext: { setGithubRunActive: (v: boolean) => void } | null,
 };
 
 function GithubPushBody({
@@ -408,52 +694,42 @@ function GithubPushBody({
   configUpdate,
   projectId,
   onSettle,
+  phase,
+  stage,
+  startedAt,
+  activity,
+  diff,
+  commitMessage,
+  errorMessage,
   onScopeStatusChange,
-  onRunPhaseChange,
+  onPhaseChange,
+  onStageChange,
+  onStartedAtChange,
+  onActivityChange,
+  onDiffChange,
+  onErrorChange,
   handlersRef,
+  dialogContext,
 }: GithubPushBodyProps) {
-  const dialogContext = useContext(ConfigUpdateDialogContext);
   const user = useDashboardInternalUser();
   const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
-
-  // Stable dep for the scope-check effect — re-run only when the set of
-  // connections actually changes, not on every parent render.
   const githubAccountsKey = githubAccounts.map((a) => a.providerAccountId).join("|");
 
   const [scopeCheck, setScopeCheck] = useState<ScopeCheck>(
     githubAccounts.length === 0 ? { status: "no-account" } : { status: "checking" },
   );
-  const [commitMessage, setCommitMessage] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [progressMessage, setProgressMessage] = useState<string | null>(null);
-  const [activity, setActivity] = useState<string | null>(null);
 
-  const placeholderCommitMessage = "Update Hexclave configuration";
+  const placeholderCommitMessage = "chore(hexclave): update config from dashboard";
 
-  // Sync our local status string up to the dialog shell so it can pick the
-  // right button label / description without itself needing to suspend.
-  // `useLayoutEffect` (not `useEffect`) so the shell's "checking" placeholder
-  // never reaches the screen for users whose initial state is actually
-  // "no-account" — the sync runs before the browser paints the first frame
-  // after the Suspense fallback resolves.
   useLayoutEffect(() => {
     onScopeStatusChange(scopeCheck.status);
   }, [scopeCheck.status, onScopeStatusChange]);
 
-  // Probe each connected GitHub account for a token that already covers
-  // `repo` + `workflow`. The dashboard user may have multiple GitHub
-  // connections; only one needs to carry the elevated scopes. We pre-flight
-  // here (rather than on Push click) so the user doesn't waste a typed commit
-  // message on a redirect, since `linkConnectedAccount` is a full page nav.
   useEffect(() => {
     if (githubAccounts.length === 0) {
       setScopeCheck({ status: "no-account" });
       return;
     }
-    // Mutable holder rather than a `let` so TS sees the reassignment in the
-    // cleanup callback as a real write; otherwise its flow analysis narrows
-    // the closure read to its initial value and the `cancelled` checks below
-    // are flagged as constant-condition errors.
     const cancelToken = { cancelled: false };
     setScopeCheck({ status: "checking" });
     runAsynchronously(async () => {
@@ -462,7 +738,6 @@ function GithubPushBody({
         try {
           tokenResult = await account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
         } catch {
-          // Transport/cache failures — fall through and try the next account.
           continue;
         }
         if (cancelToken.cancelled) return;
@@ -476,101 +751,112 @@ function GithubPushBody({
     return () => {
       cancelToken.cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- githubAccountsKey is the stable identity for githubAccounts
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- githubAccountsKey
   }, [githubAccountsKey]);
 
-  const handlePush = useCallback(async (): Promise<"prevent-close" | undefined> => {
+  const handlePush = useCallback(async () => {
     if (configUpdate == null) {
-      setErrorMessage("No configuration changes to push.");
-      return "prevent-close";
+      onErrorChange("No configuration changes to push.");
+      return;
     }
     if (scopeCheck.status !== "ok") {
-      setErrorMessage("Connect a GitHub account with the required scopes before pushing changes.");
-      return "prevent-close";
+      onErrorChange("Connect a GitHub account with the required scopes before pushing changes.");
+      return;
     }
-    // The admin app's underlying interface carries the new agent endpoints. We
-    // reach it directly (rather than via a generated app method) to keep this
-    // feature self-contained in `@hexclave/shared`.
-    const adminInterface = (adminApp as any)?._interface;
+    const adminInterface = getAdminInterface(adminApp);
     if (adminInterface == null || typeof adminInterface.applyConfigViaAgent !== "function") {
-      setErrorMessage("This dashboard build can't push config to GitHub. Please refresh and try again.");
-      return "prevent-close";
+      onErrorChange("This dashboard build can't push config to GitHub. Please refresh and try again.");
+      return;
     }
 
-    setErrorMessage(null);
-    setProgressMessage("Starting the config agent…");
+    onErrorChange(null);
     try {
-      // The dashboard user's own GitHub token, used transiently server-side for
-      // the sandbox's git push — never persisted, never sent to the agent.
       const tokenResult = await scopeCheck.account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
       if (tokenResult.status !== "ok") {
-        setProgressMessage(null);
-        setErrorMessage("Could not get a GitHub token with the required permissions. Reconnect your GitHub account and try again.");
-        return "prevent-close";
+        onErrorChange("Could not get a GitHub token with the required permissions. Reconnect your GitHub account and try again.");
+        return;
       }
 
       const start = await adminInterface.applyConfigViaAgent({
         configUpdate,
-        commitMessage: commitMessage.trim().length > 0 ? commitMessage : placeholderCommitMessage,
+        // Pass a placeholder; the real commit message is gathered at review time.
+        commitMessage: placeholderCommitMessage,
         githubAccessToken: tokenResult.data.accessToken,
       });
       if (start.status === "already-running") {
-        setProgressMessage(null);
-        setErrorMessage("Another configuration update is already running for this project. Wait for it to finish, then try again.");
-        return "prevent-close";
+        onErrorChange("Another configuration update is already running for this project. Wait for it to finish, then try again.");
+        return;
       }
 
-      // The run is now in flight. Lock the dialog (non-dismissible; Cancel aborts)
-      // and flag the run as managed by this tab so the page-load watcher stays out
-      // of the way until we settle.
-      const runStartedAt = Date.now();
+      const runStartedAtWallMs = currentEpochMsFromPerformance();
+      const runStartedAtMonotonicMs = performance.now();
+      onStartedAtChange(runStartedAtWallMs);
       dialogContext?.setGithubRunActive(true);
-      onRunPhaseChange("running");
-      setActivity(null);
+      onPhaseChange("running");
+      onActivityChange(null);
+      onStageChange("initializing_sandbox");
 
-      // Poll the source's agent_run until the background job reports a terminal
-      // status. The agent does real repo work (edit + typecheck + commit), so
-      // this can take a couple of minutes.
-      setProgressMessage("Applying your change in a sandbox and committing to GitHub…");
-      const deadline = Date.now() + 8 * 60_000;
-      while (Date.now() < deadline) {
+      // Poll until the run transitions out of "running" (either to
+      // "awaiting_review", a terminal status, or times out).
+      const deadline = performance.now() + 8 * 60_000;
+      while (performance.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000));
-        let latest: any;
+        let latest: unknown;
         try {
           latest = await adminInterface.getPushedConfigSource();
         } catch {
-          continue; // transient — keep polling
+          continue;
         }
-        const run = latest?.type === "pushed-from-github" ? latest.agent_run : null;
-        // Ignore stale agent_run entries from a previous run (or read-replica lag).
-        // The run we just started must have started_at >= our request timestamp.
-        if (run == null || run.status === "running" || (typeof run.started_at === "number" && run.started_at < runStartedAt - 5000)) {
-          if (run != null && run.status === "running" && typeof run?.progress === "string") setActivity(run.progress);
+        const run = isGithubPushedSourceWithAgentRun(latest) ? latest.agent_run : null;
+        // Ignore stale runs from before this one started.
+        if (run == null || (typeof run.started_at === "number" && run.started_at < runStartedAtWallMs - 5000)) continue;
+
+        if (run.status === "running") {
+          if (typeof run.progress === "string") onActivityChange(run.progress);
+          if (isAgentStage(run.stage)) onStageChange(run.stage);
           continue;
         }
 
-        setProgressMessage(null);
-        onRunPhaseChange("idle");
+        // Non-running status: transition.
         dialogContext?.setGithubRunActive(false);
+
+        if (run.status === "awaiting_review") {
+          onPhaseChange("awaiting_review");
+          onStageChange("awaiting_review");
+          if (typeof run.diff === "string") onDiffChange(run.diff);
+          return;
+        }
         if (run.status === "error") {
-          setErrorMessage("The config agent failed to apply your change.");
-          return "prevent-close";
+          onPhaseChange("idle");
+          onStageChange(null);
+          onErrorChange("The config agent failed to apply your change.");
+          return;
         }
         if (run.status === "cancelled") {
-          // Cancelled (here or from another tab): discard the pending edit.
+          onPhaseChange("idle");
+          onStageChange(null);
           onSettle(false);
-          return undefined;
+          return;
         }
-        // success or no-change: mirror into cloud config for immediate UI feedback.
+        if (run.status === "no-change") {
+          onPhaseChange("idle");
+          onStageChange(null);
+          onErrorChange("The config agent finished without producing a diff. No commit was created; try the update again.");
+          return;
+        }
+        // success is only expected from older auto-commit flows or a race with
+        // a completed commit. Settle so the dashboard can refresh its local state.
+        onPhaseChange("idle");
+        onStageChange(null);
         onSettle(true);
-        return undefined;
+        return;
       }
 
-      setProgressMessage(null);
-      onRunPhaseChange("idle");
       dialogContext?.setGithubRunActive(false);
-      setErrorMessage("Timed out waiting for the config agent. Your change may still be in progress — check the linked repository.");
-      return "prevent-close";
+      onPhaseChange("idle");
+      onStageChange(null);
+      const elapsedSeconds = Math.floor((performance.now() - runStartedAtMonotonicMs) / 1000);
+      onErrorChange(`Timed out after ${elapsedSeconds}s waiting for the config agent. Your change may still be in progress; check the linked repository.`);
     } catch (error) {
       captureError("config-update-github-agent", {
         projectId,
@@ -580,100 +866,144 @@ function GithubPushBody({
         configFilePath: source.configFilePath,
         cause: error,
       });
-      setProgressMessage(null);
-      onRunPhaseChange("idle");
       dialogContext?.setGithubRunActive(false);
-      setErrorMessage("Unknown error pushing to GitHub.");
-      return "prevent-close";
+      onPhaseChange("idle");
+      onStageChange(null);
+      onErrorChange("Unknown error pushing to GitHub.");
     }
-  }, [adminApp, commitMessage, configUpdate, dialogContext, onRunPhaseChange, onSettle, projectId, scopeCheck, source]);
+  }, [adminApp, configUpdate, dialogContext, onActivityChange, onDiffChange, onErrorChange, onPhaseChange, onSettle, onStageChange, onStartedAtChange, projectId, scopeCheck, source]);
 
-  // Cancel an in-flight run: hard-stops the sandbox server-side. The poll loop
-  // above then observes the terminal `cancelled` status and settles the dialog
-  // (discarding the pending edit). No revert — if the agent already pushed, the
-  // commit stays.
-  const handleCancel = useCallback(async (): Promise<"prevent-close" | undefined> => {
-    const adminInterface = (adminApp as any)?._interface;
+  const handleCancel = useCallback(async () => {
+    const adminInterface = getAdminInterface(adminApp);
     if (adminInterface == null || typeof adminInterface.cancelConfigAgentRun !== "function") {
-      setErrorMessage("This dashboard build can't cancel a config run. Please refresh and try again.");
-      return "prevent-close";
+      onErrorChange("This dashboard build can't cancel a config run. Please refresh and try again.");
+      return;
     }
-    onRunPhaseChange("cancelling");
-    setProgressMessage("Cancelling the update…");
+    onPhaseChange("cancelling");
     try {
       await adminInterface.cancelConfigAgentRun();
     } catch (error) {
-      // Best-effort: the poll loop still observes the terminal status if the
-      // cancel landed; surface nothing and keep the dialog open.
       captureError("config-update-github-cancel", error);
     }
-    return "prevent-close";
-  }, [adminApp, onRunPhaseChange]);
+    // The poll loop in handlePush will observe the terminal `cancelled` status and settle.
+  }, [adminApp, onErrorChange, onPhaseChange]);
 
-  const handleConnect = useCallback(async (): Promise<"prevent-close" | undefined> => {
-    // Full-page redirect to the OAuth provider. When scopes are missing on
-    // an existing connection, `getOrLinkConnectedAccount` still redirects
-    // because none of the present tokens satisfies the scope set. Returning
-    // `prevent-close` is defensive — in practice the redirect happens first.
+  const handleCommit = useCallback(async () => {
+    if (scopeCheck.status !== "ok") {
+      onErrorChange("GitHub account not connected. Please reconnect and try again.");
+      return;
+    }
+    const adminInterface = getAdminInterface(adminApp);
+    if (adminInterface == null || typeof adminInterface.commitConfigAgentRun !== "function") {
+      onErrorChange("This dashboard build can't commit. Please refresh and try again.");
+      return;
+    }
+    onPhaseChange("committing");
+    onErrorChange(null);
+    try {
+      const tokenResult = await scopeCheck.account.getAccessToken({ scopes: GITHUB_SCOPE_REQUIREMENTS });
+      if (tokenResult.status !== "ok") {
+        onPhaseChange("awaiting_review");
+        onErrorChange("Could not get a GitHub token. Reconnect your GitHub account and try again.");
+        return;
+      }
+      const result = await adminInterface.commitConfigAgentRun({
+        githubAccessToken: tokenResult.data.accessToken,
+        commitMessage: commitMessage.trim().length > 0 ? commitMessage : undefined,
+      });
+      if (result.status === "sandbox-expired") {
+        onPhaseChange("idle");
+        onErrorChange("The sandbox session expired. Please retry the update.");
+        return;
+      }
+      if (result.status === "not-awaiting-review") {
+        onPhaseChange("idle");
+        onErrorChange("There is no config diff waiting to commit. Start the update again.");
+        return;
+      }
+      // "committing" — poll until done
+      const adminInterface2 = adminInterface;
+      const deadline = performance.now() + 2 * 60_000;
+      while (performance.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        let latest: unknown;
+        try {
+          latest = await adminInterface2.getPushedConfigSource();
+        } catch {
+          continue;
+        }
+        const run = isGithubPushedSourceWithAgentRun(latest) ? latest.agent_run : null;
+        if (run == null || run.status === "awaiting_review") continue;
+        if (run.status === "success") {
+          onPhaseChange("idle");
+          onSettle(true);
+          return;
+        }
+        if (run.status === "error") {
+          onPhaseChange("awaiting_review");
+          onErrorChange("Failed to commit and push the changes. Please try again.");
+          return;
+        }
+        if (run.status === "cancelled") {
+          onPhaseChange("idle");
+          onSettle(false);
+          return;
+        }
+      }
+      onPhaseChange("awaiting_review");
+      onErrorChange("Timed out waiting for the commit. Check the repository for status.");
+    } catch (error) {
+      captureError("config-update-github-commit", error);
+      onPhaseChange("awaiting_review");
+      onErrorChange("Unknown error committing to GitHub.");
+    }
+  }, [adminApp, commitMessage, onErrorChange, onPhaseChange, onSettle, scopeCheck]);
+
+  const handleConnect = useCallback(async () => {
     try {
       await user.getOrLinkConnectedAccount("github", { scopes: GITHUB_SCOPE_REQUIREMENTS });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error connecting to GitHub.";
-      setErrorMessage(message);
-      return "prevent-close";
+      onErrorChange(message);
     }
-    return "prevent-close";
-  }, [user]);
+  }, [onErrorChange, user]);
 
-  // Expose the latest handlers to the dialog shell. A ref (rather than
-  // calling up via state) avoids re-rendering the shell on every handler
-  // identity change, which would also reset the okButton onClick reference.
   useEffect(() => {
-    handlersRef.current = { push: handlePush, connect: handleConnect, cancel: handleCancel };
-  }, [handlersRef, handlePush, handleConnect, handleCancel]);
+    handlersRef.current = { push: handlePush, connect: handleConnect, cancel: handleCancel, commit: handleCommit };
+  }, [handlersRef, handlePush, handleConnect, handleCancel, handleCommit]);
 
   return (
     <div className="space-y-4">
-      {scopeCheck.status === "ok" && (
-        <div className="space-y-2">
-          <label htmlFor="commit-message" className="text-sm font-medium">
-            Commit message
-          </label>
-          <input
-            id="commit-message"
-            type="text"
-            className="w-full px-3 py-2 border rounded-md text-sm bg-background"
-            placeholder={placeholderCommitMessage}
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Committing to <code className="text-xs">{source.configFilePath}</code> on{" "}
-            <code className="text-xs">{source.branch}</code>.
-          </p>
-        </div>
+      {/* Stage progress bar — shown while running */}
+      {(phase === "running" || phase === "cancelling") && (
+        <ConfigAgentRunProgressContent
+          isCancelling={phase === "cancelling"}
+          stage={stage}
+          startedAt={startedAt}
+          activity={activity}
+          errorMessage={errorMessage}
+        />
       )}
-      {progressMessage != null && (
-        <p className="text-sm text-muted-foreground">
-          {progressMessage}
-        </p>
+
+      {/* Diff viewer — shown when awaiting review */}
+      {phase === "awaiting_review" && diff != null && diff.trim().length > 0 && (
+        <AgentDiffViewer diff={diff} />
       )}
-      {progressMessage != null && activity != null && activity.trim().length > 0 && (
-        <ConfigAgentActivityFeed activity={activity} />
+
+      {/* Error */}
+      {phase !== "running" && phase !== "cancelling" && errorMessage != null && (
+        <p className="rounded-lg bg-destructive/8 px-3 py-2 text-sm text-destructive">{errorMessage}</p>
       )}
-      {errorMessage != null && (
-        <p className="text-sm text-destructive">
-          {errorMessage}
-        </p>
-      )}
-      <p className="text-sm text-muted-foreground">
-        <em>
-          If your configuration is no longer on GitHub, you can unlink it in{" "}
+
+      {/* Unlink hint — shown in idle state */}
+      {phase === "idle" && (
+        <p className="text-xs text-muted-foreground">
+          If your configuration is no longer on GitHub, you can{" "}
           <Link href={projectSettingsHref(projectId)} className="underline">
-            Project Settings
+            unlink it in Project Settings
           </Link>.
-        </em>
-      </p>
+        </p>
+      )}
     </div>
   );
 }

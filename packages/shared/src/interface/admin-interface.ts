@@ -859,8 +859,9 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
 
   /**
    * Cancels the in-flight agent-driven config write: hard-stops the sandbox so
-   * the agent stops mid-work. No revert — if the agent already pushed, the commit
-   * stays. Returns `not-running` if no run is in flight.
+   * the agent stops mid-work. Also cancels runs in `awaiting_review`. No revert
+   * — if the agent already pushed, the commit stays. Returns `not-running` if
+   * no run is in flight.
    */
   async cancelConfigAgentRun(): Promise<{ status: "cancelling" | "not-running" }> {
     const response = await this.sendAdminRequest(
@@ -869,6 +870,28 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Commits and pushes the agent's already-applied changes after the user has
+   * reviewed the diff. Only valid when a run is in `awaiting_review` status.
+   * Returns `sandbox-expired` if the review state exists but its sandbox id is
+   * missing, which means the user needs to rerun the agent.
+   */
+  async commitConfigAgentRun(options: { githubAccessToken: string, commitMessage?: string }): Promise<{ status: "committing" | "not-awaiting-review" | "sandbox-expired" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/commit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          github_access_token: options.githubAccessToken,
+          ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
+        }),
       },
       null,
     );
