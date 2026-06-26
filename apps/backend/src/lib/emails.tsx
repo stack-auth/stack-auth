@@ -101,27 +101,21 @@ export async function sendEmailFromDefaultTemplate(options: {
 const DEFAULT_TEMPLATE_ID_SET: ReadonlySet<string> = new Set(Object.values(DEFAULT_TEMPLATE_IDS));
 
 /**
- * Decides whether an outbox email counts as project-defined ("custom") content for the purposes of the shared
- * email server dev wrapper (see {@link wrapSharedDevEmail}).
- *
- * Emails rendered from Hexclave's own default templates (email verification, password reset, magic link, etc.)
- * are trusted and should be sent verbatim. Everything else — raw HTML sends, custom templates, and drafts — is
- * controlled by the project, so when it goes out over the shared server it gets the dev wrapper.
+ * Whether an outbox email is project-defined ("custom") content rather than a Hexclave default template, and so
+ * should get the shared-server dev wrapper. Drafts, raw HTML, and custom templates are custom; the built-in
+ * default templates (verification, password reset, etc.) are sent verbatim.
  */
 export function isCustomEmailForSharedServer(createdWith: EmailOutboxCreatedWith, programmaticCallTemplateId: string | null): boolean {
   if (createdWith === EmailOutboxCreatedWith.DRAFT) {
     return true;
   }
-  // PROGRAMMATIC_CALL with a default template id => trusted Hexclave default template. Anything else (a custom
-  // template id, or `null` which means raw HTML was sent) is project-defined custom content.
+  // A null template id means raw HTML was sent, which is custom; only a known default template id is verbatim.
   return !(programmaticCallTemplateId !== null && DEFAULT_TEMPLATE_ID_SET.has(programmaticCallTemplateId));
 }
 
 /**
- * Wraps a custom email's subject and body with a clear notice that it was sent through Hexclave's shared
- * (development) email server. This lets us keep the shared server usable for sending arbitrary project content
- * during development without lending Hexclave's sending reputation to convincing unsolicited mail: unexpected
- * recipients are told upfront that they can ignore the message.
+ * Wraps a custom email's subject and body with a notice that it was sent through Hexclave's shared (development)
+ * email server, so unexpected recipients know they can ignore it.
  */
 export function wrapSharedDevEmail(content: { subject: string, html?: string, text?: string }): { subject: string, html?: string, text?: string } {
   const wrappedSubject = `[Hexclave dev email] ${content.subject}`;

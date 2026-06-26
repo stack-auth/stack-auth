@@ -735,9 +735,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
-    // When project-defined custom emails go out over the shared (Hexclave-provided) email server, wrap their
-    // subject and body with a notice that this is a development email so unexpected recipients can ignore it.
-    // Hexclave's own default-template emails (verification, password reset, etc.) are trusted and sent verbatim.
+    // Wrap project-defined custom emails sent over the shared server; default templates are sent verbatim.
     const baseContent = {
       subject: row.renderedSubject ?? "",
       html: row.renderedHtml ?? undefined,
