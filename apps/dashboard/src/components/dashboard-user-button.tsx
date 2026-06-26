@@ -88,6 +88,9 @@ export function DashboardUserButton(props: DashboardUserButtonProps) {
 function DashboardUserButtonInner(props: DashboardUserButtonProps) {
   const user = useUser();
   const app = useStackApp();
+  // Soft-navigate: redirectToAccountSettings() hard-reloads, which wipes preview mode's
+  // in-memory session and bounces the user to sign-in. router.push keeps the session alive.
+  const navigate = app.useNavigate();
   const showUserInfo = props.showUserInfo === true;
   const displayName = user?.displayName ?? user?.primaryEmail ?? "Account";
   const iconProps = { size: 16, className: menuIconClassName };
@@ -142,7 +145,7 @@ function DashboardUserButtonInner(props: DashboardUserButtonProps) {
         {user && (
           <DashboardMenuItem
             text="Account settings"
-            onClick={async () => await app.redirectToAccountSettings()}
+            onClick={() => navigate("/handler/account-settings")}
             icon={<UserCircleIcon {...iconProps} />}
           />
         )}

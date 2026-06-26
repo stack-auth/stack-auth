@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   arePlanLimitsEnforced,
   getBillingTeamId,
+  getNonAnonymousUserCountForTenancies,
+  getOwnedProjectAndTenancyIdsForBillingTeam,
   getOwnedProjectIdsForBillingTeam,
   getOwnedTenancyIdsForBillingTeam,
   getTeamWideItemCapacityForTests,
@@ -96,6 +98,28 @@ describe("team-wide ownership aggregation", () => {
   it("lists all tenancies for projects owned by billing team", async () => {
     const tenancyIds = await getOwnedTenancyIdsForBillingTeam("team-1", globalPrisma);
     expect(tenancyIds).toEqual(["tenancy-a-main", "tenancy-a-dev", "tenancy-b-main"]);
+  });
+
+  it("lists owned project and tenancy ids from one ownership scope", async () => {
+    const scope = await getOwnedProjectAndTenancyIdsForBillingTeam("team-1", globalPrisma);
+    expect(scope).toMatchInlineSnapshot(`
+      {
+        "projectIds": [
+          "project-a",
+          "project-b",
+        ],
+        "tenancyIds": [
+          "tenancy-a-main",
+          "tenancy-a-dev",
+          "tenancy-b-main",
+        ],
+      }
+    `);
+  });
+
+  it("counts non-anonymous users from already-resolved tenancies", async () => {
+    const usage = await getNonAnonymousUserCountForTenancies(["tenancy-a-main", "tenancy-b-main"], globalPrisma);
+    expect(usage).toBe(2);
   });
 
   it("counts only non-anonymous users across all owned tenancies", async () => {

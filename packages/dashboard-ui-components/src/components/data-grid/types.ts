@@ -221,6 +221,38 @@ export type DataGridDataSource<TRow> = (
   params: DataGridFetchParams,
 ) => AsyncGenerator<DataGridFetchResult<TRow>, void, undefined>;
 
+// ─── Export ─────────────────────────────────────────────────────────
+export type DataGridExportFormat = "csv" | "json";
+
+export type DataGridExportScope = "all" | "filtered";
+
+export type DataGridExportField<TRow> = {
+  key: string;
+  label: string;
+  enabled: boolean;
+  getValue: (row: TRow) => unknown;
+};
+
+export type DataGridExportRowsOptions = {
+  scope: DataGridExportScope;
+  onProgress: (fetched: number) => void;
+};
+
+export type DataGridExportOptions<TRow> = {
+  title?: string;
+  description?: ReactNode;
+  entityName?: string;
+  entityNamePlural?: string;
+  filenamePrefix?: string;
+  fields?: readonly DataGridExportField<TRow>[];
+  fetchRows?: (options: DataGridExportRowsOptions) => Promise<readonly TRow[]>;
+  emptyExportTitle?: string;
+  emptyExportDescription?: string;
+  allScopeLabel?: ReactNode;
+  filteredScopeLabel?: ReactNode;
+  progressSubjectLabel?: string;
+};
+
 // ─── Callbacks ───────────────────────────────────────────────────────
 export type DataGridCallbacks<TRow> = {
   onRowClick?: (row: TRow, rowId: RowId, event: React.MouseEvent) => void;
@@ -334,6 +366,9 @@ export type DataGridProps<TRow> = {
 
   /** Filename stem for CSV export (without extension). */
   exportFilename?: string;
+  /** Full export dialog configuration. If omitted, the dialog exports the
+   * currently loaded rows using the grid's visible columns. */
+  exportOptions?: DataGridExportOptions<TRow>;
   /** i18n overrides. */
   strings?: Partial<DataGridStrings>;
 

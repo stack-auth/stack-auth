@@ -27,15 +27,7 @@ export const convexSetupPrompt = deindent`
     </Step>
 
     <Step title="Install and configure Hexclave">
-      Install Hexclave in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
-
-      \`\`\`sh
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Create or select a Hexclave project in the dashboard. Copy the Hexclave environment variables into the app's \`.env.local\` file.
-
-      Also add the same Hexclave environment variables to the Convex deployment environment in the Convex dashboard.
+      Install Hexclave in the app. If you have not already completed the SDK setup steps above, follow the instructions in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Configure Convex auth providers">
@@ -135,31 +127,7 @@ export const supabaseSetupPrompt = deindent`
     </Step>
 
     <Step title="Install Hexclave and Supabase dependencies">
-      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
-
-      \`\`\`sh
-      npx create-next-app@latest -e with-supabase hexclave-supabase
-      cd hexclave-supabase
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Add the Supabase environment variables to \`.env.local\`:
-
-      \`\`\`.env .env.local
-      NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
-      NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-      SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
-      \`\`\`
-
-      Also add the Hexclave environment variables:
-
-      \`\`\`.env .env.local
-      # The project ID is the only client-exposed Hexclave variable; in Next.js it must
-      # be prefixed with NEXT_PUBLIC_. HEXCLAVE_SECRET_SERVER_KEY is server-only and must
-      # NEVER be prefixed or exposed to the client.
-      NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=<your-hexclave-project-id>
-      HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
-      \`\`\`
+      First, follow the instructions on how to get started with Hexclave for your framework in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Mint Supabase JWTs from Hexclave users">
@@ -813,6 +781,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isMaybeTanstackStart = isDefinitelyTanstackStart || mainType === "ai-prompt";
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
+  const isDefinitelyVite = isDefinitelyTanstackStart;
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -996,7 +965,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
@@ -1015,7 +984,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? "# note: prefix the environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so" : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id> 
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
@@ -1037,7 +1007,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? deindent`
+              # as above, prefix the project ID environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so
+              # do NOT prefix the secret server key environment variable with NEXT_PUBLIC_ or VITE_ as it is server-only
+            ` : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id> 
             HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 

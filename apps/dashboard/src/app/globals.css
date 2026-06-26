@@ -417,6 +417,21 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   }
 }
 
+@keyframes data-grid-export-progress-shimmer {
+  0% {
+    transform: translateX(-105%);
+  }
+
+  100% {
+    transform: translateX(245%);
+  }
+}
+
+.data-grid-export-progress-shimmer {
+  animation: data-grid-export-progress-shimmer 1.35s ease-in-out infinite;
+  will-change: transform;
+}
+
 @keyframes rainbow-beam {
   0% {
     background-position: 0% 50%;
@@ -426,6 +441,13 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   }
   100% {
     background-position: 0% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .data-grid-export-progress-shimmer {
+    animation: none;
+    transform: translateX(75%);
   }
 }
 

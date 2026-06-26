@@ -1,6 +1,6 @@
 ---
 title: "Stack CLI"
-description: "Use the Hexclave CLI to initialize projects, manage config, and run admin scripts"
+description: "Use the Hexclave CLI to manage config and run admin scripts"
 sidebarTitle: "Stack CLI"
 ---
 
@@ -10,7 +10,7 @@ import { hexclaveAgentRemindersText } from "/snippets/hexclave-agent-reminders.j
 {hexclaveAgentRemindersText}
 </Visibility>
 
-The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for project setup, branch config workflows, and quick admin scripts.
+The Hexclave CLI is published as `@hexclave/cli` and exposes the `stack` command. Use it for branch config workflows and quick admin scripts.
 
 ## Install
 
@@ -29,7 +29,7 @@ stack --help
 You can also run any command without installing globally by prefixing it with `npx @hexclave/cli@latest`, for example:
 
 ```sh title="Terminal"
-npx @hexclave/cli@latest init
+npx @hexclave/cli@latest project list
 ```
 
 ## Global options
@@ -65,37 +65,6 @@ stack logout
 ```
 
 If you have an anonymous CLI session that should be linked during login, set `STACK_CLI_ANON_REFRESH_TOKEN` before running `login`.
-
-## Initialize a project
-
-Run the interactive setup wizard:
-
-```sh title="Terminal"
-stack init
-```
-
-The wizard can create a cloud project, create a local config file, or link an existing project. In interactive terminals, it can run an agent to apply the setup changes to your app. Use `--no-agent` to print manual setup instructions instead.
-
-### Non-interactive init
-
-Use `--mode` to skip prompts:
-
-| Command | What it does |
-| --- | --- |
-| `stack init --mode create --apps authentication,teams` | Create `stack.config.ts` for local config-driven development. |
-| `stack init --mode create-cloud` | Create a new Hexclave Cloud project and write keys to `.env`. |
-| `stack init --mode link-config --config-file ./stack.config.ts` | Link setup instructions to an existing local config file. |
-| `stack init --mode link-cloud --select-project-id <id>` | Write keys for an existing cloud project to `.env`. |
-
-Other useful flags:
-
-| Option | Description |
-| --- | --- |
-| `--apps <apps>` | Comma-separated app IDs to enable in `create` mode. |
-| `--config-file <path>` | Existing config file for `link-config` mode. |
-| `--select-project-id <id>` | Existing cloud project for `link-cloud` mode. |
-| `--output-dir <dir>` | Directory where output files should be written. Defaults to the current directory. |
-| `--no-agent` | Skip the setup agent and print manual instructions. |
 
 ## Project commands
 

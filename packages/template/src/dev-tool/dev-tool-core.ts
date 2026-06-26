@@ -2,7 +2,7 @@
 
 import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
 import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
 import { envVars } from "../generated/env";
@@ -1933,11 +1933,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     });
   }
 
-  function getCompactUrl(url: string): string {
-    const resolved = new URL(url, window.location.origin);
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-  }
-
   const sidebar = h('div', { className: 'sdt-pg-sidebar' });
   const mainArea = h('div', { className: 'sdt-pg-main' });
 
@@ -1988,7 +1983,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const header = h('div', { className: 'sdt-pg-header' });
     const headerTop = h('div', { className: 'sdt-pg-header-top' });
     headerTop.appendChild(h('h3', { className: 'sdt-pg-title' }, `${page.label} Page`));
-    headerTop.appendChild(h('a', { href: page.url, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-pg-title-url' }, getCompactUrl(page.url)));
     if (page.versionStatus === 'outdated') {
       headerTop.appendChild(h('span', { className: 'sdt-pg-badge sdt-pg-badge-outdated' }, 'Outdated'));
     }
@@ -2000,8 +1994,19 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
     setHtml(openBtn, 'Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>');
     openBtn.addEventListener('click', () => {
-      const resolved = new URL(page.url, window.location.origin);
-      window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+      const openedWindow = window.open('about:blank', '_blank');
+      if (openedWindow != null) {
+        openedWindow.opener = null;
+      }
+      runAsynchronouslyWithAlert(async () => {
+        const redirectUrl = await app[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl(page.key);
+        const resolved = new URL(redirectUrl, window.location.origin);
+        if (openedWindow != null) {
+          openedWindow.location.replace(resolved.toString());
+        } else {
+          window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+        }
+      });
     });
     codeRow.appendChild(openBtn);
     header.appendChild(codeRow);
