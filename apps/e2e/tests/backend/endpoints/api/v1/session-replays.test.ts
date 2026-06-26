@@ -175,8 +175,7 @@ it("accepts a gzipped binary body (compressed large-payload encoding)", async ({
     batch_id: randomUUID(),
     started_at_ms: now,
     sent_at_ms: now + 500,
-    // A large rrweb-like full snapshot — the case that exceeds the 1MB raw wire
-    // limit but compresses comfortably under it.
+    // Large full snapshot: exceeds the 1MB raw wire limit but gzips under it.
     events: [{ timestamp: now + 100, type: 2, data: { html: "x".repeat(2_000_000) } }],
   };
   const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf-8"));

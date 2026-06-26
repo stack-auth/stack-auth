@@ -106,16 +106,10 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
-// Target *uncompressed* size of a single batch. The transport gzips the body
-// before sending (rrweb compresses ~8x), so this comfortably clears the
-// server's 1MB compressed-body limit while keeping batches small enough that
-// the uncompressed keepalive fallback path stays under the limit too.
+// Uncompressed per-batch target; the transport gzips before sending.
 const MAX_BATCH_UNCOMPRESSED_BYTES = 900_000;
-// A single event whose *uncompressed* size exceeds the server's decompressed
-// budget can never be accepted (the server caps gunzip output at this size), so
-// it's dropped rather than sent into a guaranteed rejection. Keep in sync with
-// MAX_DECOMPRESSED_BYTES in apps/backend session-replays/batch route. Anything
-// smaller is sent as its own batch and relies on gzip to fit the wire limit.
+// Single events above the server's decompressed budget can never be accepted,
+// so drop them. Keep in sync with MAX_DECOMPRESSED_BYTES in the backend route.
 const MAX_SINGLE_EVENT_BYTES = 8_000_000;
 
 // Reused across the emit hot path to avoid per-event allocation.
@@ -293,12 +287,8 @@ export class SessionRecorder {
     try {
       let offset = 0;
       while (offset < allEvents.length) {
-        // Build a batch under the per-batch target. The transport gzips the
-        // body, so an oversized single event (e.g. a large rrweb full snapshot)
-        // is sent alone and compression brings it under the server's wire
-        // limit. Only an event that exceeds even the server's decompressed
-        // budget is unsendable; drop it and move on (rrweb events aren't
-        // splittable).
+        // An oversized single event is sent alone and gzipped under the wire
+        // limit; only one past the server's decompressed budget is unsendable.
         const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
         if (firstSize > MAX_SINGLE_EVENT_BYTES) {
           captureWarning(

@@ -199,8 +199,7 @@ describe("SessionRecorder flush", () => {
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
 
-      // Should still send the event (the transport gzips it under the wire
-      // limit, so it is no longer dropped client-side).
+      // Sent (not dropped): the transport gzips it under the wire limit.
       expect(sentBodies).toHaveLength(1);
       const batch = JSON.parse(sentBodies[0]);
       expect(batch.events).toHaveLength(1);
@@ -234,9 +233,7 @@ describe("SessionRecorder flush", () => {
     );
 
     try {
-      // A single event larger than MAX_SINGLE_EVENT_BYTES (8MB). Even gzipped it
-      // can't fit the server's decompressed budget, so it is dropped. A normal
-      // event queued after it should still be sent.
+      // >8MB (MAX_SINGLE_EVENT_BYTES) is dropped; the next event still sends.
       const hugeEvent = { type: 2, timestamp: Date.now(), data: "z".repeat(9_000_000) };
       const smallEvent = { type: 3, timestamp: Date.now(), data: "ok" };
       const sizeOf = (e: unknown) => JSON.stringify(e).length;

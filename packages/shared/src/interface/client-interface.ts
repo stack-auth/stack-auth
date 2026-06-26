@@ -134,15 +134,9 @@ async function encodeGzipJsonBody(
   jsonBody: string,
   options: { keepalive: boolean },
 ): Promise<{ body: BodyInit, contentType: string }> {
-  // Shared by the analytics-event and session-replay batch uploads. gzipping
-  // both shrinks large payloads (rrweb full snapshots compress ~8x, keeping
-  // them under the server's 1MB body limit) and evades keyword-matching
-  // adblockers (e.g. filters on "$click"). The server detects the
-  // application/octet-stream content type and gunzips before schema validation.
-  //
-  // pagehide/visibilitychange flushes use keepalive: true. The browser must
-  // dispatch the fetch before tearing the page down — awaiting async gzip
-  // first lets the request slip past tear-down and never start.
+  // Used by analytics-event and session-replay batch uploads; the server
+  // gunzips application/octet-stream bodies before schema validation.
+  // keepalive flushes must dispatch before page tear-down, so skip async gzip.
   if (options.keepalive) {
     return { body: jsonBody, contentType: "application/json" };
   }
@@ -156,8 +150,7 @@ async function encodeGzipJsonBody(
     const buffer = await new Response(stream).arrayBuffer();
     return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
   } catch {
-    // Partial/broken CompressionStream support (e.g. Safari < 16.4): fall back
-    // to plain JSON so the flush doesn't drop the batch via Result.error.
+    // Broken CompressionStream (e.g. Safari < 16.4): fall back to plain JSON.
     return { body: jsonBody, contentType: "application/json" };
   }
 }

@@ -19,16 +19,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_EVENTS = 5_000;
-// Upper bound on a gunzipped body. Bounds memory against a zip bomb and keeps
-// the decompressed payload in line with the client's MAX_SINGLE_EVENT_BYTES.
+// Zip-bomb guard; keep in sync with the client's MAX_SINGLE_EVENT_BYTES.
 const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
 
-// The client gzips large batches and sends them as application/octet-stream
-// (rrweb full snapshots compress ~8x, keeping them under MAX_BODY_BYTES on the
-// wire; it also evades keyword-matching adblockers). We gunzip + JSON.parse
-// here so the rest of the schema validates the decoded object normally. Plain
-// application/json bodies (keepalive flushes, or browsers without
-// CompressionStream) arrive already-parsed and pass through untouched.
+// Gunzips application/octet-stream bodies (the client gzips large batches);
+// plain application/json bodies pass through untouched.
 function maybeDecodeBinaryBody(value: unknown): unknown {
   let bytes: Uint8Array | undefined;
   if (value instanceof ArrayBuffer) {
