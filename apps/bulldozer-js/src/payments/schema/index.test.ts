@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { declareInMemoryLowLevelDatabase } from "../../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
-import { createPaymentsSchema } from "./index.js";
+import { createPaymentsSchema, mergeCompactionAggregates, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
 import type { CustomerType, ProductSnapshot, SubscriptionRow, TransactionRow } from "./types.js";
 
 type Snapshot = Awaited<ReturnType<typeof initializedSnapshot>>;
@@ -344,5 +344,49 @@ describe("payments schema", () => {
     const latest = rowsForCustomer.at(-1);
     expect(Object.keys(asRecord(latest!.subscriptions)).sort()).toEqual(["sub-map-a", "sub-map-b"]);
     expect(asRecord(asRecord(latest!.subscriptions)["sub-map-a"]).status).toBe("past_due");
+  });
+});
+
+describe("mergeCompactionAggregates", () => {
+  const compactionEntry = (overrides: { itemId: string, quantity: number, txnId: string, index: number }): ItemQuantityChangeEntry => ({
+    type: "item-quantity-change",
+    index: overrides.index,
+    txnId: overrides.txnId,
+    txnEffectiveAtMillis: overrides.index,
+    txnCreatedAtMillis: overrides.index,
+    txnType: "manual-item-quantity-change",
+    tenancyId: "t1",
+    paymentProvider: null,
+    customerType: "user",
+    customerId: "c1",
+    quantity: overrides.quantity,
+    itemId: overrides.itemId,
+    expiresWhen: null,
+  });
+  const aggregate = (txnId: string, index: number, items: Record<string, number>): ItemCompactionAggregate => ({
+    type: "item-quantity-compaction-aggregate",
+    txnEffectiveAtMillis: index,
+    txnId,
+    index,
+    items: Object.fromEntries(
+      Object.entries(items).map(([itemId, quantity]) => [itemId, { firstRow: compactionEntry({ itemId, quantity, txnId, index }), quantity }]),
+    ),
+  });
+  const itemQuantities = (aggregate: ItemCompactionAggregate) =>
+    Object.fromEntries(Object.entries(aggregate.items).map(([itemId, item]) => [itemId, item.quantity]));
+
+  it("produces the same result regardless of merge grouping", () => {
+    // overlapping (credits, seats, gpu) and distinct (ram) items cover both branches
+    const a = aggregate("a", 0, { credits: 1, seats: 2 });
+    const b = aggregate("b", 1, { credits: 3, gpu: 5 });
+    const c = aggregate("c", 2, { seats: 7, gpu: 11, ram: 13 });
+
+    const leftAssociative = mergeCompactionAggregates(mergeCompactionAggregates(a, b), c);
+    const rightAssociative = mergeCompactionAggregates(a, mergeCompactionAggregates(b, c));
+
+    expect(leftAssociative).toEqual(rightAssociative);
+    expect(itemQuantities(leftAssociative)).toEqual({ credits: 4, seats: 9, gpu: 16, ram: 13 });
+    expect(leftAssociative.txnId).toBe("a");
+    expect(leftAssociative.index).toBe(0);
   });
 });

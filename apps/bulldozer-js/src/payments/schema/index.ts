@@ -69,7 +69,7 @@ type OtpFoldState = {
   outstandingGrants: OutstandingGrant[],
   repeatCount: number,
 };
-type ItemQuantityChangeEntry = {
+export type ItemQuantityChangeEntry = {
   type: "item-quantity-change",
   index: number,
   txnId: string,
@@ -84,7 +84,7 @@ type ItemQuantityChangeEntry = {
   itemId: string,
   expiresWhen: "when-purchase-expires" | "when-repeated" | number | null,
 };
-type ItemCompactionAggregate = {
+export type ItemCompactionAggregate = {
   type: "item-quantity-compaction-aggregate",
   txnEffectiveAtMillis: number,
   txnId: string,
@@ -213,6 +213,9 @@ function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
     productRevokedAtMillis: row.productRevokedAtMillis,
     chargedAmount: charged,
     startTxnId,
+    // These indices must match the entry order in payments-txn-subscription-start:
+    // [0] sub-start, [1] product-grant, [2] money-transfer (only if charged), then
+    // item changes. If you reorder entries there, update these too.
     startProductGrantEntryIndex: 1,
     startItemChangeBaseIndex: hasMoneyTransfer ? 3 : 2,
     itemRepeatSchedule: repeatSchedule(row.product, row.quantity, row.createdAtMillis),
@@ -307,6 +310,8 @@ function otpInitialState(row: OneTimePurchaseRow): OtpFoldState {
     paymentProvider: provider,
     revokedAtMillis: row.revokedAtMillis,
     itemRepeatSchedule: Object.fromEntries(Object.entries(repeatSchedule(row.product, row.quantity, row.createdAtMillis)).filter(([, schedule]) => schedule.repeatIntervalMs !== null)),
+    // Must match entry order in payments-txn-one-time-purchase: [0] product-grant,
+    // [1] money-transfer (only if charged), then item changes.
     outstandingGrants: outstandingGrants(row.product, row.quantity, txnId, hasMoneyTransfer ? 2 : 1),
     repeatCount: 0,
   };
@@ -367,7 +372,10 @@ const asCompactionAggregate = (value: PiledriverObject): ItemCompactionAggregate
   if (isObject(value) && value.type === "item-quantity-compaction-aggregate") return rowObject<ItemCompactionAggregate>(value);
   return compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(value));
 };
-const mergeCompactionAggregates = (a: ItemCompactionAggregate, b: ItemCompactionAggregate): ItemCompactionAggregate => {
+// The compact table merges rows in any order, so this merge has to be associative:
+// merge(a, merge(b, c)) === merge(merge(a, b), c). Keep it that way (there's a test
+// in index.test.ts) — quantities are summed and the header/firstRow come from `a`.
+export const mergeCompactionAggregates = (a: ItemCompactionAggregate, b: ItemCompactionAggregate): ItemCompactionAggregate => {
   const items = new Map(Object.entries(a.items));
   for (const [itemId, item] of Object.entries(b.items)) {
     const existing = items.get(itemId);
@@ -563,6 +571,8 @@ export function createPaymentsSchema() {
     }), { input: "payments-subscription-cancel-events" }),
     table("payments-txn-subscription-start", defineMapTable(row => {
       const event = rowObject<{ subscriptionId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, productLineId: string | null, priceId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
+      // subscriptionInitialState hardcodes these entry indices, so keep the order:
+      // [0] sub-start, [1] product-grant, optional money-transfer before item changes.
       const entries: TransactionEntryData[] = [
         { type: "active-subscription-start", customerType: event.customerType, customerId: event.customerId, subscriptionId: event.subscriptionId },
         { type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, subscriptionId: event.subscriptionId },
@@ -591,6 +601,8 @@ export function createPaymentsSchema() {
     }), { input: "payments-item-grant-repeat-events" }),
     table("payments-txn-one-time-purchase", defineMapTable(row => {
       const event = rowObject<{ purchaseId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, productLineId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
+      // otpInitialState hardcodes these entry indices, so keep the order:
+      // [0] product-grant, optional money-transfer before item changes.
       const entries: TransactionEntryData[] = [{ type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, oneTimePurchaseId: event.purchaseId }];
       if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
       entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })));
@@ -677,6 +689,9 @@ export function createPaymentsSchema() {
       const entry = rowObject<{ type: string }>(row.rowData);
       return entry.type === "product-grant" || entry.type === "product-revocation";
     }), { input: "payments-compacted-transaction-entries" }),
+    // Sorts only by time, no tiebreak. A grant and revocation for the same product on
+    // the exact same millisecond have undefined order, which can change the owned count.
+    // Not reachable today; add a tiebreak (e.g. revocations first) if it ever is.
     table("payments-product-entries-sorted", defineSortTable({
       sortKeyExtractor: row => rowObject<{ txnEffectiveAtMillis: number }>(row.rowData).txnEffectiveAtMillis,
       sortKeyComparator: compareNumbers,
@@ -686,6 +701,8 @@ export function createPaymentsSchema() {
       reducer: async (state, row) => {
         const current = rowObject<Record<string, { quantity: number, product: ProductSnapshot | null, productLineId: string | null }>>(state);
         const entry = rowObject<{ type: "product-grant" | "product-revocation", productId: string | null, product?: ProductSnapshot, productLineId: string | null, quantity: number, txnEffectiveAtMillis: number, txnId: string, customerType: CustomerType, customerId: string, tenancyId: string }>(row.rowData);
+        // Entries with no productId share one bucket. Assumes no real product id is
+        // literally "__null__", or it'd collide with this bucket.
         const key = entry.productId ?? "__null__";
         const old = current[key] ?? { quantity: 0, product: null, productLineId: null };
         const nextQuantity = Math.max(0, old.quantity + (entry.type === "product-grant" ? entry.quantity : -entry.quantity));
@@ -757,6 +774,9 @@ export function createPaymentsSchema() {
     }), { input: "payments-subscriptions-sorted" }),
   ]];
 
+  // Only looks at migrations[0], so this assumes one migration batch. Rebuild from all
+  // migrations if we ever add a second. Also, replacing "-" with "_" would clash if two
+  // table ids differed only by that — fine today since ids only use "-".
   const tableIds = Object.fromEntries(migrations[0].map(step => [step.tableId.replaceAll("-", "_"), step.tableId]));
   return {
     migrations,
@@ -787,7 +807,7 @@ export function createPaymentsSchema() {
     splitChanges: "payments-split-item-changes-with-expiry",
     itemQuantities: "payments-item-quantities",
     subscriptionMapByCustomer: "payments-subscription-map-by-customer",
-    _allTables: migrations[0],
+    _allTables: migrations[0], // migrations[0] only — see note above tableIds.
   };
 }
 
