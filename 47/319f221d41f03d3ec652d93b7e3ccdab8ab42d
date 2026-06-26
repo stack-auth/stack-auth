@@ -1,0 +1,28 @@
+apps/backend/src/lib/local-emulator.ts
+  h_8c1b79571cf22c 4
+packages/shared-backend/src/index.ts
+  h_8c1b79571cf22c 8
+packages/shared/src/interface/admin-interface.ts
+  h_8c1b79571cf22c 3,18-19,28-29
+apps/backend/src/oauth/ssrf-protection.ts
+  h_8c1b79571cf22c 1-2
+apps/backend/src/lib/config/repo-agent.ts
+  h_8c1b79571cf22c 17
+packages/cli/src/commands/init.ts
+  h_8c1b79571cf22c 1-6,11,14-18
+apps/e2e/tests/general/cli.test.ts
+  h_8c1b79571cf22c 8-9
+packages/shared/src/schema-fields.ts
+  h_8c1b79571cf22c 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "47319f221d41f03d3ec652d93b7e3ccdab8ab42d",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
