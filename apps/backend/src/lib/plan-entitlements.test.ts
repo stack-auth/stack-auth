@@ -8,6 +8,7 @@ import {
   getOwnedTenancyIdsForBillingTeam,
   getTeamWideItemCapacityForTests,
   getTeamWideNonAnonymousUserCount,
+  UNLIMITED_ITEM_CAPACITY,
 } from "./plan-entitlements";
 
 type ProjectRow = { id: string, ownerTeamId: string | null };
@@ -169,6 +170,23 @@ describe("capacity lookup helpers", () => {
       capacityReaders,
     );
     expect(seatsCapacity).toBe(PLAN_LIMITS.free.seats);
+  });
+
+  it("fails open to unlimited capacity when the bulldozer read throws", async () => {
+    // A bulldozer outage must not block the flows that read this capacity (auth
+    // sign-ups, team invites) — the check is skipped this once by returning the
+    // unlimited sentinel rather than propagating the error.
+    const capacity = await getTeamWideItemCapacityForTests(
+      billingTeamId,
+      ITEM_IDS.authUsers,
+      {
+        ...capacityReaders,
+        getItemQuantityForCustomer: async () => {
+          throw new Error("bulldozer unreachable");
+        },
+      },
+    );
+    expect(capacity).toBe(UNLIMITED_ITEM_CAPACITY);
   });
 
   it("throws on unknown item id", async () => {
