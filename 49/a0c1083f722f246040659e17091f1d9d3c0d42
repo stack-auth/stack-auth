@@ -1,0 +1,129 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/@modal/(.)apps/[appId]/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/ai-query-dialog.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 21
+packages/shared/src/schema-fields.ts
+  s_1eef7f3f40b356::t_7c346085aa3a3e 887-894,959,983-1011
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sign-up-rules/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 47
+apps/dashboard/src/components/config-update/config-agent-run-watcher.tsx
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 10-11
+apps/dashboard/src/components/commands/create-dashboard/create-dashboard-preview.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 10
+apps/dashboard/src/components/config-update/github-push-dialog.tsx
+  s_1eef7f3f40b356::t_144869b07db9c1 11
+  s_1eef7f3f40b356::t_81c9e4e9c75528 7,9,12,14-15,53
+apps/dashboard/src/components/commands/run-query.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 30
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/dashboards/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 9
+apps/backend/scripts/config-agent/spike-orchestrator-e2e.mts
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-23,25-85
+  s_1eef7f3f40b356::t_bda73e4b3744ae 24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/layout.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 1
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/edit/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/customers/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 23
+packages/shared/src/config-eval.ts
+  s_1eef7f3f40b356::t_7c346085aa3a3e 121-131
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/team-settings/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 11
+apps/backend/scripts/config-agent/build-image.ts
+  s_1eef7f3f40b356::t_79f3b9a348cadd 16
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-15,17-34
+apps/dashboard/src/app/(main)/(protected)/layout-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/domains/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 8
+apps/backend/src/oauth/ssrf-protection.test.ts
+  s_1eef7f3f40b356::t_de580aa22552a1 2,55,59
+  s_1eef7f3f40b356::t_7c346085aa3a3e 3,53-54,56-58,60-95
+apps/dashboard/src/components/email-verification-setting.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 6
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 22
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/[productId]/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 43
+apps/backend/scripts/config-agent/seed-config-test.ts
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-104
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 25
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/page-client-product-lines-view.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 29
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/data-vault/stores/[storeId]/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 13
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/new/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 27
+apps/dashboard/src/components/config-update/index.tsx
+  s_1eef7f3f40b356::t_6641d2dff34af8 5,8,10-12,36-37,44-45,158,190-198
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-2,4,6-7,9,13-35,38-43,46-157,159-189,199-296
+  s_1eef7f3f40b356::t_52b2a13ce2be3d 3
+apps/backend/src/oauth/ssrf-protection.ts
+  s_1eef7f3f40b356::t_7c346085aa3a3e 111-118,142-146,160-164
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/apps/[appId]/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/settings/test-mode-toggle.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 4
+apps/dashboard/src/components/config-update/progress-content.tsx
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-187
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/queries/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 16
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/data-vault/stores/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/layout.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 8
+apps/dashboard/src/components/data-table/payment-product-table.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-settings/domain-settings.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 11
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/products/page-client-list-view.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 8
+apps/dashboard/src/components/payments/product-dialog.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/auth-methods/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/payments/settings/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/onboarding/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 11
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.test.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 89
+apps/dashboard/src/components/app-square.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 6
+apps/dashboard/src/components/config-update/remote-development-environment.ts
+  s_1eef7f3f40b356::t_6641d2dff34af8 1-33
+apps/backend/src/lib/config/index.tsx
+  s_1eef7f3f40b356::t_7c346085aa3a3e 5,723
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-themes/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/dashboards/[dashboardId]/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 18
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/api-keys-app/page-client.tsx
+  s_1eef7f3f40b356::t_3489d9523c3e5d 10
+apps/backend/scripts/config-agent/link-project-to-github.ts
+  s_1eef7f3f40b356::t_9f0d7eda6ab15d 1-57
+apps/backend/src/lib/config/repo-agent.ts
+  s_1eef7f3f40b356::t_dde77f6b570b91 14,402
+apps/dashboard/src/components/config-update/shared.tsx
+  s_1eef7f3f40b356::t_3144218f5958a1 1-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "49a0c1083f722f246040659e17091f1d9d3c0d42",
+  "prompts": {},
+  "sessions": {
+    "s_1eef7f3f40b356": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0145-de43-7e70-bc5f-f906bc365c5c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
