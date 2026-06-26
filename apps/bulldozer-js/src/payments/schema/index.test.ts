@@ -180,6 +180,30 @@ describe("payments schema", () => {
     expect(asRecord(asRecord(owned.ownedProducts)["prod-repeat"]).quantity).toBe(0);
   });
 
+  it("treats a manual item quantity change whose expiry is at/before its grant as a no-op", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    // expiresAtMillis (3000) is before createdAtMillis (4000): the grant is already expired,
+    // so the net quantity must be 0, not a permanent grant.
+    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "manual-past-expiry", {
+      id: "manual-past-expiry",
+      tenancyId: "t1",
+      customerId: "u-past",
+      customerType: "user",
+      itemId: "boosts",
+      quantity: 4,
+      description: null,
+      expiresAtMillis: 3000,
+      createdAtMillis: 4000,
+    });
+
+    const group = customerGroup("u-past");
+    expect(await rowDatas(snapshot, schema.splitChanges, group)).toEqual([]);
+    const quantities = (await rowsBySortKey(snapshot, schema.itemQuantities, group)).map(row => asRecord(row.rowData));
+    const latest = quantities.at(-1);
+    expect(latest === undefined ? 0 : Number(asRecord(latest.itemQuantities).boosts ?? 0)).toBe(0);
+  });
+
   it("maps manual item quantity changes with absolute expiry", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();

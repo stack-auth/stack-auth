@@ -743,9 +743,15 @@ export function createPaymentsSchema() {
       if (entry.type === "item-quantity-expire") return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: -entry.quantity, expiresAtMillis: null })];
       if (entry.type === "compacted-item-quantity-change") return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: null })];
       if (entry.type !== "item-quantity-change") return [];
-      if (typeof entry.expiresWhen !== "number" || entry.expiresWhen <= entry.txnEffectiveAtMillis || entry.quantity < 0) {
+      // A deduction or a grant with no expiry applies immediately and permanently.
+      if (typeof entry.expiresWhen !== "number" || entry.quantity < 0) {
         return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: null })];
       }
+      // The grant expires at or before the moment it's granted, so it's already expired —
+      // a no-op. Emit nothing (net 0) instead of a permanent grant. Otherwise the grant
+      // (+qty) and its expiry (-qty) would land at the same/earlier instant, leaving the
+      // grant permanently active.
+      if (entry.expiresWhen <= entry.txnEffectiveAtMillis) return [];
       return [
         toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: entry.expiresWhen }),
         toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.expiresWhen, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: -entry.quantity, expiresAtMillis: null }),
