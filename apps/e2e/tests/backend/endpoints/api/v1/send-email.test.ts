@@ -1,3 +1,4 @@
+import { DEFAULT_TEMPLATE_IDS } from "@hexclave/shared/dist/helpers/emails";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -287,6 +288,32 @@ describe("shared email server", () => {
     const html = messages[0].body?.html ?? "";
     expect(html).toContain("development email sent via Hexclave's shared email server");
     expect(html).toContain("Original custom email body");
+  });
+
+  it("should NOT wrap Hexclave default-template emails sent over the shared server", async ({ expect }) => {
+    await Project.createAndSwitch({ display_name: "Shared Default Template Project" });
+    const mailbox = await bumpEmailAddress();
+    const user = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
+
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          template_id: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
+          variables: { teamDisplayName: "My Team", signInInvitationLink: "https://example.com" },
+        }
+      }
+    );
+    expect(response.status).toBe(200);
+
+    // Default templates are Hexclave-owned and must be sent verbatim — no subject prefix, no notice banner.
+    const messages = await mailbox.waitForMessagesWithSubject("You have been invited to sign in to Shared Default Template Project");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages[0].subject).not.toContain("[Hexclave dev email]");
+    expect(messages[0].body?.html ?? "").not.toContain("development email sent via Hexclave's shared email server");
   });
 });
 
