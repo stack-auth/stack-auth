@@ -36,6 +36,7 @@ const CONFIG_SYNC_FORMAT_VERSION = 2;
 const LOG_PREFIX = "[Stack RDE]";
 const RDE_DASHBOARD_LOG_PATH_ENV_VAR = "HEXCLAVE_RDE_DASHBOARD_LOG_PATH";
 const CONFIG_SYNC_DUPLICATE_EVENT_SUPPRESSION_MS = 2_000;
+const CONFIG_UPDATE_LOG_PATH_LIMIT = 40;
 
 export class RemoteDevelopmentEnvironmentApiUnavailableError extends Error {
   constructor(apiBaseUrl: string, cause: unknown) {
@@ -205,6 +206,45 @@ function warnRemoteDevelopmentEnvironment(message: string, details?: Record<stri
   console.warn(line);
 }
 
+function formatErrorForRemoteDevelopmentEnvironmentLog(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    const cause = Reflect.get(error, "cause");
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      ...(cause == null ? {} : { errorCause: errorToNiceString(cause) }),
+    };
+  }
+  return {
+    errorMessage: errorToNiceString(error),
+  };
+}
+
+function collectConfigUpdatePaths(config: Config, prefix: string, paths: string[]): void {
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) continue;
+    const path = prefix.length === 0 ? key : `${prefix}.${key}`;
+    if (value != null && typeof value === "object" && !Array.isArray(value)) {
+      collectConfigUpdatePaths(value, path, paths);
+    } else {
+      paths.push(path);
+    }
+  }
+}
+
+function summarizeConfigUpdateForLog(configUpdate: Config): Record<string, unknown> {
+  const configUpdatePaths: string[] = [];
+  collectConfigUpdatePaths(configUpdate, "", configUpdatePaths);
+  configUpdatePaths.sort();
+  return {
+    configUpdateTopLevelKeys: Object.keys(configUpdate).sort(),
+    configUpdatePathCount: configUpdatePaths.length,
+    configUpdatePaths: configUpdatePaths.slice(0, CONFIG_UPDATE_LOG_PATH_LIMIT),
+    configUpdatePathsTruncated: configUpdatePaths.length > CONFIG_UPDATE_LOG_PATH_LIMIT,
+  };
+}
+
 function configSyncEventsMatchForCliDeduplication(a: ConfigSyncEvent, b: { status: "success" } | { status: "error", errorMessage: string }): boolean {
   if (a.status !== b.status) {
     return false;
@@ -315,6 +355,7 @@ function getStackAppRequestInternals(appValue: unknown): HexclaveAppRequestInter
 
 function beginRemoteDevelopmentEnvironmentOperation(name: string, details?: Record<string, unknown>): () => void {
   const state = getGlobals();
+  const startedAtMs = performance.now();
   state.activeOperations += 1;
   logRemoteDevelopmentEnvironment(`Started ${name}`, {
     ...details,
@@ -329,6 +370,7 @@ function beginRemoteDevelopmentEnvironmentOperation(name: string, details?: Reco
     logRemoteDevelopmentEnvironment(`Finished ${name}`, {
       ...details,
       activeOperations: state.activeOperations,
+      elapsedMs: Math.round(performance.now() - startedAtMs),
     });
   };
 }
@@ -1069,63 +1111,125 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
   waitForSync?: boolean,
 }): Promise<void> {
   assertRemoteDevelopmentEnvironmentEnabled();
-  const endOperation = beginRemoteDevelopmentEnvironmentOperation("config update", {
+  const configUpdateOperationId = randomUUID();
+  const waitForSync = options.waitForSync ?? true;
+  const configUpdateLogDetails = {
+    configUpdateOperationId,
     sessionId: options.sessionId,
     projectId: options.projectId,
+    waitForSync,
+    ...summarizeConfigUpdateForLog(options.configUpdate),
+  };
+  const endOperation = beginRemoteDevelopmentEnvironmentOperation("config update", {
+    ...configUpdateLogDetails,
   });
+  let resolvedConfigFilePath: string | undefined;
   try {
     const state = getGlobals();
-    const session = (() => {
+    const sessionEntry = (() => {
       if (options.sessionId != null) {
-        return state.sessions.get(options.sessionId);
+        const session = state.sessions.get(options.sessionId);
+        return session == null ? undefined : { sessionId: options.sessionId, session };
       }
       if (options.projectId == null) {
         throw new Error("Remote development environment config update requires a session ID or project ID.");
       }
-      for (const activeSession of state.sessions.values()) {
+      for (const [sessionId, activeSession] of state.sessions.entries()) {
         const stateProject = readRemoteDevelopmentEnvironmentState().projectsByConfigPath[activeSession.configFilePath];
         if (stateProject?.projectId === options.projectId) {
-          return activeSession;
+          return { sessionId, session: activeSession };
         }
       }
       return undefined;
     })();
-    if (session == null) {
+    if (sessionEntry == null) {
+      warnRemoteDevelopmentEnvironment("Could not resolve active session for config update", {
+        ...configUpdateLogDetails,
+        activeSessions: state.sessions.size,
+      });
       throw new Error("Remote development environment session is not active.");
     }
+    const session = sessionEntry.session;
     const configFilePath = session.configFilePath;
+    resolvedConfigFilePath = configFilePath;
+    logRemoteDevelopmentEnvironment("Resolved active session for config update", {
+      ...configUpdateLogDetails,
+      resolvedSessionId: sessionEntry.sessionId,
+      configFilePath,
+      activeSessions: state.sessions.size,
+    });
     logRemoteDevelopmentEnvironment("Applying config update from local dashboard", {
-      sessionId: options.sessionId,
-      projectId: options.projectId,
+      ...configUpdateLogDetails,
+      resolvedSessionId: sessionEntry.sessionId,
       configFilePath,
     });
-    if (options.waitForSync === false) {
+    const localWriteStartedAtMs = performance.now();
+    if (!waitForSync) {
+      logRemoteDevelopmentEnvironment("Writing config update without waiting for remote sync", {
+        ...configUpdateLogDetails,
+        resolvedSessionId: sessionEntry.sessionId,
+        configFilePath,
+      });
       const currentConfig = (await readConfigFile(configFilePath)).config;
       await replaceConfigObject(configFilePath, override(currentConfig, options.configUpdate));
       scheduleSync(configFilePath);
+      logRemoteDevelopmentEnvironment("Wrote config update and scheduled remote sync", {
+        ...configUpdateLogDetails,
+        resolvedSessionId: sessionEntry.sessionId,
+        configFilePath,
+        localWriteElapsedMs: Math.round(performance.now() - localWriteStartedAtMs),
+      });
     } else {
       state.synchronouslyUpdatingConfigFiles.add(configFilePath);
       try {
+        logRemoteDevelopmentEnvironment("Writing config update before immediate remote sync", {
+          ...configUpdateLogDetails,
+          resolvedSessionId: sessionEntry.sessionId,
+          configFilePath,
+        });
         await updateConfigObject(configFilePath, options.configUpdate);
+        logRemoteDevelopmentEnvironment("Wrote config update before immediate remote sync", {
+          ...configUpdateLogDetails,
+          resolvedSessionId: sessionEntry.sessionId,
+          configFilePath,
+          localWriteElapsedMs: Math.round(performance.now() - localWriteStartedAtMs),
+        });
       } finally {
         setTimeout(() => {
           state.synchronouslyUpdatingConfigFiles.delete(configFilePath);
         }, SYNC_DEBOUNCE_MS).unref();
       }
       try {
+        const syncStartedAtMs = performance.now();
         const result = await syncConfigToRemoteNow(configFilePath);
         if (result.pushedConfig) {
           recordConfigSyncEvent(configFilePath, { status: "success" });
         }
+        logRemoteDevelopmentEnvironment("Immediate remote sync after config update completed", {
+          ...configUpdateLogDetails,
+          resolvedSessionId: sessionEntry.sessionId,
+          configFilePath,
+          syncElapsedMs: Math.round(performance.now() - syncStartedAtMs),
+          pushedConfig: result.pushedConfig,
+          onboardingStatus: result.onboardingStatus,
+        });
       } catch (error) {
         const errorMessage = errorToNiceString(error);
+        warnRemoteDevelopmentEnvironment("Immediate remote sync after config update failed", {
+          ...configUpdateLogDetails,
+          resolvedSessionId: sessionEntry.sessionId,
+          configFilePath,
+          ...formatErrorForRemoteDevelopmentEnvironmentLog(error),
+        });
         state.syncErrors.set(configFilePath, error instanceof Error ? error : new Error(errorMessage));
         const cliErrorMessage = formatConfigSyncErrorForCli(configFilePath, error);
         await updateRemoteDevelopmentEnvironmentPushedConfigError(configFilePath, cliErrorMessage)
           .catch((pushedConfigErrorUpdateError: unknown) => {
             warnRemoteDevelopmentEnvironment("Failed to update pushed config error after dashboard config sync failure", {
+              ...configUpdateLogDetails,
+              resolvedSessionId: sessionEntry.sessionId,
               configFilePath,
-              error: errorToNiceString(pushedConfigErrorUpdateError),
+              ...formatErrorForRemoteDevelopmentEnvironmentLog(pushedConfigErrorUpdateError),
             });
           });
         recordConfigSyncEvent(configFilePath, {
@@ -1136,11 +1240,17 @@ export async function applyRemoteDevelopmentEnvironmentConfigUpdate(options: {
       }
     }
     logRemoteDevelopmentEnvironment("Applied config update from local dashboard", {
-      sessionId: options.sessionId,
-      projectId: options.projectId,
+      ...configUpdateLogDetails,
+      resolvedSessionId: sessionEntry.sessionId,
       configFilePath,
-      waitForSync: options.waitForSync ?? true,
     });
+  } catch (error) {
+    warnRemoteDevelopmentEnvironment("Failed to apply config update from local dashboard", {
+      ...configUpdateLogDetails,
+      ...(resolvedConfigFilePath == null ? {} : { configFilePath: resolvedConfigFilePath }),
+      ...formatErrorForRemoteDevelopmentEnvironmentLog(error),
+    });
+    throw error;
   } finally {
     endOperation();
   }

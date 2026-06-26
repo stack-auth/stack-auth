@@ -461,7 +461,7 @@ function ProjectsListPage() {
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Point the local dashboard at the <code>stack.config.ts</code> in your project. If you just ran <code>stack init</code>, it was created at the root of that project.
+              Point the local dashboard at the <code>stack.config.ts</code> in your project.
             </Typography>
             <Typography variant="secondary" className="text-xs">
               Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>stack.config.ts</code> for you.
