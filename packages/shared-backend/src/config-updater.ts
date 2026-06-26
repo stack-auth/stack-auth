@@ -6,7 +6,7 @@ import path from "path";
 import { buildCompleteConfigAgentPrompt, buildPartialConfigAgentPrompt, ClaudeAgentFailureError, ClaudeAgentTimeoutError, CONFIG_AGENT_FILE_TOOLS, getToolWriteTargetPath, isPathInsideDir, runHeadlessClaudeAgent } from "./config-agent";
 import { ensureConfigFileExists, readConfigFile } from "./config-file";
 
-const LOG_PREFIX = "[Stack config updater]";
+const LOG_PREFIX = "[Hexclave config updater]";
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
 
 type ConfigFileSnapshot = { path: string, content: string | null };
@@ -32,7 +32,7 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
       cwd: path.dirname(configFilePath),
       onFileWillChange: (filePath) => captureSnapshotIfAbsent(snapshots, filePath, seen),
     });
-    await validateAgentUpdate(configFilePath, baselineConfig, configUpdate, snapshots);
+    await validateAgentUpdate(configFilePath, baselineConfig, configUpdate);
   } catch (error) {
     try {
       restoreConfigFiles(snapshots);
@@ -152,7 +152,7 @@ async function tryReadConfigForValidation(configFilePath: string): Promise<Confi
   }
 }
 
-async function validateAgentUpdate(configFilePath: string, baselineConfig: Config | null, configUpdate: Config, snapshots: ConfigFileSnapshot[]): Promise<void> {
+async function validateAgentUpdate(configFilePath: string, baselineConfig: Config | null, configUpdate: Config): Promise<void> {
   if (baselineConfig != null) {
     const target = canonicalizeConfig(override(baselineConfig, configUpdate));
     const result = canonicalizeConfig((await readConfigFile(configFilePath)).config);
@@ -162,18 +162,8 @@ async function validateAgentUpdate(configFilePath: string, baselineConfig: Confi
     return;
   }
 
-  // Structural-only fallback: when jiti can't evaluate the config (e.g. missing
-  // runtime dependencies in import-with attributes), we can only verify that
-  // (a) something changed on disk and (b) the file still exports `config`.
-  // This cannot catch silently mis-applied values — an accepted tradeoff vs.
-  // blocking updates entirely for configs we can't evaluate.
-  // When nothing changed on disk the update is either already applied or the
-  // agent couldn't figure out what to do. Treat it as a no-op rather than a
-  // hard failure: the structural check below still verifies the file is valid.
-  if (flattenConfigUpdate(configUpdate).length > 0 && !snapshotsChangedOnDisk(snapshots)) {
-    console.warn(`${LOG_PREFIX} Agent did not modify any file for ${configFilePath}; assuming values are already up to date.`);
-  }
-
+  // Structural-only fallback when jiti can't evaluate the config (e.g. import-with
+  // assets): we can't verify values, only that the file still exports `config`.
   const content = readFileSync(configFilePath, "utf-8");
   if (!configFileExportsConfig(content, configFilePath)) {
     throw new Error(`Config update validation failed for ${configFilePath}: the updated file no longer exports a valid \`config\`.`);
@@ -185,14 +175,11 @@ function configFileExportsConfig(content: string, configFilePath: string): boole
     evalConfigFileContent(content, configFilePath);
     return true;
   } catch {
-    // jiti may fail to resolve imports that are valid in the user's project but
-    // absent from the current process (e.g. relative asset imports, workspace
-    // packages). For the structural sanity check we only need to know a runtime
-    // `config` binding still exists after the agent edited the file. Covers
-    // `export const config`, `export let config`, `export { config }`, etc.
-    // Excludes type-only exports (`export { type config }`) which have no
-    // runtime binding.
-    return /\bexport\s+(?:const|let|var)\s+config\b/.test(content) || /\bexport\s*\{[^}]*(?<!\btype\s)\bconfig\b/.test(content);
+    // jiti may fail to resolve imports valid in the user's project but absent
+    // here (relative assets, workspace packages). For the structural check we
+    // only need a runtime `config` binding to still exist; the agent always
+    // authors `export const config`.
+    return /\bexport\s+const\s+config\b/.test(content);
   }
 }
 
@@ -204,13 +191,6 @@ function getRelativeImportSpecifiers(content: string): string[] {
     specifiers.push(match[1]);
   }
   return specifiers;
-}
-
-function snapshotsChangedOnDisk(snapshots: ConfigFileSnapshot[]): boolean {
-  return snapshots.some(({ path: filePath, content }) => {
-    const current = existsSync(filePath) ? readFileSync(filePath, "utf-8") : null;
-    return current !== content;
-  });
 }
 
 function flattenConfigUpdate(update: Config): ConfigChange[] {

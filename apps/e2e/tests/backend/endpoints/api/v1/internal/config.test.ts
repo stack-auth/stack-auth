@@ -1765,18 +1765,6 @@ describe("branch config source", () => {
     branch: string,
     commit_hash: string,
     config_file_path: string,
-    agent_run: {
-      status: "running" | "awaiting_review" | "success" | "no-change" | "error" | "cancelled",
-      started_at: number,
-      finished_at?: number,
-      progress?: string,
-      sandbox_id?: string,
-      commit_url?: string,
-      new_commit_hash?: string,
-      error?: string,
-      stage?: "initializing_sandbox" | "cloning_repo" | "agent_making_changes" | "awaiting_review",
-      diff?: string,
-    },
   }>) => ({
     type: "pushed-from-github" as const,
     owner: overrides?.owner ?? "myorg",
@@ -1784,7 +1772,6 @@ describe("branch config source", () => {
     branch: overrides?.branch ?? "main",
     commit_hash: overrides?.commit_hash ?? "abc123def456",
     config_file_path: overrides?.config_file_path ?? "stack.config.ts",
-    ...(overrides?.agent_run != null ? { agent_run: overrides.agent_run } : {}),
   });
 
   const createUnknownSource = () => ({
@@ -2375,26 +2362,6 @@ describe("branch config source", () => {
 
       const source = await Project.getConfigSource();
       expect(source).toEqual(sourceWithEmptyStrings);
-    });
-
-    it("preserves config agent review state on github source fields", async ({ expect }) => {
-      await Project.createAndSwitch();
-
-      const sourceWithReviewRun = createGitHubSource({
-        agent_run: {
-          status: "awaiting_review" as const,
-          started_at: 1_777_000_000_000,
-          sandbox_id: "sbx_review_123",
-          stage: "awaiting_review" as const,
-          progress: "Editing hexclave.config.ts",
-          diff: "diff --git a/hexclave.config.ts b/hexclave.config.ts\n",
-        },
-      });
-
-      await Project.pushConfig({ 'teams.allowClientTeamCreation': true }, sourceWithReviewRun);
-
-      const source = await Project.getConfigSource();
-      expect(source).toEqual(sourceWithReviewRun);
     });
 
     it("handles source fields at string length boundaries", async ({ expect }) => {

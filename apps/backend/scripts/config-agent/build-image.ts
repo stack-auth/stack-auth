@@ -1,20 +1,13 @@
 /**
- * One-off: build the shared config-agent "image" — a Vercel Sandbox base snapshot
- * with node + the Claude Agent SDK + the git bot identity baked in (NO repo, NO
- * token). This stands in for a custom Docker image (Vercel Sandbox can't boot from
- * one). Every dashboard config write warm-boots from it and then clones the repo
- * fresh, so you only pay the SDK install once — here.
+ * One-off: builds the shared config-agent base snapshot (node24 + Claude Agent SDK
+ * + git bot identity; no repo, no token) that every config write warm-boots from,
+ * in place of a custom Docker image. Re-run when AGENT_SDK_VERSION in repo-agent.ts
+ * changes; old snapshots can be deleted from the Vercel dashboard.
  *
  *   cd apps/backend && pnpm run with-env:dev tsx scripts/config-agent/build-image.ts
  *
- * Then set the printed id so config writes warm-boot from it (either spelling works;
- * the env shim maps STACK_* <-> HEXCLAVE_*):
- *
- *   HEXCLAVE_CONFIG_AGENT_BASE_SNAPSHOT_ID=<printed id>
- *
- * Needs HEXCLAVE_VERCEL_SANDBOX_TOKEN (+ team/project ids) configured. Re-run this
- * whenever AGENT_SDK_VERSION in repo-agent.ts changes; old base snapshots can be
- * deleted from the Vercel dashboard.
+ * Then set the printed id as HEXCLAVE_CONFIG_AGENT_BASE_SNAPSHOT_ID. Needs
+ * HEXCLAVE_VERCEL_SANDBOX_TOKEN (+ team/project ids).
  */
 import { buildConfigAgentBaseSnapshot } from "@/lib/config/repo-agent";
 

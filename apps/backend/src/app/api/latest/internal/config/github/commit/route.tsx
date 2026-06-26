@@ -1,12 +1,13 @@
 import {
-  getBranchConfigOverrideSource,
+  getConfigAgentRun,
+  getGithubConfigSourceOrThrow,
   recordConfigAgentRunResult,
 } from "@/lib/config";
-import { CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, ConfigRepoCommitConflictError, commitConfigUpdate, stopConfigAgentSandbox, type GithubRepoRef } from "@/lib/config/repo-agent";
+import { CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, ConfigRepoCommitConflictError, commitConfigUpdate, type GithubRepoRef, stopConfigAgentSandbox } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 // The commit+push itself is fast (~10 s) but we give generous room for sandbox
 // reconnect latency and slow GitHub API responses.
@@ -46,15 +47,13 @@ export const POST = createSmartRouteHandler({
     const projectId = req.auth.tenancy.project.id;
     const branchId = req.auth.tenancy.branchId;
 
-    const source = await getBranchConfigOverrideSource({ projectId, branchId });
-    if (source.type !== "pushed-from-github") {
-      throw new StatusError(StatusError.BadRequest, "This project's configuration is not linked to a GitHub repository.");
-    }
+    const source = await getGithubConfigSourceOrThrow({ projectId, branchId });
 
-    const run = source.agent_run;
+    const run = await getConfigAgentRun({ projectId, branchId });
     if (!run || run.status !== "awaiting_review") {
       return { statusCode: 200, bodyType: "json", body: { status: "not-awaiting-review" } };
     }
+    const runStartedAt = run.started_at;
 
     const sandboxId = run.sandbox_id;
     if (!sandboxId) {
@@ -62,6 +61,7 @@ export const POST = createSmartRouteHandler({
       await recordConfigAgentRunResult({
         projectId,
         branchId,
+        runStartedAt,
         nowMs: Date.now(),
         outcome: { status: "error", error: "Sandbox session expired. Please retry the update." },
       });
@@ -79,6 +79,7 @@ export const POST = createSmartRouteHandler({
         await recordConfigAgentRunResult({
           projectId,
           branchId,
+          runStartedAt,
           nowMs: Date.now(),
           outcome: { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha },
         });
@@ -90,6 +91,7 @@ export const POST = createSmartRouteHandler({
         await recordConfigAgentRunResult({
           projectId,
           branchId,
+          runStartedAt,
           nowMs: Date.now(),
           outcome: {
             status: "error",

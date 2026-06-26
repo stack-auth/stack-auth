@@ -939,6 +939,9 @@ export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
   });
 }
 
+// `source` describes only WHERE a branch's config came from. The ephemeral state
+// of the dashboard→GitHub config agent lives separately in `configAgentRunSchema`
+// (its own DB column), so it doesn't pollute the source descriptor.
 export const branchConfigSourceSchema = yupUnion(
   yupObject({
     type: yupString().oneOf(["pushed-from-github"]).defined(),
@@ -948,31 +951,6 @@ export const branchConfigSourceSchema = yupUnion(
     commit_hash: yupString().defined(),
     config_file_path: yupString().defined(),
     workflow_path: yupString().optional(),
-    // Status of the most recent agent-driven config write, so the dashboard can
-    // poll for progress and surface the resulting commit (or error) across tabs.
-    agent_run: yupObject({
-      // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for user to commit;
-      // "success" | "no-change" | "error" | "cancelled": terminal.
-      status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),
-      started_at: yupNumber().defined(),
-      finished_at: yupNumber().optional(),
-      commit_url: urlSchema.optional(),
-      error: configAgentSafeErrorMessageSchema.optional(),
-      // Vercel Sandbox id of the in-flight run, recorded while `status === "running"` or `"awaiting_review"`
-      // so a cancel request (a different invocation) can hard-stop the sandbox.
-      // Cleared/ignored once the run reaches a terminal status.
-      sandbox_id: yupString().optional(),
-      // A short, SANITIZED live activity feed (recent agent actions, e.g.
-      // "Editing hexclave.config.ts", "Running: git push") so the dashboard can
-      // show what's happening. Never contains file contents, tool inputs, or tokens.
-      progress: yupString().optional(),
-      // Current stage of the run, for showing a progress bar in the dashboard.
-      // Cleared on terminal status.
-      stage: yupString().oneOf(["initializing_sandbox", "cloning_repo", "agent_making_changes", "awaiting_review"]).optional(),
-      // The git unified diff produced by the agent, set when status becomes "awaiting_review".
-      // Displayed in the dashboard for review before the user commits.
-      diff: yupString().optional(),
-    }).optional(),
   }),
   yupObject({
     type: yupString().oneOf(["pushed-from-unknown"]).defined(),
@@ -982,31 +960,43 @@ export const branchConfigSourceSchema = yupUnion(
   }),
 );
 
-import.meta.vitest?.test("branchConfigSourceSchema only allows safe config-agent error messages", async ({ expect }) => {
-  const source = {
-    type: "pushed-from-github",
-    owner: "hexclave",
-    repo: "hexclave",
-    branch: "dev",
-    commit_hash: "abc123",
-    config_file_path: "hexclave.config.ts",
-  };
+/**
+ * State of the most recent dashboard→GitHub config agent run, so the dashboard can
+ * poll for progress and surface the resulting commit (or error) across tabs. Stored
+ * in its own `BranchConfigOverride.configAgentRun` column; runs are NOT serialized,
+ * so a new run just overwrites this and stale callbacks are ignored by `started_at`.
+ */
+export const configAgentRunSchema = yupObject({
+  // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for the user to commit;
+  // "success" | "no-change" | "error" | "cancelled": terminal.
+  status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),
+  started_at: yupNumber().defined(),
+  finished_at: yupNumber().optional(),
+  commit_url: urlSchema.optional(),
+  error: configAgentSafeErrorMessageSchema.optional(),
+  // Vercel Sandbox id of the in-flight run, recorded while `status` is "running"/"awaiting_review"
+  // so a cancel request (a different invocation) can hard-stop the sandbox. Absent once terminal.
+  sandbox_id: yupString().optional(),
+  // A short, SANITIZED live activity feed (recent agent actions, e.g. "Editing
+  // hexclave.config.ts", "Running: git push"). Never file contents, tool inputs, or tokens.
+  progress: yupString().optional(),
+  // Current stage, for the dashboard progress bar. Absent once terminal.
+  stage: yupString().oneOf(["initializing_sandbox", "cloning_repo", "agent_making_changes", "awaiting_review"]).optional(),
+  // The git unified diff produced by the agent, set when status becomes "awaiting_review".
+  diff: yupString().optional(),
+});
+export type ConfigAgentRunApi = yup.InferType<typeof configAgentRunSchema>;
 
-  expect(await branchConfigSourceSchema.isValid({
-    ...source,
-    agent_run: {
-      status: "error",
-      started_at: 1,
-      error: "The config agent failed to apply the change.",
-    },
+import.meta.vitest?.test("configAgentRunSchema only allows safe config-agent error messages", async ({ expect }) => {
+  expect(await configAgentRunSchema.isValid({
+    status: "error",
+    started_at: 1,
+    error: "The config agent failed to apply the change.",
   })).toMatchInlineSnapshot(`true`);
 
-  expect(await branchConfigSourceSchema.isValid({
-    ...source,
-    agent_run: {
-      status: "error",
-      started_at: 1,
-      error: "ENOENT: tokenized internal failure",
-    },
+  expect(await configAgentRunSchema.isValid({
+    status: "error",
+    started_at: 1,
+    error: "ENOENT: tokenized internal failure",
   })).toMatchInlineSnapshot(`false`);
 });

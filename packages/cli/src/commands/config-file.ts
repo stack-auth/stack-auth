@@ -1,4 +1,4 @@
-import { replaceConfigObject } from "@hexclave/shared-backend";
+import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
@@ -217,6 +217,10 @@ export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd:
   return candidate;
 }
 
+export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
+  return opts.overwrite === true || !fs.existsSync(filePath);
+}
+
 export function registerConfigCommand(program: Command) {
   const config = program
     .command("config")
@@ -227,6 +231,7 @@ export function registerConfigCommand(program: Command) {
     .description("Pull branch config to a local file")
     .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
+    .option("--overwrite", "Overwrite an existing config file instead of updating it in place")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
@@ -245,7 +250,11 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
       }
 
-      await replaceConfigObject(filePath, configOverride);
+      if (shouldReplaceConfigFileForPull(filePath, opts)) {
+        await replaceConfigObject(filePath, configOverride);
+      } else {
+        await updateConfigObject(filePath, configOverride);
+      }
       console.log(`Config written to ${filePath}`);
     });
 

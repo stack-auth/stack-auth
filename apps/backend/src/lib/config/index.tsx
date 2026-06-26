@@ -2,10 +2,10 @@ import { Prisma } from "@/generated/prisma/client";
 import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@hexclave/shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@hexclave/shared/dist/config/schema";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
-import { branchConfigSourceSchema, type ConfigAgentSafeErrorMessage, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { branchConfigSourceSchema, type ConfigAgentRunApi, type ConfigAgentSafeErrorMessage, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
 import { isTruthy } from "@hexclave/shared/dist/utils/booleans";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -14,6 +14,7 @@ import { RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../../
 import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "../development-environment";
 import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "../local-emulator";
 import { listPermissionDefinitionsFromConfig } from "../permissions";
+import type { ConfigAgentInFlightStage } from "./repo-agent";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 export type BranchConfigPushedError = {
@@ -478,6 +479,60 @@ export async function unlinkBranchConfigOverrideSource(options: {
 export type GithubConfigSource = Extract<BranchConfigSourceApi, { type: "pushed-from-github" }>;
 
 /**
+ * Loads the branch config source and asserts it is linked to a GitHub repo,
+ * returning the narrowed `pushed-from-github` source (else throws `BadRequest`).
+ * Shared by the GitHub config-agent routes.
+ */
+export async function getGithubConfigSourceOrThrow(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<GithubConfigSource> {
+  const source = await getBranchConfigOverrideSource(options);
+  if (source.type !== "pushed-from-github") {
+    throw new StatusError(StatusError.BadRequest, "This project's configuration is not linked to a GitHub repository.");
+  }
+  return source;
+}
+
+/**
+ * `FOR UPDATE` read-modify-write on a branch's config-agent run, which lives in its
+ * own `configAgentRun` column (separate from the immutable `source` descriptor).
+ * Loads the locked run plus the GitHub source (for the rare mutator that needs the
+ * repo ref), hands them to `mutate`, writes back whichever of `nextRun` / `nextSource`
+ * it returns, and returns `mutate`'s `result`. Every run transition goes through here,
+ * so the locked read and the Prisma JSON `as any` casts live in exactly one place.
+ */
+async function mutateConfigAgentRun<T>(
+  options: { projectId: string, branchId: string },
+  mutate: (run: ConfigAgentRunApi | null, source: GithubConfigSource | null) => {
+    nextRun?: ConfigAgentRunApi,
+    nextSource?: GithubConfigSource,
+    result: T,
+  },
+): Promise<T> {
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const rows = await tx.$queryRaw<{ source: BranchConfigSourceApi | null, configAgentRun: ConfigAgentRunApi | null }[]>`
+      SELECT "source", "configAgentRun" FROM "BranchConfigOverride"
+      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
+      FOR UPDATE
+    `;
+    const rawSource = rows[0]?.source ?? null;
+    const source = rawSource?.type === "pushed-from-github" ? rawSource : null;
+    const { nextRun, nextSource, result } = mutate(rows[0]?.configAgentRun ?? null, source);
+    if (nextRun !== undefined || nextSource !== undefined) {
+      await tx.branchConfigOverride.update({
+        where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+        data: {
+          ...(nextRun !== undefined ? { configAgentRun: nextRun as any } : {}),
+          ...(nextSource !== undefined ? { source: nextSource as any } : {}),
+        },
+      });
+    }
+    return result;
+  });
+}
+
+/**
  * Computes the COMPLETE config that belongs in the linked repo's config file: the
  * project's current BRANCH config override (the user's full intended config —
  * enabled apps, sign-up rules WITH their content, auth settings, …) merged with
@@ -501,253 +556,170 @@ export async function getCompleteBranchConfigForFile(options: {
 }
 
 /**
- * Single-flight guard for the dashboard→GitHub config agent. Reads the source
- * row `FOR UPDATE` and, unless a fresh run is already in flight, atomically
- * marks `agent_run.status = "running"`. The long agent work runs OUTSIDE this
- * short transaction; {@link recordConfigAgentRunResult} writes the terminal
- * status when it finishes. A `running` marker older than `staleMs` is treated
- * as abandoned (e.g. the server died mid-run) and may be taken over.
+ * Records the start of a dashboard→GitHub config agent run: stamps a fresh
+ * `running` marker in the branch's `configAgentRun` column and returns the locked
+ * GitHub source (for the repo ref). Runs are intentionally NOT serialized — a new
+ * run overwrites any prior marker, the recorders below ignore writes whose
+ * `started_at` no longer matches (so a superseded run's late callbacks no-op), and
+ * a concurrent edit to the real repo is caught at push time
+ * (`assertRemoteBranchStillAtClonedHead` / non-fast-forward → `ConfigRepoCommitConflictError`).
+ * {@link recordConfigAgentRunResult} writes the terminal status when it finishes.
  */
-export async function tryStartConfigAgentRun(options: {
+export async function startConfigAgentRun(options: {
   projectId: string,
   branchId: string,
-  staleMs: number,
   nowMs: number,
-}): Promise<{ started: boolean, source: GithubConfigSource }> {
-  return await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") {
+}): Promise<GithubConfigSource> {
+  return await mutateConfigAgentRun(options, (_run, source) => {
+    if (!source) {
       throw new HexclaveAssertionError("Config source is not linked to GitHub; cannot run the config agent.");
     }
-    const run = source.agent_run;
-    if (run && run.status === "running" && options.nowMs - run.started_at < options.staleMs) {
-      return { started: false, source: source as GithubConfigSource };
-    }
-    const newSource: GithubConfigSource = {
-      ...source,
-      agent_run: { status: "running", started_at: options.nowMs },
-    };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: newSource as any },
-    });
-    return { started: true, source: newSource };
+    return { nextRun: { status: "running", started_at: options.nowMs }, result: source };
   });
+}
+
+/** True when `run` is the still-`running` run identified by `startedAt`. */
+function isRunningRun(run: ConfigAgentRunApi | null, startedAt: number): run is ConfigAgentRunApi {
+  return run?.status === "running" && run.started_at === startedAt;
+}
+
+/** Reads the current config-agent run state (or `null`) for the dashboard to poll. */
+export async function getConfigAgentRun(options: {
+  projectId: string,
+  branchId: string,
+}): Promise<ConfigAgentRunApi | null> {
+  const row = await globalPrismaClient.branchConfigOverride.findUnique({
+    where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
+    select: { configAgentRun: true },
+  });
+  return (row?.configAgentRun ?? null) as ConfigAgentRunApi | null;
 }
 
 /**
  * Records the live sandbox id of an in-flight run so a later cancel (a separate
- * request/invocation) can hard-stop it. No-ops unless a run is still `running`,
- * so a late write can't resurrect a sandbox id onto a terminal run.
+ * request/invocation) can hard-stop it. No-ops unless this run is still `running`,
+ * so a late write can't resurrect a sandbox id onto a terminal/superseded run.
  */
 export async function recordConfigAgentRunSandbox(options: {
   projectId: string,
   branchId: string,
+  runStartedAt: number,
   sandboxId: string,
 }): Promise<void> {
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return;
-    if (source.agent_run?.status !== "running") return;
-    const next: GithubConfigSource = {
-      ...source,
-      agent_run: { ...source.agent_run, sandbox_id: options.sandboxId },
-    };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
+  await mutateConfigAgentRun(options, (run) => {
+    if (!isRunningRun(run, options.runStartedAt)) return { result: undefined };
+    return { nextRun: { ...run, sandbox_id: options.sandboxId }, result: undefined };
   });
 }
 
 /**
  * Writes the live (sanitized) activity feed of an in-flight run so the dashboard
- * can show what the agent is doing. No-ops unless a run is still `running`. The
+ * can show what the agent is doing. No-ops unless this run is still `running`. The
  * caller is responsible for keeping `progress` short and free of secrets/tokens.
  */
 export async function recordConfigAgentRunProgress(options: {
   projectId: string,
   branchId: string,
+  runStartedAt: number,
   progress: string,
 }): Promise<void> {
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return;
-    if (source.agent_run?.status !== "running") return;
-    const next: GithubConfigSource = {
-      // Stored cap (2000 chars): a coarse DB-size guard on the persisted feed.
-      // The runner already trims each line to 100 chars and keeps only the last
-      // ~6 lines (see buildRunnerScript), so this only bites pathological input;
-      // the two limits are independent on purpose (storage vs. in-sandbox feed).
-      ...source,
-      agent_run: { ...source.agent_run, progress: options.progress.slice(0, 2000) },
-    };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
+  await mutateConfigAgentRun(options, (run) => {
+    if (!isRunningRun(run, options.runStartedAt)) return { result: undefined };
+    // DB-size guard on the persisted feed; the runner already trims lines/count
+    // (see buildRunnerScript), so this only bites pathological input.
+    return { nextRun: { ...run, progress: options.progress.slice(0, 2000) }, result: undefined };
   });
 }
 
 /**
  * Records the current stage of an in-flight run for the dashboard progress bar.
- * No-ops unless a run is still `running`.
+ * No-ops unless this run is still `running`.
  */
 export async function recordConfigAgentRunStage(options: {
   projectId: string,
   branchId: string,
-  stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes",
+  runStartedAt: number,
+  stage: ConfigAgentInFlightStage,
 }): Promise<void> {
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return;
-    if (source.agent_run?.status !== "running") return;
-    const next: GithubConfigSource = {
-      ...source,
-      agent_run: { ...source.agent_run, stage: options.stage },
-    };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
+  await mutateConfigAgentRun(options, (run) => {
+    if (!isRunningRun(run, options.runStartedAt)) return { result: undefined };
+    return { nextRun: { ...run, stage: options.stage }, result: undefined };
   });
 }
 
 /**
- * Transitions a `running` agent run to `awaiting_review`: the agent has finished
- * editing the config but has not yet committed or pushed. The diff is stored so
- * the dashboard can display it. The sandbox_id must still be set (the sandbox
- * stays alive — it will be used to commit+push when the user confirms, or
+ * Transitions a `running` run to `awaiting_review`: the agent has finished editing
+ * but has not yet committed. The diff is stored for the dashboard, and the
+ * sandbox_id is returned (the sandbox stays alive to commit+push on confirm, or is
  * hard-stopped on cancel).
  */
 export async function setConfigAgentRunAwaitingReview(options: {
   projectId: string,
   branchId: string,
+  runStartedAt: number,
   diff: string,
 }): Promise<{ sandboxId: string | undefined }> {
-  return await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return { sandboxId: undefined };
-    if (source.agent_run?.status !== "running") return { sandboxId: undefined };
-    const next: GithubConfigSource = {
-      ...source,
-      agent_run: {
-        ...source.agent_run,
-        status: "awaiting_review",
-        stage: "awaiting_review",
-        diff: options.diff.slice(0, 100_000),
-      },
+  return await mutateConfigAgentRun(options, (run) => {
+    if (!isRunningRun(run, options.runStartedAt)) return { result: { sandboxId: undefined } };
+    return {
+      nextRun: { ...run, status: "awaiting_review", stage: "awaiting_review", diff: options.diff.slice(0, 100_000) },
+      result: { sandboxId: run.sandbox_id },
     };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
-    return { sandboxId: source.agent_run?.sandbox_id };
   });
 }
 
 /**
  * Requests cancellation of the in-flight config agent run. Atomically flips a
- * `running` or `awaiting_review` run to the terminal `cancelled` status and
- * returns the sandbox id (if recorded) so the caller can hard-stop the sandbox.
- * Returns `{ cancelled: false }` when no fresh run is in flight. (No revert:
- * stopping the sandbox before the push undoes the change; a commit that already
- * landed stays.)
+ * `running` or `awaiting_review` run to the terminal `cancelled` status and returns
+ * the sandbox id (if recorded) so the caller can hard-stop the sandbox. Returns
+ * `{ cancelled: false }` when no run is in flight. (No revert: stopping the sandbox
+ * before the push undoes the change; a commit that already landed stays.)
  */
 export async function cancelConfigAgentRun(options: {
   projectId: string,
   branchId: string,
   nowMs: number,
-}): Promise<{ cancelled: boolean, sandboxId?: string, source?: GithubConfigSource }> {
-  return await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return { cancelled: false };
-    const run = source.agent_run;
-    if (!run || (run.status !== "running" && run.status !== "awaiting_review")) return { cancelled: false };
-    const sandboxId: string | undefined = run.sandbox_id;
-    const next: GithubConfigSource = {
-      ...source,
-      agent_run: { status: "cancelled", started_at: run.started_at, finished_at: options.nowMs },
+}): Promise<{ cancelled: boolean, sandboxId?: string }> {
+  return await mutateConfigAgentRun<{ cancelled: boolean, sandboxId?: string }>(options, (run) => {
+    if (!run || (run.status !== "running" && run.status !== "awaiting_review")) return { result: { cancelled: false } };
+    return {
+      nextRun: { status: "cancelled", started_at: run.started_at, finished_at: options.nowMs },
+      result: { cancelled: true, sandboxId: run.sandbox_id },
     };
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
-    return { cancelled: true, sandboxId, source: next };
   });
 }
 
 /**
- * Records the outcome of a config agent run: stamps the terminal `agent_run`
- * status (and `commit_hash` when a commit was pushed). Read-modify-write under
- * `FOR UPDATE` so it never clobbers a concurrent re-link. No-ops if the row was
- * unlinked meanwhile.
+ * Records the outcome of a config agent run: stamps the terminal run status, and on
+ * a pushed commit advances the source's `commit_hash`. No-ops if a cancel already
+ * landed or the run was superseded (its `started_at` no longer matches).
  */
 export async function recordConfigAgentRunResult(options: {
   projectId: string,
   branchId: string,
+  runStartedAt: number,
   nowMs: number,
   outcome:
     | { status: "success", commitUrl?: string, newCommitHash?: string }
     | { status: "no-change" }
     | { status: "error", error: ConfigAgentSafeErrorMessage },
 }): Promise<void> {
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    const rows = await tx.$queryRaw<{ source: any }[]>`
-      SELECT "source" FROM "BranchConfigOverride"
-      WHERE "projectId" = ${options.projectId} AND "branchId" = ${options.branchId}
-      FOR UPDATE
-    `;
-    const source = rows[0]?.source;
-    if (!source || source.type !== "pushed-from-github") return;
-    // A cancel landed mid-run and already wrote the terminal `cancelled` status.
-    // The original run's late success/error must not clobber it, so the dashboard
-    // keeps showing "cancelled".
-    if (source.agent_run?.status === "cancelled") return;
-    const startedAt = source.agent_run?.started_at ?? options.nowMs;
-    const next: GithubConfigSource = { ...source };
+  await mutateConfigAgentRun(options, (run, source) => {
+    if (run?.started_at !== options.runStartedAt || run.status === "cancelled") return { result: undefined };
+    const finished = { started_at: options.runStartedAt, finished_at: options.nowMs };
     if (options.outcome.status === "error") {
-      next.agent_run = { status: "error", started_at: startedAt, finished_at: options.nowMs, error: options.outcome.error };
-    } else if (options.outcome.status === "success") {
-      next.agent_run = { status: "success", started_at: startedAt, finished_at: options.nowMs, commit_url: options.outcome.commitUrl };
-      if (options.outcome.newCommitHash) next.commit_hash = options.outcome.newCommitHash;
-    } else {
-      next.agent_run = { status: "no-change", started_at: startedAt, finished_at: options.nowMs };
+      return { nextRun: { status: "error", ...finished, error: options.outcome.error }, result: undefined };
     }
-    await tx.branchConfigOverride.update({
-      where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
-      data: { source: next as any },
-    });
+    if (options.outcome.status === "no-change") {
+      return { nextRun: { status: "no-change", ...finished }, result: undefined };
+    }
+    return {
+      nextRun: { status: "success", ...finished, commit_url: options.outcome.commitUrl },
+      // Advance the source's last-known commit when a commit landed and the branch
+      // is still GitHub-linked.
+      nextSource: source && options.outcome.newCommitHash ? { ...source, commit_hash: options.outcome.newCommitHash } : undefined,
+      result: undefined,
+    };
   });
 }
 

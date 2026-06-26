@@ -12,7 +12,7 @@ import { GITHUB_SCOPE_REQUIREMENTS } from "@/lib/github-api";
 import React, { Suspense, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { AgentDiffViewer, ConfigAgentRunProgressContent } from "./progress-content";
-import { ConfigUpdateDialogContext, currentEpochMsFromPerformance, getAdminInterface, type AgentStage, type GithubPushedSource, isAgentStage, isGithubPushedSourceWithAgentRun } from "./shared";
+import { ConfigUpdateDialogContext, currentEpochMsFromPerformance, getAdminInterface, type AgentStage, type ConfigAgentRun, type GithubPushedSource } from "./shared";
 
 type GithubPushDialogProps = {
   open: boolean,
@@ -23,11 +23,8 @@ type GithubPushDialogProps = {
   onSettle: (result: boolean) => void,
 };
 
-/**
- * The new GitHub push dialog: shows a staged progress bar while the agent
- * runs, then a diff review panel once the agent is done. The user must
- * explicitly click "Commit" to push. No auto-commit.
- */
+// GitHub push dialog: staged progress while the agent runs, then a diff review
+// panel; the user must click "Commit" to push.
 
 type ScopeCheck =
   | { status: "no-account" }
@@ -260,7 +257,7 @@ type GithubPushBodyProps = {
     cancel: () => Promise<void>,
     commit: () => Promise<void>,
   } | null>,
-  dialogContext: { setGithubRunActive: (v: boolean) => void } | null,
+  dialogContext: React.ContextType<typeof ConfigUpdateDialogContext>,
 };
 
 function GithubPushBody({
@@ -293,8 +290,6 @@ function GithubPushBody({
   const [scopeCheck, setScopeCheck] = useState<ScopeCheck>(
     githubAccounts.length === 0 ? { status: "no-account" } : { status: "checking" },
   );
-
-  const placeholderCommitMessage = "chore(hexclave): update config from dashboard";
 
   useLayoutEffect(() => {
     onScopeStatusChange(scopeCheck.status);
@@ -339,7 +334,7 @@ function GithubPushBody({
       return;
     }
     const adminInterface = getAdminInterface(adminApp);
-    if (adminInterface == null || typeof adminInterface.applyConfigViaAgent !== "function") {
+    if (adminInterface == null) {
       onErrorChange("This dashboard build can't push config to GitHub. Please refresh and try again.");
       return;
     }
@@ -355,16 +350,10 @@ function GithubPushBody({
         return;
       }
 
-      const start = await adminInterface.applyConfigViaAgent({
+      await adminInterface.applyConfigViaAgent({
         configUpdate,
-        // Pass a placeholder; the real commit message is gathered at review time.
-        commitMessage: placeholderCommitMessage,
         githubAccessToken: tokenResult.data.accessToken,
       });
-      if (start.status === "already-running") {
-        onErrorChange("Another configuration update is already running for this project. Wait for it to finish, then try again.");
-        return;
-      }
 
       const runStartedAtWallMs = currentEpochMsFromPerformance();
       const runStartedAtMonotonicMs = performance.now();
@@ -379,19 +368,18 @@ function GithubPushBody({
       const deadline = performance.now() + 8 * 60_000;
       while (performance.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000));
-        let latest: unknown;
+        let run: ConfigAgentRun | null;
         try {
-          latest = await adminInterface.getPushedConfigSource();
+          run = await adminInterface.getConfigAgentRun();
         } catch {
           continue;
         }
-        const run = isGithubPushedSourceWithAgentRun(latest) ? latest.agent_run : null;
         // Ignore stale runs from before this one started.
-        if (run == null || (typeof run.started_at === "number" && run.started_at < runStartedAtWallMs - 5000)) continue;
+        if (run == null || run.started_at < runStartedAtWallMs - 5000) continue;
 
         if (run.status === "running") {
-          if (typeof run.progress === "string") onActivityChange(run.progress);
-          if (isAgentStage(run.stage)) onStageChange(run.stage);
+          if (run.progress != null) onActivityChange(run.progress);
+          if (run.stage != null) onStageChange(run.stage);
           continue;
         }
 
@@ -422,8 +410,7 @@ function GithubPushBody({
           onErrorChange("The config agent finished without producing a diff. No commit was created; try the update again.");
           return;
         }
-        // success is only expected from older auto-commit flows or a race with
-        // a completed commit. Settle so the dashboard can refresh its local state.
+        // success: a poll raced a completed commit. Settle so the dashboard refreshes.
         onPhaseChange("idle");
         onStageChange(null);
         onSettle(true);
@@ -453,7 +440,7 @@ function GithubPushBody({
 
   const handleCancel = useCallback(async () => {
     const adminInterface = getAdminInterface(adminApp);
-    if (adminInterface == null || typeof adminInterface.cancelConfigAgentRun !== "function") {
+    if (adminInterface == null) {
       onErrorChange("This dashboard build can't cancel a config run. Please refresh and try again.");
       return;
     }
@@ -472,7 +459,7 @@ function GithubPushBody({
       return;
     }
     const adminInterface = getAdminInterface(adminApp);
-    if (adminInterface == null || typeof adminInterface.commitConfigAgentRun !== "function") {
+    if (adminInterface == null) {
       onErrorChange("This dashboard build can't commit. Please refresh and try again.");
       return;
     }
@@ -502,17 +489,15 @@ function GithubPushBody({
         return;
       }
       // "committing" — poll until done
-      const adminInterface2 = adminInterface;
       const deadline = performance.now() + 2 * 60_000;
       while (performance.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000));
-        let latest: unknown;
+        let run: ConfigAgentRun | null;
         try {
-          latest = await adminInterface2.getPushedConfigSource();
+          run = await adminInterface.getConfigAgentRun();
         } catch {
           continue;
         }
-        const run = isGithubPushedSourceWithAgentRun(latest) ? latest.agent_run : null;
         if (run == null || run.status === "awaiting_review") continue;
         if (run.status === "success") {
           onPhaseChange("idle");

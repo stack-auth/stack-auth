@@ -1,14 +1,14 @@
 import {
-  getBranchConfigOverrideSource,
   getCompleteBranchConfigForFile,
+  getGithubConfigSourceOrThrow,
   recordConfigAgentRunProgress,
   recordConfigAgentRunResult,
   recordConfigAgentRunSandbox,
   recordConfigAgentRunStage,
   setConfigAgentRunAwaitingReview,
-  tryStartConfigAgentRun,
+  startConfigAgentRun,
 } from "@/lib/config";
-import { applyConfigUpdate, stopConfigAgentSandbox, type GithubRepoRef } from "@/lib/config/repo-agent";
+import { applyConfigUpdate, type ConfigAgentInFlightStage, type GithubRepoRef, stopConfigAgentSandbox } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
@@ -16,23 +16,15 @@ import { getInvalidConfigReason } from "@hexclave/shared/dist/config/format";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 
-// The whole flow (sandbox boot + clone + agent edit + push) can take a few minutes;
-// the response returns immediately and the work continues via waitUntil. Give the
-// serverless invocation room to finish the background work.
+// Background work (sandbox boot, clone, agent edit, push) continues via waitUntil
+// after the immediate response, so allow a long invocation.
 export const maxDuration = 800;
 
-// A `running` marker older than this is treated as abandoned (server died mid-run).
-const RUN_STALE_MS = 15 * 60_000;
-
 /**
- * Kicks off an AI-agent config write against the linked GitHub repo. Reads use
- * jiti; writes go through the agent in a Vercel Sandbox (see
- * `config-update-repo-agent`). The dashboard polls `/internal/config/source`
- * (`agent_run`) for progress.
- *
- * The GitHub token is the dashboard user's own OAuth token, passed in by the
- * client and used transiently for the sandbox's git pull/push — it is never
- * persisted and never placed in the agent's environment.
+ * Kicks off an AI-agent config write to the linked GitHub repo (writes go through
+ * the agent in a Vercel Sandbox; reads use jiti). The GitHub token is the user's
+ * own OAuth token, passed transiently for git pull/push — never persisted, never
+ * placed in the agent's environment. The dashboard polls `agent_run` for progress.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -49,7 +41,6 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       github_access_token: yupString().defined(),
       config_update_string: yupString().defined(),
-      commit_message: yupString().optional(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -57,76 +48,60 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      status: yupString().oneOf(["started", "already-running"]).defined(),
+      status: yupString().oneOf(["started"]).defined(),
     }).defined(),
   }),
   handler: async (req) => {
     const projectId = req.auth.tenancy.project.id;
     const branchId = req.auth.tenancy.branchId;
 
-    const source = await getBranchConfigOverrideSource({ projectId, branchId });
-    if (source.type !== "pushed-from-github") {
-      throw new StatusError(StatusError.BadRequest, "This project's configuration is not linked to a GitHub repository.");
-    }
+    await getGithubConfigSourceOrThrow({ projectId, branchId });
 
-    let configUpdate: EnvironmentConfigOverrideOverride;
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(req.body.config_update_string);
-      const reason = getInvalidConfigReason(parsed, { configName: "config_update_string" });
-      if (reason) {
-        throw new StatusError(StatusError.BadRequest, reason);
-      }
-      // Safe after getInvalidConfigReason confirms it's a valid config object
-      configUpdate = parsed as EnvironmentConfigOverrideOverride;
-    } catch (e) {
-      if (e instanceof StatusError) throw e;
+      parsed = JSON.parse(req.body.config_update_string);
+    } catch {
       throw new StatusError(StatusError.BadRequest, "config_update_string is not valid JSON.");
     }
+    const reason = getInvalidConfigReason(parsed, { configName: "config_update_string" });
+    if (reason) {
+      throw new StatusError(StatusError.BadRequest, reason);
+    }
+    const configUpdate = parsed as EnvironmentConfigOverrideOverride;
 
     const githubToken = req.body.github_access_token;
-    const commitMessage = req.body.commit_message;
 
     const nowMs = Date.now();
-    const { started, source: lockedSource } = await tryStartConfigAgentRun({ projectId, branchId, staleMs: RUN_STALE_MS, nowMs });
-    if (!started) {
-      return { statusCode: 200, bodyType: "json", body: { status: "already-running" } };
-    }
-    // Use the source read UNDER the lock (not the pre-lock read above) so a
-    // concurrent re-link can't make us push to a stale repo/branch.
-    const ref: GithubRepoRef = { owner: lockedSource.owner, repo: lockedSource.repo, branch: lockedSource.branch };
+    // Stamps a fresh `running` marker and returns the source read in the same
+    // FOR UPDATE txn (so a concurrent re-link can't redirect the push). Runs
+    // aren't serialized; a concurrent commit is caught at push time.
+    const startedSource = await startConfigAgentRun({ projectId, branchId, nowMs });
+    const runStartedAt = nowMs;
+    const ref: GithubRepoRef = { owner: startedSource.owner, repo: startedSource.repo, branch: startedSource.branch };
 
-    // Fetched fresh per boot. The dashboard already refetches the user's OAuth
-    // token right before calling this route, so this is the freshest token we
-    // can produce server-side (a target-project admin route has no authority to
-    // mint GitHub tokens for the internal user — that would be a priv-esc).
+    // Fetched fresh per boot; this admin route can't mint GitHub tokens for the
+    // internal user (would be priv-esc), so we reuse the caller's freshest OAuth token.
     const getGithubToken = async () => githubToken;
     let runningSandboxId: string | null = null;
-    // Record the live sandbox id while running so a cancel (another invocation)
-    // can hard-stop it. Keep an in-memory copy too: if the agent fails after
-    // boot, the background catch path must stop the sandbox before marking the
-    // run terminal.
+    // Persist + keep an in-memory copy so the catch path can stop the sandbox
+    // before marking the run terminal.
     const onSandboxId = async (sandboxId: string) => {
       runningSandboxId = sandboxId;
-      await recordConfigAgentRunSandbox({ projectId, branchId, sandboxId });
+      await recordConfigAgentRunSandbox({ projectId, branchId, runStartedAt, sandboxId });
     };
-    // Sanitized live activity feed surfaced to the dashboard (no secrets/tokens).
     const onProgress = async (activity: string) => {
-      await recordConfigAgentRunProgress({ projectId, branchId, progress: activity });
+      await recordConfigAgentRunProgress({ projectId, branchId, runStartedAt, progress: activity });
     };
-    // Stage updates drive the dashboard progress bar.
-    const onStage = async (stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => {
-      await recordConfigAgentRunStage({ projectId, branchId, stage });
+    const onStage = async (stage: ConfigAgentInFlightStage) => {
+      await recordConfigAgentRunStage({ projectId, branchId, runStartedAt, stage });
     };
 
     runAsynchronouslyAndWaitUntil(async () => {
       try {
-        // The file mirrors the COMPLETE branch config, not just this one change —
-        // so the agent writes the user's whole config (apps, full sign-up rules, …),
-        // computed from the current branch override merged with this change.
+        // The file mirrors the COMPLETE branch config (current override merged with
+        // this change), not just this delta.
         const completeConfig = await getCompleteBranchConfigForFile({ projectId, branchId, configUpdate });
 
-        // Boot a sandbox, clone the repo, run the agent. The sandbox stays alive
-        // in `awaiting_review` so the user can inspect the diff before committing.
         const result = await applyConfigUpdate({
           getGithubToken,
           ref,
@@ -140,14 +115,15 @@ export const POST = createSmartRouteHandler({
           await recordConfigAgentRunResult({
             projectId,
             branchId,
+            runStartedAt,
             nowMs: Date.now(),
             outcome: { status: "no-change" },
           });
         } else {
-          // Transition to awaiting_review — sandbox stays alive.
           await setConfigAgentRunAwaitingReview({
             projectId,
             branchId,
+            runStartedAt,
             diff: result.diff,
           });
         }
@@ -159,6 +135,7 @@ export const POST = createSmartRouteHandler({
         await recordConfigAgentRunResult({
           projectId,
           branchId,
+          runStartedAt,
           nowMs: Date.now(),
           outcome: { status: "error", error: "The config agent failed to apply the change." },
         }).catch((e) => captureError("config-github-apply-record-error", e));

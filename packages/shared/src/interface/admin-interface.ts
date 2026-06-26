@@ -1,6 +1,7 @@
 import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
-import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
+import type { EnvironmentConfigOverrideOverride } from "../config/schema";
+import { branchConfigSourceSchema, type ConfigAgentRunApi, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
@@ -835,12 +836,26 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /**
+   * Reads the most recent config-agent run state (or `null`) for the linked GitHub
+   * repo. Polled by the dashboard for live progress and the review diff.
+   */
+  async getConfigAgentRun(): Promise<ConfigAgentRunApi | null> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/run`,
+      { method: "GET" },
+      null,
+    );
+    const data = await response.json();
+    return data.agent_run ?? null;
+  }
+
+  /**
    * Applies a dashboard config change to the linked GitHub repo by running the
    * config agent in a sandbox (server-side). Returns immediately; poll
-   * `getPushedConfigSource().agent_run` for progress. The GitHub access token is
-   * the caller's own OAuth token and is used transiently server-side.
+   * `getConfigAgentRun()` for progress. The GitHub access token is the caller's
+   * own OAuth token and is used transiently server-side.
    */
-  async applyConfigViaAgent(options: { configUpdate: any, commitMessage?: string, githubAccessToken: string }): Promise<{ status: "started" | "already-running" }> {
+  async applyConfigViaAgent(options: { configUpdate: EnvironmentConfigOverrideOverride, githubAccessToken: string }): Promise<{ status: "started" }> {
     const response = await this.sendAdminRequest(
       `/internal/config/github/apply`,
       {
@@ -849,7 +864,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
         body: JSON.stringify({
           github_access_token: options.githubAccessToken,
           config_update_string: JSON.stringify(options.configUpdate),
-          ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
         }),
       },
       null,

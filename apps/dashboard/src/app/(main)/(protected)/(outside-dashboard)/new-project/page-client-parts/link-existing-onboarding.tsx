@@ -12,7 +12,7 @@ import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { ArrowsClockwiseIcon, GithubLogoIcon, LinkBreakIcon, LockSimpleIcon, TerminalWindowIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject, type PushedConfigSource } from "@hexclave/next";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import sodium from "libsodium-wrappers";
@@ -787,9 +787,6 @@ export function LinkExistingOnboarding(props: Props) {
             });
           }
 
-          // The repo is now linked. No snapshot warm-up: the first dashboard config
-          // write boots the agent sandbox on demand (warming from the shared base
-          // snapshot if one is configured).
           appendLog("Config push detected. You can continue.");
           return;
         }

@@ -138,6 +138,10 @@ model BranchConfigOverride {
   config Json
   source Json?
   pushedConfigError Json?
+  // Ephemeral state of the most recent dashboard→GitHub config agent run (status,
+  // progress, diff, …). Kept out of `source` so the source descriptor stays a pure
+  // "where the config came from" value; runs no longer serialize anything.
+  configAgentRun Json?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

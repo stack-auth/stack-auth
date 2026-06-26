@@ -1,5 +1,6 @@
 'use client';
 
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import React, { useEffect, useState } from "react";
 import type { FileDiffProps } from "@pierre/diffs/react";
@@ -31,7 +32,7 @@ export function AgentStageProgress({
   activity,
 }: {
   stage: AgentStage | null | undefined,
-  /** Unix ms timestamp of when the run started (from agent_run.started_at). */
+  /** Unix ms timestamp of when the run started (from the run's started_at). */
   startedAt: number,
   activity?: string | null,
 }) {
@@ -150,8 +151,10 @@ export function AgentDiffViewer({ diff }: { diff: string }) {
         const files = parsePatchFiles(diff, "config-agent-review", true).flatMap((patch) => patch.files);
         if (files.length === 0) return;
         setRenderer({ FileDiff: reactMod.FileDiff, files });
-      } catch {
-        // Module failed to load — fall back to raw diff text.
+      } catch (error) {
+        if (cancelToken.cancelled) return;
+        // Renderer failed to load/parse — fall back to raw diff text, but report it.
+        captureError("config-agent-diff-viewer-render", error);
       }
     });
     return () => {

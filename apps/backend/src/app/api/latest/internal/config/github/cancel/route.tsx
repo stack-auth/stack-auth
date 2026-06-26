@@ -1,23 +1,20 @@
 import {
   cancelConfigAgentRun,
-  getBranchConfigOverrideSource,
+  getGithubConfigSourceOrThrow,
 } from "@/lib/config";
 import { stopConfigAgentSandbox } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const maxDuration = 60;
 
 /**
- * Cancels the in-flight dashboard→GitHub config run. Atomically flips the run to
- * the terminal `cancelled` status (so the original run's late result is ignored)
- * and hard-stops its sandbox when available. If the sandbox id was never recorded
- * (e.g. the run failed before booting a sandbox), the status is still flipped but
- * no sandbox stop is attempted. There is no revert: if the agent hadn't pushed
- * yet the change is undone; if a commit already landed it stays (and the repo's
- * config-sync workflow will eventually reconcile it).
+ * Atomically flips the run to terminal `cancelled` (so the original run's late
+ * result is ignored) and hard-stops its sandbox if one was recorded. No revert:
+ * any commit the agent already pushed stays and is reconciled by the repo's
+ * stack-auth-config-sync workflow.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -44,10 +41,7 @@ export const POST = createSmartRouteHandler({
     const projectId = req.auth.tenancy.project.id;
     const branchId = req.auth.tenancy.branchId;
 
-    const source = await getBranchConfigOverrideSource({ projectId, branchId });
-    if (source.type !== "pushed-from-github") {
-      throw new StatusError(StatusError.BadRequest, "This project's configuration is not linked to a GitHub repository.");
-    }
+    await getGithubConfigSourceOrThrow({ projectId, branchId });
 
     const { cancelled, sandboxId } = await cancelConfigAgentRun({ projectId, branchId, nowMs: Date.now() });
     if (!cancelled) {

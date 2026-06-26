@@ -4,12 +4,12 @@ import { ActionDialog, Button } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import React, { useCallback, useContext, useState } from "react";
 
 import { GithubPushDialog } from "./github-push-dialog";
 import { updateRemoteDevelopmentEnvironmentConfigFile } from "./remote-development-environment";
-import { ConfigUpdateDialogContext, getAdminInterface, isGithubPushedSourceWithAgentRun } from "./shared";
+import { ConfigUpdateDialogContext } from "./shared";
 
 type ConfigUpdateDialogState = {
   isOpen: boolean,
@@ -32,23 +32,6 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
   const showPushableDialog = useCallback(async (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride): Promise<boolean> => {
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
-
-    // The public `PushedConfigSource` type drops `agent_run`; read the raw
-    // interface source so the page-load watcher can own already-running jobs.
-    if (source.type === "pushed-from-github") {
-      const iface = getAdminInterface(adminApp);
-      if (iface != null && typeof iface.getPushedConfigSource === "function") {
-        let rawSource: unknown = null;
-        try {
-          rawSource = await iface.getPushedConfigSource();
-        } catch (error) {
-          captureError("config-update-source-agent-run-check", error);
-        }
-        if (isGithubPushedSourceWithAgentRun(rawSource) && rawSource.agent_run?.status === "running") {
-          return false;
-        }
-      }
-    }
 
     let shouldUpdate = true;
     if (source.type !== "unlinked") {

@@ -8,7 +8,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { ConfigAgentRunProgressContent } from "./progress-content";
-import { type AgentStage, getAdminInterface, isGithubPushedSourceWithAgentRun, useGithubRunActive, type GithubPushedSourceWithAgentRun } from "./shared";
+import { type AgentStage, type ConfigAgentRun, getAdminInterface, useGithubRunActive } from "./shared";
 
 /**
  * Watches the linked-GitHub config source for an in-flight agent run and, when
@@ -27,12 +27,16 @@ const ACTIVE_POLL_MS = 3_000;       // a run is on screen — poll tightly
 const LINKED_IDLE_POLL_MS = 10_000; // linked repo, no run — watch for new runs
 const UNLINKED_POLL_MS = 30_000;    // not a GitHub-linked project — back off
 
-async function readPushedConfigSource(adminApp: StackAdminApp<false> | null): Promise<GithubPushedSourceWithAgentRun | null> {
+type RunSnapshot = { owner: string, repo: string, branch: string, run: ConfigAgentRun | null };
+
+async function readRunSnapshot(adminApp: StackAdminApp<false> | null): Promise<RunSnapshot | null> {
   const iface = getAdminInterface(adminApp);
-  if (iface == null || typeof iface.getPushedConfigSource !== "function") return null;
+  if (iface == null) return null;
   try {
-    const source: unknown = await iface.getPushedConfigSource();
-    return isGithubPushedSourceWithAgentRun(source) ? source : null;
+    const source = await iface.getPushedConfigSource();
+    if (source.type !== "pushed-from-github") return null;
+    const run = await iface.getConfigAgentRun();
+    return { owner: source.owner, repo: source.repo, branch: source.branch, run };
   } catch {
     return null; // transient — try again next tick
   }
@@ -54,7 +58,7 @@ export function ConfigAgentRunWatcher() {
 
   const handleCancel = useCallback(async (): Promise<"prevent-close" | undefined> => {
     const iface = getAdminInterface(adminApp);
-    if (iface == null || typeof iface.cancelConfigAgentRun !== "function") {
+    if (iface == null) {
       setErrorMessage("This dashboard build can't cancel a config run. Please refresh and try again.");
       setPhase("error");
       return "prevent-close";
@@ -74,28 +78,28 @@ export function ConfigAgentRunWatcher() {
     const loop = { stopped: false };
     let timer: ReturnType<typeof setTimeout> | undefined;
 
-    const apply = (source: GithubPushedSourceWithAgentRun | null): number => {
-      if (source == null) {
+    const apply = (snap: RunSnapshot | null): number => {
+      if (snap == null) {
         if (phaseRef.current !== "error") setPhase("hidden");
         return UNLINKED_POLL_MS;
       }
-      setSourceInfo({ owner: source.owner, repo: source.repo, branch: source.branch });
-      const status: string | undefined = source.agent_run?.status;
+      setSourceInfo({ owner: snap.owner, repo: snap.repo, branch: snap.branch });
+      const run = snap.run;
 
       // This tab's push dialog owns the modal for runs it started.
       if (githubRunActive) {
         if (phaseRef.current !== "hidden") setPhase("hidden");
         return LINKED_IDLE_POLL_MS;
       }
-      if (status === "running") {
-        setActivity(typeof source.agent_run?.progress === "string" ? source.agent_run.progress : null);
-        if (source.agent_run?.stage != null) setStage(source.agent_run.stage);
-        if (typeof source.agent_run?.started_at === "number") setStartedAt(source.agent_run.started_at);
+      if (run?.status === "running") {
+        setActivity(run.progress ?? null);
+        if (run.stage != null) setStage(run.stage);
+        setStartedAt(run.started_at);
         if (phaseRef.current !== "cancelling") setPhase("running");
         return ACTIVE_POLL_MS;
       }
-      if (status === "error" && (phaseRef.current === "running" || phaseRef.current === "cancelling")) {
-        setErrorMessage(source.agent_run?.error ?? "The config agent failed to apply the change.");
+      if (run?.status === "error" && (phaseRef.current === "running" || phaseRef.current === "cancelling")) {
+        setErrorMessage(run.error ?? "The config agent failed to apply the change.");
         setPhase("error");
         return LINKED_IDLE_POLL_MS;
       }
@@ -104,9 +108,9 @@ export function ConfigAgentRunWatcher() {
     };
 
     const tick = async () => {
-      const source = await readPushedConfigSource(adminApp);
+      const snap = await readRunSnapshot(adminApp);
       if (loop.stopped) return;
-      const delay = apply(source);
+      const delay = apply(snap);
       timer = setTimeout(() => void tick(), delay);
     };
 

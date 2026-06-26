@@ -3,35 +3,15 @@
 import type { PushedConfigSource, StackAdminApp } from "@hexclave/next";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import type { HexclaveAdminInterface } from "@hexclave/shared/dist/interface/admin-interface";
+import type { ConfigAgentRunApi } from "@hexclave/shared/dist/schema-fields";
 import { createContext, useContext } from "react";
 
-export type ConfigAgentRunStatus = "running" | "awaiting_review" | "success" | "no-change" | "error" | "cancelled";
-export type AgentStage = "initializing_sandbox" | "cloning_repo" | "agent_making_changes" | "awaiting_review";
+/** Live state of a dashboard→GitHub config agent run (mirrors the API schema). */
+export type ConfigAgentRun = ConfigAgentRunApi;
+export type ConfigAgentRunStatus = ConfigAgentRun["status"];
+export type AgentStage = NonNullable<ConfigAgentRun["stage"]>;
 
 export type GithubPushedSource = Extract<PushedConfigSource, { type: "pushed-from-github" }>;
-
-export type GithubPushedSourceWithAgentRun = GithubPushedSource & {
-  agent_run?: {
-    status: ConfigAgentRunStatus,
-    started_at: number,
-    finished_at?: number,
-    progress?: string,
-    sandbox_id?: string,
-    commit_url?: string,
-    new_commit_hash?: string,
-    error?: string,
-    stage?: AgentStage,
-    diff?: string,
-  },
-};
-
-export function isAgentStage(value: unknown): value is AgentStage {
-  return value === "initializing_sandbox" || value === "cloning_repo" || value === "agent_making_changes" || value === "awaiting_review";
-}
-
-export function isGithubPushedSourceWithAgentRun(source: unknown): source is GithubPushedSourceWithAgentRun {
-  return typeof source === "object" && source != null && "type" in source && source.type === "pushed-from-github";
-}
 
 export function currentEpochMsFromPerformance(): number {
   return performance.timeOrigin + performance.now();
@@ -40,14 +20,10 @@ export function currentEpochMsFromPerformance(): number {
 /**
  * Reaches the admin app's underlying `HexclaveAdminInterface`, which carries the
  * config-agent endpoints (`applyConfigViaAgent`, `cancelConfigAgentRun`,
- * `getPushedConfigSource`) we call directly — rather than via generated app
- * methods — to keep this feature self-contained. `_interface` is a protected
- * member, so we read it reflectively (the same pattern the SDK's own cross-domain
- * tests use). Returns `null` if the app doesn't expose one.
- *
- * NOTE: these methods exist on the type, but the installed `@hexclave/next` build
- * could predate them, so callers still runtime-check the specific method before
- * use and degrade gracefully ("refresh and try again").
+ * `getConfigAgentRun`, `getPushedConfigSource`) we call directly — rather than via
+ * generated app methods — to keep this feature self-contained. `_interface` is a
+ * protected member, so we read it reflectively (the same pattern the SDK's own
+ * cross-domain tests use). Returns `null` if the app doesn't expose one.
  */
 export function getAdminInterface(adminApp: StackAdminApp<false> | null | undefined): HexclaveAdminInterface | null {
   if (adminApp == null) return null;

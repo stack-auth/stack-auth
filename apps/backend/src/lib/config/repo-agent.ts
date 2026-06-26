@@ -1,48 +1,23 @@
 /**
  * Dashboard -> GitHub config write, full-repo-in-a-sandbox edition.
  *
- * Config integration can span many files, so we give a Claude agent the WHOLE
- * repo to edit (not just the config file). The agent only EDITS config source —
- * it does not install the repo's dependencies or run a type check. We deliberately
- * skip in-sandbox validation: the linked repo runs a GitHub Actions workflow that
- * pushes the committed config back to us, so an invalid config fails there.
+ * A Claude agent edits the WHOLE repo (config can span files), not just the config
+ * file; we skip in-sandbox validation since the linked repo's GitHub Action
+ * re-validates on push. Vercel Sandbox can't boot a custom image, so we warm-boot
+ * from one SHARED, repo-independent base snapshot (agent runtime only, never a repo
+ * or token; build via scripts/config-agent/build-image.ts -> STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID,
+ * else cold-boot node24 + install the SDK inline) and take a FRESH shallow clone per write.
  *
- * No per-project snapshots. Vercel Sandbox can't boot from a custom Docker image,
- * so the closest analog is a single SHARED, repo-independent base snapshot that
- * bakes in only the agent's OWN runtime (node + the Claude Agent SDK + git bot
- * identity) — never any repo or token. Build it once with
- * `scripts/config-agent/build-image.ts` and point `STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID`
- * at the printed id; every config write warm-boots from it. If the env var is
- * unset (local/dev, or before the image is built) we cold-boot a node24 sandbox
- * and install the SDK inline — slower, but self-sufficient.
- *
- * Each update then does a FRESH shallow clone of the target branch inside the
- * sandbox (we take that clone cost per write instead of caching it), runs the
- * agent, keeps the sandbox alive for review, then either commits/pushes or
- * stops it on discard. The sandbox is NEVER snapshotted, so the token that lives
- * in `origin` for the clone/push dies with it.
- *
- * Phases:
- *   buildConfigAgentBaseSnapshot — one-off (build script): node24 + agent SDK + git
- *                                   identity -> a shared base snapshot. No repo/token.
- *   applyConfigUpdate            — on save: boot (warm from base snapshot or cold),
- *                                   clone, run the agent to edit the config, commit + push.
- *   stopConfigAgentSandbox       — on cancel: hard-stop the in-flight run's sandbox.
- *                                   (No revert — a cancel that beats the push undoes the
- *                                   change; a commit that already landed stays.)
- *
- * Token discipline: a fresh token is fetched at EACH boot via a provider (the
- * dashboard refetches the user's OAuth token per request, so a long run never
- * reuses a stale one). The token is injected only into the git remote URL used to
- * clone/push, never into the agent's *environment*, and is redacted from any thrown
- * error before it can be persisted or logged. The sandbox is never snapshotted, so
- * the token is never baked into anything reusable.
+ * Token discipline: a fresh token is fetched per boot (GithubTokenProvider),
+ * injected only into the git remote URL (never the agent's env), redacted from
+ * thrown errors, and never snapshotted — the sandbox is never snapshotted, so the
+ * token in `origin` dies with it.
  */
 
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Sandbox } from "@vercel/sandbox";
-import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "../../../../../packages/shared-backend/src/config-agent";
+import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "@hexclave/shared-backend/config-agent";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
 
 const AGENT_SDK_VERSION = "0.2.73";
@@ -56,6 +31,12 @@ const GIT_BOT_NAME = "Hexclave Config Bot";
 const GIT_BOT_EMAIL = "config-bot@hexclave.com";
 
 export type GithubRepoRef = { owner: string, repo: string, branch: string };
+
+/**
+ * Stages reported via `onStage` while a run is `running`. `awaiting_review` is
+ * deliberately excluded — it is set separately, outside the staged progress.
+ */
+export type ConfigAgentInFlightStage = "initializing_sandbox" | "cloning_repo" | "agent_making_changes";
 
 /**
  * Supplies a GitHub token at sandbox-boot time. The orchestrator calls it once
@@ -143,8 +124,8 @@ async function reportConfigAgentProgress(onProgress: AgentProgressSink | undefin
 }
 
 async function reportConfigAgentStage(
-  onStage: ((stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => Promise<void>) | undefined,
-  stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes",
+  onStage: ((stage: ConfigAgentInFlightStage) => Promise<void>) | undefined,
+  stage: ConfigAgentInFlightStage,
 ): Promise<void> {
   if (!onStage) return;
   try {
@@ -159,7 +140,7 @@ async function reportConfigAgentStage(
  * out of a string before it can be thrown, captured, persisted, or logged. The
  * clone command passes the tokenized URL as an argv, and git can echo the remote
  * URL in its errors — without this the dashboard user's OAuth token could leak
- * into `agent_run.error` or Sentry.
+ * into the persisted run's `error` or Sentry.
  */
 function redactTokens(text: string): string {
   return text.replace(/x-access-token:[^@\s/]+@/g, "x-access-token:***@");
@@ -229,9 +210,8 @@ process.on("unhandledRejection", (e) => { status({ ok: false, error: "unhandledR
 const PROGRESS = ${JSON.stringify(`${TOOLS_DIR}/progress.json`)};
 const recent = [];
 const base = (p) => (typeof p === "string" ? (p.split("/").pop() || p) : "");
-// In-sandbox feed cap: 100 chars/line, last 6 lines. Separate from the coarser
-// 2000-char storage cap in recordConfigAgentRunProgress (config/index.tsx) —
-// this one shapes what the user sees live; that one guards DB size.
+// In-sandbox live-feed cap: each line trimmed to 100 chars, keep last 6. Storage
+// cap is separate (see recordConfigAgentRunProgress).
 const emit = (s) => { recent.push(String(s).replace(/[\\r\\n]+/g, " ").slice(0, 100)); while (recent.length > 6) recent.shift(); try { writeFileSync(PROGRESS, JSON.stringify(recent)); } catch {} };
 const describeTool = (name, inp) => {
   inp = inp || {};
@@ -478,7 +458,7 @@ export async function applyConfigUpdate(options: {
   ref: GithubRepoRef,
   completeConfig: Record<string, unknown>,
   onSandboxId?: (sandboxId: string) => Promise<void>,
-  onStage?: (stage: "initializing_sandbox" | "cloning_repo" | "agent_making_changes") => Promise<void>,
+  onStage?: (stage: ConfigAgentInFlightStage) => Promise<void>,
   onProgress?: AgentProgressSink,
 }): Promise<ConfigUpdateApplyResult> {
   const { getGithubToken, ref, completeConfig, onSandboxId, onStage, onProgress } = options;
@@ -524,8 +504,7 @@ export async function applyConfigUpdate(options: {
     return { mode: "no-change" };
   }
 
-  // Capture the diff before staging so the user can review it. Redact tokens
-  // (defensive; the diff shouldn't contain any, but be safe).
+  // Capture the pre-staging diff for review, sanitized like every other sandbox-exit string.
   const diff = redactTokens(
     (await runRaw(sandbox, "git", ["-C", REPO_DIR, "diff"])).stdout,
   );

@@ -50,11 +50,8 @@ export async function readConfigFile(configFilePath: string): Promise<{ config: 
     };
   }
 
-  // Single jiti-backed evaluation path (see `evalConfigFileContent`). A bad
-  // config shape surfaces as `ConfigFileEvalError` and becomes "Invalid config";
-  // anything else is a loader failure we deliberately replace with a clean,
-  // user-facing message (the raw jiti/framework error is captured for diagnostics
-  // but not attached as `cause` — dashboard error formatting renders causes
+  // ConfigFileEvalError => "Invalid config"; any other loader error is captured
+  // for diagnostics but not attached as `cause` (the dashboard renders causes
   // recursively and would leak framework internals).
   let parsed: ReturnType<typeof evalConfigFileContent>;
   try {
