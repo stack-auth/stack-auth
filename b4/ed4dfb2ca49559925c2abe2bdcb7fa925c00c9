@@ -1,0 +1,143 @@
+packages/cli/src/commands/config-file.test.ts
+  s_470ceb5ca1eea2::t_754a342a9b8630 5,49-70
+  s_470ceb5ca1eea2::t_3e823b245bee36 71-72
+apps/dashboard/src/components/config-update/index.tsx
+  s_fb5c6847f45b22::t_96937c639d8b06 7
+  s_fb5c6847f45b22::t_d91892f4221431 12
+apps/backend/src/app/api/latest/internal/config/github/commit/route.tsx
+  s_fb5c6847f45b22::t_1e9763c942a1d5 2
+  s_fb5c6847f45b22::t_9450e5791dc204 50
+  s_fb5c6847f45b22::t_7ae3d3fb9f29e5 3
+  s_fb5c6847f45b22::t_440c0fb2f62a67 10
+  s_470ceb5ca1eea2::t_ec78fbce459821 56,64,82,94
+  s_fb5c6847f45b22::t_d113c726f0691a 6
+  s_fb5c6847f45b22::t_78ac2a27cb1edd 52
+apps/backend/src/lib/config/repo-agent.ts
+  s_fb5c6847f45b22::t_11e672d8bb7303 20
+  s_fb5c6847f45b22::t_4375661551e7d1 213-214
+  s_fb5c6847f45b22::t_96734c352d23bf 143
+  s_fb5c6847f45b22::t_bd49830fc9777f 4-9,11-14
+  s_fb5c6847f45b22::t_6ac8becd93696e 127-128
+  s_fb5c6847f45b22::t_de364c7fa1a45b 507
+  s_fb5c6847f45b22::t_082e3e94a71953 461
+  s_fb5c6847f45b22::t_f08ac6bcb8ab3a 36-40
+  s_fb5c6847f45b22::t_b7c458acfbfa53 35
+apps/backend/src/lib/config/index.tsx
+  s_470ceb5ca1eea2::t_1fc44d87c4b90a 606,623,641,659,700
+  s_fb5c6847f45b22::t_dc3e9ac7c16967 481-497
+  s_fb5c6847f45b22::t_dfc35e7714fc0b 559,568,572
+  s_fb5c6847f45b22::t_c97e8af18ca693 560-566,573,577,581-597,600-601,609-611,617,626-627,630,636,644-646,651-653,662-666,673-676,682,684-687,693-695,707-709,711,713-722
+  s_fb5c6847f45b22::t_9c9e7d1a1bf1d9 574
+  s_fb5c6847f45b22::t_5745c6a5542c68 628-629
+  s_fb5c6847f45b22::t_1206be3c0c2191 5
+  s_fb5c6847f45b22::t_18d9a2a2b7efba 8
+  s_fb5c6847f45b22::t_c22518c39395c0 498-503,505,507-511,514-515,519-522,525-528
+  s_fb5c6847f45b22::t_e078231679a406 17
+  s_fb5c6847f45b22::t_5e91c7b8a16167 504,506,512-513,516-518,523-524,529-534
+  s_fb5c6847f45b22::t_c612b561c2d8c9 683
+  s_fb5c6847f45b22::t_16baa432d3b47d 642
+apps/backend/scripts/config-agent/build-image.ts
+  s_fb5c6847f45b22::t_da6a337ba122d2 2-5,9-10
+apps/backend/prisma/schema.prisma
+  s_fb5c6847f45b22::t_c3a5aa99f98dc3 141-144
+apps/dashboard/src/components/config-update/shared.tsx
+  s_fb5c6847f45b22::t_e3988fef5041ec 6,9-12
+  s_fb5c6847f45b22::t_9a3e95e51dc1bf 23-26
+packages/shared/src/interface/admin-interface.ts
+  s_fb5c6847f45b22::t_2a4a9341b50ad2 3
+  s_fb5c6847f45b22::t_d0baf0c480582b 858
+  s_fb5c6847f45b22::t_dadfb1b6a84802 855-856
+  s_fb5c6847f45b22::t_bf27cd1e90a6d5 4
+  s_fb5c6847f45b22::t_b507da9dac2143 839-851
+  s_fb5c6847f45b22::t_9ed666e0dda7c2 838
+apps/dashboard/src/components/config-update/github-push-dialog.tsx
+  s_fb5c6847f45b22::t_2c71f82737d6c8 495,497
+  s_fb5c6847f45b22::t_ed5e6c30b76357 15
+  s_fb5c6847f45b22::t_a7ad9a649046e6 443
+  s_fb5c6847f45b22::t_7857a29996b61a 337
+  s_fb5c6847f45b22::t_3eb93be3eea812 462
+  s_fb5c6847f45b22::t_cb3d5d6be9072c 260
+  s_fb5c6847f45b22::t_20b6cfc71fe334 353
+  s_fb5c6847f45b22::t_7f75182cb7fd24 382
+  s_fb5c6847f45b22::t_eb60fc144360b1 26-27
+  s_fb5c6847f45b22::t_0bfaab6506da63 413
+  s_fb5c6847f45b22::t_27b57ce0f03341 371,373,378,381
+packages/shared-backend/src/config-updater.ts
+  s_fb5c6847f45b22::t_9c5b285ddbf408 178-182
+  s_fb5c6847f45b22::t_394db68b7f3f9b 35
+  s_fb5c6847f45b22::t_2a187d8b4ac321 9
+  s_fb5c6847f45b22::t_0f10d808d7eb6d 155,165-166
+apps/dashboard/src/components/config-update/config-agent-run-watcher.tsx
+  s_fb5c6847f45b22::t_645cd0f5b6fd9b 30-32,36-39
+  s_fb5c6847f45b22::t_cea5d59fc2ec59 34
+  s_fb5c6847f45b22::t_0e2bcb1254d86d 11
+  s_fb5c6847f45b22::t_dfee8fd6f779dd 61
+  s_fb5c6847f45b22::t_1c400bcda283b5 81-82,86-87,94-97,101-102,111,113
+packages/shared/src/schema-fields.ts
+  s_fb5c6847f45b22::t_379771ae7458dd 942-944,963-994,997-1000
+apps/backend/prisma/migrations/20260626000000_add_branch_config_agent_run/migration.sql
+  s_fb5c6847f45b22::t_7730110eecf69f 1-2
+apps/dashboard/src/components/config-update/progress-content.tsx
+  s_fb5c6847f45b22::t_69c4b5d0d61279 3
+  s_fb5c6847f45b22::t_5ee89085ecd0db 35
+  s_fb5c6847f45b22::t_9264d93181eee2 154-157
+apps/backend/src/app/api/latest/internal/config/github/cancel/route.tsx
+  s_fb5c6847f45b22::t_b892a60ea1dff0 3
+  s_fb5c6847f45b22::t_9888c6d0ead3ee 44
+  s_fb5c6847f45b22::t_0b2671a4991a61 9
+  s_fb5c6847f45b22::t_4e86ade11dc02a 14-17
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding.tsx
+  s_fb5c6847f45b22::t_9711f1f81e06aa 15
+apps/backend/src/app/api/latest/internal/config/github/run/route.tsx
+  s_fb5c6847f45b22::t_5979886576f48f 1-43
+apps/backend/src/lib/config/index.test.tsx
+  s_470ceb5ca1eea2::t_426f574623cea8 1-2,4,6-14,25-36,38-41,44-45,52,54-61,65-70,79-81,83-85,87-95,99-101,103-105,107-119,125-126
+  s_fb5c6847f45b22::t_e5dd0e827e1a8a 5,15-24,37,42-43,46-51,53,62-64,71-78,82,86,96-98,102,106,120-124
+  s_470ceb5ca1eea2::t_8d1f3b86e86b6f 3
+apps/backend/src/app/api/latest/internal/config/github/apply/route.tsx
+  s_fb5c6847f45b22::t_e8e4316d33902e 9
+  s_fb5c6847f45b22::t_4053c2cf132835 11
+  s_470ceb5ca1eea2::t_b9f9c6ccd0ffd0 79,90,93,96,118,126,138
+  s_fb5c6847f45b22::t_e5aef495469465 3,19-20,24-27,58,60,62-63,66-70,82-83,86-87,95,101-102
+  s_fb5c6847f45b22::t_3b287070628414 51
+  s_fb5c6847f45b22::t_83100daeb3bff2 75-78,80
+apps/backend/.env.development
+  s_fb5c6847f45b22::t_03eedd5e45cdb0 83
+packages/shared-backend/src/config-file.ts
+  s_fb5c6847f45b22::t_7ce8cfb5c79dd6 53-54
+apps/backend/package.json
+  s_fb5c6847f45b22::t_9304f4649945d1 90
+packages/cli/src/commands/config-file.ts
+  s_470ceb5ca1eea2::t_e861dc344d4756 1,220-223,234,253-257
+pnpm-lock.yaml
+  s_fb5c6847f45b22::t_803cb1794ae858 133-135,807,822,846,883,901,904,2554,24504,24512,28576,28583,28588,28753,28770,28889,28897,28909-28910,29907-29918,33975-33983,36173,36177,36504,36523-36574,40610-40620,40710-40726,40744-40747
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "b4ed4dfb2ca49559925c2abe2bdcb7fa925c00c9",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_470ceb5ca1eea2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0539-6b65-7ad0-9d3e-d823eca982c1",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_fb5c6847f45b22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28c5b7c7-b2e6-44db-9d3a-121739e5f1ed",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
