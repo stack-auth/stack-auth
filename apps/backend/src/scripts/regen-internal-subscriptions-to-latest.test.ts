@@ -96,7 +96,7 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
         endedAt,
       },
     });
-    await bulldozerWriteSubscription(globalPrismaClient, sub);
+    await bulldozerWriteSubscription(sub);
     await processBulldozerQueue();
     return { id: sub.id };
   }

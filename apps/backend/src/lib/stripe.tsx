@@ -338,7 +338,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
-    await bulldozerWriteSubscription(prisma, upsertedSub);
+    await bulldozerWriteSubscription(upsertedSub);
   }
 
   // If this was a cancellation on our own billing (internal tenancy hosts the
@@ -395,5 +395,5 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
-  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
+  await bulldozerWriteSubscriptionInvoice(upsertedInvoice);
 }

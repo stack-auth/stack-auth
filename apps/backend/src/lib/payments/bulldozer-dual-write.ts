@@ -9,7 +9,6 @@
 
 import { bulldozerCustomerPath, fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
 import type { ManualTransactionRow } from "@/lib/payments/schema/types";
-import type { PrismaClientTransaction } from "@/prisma-client";
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -174,7 +173,6 @@ function readManualTransactionTenancyId(transaction: ManualTransactionRow): stri
 }
 
 export async function bulldozerWriteSubscription(
-  _prisma: PrismaClientTransaction,
   sub: Parameters<typeof subscriptionToStoredRow>[0],
 ) {
   await postBulldozerRow(
@@ -184,7 +182,6 @@ export async function bulldozerWriteSubscription(
 }
 
 export async function bulldozerWriteSubscriptionInvoice(
-  _prisma: PrismaClientTransaction,
   inv: Parameters<typeof subscriptionInvoiceToStoredRow>[0],
 ) {
   await postBulldozerRow(
@@ -194,7 +191,6 @@ export async function bulldozerWriteSubscriptionInvoice(
 }
 
 export async function bulldozerWriteOneTimePurchase(
-  _prisma: PrismaClientTransaction,
   purchase: Parameters<typeof oneTimePurchaseToStoredRow>[0],
 ) {
   await postBulldozerRow(
@@ -204,7 +200,6 @@ export async function bulldozerWriteOneTimePurchase(
 }
 
 export async function bulldozerWriteItemQuantityChange(
-  _prisma: PrismaClientTransaction,
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
 ) {
   await postBulldozerRow(
@@ -219,7 +214,6 @@ export async function bulldozerWriteItemQuantityChange(
 }
 
 export async function bulldozerWriteManualTransaction(
-  _prisma: PrismaClientTransaction,
   transactionId: string,
   transaction: ManualTransactionRow,
 ) {

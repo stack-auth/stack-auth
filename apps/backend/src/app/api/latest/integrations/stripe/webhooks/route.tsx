@@ -230,7 +230,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
-    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
+    await bulldozerWriteOneTimePurchase(upsertedPurchase);
 
     const recipients = await getPaymentRecipients({
       tenancy,

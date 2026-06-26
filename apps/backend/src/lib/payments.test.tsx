@@ -29,7 +29,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
   });
 
   const grantOtp = async (id: string, productId: string, product: ReturnType<typeof makeProduct>) => {
-    await bulldozerWriteOneTimePurchase(prisma as any, {
+    await bulldozerWriteOneTimePurchase({
       id, tenancyId, customerId, customerType: 'CUSTOM',
       productId, priceId: null, product: product as any, quantity: 1,
       stripePaymentIntentId: null, revokedAt: null, refundedAt: null,
@@ -82,7 +82,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
         cancelAtPeriodEnd: false, creationSource: 'TEST_MODE',
       },
     });
-    await bulldozerWriteSubscription(prisma as any, {
+    await bulldozerWriteSubscription({
       id, tenancyId, customerId, customerType: 'CUSTOM',
       productId, priceId: null, product: product as any, quantity: 1,
       stripeSubscriptionId: `stripe-${id}`, status: 'active',

@@ -34,7 +34,7 @@ async function getInternalBillingTenancy(): Promise<Tenancy> {
 
 /**
  * Writes the `free` Subscription row. Caller is responsible for a subsequent
- * `bulldozerWriteSubscription(prisma, sub)` after any outer transaction
+ * `bulldozerWriteSubscription(sub)` after any outer transaction
  * commits, and for verifying there's no conflicting plan in the same line.
  *
  * `prisma` is deliberately typed as the union — the helper does a single
@@ -230,6 +230,6 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   // COMMIT and can't nest. If it fails after the Prisma insert committed,
   // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
   // all other dual-write call sites, reconciled by the next sync.
-  await bulldozerWriteSubscription(internalPrisma, createdSub);
+  await bulldozerWriteSubscription(createdSub);
   return true;
 }

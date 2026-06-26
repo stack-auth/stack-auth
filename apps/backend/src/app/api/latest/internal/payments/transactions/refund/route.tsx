@@ -736,7 +736,7 @@ async function handleSubscriptionRefund(options: {
   }
 
   if (updatedSub) {
-    await bulldozerWriteSubscription(prisma, updatedSub);
+    await bulldozerWriteSubscription(updatedSub);
   }
 
   // Regrant the free plan if a Hexclave billing team just lost its only
@@ -828,7 +828,7 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,
@@ -929,7 +929,7 @@ async function handleOneTimePurchaseRefund(options: {
       where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
       data: { revokedAt: now },
     });
-    await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+    await bulldozerWriteOneTimePurchase(updatedPurchase);
   }
 
   // ── Refund row ────────────────────────────────────────────────────────
@@ -986,7 +986,7 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,
