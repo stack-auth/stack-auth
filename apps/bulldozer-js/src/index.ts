@@ -1,6 +1,7 @@
 import { node } from "@elysiajs/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
-import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
+import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -390,6 +391,9 @@ function parseRefundTxnId(txnId: string): { sourceTxnId: string, uuid: string } 
 
 function buildAdjustedByLookupFromRefundRows(rows: TransactionRow[]): Map<string, Transaction["adjusted_by"]> {
   const lookup = new Map<string, Transaction["adjusted_by"]>();
+  // TODO: this spread copies the whole array on every add — O(k^2) for a source
+  // with k refunds. Fine while refunds-per-source stays small; switch to pushing
+  // into a per-source array if that grows.
   const addLink = (sourceTxnId: string, refundTxnId: string, entryIndex: number) => {
     lookup.set(sourceTxnId, [...lookup.get(sourceTxnId) ?? [], { transaction_id: refundTxnId, entry_index: entryIndex }]);
   };
@@ -475,7 +479,14 @@ async function readPriorRefundSummary(options: { tenancyId: string, customerType
       if (entry.type === "product-revocation" && entry.adjustedTransactionId === options.sourceTxnId) productRevoked = true;
       if (entry.type === "money-transfer") {
         const usd = entry.chargedAmount.USD;
-        if (typeof usd === "string") refundedStripeUnits += Math.round(Number(usd) * 10 ** USD_CURRENCY.stripeDecimals);
+        if (typeof usd === "string") {
+          // Match the old server exactly: strip a leading "-" and run through the
+          // shared, schema-validated converter. This rejects non-finite/garbage
+          // amounts (throws) instead of producing NaN, which would otherwise make
+          // `remaining = NaN` and silently disable the refund cap downstream.
+          const absolute = usd.startsWith("-") ? usd.slice(1) : usd;
+          refundedStripeUnits += moneyAmountToStripeUnits(absolute as MoneyAmount, USD_CURRENCY);
+        }
       }
     }
   }
