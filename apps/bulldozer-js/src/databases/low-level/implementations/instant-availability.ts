@@ -1,4 +1,5 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { traceSpan } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelKvDump, LowLevelKvStore } from "../index.js";
@@ -112,7 +113,16 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       const resolvedUnderlyingSeq = await underlyingSeq;
       await wrapped.waitUntilAvailable(resolvedUnderlyingSeq);
     });
-    underlyingAvailable.catch(() => {});
+    // This is the "instant availability" trade-off: callers (e.g. write routes)
+    // return as soon as the value is in this in-memory cache, NOT after it lands
+    // in the wrapped (on-disk) store. If that background commit fails, the data
+    // never reached disk even though the caller saw success — so we must surface
+    // it to Sentry rather than swallowing it, so it can be detected and the row
+    // reconciled. We deliberately don't block any caller on this (no fsync on the
+    // hot path); other awaiters of `underlyingAvailable` handle the rejection
+    // themselves, this handler exists purely to report + avoid an unhandled
+    // rejection.
+    underlyingAvailable.catch(error => captureError("bulldozer-js:instant-availability-durable-commit", error));
     const record = { underlyingSeq, underlyingAvailable, isSettled: false };
     createdSeqRecords++;
     pendingSeqRecords.add(record);

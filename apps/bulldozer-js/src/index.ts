@@ -2,7 +2,7 @@ import { node } from "@elysiajs/node";
 import type { Transaction, TransactionEntry, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
-import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { Elysia } from "elysia";
@@ -85,21 +85,30 @@ function timingHeaders(startedAt: number): HeadersInit | undefined {
   return { "x-bulldozer-handler-ms": (performance.now() - startedAt).toFixed(3) };
 }
 
-async function handler(operation: () => Promise<unknown>) {
+async function handler(label: string, operation: () => Promise<unknown>) {
   const startedAt = performance.now();
   return await traceSpan("bulldozer-js.http.handler", async () => {
     try {
       return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown Bulldozer server error";
-      return jsonResponse({ error: "bulldozer_server_error", message }, { status: 500, headers: timingHeaders(startedAt) });
+      if (StatusError.isStatusError(error) && error.isClientError()) {
+        // Bad request from the caller (malformed body, params, cursor, etc.). The
+        // message is non-sensitive and helps the caller fix the request, so echo
+        // it; don't capture it as a server fault (it isn't one).
+        return jsonResponse({ error: "bad_request", message: error.message }, { status: error.getStatusCode(), headers: timingHeaders(startedAt) });
+      }
+      // Genuine server fault (including poisoned stored data). Keep full context
+      // server-side via Sentry, but never leak internal error messages to the
+      // caller — only a generic body.
+      captureError(`bulldozer-js:${label}`, error);
+      return jsonResponse({ error: "bulldozer_server_error" }, { status: 500, headers: timingHeaders(startedAt) });
     }
   });
 }
 
 function parseCustomerType(value: string): CustomerType {
   if (value === "user" || value === "team" || value === "custom") return value;
-  throw new Error(`Invalid customer type: ${value}`);
+  throw new StatusError(StatusError.BadRequest, `Invalid customer type: ${value}`);
 }
 
 function parseTransactionType(value: string | undefined): TransactionType | undefined {
@@ -115,24 +124,24 @@ function parseTransactionType(value: string | undefined): TransactionType | unde
   ) {
     return value;
   }
-  throw new Error(`Invalid transaction type: ${value}`);
+  throw new StatusError(StatusError.BadRequest, `Invalid transaction type: ${value}`);
 }
 
 function readObjectBody(body: unknown): Record<string, unknown> {
-  if (typeof body !== "object" || body == null || Array.isArray(body)) throw new Error("Expected JSON object body");
+  if (typeof body !== "object" || body == null || Array.isArray(body)) throw new StatusError(StatusError.BadRequest, "Expected JSON object body");
   return Object.fromEntries(Object.entries(body));
 }
 
 function readStringField(body: Record<string, unknown>, fieldName: string): string {
   const value = body[fieldName];
-  if (typeof value !== "string" || value.length === 0) throw new Error(`Expected non-empty string field: ${fieldName}`);
+  if (typeof value !== "string" || value.length === 0) throw new StatusError(StatusError.BadRequest, `Expected non-empty string field: ${fieldName}`);
   return value;
 }
 
 function readRowData(body: unknown): Record<string, unknown> {
   const record = readObjectBody(body);
   const rowData = record.rowData;
-  if (typeof rowData !== "object" || rowData == null || Array.isArray(rowData)) throw new Error("Expected rowData object");
+  if (typeof rowData !== "object" || rowData == null || Array.isArray(rowData)) throw new StatusError(StatusError.BadRequest, "Expected rowData object");
   return Object.fromEntries(Object.entries(rowData));
 }
 
@@ -167,7 +176,7 @@ async function latestRowData<T>(options: { tableId: string, tenancyId: string, c
 
 async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: Record<string, unknown> }): Promise<void> {
   if (readRowTenancyId(options.rowData) !== options.tenancyId) {
-    throw new Error(`Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
+    throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
   await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
     tableId: options.tableId,
@@ -216,12 +225,17 @@ type LedgerCursor = { createdAtMillis: number, txnId: string };
 type ListedTransactionRow = TransactionRow & { sourceId: string };
 
 function parseCursor(cursor: string): LedgerCursor {
-  const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("Invalid cursor");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new StatusError(StatusError.BadRequest, "Invalid cursor");
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new StatusError(StatusError.BadRequest, "Invalid cursor");
   const createdAtMillis = Reflect.get(parsed, "createdAtMillis");
   const txnId = Reflect.get(parsed, "txnId");
   if (typeof createdAtMillis !== "number" || !Number.isInteger(createdAtMillis) || typeof txnId !== "string" || txnId.length === 0) {
-    throw new Error("Invalid cursor");
+    throw new StatusError(StatusError.BadRequest, "Invalid cursor");
   }
   return { createdAtMillis, txnId };
 }
@@ -443,22 +457,35 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
     .filter(row => options.customerType === undefined || row.customerType === options.customerType)
     .filter(row => options.customerId === undefined || row.customerId === options.customerId);
   const adjustedByLookup = buildAdjustedByLookupFromRefundRows(refundRows);
-  const transactions = pageRows.map((row): Transaction => {
-    const listedRow: ListedTransactionRow = { ...row, sourceId: parseSourceId(row) };
-    return {
-      id: listedRow.sourceId,
-      created_at_millis: listedRow.createdAtMillis,
-      effective_at_millis: listedRow.effectiveAtMillis,
-      type: mapLedgerTransactionTypeToApiType(listedRow.type as LedgerTransactionType),
-      customer_type: listedRow.customerType,
-      customer_id: listedRow.customerId,
-      entries: listedRow.entries.flatMap(entry => {
-        const mapped = mapLedgerEntry(entry);
-        return mapped === null ? [] : [mapped];
-      }),
-      adjusted_by: adjustedByLookup.get(listedRow.txnId) ?? [],
-      test_mode: listedRow.paymentProvider === "test_mode",
-    };
+  const transactions = pageRows.flatMap((row): Transaction[] => {
+    try {
+      const listedRow: ListedTransactionRow = { ...row, sourceId: parseSourceId(row) };
+      return [{
+        id: listedRow.sourceId,
+        created_at_millis: listedRow.createdAtMillis,
+        effective_at_millis: listedRow.effectiveAtMillis,
+        type: mapLedgerTransactionTypeToApiType(listedRow.type as LedgerTransactionType),
+        customer_type: listedRow.customerType,
+        customer_id: listedRow.customerId,
+        entries: listedRow.entries.flatMap(entry => {
+          const mapped = mapLedgerEntry(entry);
+          return mapped === null ? [] : [mapped];
+        }),
+        adjusted_by: adjustedByLookup.get(listedRow.txnId) ?? [],
+        test_mode: listedRow.paymentProvider === "test_mode",
+      }];
+    } catch (error) {
+      // A single poisoned stored transaction row shouldn't blow up the whole
+      // page. Capture it with enough context (tenancy/txn/type/customer) to
+      // locate and repair the bad row, then skip it so the rest still renders.
+      // Pagination stays consistent because nextCursor is derived from pageRows,
+      // not from this mapped output.
+      captureError("bulldozer-js:list-transactions:poisoned-row", new HexclaveAssertionError(
+        "Failed to map a stored transaction row to an API transaction; skipping it",
+        { tenancyId: row.tenancyId, txnId: row.txnId, type: row.type, customerType: row.customerType, customerId: row.customerId, cause: error },
+      ));
+      return [];
+    }
   });
   const hasMore = rows.length > options.limit;
   const last = pageRows.at(-1);
@@ -527,9 +554,9 @@ function ok() {
 const app = new Elysia({ adapter: node() })
   .use(instrumentation)
   .get("/health", () => ({ ok: true }))
-  .post("/internal/payments/init", () => handler(async () => ok()))
-  .post("/internal/payments/verify-data-integrity", () => handler(async () => ok()))
-  .get("/v1/:tenancyId/transactions", ({ params, query }) => handler(async () => {
+  .post("/internal/payments/init", () => handler("init", async () => ok()))
+  .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
+  .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
     const result = await listTransactions({
       tenancyId: params.tenancyId,
@@ -541,7 +568,7 @@ const app = new Elysia({ adapter: node() })
     });
     return { transactions: result.transactions, next_cursor: result.nextCursor };
   }))
-  .get("/v1/:tenancyId/customers/:customerType/:customerId/transactions", ({ params, query }) => handler(async () => {
+  .get("/v1/:tenancyId/customers/:customerType/:customerId/transactions", ({ params, query }) => handler("list-customer-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
     const result = await listTransactions({
       tenancyId: params.tenancyId,
@@ -553,11 +580,11 @@ const app = new Elysia({ adapter: node() })
     });
     return { transactions: result.transactions, next_cursor: result.nextCursor };
   }))
-  .post("/v1/:tenancyId/transactions/:transactionId/refund", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/transactions/:transactionId/refund", ({ params, body }) => handler("set-manual-transaction", async () => {
     await setManualTransactionRow({ tenancyId: params.tenancyId, transactionId: params.transactionId, body });
     return ok();
   }))
-  .post("/v1/:tenancyId/refunds/prior-summary", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/refunds/prior-summary", ({ params, body }) => handler("refund-prior-summary", async () => {
     const request = readObjectBody(body);
     return await readPriorRefundSummary({
       tenancyId: params.tenancyId,
@@ -566,7 +593,7 @@ const app = new Elysia({ adapter: node() })
       sourceTxnId: readStringField(request, "sourceTxnId"),
     });
   }))
-  .post("/v1/:tenancyId/refunds/outstanding-item-grants", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/refunds/outstanding-item-grants", ({ params, body }) => handler("refund-outstanding-item-grants", async () => {
     const request = readObjectBody(body);
     return {
       grants: await readOutstandingItemGrants({
@@ -578,31 +605,31 @@ const app = new Elysia({ adapter: node() })
       }),
     };
   }))
-  .get("/v1/:tenancyId/customers/:customerType/:customerId/owned-products", ({ params }) => handler(async () => ({
+  .get("/v1/:tenancyId/customers/:customerType/:customerId/owned-products", ({ params }) => handler("get-owned-products", async () => ({
     ownedProducts: await getOwnedProductsForCustomer({ tenancyId: params.tenancyId, customerType: parseCustomerType(params.customerType), customerId: params.customerId }),
   })))
-  .get("/v1/:tenancyId/customers/:customerType/:customerId/item-quantities", ({ params }) => handler(async () => ({
+  .get("/v1/:tenancyId/customers/:customerType/:customerId/item-quantities", ({ params }) => handler("get-item-quantities", async () => ({
     itemQuantities: await getItemQuantitiesForCustomer({ tenancyId: params.tenancyId, customerType: parseCustomerType(params.customerType), customerId: params.customerId }),
   })))
-  .get("/v1/:tenancyId/customers/:customerType/:customerId/subscriptions", ({ params }) => handler(async () => ({
+  .get("/v1/:tenancyId/customers/:customerType/:customerId/subscriptions", ({ params }) => handler("get-subscriptions", async () => ({
     subscriptions: await getSubscriptionMapForCustomer({ tenancyId: params.tenancyId, customerType: parseCustomerType(params.customerType), customerId: params.customerId }),
   })))
   .post("/v1/:tenancyId/customers/:customerType/:customerId/manual-product-grants", () => notImplemented("create-manual-product-grant"))
-  .post("/v1/:tenancyId/customers/:customerType/:customerId/manual-item-quantity-changes", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/customers/:customerType/:customerId/manual-item-quantity-changes", ({ params, body }) => handler("set-manual-item-quantity-change", async () => {
     const rowData = readRowData(body);
-    if (rowData.customerType !== params.customerType || rowData.customerId !== params.customerId) throw new Error("Manual item quantity change row does not match URL customer");
+    if (rowData.customerType !== params.customerType || rowData.customerId !== params.customerId) throw new StatusError(StatusError.BadRequest, "Manual item quantity change row does not match URL customer");
     await setStoredRow({ tenancyId: params.tenancyId, tableId: schema.manualItemQuantityChanges, rowId: readStringField(rowData, "id"), rowData });
     return ok();
   }))
-  .post("/v1/:tenancyId/stripe/subscription-invoices/changed", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/stripe/subscription-invoices/changed", ({ params, body }) => handler("set-subscription-invoice", async () => {
     await setStoredRowFromBody({ tenancyId: params.tenancyId, tableId: schema.subscriptionInvoices, body });
     return ok();
   }))
-  .post("/v1/:tenancyId/stripe/subscriptions/changed", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/stripe/subscriptions/changed", ({ params, body }) => handler("set-subscription", async () => {
     await setStoredRowFromBody({ tenancyId: params.tenancyId, tableId: schema.subscriptions, body });
     return ok();
   }))
-  .post("/v1/:tenancyId/stripe/one-time-purchases/changed", ({ params, body }) => handler(async () => {
+  .post("/v1/:tenancyId/stripe/one-time-purchases/changed", ({ params, body }) => handler("set-one-time-purchase", async () => {
     await setStoredRowFromBody({ tenancyId: params.tenancyId, tableId: schema.oneTimePurchases, body });
     return ok();
   }))
