@@ -2,6 +2,7 @@ import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { PRODUCTION_AI_PROXY_BASE_URL } from "./proxy-url";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -62,7 +63,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 export function createOpenRouterProvider() {
   const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.hexclave.com/api/latest/integrations/ai-proxy/v1";
+    : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,

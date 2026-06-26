@@ -42,13 +42,13 @@
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Sandbox } from "@vercel/sandbox";
+import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
 
 const AGENT_SDK_VERSION = "0.2.73";
 const BASE = "/vercel/sandbox";
 const REPO_DIR = `${BASE}/repo`;
 const TOOLS_DIR = BASE; // agent SDK + runner live here, separate from the repo
 const DEFAULT_AGENT_MODEL = "anthropic/claude-haiku-4.5";
-const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 const SANDBOX_TIMEOUT_MS = 900_000;
 const REVIEW_SANDBOX_KEEPALIVE_MS = 5 * 60_000;
 const GIT_BOT_NAME = "Hexclave Config Bot";
@@ -330,7 +330,7 @@ async function runAgent(sandbox: Sandbox, prompt: string, onProgress?: AgentProg
   const agentInput = {
     prompt,
     model: getEnvVariable("STACK_CONFIG_AGENT_MODEL", DEFAULT_AGENT_MODEL),
-    baseUrl: getEnvVariable("STACK_CLAUDE_PROXY_URL", DEFAULT_PROXY_URL),
+    baseUrl: getEnvVariable("STACK_CLAUDE_PROXY_URL", PRODUCTION_AI_PROXY_BASE_URL),
     apiKey: "stack-auth-proxy",
   };
   // Write runner.mjs fresh each run (not baked into the base snapshot) so changes
