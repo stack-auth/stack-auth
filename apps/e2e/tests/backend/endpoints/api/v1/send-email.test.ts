@@ -285,8 +285,10 @@ describe("shared email server", () => {
     const messages = await mailbox.waitForMessagesWithSubject("[Hexclave dev email] Original Subject");
     expect(messages.length).toBeGreaterThanOrEqual(1);
     const html = messages[0].body?.html ?? "";
-    expect(html).toContain("development email sent via Hexclave's shared email server");
+    expect(html).toContain("set up a custom email server in your Hexclave dashboard");
     expect(html).toContain("Original custom email body");
+    // The notice must be injected inside <body>, not before the document, to keep the markup valid.
+    expect(html.indexOf("set up a custom email server in your Hexclave dashboard")).toBeGreaterThan(html.indexOf("<body"));
   });
 
   it("should NOT wrap Hexclave default-template emails sent over the shared server", async ({ expect }) => {
@@ -311,7 +313,7 @@ describe("shared email server", () => {
     const messages = await mailbox.waitForMessagesWithSubject("You have been invited to sign in to Shared Default Template Project");
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].subject).not.toContain("[Hexclave dev email]");
-    expect(messages[0].body?.html ?? "").not.toContain("development email sent via Hexclave's shared email server");
+    expect(messages[0].body?.html ?? "").not.toContain("set up a custom email server in your Hexclave dashboard");
   });
 });
 

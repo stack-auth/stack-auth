@@ -117,18 +117,27 @@ export function wrapSharedDevEmail(content: { subject: string, html?: string, te
   const wrappedSubject = `[Hexclave dev email] ${content.subject}`;
 
   const noticeHtml = `<div style="margin:0 0 16px 0;padding:12px 16px;border:1px solid #f0c000;border-radius:8px;background:#fff8e1;color:#5b4a00;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;">`
-    + `<strong>This is a development email sent via Hexclave's shared email server.</strong><br />`
-    + `It was sent by an app that has not configured its own email server yet. If you were not expecting this email, you can safely ignore it.`
+    + `<strong>This is a development email from an app built on Hexclave.</strong><br />`
+    + `The app hasn't configured its own email server yet, so it was sent through Hexclave's shared development email server. If this is your app, set up a custom email server in your Hexclave dashboard to send emails from your own domain. If you don't recognize this app, you can ignore this email.`
     + `</div>`;
 
-  const noticeText = `[Development email sent via Hexclave's shared email server]\n`
-    + `It was sent by an app that has not configured its own email server yet. If you were not expecting this email, you can safely ignore it.\n\n`;
+  const noticeText = `[Development email from an app built on Hexclave]\n`
+    + `The app hasn't configured its own email server yet, so it was sent through Hexclave's shared development email server. If this is your app, set up a custom email server in your Hexclave dashboard to send emails from your own domain. If you don't recognize this app, you can ignore this email.\n\n`;
 
   return {
     subject: wrappedSubject,
-    html: content.html === undefined ? undefined : noticeHtml + content.html,
+    html: content.html === undefined ? undefined : injectDevNoticeIntoHtml(content.html, noticeHtml),
     text: content.text === undefined ? undefined : noticeText + content.text,
   };
+}
+
+// Insert the notice just inside <body> so it stays valid markup for full HTML documents; fall back to prepending for fragments.
+function injectDevNoticeIntoHtml(html: string, noticeHtml: string): string {
+  const bodyOpenTag = /<body[^>]*>/i;
+  if (bodyOpenTag.test(html)) {
+    return html.replace(bodyOpenTag, (match) => match + noticeHtml);
+  }
+  return noticeHtml + html;
 }
 
 export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailConfig> {
