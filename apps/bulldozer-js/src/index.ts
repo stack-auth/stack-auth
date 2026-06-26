@@ -234,7 +234,7 @@ function parseCursor(cursor: string): LedgerCursor {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new StatusError(StatusError.BadRequest, "Invalid cursor");
   const createdAtMillis = Reflect.get(parsed, "createdAtMillis");
   const txnId = Reflect.get(parsed, "txnId");
-  if (typeof createdAtMillis !== "number" || !Number.isInteger(createdAtMillis) || typeof txnId !== "string" || txnId.length === 0) {
+  if (typeof createdAtMillis !== "number" || !Number.isInteger(createdAtMillis) || createdAtMillis < 0 || typeof txnId !== "string" || txnId.length === 0) {
     throw new StatusError(StatusError.BadRequest, "Invalid cursor");
   }
   return { createdAtMillis, txnId };
@@ -428,35 +428,80 @@ function sortTransactions(a: TransactionRow, b: TransactionRow) {
   return b.createdAtMillis - a.createdAtMillis || stringCompare(b.txnId, a.txnId);
 }
 
-async function allTransactionRows(): Promise<TransactionRow[]> {
-  const { snapshot } = await bulldozerDb.getSnapshot();
-  const groups = await collect(snapshot.listGroups({ tableId: schema.transactions, range: {} }));
-  const rows: TransactionRow[] = [];
-  for (const group of groups) {
-    for await (const row of snapshot.listRowsInGroup({ tableId: schema.transactions, groupKey: group.groupKey, range: {} })) {
-      rows.push(row.rowData as unknown as TransactionRow);
+// Newest-first recency key matching the tenancy date index's sort order.
+function recencySortKey(cursor: LedgerCursor): PiledriverObject {
+  return [cursor.createdAtMillis, cursor.txnId];
+}
+
+// Refund links for a page: a refund (or product revocation) always lives in the same
+// customer group as the transaction it adjusts, so we only need to scan the distinct
+// customer groups present in the page — bounded by the page, not the tenancy.
+async function buildAdjustedByForPage(snapshot: BulldozerSnapshot, pageRows: TransactionRow[]): Promise<Map<string, Transaction["adjusted_by"]>> {
+  const seenGroups = new Set<string>();
+  const refundRows: TransactionRow[] = [];
+  for (const pageRow of pageRows) {
+    const groupKey = customerGroupKey(pageRow);
+    const groupKeyJson = JSON.stringify(groupKey);
+    if (seenGroups.has(groupKeyJson)) continue;
+    seenGroups.add(groupKeyJson);
+    for await (const groupRow of snapshot.listRowsInGroup({ tableId: schema.transactions, groupKey, range: {} })) {
+      const txn = groupRow.rowData as unknown as TransactionRow;
+      const isRefund = parseRefundTxnId(txn.txnId) !== null;
+      const hasRevocation = txn.entries.some(entry => entry.type === "product-revocation");
+      if (isRefund || hasRevocation) refundRows.push(txn);
     }
   }
-  return rows;
+  return buildAdjustedByLookupFromRefundRows(refundRows);
 }
 
 async function listTransactions(options: { tenancyId: string, limit: number, cursor: string | undefined, type: TransactionType | undefined, customerType: CustomerType | undefined, customerId: string | undefined }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
   const ledgerTypes = new Set(getLedgerTypesForFilter(options.type));
   if (ledgerTypes.size === 0) return { transactions: [], nextCursor: null };
+  // Clamp here too (not just at the HTTP routes) so the in-process contract can't be
+  // violated by a future caller and dead-end pagination with hasMore but no rows.
+  const limit = Math.max(1, Math.min(200, Number.isInteger(options.limit) ? options.limit : 50));
   const cursor = options.cursor === undefined ? null : parseCursor(options.cursor);
-  const rows = (await allTransactionRows())
-    .filter(row => row.tenancyId === options.tenancyId)
-    .filter(row => ledgerTypes.has(row.type as LedgerTransactionType))
-    .filter(row => options.customerType === undefined || row.customerType === options.customerType)
-    .filter(row => options.customerId === undefined || row.customerId === options.customerId)
-    .filter(row => cursor === null || row.createdAtMillis < cursor.createdAtMillis || (row.createdAtMillis === cursor.createdAtMillis && stringCompare(row.txnId, cursor.txnId) < 0))
-    .sort(sortTransactions);
-  const pageRows = rows.slice(0, options.limit);
-  const refundRows = (await allTransactionRows())
-    .filter(row => row.tenancyId === options.tenancyId && row.type === "refund")
-    .filter(row => options.customerType === undefined || row.customerType === options.customerType)
-    .filter(row => options.customerId === undefined || row.customerId === options.customerId);
-  const adjustedByLookup = buildAdjustedByLookupFromRefundRows(refundRows);
+  const { snapshot } = await bulldozerDb.getSnapshot();
+
+  const matchesFilters = (row: TransactionRow) =>
+    ledgerTypes.has(row.type as LedgerTransactionType)
+    && (options.customerType === undefined || row.customerType === options.customerType)
+    && (options.customerId === undefined || row.customerId === options.customerId);
+  const matchesCursor = (row: TransactionRow) =>
+    cursor === null
+    || row.createdAtMillis < cursor.createdAtMillis
+    || (row.createdAtMillis === cursor.createdAtMillis && stringCompare(row.txnId, cursor.txnId) < 0);
+
+  // We fetch limit+1 to know whether there's a next page.
+  let pageRows: TransactionRow[];
+  if (options.customerType !== undefined && options.customerId !== undefined) {
+    // Customer-scoped: read just that customer's group (memory bounded by one customer's
+    // transaction count, normally small) and order by recency in code.
+    const groupKey = customerGroupKey({ tenancyId: options.tenancyId, customerType: options.customerType, customerId: options.customerId });
+    const matching: TransactionRow[] = [];
+    for await (const row of snapshot.listRowsInGroup({ tableId: schema.transactions, groupKey, range: {} })) {
+      const txn = row.rowData as unknown as TransactionRow;
+      if (matchesFilters(txn) && matchesCursor(txn)) matching.push(txn);
+    }
+    matching.sort(sortTransactions);
+    pageRows = matching.slice(0, limit + 1);
+  } else {
+    // Tenancy-wide: walk the date index newest-first, bounded below by the cursor. The
+    // index is already in (createdAtMillis, txnId) order, so we read ~limit rows and stop
+    // early once we've matched limit+1; memory is O(limit), never the whole tenancy.
+    const range = cursor === null ? { reverse: true } : { reverse: true, lt: recencySortKey(cursor) };
+    pageRows = [];
+    for await (const row of snapshot.listRowsInGroup({ tableId: schema.transactionsByTenancy, groupKey: { tenancyId: options.tenancyId }, range })) {
+      const txn = row.rowData as unknown as TransactionRow;
+      if (!matchesFilters(txn)) continue;
+      pageRows.push(txn);
+      if (pageRows.length > limit) break;
+    }
+  }
+
+  const hasMore = pageRows.length > limit;
+  pageRows = pageRows.slice(0, limit);
+  const adjustedByLookup = await buildAdjustedByForPage(snapshot, pageRows);
   const transactions = pageRows.flatMap((row): Transaction[] => {
     try {
       const listedRow: ListedTransactionRow = { ...row, sourceId: parseSourceId(row) };
@@ -487,7 +532,6 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
       return [];
     }
   });
-  const hasMore = rows.length > options.limit;
   const last = pageRows.at(-1);
   return {
     transactions,
@@ -498,10 +542,14 @@ async function listTransactions(options: { tenancyId: string, limit: number, cur
 async function readPriorRefundSummary(options: { tenancyId: string, customerType: CustomerType, customerId: string, sourceTxnId: string }) {
   let refundedStripeUnits = 0;
   let productRevoked = false;
-  const refunds = (await allTransactionRows())
-    .filter(row => row.tenancyId === options.tenancyId && row.type === "refund" && row.customerType === options.customerType && row.customerId === options.customerId)
-    .filter(row => row.txnId.startsWith(`${REFUND_TXN_PREFIX}${options.sourceTxnId}:`));
-  for (const row of refunds) {
+  const refundPrefix = `${REFUND_TXN_PREFIX}${options.sourceTxnId}:`;
+  // The refund route always knows the customer, so scan only that customer's group. This
+  // is a running-sum aggregate (O(1) memory) over the full group — completeness matters
+  // here, so unlike the paginated list it reads the whole group, not a page.
+  const { snapshot } = await bulldozerDb.getSnapshot();
+  for await (const groupRow of snapshot.listRowsInGroup({ tableId: schema.transactions, groupKey: customerGroupKey(options), range: {} })) {
+    const row = groupRow.rowData as unknown as TransactionRow;
+    if (row.type !== "refund" || !row.txnId.startsWith(refundPrefix)) continue;
     for (const entry of row.entries) {
       if (entry.type === "product-revocation" && entry.adjustedTransactionId === options.sourceTxnId) productRevoked = true;
       if (entry.type === "money-transfer") {
@@ -541,10 +589,17 @@ function computeOutstandingItemGrants(rows: Array<{ txnId: unknown, entries: unk
 
 async function readOutstandingItemGrants(options: { tenancyId: string, customerType: CustomerType, customerId: string, sourceTxnId: string, igrSourceId: string }) {
   const igrPrefix = `igr:${options.igrSourceId}:`;
-  const rows = (await allTransactionRows())
-    .filter(row => row.tenancyId === options.tenancyId && row.customerType === options.customerType && row.customerId === options.customerId)
-    .filter(row => row.txnId === options.sourceTxnId || (row.type === "item-grant-repeat" && row.txnId.startsWith(igrPrefix)));
-  return computeOutstandingItemGrants(rows.map(row => ({ txnId: row.txnId, entries: row.entries })));
+  // Scan only the customer's group and keep just the source txn + its igr repeats (not the
+  // rest of the group), so memory is bounded by one source's repeat events.
+  const { snapshot } = await bulldozerDb.getSnapshot();
+  const rows: Array<{ txnId: string, entries: TransactionRow["entries"] }> = [];
+  for await (const groupRow of snapshot.listRowsInGroup({ tableId: schema.transactions, groupKey: customerGroupKey(options), range: {} })) {
+    const row = groupRow.rowData as unknown as TransactionRow;
+    if (row.txnId === options.sourceTxnId || (row.type === "item-grant-repeat" && row.txnId.startsWith(igrPrefix))) {
+      rows.push({ txnId: row.txnId, entries: row.entries });
+    }
+  }
+  return computeOutstandingItemGrants(rows);
 }
 
 function ok() {

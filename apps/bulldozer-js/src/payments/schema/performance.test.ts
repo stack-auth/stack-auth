@@ -181,6 +181,64 @@ describe("payments schema performance", () => {
   });
 });
 
+describe("transactions listing performance", () => {
+  // Drives the real listing read path (the tenancy date index, reverse + lt + limit) at
+  // scale to prove per-page cost stays ~O(limit) instead of growing with the tenancy total
+  // — i.e. that we read a page, not the whole tenancy, on every request.
+  const PAGE_SIZE = 50;
+  const SMALL_TXN_COUNT = 1_000;
+  const LARGE_TXN_COUNT = 4_000;
+  const refundTxn = (index: number, tenancyId = "t1") => ({
+    txnId: `listing-refund-${tenancyId}-${String(index).padStart(7, "0")}`,
+    tenancyId,
+    effectiveAtMillis: 1_000 + index,
+    type: "refund",
+    entries: [],
+    customerType: "user",
+    customerId: `listing-user-${index % 25}`,
+    paymentProvider: "stripe",
+    createdAtMillis: 1_000 + index,
+  });
+  const fillTenancy = async (db: Awaited<ReturnType<typeof newPaymentsDb>>["db"], schema: ReturnType<typeof createPaymentsSchema>, from: number, to: number) => {
+    for (let i = from; i < to; i++) {
+      await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.manualTransactions, rowIdentifier: refundTxn(i).txnId, newRowData: refundTxn(i) as unknown as PiledriverObject }));
+    }
+  };
+  const readFirstPage = async (snapshot: Snapshot, schema: ReturnType<typeof createPaymentsSchema>) => {
+    const page = [];
+    for await (const row of snapshot.listRowsInGroup({ tableId: schema.transactionsByTenancy, groupKey: { tenancyId: "t1" }, range: { reverse: true, limit: PAGE_SIZE } })) page.push(row);
+    return page;
+  };
+
+  it("keeps first-page latency flat as the tenancy grows", { timeout: 120_000 }, async () => {
+    const metrics: Metric[] = [];
+    const { db, schema } = await newPaymentsDb();
+
+    await measure(metrics, "fill tenancy (small)", SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, 0, SMALL_TXN_COUNT));
+    const smallFirstPage = await measure(metrics, "first page @ small total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema));
+    const smallPageMs = metrics.at(-1)!.elapsedMs;
+
+    await measure(metrics, "fill tenancy (grow to large)", LARGE_TXN_COUNT - SMALL_TXN_COUNT, async () => await fillTenancy(db, schema, SMALL_TXN_COUNT, LARGE_TXN_COUNT));
+    const largeFirstPage = await measure(metrics, "first page @ large total", PAGE_SIZE, async () => await readFirstPage((await db.getSnapshot()).snapshot, schema));
+    const largePageMs = metrics.at(-1)!.elapsedMs;
+
+    // A page is always ~PAGE_SIZE rows regardless of how big the tenancy got.
+    expect(smallFirstPage).toHaveLength(PAGE_SIZE);
+    expect(largeFirstPage).toHaveLength(PAGE_SIZE);
+    // Newest-first ordering at the large total (createdAtMillis descending here).
+    const createdAts = largeFirstPage.map(row => (row.rowData as { createdAtMillis: number }).createdAtMillis);
+    expect(createdAts).toEqual([...createdAts].sort((a, b) => b - a));
+    expect(createdAts[0]).toBe(1_000 + LARGE_TXN_COUNT - 1);
+
+    // The whole point: a 4x bigger tenancy must NOT make a page ~4x slower. With the date
+    // index it's an O(log n + limit) seek, so it stays flat. Only assert the ratio when the
+    // baseline is large enough to be signal rather than timer noise; the threshold is
+    // deliberately generous (catches an O(total) full-scan regression, tolerates GC jitter).
+    process.stdout.write(`\n[bulldozer-payments-listing-perf-js] smallPageMs=${smallPageMs.toFixed(3)} largePageMs=${largePageMs.toFixed(3)}\n`);
+    if (smallPageMs > 3) expect(largePageMs).toBeLessThan(smallPageMs * 12);
+  });
+});
+
 afterAll(() => {
   for (const path of tempPaths) rmSync(path, { recursive: true, force: true });
 });

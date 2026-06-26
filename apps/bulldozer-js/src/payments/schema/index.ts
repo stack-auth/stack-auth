@@ -119,6 +119,16 @@ const customerGroupKey = (row: { tenancyId: string, customerType: CustomerType, 
 });
 const rowObject = <T>(rowData: PiledriverObject) => rowData as unknown as T;
 const toPiledriverObject = (value: unknown): PiledriverObject => JSON.parse(JSON.stringify(value)) as PiledriverObject;
+const tenancyGroupKey = (row: { tenancyId: string }) => ({ tenancyId: row.tenancyId });
+// Recency key for the tenancy-wide list: newest-first ordering is (createdAtMillis, txnId).
+// txnId is unique so it's a deterministic tiebreak for same-millisecond transactions, which
+// keeps cursor paging stable.
+const transactionRecencySortKey = (txn: TransactionRow): PiledriverObject => toPiledriverObject([txn.createdAtMillis, txn.txnId]);
+const compareTransactionRecencyKeys = (a: PiledriverObject, b: PiledriverObject) => {
+  const aKey = rowObject<[number, string]>(a);
+  const bKey = rowObject<[number, string]>(b);
+  return compareNumbers(aKey[0], bKey[0]) || stringCompare(aKey[1], bKey[1]);
+};
 const isObject = (value: PiledriverObject): value is Record<string, PiledriverObject> => typeof value === "object" && value !== null && !Array.isArray(value);
 const paymentProvider = (creationSource: string): PaymentProvider => creationSource === "TEST_MODE" ? "test_mode" : "stripe";
 export const repeatIntervalMs = (interval: DayInterval | "never" | null | undefined): number | null => {
@@ -581,7 +591,7 @@ export function createPaymentsSchema() {
       // [0] sub-start, [1] product-grant, optional money-transfer before item changes.
       const entries: TransactionEntryData[] = [
         { type: "active-subscription-start", customerType: event.customerType, customerId: event.customerId, subscriptionId: event.subscriptionId },
-        { type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, subscriptionId: event.subscriptionId },
+        { type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, priceId: event.priceId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, subscriptionId: event.subscriptionId },
       ];
       if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
       entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })));
@@ -606,10 +616,10 @@ export function createPaymentsSchema() {
       return toPiledriverObject({ txnId: `igr:${event.sourceId}:${event.effectiveAtMillis}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "item-grant-repeat", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-item-grant-repeat-events" }),
     table("payments-txn-one-time-purchase", defineMapTable(row => {
-      const event = rowObject<{ purchaseId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, productLineId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
+      const event = rowObject<{ purchaseId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, priceId: string | null, product: ProductSnapshot, productLineId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
       // otpInitialState hardcodes these entry indices, so keep the order:
       // [0] product-grant, optional money-transfer before item changes.
-      const entries: TransactionEntryData[] = [{ type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, oneTimePurchaseId: event.purchaseId }];
+      const entries: TransactionEntryData[] = [{ type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, priceId: event.priceId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, oneTimePurchaseId: event.purchaseId }];
       if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
       entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })));
       return toPiledriverObject({ txnId: `otp:${event.purchaseId}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "one-time-purchase", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
@@ -633,6 +643,17 @@ export function createPaymentsSchema() {
       groupKeyExtractor: async row => customerGroupKey(rowObject<TransactionRow>(row.rowData)),
       groupKeyComparator: compareJson,
     }), { input: "payments-transactions" }),
+    // Tenancy-wide date index: lets listTransactions read one page (~limit rows) in
+    // newest-first order instead of scanning the whole tenancy. Mirrors the old SQL server's
+    // ORDER BY createdAt DESC, txnId DESC + LIMIT.
+    table("payments-transactions-by-tenancy", declareGroupByTable({
+      groupKeyExtractor: async row => tenancyGroupKey(rowObject<TransactionRow>(row.rowData)),
+      groupKeyComparator: compareJson,
+    }), { input: "payments-transactions" }),
+    table("payments-transactions-by-tenancy-sorted", defineSortTable({
+      sortKeyExtractor: row => transactionRecencySortKey(rowObject<TransactionRow>(row.rowData)),
+      sortKeyComparator: compareTransactionRecencyKeys,
+    }), { input: "payments-transactions-by-tenancy" }),
 
     table("payments-transaction-entries", defineFlatMapTable(row => rowObject<TransactionRow>(row.rowData).entries.map((entry, index) => ({
       ...entry,
@@ -800,6 +821,7 @@ export function createPaymentsSchema() {
     oneTimePurchaseEvents: "payments-one-time-purchase-events",
     manualItemQuantityChangeEvents: "payments-manual-item-quantity-change-events",
     transactions: "payments-transactions-by-customer",
+    transactionsByTenancy: "payments-transactions-by-tenancy-sorted",
     transactionEntries: "payments-transaction-entries",
     compactedTransactionEntries: "payments-compacted-transaction-entries",
     productGrantEntries: "payments-entries-product-grant",

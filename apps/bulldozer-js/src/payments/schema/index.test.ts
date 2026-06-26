@@ -347,6 +347,94 @@ describe("payments schema", () => {
   });
 });
 
+describe("transactions-by-tenancy date index", () => {
+  // The tenancy date index is what lets listTransactions read one page (~limit rows) in
+  // newest-first order without scanning the whole tenancy. These tests pin the ordering,
+  // cursor-range semantics, and tenancy isolation that the index.ts pagination relies on.
+  const refundTxn = (opts: { txnId: string, customerId: string, createdAtMillis: number, tenancyId?: string, customerType?: CustomerType }) => ({
+    txnId: opts.txnId,
+    tenancyId: opts.tenancyId ?? "t1",
+    effectiveAtMillis: opts.createdAtMillis,
+    type: "refund" as const,
+    entries: [] as unknown[],
+    customerType: opts.customerType ?? "user",
+    customerId: opts.customerId,
+    paymentProvider: "stripe" as const,
+    createdAtMillis: opts.createdAtMillis,
+  });
+  const setRefund = async (snapshot: Snapshot, opts: Parameters<typeof refundTxn>[0]) =>
+    await set(snapshot, "payments-manual-transactions", opts.txnId, refundTxn(opts) as unknown as PiledriverObject);
+  // Mirror the index.ts (createdAtMillis, txnId) recency key and its reverse-walk read.
+  const recencyKey = (createdAtMillis: number, txnId: string): PiledriverObject => [createdAtMillis, txnId];
+  const readPage = async (snapshot: Snapshot, tenancyId: string, opts: { lt?: PiledriverObject, limit?: number } = {}) =>
+    (await collect(snapshot.listRowsInGroup({
+      tableId: createPaymentsSchema().transactionsByTenancy,
+      groupKey: { tenancyId },
+      range: { reverse: true, lt: opts.lt, limit: opts.limit },
+    }))).map(row => (row.rowData as unknown as TransactionRow).txnId);
+
+  const seedTenancies = async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await setRefund(snapshot, { txnId: "r-a", customerId: "c1", createdAtMillis: 100 });
+    snapshot = await setRefund(snapshot, { txnId: "r-b", customerId: "c2", createdAtMillis: 200 });
+    snapshot = await setRefund(snapshot, { txnId: "r-c", customerId: "c1", createdAtMillis: 300 });
+    snapshot = await setRefund(snapshot, { txnId: "r-d", customerId: "c2", createdAtMillis: 300 }); // tie at 300
+    snapshot = await setRefund(snapshot, { txnId: "r-e", customerId: "c1", createdAtMillis: 400 });
+    snapshot = await setRefund(snapshot, { txnId: "r-f", customerId: "c3", createdAtMillis: 250, tenancyId: "t2" });
+    return { schema, snapshot };
+  };
+
+  it("orders a tenancy newest-first, breaking createdAt ties by txnId", async () => {
+    const { snapshot } = await seedTenancies();
+    expect(await readPage(snapshot, "t1")).toEqual(["r-e", "r-d", "r-c", "r-b", "r-a"]);
+  });
+
+  it("isolates tenancies", async () => {
+    const { snapshot } = await seedTenancies();
+    expect(await readPage(snapshot, "t2")).toEqual(["r-f"]);
+  });
+
+  it("pages with a cursor lower bound and covers every row exactly once", async () => {
+    const { snapshot } = await seedTenancies();
+    const page1 = await readPage(snapshot, "t1", { limit: 2 });
+    expect(page1).toEqual(["r-e", "r-d"]);
+    // Cursor from the last row of page1 (createdAtMillis=300, txnId="r-d").
+    const page2 = await readPage(snapshot, "t1", { limit: 2, lt: recencyKey(300, "r-d") });
+    expect(page2).toEqual(["r-c", "r-b"]);
+    const page3 = await readPage(snapshot, "t1", { limit: 2, lt: recencyKey(200, "r-b") });
+    expect(page3).toEqual(["r-a"]);
+    expect([...page1, ...page2, ...page3]).toEqual(["r-e", "r-d", "r-c", "r-b", "r-a"]);
+  });
+
+  it("keeps per-customer reads scoped to that customer (the customer-scoped list path)", async () => {
+    const { schema, snapshot } = await seedTenancies();
+    const c1 = ((await rowDatas(snapshot, schema.transactions, customerGroup("c1"))) as unknown as TransactionRow[])
+      .map(txn => txn.txnId).sort(stringCompare);
+    expect(c1).toEqual(["r-a", "r-c", "r-e"]);
+  });
+
+  it("co-locates a source txn, its igr repeats, and refunds in one customer group (the single-group refund-read invariant)", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    // A subscription with a repeating, expiring item produces sub-start + igr repeat txns
+    // in the customer's group; a refund for the source lands in the same group. The
+    // index.ts refund reads depend on all of these living together.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-grant", subscription("sub-grant", {
+      customerId: "u-grant",
+      productId: "prod-grant",
+      product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" } }),
+      currentPeriodEndMillis: 2 * MONTH_MS,
+    }) as unknown as PiledriverObject);
+    snapshot = await snapshot.tick(new Date(MONTH_MS));
+    snapshot = await setRefund(snapshot, { txnId: "refund:sub-start:sub-grant:uuid1", customerId: "u-grant", createdAtMillis: 5_000 });
+
+    const txnIds = ((await rowDatas(snapshot, schema.transactions, customerGroup("u-grant"))) as unknown as TransactionRow[])
+      .map(txn => txn.txnId).sort(stringCompare);
+    expect(txnIds).toEqual([`igr:sub-grant:${MONTH_MS}`, "refund:sub-start:sub-grant:uuid1", "sub-start:sub-grant"]);
+  });
+});
+
 describe("mergeCompactionAggregates", () => {
   const compactionEntry = (overrides: { itemId: string, quantity: number, txnId: string, index: number }): ItemQuantityChangeEntry => ({
     type: "item-quantity-change",

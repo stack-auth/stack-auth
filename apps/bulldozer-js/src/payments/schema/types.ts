@@ -125,7 +125,7 @@ export type TransactionEntryData =
   | { type: "active-subscription-end", customerType: CustomerType, customerId: string, subscriptionId: string }
   | { type: "money-transfer", customerType: CustomerType, customerId: string, chargedAmount: Record<string, string> }
   | { type: "active-subscription-start", customerType: CustomerType, customerId: string, subscriptionId: string }
-  | { type: "product-grant", customerType: CustomerType, customerId: string, productId: string | null, product: ProductSnapshot, quantity: number, productLineId: string | null, subscriptionId?: string | null, oneTimePurchaseId?: string | null }
+  | { type: "product-grant", customerType: CustomerType, customerId: string, productId: string | null, priceId: string | null, product: ProductSnapshot, quantity: number, productLineId: string | null, subscriptionId?: string | null, oneTimePurchaseId?: string | null }
   | { type: "product-revocation", customerType: CustomerType, customerId: string, adjustedTransactionId: string, adjustedEntryIndex: number, quantity: number, productId: string | null, productLineId: string | null }
   | { type: "item-quantity-expire", customerType: CustomerType, customerId: string, adjustedTransactionId: string, adjustedEntryIndex: number, quantity: number, itemId: string }
   | { type: "item-quantity-change", customerType: CustomerType, customerId: string, quantity: number, itemId: string, expiresWhen: "when-purchase-expires" | "when-repeated" | number | null };
