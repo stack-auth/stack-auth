@@ -1,12 +1,13 @@
 'use client';
 
+import { Link } from "@/components/link";
 import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
-import { GearIcon } from "@phosphor-icons/react";
+import { FileCode, GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@hexclave/next";
 import { isPaidPlan } from "@hexclave/shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
@@ -15,6 +16,7 @@ import { captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useQueryState } from "@hexclave/shared/dist/utils/react";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
@@ -58,11 +60,12 @@ function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingSt
 
 export default function PageClient() {
   const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+  const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
 
   return (
     <>
       <DottedBackground />
-      {isPreview ? <PreviewProjectRedirect /> : <ProjectsListPage />}
+      {isPreview ? <PreviewProjectRedirect /> : isRemoteDevelopmentEnvironment ? <RdeProjectsListPage /> : <ProjectsListPage />}
       <Footer />
     </>
   );
@@ -79,6 +82,158 @@ function DottedBackground() {
         backgroundSize: '10px 10px',
       }}
     />
+  );
+}
+
+function RdeProjectsListPage() {
+  const user = useUser({
+    or: "anonymous-if-exists[deprecated]",
+    projectIdMustMatch: "internal",
+  }) ?? throwErr("RDE projects page expected a user because useUser was called with an explicit required user mode.");
+  const rawProjects = user.useOwnedProjects();
+  const [projectConfigPaths, setProjectConfigPaths] = useState<Map<string, string>>(new Map());
+  const [loadingConfigPaths, setLoadingConfigPaths] = useState(true);
+  const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
+  const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
+  const app = useStackApp();
+  const appInternals = useMemo(() => getStackAppInternals(app), [app]);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronously(async () => {
+      try {
+        const response = await fetch("/api/development-environment/projects");
+        if (!response.ok) {
+          throw new Error(`Failed to load project config paths: ${response.status}`);
+        }
+        const body = await response.json() as { project_config_paths?: unknown };
+        if (body.project_config_paths == null || typeof body.project_config_paths !== "object" || Array.isArray(body.project_config_paths)) {
+          throw new Error("Invalid project config paths response.");
+        }
+        if (!cancelled) {
+          const paths = new Map<string, string>();
+          for (const [projectId, configPath] of Object.entries(body.project_config_paths)) {
+            if (typeof configPath === "string") {
+              paths.set(projectId, configPath);
+            }
+          }
+          setProjectConfigPaths(paths);
+        }
+      } catch (error) {
+        captureError("rde-projects-page-load-config-paths", error);
+      } finally {
+        if (!cancelled) {
+          setLoadingConfigPaths(false);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rawProjects.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      setLoadingProjectStatuses(true);
+      try {
+        const response = await appInternals.sendRequest("/internal/projects", {}, "client");
+        if (!response.ok) {
+          throw new Error(`Failed to load projects: ${response.status} ${await response.text()}`);
+        }
+        const body = await response.json();
+        if (body == null || typeof body !== "object" || !("items" in body) || !Array.isArray(body.items)) {
+          throw new Error("Project list endpoint returned an invalid response.");
+        }
+        const statusMap = new Map<string, ProjectOnboardingStatus>();
+        for (const item of body.items) {
+          if (item == null || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
+            continue;
+          }
+          const onboardingStatus = "onboarding_status" in item ? item.onboarding_status : undefined;
+          if (!isProjectOnboardingStatus(onboardingStatus)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
+          }
+          statusMap.set(item.id, onboardingStatus);
+        }
+        if (!cancelled) {
+          setProjectStatuses(statusMap);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectStatuses(false);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appInternals, rawProjects.length]);
+
+  const sortedProjects = useMemo(() => {
+    let projects = [...rawProjects];
+    if (search) {
+      projects = projects.filter((project) => {
+        const configPath = projectConfigPaths.get(project.id);
+        return configPath != null && configPath.toLowerCase().includes(search.toLowerCase());
+      });
+    }
+    return projects.sort((a, b) => a.createdAt > b.createdAt ? -1 : 1);
+  }, [rawProjects, search, projectConfigPaths]);
+
+  const loading = loadingConfigPaths || loadingProjectStatuses;
+
+  return (
+    <div className="flex-grow p-4">
+      <div className="mb-4">
+        <SearchBar
+          placeholder="Search config file path"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : sortedProjects.length === 0 ? (
+        <Typography variant="secondary" className="py-8 text-center">
+          {search ? "No projects match your search." : "No projects connected yet. Run `stack dev` to connect a project."}
+        </Typography>
+      ) : (
+        <div className="space-y-1">
+          {sortedProjects.map((project) => {
+            const configPath = projectConfigPaths.get(project.id);
+            const onboardingStatus = projectStatuses.get(project.id);
+            const projectHref = onboardingStatus === "completed"
+              ? urlString`/projects/${project.id}`
+              : urlString`/new-project?project_id=${project.id}`;
+
+            return (
+              <Link key={project.id} href={projectHref}>
+                <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.04] group">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+                    <FileCode className="h-4 w-4 text-muted-foreground" weight="duotone" />
+                  </div>
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
+                    {configPath ?? project.id}
+                  </span>
+                  {onboardingStatus !== "completed" && (
+                    <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                      Setup incomplete
+                    </span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
