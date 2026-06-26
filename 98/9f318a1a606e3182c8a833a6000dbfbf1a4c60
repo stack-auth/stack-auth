@@ -1,0 +1,58 @@
+packages/shared-backend/src/config-agent.ts
+  s_6825c24dc6ad60::t_123d7f6281fbab 41,60
+  s_6825c24dc6ad60::t_7004bef6dc4a03 38-40,42-59,61-120
+apps/backend/src/lib/config/repo-agent.ts
+  s_eb06fd10e27ea1::t_2398b54f5933ff 70,79-93,368-384,554,559-566
+  s_6825c24dc6ad60::t_d1aa57ffda065c 511,514-518
+  s_6825c24dc6ad60::t_c12e84e86cfb69 45
+  s_6825c24dc6ad60::t_5b1202a549d94f 257
+packages/shared-backend/src/config-agent-prompt.test.ts
+  s_6825c24dc6ad60::t_7b9edd3a0e1780 1,3-45
+  s_6825c24dc6ad60::t_932ed53943ccf7 2
+apps/backend/src/app/api/latest/internal/config/github/commit/route.tsx
+  s_eb06fd10e27ea1::t_888f9ce4b3f17c 5,86-88,94-97
+packages/shared/src/schema-fields.ts
+  s_eb06fd10e27ea1::t_1b16ddc8f6fcdc 891
+apps/backend/src/lib/config/repo-agent.test.ts
+  s_eb06fd10e27ea1::t_08af5b9e2c4cde 1-34
+packages/shared-backend/src/config-updater.ts
+  s_6825c24dc6ad60::t_5e3ae53531d61d 6
+  s_6825c24dc6ad60::t_d750c13fa80d52 60,235-247
+apps/dashboard/src/components/config-update/github-push-dialog.tsx
+  s_eb06fd10e27ea1::t_0b4b865ecc366e 4,183,348-350,410,494,500,523-525,538-539,542,577
+apps/e2e/tests/general/cli.test.ts
+  s_6825c24dc6ad60::t_a24d6f726b59cb 460,497,501,505-508,511,515,518,531,533-534,536,541-544
+packages/cli/src/commands/config-file.test.ts
+  s_6825c24dc6ad60::t_89f788c2b9a944 44-45
+packages/cli/src/commands/config-file.ts
+  s_6825c24dc6ad60::t_1152645bc4f20e 1,198-200,207,212,229,248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "989f318a1a606e3182c8a833a6000dbfbf1a4c60",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_6825c24dc6ad60": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f050b-ebb6-77d3-b3eb-670445d75bbe",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_eb06fd10e27ea1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f04bc-bd80-7b80-b125-a672ad04398b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
