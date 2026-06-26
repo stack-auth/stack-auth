@@ -1,0 +1,29 @@
+apps/backend/src/lib/ai/proxy-url.ts
+  s_1eef7f3f40b356::t_4bc03d722ab3df 1
+packages/shared-backend/src/config-agent.test.ts
+  s_1eef7f3f40b356::t_7c6d5d30b0ab29 1-66
+apps/backend/src/app/api/latest/integrations/ai-proxy/[[...path]]/route.ts
+  s_1eef7f3f40b356::t_612810d7efe86b 2,52
+apps/backend/src/lib/ai/models.ts
+  s_1eef7f3f40b356::t_366ced5b6445a4 5,66
+packages/shared-backend/src/config-agent.ts
+  s_1eef7f3f40b356::t_a94bbc4d849149 4
+apps/backend/src/lib/config/repo-agent.ts
+  s_1eef7f3f40b356::t_3fc6a4011bff96 45,333
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "57188ed78b44532586ddd83678bc276e1a221cbe",
+  "prompts": {},
+  "sessions": {
+    "s_1eef7f3f40b356": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0145-de43-7e70-bc5f-f906bc365c5c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
