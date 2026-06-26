@@ -1,8 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { detectImportPackageFromDir, evalConfigFileContent, type ParsedConfigValue } from "@hexclave/shared/dist/config-eval";
-import { isValidConfig } from "@hexclave/shared/dist/config/format";
+import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";

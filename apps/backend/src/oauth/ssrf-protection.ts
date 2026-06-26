@@ -1,7 +1,7 @@
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import dns from "node:dns";
 import net from "node:net";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 const OAUTH_SSRF_PROTECTION_ERROR = "OAuth provider URLs must use HTTPS and resolve only to public internet addresses.";
 

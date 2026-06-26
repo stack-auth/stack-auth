@@ -14,10 +14,10 @@
  * token in `origin` dies with it.
  */
 
+import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "@hexclave/shared-backend/config-agent";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Sandbox } from "@vercel/sandbox";
-import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "@hexclave/shared-backend/config-agent";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
 
 const AGENT_SDK_VERSION = "0.2.73";
