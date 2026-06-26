@@ -57,6 +57,7 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { detectRedirectLoop } from "./redirect-loop-detection";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -3016,6 +3017,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
+    if (isBrowserLike()) {
+      detectRedirectLoop({ targetUrl: options.url.toString(), projectId: this.projectId });
+    }
+
     if (this._redirectMethod === "none") {
       return;
       // IF_PLATFORM next

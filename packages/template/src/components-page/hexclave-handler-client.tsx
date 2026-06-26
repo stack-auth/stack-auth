@@ -6,10 +6,7 @@ import { FilterUndefined, filterUndefined } from "@hexclave/shared/dist/utils/ob
 import { use } from "@hexclave/shared/dist/utils/react";
 import { getRelativePart } from "@hexclave/shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
-import { Suspense, useMemo, useSyncExternalStore } from 'react';
-/* IF_PLATFORM react
-import { useEffect, useRef } from 'react';
-// END_PLATFORM */
+import { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
 import { HandlerUrls, StackClientApp, hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
@@ -299,6 +296,29 @@ export function HexclaveHandlerClient(props: BaseHandlerProps & Partial<RoutePro
       handlerPath,
     };
   }, [currentLocation, searchParamsSource, handlerUrls.handler]);
+
+  // Detect when a user lands on the handler root (empty path), which is never the intended
+  // destination — it means a redirect flow dropped them here instead of sending them back to the
+  // app. Fire captureError so it shows up in Sentry for investigation.
+  const handlerHomeDetectionFired = useRef(false);
+  useEffect(() => {
+    if (path === "" && !handlerHomeDetectionFired.current) {
+      handlerHomeDetectionFired.current = true;
+      captureError(
+        "handler-home-landing-detected",
+        new HexclaveAssertionError(
+          `User landed on the hosted handler home page (path=""), which should never be the final destination. ` +
+          `This likely means a redirect flow failed to return the user to their app.`,
+          {
+            currentUrl: window.location.href,
+            referrer: document.referrer,
+            handlerPath,
+            projectId: hexclaveApp.projectId,
+          },
+        ),
+      );
+    }
+  }, [path, handlerPath, hexclaveApp.projectId]);
 
   const getDefaultUnknownPathUrl = (unknownPath: string): string | null => {
     return resolveUnknownHandlerPathFallbackUrl({
