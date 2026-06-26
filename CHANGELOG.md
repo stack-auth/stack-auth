@@ -2,6 +2,14 @@
 
 ---
 
+## 6/26/26
+
+- Unified payments customers table with "Create checkout" available everywhere and idempotent webhook handling.
+- Faster project onboarding with a preview project pool for instant creation and prefetched email themes.
+- New Usage settings page with performance improvements and a "View usage" shortcut from limit banners.
+- TypeScript 6.0 upgrade, STACK_* → HEXCLAVE_* env-var rename, and devtool indicator auto-visibility.
+- Stability fixes for session recording flush limits, duplicate-email sign-up errors, and recurring Sentry noise.
+
 ## 6/19/26
 
 - New clickmap heatmaps for route analytics — visualize where users click on any page.
