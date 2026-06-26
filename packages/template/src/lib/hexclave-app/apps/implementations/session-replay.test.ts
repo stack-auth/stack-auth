@@ -199,10 +199,63 @@ describe("SessionRecorder flush", () => {
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
 
-      // Should still send the event (the server may reject it, but we don't drop it client-side)
+      // Should still send the event (the transport gzips it under the wire
+      // limit, so it is no longer dropped client-side).
       expect(sentBodies).toHaveLength(1);
       const batch = JSON.parse(sentBodies[0]);
       expect(batch.events).toHaveLength(1);
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a single event that exceeds the server's decompressed budget", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // A single event larger than MAX_SINGLE_EVENT_BYTES (8MB). Even gzipped it
+      // can't fit the server's decompressed budget, so it is dropped. A normal
+      // event queued after it should still be sent.
+      const hugeEvent = { type: 2, timestamp: Date.now(), data: "z".repeat(9_000_000) };
+      const smallEvent = { type: 3, timestamp: Date.now(), data: "ok" };
+      const sizeOf = (e: unknown) => JSON.stringify(e).length;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [hugeEvent, smallEvent];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(hugeEvent), sizeOf(smallEvent)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(hugeEvent) + sizeOf(smallEvent);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (recorder as any)._tick();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(sentBodies).toHaveLength(1);
+      const batch = JSON.parse(sentBodies[0]);
+      expect(batch.events).toHaveLength(1);
+      expect(batch.events[0].type).toBe(3);
     } finally {
       recorder.stop();
       localStorage.removeItem(storageKey);

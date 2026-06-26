@@ -106,9 +106,17 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
-// The server rejects payloads > 1MB. Stay well under to account for JSON
-// envelope overhead (browser_session_id, timestamps, wrapper keys, etc.).
-const MAX_FLUSH_PAYLOAD_BYTES = 900_000;
+// Target *uncompressed* size of a single batch. The transport gzips the body
+// before sending (rrweb compresses ~8x), so this comfortably clears the
+// server's 1MB compressed-body limit while keeping batches small enough that
+// the uncompressed keepalive fallback path stays under the limit too.
+const MAX_BATCH_UNCOMPRESSED_BYTES = 900_000;
+// A single event whose *uncompressed* size exceeds the server's decompressed
+// budget can never be accepted (the server caps gunzip output at this size), so
+// it's dropped rather than sent into a guaranteed rejection. Keep in sync with
+// MAX_DECOMPRESSED_BYTES in apps/backend session-replays/batch route. Anything
+// smaller is sent as its own batch and relies on gzip to fit the wire limit.
+const MAX_SINGLE_EVENT_BYTES = 8_000_000;
 
 // Reused across the emit hot path to avoid per-event allocation.
 const textEncoder = new TextEncoder();
@@ -285,16 +293,17 @@ export class SessionRecorder {
     try {
       let offset = 0;
       while (offset < allEvents.length) {
-        // Build a batch that fits under the server's payload limit.
-        // When _flushInProgress blocked earlier flushes, events can accumulate
-        // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
-        // exceed the server's 1MB body limit (413).
-        // A single event over the limit can't be sent (rrweb events aren't splittable); drop it and move on.
+        // Build a batch under the per-batch target. The transport gzips the
+        // body, so an oversized single event (e.g. a large rrweb full snapshot)
+        // is sent alone and compression brings it under the server's wire
+        // limit. Only an event that exceeds even the server's decompressed
+        // budget is unsendable; drop it and move on (rrweb events aren't
+        // splittable).
         const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
-        if (firstSize > MAX_FLUSH_PAYLOAD_BYTES) {
+        if (firstSize > MAX_SINGLE_EVENT_BYTES) {
           captureWarning(
             "SessionRecorder.flush",
-            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${MAX_FLUSH_PAYLOAD_BYTES} byte limit); it cannot be sent without a 413.`),
+            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${MAX_SINGLE_EVENT_BYTES} byte limit); it exceeds the server's decompressed budget and cannot be sent.`),
           );
           offset += 1;
           continue;
@@ -304,7 +313,7 @@ export class SessionRecorder {
         let batchEnd = offset;
         for (let i = offset; i < allEvents.length; i++) {
           const nextSize = allSizes[i] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
-          if (batchBytes + nextSize > MAX_FLUSH_PAYLOAD_BYTES && batchEnd > offset) break;
+          if (batchBytes + nextSize > MAX_BATCH_UNCOMPRESSED_BYTES && batchEnd > offset) break;
           batchBytes += nextSize;
           batchEnd = i + 1;
         }
