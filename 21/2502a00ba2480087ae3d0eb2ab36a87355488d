@@ -1,0 +1,19 @@
+apps/backend/src/app/api/latest/internal/config/github/apply/route.tsx
+  s_1eef7f3f40b356::t_cb412870b99ef0 103,105-107,109,156-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "212502a00ba2480087ae3d0eb2ab36a87355488d",
+  "prompts": {},
+  "sessions": {
+    "s_1eef7f3f40b356": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0145-de43-7e70-bc5f-f906bc365c5c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
