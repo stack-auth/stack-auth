@@ -121,9 +121,15 @@ const rowObject = <T>(rowData: PiledriverObject) => rowData as unknown as T;
 const toPiledriverObject = (value: unknown): PiledriverObject => JSON.parse(JSON.stringify(value)) as PiledriverObject;
 const isObject = (value: PiledriverObject): value is Record<string, PiledriverObject> => typeof value === "object" && value !== null && !Array.isArray(value);
 const paymentProvider = (creationSource: string): PaymentProvider => creationSource === "TEST_MODE" ? "test_mode" : "stripe";
-const repeatIntervalMs = (interval: DayInterval | "never" | null | undefined): number | null => {
+export const repeatIntervalMs = (interval: DayInterval | "never" | null | undefined): number | null => {
   if (!Array.isArray(interval)) return null;
   const [count, unit] = interval;
+  // A zero/negative (or non-finite) repeat count means "doesn't repeat". Without
+  // this, count<=0 yields a next-repeat time that never advances, which the
+  // timefold rejects ("nextTriggerTime must move forward") — and that throw lands
+  // in the once-per-second tick loop, retrying forever. Treat it as no-repeat
+  // instead. (count>0 is also false for NaN, so this covers garbage values too.)
+  if (!(count > 0)) return null;
   switch (unit) {
     case "day": {
       return count * DAY_MS;

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { declareInMemoryLowLevelDatabase } from "../../databases/low-level/implementations/in-memory.js";
 import { declarePiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
-import { createPaymentsSchema, mergeCompactionAggregates, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
+import { createPaymentsSchema, mergeCompactionAggregates, repeatIntervalMs, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
 import type { CustomerType, ProductSnapshot, SubscriptionRow, TransactionRow } from "./types.js";
 
 type Snapshot = Awaited<ReturnType<typeof initializedSnapshot>>;
@@ -388,5 +388,30 @@ describe("mergeCompactionAggregates", () => {
     expect(itemQuantities(leftAssociative)).toEqual({ credits: 4, seats: 9, gpu: 16, ram: 13 });
     expect(leftAssociative.txnId).toBe("a");
     expect(leftAssociative.index).toBe(0);
+  });
+});
+
+describe("repeatIntervalMs", () => {
+  const DAY_MS = 86_400_000;
+
+  it("converts a positive interval to milliseconds", () => {
+    expect(repeatIntervalMs([1, "day"])).toBe(DAY_MS);
+    expect(repeatIntervalMs([2, "week"])).toBe(2 * 7 * DAY_MS);
+    expect(repeatIntervalMs([1, "month"])).toBe(30 * DAY_MS);
+    expect(repeatIntervalMs([1, "year"])).toBe(365 * DAY_MS);
+  });
+
+  it("treats a zero/negative/non-finite count as no-repeat (null)", () => {
+    // A zero (or negative) repeat interval would produce a next-repeat time that
+    // never advances, wedging the tick loop forever — so it must mean "no repeat".
+    expect(repeatIntervalMs([0, "day"])).toBeNull();
+    expect(repeatIntervalMs([-1, "month"])).toBeNull();
+    expect(repeatIntervalMs([Number.NaN, "day"])).toBeNull();
+  });
+
+  it("treats 'never'/null/undefined as no-repeat (null)", () => {
+    expect(repeatIntervalMs("never")).toBeNull();
+    expect(repeatIntervalMs(null)).toBeNull();
+    expect(repeatIntervalMs(undefined)).toBeNull();
   });
 });
