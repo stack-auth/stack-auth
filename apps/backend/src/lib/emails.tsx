@@ -98,6 +98,49 @@ export async function sendEmailFromDefaultTemplate(options: {
   });
 }
 
+const DEFAULT_TEMPLATE_ID_SET: ReadonlySet<string> = new Set(Object.values(DEFAULT_TEMPLATE_IDS));
+
+/**
+ * Decides whether an outbox email counts as project-defined ("custom") content for the purposes of the shared
+ * email server dev wrapper (see {@link wrapSharedDevEmail}).
+ *
+ * Emails rendered from Hexclave's own default templates (email verification, password reset, magic link, etc.)
+ * are trusted and should be sent verbatim. Everything else — raw HTML sends, custom templates, and drafts — is
+ * controlled by the project, so when it goes out over the shared server it gets the dev wrapper.
+ */
+export function isCustomEmailForSharedServer(createdWith: EmailOutboxCreatedWith, programmaticCallTemplateId: string | null): boolean {
+  if (createdWith === EmailOutboxCreatedWith.DRAFT) {
+    return true;
+  }
+  // PROGRAMMATIC_CALL with a default template id => trusted Hexclave default template. Anything else (a custom
+  // template id, or `null` which means raw HTML was sent) is project-defined custom content.
+  return !(programmaticCallTemplateId !== null && DEFAULT_TEMPLATE_ID_SET.has(programmaticCallTemplateId));
+}
+
+/**
+ * Wraps a custom email's subject and body with a clear notice that it was sent through Hexclave's shared
+ * (development) email server. This lets us keep the shared server usable for sending arbitrary project content
+ * during development without lending Hexclave's sending reputation to convincing unsolicited mail: unexpected
+ * recipients are told upfront that they can ignore the message.
+ */
+export function wrapSharedDevEmail(content: { subject: string, html?: string, text?: string }): { subject: string, html?: string, text?: string } {
+  const wrappedSubject = `[Hexclave dev email] ${content.subject}`;
+
+  const noticeHtml = `<div style="margin:0 0 16px 0;padding:12px 16px;border:1px solid #f0c000;border-radius:8px;background:#fff8e1;color:#5b4a00;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;">`
+    + `<strong>This is a development email sent via Hexclave's shared email server.</strong><br />`
+    + `It was sent by an app that has not configured its own email server yet. If you were not expecting this email, you can safely ignore it.`
+    + `</div>`;
+
+  const noticeText = `[Development email sent via Hexclave's shared email server]\n`
+    + `It was sent by an app that has not configured its own email server yet. If you were not expecting this email, you can safely ignore it.\n\n`;
+
+  return {
+    subject: wrappedSubject,
+    html: content.html === undefined ? undefined : noticeHtml + content.html,
+    text: content.text === undefined ? undefined : noticeText + content.text,
+  };
+}
+
 export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailConfig> {
   const projectEmailConfig = tenancy.config.emails.server;
 

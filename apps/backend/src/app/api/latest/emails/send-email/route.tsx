@@ -63,9 +63,8 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.emails.server.isShared) {
-      throw new KnownErrors.RequiresCustomEmailServer();
-    }
+    // Custom emails ARE allowed on the shared email server; they get a "dev email" wrapper applied at send time
+    // (see wrapSharedDevEmail / isCustomEmailForSharedServer) so unexpected recipients know they can ignore them.
     if ((body.user_ids && body.all_users) || (!body.user_ids && !body.all_users)) {
       throw new KnownErrors.SchemaError("Exactly one of user_ids or all_users must be provided");
     }

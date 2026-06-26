@@ -80,43 +80,6 @@ describe("invalid requests", () => {
     `);
   });
 
-  it("should return 400 when using shared email config", async ({ expect }) => {
-    await Project.createAndSwitch();
-    const createUserResponse = await niceBackendFetch("/api/v1/users", {
-      method: "POST",
-      accessType: "server",
-      body: {
-        primary_email: "test@example.com",
-      },
-    });
-    const response = await niceBackendFetch(
-      "/api/v1/emails/send-email",
-      {
-        method: "POST",
-        accessType: "server",
-        body: {
-          user_ids: [createUserResponse.body.id],
-          html: "<p>Test email</p>",
-          subject: "Test Subject",
-          notification_category_name: "Marketing",
-        }
-      }
-    );
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REQUIRES_CUSTOM_EMAIL_SERVER",
-          "error": "This action requires a custom SMTP server. Please edit your email server configuration and try again.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "REQUIRES_CUSTOM_EMAIL_SERVER",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
-  });
-
   it("should return 400 when invalid notification category name is provided", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Successful Email Project",
@@ -289,6 +252,43 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       },
     ]
   `);
+});
+
+describe("shared email server", () => {
+  it("should send custom emails over the shared server wrapped as Hexclave dev emails", async ({ expect }) => {
+    // No email_config => the project uses Hexclave's shared (development) email server.
+    await Project.createAndSwitch({ display_name: "Shared Server Email Project" });
+    const mailbox = await bumpEmailAddress();
+    const user = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
+
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          html: "<p>Original custom email body</p>",
+          subject: "Original Subject",
+          notification_category_name: "Transactional",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "results": [{ "user_id": "<stripped UUID>" }] },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // The subject is prefixed and the body gets a notice so unexpected recipients know they can ignore it.
+    const messages = await mailbox.waitForMessagesWithSubject("[Hexclave dev email] Original Subject");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    const html = messages[0].body?.html ?? "";
+    expect(html).toContain("development email sent via Hexclave's shared email server");
+    expect(html).toContain("Original custom email body");
+  });
 });
 
 it("should handle user that does not exist", async ({ expect }) => {
