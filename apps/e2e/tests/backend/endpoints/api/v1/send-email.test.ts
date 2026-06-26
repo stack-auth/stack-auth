@@ -257,7 +257,6 @@ it("should return 200 and send email successfully", async ({ expect }) => {
 
 describe("shared email server", () => {
   it("should send custom emails over the shared server wrapped as Hexclave dev emails", async ({ expect }) => {
-    // No email_config => shared (development) email server.
     await Project.createAndSwitch({ display_name: "Shared Server Email Project" });
     const mailbox = await bumpEmailAddress();
     const user = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
@@ -309,7 +308,6 @@ describe("shared email server", () => {
     );
     expect(response.status).toBe(200);
 
-    // Default templates are Hexclave-owned and must be sent verbatim — no subject prefix, no notice banner.
     const messages = await mailbox.waitForMessagesWithSubject("You have been invited to sign in to Shared Default Template Project");
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].subject).not.toContain("[Hexclave dev email]");

@@ -100,29 +100,19 @@ export async function sendEmailFromDefaultTemplate(options: {
 
 const DEFAULT_TEMPLATE_ID_SET: ReadonlySet<string> = new Set(Object.values(DEFAULT_TEMPLATE_IDS));
 
-/**
- * Whether an outbox email is project-defined ("custom") content that should get the shared-server dev wrapper.
- * Drafts, raw HTML, and custom templates are custom; Hexclave's built-in default templates (verification,
- * password reset, etc.) are sent verbatim.
- */
+/** Whether an outbox email is project-defined custom content that should get the shared-server dev wrapper. */
 export function isCustomEmailForSharedServer(recipient: EmailOutboxRecipient, createdWith: EmailOutboxCreatedWith, programmaticCallTemplateId: string | null): boolean {
-  // Hexclave's own system notifications (credential-scanning revoke alerts, internal feedback, etc.) address
-  // bare addresses via "custom-emails" and must be sent verbatim. Project sends through the send-email API
-  // always target the project's own users, so only user-addressed emails are eligible for the wrapper.
+  // Hexclave's own system notifications (credential-scanning alerts, internal feedback) send raw HTML to bare
+  // "custom-emails" addresses and must go out verbatim; the send-email API always targets the project's users.
   if (recipient.type === "custom-emails") {
     return false;
   }
   if (createdWith === EmailOutboxCreatedWith.DRAFT) {
     return true;
   }
-  // A null template id means raw HTML was sent, which is custom; only a known default template id is verbatim.
   return programmaticCallTemplateId === null || !DEFAULT_TEMPLATE_ID_SET.has(programmaticCallTemplateId);
 }
 
-/**
- * Wraps a custom email's subject and body with a notice that it was sent through Hexclave's shared (development)
- * email server, so unexpected recipients know they can ignore it.
- */
 export function wrapSharedDevEmail(content: { subject: string, html?: string, text?: string }): { subject: string, html?: string, text?: string } {
   const wrappedSubject = `[Hexclave dev email] ${content.subject}`;
 

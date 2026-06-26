@@ -735,7 +735,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
-    // Wrap project-defined custom emails sent over the shared server; default templates are sent verbatim.
     const baseContent = {
       subject: row.renderedSubject ?? "",
       html: row.renderedHtml ?? undefined,

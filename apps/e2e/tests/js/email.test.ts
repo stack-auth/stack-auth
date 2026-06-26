@@ -114,7 +114,6 @@ it("should send email with notification category", async ({ expect }) => {
 });
 
 it("should send custom emails over the shared server (wrapped as dev emails) when no custom server is configured", async ({ expect }) => {
-  // No setupEmailServer => shared server, on which custom emails are now allowed (with a dev wrapper).
   const { serverApp } = await createApp();
 
   const user = await serverApp.createUser({
