@@ -1327,7 +1327,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                     style={{ transform: 'translate3d(0px, 0px, 0) translate(-50%, -140%)' }}
                   >
                     <div className='flex flex-col items-center gap-1.5'>
-                      <div className='flex items-center gap-1.5 px-2 py-1 rounded-full bg-background/95 ring-1 ring-foreground/10 shadow-lg backdrop-blur-md'>
+                      <div className='flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/95 ring-1 ring-black/[0.08] shadow-lg backdrop-blur-md dark:bg-background/95 dark:ring-white/[0.08]'>
                         {display?.user && (
                           <div className='w-7 h-7 rounded-full overflow-hidden ring-2 ring-sky-400/60 dark:ring-sky-300/50'>
                             <UserAvatar
@@ -1365,7 +1365,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
         <div
           ref={tooltipRef}
           className={cn(
-                    "fixed top-0 left-0 z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-background/95 backdrop-blur-xl ring-1 ring-foreground/[0.08] pointer-events-none",
+                    "fixed top-0 left-0 z-[100] min-w-[180px] p-4 rounded-2xl shadow-xl bg-white/95 backdrop-blur-xl ring-1 ring-black/[0.08] pointer-events-none dark:bg-background/95 dark:ring-white/[0.08]",
                     selectedCountry ? 'opacity-100' : 'opacity-0 transition-opacity duration-300 ease-out',
                   )}
         >
