@@ -34,7 +34,11 @@ export type LowLevelEmailConfig = {
   senderEmail: string,
   senderName: string,
   secure: boolean,
-  type: 'shared' | 'standard',
+  // 'shared': Hexclave's shared email server. 'managed': a custom domain we provision & send through on the user's
+  // behalf (Resend under our account). 'standard': the user's own SMTP server or Resend API key. We run the Emailable
+  // deliverability check for 'shared' and 'managed' (where bad recipients hurt our own sending reputation), but not
+  // for 'standard' (the user owns their own deliverability there).
+  type: 'shared' | 'managed' | 'standard',
 }
 
 export type LowLevelSendEmailOptions = {
