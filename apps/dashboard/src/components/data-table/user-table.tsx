@@ -426,7 +426,8 @@ function UserTableBody(props: {
         fetchRows: fetchExportRows,
         emptyExportTitle: "No users to export",
         emptyExportDescription: "There are no users matching the current filters",
-        allScopeLabel: "Export all users in the project",
+        defaultScope: "filtered",
+        allScopeLabel: "Export all users in the project (includes Anonymous)",
         filteredScopeLabel: (
           <>
             Export only filtered/searched users

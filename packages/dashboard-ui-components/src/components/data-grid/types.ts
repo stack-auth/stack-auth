@@ -251,6 +251,8 @@ export type DataGridExportOptions<TRow> = {
   allScopeLabel?: ReactNode;
   filteredScopeLabel?: ReactNode;
   progressSubjectLabel?: string;
+  /** Which export scope is selected by default when the dialog opens. Defaults to `"all"`. */
+  defaultScope?: DataGridExportScope;
 };
 
 // ─── Callbacks ───────────────────────────────────────────────────────

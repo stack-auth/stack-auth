@@ -55,7 +55,7 @@ export function DataGridExportDialog<TRow>({
     [exportOptions?.fields, columns],
   );
   const [format, setFormat] = useState<DataGridExportFormat>("csv");
-  const [scope, setScope] = useState<DataGridExportScope>("all");
+  const [scope, setScope] = useState<DataGridExportScope>(exportOptions?.defaultScope ?? "all");
   const [fields, setFields] = useState<readonly DataGridExportField<TRow>[]>(resolvedFields);
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress>(idleExportProgress);
