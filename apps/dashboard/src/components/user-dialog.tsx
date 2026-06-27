@@ -164,7 +164,7 @@ export function UserDialog(props: {
     />
     <FormDialog
       open={props.open}
-      onOpenChange={props.onOpenChange}
+      onOpenChange={(open: boolean) => { if (!open) setErrorDialog(null); props.onOpenChange?.(open); }}
       trigger={props.trigger}
       title={props.type === 'edit' ? "Edit User" : "Create User"}
       formSchema={formSchema}
