@@ -26,20 +26,27 @@ function stageIndex(stage: AgentStage | null | undefined): number {
 
 /**
  * Live "seconds since the run started" counter. The run's `startedAt` is a
- * wall-clock epoch value; we capture the start→now offset against a fresh
- * monotonic anchor and then advance on that monotonic clock. The anchor and
- * offset are recomputed whenever `startedAt` changes (e.g. when a flow renders
- * the box before its real start timestamp is known), so the counter resets
- * instead of freezing a stale offset. Recomputing the offset every render —
- * which is what the old code did — re-added the elapsed time on top of the
- * monotonic delta and made the timer tick at ~2× speed.
+ * wall-clock epoch value, with `0` as the "not started yet" sentinel — until a
+ * real start time arrives the counter stays at 0 (otherwise it would briefly
+ * read ~epoch-since-1970). For a real `startedAt` we capture the start→now offset
+ * against a fresh monotonic anchor and advance on that monotonic clock. Both are
+ * recomputed whenever `startedAt` changes (e.g. when a flow renders the box
+ * before its real start timestamp is known), so the counter resets instead of
+ * freezing a stale offset. Recomputing the offset every render — which the old
+ * code did — re-added the elapsed time on top of the monotonic delta and made
+ * the timer tick at ~2× speed.
  */
+function elapsedOffsetMs(startedAt: number): number {
+  return startedAt > 0 ? Math.max(0, currentEpochMsFromPerformance() - startedAt) : 0;
+}
+
 function useElapsedSeconds(startedAt: number): number {
-  const [elapsedMs, setElapsedMs] = useState(() => Math.max(0, currentEpochMsFromPerformance() - startedAt));
+  const [elapsedMs, setElapsedMs] = useState(() => elapsedOffsetMs(startedAt));
   useEffect(() => {
-    const anchorPerfMs = performance.now();
-    const offsetMs = Math.max(0, currentEpochMsFromPerformance() - startedAt);
+    const offsetMs = elapsedOffsetMs(startedAt);
     setElapsedMs(offsetMs);
+    if (startedAt <= 0) return;
+    const anchorPerfMs = performance.now();
     const t = setInterval(() => setElapsedMs(offsetMs + (performance.now() - anchorPerfMs)), 1000);
     return () => clearInterval(t);
   }, [startedAt]);

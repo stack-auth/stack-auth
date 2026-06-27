@@ -721,7 +721,9 @@ export async function cancelConfigAgentRun(options: {
     }
     await tx.configAgentRun.update({
       where: { id: options.runId },
-      data: { status: "cancelled", finishedAt: new Date(options.nowMs), sandboxId: null, stage: null, baseCommitSha: null },
+      // Clear the captured change too: a cancelled run is abandoned, so its diff/base
+      // must not linger in the API shape or be replayable by the commit route.
+      data: { status: "cancelled", finishedAt: new Date(options.nowMs), sandboxId: null, stage: null, baseCommitSha: null, diff: null },
     });
     return { cancelled: true, sandboxId: run.sandboxId ?? undefined, previousStatus: run.status };
   });

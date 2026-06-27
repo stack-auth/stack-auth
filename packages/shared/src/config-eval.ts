@@ -130,8 +130,11 @@ import.meta.vitest?.test("evalConfigFileContent rejects missing config import ta
   `, "/tmp/hexclave-missing-import-config.ts")).toThrow();
 });
 
-import.meta.vitest?.test("evalConfigFileContent rejects syntactically invalid content", ({ expect }) => {
-  // jiti surfaces a ParseError (not a ConfigFileEvalError), so callers route this
-  // to "Failed to load config file" rather than "Invalid config".
-  expect(() => evalConfigFileContent("export const config = {", "stack.config.ts")).toThrow();
+import.meta.vitest?.test("evalConfigFileContent surfaces invalid syntax as a loader error, not ConfigFileEvalError", ({ expect }) => {
+  // A malformed file fails inside jiti's parser, so the thrown error is a loader
+  // error — NOT a ConfigFileEvalError. Callers depend on that distinction to route
+  // it to "Failed to load config file" rather than "Invalid config".
+  const evalInvalid = () => evalConfigFileContent("export const config = {", "stack.config.ts");
+  expect(evalInvalid).toThrow();
+  expect(evalInvalid).not.toThrow(ConfigFileEvalError);
 });
