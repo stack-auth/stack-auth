@@ -499,11 +499,13 @@ export async function applyConfigUpdate(options: {
     // the diff is rebuilt against, and our fast-forward conflict check, at commit time.
     const baseSha = await gitHead(sandbox);
     // The diff drives BOTH the review render and the commit (`--no-renames` keeps it to
-    // add/modify/delete; `--cached HEAD` includes newly created files; sanitized for any
-    // stray token, though config diffs never carry one).
-    const diff = redactTokens(
-      (await runRaw(sandbox, "git", ["-c", "core.quotePath=false", "-C", REPO_DIR, "diff", "--cached", "--no-renames", "HEAD"])).stdout,
-    );
+    // add/modify/delete; `--cached HEAD` includes newly created files). Captured VERBATIM:
+    // it is the authoritative commit source, so it must never be altered. The GitHub token
+    // can't appear here anyway — it lives only in `.git/config` (which `git diff` never
+    // reads) and is reset to a tokenless URL before the agent runs, so tracked content
+    // never contains it. (Token scrubbing stays on the error/log paths, where the tokenized
+    // clone URL genuinely can surface.)
+    const diff = (await runRaw(sandbox, "git", ["-c", "core.quotePath=false", "-C", REPO_DIR, "diff", "--cached", "--no-renames", "HEAD"])).stdout;
     if (diff.trim() === "") {
       return { mode: "no-change" };
     }
