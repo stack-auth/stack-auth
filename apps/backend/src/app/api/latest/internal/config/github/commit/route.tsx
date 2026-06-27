@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema,
     }).defined(),
     body: yupObject({
-      run_id: yupString().defined(),
+      run_id: yupString().uuid().defined(),
       github_access_token: yupString().defined(),
       commit_message: yupString().optional(),
     }).defined(),

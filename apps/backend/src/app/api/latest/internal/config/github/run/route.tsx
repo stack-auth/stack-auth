@@ -21,7 +21,7 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema,
     }).defined(),
     query: yupObject({
-      run_id: yupString().defined(),
+      run_id: yupString().uuid().defined(),
     }).defined(),
   }),
   response: yupObject({
