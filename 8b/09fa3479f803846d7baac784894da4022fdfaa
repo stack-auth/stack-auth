@@ -1,0 +1,42 @@
+packages/shared/src/config-eval.ts
+  s_c7fef0a7f7d208::t_e2da7f18d1f933 132-137
+apps/dashboard/src/components/config-update/github-push-dialog.tsx
+  s_c7fef0a7f7d208::t_6733d654e07696 431-439
+apps/dashboard/src/components/config-update/progress-content.tsx
+  s_c7fef0a7f7d208::t_65b7ba2be94903 29-33,38,40-43,45-46
+apps/dashboard/src/lib/remote-development-environment/config-file.test.ts
+  s_c7fef0a7f7d208::t_e4ea5fc539a907 218-229
+apps/backend/src/lib/config/index.test.tsx
+  s_c7fef0a7f7d208::t_ee6f901cfcd5d0 134,143-172
+  s_c7fef0a7f7d208::t_67310ab1eab7a5 189
+  s_c7fef0a7f7d208::t_52eb5ba931f31a 173-174
+apps/backend/src/app/api/latest/internal/config/github/commit/route.tsx
+  s_c7fef0a7f7d208::t_fb48ff37c28af3 88
+packages/shared/src/schema-fields.ts
+  s_c7fef0a7f7d208::t_d9fd4b0c2ad9bf 971
+apps/backend/src/lib/config/index.tsx
+  s_c7fef0a7f7d208::t_744e94473094de 741
+  s_c7fef0a7f7d208::t_11941a80cd7ec0 768-772,780-785
+  s_c7fef0a7f7d208::t_cae7bd06464177 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "8b09fa3479f803846d7baac784894da4022fdfaa",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_c7fef0a7f7d208": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "696c65dd-7ccb-494e-b4d1-20fe832c43cf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
