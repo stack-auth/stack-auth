@@ -62,8 +62,6 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const debugEntriesByStoreId = new Map<`${"store" | "dump"}-${string}`, () => Promise<LowLevelDatabaseDebugEntry[]>>();
   const seqToAvailability = new Map<string, Promise<void>>();
   const seqToDurability = new Map<string, Promise<void>>();
-  const availableSeqIds = new Set<string>([initialSeqId]);
-  const durableSeqIds = new Set<string>([initialSeqId]);
   const initialSeq = [dbId, initialSeqId] as unknown as LmdbSeq;
   const toSeq = (seqId: string) => [dbId, seqId] as unknown as LmdbSeq;
 
@@ -75,20 +73,13 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     return seq[1];
   };
   const getAvailabilityPromise = (seqId: string) => {
-    if (availableSeqIds.has(seqId)) return Promise.resolve();
-    const promise = seqToAvailability.get(seqId);
-    if (promise === undefined) throw new Error("Unknown LMDB availability sequence");
-    return promise;
+    return seqToAvailability.get(seqId) ?? Promise.resolve();
   };
   const getDurabilityPromise = (seqId: string) => {
-    if (durableSeqIds.has(seqId)) return Promise.resolve();
-    const promise = seqToDurability.get(seqId);
-    if (promise === undefined) throw new Error("Unknown LMDB durability sequence");
-    return promise;
+    return seqToDurability.get(seqId) ?? Promise.resolve();
   };
   const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
     const availability = traceSpan({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
-      availableSeqIds.add(seqId);
       seqToAvailability.delete(seqId);
     }));
     availability.catch(() => {});
@@ -96,7 +87,6 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const rememberDurability = (seqId: string, promise: Promise<unknown>) => {
     const durability = traceSpan({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(async () => await root.flushed).then(() => {
-      durableSeqIds.add(seqId);
       seqToDurability.delete(seqId);
     }));
     durability.catch(() => {});
