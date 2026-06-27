@@ -1,0 +1,181 @@
+apps/backend/src/lib/config/index.tsx
+  s_d004a5aadd62ff::t_9dafc22386b694 14
+  s_d004a5aadd62ff::t_23408af0a75e79 498-513,515-517,519-523
+  s_f569ed9a3548aa::t_8e48559eefe778 659-660,662,665-667,672-673,676-678,682,686,688-689,692
+  s_d004a5aadd62ff::t_6d53ba320419d6 550-556,562-572,575-584,588-591,595,597-598,600,605-606,609,612-614,624,627-628,631,640,643-645,657,661,663-664,674,700,711,714-723,725,732-733,738,745-748,750-751,753-754,757-758,760-764,766-781
+  s_f569ed9a3548aa::t_5e2267a2783580 702-706,713,726
+  s_f569ed9a3548aa::t_ebb8bfc9656b3d 724
+  s_f569ed9a3548aa::t_421b133b134fda 752,759,765
+  s_d004a5aadd62ff::t_ac004a7353ce49 2
+  s_f569ed9a3548aa::t_34050c876f60ac 18
+  s_f569ed9a3548aa::t_25b2d08933ffc8 650-654,658,668-671,679-681,683,687,690,693-696
+  s_f569ed9a3548aa::t_24b28d6636b0bc 675
+packages/shared/src/schema-fields.ts
+  s_f569ed9a3548aa::t_d490f2260fbc20 979-981
+  s_d004a5aadd62ff::t_36c726252e7914 995,1002
+  s_d004a5aadd62ff::t_33b3066917ea05 964-967,970-971
+apps/backend/src/app/api/latest/internal/config/github/run/route.tsx
+  s_d004a5aadd62ff::t_0c228a98785c14 6-9,14,23-25,38
+packages/shared/src/interface/admin-interface.ts
+  s_f569ed9a3548aa::t_d42b32123c077e 895-898,900
+  s_d004a5aadd62ff::t_6aaec75eb0c367 838-841,843,845,855-857,859,876-879,881,887,907
+  s_f569ed9a3548aa::t_9371fe17a9268d 17-23
+apps/backend/src/app/api/latest/internal/config/github/cancel/route.tsx
+  s_f569ed9a3548aa::t_30013bb49804ac 15-18
+  s_d004a5aadd62ff::t_b777c61c094e1e 32-34
+  s_f569ed9a3548aa::t_0721aacc3b7510 50,57-61
+apps/dashboard/src/components/config-update/index.tsx
+  s_d004a5aadd62ff::t_e3a304b7c3953f 11
+  s_d004a5aadd62ff::t_2264fb730c056b 160,163-170
+  s_d004a5aadd62ff::t_82189d0d97b12c 190,200
+  s_d004a5aadd62ff::t_69747fb4cf3699 215
+  s_d004a5aadd62ff::t_4b960e5fb9d945 22-28,37-41
+  s_d004a5aadd62ff::t_aadad42f5a3ca7 70-75,88-97
+  s_d004a5aadd62ff::t_fe218d38c2af99 42
+  s_d004a5aadd62ff::t_87092d55bd44a4 98
+apps/backend/package.json
+  s_f569ed9a3548aa::t_329989348e768a 99
+apps/backend/prisma/schema.prisma
+  s_d004a5aadd62ff::t_4a75a6becfae86 49
+  s_f569ed9a3548aa::t_d12aa6ccdaff5a 166
+  s_f569ed9a3548aa::t_d21c7e3108dde1 165
+  s_d004a5aadd62ff::t_088797372f2f1c 148-164,167-170
+  s_d004a5aadd62ff::t_f3d5d4588f35c3 171-172
+apps/backend/src/app/api/latest/internal/config/github/apply/route.tsx
+  s_f569ed9a3548aa::t_d588f21099a593 88-90
+  s_d004a5aadd62ff::t_79a006115a5385 120,126,135,142
+  s_d004a5aadd62ff::t_61dbd40df3218b 78-82,92,95,98
+  s_f569ed9a3548aa::t_2710025b655c1e 127
+  s_d004a5aadd62ff::t_e051c5c430c66f 54
+  s_f569ed9a3548aa::t_8962ed7f151ea1 11
+  s_f569ed9a3548aa::t_53b75d0bf1c08f 19-20,25-29
+apps/backend/src/lib/config/repo-agent.ts
+  s_f569ed9a3548aa::t_820e5e876b2971 11,13,18-22,54-57,61,67,348,353,432,436,462,467-498,500,504,506,508-509,517-524,526-528,532-534,538-542,546-565,567-568,570-577,657-663,665,674-675,678-682,684,686,688,694-696,698-699,701-703,705,707-710,712-719,721-736,740,746-748
+  s_f569ed9a3548aa::t_ffbd4d8332e964 525,529-531,535,537,543-545,578,580-583,587-611,617,619-627,630-648,654,656,664,666-667,672-673,676-677,683,685,687,690-693,697,700,706,711,720
+  s_f569ed9a3548aa::t_0b26aadf970992 536
+  s_f569ed9a3548aa::t_143421235f9840 668-670
+  s_f569ed9a3548aa::t_8a84ca90ca7a3a 349-352,354-355
+  s_f569ed9a3548aa::t_8750b7a9973be4 437-439,444-445
+  s_f569ed9a3548aa::t_991feaba366fc7 12,14-17
+  s_f569ed9a3548aa::t_f393bffe30e217 499,501-503,505,507,510-516
+  s_f569ed9a3548aa::t_64155799c9b9fb 29
+  s_f569ed9a3548aa::t_d1e2794356d2a5 62-66
+  s_f569ed9a3548aa::t_0ae323eb39734f 612-616,618,628-629
+  s_f569ed9a3548aa::t_d460b81c93f3cf 671
+  s_f569ed9a3548aa::t_3e6b1f30719479 38-41
+apps/dashboard/src/components/config-update/progress-content.tsx
+  s_c84bbb8af997e1::t_c4a06207f464f1 10
+  s_c84bbb8af997e1::t_4bfb0230d78052 120-127
+  s_c84bbb8af997e1::t_d79f7ab0983471 159,166
+  s_d004a5aadd62ff::t_8bc24a21e14974 178
+  s_d004a5aadd62ff::t_53fbc4b0124f92 5,13,16,18,65,68-69,71,73-78
+  s_d004a5aadd62ff::t_f17cd4f6333ad3 28-32,34-35,37-38,41-43,45-64,70,72,84-89,95,99-102,104-109
+  s_d004a5aadd62ff::t_1fb36e3d8712aa 79
+apps/dashboard/src/components/config-update/shared.tsx
+  s_d004a5aadd62ff::t_e9fc26a4c2520f 39
+  s_d004a5aadd62ff::t_07be61fd29bbb7 7
+apps/backend/prisma/migrations/20260626000000_add_config_agent_run_table/migration.sql
+  s_d004a5aadd62ff::t_db438c09d0c54f 1-16,18-26
+  s_f569ed9a3548aa::t_1ed70bfb8f5344 17
+apps/dashboard/src/components/config-update/rde-apply-dialog.tsx
+  s_d004a5aadd62ff::t_0e283ca11cd55b 1-171
+apps/backend/src/lib/config/repo-agent.test.ts
+  s_f569ed9a3548aa::t_3390852eecc3e7 2,16-69
+  s_f569ed9a3548aa::t_495146909a181e 4,6-7
+  s_f569ed9a3548aa::t_4e8aa30bb9fc07 70
+apps/dashboard/src/components/config-update/github-push-dialog.tsx
+  s_d004a5aadd62ff::t_7a2f45ff0d4620 12,15
+  s_d004a5aadd62ff::t_4d2a3f716fd6bc 520-536
+  s_d004a5aadd62ff::t_057c0975f99bb9 551
+  s_d004a5aadd62ff::t_c66697f9f3aefc 64
+  s_d004a5aadd62ff::t_21298d91cb8a9c 264-268
+  s_d004a5aadd62ff::t_25f8b66354348d 189
+  s_d004a5aadd62ff::t_1a9fa1301042bd 246
+  s_d004a5aadd62ff::t_6b4991c5a01ff1 435-440,459
+  s_d004a5aadd62ff::t_b873d06a6a69e4 128,140-141,143-149
+  s_d004a5aadd62ff::t_f7979362835c99 411
+  s_d004a5aadd62ff::t_32921cdf19d25b 537-545,547-550,552-559,561-574,576-580,582-600,602
+  s_d004a5aadd62ff::t_4b04da900c67c4 38-43,45,48-52
+  s_d004a5aadd62ff::t_57040e6997078f 118
+  s_d004a5aadd62ff::t_ebf6e7be8450a2 112
+  s_d004a5aadd62ff::t_2c29db41186493 414-419,427,432
+  s_d004a5aadd62ff::t_ea75d51e89330b 370,376,382,388,394,407,464,481,486,492,501
+  s_d004a5aadd62ff::t_2981a1de7c22dd 581
+  s_d004a5aadd62ff::t_8067ba63a95ae0 82-84,86-91
+  s_d004a5aadd62ff::t_6abe6d499d3abf 156-158
+  s_d004a5aadd62ff::t_65bf6b89fccd6a 35-37,47
+  s_d004a5aadd62ff::t_bfc98d4547135d 328,332-333,342-344,350,354
+  s_d004a5aadd62ff::t_23ea28fe600fce 169
+  s_d004a5aadd62ff::t_7410b8919f7e31 97-101,103,107,110,113-115,119-120,122-123
+  s_d004a5aadd62ff::t_76a63944c1ddae 14
+  s_d004a5aadd62ff::t_3eb3481e256c52 217
+  s_d004a5aadd62ff::t_38feb02685e271 475
+apps/backend/src/app/api/latest/internal/config/github/commit/route.tsx
+  s_d004a5aadd62ff::t_805be3019e2dea 55,67
+  s_f569ed9a3548aa::t_c3b5fa00575f2d 2
+  s_d004a5aadd62ff::t_73887c7022414e 36
+  s_f569ed9a3548aa::t_4046c38fc71f00 56,61-63,74,82
+  s_d004a5aadd62ff::t_51c7decf657837 86
+  s_d004a5aadd62ff::t_1c4c4c5c0b77c6 97
+  s_f569ed9a3548aa::t_80118c6135f97a 6,12-13,17-21,26,46,57,69,71
+apps/dashboard/src/components/config-update/remote-development-environment.ts
+  s_d004a5aadd62ff::t_59c9b565d689ce 8,10-12,25
+apps/dashboard/src/app/globals.css
+  s_c84bbb8af997e1::t_1dff6404cb8ae8 478-502
+apps/backend/src/lib/config/index.test.tsx
+  s_d004a5aadd62ff::t_2e7269997081ff 24,37,42,49,56-57,59-60,62-66,69-84,87,89-92,120-122,125,128-134,137-139,142-145,150,159-161
+  s_f569ed9a3548aa::t_867e7ed8460ad7 85,93-94,96-98,101,104,106,108-109,111,114,116,118
+  s_f569ed9a3548aa::t_35ee8cc27ca0f4 123
+  s_f569ed9a3548aa::t_9357ab7e3af8b6 5
+  s_f569ed9a3548aa::t_396d6781e7a317 88,95,99-100,102-103,105,107,110,112-113,115,117
+  s_f569ed9a3548aa::t_4bf0bc48c73f48 86,124
+pnpm-lock.yaml
+  s_f569ed9a3548aa::t_42385cb40e3e1c 229-231,810,825,849,886,904,907,1818,2557,24507,24515,28579,28586,28591,28756,28773,28892,28900,28912-28913,36155,36159,36486
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding-workflow.test.ts
+  s_bed78ee6f0fd41::t_36ac960ca88cb1 4-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "64b885fb70485256acf1173c3e911cebf4294500",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_bed78ee6f0fd41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d08bd512-8da6-4acc-a432-e2f639c5e051",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c84bbb8af997e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "adfebae1-8e75-4fb5-9131-a2279fd6cd13",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d004a5aadd62ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c222561-7b11-4fd3-8e54-546bdd4f223d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_f569ed9a3548aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e1027e9-5abd-4d9d-9a62-f9416eeb0fba",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
