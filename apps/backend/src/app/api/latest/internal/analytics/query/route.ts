@@ -6,7 +6,6 @@ import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
@@ -36,9 +35,12 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth }) {
-    if (body.include_all_branches) {
-      throw new HexclaveAssertionError("include_all_branches is not supported yet");
-    }
+    // TODO: implement include_all_branches. When true, this should query across
+    // all branches in the project instead of just auth.tenancy.branchId. For now
+    // it is a no-op: regardless of the flag, queries remain scoped to the current
+    // branch via the ClickHouse row policy that filters on SQL_branch_id (set
+    // below). Callers passing include_all_branches=true will still only receive
+    // data for the current branch until cross-branch filtering is implemented.
 
     let effectiveTimeoutMs = body.timeout_ms;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
