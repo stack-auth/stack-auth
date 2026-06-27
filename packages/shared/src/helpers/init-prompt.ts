@@ -9,7 +9,7 @@ The Hexclave CLI already created or linked this project to a local Hexclave deve
 ${configPath}
 \`\`\`
 
-Do not create or link another Hexclave project. When the SDK setup instructions mention creating \`stack.config.ts\` or wrapping the dev script with \`stack dev --config-file\`, use the config file path above.
+Do not create or link another Hexclave project. When the SDK setup instructions mention creating \`hexclave.config.ts\` or wrapping the dev script with \`hexclave dev --config-file\`, use the config file path above.
 `;
   }
 

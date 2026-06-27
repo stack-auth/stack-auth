@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AccessToken } from "@hexclave/shared/dist/sessions";
 import { Store } from "@hexclave/shared/dist/utils/stores";
+import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
 
 function createAccessTokenString(refreshTokenId: string): string {
@@ -49,6 +50,42 @@ function createMockDocument(): Document {
 }
 
 describe("StackClientApp cross-domain auth", () => {
+  it("exposes redirect-back-aware handler URLs for devtool previews", async () => {
+    const previousWindow = Reflect.get(globalThis, "window");
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    Reflect.set(globalThis, "window", {
+      location: {
+        href: "http://localhost/music?track=1#song",
+      },
+    });
+
+    try {
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId: "00000000-0000-4000-8000-000000000000",
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "none",
+        urls: {
+          signIn: "/handler/sign-in",
+        },
+        noAutomaticPrefetch: true,
+      });
+
+      const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("signIn");
+
+      const resolved = new URL(redirectUrl, "http://localhost");
+      expect(resolved.pathname).toBe("/handler/sign-in");
+      expect(resolved.searchParams.get("after_auth_return_to")).toBe("/music?track=1#song");
+    } finally {
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("uses the fresh post-auth refresh token when minting a cross-domain handoff", async () => {
     const freshAccessToken = createAccessTokenString("fresh-refresh-token-id");
     const clientApp = new StackClientApp({

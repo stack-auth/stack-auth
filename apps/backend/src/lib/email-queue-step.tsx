@@ -1,7 +1,7 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
-import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
+import { EmailOutboxRecipient, getEmailConfig, isCustomEmailForSharedServer, wrapSharedDevEmail, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getHexclaveServerApp } from "@/hexclave";
@@ -735,15 +735,24 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
+    const baseContent = {
+      subject: row.renderedSubject ?? "",
+      html: row.renderedHtml ?? undefined,
+      text: row.renderedText ?? undefined,
+    };
+    const emailContent = context.emailConfig.type === "shared" && isCustomEmailForSharedServer(recipient, row.createdWith, row.emailProgrammaticCallTemplateId)
+      ? wrapSharedDevEmail(baseContent)
+      : baseContent;
+
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectWithoutRetries({
         tenancyId: context.tenancy.id,
         emailConfig: context.emailConfig,
         to: resolution.emails,
-        subject: row.renderedSubject ?? "",
-        html: row.renderedHtml ?? undefined,
-        text: row.renderedText ?? undefined,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
       });
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;

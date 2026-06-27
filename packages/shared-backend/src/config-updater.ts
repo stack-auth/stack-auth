@@ -8,14 +8,75 @@ import { ensureConfigFileExists, readConfigFile } from "./config-file";
 
 const LOG_PREFIX = "[Hexclave config updater]";
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
+const CONFIG_UPDATE_LOG_PATH_LIMIT = 40;
+const AGENT_OUTPUT_LOG_MAX_LENGTH = 20_000;
 
 type ConfigFileSnapshot = { path: string, content: string | null };
 type ConfigChange = { path: string, value: ConfigValue };
 
+function formatConfigUpdaterErrorForLog(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack,
+    };
+  }
+  return {
+    errorMessage: String(error),
+  };
+}
+
+function configUpdatePathDetailsForLog(changes: ConfigChange[]): Record<string, unknown> {
+  const paths = changes.map(({ path: configPath }) => configPath).sort();
+  return {
+    configUpdatePathCount: paths.length,
+    configUpdatePaths: paths.slice(0, CONFIG_UPDATE_LOG_PATH_LIMIT),
+    configUpdatePathsTruncated: paths.length > CONFIG_UPDATE_LOG_PATH_LIMIT,
+  };
+}
+
+function appendBoundedAgentOutput(current: string, chunk: string): string {
+  const next = `${current}${chunk}`;
+  if (next.length <= AGENT_OUTPUT_LOG_MAX_LENGTH) {
+    return next;
+  }
+  return next.slice(next.length - AGENT_OUTPUT_LOG_MAX_LENGTH);
+}
+
+function stringifyAgentMessageForLog(message: unknown): string {
+  try {
+    return `${JSON.stringify(message)}\n`;
+  } catch {
+    return `${String(message)}\n`;
+  }
+}
+
+function agentOutputDetailsForLog(agentStdout: string, agentStderr: string): Record<string, unknown> {
+  return {
+    agentStdout,
+    agentStdoutTruncated: agentStdout.length >= AGENT_OUTPUT_LOG_MAX_LENGTH,
+    agentStderr,
+    agentStderrTruncated: agentStderr.length >= AGENT_OUTPUT_LOG_MAX_LENGTH,
+  };
+}
+
 export async function updateConfigObject(configFilePath: string, configUpdate: Config): Promise<void> {
+  const startedAtMs = performance.now();
   ensureConfigFileExists(configFilePath);
 
-  if (flattenConfigUpdate(configUpdate).length === 0) return;
+  const changes = flattenConfigUpdate(configUpdate);
+  if (changes.length === 0) {
+    console.log(`${LOG_PREFIX} Skipping config update because it contains no changes`, {
+      configFilePath,
+    });
+    return;
+  }
+  const updateLogDetails = {
+    configFilePath,
+    ...configUpdatePathDetailsForLog(changes),
+  };
+  console.log(`${LOG_PREFIX} Starting config file update`, updateLogDetails);
 
   const content = readFileSync(configFilePath, "utf-8");
 
@@ -24,6 +85,10 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
   // layout). There is deliberately no deterministic "fast path" — re-rendering a
   // config would flatten and destroy hand-authored files. Reads use jiti
   // (see readConfigFile); writes go through the agent.
+  console.log(`${LOG_PREFIX} Applying config update with agent-assisted rewrite`, {
+    ...updateLogDetails,
+    configDirectory: path.dirname(configFilePath),
+  });
   const baselineConfig = await tryReadConfigForValidation(configFilePath);
   const { snapshots, seen } = snapshotConfigFiles(configFilePath, content);
   try {
@@ -34,16 +99,31 @@ export async function updateConfigObject(configFilePath: string, configUpdate: C
     });
     await validateAgentUpdate(configFilePath, baselineConfig, configUpdate);
   } catch (error) {
+    console.warn(`${LOG_PREFIX} Config update failed; restoring files from snapshots`, {
+      ...updateLogDetails,
+      snapshotCount: snapshots.length,
+      elapsedMs: Math.round(performance.now() - startedAtMs),
+      ...formatConfigUpdaterErrorForLog(error),
+    });
     try {
       restoreConfigFiles(snapshots);
+      console.warn(`${LOG_PREFIX} Restored files after failed config update`, {
+        ...updateLogDetails,
+        snapshotCount: snapshots.length,
+      });
     } catch (restoreError) {
       console.error(`${LOG_PREFIX} Failed to fully roll back config files after a failed update of ${configFilePath}; some files may be left in a partially-restored state`, {
         configFilePath,
-        restoreError: restoreError instanceof Error ? restoreError.message : String(restoreError),
+        ...formatConfigUpdaterErrorForLog(restoreError),
       });
     }
     throw error;
   }
+  console.log(`${LOG_PREFIX} Finished config update with agent-assisted rewrite`, {
+    ...updateLogDetails,
+    elapsedMs: Math.round(performance.now() - startedAtMs),
+    snapshotCount: snapshots.length,
+  });
 }
 
 async function runConfigUpdateAgent(options: {
@@ -53,6 +133,13 @@ async function runConfigUpdateAgent(options: {
 }): Promise<void> {
   const timeoutMs = parseAgentTimeoutMs();
   const deniedOutOfBoundsWrites = new Set<string>();
+  const startedAtMs = performance.now();
+  let agentStdout = "";
+  let agentStderr = "";
+  console.log(`${LOG_PREFIX} Starting config update agent`, {
+    cwd: options.cwd,
+    timeoutMs,
+  });
   try {
     await runHeadlessClaudeAgent({
       prompt: options.prompt,
@@ -60,7 +147,13 @@ async function runConfigUpdateAgent(options: {
       allowedTools: [...CONFIG_AGENT_FILE_TOOLS],
       strictIsolation: true,
       timeoutMs,
-      stderr: (data) => { console.warn(`${LOG_PREFIX} [agent] ${data}`); },
+      stderr: (data) => {
+        agentStderr = appendBoundedAgentOutput(agentStderr, data);
+        console.warn(`${LOG_PREFIX} [agent] ${data}`);
+      },
+      onMessage: (message) => {
+        agentStdout = appendBoundedAgentOutput(agentStdout, stringifyAgentMessageForLog(message));
+      },
       onPreToolUse: (input) => {
         const target = getToolWriteTargetPath(input.tool_name, input.tool_input, options.cwd);
         if (target == null) return { continue: true };
@@ -80,14 +173,46 @@ async function runConfigUpdateAgent(options: {
     });
   } catch (error) {
     if (error instanceof ClaudeAgentTimeoutError) {
+      console.warn(`${LOG_PREFIX} Config update agent timed out`, {
+        cwd: options.cwd,
+        timeoutMs,
+        elapsedMs: Math.round(performance.now() - startedAtMs),
+        ...formatConfigUpdaterErrorForLog(error),
+        ...agentOutputDetailsForLog(agentStdout, agentStderr),
+      });
       throw new Error(`Config update agent timed out after ${timeoutMs}ms. It was unable to apply the config changes to the file.`);
     }
     if (error instanceof ClaudeAgentFailureError) {
+      console.warn(`${LOG_PREFIX} Config update agent failed`, {
+        cwd: options.cwd,
+        timeoutMs,
+        elapsedMs: Math.round(performance.now() - startedAtMs),
+        ...formatConfigUpdaterErrorForLog(error),
+        ...agentOutputDetailsForLog(agentStdout, agentStderr),
+      });
       throw new Error(`${error.message} It was unable to apply the config changes to the file.`);
     }
+    console.warn(`${LOG_PREFIX} Config update agent failed unexpectedly`, {
+      cwd: options.cwd,
+      timeoutMs,
+      elapsedMs: Math.round(performance.now() - startedAtMs),
+      ...formatConfigUpdaterErrorForLog(error),
+      ...agentOutputDetailsForLog(agentStdout, agentStderr),
+    });
     throw error;
   }
+  console.log(`${LOG_PREFIX} Finished config update agent`, {
+    cwd: options.cwd,
+    timeoutMs,
+    elapsedMs: Math.round(performance.now() - startedAtMs),
+    deniedOutOfBoundsWriteCount: deniedOutOfBoundsWrites.size,
+  });
   if (deniedOutOfBoundsWrites.size > 0) {
+    console.warn(`${LOG_PREFIX} Config update agent attempted out-of-bounds writes`, {
+      cwd: options.cwd,
+      deniedOutOfBoundsWriteCount: deniedOutOfBoundsWrites.size,
+      deniedOutOfBoundsWrites: [...deniedOutOfBoundsWrites],
+    });
     throw new Error(`Config update agent tried to modify ${deniedOutOfBoundsWrites.size} file(s) outside the config directory, which is not allowed: ${[...deniedOutOfBoundsWrites].join(", ")}. The config was not updated.`);
   }
 }

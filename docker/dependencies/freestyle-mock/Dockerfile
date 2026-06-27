@@ -309,7 +309,7 @@ const server = createServer(async (req, res) => {
   let workDir = null;
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const isValidEndpoint = req.method === "POST" && (url.pathname === "/execute/v1/script" || url.pathname === "/execute/v2/script");
+    const isValidEndpoint = req.method === "POST" && (url.pathname === "/execute/v1/script" || url.pathname === "/execute/v2/script" || url.pathname === "/execute/v3/script");
 
     if (!isValidEndpoint) {
       res.writeHead(404);

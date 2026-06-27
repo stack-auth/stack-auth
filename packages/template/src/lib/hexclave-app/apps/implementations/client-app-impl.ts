@@ -3069,6 +3069,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       overrideTokenStoreInit?: TokenStoreInit,
     },
   ) {
+    await this._redirectTo({
+      url: await this._getRedirectToHandlerUrl(handlerName, options, internalOptions),
+      ...options,
+    });
+  }
+
+  protected async _getRedirectToHandlerUrl(
+    handlerName: keyof HandlerUrls,
+    options?: RedirectToOptions,
+    internalOptions?: {
+      awaitPendingAuthResolutions?: boolean,
+      overrideTokenStoreInit?: TokenStoreInit,
+    },
+  ): Promise<string> {
     const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
     const rawHandlerUrl = rawUrls[handlerName];
     if (!rawHandlerUrl) {
@@ -3096,8 +3110,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
         overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       });
-      await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
-      return;
+      return crossDomainRedirectUrl;
     }
 
     const redirectUrl = currentUrl != null && handlerName !== "signOut" && handlerName !== "afterSignOut" && handlerName !== "oauthCallback"
@@ -3108,7 +3121,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       })
       : plan.url;
-    await this._redirectIfTrusted(redirectUrl, options);
+    if (!await this._isTrusted(redirectUrl)) {
+      throw new Error(`Redirect URL ${redirectUrl} is not trusted; should be relative.`);
+    }
+    return redirectUrl;
   }
 
   protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
@@ -4189,6 +4205,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
       redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
         await this._redirectTo({ url, ...options });
+      },
+      getRedirectToHandlerUrl: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
+        return await this._getRedirectToHandlerUrl(handlerName, options);
       },
       redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
         await this._redirectToHandler(handlerName, options);
