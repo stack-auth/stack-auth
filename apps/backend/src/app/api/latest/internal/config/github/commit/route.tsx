@@ -1,27 +1,29 @@
 import {
-  getConfigAgentRun,
+  getConfigAgentRunChange,
   getGithubConfigSourceOrThrow,
   recordConfigAgentRunResult,
 } from "@/lib/config";
-import { CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, ConfigRepoCommitConflictError, commitConfigUpdate, type GithubRepoRef, stopConfigAgentSandbox } from "@/lib/config/repo-agent";
+import { CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, ConfigRepoCommitConflictError, commitConfigUpdate, type GithubRepoRef } from "@/lib/config/repo-agent";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 
-// The commit+push itself is fast (~10 s) but we give generous room for sandbox
-// reconnect latency and slow GitHub API responses.
+// The commit is a handful of GitHub API calls (~seconds); the generous ceiling just
+// absorbs slow GitHub responses for large change sets.
 export const maxDuration = 120;
 
 /**
- * Commits and pushes the agent's already-applied changes from an `awaiting_review`
- * sandbox. The user explicitly triggered this after reviewing the diff in the
- * dashboard. Returns immediately and does the work in the background.
+ * Commits the agent's captured change set to GitHub after the user reviews the diff.
+ * The change set was captured and persisted when the run entered `awaiting_review`
+ * (the sandbox is long gone), so this replays it via the GitHub git data API — it
+ * works no matter how long the review took. Returns immediately and does the work in
+ * the background; the dashboard polls `agent_run` for the result.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Commit config agent changes to GitHub",
-    description: "Commits and pushes the agent's already-applied config changes after user review.",
+    description: "Commits the agent's captured config change to the linked GitHub branch after user review.",
     tags: ["Config"],
     hidden: true,
   },
@@ -31,6 +33,7 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema,
     }).defined(),
     body: yupObject({
+      run_id: yupString().defined(),
       github_access_token: yupString().defined(),
       commit_message: yupString().optional(),
     }).defined(),
@@ -40,7 +43,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      status: yupString().oneOf(["committing", "not-awaiting-review", "sandbox-expired"]).defined(),
+      status: yupString().oneOf(["committing", "not-awaiting-review"]).defined(),
     }).defined(),
   }),
   handler: async (req) => {
@@ -49,25 +52,26 @@ export const POST = createSmartRouteHandler({
 
     const source = await getGithubConfigSourceOrThrow({ projectId, branchId });
 
-    const run = await getConfigAgentRun({ projectId, branchId });
-    if (!run || run.status !== "awaiting_review") {
+    const runId = req.body.run_id;
+    const plan = await getConfigAgentRunChange({ projectId, branchId, runId });
+    if (!plan || plan.status !== "awaiting_review") {
       return { statusCode: 200, bodyType: "json", body: { status: "not-awaiting-review" } };
     }
-    const runStartedAt = run.started_at;
 
-    const sandboxId = run.sandbox_id;
-    if (!sandboxId) {
-      // Sandbox id was never recorded — can't commit. Treat as an error and clean up.
+    if (!plan.change) {
+      // Awaiting review but no captured change (should not happen for runs created by
+      // the current apply flow). Mark it errored so the dashboard surfaces a retry.
       await recordConfigAgentRunResult({
         projectId,
         branchId,
-        runStartedAt,
+        runId,
         nowMs: Date.now(),
-        outcome: { status: "error", error: "Sandbox session expired. Please retry the update." },
+        outcome: { status: "error", error: "Failed to commit and push the config changes." },
       });
-      return { statusCode: 200, bodyType: "json", body: { status: "sandbox-expired" } };
+      return { statusCode: 200, bodyType: "json", body: { status: "not-awaiting-review" } };
     }
 
+    const change = plan.change;
     const githubToken = req.body.github_access_token;
     const commitMessage = req.body.commit_message?.trim() || "chore(hexclave): update config from dashboard";
     const ref: GithubRepoRef = { owner: source.owner, repo: source.repo, branch: source.branch };
@@ -75,11 +79,11 @@ export const POST = createSmartRouteHandler({
 
     runAsynchronouslyAndWaitUntil(async () => {
       try {
-        const result = await commitConfigUpdate({ sandboxId, getGithubToken, ref, commitMessage });
+        const result = await commitConfigUpdate({ getGithubToken, ref, commitMessage, change });
         await recordConfigAgentRunResult({
           projectId,
           branchId,
-          runStartedAt,
+          runId,
           nowMs: Date.now(),
           outcome: { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha },
         });
@@ -87,11 +91,10 @@ export const POST = createSmartRouteHandler({
         if (!(error instanceof ConfigRepoCommitConflictError)) {
           captureError("config-github-commit", error);
         }
-        await stopConfigAgentSandbox(sandboxId);
         await recordConfigAgentRunResult({
           projectId,
           branchId,
-          runStartedAt,
+          runId,
           nowMs: Date.now(),
           outcome: {
             status: "error",

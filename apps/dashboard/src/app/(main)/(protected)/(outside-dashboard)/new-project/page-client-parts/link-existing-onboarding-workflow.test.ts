@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-    buildWorkflowYaml,
-    GITHUB_PROJECT_ID_SECRET_NAME,
-    GITHUB_SECRET_SERVER_KEY_SECRET_NAME,
-    normalizeConfigPath,
-    WORKFLOW_FILE_PATH,
+  buildWorkflowYaml,
+  GITHUB_PROJECT_ID_SECRET_NAME,
+  GITHUB_SECRET_SERVER_KEY_SECRET_NAME,
+  normalizeConfigPath,
+  WORKFLOW_FILE_PATH,
 } from "./link-existing-onboarding-workflow";
 
 describe("buildWorkflowYaml", () => {

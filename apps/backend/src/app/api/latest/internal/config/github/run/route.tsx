@@ -3,15 +3,15 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, configAgentRunSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 /**
- * Returns the state of the most recent dashboard→GitHub config agent run (or
- * `null`). The dashboard polls this while a run is in flight to show progress and,
- * once `awaiting_review`, the diff. Run state lives in its own DB column, separate
- * from the config source descriptor.
+ * Returns the state of a specific dashboard→GitHub config agent run (by `run_id`),
+ * or `null` if it doesn't belong to this branch. The dashboard polls this while a
+ * run is in flight to show progress and, once `awaiting_review`, the diff. Each run
+ * is its own row in the `ConfigAgentRun` table, addressed by id.
  */
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get config agent run state",
-    description: "Returns the in-flight or most recent config agent run for the linked GitHub repo.",
+    description: "Returns a specific config agent run (by run_id) for the linked GitHub repo.",
     tags: ["Config"],
     hidden: true,
   },
@@ -19,6 +19,9 @@ export const GET = createSmartRouteHandler({
     auth: yupObject({
       type: adminAuthTypeSchema,
       tenancy: adaptSchema,
+    }).defined(),
+    query: yupObject({
+      run_id: yupString().defined(),
     }).defined(),
   }),
   response: yupObject({
@@ -32,6 +35,7 @@ export const GET = createSmartRouteHandler({
     const agentRun = await getConfigAgentRun({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
+      runId: req.query.run_id,
     });
 
     return {

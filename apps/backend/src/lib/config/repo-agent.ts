@@ -8,16 +8,25 @@
  * or token; build via scripts/config-agent/build-image.ts -> STACK_CONFIG_AGENT_BASE_SNAPSHOT_ID,
  * else cold-boot node24 + install the SDK inline) and take a FRESH shallow clone per write.
  *
- * Token discipline: a fresh token is fetched per boot (GithubTokenProvider),
- * injected only into the git remote URL (never the agent's env), redacted from
- * thrown errors, and never snapshotted — the sandbox is never snapshotted, so the
- * token in `origin` dies with it.
+ * The sandbox is short-lived: it exists only to run the agent and CAPTURE the change
+ * as a unified diff plus the base commit it was made against. As soon as that is
+ * captured the sandbox is stopped — the review window is then unbounded and free
+ * (nothing is kept alive). On confirm, `commitConfigUpdate` rebuilds the file contents
+ * by applying the stored diff onto the exact base files (fetched from GitHub) and
+ * commits via the git data REST API, so a slow reviewer, a closed tab, or a crashed
+ * browser can never strand a running sandbox.
+ *
+ * Token discipline: a fresh token is fetched per boot/commit (GithubTokenProvider).
+ * In the sandbox it is injected only into the clone remote URL (never the agent's env),
+ * redacted from thrown errors, and never snapshotted. At commit time it is sent only as
+ * an `Authorization` header to api.github.com, never persisted.
  */
 
 import { buildCompleteConfigAgentPrompt, CONFIG_AGENT_REPO_TOOLS } from "@hexclave/shared-backend/config-agent";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Sandbox } from "@vercel/sandbox";
+import { applyPatch, parsePatch } from "diff";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "../ai/proxy-url";
 
 const AGENT_SDK_VERSION = "0.2.73";
@@ -26,7 +35,10 @@ const REPO_DIR = `${BASE}/repo`;
 const TOOLS_DIR = BASE; // agent SDK + runner live here, separate from the repo
 const DEFAULT_AGENT_MODEL = "anthropic/claude-haiku-4.5";
 const SANDBOX_TIMEOUT_MS = 900_000;
-const REVIEW_SANDBOX_KEEPALIVE_MS = 5 * 60_000;
+// Cap on the unified diff we persist (it is authoritative for the deferred commit, so
+// it is never truncated — instead an oversized change fails at capture time). Config
+// diffs are tiny; this only guards against a pathological agent rewriting the repo.
+const MAX_CONFIG_DIFF_BYTES = 1_000_000;
 const GIT_BOT_NAME = "Hexclave Config Bot";
 const GIT_BOT_EMAIL = "config-bot@hexclave.com";
 
@@ -39,13 +51,19 @@ export type GithubRepoRef = { owner: string, repo: string, branch: string };
 export type ConfigAgentInFlightStage = "initializing_sandbox" | "cloning_repo" | "agent_making_changes";
 
 /**
- * Supplies a GitHub token at sandbox-boot time. The orchestrator calls it once
- * per boot (right before the sandbox first touches the repo) instead of
- * capturing a single token for the whole flow, so a long-lived run always picks
- * up the freshest token the caller can produce (the dashboard refetches the
- * user's OAuth token per request).
+ * Supplies a GitHub token at the moment it is needed (sandbox boot for clone, or
+ * commit time for the REST push) instead of capturing a single token for the whole
+ * flow, so a long-lived run always picks up the freshest token the caller can produce
+ * (the dashboard refetches the user's OAuth token per request).
  */
 export type GithubTokenProvider = () => Promise<string>;
+
+/**
+ * The lightweight change capture persisted for a deferred commit: the unified diff
+ * the agent produced and the commit it was made against. The diff doubles as the
+ * dashboard's review render and the commit source (applied onto the base on confirm).
+ */
+export type CapturedChange = { diff: string, baseSha: string };
 
 export type ConfigUpdateCommitResult = { mode: "commit-to-branch", branch: string, commitUrl: string, commitSha: string };
 export const CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR = "The GitHub branch changed before the config commit could be pushed. Retry the update to apply the same changes on the latest branch.";
@@ -62,14 +80,6 @@ export class ConfigRepoCommitConflictError extends ConfigRepoAgentError {
     super(CONFIG_REPO_COMMIT_CONFLICT_SAFE_ERROR, options);
     this.name = "ConfigRepoCommitConflictError";
   }
-}
-
-export function isGitBranchConflictOutput(output: string): boolean {
-  const normalized = output.toLowerCase();
-  return normalized.includes("non-fast-forward")
-    || normalized.includes("fetch first")
-    || normalized.includes("stale info")
-    || (normalized.includes("failed to push some refs") && normalized.includes("updates were rejected"));
 }
 
 // ---------------------------------------------------------------------------
@@ -101,16 +111,6 @@ async function stopSandboxWithContext(sandboxId: string, context: string): Promi
     await sandbox.stop();
   } catch (error) {
     captureError(context, error);
-  }
-}
-
-async function keepSandboxAliveForReview(sandbox: Sandbox): Promise<void> {
-  // The review UI needs the live sandbox because commit runs from the edited
-  // working tree. Top it back up to a five-minute review window once the diff is
-  // ready instead of relying on whatever time is left after agent execution.
-  const timeoutRemainingMs = sandbox.timeout;
-  if (timeoutRemainingMs < REVIEW_SANDBOX_KEEPALIVE_MS) {
-    await sandbox.extendTimeout(REVIEW_SANDBOX_KEEPALIVE_MS - timeoutRemainingMs);
   }
 }
 
@@ -345,21 +345,14 @@ async function gitHead(sandbox: Sandbox): Promise<string> {
   return (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", "HEAD"])).stdout.trim();
 }
 
-async function assertRemoteBranchStillAtClonedHead(sandbox: Sandbox, githubToken: string, ref: GithubRepoRef): Promise<void> {
-  const clonedHead = await gitHead(sandbox);
-  await run(sandbox, "git", [
-    "-C",
-    REPO_DIR,
-    "fetch",
-    "--depth",
-    "1",
-    tokenUrl(githubToken, ref),
-    `+refs/heads/${ref.branch}:refs/remotes/origin/${ref.branch}`,
-  ]);
-  const remoteHead = (await run(sandbox, "git", ["-C", REPO_DIR, "rev-parse", `refs/remotes/origin/${ref.branch}`])).stdout.trim();
-  if (remoteHead !== clonedHead) {
-    throw new ConfigRepoCommitConflictError();
-  }
+/**
+ * True if a unified diff contains a binary-file change. We can't reconstruct binary
+ * edits from a textual diff (git emits a "Binary files … differ" stub, not content),
+ * so such a change is rejected at capture time. `--no-renames` keeps it to add/modify/
+ * delete, which `parsePatch` maps cleanly when we rebuild the contents on commit.
+ */
+function diffHasBinaryChange(diff: string): boolean {
+  return /^Binary files .* differ$/m.test(diff) || diff.includes("GIT binary patch");
 }
 
 /**
@@ -436,20 +429,20 @@ export async function buildConfigAgentBaseSnapshot(onProgress?: (msg: string) =>
 }
 
 // ---------------------------------------------------------------------------
-// Apply update (on save)
+// Apply update (on save): run the agent, capture the change set, stop the sandbox
 // ---------------------------------------------------------------------------
 
 /**
- * The result of `applyConfigUpdate`. When the agent found and edited the config
- * file, the sandbox is left alive (status `awaiting_review`) and the caller is
- * responsible for either calling `commitConfigUpdate` or `stopConfigAgentSandbox`.
+ * The result of `applyConfigUpdate`. On `awaiting_review` the sandbox has ALREADY
+ * been stopped and the change is captured as a diff + base commit in `change`, so the
+ * caller only needs to persist it; the commit is rebuilt + pushed later via
+ * {@link commitConfigUpdate}.
  */
 export type ConfigUpdateApplyResult =
   | {
     mode: "awaiting_review",
-    sandboxId: string,
-    /** Unified git diff of the agent's changes; never contains secrets. */
-    diff: string,
+    /** The agent's unified diff (review render + commit source) and its base commit. */
+    change: CapturedChange,
   }
   | { mode: "no-change" };
 
@@ -466,98 +459,293 @@ export async function applyConfigUpdate(options: {
   const step = async (msg: string) => {
     await reportConfigAgentProgress(onProgress, msg, "config-repo-agent-step-record");
   };
-  const githubToken = await getGithubToken(); // fresh token for this boot
+  const githubToken = await getGithubToken(); // fresh token for the clone
 
   await reportConfigAgentStage(onStage, "initializing_sandbox");
   await step("Initializing the sandbox…");
   const sandbox = await bootAgentSandbox(creds);
-  // Do NOT stop the sandbox in a finally block — when changes are found, we leave
-  // it alive for the user to review and commit. The caller must stop it.
-  await onSandboxId?.(sandbox.sandboxId);
-  // Configure the bot identity for the commit (idempotent; cheap on a warm boot).
-  await run(sandbox, "git", ["config", "--global", "user.email", GIT_BOT_EMAIL]);
-  await run(sandbox, "git", ["config", "--global", "user.name", GIT_BOT_NAME]);
-
-  // Fresh shallow clone of just the target branch. The tokenized URL is used
-  // only for the clone; immediately after, we reset `origin` to a tokenless URL
-  // so the agent (which has Bash access) cannot read the token from `.git/config`
-  // or `git remote -v`. The token is re-injected only for our own push command.
-  await reportConfigAgentStage(onStage, "cloning_repo");
-  await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
-  await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
-  await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
-
-  // Agent writes the COMPLETE config to the file — no dependency install, no
-  // typecheck (the linked repo's CI validates the committed change).
-  await reportConfigAgentStage(onStage, "agent_making_changes");
-  await step("Agent editing config…");
-  await runAgent(sandbox, buildCompleteConfigAgentPrompt({
-    scope: { mode: "repo" },
-    completeConfig,
-    commandPolicy: "Do NOT install dependencies, run builds, or run a type check. The repository's own CI validates the change after we push, and dependencies are intentionally not installed in this sandbox.",
-  }), onProgress);
-
-  const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
-  if (dirty === "") {
-    // No changes — stop the sandbox immediately (nothing to review).
-    await stopSandboxWithContext(sandbox.sandboxId, "config-repo-agent-no-change-stop");
-    return { mode: "no-change" };
-  }
-
-  // Capture the pre-staging diff for review, sanitized like every other sandbox-exit string.
-  const diff = redactTokens(
-    (await runRaw(sandbox, "git", ["-C", REPO_DIR, "diff"])).stdout,
-  );
-
-  await keepSandboxAliveForReview(sandbox);
-  // Leave the sandbox alive — the user must confirm before we commit+push.
-  return { mode: "awaiting_review", sandboxId: sandbox.sandboxId, diff };
-}
-
-/**
- * Commits and pushes the agent's already-applied changes from an existing sandbox
- * that is currently in `awaiting_review` state. The sandbox is stopped afterwards.
- * The GitHub token is obtained freshly — the user may have been reviewing for a
- * while so we don't reuse the token from the original `applyConfigUpdate` call.
- */
-export async function commitConfigUpdate(options: {
-  sandboxId: string,
-  getGithubToken: GithubTokenProvider,
-  ref: GithubRepoRef,
-  commitMessage: string,
-}): Promise<ConfigUpdateCommitResult> {
-  const { sandboxId, ref, commitMessage } = options;
-  const githubToken = await options.getGithubToken();
-  const sandbox = await getConfigAgentSandbox(sandboxId);
   try {
-    await assertRemoteBranchStillAtClonedHead(sandbox, githubToken, ref);
+    // Record the id so a concurrent cancel (a separate invocation) can hard-stop the
+    // sandbox while the agent is still running.
+    await onSandboxId?.(sandbox.sandboxId);
+
+    // Fresh shallow clone of just the target branch. The tokenized URL is used
+    // only for the clone; immediately after, we reset `origin` to a tokenless URL
+    // so the agent (which has Bash access) cannot read the token from `.git/config`
+    // or `git remote -v`. We never push from the sandbox, so the token is not needed again.
+    await reportConfigAgentStage(onStage, "cloning_repo");
+    await step(`Cloning ${ref.owner}/${ref.repo}@${ref.branch}…`);
+    await run(sandbox, "git", ["clone", "--depth", "1", "--single-branch", "--branch", ref.branch, tokenUrl(githubToken, ref), REPO_DIR]);
+    await run(sandbox, "git", ["-C", REPO_DIR, "remote", "set-url", "origin", tokenlessUrl(ref)]);
+
+    // Agent writes the COMPLETE config to the file — no dependency install, no
+    // typecheck (the linked repo's CI validates the committed change).
+    await reportConfigAgentStage(onStage, "agent_making_changes");
+    await step("Agent editing config…");
+    await runAgent(sandbox, buildCompleteConfigAgentPrompt({
+      scope: { mode: "repo" },
+      completeConfig,
+      commandPolicy: "Do NOT install dependencies, run builds, or run a type check. The repository's own CI validates the change after we push, and dependencies are intentionally not installed in this sandbox.",
+    }), onProgress);
+
+    // Stage everything so new/renamed files are captured too, then check for changes.
     await run(sandbox, "git", ["-C", REPO_DIR, "add", "-A"]);
-    await run(sandbox, "git", ["-C", REPO_DIR, "commit", "-m", commitMessage]);
-    const commitSha = await gitHead(sandbox);
-    // Re-inject the token for the push only.
-    try {
-      await run(sandbox, "git", ["-C", REPO_DIR, "push", tokenUrl(githubToken, ref), `HEAD:refs/heads/${ref.branch}`]);
-    } catch (error) {
-      if (isGitBranchConflictOutput(error instanceof Error ? error.message : String(error))) {
-        throw new ConfigRepoCommitConflictError({ cause: error });
-      }
-      throw error;
+    const dirty = (await runRaw(sandbox, "git", ["-C", REPO_DIR, "status", "--porcelain"])).stdout.trim();
+    if (dirty === "") {
+      return { mode: "no-change" };
     }
-    return { mode: "commit-to-branch", branch: ref.branch, commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}`, commitSha };
+
+    // `add -A` does not move HEAD, so this is still the commit we cloned — the base
+    // the diff is rebuilt against, and our fast-forward conflict check, at commit time.
+    const baseSha = await gitHead(sandbox);
+    // The diff drives BOTH the review render and the commit (`--no-renames` keeps it to
+    // add/modify/delete; `--cached HEAD` includes newly created files; sanitized for any
+    // stray token, though config diffs never carry one).
+    const diff = redactTokens(
+      (await runRaw(sandbox, "git", ["-c", "core.quotePath=false", "-C", REPO_DIR, "diff", "--cached", "--no-renames", "HEAD"])).stdout,
+    );
+    if (diff.trim() === "") {
+      return { mode: "no-change" };
+    }
+    if (diffHasBinaryChange(diff)) {
+      throw new ConfigRepoAgentError("The config change includes a binary file, which can't be committed from the dashboard.");
+    }
+    if (Buffer.byteLength(diff, "utf-8") > MAX_CONFIG_DIFF_BYTES) {
+      throw new ConfigRepoAgentError("The config change is too large to commit.");
+    }
+    return { mode: "awaiting_review", change: { diff, baseSha } };
   } finally {
-    await stopSandboxWithContext(sandboxId, "config-repo-agent-commit-stop");
+    // The sandbox's whole job is done once the change set is captured; the commit is
+    // replayed later via the GitHub API, so we never keep it alive for review.
+    await stopSandboxWithContext(sandbox.sandboxId, "config-repo-agent-apply-stop");
   }
 }
 
 // ---------------------------------------------------------------------------
-// Cancel (hard-stop an in-flight run; no revert)
+// Commit (on confirm): rebuild contents from the diff + base, push via the REST API
+// ---------------------------------------------------------------------------
+
+const GITHUB_API_BASE = "https://api.github.com";
+// Git tree mode for the files we write. The config agent only edits regular text
+// files; mode changes aren't carried by the textual diff, so everything is 100644.
+const TREE_FILE_MODE = "100644";
+
+type GithubFetchResult = { ok: boolean, status: number, json: any };
+
+/** One reconstructed file ready for the commit tree. Deletions carry no content. */
+export type CommitFile = { path: string, newContent: string } | { path: string, deleted: true };
+
+/** Branch ref path segment, encoding each component but keeping `/` literal (refs can be nested). */
+function encodeBranchPath(branch: string): string {
+  return branch.split("/").map(encodeURIComponent).join("/");
+}
+
+/** Encode a repo file path for a URL, keeping `/` literal between segments. */
+function encodeFilePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+/** Authenticated api.github.com request. The token is sent only as a header, never in a URL. */
+async function githubFetch(token: string, method: string, path: string, body?: unknown): Promise<GithubFetchResult> {
+  const res = await fetch(`${GITHUB_API_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "hexclave-config-agent",
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+  return { ok: res.ok, status: res.status, json };
+}
+
+/** Like {@link githubFetch} but throws on a non-2xx response. Error messages never include the token. */
+async function githubJson(token: string, method: string, path: string, body?: unknown): Promise<any> {
+  const r = await githubFetch(token, method, path, body);
+  if (!r.ok) {
+    const detail = typeof r.json?.message === "string" ? `: ${r.json.message}` : "";
+    throw new ConfigRepoAgentError(`GitHub API ${method} ${path} failed (${r.status})${detail}`);
+  }
+  return r.json;
+}
+
+/** Strip git's `a/` / `b/` diff prefix from a filename (and treat `/dev/null` as absent). */
+function stripDiffPrefix(name: string | undefined): string | null {
+  if (!name || name === "/dev/null") return null;
+  return name.replace(/^[ab]\//, "");
+}
+
+/**
+ * Fetches a file's content at a specific commit from GitHub, as a UTF-8 string. Returns
+ * "" if the file does not exist at that commit (a freshly added file). Falls back to the
+ * blob API when the contents API declines to inline a large file.
+ */
+async function fetchBaseFileContent(token: string, repoPath: string, filePath: string, baseSha: string): Promise<string> {
+  const r = await githubFetch(token, "GET", `${repoPath}/contents/${encodeFilePath(filePath)}?ref=${baseSha}`);
+  if (r.status === 404) return "";
+  if (!r.ok) {
+    const detail = typeof r.json?.message === "string" ? `: ${r.json.message}` : "";
+    throw new ConfigRepoAgentError(`GitHub API GET ${repoPath}/contents failed (${r.status})${detail}`);
+  }
+  if (r.json?.encoding === "base64" && typeof r.json?.content === "string") {
+    return Buffer.from(r.json.content, "base64").toString("utf-8");
+  }
+  // Large files: the contents API returns no inline content; fetch the blob by sha.
+  if (typeof r.json?.sha === "string") {
+    const blob = await githubJson(token, "GET", `${repoPath}/git/blobs/${r.json.sha}`);
+    if (blob?.encoding === "base64" && typeof blob?.content === "string") {
+      return Buffer.from(blob.content, "base64").toString("utf-8");
+    }
+  }
+  throw new ConfigRepoAgentError(`Could not read the base content of ${filePath} from GitHub.`);
+}
+
+/**
+ * Rebuilds the changed files by applying a unified diff onto the base content of each
+ * file, which `getBaseContent` resolves by path (new files apply onto ""). Pure aside
+ * from that resolver, so it is unit-testable. Because the base matches the diff's
+ * context lines exactly, `applyPatch` is deterministic. Deletions are recorded as such.
+ * Throws (→ a retryable commit error) if a hunk fails to apply.
+ */
+export async function rebuildFilesFromDiff(diff: string, getBaseContent: (path: string) => Promise<string>): Promise<CommitFile[]> {
+  const files: CommitFile[] = [];
+  for (const patch of parsePatch(diff)) {
+    const oldPath = stripDiffPrefix(patch.oldFileName);
+    const newPath = stripDiffPrefix(patch.newFileName);
+    if (newPath === null) {
+      // Deletion (newFileName is /dev/null).
+      if (oldPath !== null) files.push({ path: oldPath, deleted: true });
+      continue;
+    }
+    // Added file: oldPath is /dev/null → base is empty. Otherwise resolve the base.
+    const base = oldPath === null ? "" : await getBaseContent(oldPath);
+    const applied = applyPatch(base, patch);
+    if (applied === false) {
+      throw new ConfigRepoAgentError(`Could not rebuild ${newPath} from the stored diff.`);
+    }
+    files.push({ path: newPath, newContent: applied });
+  }
+  return files;
+}
+
+/**
+ * Commits a captured change to the linked branch via GitHub's git data API — no
+ * sandbox required, so it works no matter how long the review took. The change is
+ * stored only as a diff + base commit; here we rebuild the file contents by applying
+ * that diff onto the base, then: verify the branch still points at the base (fast-
+ * forward guard), create a blob per file, build a tree on the base tree (deletions via
+ * `sha: null`), create the commit, and fast-forward the branch ref. A concurrent push
+ * surfaces as {@link ConfigRepoCommitConflictError} (the pre-check mismatch or a 422
+ * from the non-forced ref update). The token is fetched fresh — the user may have been
+ * reviewing for a while.
+ */
+export async function commitConfigUpdate(options: {
+  getGithubToken: GithubTokenProvider,
+  ref: GithubRepoRef,
+  commitMessage: string,
+  change: CapturedChange,
+}): Promise<ConfigUpdateCommitResult> {
+  const { ref, commitMessage, change } = options;
+  const token = await options.getGithubToken();
+  const repoPath = `/repos/${ref.owner}/${ref.repo}`;
+  const encodedBranch = encodeBranchPath(ref.branch);
+
+  // 1. Fast-forward guard: the branch must still be at the commit we cloned. (The
+  //    non-forced ref update in step 6 guards the remaining race window too.)
+  const refData = await githubJson(token, "GET", `${repoPath}/git/ref/heads/${encodedBranch}`);
+  if (refData?.object?.sha !== change.baseSha) {
+    throw new ConfigRepoCommitConflictError();
+  }
+
+  // 2. Rebuild every file the agent changed from the diff applied onto the exact base
+  //    files. The diff spans the whole repo (config file + any imports/codegen it pulls
+  //    in), so this reproduces the agent's full change, not just the config file.
+  const files = await rebuildFilesFromDiff(change.diff, (path) => fetchBaseFileContent(token, repoPath, path, change.baseSha));
+  if (files.length === 0) {
+    throw new ConfigRepoAgentError("The stored diff produced no file changes to commit.");
+  }
+
+  // 3. Resolve the base tree so we only have to specify changed entries.
+  const baseCommit = await githubJson(token, "GET", `${repoPath}/git/commits/${change.baseSha}`);
+  const baseTreeSha = baseCommit?.tree?.sha;
+  if (typeof baseTreeSha !== "string") {
+    throw new ConfigRepoAgentError("Could not resolve the base tree for the config commit.");
+  }
+
+  // 4. Create a blob per non-deleted file and build the tree entries.
+  const treeEntries: Array<{ path: string, mode: string, type: "blob", sha: string | null }> = [];
+  for (const file of files) {
+    if ("deleted" in file) {
+      treeEntries.push({ path: file.path, mode: TREE_FILE_MODE, type: "blob", sha: null });
+      continue;
+    }
+    const blob = await githubJson(token, "POST", `${repoPath}/git/blobs`, {
+      content: Buffer.from(file.newContent, "utf-8").toString("base64"),
+      encoding: "base64",
+    });
+    if (typeof blob?.sha !== "string") {
+      throw new ConfigRepoAgentError("GitHub did not return a blob sha for a config file.");
+    }
+    treeEntries.push({ path: file.path, mode: TREE_FILE_MODE, type: "blob", sha: blob.sha });
+  }
+
+  // 5. Build the new tree on top of the base.
+  const tree = await githubJson(token, "POST", `${repoPath}/git/trees`, { base_tree: baseTreeSha, tree: treeEntries });
+  if (typeof tree?.sha !== "string") {
+    throw new ConfigRepoAgentError("GitHub did not return a tree sha for the config commit.");
+  }
+
+  // 6. Create the commit object with the bot identity as author and committer.
+  const identity = { name: GIT_BOT_NAME, email: GIT_BOT_EMAIL };
+  const commitObj = await githubJson(token, "POST", `${repoPath}/git/commits`, {
+    message: commitMessage,
+    tree: tree.sha,
+    parents: [change.baseSha],
+    author: identity,
+    committer: identity,
+  });
+  const commitSha = commitObj?.sha;
+  if (typeof commitSha !== "string") {
+    throw new ConfigRepoAgentError("GitHub did not return a commit sha.");
+  }
+
+  // 7. Fast-forward the branch. force:false → GitHub rejects a non-fast-forward
+  //    (someone pushed since our pre-check) with 422, which is a commit conflict.
+  const update = await githubFetch(token, "PATCH", `${repoPath}/git/refs/heads/${encodedBranch}`, { sha: commitSha, force: false });
+  if (!update.ok) {
+    if (update.status === 422) {
+      throw new ConfigRepoCommitConflictError();
+    }
+    const detail = typeof update.json?.message === "string" ? `: ${update.json.message}` : "";
+    throw new ConfigRepoAgentError(`Failed to update the branch ref (${update.status})${detail}`);
+  }
+
+  return {
+    mode: "commit-to-branch",
+    branch: ref.branch,
+    commitUrl: `https://github.com/${ref.owner}/${ref.repo}/commit/${commitSha}`,
+    commitSha,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cancel (hard-stop an in-flight run's sandbox)
 // ---------------------------------------------------------------------------
 
 /**
  * Hard-stops an in-flight run's sandbox by id (called from the cancel route, a
  * different invocation than the one running the agent). Best-effort: a sandbox
- * that already finished/stopped just no-ops. If the agent hadn't pushed yet, this
- * undoes the change; if a commit already landed, it stays (no revert).
+ * that already finished/stopped just no-ops. Only `running` runs have a live
+ * sandbox now — once captured (`awaiting_review`) the sandbox is already gone, so
+ * cancelling then just flips the row to terminal with nothing to stop.
  */
 export async function stopConfigAgentSandbox(sandboxId: string): Promise<void> {
   await stopSandboxWithContext(sandboxId, "config-repo-agent-cancel-stop");

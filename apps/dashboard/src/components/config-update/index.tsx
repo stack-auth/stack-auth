@@ -8,7 +8,7 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import React, { useCallback, useContext, useState } from "react";
 
 import { GithubPushDialog } from "./github-push-dialog";
-import { updateRemoteDevelopmentEnvironmentConfigFile } from "./remote-development-environment";
+import { RdeApplyDialog } from "./rde-apply-dialog";
 import { ConfigUpdateDialogContext } from "./shared";
 
 type ConfigUpdateDialogState = {
@@ -19,6 +19,13 @@ type ConfigUpdateDialogState = {
   source: PushedConfigSource | null,
 };
 
+type RdeDialogState = {
+  isOpen: boolean,
+  adminApp: StackAdminApp<false> | null,
+  configUpdate: EnvironmentConfigOverrideOverride | null,
+  resolve: ((result: boolean) => void) | null,
+};
+
 export function ConfigUpdateDialogProvider({ children }: { children: React.ReactNode }) {
   const [dialogState, setDialogState] = useState<ConfigUpdateDialogState>({
     isOpen: false,
@@ -27,8 +34,12 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     resolve: null,
     source: null,
   });
-  const [githubRunActive, setGithubRunActive] = useState(false);
-
+  const [rdeState, setRdeState] = useState<RdeDialogState>({
+    isOpen: false,
+    adminApp: null,
+    configUpdate: null,
+    resolve: null,
+  });
   const showPushableDialog = useCallback(async (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride): Promise<boolean> => {
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
@@ -56,6 +67,12 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     return false;
   }, []);
 
+  const showRdeApplyDialog = useCallback(async (adminApp: StackAdminApp<false>, configUpdate: EnvironmentConfigOverrideOverride): Promise<boolean> => {
+    return await new Promise((resolve) => {
+      setRdeState({ isOpen: true, adminApp, configUpdate, resolve });
+    });
+  }, []);
+
   const settleDialog = useCallback((result: boolean) => {
     const resolve = dialogState.resolve;
     setDialogState({
@@ -67,6 +84,17 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     });
     resolve?.(result);
   }, [dialogState.resolve]);
+
+  const settleRdeDialog = useCallback((result: boolean) => {
+    const resolve = rdeState.resolve;
+    setRdeState({
+      isOpen: false,
+      adminApp: null,
+      configUpdate: null,
+      resolve: null,
+    });
+    resolve?.(result);
+  }, [rdeState.resolve]);
 
   const projectId = dialogState.adminApp?.projectId;
 
@@ -129,9 +157,17 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
   };
 
   return (
-    <ConfigUpdateDialogContext.Provider value={{ showPushableDialog, githubRunActive, setGithubRunActive }}>
+    <ConfigUpdateDialogContext.Provider value={{ showPushableDialog, showRdeApplyDialog }}>
       {children}
       {renderDialog()}
+      {rdeState.isOpen && (
+        <RdeApplyDialog
+          open={rdeState.isOpen}
+          adminApp={rdeState.adminApp}
+          configUpdate={rdeState.configUpdate}
+          onSettle={settleRdeDialog}
+        />
+      )}
     </ConfigUpdateDialogContext.Provider>
   );
 }
@@ -151,7 +187,7 @@ export type UpdateConfigOptions = {
 };
 
 export function useUpdateConfig() {
-  const { showPushableDialog } = useConfigUpdateDialog();
+  const { showPushableDialog, showRdeApplyDialog } = useConfigUpdateDialog();
 
   return useCallback(async (options: UpdateConfigOptions): Promise<boolean> => {
     const { adminApp, configUpdate, pushable } = options;
@@ -161,10 +197,7 @@ export function useUpdateConfig() {
         throw new HexclaveAssertionError("These settings are read-only in a development environment. Update them in your production deployment instead.");
       }
 
-      if (await updateRemoteDevelopmentEnvironmentConfigFile(adminApp, configUpdate) === "redirecting") {
-        return false;
-      }
-      return true;
+      return await showRdeApplyDialog(adminApp, configUpdate);
     }
 
     if (pushable) {
@@ -179,7 +212,7 @@ export function useUpdateConfig() {
     // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
     await project.updateConfig(configUpdate);
     return true;
-  }, [showPushableDialog]);
+  }, [showPushableDialog, showRdeApplyDialog]);
 }
 
 export type ConfigUpdateButtonProps = {

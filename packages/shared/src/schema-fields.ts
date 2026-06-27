@@ -961,12 +961,14 @@ export const branchConfigSourceSchema = yupUnion(
 );
 
 /**
- * State of the most recent dashboard→GitHub config agent run, so the dashboard can
- * poll for progress and surface the resulting commit (or error) across tabs. Stored
- * in its own `BranchConfigOverride.configAgentRun` column; runs are NOT serialized,
- * so a new run just overwrites this and stale callbacks are ignored by `started_at`.
+ * State of a single dashboard→GitHub config agent run, so the dashboard can poll for
+ * progress and surface the resulting commit (or error). Each run is one row in the
+ * `ConfigAgentRun` table, addressed by `id`; runs are NOT serialized, so many can
+ * target the same branch at once and GitHub catches conflicts at push time.
  */
 export const configAgentRunSchema = yupObject({
+  // The run's id (the `ConfigAgentRun` row id). The dashboard polls/cancels/commits this specific run by id.
+  id: yupString().defined(),
   // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for the user to commit;
   // "success" | "no-change" | "error" | "cancelled": terminal.
   status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),
@@ -974,8 +976,9 @@ export const configAgentRunSchema = yupObject({
   finished_at: yupNumber().optional(),
   commit_url: urlSchema.optional(),
   error: configAgentSafeErrorMessageSchema.optional(),
-  // Vercel Sandbox id of the in-flight run, recorded while `status` is "running"/"awaiting_review"
-  // so a cancel request (a different invocation) can hard-stop the sandbox. Absent once terminal.
+  // Vercel Sandbox id of the in-flight run, recorded only while `status` is "running"
+  // so a cancel request (a different invocation) can hard-stop the sandbox. Cleared once
+  // the change set is captured ("awaiting_review") or the run goes terminal.
   sandbox_id: yupString().optional(),
   // A short, SANITIZED live activity feed (recent agent actions, e.g. "Editing
   // hexclave.config.ts", "Running: git push"). Never file contents, tool inputs, or tokens.
@@ -989,12 +992,14 @@ export type ConfigAgentRunApi = yup.InferType<typeof configAgentRunSchema>;
 
 import.meta.vitest?.test("configAgentRunSchema only allows safe config-agent error messages", async ({ expect }) => {
   expect(await configAgentRunSchema.isValid({
+    id: "00000000-0000-0000-0000-000000000000",
     status: "error",
     started_at: 1,
     error: "The config agent failed to apply the change.",
   })).toMatchInlineSnapshot(`true`);
 
   expect(await configAgentRunSchema.isValid({
+    id: "00000000-0000-0000-0000-000000000000",
     status: "error",
     started_at: 1,
     error: "ENOENT: tokenized internal failure",

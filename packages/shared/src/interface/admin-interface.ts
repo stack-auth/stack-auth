@@ -14,13 +14,13 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
-    AdminGetSessionReplayAllEventsResponse,
-    AdminGetSessionReplayChunkEventsResponse,
-    AdminGetSessionReplayResponse,
-    AdminListSessionReplayChunksOptions,
-    AdminListSessionReplayChunksResponse,
-    AdminListSessionReplaysOptions,
-    AdminListSessionReplaysResponse
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminGetSessionReplayResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
 } from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
@@ -835,12 +835,14 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /**
-   * Reads the most recent config-agent run state (or `null`) for the linked GitHub
-   * repo. Polled by the dashboard for live progress and the review diff.
+   * Reads a specific config-agent run's state (or `null`) for the linked GitHub
+   * repo. Polled by the dashboard — using the id returned by `applyConfigViaAgent`
+   * — for live progress and the review diff. Runs are independent, so each is
+   * addressed by its own id rather than "the" run on the branch.
    */
-  async getConfigAgentRun(): Promise<ConfigAgentRunApi | null> {
+  async getConfigAgentRun(runId: string): Promise<ConfigAgentRunApi | null> {
     const response = await this.sendAdminRequest(
-      `/internal/config/github/run`,
+      `/internal/config/github/run?run_id=${encodeURIComponent(runId)}`,
       { method: "GET" },
       null,
     );
@@ -850,11 +852,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
 
   /**
    * Applies a dashboard config change to the linked GitHub repo by running the
-   * config agent in a sandbox (server-side). Returns immediately; poll
-   * `getConfigAgentRun()` for progress. The GitHub access token is the caller's
-   * own OAuth token and is used transiently server-side.
+   * config agent in a sandbox (server-side). Returns immediately with the new run's
+   * `id`; poll `getConfigAgentRun(id)` for progress. The GitHub access token is the
+   * caller's own OAuth token and is used transiently server-side.
    */
-  async applyConfigViaAgent(options: { configUpdate: EnvironmentConfigOverrideOverride, githubAccessToken: string }): Promise<{ status: "started" }> {
+  async applyConfigViaAgent(options: { configUpdate: EnvironmentConfigOverrideOverride, githubAccessToken: string }): Promise<{ status: "started", id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config/github/apply`,
       {
@@ -871,18 +873,18 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /**
-   * Cancels the in-flight agent-driven config write: hard-stops the sandbox so
-   * the agent stops mid-work. Also cancels runs in `awaiting_review`. No revert
-   * — if the agent already pushed, the commit stays. Returns `not-running` if
-   * no run is in flight.
+   * Cancels a specific in-flight agent-driven config write: hard-stops the sandbox
+   * so the agent stops mid-work. Also cancels runs in `awaiting_review`. No revert
+   * — if the agent already pushed, the commit stays. Returns `not-running` if the
+   * run is gone or already terminal.
    */
-  async cancelConfigAgentRun(): Promise<{ status: "cancelling" | "not-running" }> {
+  async cancelConfigAgentRun(runId: string): Promise<{ status: "cancelling" | "not-running" }> {
     const response = await this.sendAdminRequest(
       `/internal/config/github/cancel`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ run_id: runId }),
       },
       null,
     );
@@ -890,18 +892,19 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   /**
-   * Commits and pushes the agent's already-applied changes after the user has
-   * reviewed the diff. Only valid when a run is in `awaiting_review` status.
-   * Returns `sandbox-expired` if the review state exists but its sandbox id is
-   * missing, which means the user needs to rerun the agent.
+   * Commits a specific run's reviewed change to GitHub. Only valid when that run is in
+   * `awaiting_review` status; the change (diff + base commit) was captured at apply time
+   * and is rebuilt + pushed via the GitHub API here, so no live sandbox is involved.
+   * Returns `not-awaiting-review` if the run isn't in a committable state.
    */
-  async commitConfigAgentRun(options: { githubAccessToken: string, commitMessage?: string }): Promise<{ status: "committing" | "not-awaiting-review" | "sandbox-expired" }> {
+  async commitConfigAgentRun(runId: string, options: { githubAccessToken: string, commitMessage?: string }): Promise<{ status: "committing" | "not-awaiting-review" }> {
     const response = await this.sendAdminRequest(
       `/internal/config/github/commit`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          run_id: runId,
           github_access_token: options.githubAccessToken,
           ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
         }),

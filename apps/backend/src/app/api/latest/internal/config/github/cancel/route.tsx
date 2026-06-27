@@ -12,9 +12,10 @@ export const maxDuration = 60;
 
 /**
  * Atomically flips the run to terminal `cancelled` (so the original run's late
- * result is ignored) and hard-stops its sandbox if one was recorded. No revert:
- * any commit the agent already pushed stays and is reconciled by the repo's
- * stack-auth-config-sync workflow.
+ * result is ignored) and hard-stops its sandbox if one was recorded (only `running`
+ * runs have a live sandbox; an `awaiting_review` run's sandbox is already gone, so
+ * cancelling it just discards the captured change set before it is committed). No
+ * commit has been pushed at this point, so there is nothing to revert.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -27,6 +28,9 @@ export const POST = createSmartRouteHandler({
     auth: yupObject({
       type: adminAuthTypeSchema,
       tenancy: adaptSchema,
+    }).defined(),
+    body: yupObject({
+      run_id: yupString().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -43,15 +47,18 @@ export const POST = createSmartRouteHandler({
 
     await getGithubConfigSourceOrThrow({ projectId, branchId });
 
-    const { cancelled, sandboxId } = await cancelConfigAgentRun({ projectId, branchId, nowMs: Date.now() });
+    const { cancelled, sandboxId, previousStatus } = await cancelConfigAgentRun({ projectId, branchId, runId: req.body.run_id, nowMs: Date.now() });
     if (!cancelled) {
       return { statusCode: 200, bodyType: "json", body: { status: "not-running" } };
     }
 
     if (sandboxId) {
       runAsynchronouslyAndWaitUntil(stopConfigAgentSandbox(sandboxId));
-    } else {
-      captureError("config-github-cancel", new Error("Cancelled a config agent run but no sandboxId was recorded; the sandbox may still be running."));
+    } else if (previousStatus === "running") {
+      // A `running` run should always have a sandbox recorded; missing one means it
+      // may still be running. (An `awaiting_review` run has no live sandbox — the
+      // change set was already captured and the sandbox stopped — so that's expected.)
+      captureError("config-github-cancel", new Error("Cancelled a running config agent run but no sandboxId was recorded; the sandbox may still be running."));
     }
 
     return { statusCode: 200, bodyType: "json", body: { status: "cancelling" } };

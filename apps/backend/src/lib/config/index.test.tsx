@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { recordConfigAgentRunResult, setConfigAgentRunAwaitingReview, startConfigAgentRun } from "./index";
+import { cancelConfigAgentRun, getConfigAgentRun, getConfigAgentRunChange, recordConfigAgentRunResult, recordConfigAgentRunSandbox, setConfigAgentRunAwaitingReview, startConfigAgentRun } from "./index";
 
 const createdProjectIds: string[] = [];
 
@@ -21,7 +21,7 @@ const githubSource: Prisma.InputJsonObject = {
   config_file_path: "hexclave.config.ts",
 };
 
-async function createBranchConfigOverride(configAgentRun: Prisma.InputJsonObject) {
+async function createGithubLinkedBranch() {
   const projectId = randomUUID();
   const branchId = "main";
   createdProjectIds.push(projectId);
@@ -34,81 +34,120 @@ async function createBranchConfigOverride(configAgentRun: Prisma.InputJsonObject
     },
   });
   await globalPrismaClient.branchConfigOverride.create({
-    data: { projectId, branchId, config: {}, source: githubSource, configAgentRun },
+    data: { projectId, branchId, config: {}, source: githubSource },
   });
   return { projectId, branchId };
 }
 
-async function readRow(projectId: string, branchId: string) {
+async function readBranchRow(projectId: string, branchId: string) {
   return await globalPrismaClient.branchConfigOverride.findUniqueOrThrow({
     where: { projectId_branchId: { projectId, branchId } },
   });
 }
 
-async function readRun(projectId: string, branchId: string): Promise<JsonRecord> {
-  const { configAgentRun } = await readRow(projectId, branchId);
-  if (!isRecord(configAgentRun)) {
-    throw new Error("Expected branch configAgentRun to be a JSON object.");
-  }
-  return configAgentRun;
-}
-
 afterEach(async () => {
+  // ConfigAgentRun rows cascade-delete with the project.
   await globalPrismaClient.project.deleteMany({
     where: { id: { in: createdProjectIds.splice(0) } },
   });
 });
 
 describe("config agent run state", () => {
-  it("overwrites an in-flight run instead of locking it out", async () => {
-    const { projectId, branchId } = await createBranchConfigOverride({
-      status: "awaiting_review",
-      started_at: 1000,
-      sandbox_id: "sandbox-awaiting-review",
-      diff: "diff --git a/hexclave.config.ts b/hexclave.config.ts",
-    });
+  it("starts independent runs for the same branch instead of overwriting", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
 
-    const source = await startConfigAgentRun({ projectId, branchId, nowMs: 2000 });
+    const first = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+    const second = await startConfigAgentRun({ projectId, branchId, nowMs: 2000 });
 
-    expect(source.type).toBe("pushed-from-github");
-    // A fresh `running` marker replaces the prior run — no awaiting_review leftovers.
-    const run = await readRun(projectId, branchId);
-    expect(run).toMatchObject({ status: "running", started_at: 2000 });
-    expect(run.sandbox_id).toBeUndefined();
-    expect(run.diff).toBeUndefined();
+    expect(first.source.type).toBe("pushed-from-github");
+    expect(first.runId).not.toBe(second.runId);
+    // Runs are NOT serialized: both rows coexist, each still "running".
+    expect((await getConfigAgentRun({ projectId, branchId, runId: first.runId }))?.status).toBe("running");
+    expect((await getConfigAgentRun({ projectId, branchId, runId: second.runId }))?.status).toBe("running");
   });
 
-  it("ignores stale awaiting_review transitions from an older run", async () => {
-    const { projectId, branchId } = await createBranchConfigOverride({
-      status: "running",
-      started_at: 2000,
-      sandbox_id: "newer-sandbox",
-    });
+  it("scopes a run read to its own project/branch", async () => {
+    const a = await createGithubLinkedBranch();
+    const b = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId: a.projectId, branchId: a.branchId, nowMs: 1000 });
 
-    const result = await setConfigAgentRunAwaitingReview({
-      projectId,
-      branchId,
-      runStartedAt: 1000,
-      diff: "old diff",
-    });
-
-    expect(result.sandboxId).toBeUndefined();
-    const run = await readRun(projectId, branchId);
-    expect(run).toMatchObject({ status: "running", started_at: 2000, sandbox_id: "newer-sandbox" });
-    expect(run.diff).toBeUndefined();
+    // The run id is real, but asking under a different project must not leak it.
+    expect(await getConfigAgentRun({ projectId: b.projectId, branchId: b.branchId, runId })).toBeNull();
+    expect((await getConfigAgentRun({ projectId: a.projectId, branchId: a.branchId, runId }))?.id).toBe(runId);
   });
 
-  it("ignores stale terminal writes from an older run", async () => {
-    const { projectId, branchId } = await createBranchConfigOverride({
-      status: "running",
-      started_at: 2000,
-      sandbox_id: "newer-sandbox",
-    });
+  it("won't move a cancelled run to awaiting_review", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+    await recordConfigAgentRunSandbox({ runId, sandboxId: "sandbox-1" });
+
+    const cancel = await cancelConfigAgentRun({ projectId, branchId, runId, nowMs: 2000 });
+    expect(cancel).toMatchObject({ cancelled: true, sandboxId: "sandbox-1", previousStatus: "running" });
+
+    // A late transition from the agent must not resurrect the cancelled run.
+    await setConfigAgentRunAwaitingReview({ runId, change: { diff: "old diff", baseSha: "abc123" } });
+
+    const run = await getConfigAgentRun({ projectId, branchId, runId });
+    expect(run?.status).toBe("cancelled");
+    expect(run?.diff).toBeUndefined();
+  });
+
+  it("captures the diff + base commit on awaiting_review; base commit is server-only", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+
+    const change = { diff: "diff --git a/hexclave.config.ts b/hexclave.config.ts\n@@ -1 +1 @@\n-a\n+b\n", baseSha: "abc123" };
+    await setConfigAgentRunAwaitingReview({ runId, change });
+
+    // The captured change is readable for the commit route...
+    const plan = await getConfigAgentRunChange({ projectId, branchId, runId });
+    expect(plan?.status).toBe("awaiting_review");
+    expect(plan?.change).toEqual(change);
+
+    // ...the dashboard sees the diff but never the base commit (and sandbox id is cleared).
+    const run = await getConfigAgentRun({ projectId, branchId, runId });
+    expect(run?.status).toBe("awaiting_review");
+    expect(run?.diff).toBe(change.diff);
+    expect(run?.sandbox_id).toBeUndefined();
+    expect(run as Record<string, unknown>).not.toHaveProperty("base_commit_sha");
+    expect(run as Record<string, unknown>).not.toHaveProperty("baseCommitSha");
+
+    // The captured change scopes to its own project/branch like the run read does.
+    const other = await createGithubLinkedBranch();
+    expect(await getConfigAgentRunChange({ projectId: other.projectId, branchId: other.branchId, runId })).toBeNull();
+  });
+
+  it("advances the source commit hash on a successful result", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+    await setConfigAgentRunAwaitingReview({ runId, change: { diff: "diff --git a/hexclave.config.ts b/hexclave.config.ts", baseSha: "abc123" } });
 
     await recordConfigAgentRunResult({
       projectId,
       branchId,
-      runStartedAt: 1000,
+      runId,
+      nowMs: 3000,
+      outcome: {
+        status: "success",
+        commitUrl: "https://github.com/hexclave-validation/config-agent-validation/commit/new",
+        newCommitHash: "new-commit",
+      },
+    });
+
+    expect((await getConfigAgentRun({ projectId, branchId, runId }))?.status).toBe("success");
+    const { source } = await readBranchRow(projectId, branchId);
+    expect(isRecord(source) ? source.commit_hash : null).toBe("new-commit");
+  });
+
+  it("ignores a terminal result for an already-cancelled run", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+    await cancelConfigAgentRun({ projectId, branchId, runId, nowMs: 2000 });
+
+    await recordConfigAgentRunResult({
+      projectId,
+      branchId,
+      runId,
       nowMs: 3000,
       outcome: {
         status: "success",
@@ -117,10 +156,9 @@ describe("config agent run state", () => {
       },
     });
 
-    const run = await readRun(projectId, branchId);
-    expect(run).toMatchObject({ status: "running", started_at: 2000, sandbox_id: "newer-sandbox" });
-    // The superseded run must not have advanced the source commit hash.
-    const { source } = await readRow(projectId, branchId);
+    // The cancel wins; neither the run status nor the source commit hash moves.
+    expect((await getConfigAgentRun({ projectId, branchId, runId }))?.status).toBe("cancelled");
+    const { source } = await readBranchRow(projectId, branchId);
     expect(isRecord(source) ? source.commit_hash : null).toBe("base-commit");
   });
 });

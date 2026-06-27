@@ -9,10 +9,10 @@ import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/co
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { GITHUB_SCOPE_REQUIREMENTS } from "@/lib/github-api";
-import React, { Suspense, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { AgentDiffViewer, ConfigAgentRunProgressContent } from "./progress-content";
-import { ConfigUpdateDialogContext, currentEpochMsFromPerformance, getAdminInterface, type AgentStage, type ConfigAgentRun, type GithubPushedSource } from "./shared";
+import { AgentDiffViewer, ConfigAgentPreviewProgress } from "./progress-content";
+import { currentEpochMsFromPerformance, getAdminInterface, type AgentStage, type ConfigAgentRun, type GithubPushedSource } from "./shared";
 
 type GithubPushDialogProps = {
   open: boolean,
@@ -32,12 +32,24 @@ type ScopeCheck =
   | { status: "ok", account: OAuthConnection }
   | { status: "missing-scopes" };
 
-// "idle": waiting for user to start.
-// "running": agent is in flight (non-dismissible; Cancel stops the sandbox).
+// "check": verifying the GitHub account is linked with valid scopes; when the
+//   check passes the run starts automatically. Also the resting state after a
+//   failed run (shows the error + a manual retry).
+//
+// The remaining phases all render the SAME commit-form layout (commit message
+// input + a "Commit preview" box); only the preview box content and the footer
+// buttons differ, so the UI doesn't jump between running and review:
+// "running": agent is in flight — preview box shows the live loader; Commit is
+//   disabled; Cancel stops the sandbox. The commit message can be drafted here.
 // "cancelling": user clicked Cancel, waiting for terminal status.
-// "awaiting_review": agent done, diff loaded, waiting for user to commit.
+// "awaiting_review": agent done, diff loaded into the preview box; Commit enabled.
 // "committing": user clicked Commit, pushing to GitHub.
-type DialogPhase = "idle" | "running" | "cancelling" | "awaiting_review" | "committing";
+type DialogPhase = "check" | "running" | "cancelling" | "awaiting_review" | "committing";
+
+// Phases that share the commit-form layout (everything except the scope check).
+function isCommitFormPhase(phase: DialogPhase): boolean {
+  return phase === "running" || phase === "cancelling" || phase === "awaiting_review" || phase === "committing";
+}
 
 function projectSettingsHref(projectId: string | undefined): string {
   return `/projects/${projectId}/project-settings`;
@@ -49,7 +61,7 @@ function projectSettingsHref(projectId: string | undefined): string {
  */
 export function GithubPushDialog({ open, adminApp, source, configUpdate, projectId, onSettle }: GithubPushDialogProps) {
   const [scopeStatus, setScopeStatus] = useState<ScopeCheck["status"]>("checking");
-  const [phase, setPhase] = useState<DialogPhase>("idle");
+  const [phase, setPhase] = useState<DialogPhase>("check");
   const [stage, setStage] = useState<AgentStage | null>(null);
   const [startedAt, setStartedAt] = useState<number>(0);
   const [activity, setActivity] = useState<string | null>(null);
@@ -65,99 +77,55 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
     commit: () => Promise<void>,
   } | null>(null);
 
-  const dialogContext = useContext(ConfigUpdateDialogContext);
   const isNonDismissible = phase === "running" || phase === "cancelling" || phase === "committing";
 
+  // The commit-form phases explain themselves in the body (so the header stays
+  // identical across running/review); only the scope-check phase needs a header
+  // description.
   const description = (() => {
-    switch (phase) {
-      case "idle": {
-        switch (scopeStatus) {
-          case "no-account": { return "Connect a GitHub account to push configuration changes to this repository."; }
-          case "checking": { return "Checking GitHub permissions…"; }
-          case "ok": { return `This will apply your change to ${source.owner}/${source.repo}@${source.branch}.`; }
-          case "missing-scopes": { return `Your linked GitHub account is missing the "repo" and "workflow" permissions. Reconnect to grant them.`; }
-        }
-        break;
-      }
-      case "running":
-      case "cancelling": {
-        return `Applying your change in a sandbox — ${source.owner}/${source.repo}@${source.branch}`;
-      }
-      case "awaiting_review": {
-        return `Review the changes before committing to ${source.branch}.`;
-      }
-      case "committing": {
-        return `Pushing to ${source.owner}/${source.repo}@${source.branch}…`;
-      }
+    if (phase !== "check") return undefined;
+    switch (scopeStatus) {
+      case "no-account": { return "Connect a GitHub account to push configuration changes to this repository."; }
+      case "checking": { return "Checking GitHub permissions…"; }
+      case "ok": { return `This will apply your change to ${source.owner}/${source.repo}@${source.branch}.`; }
+      case "missing-scopes": { return `Your linked GitHub account is missing the "repo" and "workflow" permissions. Reconnect to grant them.`; }
     }
   })();
 
   // Footer buttons
   const footer = (() => {
-    if (phase === "running") {
+    // Shared commit-form footer: Cancel on the left, status + Commit on the right.
+    // The only per-phase differences are button enabled/loading state and the
+    // "Waiting for preview…" hint, so running and review keep the same shape.
+    if (isCommitFormPhase(phase)) {
+      const canCommit = phase === "awaiting_review";
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 w-full">
           <DesignButton
             variant="outline"
             size="sm"
+            disabled={phase === "cancelling" || phase === "committing"}
             onClick={async () => { await handlersRef.current?.cancel(); }}
           >
-            Cancel
-          </DesignButton>
-        </div>
-      );
-    }
-    if (phase === "cancelling") {
-      return (
-        <DesignButton variant="outline" size="sm" disabled>
-          Cancelling…
-        </DesignButton>
-      );
-    }
-    if (phase === "awaiting_review") {
-      return (
-        <div className="flex items-center gap-2 w-full">
-          <DesignButton
-            variant="outline"
-            size="sm"
-            onClick={async () => { await handlersRef.current?.cancel(); }}
-          >
-            Discard
+            {phase === "cancelling" ? "Cancelling…" : "Cancel"}
           </DesignButton>
           <div className="flex-1" />
-          <div className="flex items-center gap-2">
-            <label htmlFor="push-commit-msg" className="text-xs text-muted-foreground whitespace-nowrap">
-              Commit message
-            </label>
-            <input
-              id="push-commit-msg"
-              type="text"
-              className="h-8 rounded-lg border border-border/50 bg-background px-3 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 transition-colors duration-150 hover:transition-none w-52"
-              placeholder="chore(hexclave): update config from dashboard"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-            />
-            <DesignButton
-              size="sm"
-              onClick={async () => { await handlersRef.current?.commit(); }}
-            >
-              <GitCommit className="h-3.5 w-3.5 mr-1.5" />
-              Commit
-            </DesignButton>
-          </div>
-        </div>
-      );
-    }
-    if (phase === "committing") {
-      return (
-        <div className="flex items-center gap-2">
-          <DesignButton size="sm" disabled loading>
-            Committing…
+          {phase === "running" && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Waiting for preview…</span>
+          )}
+          <DesignButton
+            size="sm"
+            disabled={!canCommit}
+            loading={phase === "committing"}
+            onClick={async () => { await handlersRef.current?.commit(); }}
+          >
+            {phase !== "committing" && <GitCommit className="h-3.5 w-3.5 mr-1.5" />}
+            {phase === "committing" ? "Committing…" : "Commit"}
           </DesignButton>
         </div>
       );
     }
-    // idle
+    // check
     return (
       <div className="flex items-center gap-2">
         <DesignDialogClose asChild>
@@ -169,23 +137,25 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
           <DesignButton size="sm" onClick={async () => { await handlersRef.current?.connect(); }}>
             {scopeStatus === "no-account" ? "Connect with GitHub" : "Reconnect with GitHub"}
           </DesignButton>
-        ) : (
-          <DesignButton
-            size="sm"
-            onClick={async () => { await handlersRef.current?.push(); }}
-            disabled={scopeStatus === "checking"}
-            loading={scopeStatus === "checking"}
-          >
+        ) : errorMessage != null && configUpdate != null ? (
+          <DesignButton size="sm" onClick={async () => { await handlersRef.current?.push(); }}>
             <ArrowsClockwise className="h-3.5 w-3.5 mr-1.5" />
-            {errorMessage != null && configUpdate != null ? "Retry update" : "Start update"}
+            Retry update
+          </DesignButton>
+        ) : (
+          // Scope check passing (or still checking) auto-starts the run; show a
+          // non-interactive loading affordance until the phase flips to "running".
+          <DesignButton size="sm" disabled loading>
+            {scopeStatus === "checking" ? "Checking…" : "Starting…"}
           </DesignButton>
         )}
       </div>
     );
   })();
 
-  // Dialog size grows when showing the diff
-  const dialogSize = phase === "awaiting_review" ? "3xl" : "lg";
+  // The whole commit form (running → review) uses one width so the dialog never
+  // resizes when the preview box swaps the loader out for the diff.
+  const dialogSize = isCommitFormPhase(phase) ? "3xl" : "lg";
 
   return (
     <DesignDialog
@@ -196,7 +166,7 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
       }}
       size={dialogSize}
       icon={GitBranch}
-      title="Push configuration to GitHub"
+      title="Push configuration"
       description={description}
       hideTopCloseButton={isNonDismissible}
       footer={footer}
@@ -216,6 +186,7 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
           diff={diff}
           commitMessage={commitMessage}
           errorMessage={errorMessage}
+          onCommitMessageChange={setCommitMessage}
           onScopeStatusChange={setScopeStatus}
           onPhaseChange={setPhase}
           onStageChange={setStage}
@@ -224,7 +195,6 @@ export function GithubPushDialog({ open, adminApp, source, configUpdate, project
           onDiffChange={setDiff}
           onErrorChange={setErrorMessage}
           handlersRef={handlersRef}
-          dialogContext={dialogContext}
         />
       </Suspense>
     </DesignDialog>
@@ -244,6 +214,7 @@ type GithubPushBodyProps = {
   diff: string | null,
   commitMessage: string,
   errorMessage: string | null,
+  onCommitMessageChange: (m: string) => void,
   onScopeStatusChange: (s: ScopeCheck["status"]) => void,
   onPhaseChange: (p: DialogPhase) => void,
   onStageChange: (s: AgentStage | null) => void,
@@ -257,7 +228,6 @@ type GithubPushBodyProps = {
     cancel: () => Promise<void>,
     commit: () => Promise<void>,
   } | null>,
-  dialogContext: React.ContextType<typeof ConfigUpdateDialogContext>,
 };
 
 function GithubPushBody({
@@ -273,6 +243,7 @@ function GithubPushBody({
   diff,
   commitMessage,
   errorMessage,
+  onCommitMessageChange,
   onScopeStatusChange,
   onPhaseChange,
   onStageChange,
@@ -281,7 +252,6 @@ function GithubPushBody({
   onDiffChange,
   onErrorChange,
   handlersRef,
-  dialogContext,
 }: GithubPushBodyProps) {
   const user = useDashboardInternalUser();
   const githubAccounts = user.useConnectedAccounts().filter((account) => account.provider === "github");
@@ -290,6 +260,11 @@ function GithubPushBody({
   const [scopeCheck, setScopeCheck] = useState<ScopeCheck>(
     githubAccounts.length === 0 ? { status: "no-account" } : { status: "checking" },
   );
+
+  // Id of the run this dialog started, returned by applyConfigViaAgent. Runs are
+  // independent rows, so we poll/cancel/commit THIS run by id rather than "the"
+  // run on the branch (another tab may be running its own at the same time).
+  const runIdRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
     onScopeStatusChange(scopeCheck.status);
@@ -350,32 +325,33 @@ function GithubPushBody({
         return;
       }
 
-      await adminInterface.applyConfigViaAgent({
+      const started = await adminInterface.applyConfigViaAgent({
         configUpdate,
         githubAccessToken: tokenResult.data.accessToken,
       });
+      const runId = started.id;
+      runIdRef.current = runId;
 
       const runStartedAtWallMs = currentEpochMsFromPerformance();
       const runStartedAtMonotonicMs = performance.now();
       onStartedAtChange(runStartedAtWallMs);
-      dialogContext?.setGithubRunActive(true);
       onPhaseChange("running");
       onActivityChange(null);
       onStageChange("initializing_sandbox");
 
-      // Poll until the run transitions out of "running" (either to
-      // "awaiting_review", a terminal status, or times out).
+      // Poll OUR run by id until it leaves "running" (to "awaiting_review", a
+      // terminal status, or timeout). No stale-filtering needed — the id pins
+      // exactly this run, independent of any concurrent run on the same branch.
       const deadline = performance.now() + 8 * 60_000;
       while (performance.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000));
         let run: ConfigAgentRun | null;
         try {
-          run = await adminInterface.getConfigAgentRun();
+          run = await adminInterface.getConfigAgentRun(runId);
         } catch {
           continue;
         }
-        // Ignore stale runs from before this one started.
-        if (run == null || run.started_at < runStartedAtWallMs - 5000) continue;
+        if (run == null) continue;
 
         if (run.status === "running") {
           if (run.progress != null) onActivityChange(run.progress);
@@ -384,8 +360,6 @@ function GithubPushBody({
         }
 
         // Non-running status: transition.
-        dialogContext?.setGithubRunActive(false);
-
         if (run.status === "awaiting_review") {
           onPhaseChange("awaiting_review");
           onStageChange("awaiting_review");
@@ -393,32 +367,31 @@ function GithubPushBody({
           return;
         }
         if (run.status === "error") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onStageChange(null);
           onErrorChange(run.error ?? "The config agent failed to apply your change.");
           return;
         }
         if (run.status === "cancelled") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onStageChange(null);
           onSettle(false);
           return;
         }
         if (run.status === "no-change") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onStageChange(null);
           onErrorChange("The config agent finished without producing a diff. No commit was created; try the update again.");
           return;
         }
         // success: a poll raced a completed commit. Settle so the dashboard refreshes.
-        onPhaseChange("idle");
+        onPhaseChange("check");
         onStageChange(null);
         onSettle(true);
         return;
       }
 
-      dialogContext?.setGithubRunActive(false);
-      onPhaseChange("idle");
+      onPhaseChange("check");
       onStageChange(null);
       const elapsedSeconds = Math.floor((performance.now() - runStartedAtMonotonicMs) / 1000);
       onErrorChange(`Timed out after ${elapsedSeconds}s waiting for the config agent. Your change may still be in progress; check the linked repository.`);
@@ -431,14 +404,19 @@ function GithubPushBody({
         configFilePath: source.configFilePath,
         cause: error,
       });
-      dialogContext?.setGithubRunActive(false);
-      onPhaseChange("idle");
+      onPhaseChange("check");
       onStageChange(null);
       onErrorChange("Unknown error pushing to GitHub.");
     }
-  }, [adminApp, configUpdate, dialogContext, onActivityChange, onDiffChange, onErrorChange, onPhaseChange, onSettle, onStageChange, onStartedAtChange, projectId, scopeCheck, source]);
+  }, [adminApp, configUpdate, onActivityChange, onDiffChange, onErrorChange, onPhaseChange, onSettle, onStageChange, onStartedAtChange, projectId, scopeCheck, source]);
 
   const handleCancel = useCallback(async () => {
+    const runId = runIdRef.current;
+    if (runId == null) {
+      // No run was started by this dialog — nothing to cancel; just close.
+      onSettle(false);
+      return;
+    }
     const adminInterface = getAdminInterface(adminApp);
     if (adminInterface == null) {
       onErrorChange("This dashboard build can't cancel a config run. Please refresh and try again.");
@@ -446,14 +424,20 @@ function GithubPushBody({
     }
     onPhaseChange("cancelling");
     try {
-      await adminInterface.cancelConfigAgentRun();
+      await adminInterface.cancelConfigAgentRun(runId);
     } catch (error) {
       captureError("config-update-github-cancel", error);
     }
     // The poll loop in handlePush will observe the terminal `cancelled` status and settle.
-  }, [adminApp, onErrorChange, onPhaseChange]);
+  }, [adminApp, onErrorChange, onPhaseChange, onSettle]);
 
   const handleCommit = useCallback(async () => {
+    const runId = runIdRef.current;
+    if (runId == null) {
+      onPhaseChange("check");
+      onErrorChange("There is no run to commit. Start the update again.");
+      return;
+    }
     if (scopeCheck.status !== "ok") {
       onErrorChange("GitHub account not connected. Please reconnect and try again.");
       return;
@@ -472,18 +456,12 @@ function GithubPushBody({
         onErrorChange("Could not get a GitHub token. Reconnect your GitHub account and try again.");
         return;
       }
-      const result = await adminInterface.commitConfigAgentRun({
+      const result = await adminInterface.commitConfigAgentRun(runId, {
         githubAccessToken: tokenResult.data.accessToken,
         commitMessage: commitMessage.trim().length > 0 ? commitMessage : undefined,
       });
-      if (result.status === "sandbox-expired") {
-        onPhaseChange("idle");
-        onStageChange(null);
-        onErrorChange("The sandbox session expired. Please retry the update.");
-        return;
-      }
       if (result.status === "not-awaiting-review") {
-        onPhaseChange("idle");
+        onPhaseChange("check");
         onStageChange(null);
         onErrorChange("There is no config diff waiting to commit. Start the update again.");
         return;
@@ -494,24 +472,24 @@ function GithubPushBody({
         await new Promise((r) => setTimeout(r, 3000));
         let run: ConfigAgentRun | null;
         try {
-          run = await adminInterface.getConfigAgentRun();
+          run = await adminInterface.getConfigAgentRun(runId);
         } catch {
           continue;
         }
         if (run == null || run.status === "awaiting_review") continue;
         if (run.status === "success") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onSettle(true);
           return;
         }
         if (run.status === "error") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onStageChange(null);
           onErrorChange(run.error ?? "Failed to commit and push the changes. Please try again.");
           return;
         }
         if (run.status === "cancelled") {
-          onPhaseChange("idle");
+          onPhaseChange("check");
           onSettle(false);
           return;
         }
@@ -520,7 +498,7 @@ function GithubPushBody({
       onErrorChange("Timed out waiting for the commit. Check the repository for status.");
     } catch (error) {
       captureError("config-update-github-commit", error);
-      onPhaseChange("idle");
+      onPhaseChange("check");
       onStageChange(null);
       onErrorChange("Unknown error committing to GitHub.");
     }
@@ -539,38 +517,89 @@ function GithubPushBody({
     handlersRef.current = { push: handlePush, connect: handleConnect, cancel: handleCancel, commit: handleCommit };
   }, [handlersRef, handlePush, handleConnect, handleCancel, handleCommit]);
 
+  // Auto-run: once the scope check passes, start the run without a manual click.
+  // Guarded by a ref so a failed run (which lands back in "check" with an error)
+  // does not retrigger — the user retries explicitly via the "Retry update" button.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (
+      phase === "check" &&
+      scopeCheck.status === "ok" &&
+      configUpdate != null &&
+      errorMessage == null &&
+      !autoStartedRef.current
+    ) {
+      autoStartedRef.current = true;
+      runAsynchronously(handlePush);
+    }
+  }, [phase, scopeCheck.status, configUpdate, errorMessage, handlePush]);
+
+  // Unlink hint, reused by both layouts.
+  const unlinkHint = (
+    <p className="text-xs text-muted-foreground">
+      If your configuration is no longer sourced from GitHub, you can{" "}
+      <Link href={projectSettingsHref(projectId)} className="underline">
+        unlink it in your project settings
+      </Link>.
+    </p>
+  );
+
+  // Commit-form layout — one shape shared by running / cancelling /
+  // awaiting_review / committing. Only the preview box swaps the loader out for
+  // the diff; everything around it stays put.
+  if (isCommitFormPhase(phase)) {
+    const previewReady = phase === "awaiting_review" || phase === "committing";
+    return (
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            This project&apos;s configuration was pushed from a file on GitHub. You can create a GitHub commit to apply your changes.
+          </p>
+          {unlinkHint}
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="push-commit-msg" className="text-sm font-medium">
+            Commit message
+          </label>
+          <input
+            id="push-commit-msg"
+            type="text"
+            className="w-full h-9 rounded-lg border border-border/50 bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 transition-colors duration-150 hover:transition-none disabled:opacity-60"
+            placeholder="chore(hexclave): update config from dashboard"
+            value={commitMessage}
+            onChange={(e) => onCommitMessageChange(e.target.value)}
+            disabled={phase === "cancelling"}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="text-sm font-medium">Commit preview</div>
+          <div className="rounded-xl border border-border/30 bg-background/60 overflow-hidden">
+            {phase === "cancelling" ? (
+              <p className="p-6 text-sm text-muted-foreground">Cancelling the update and stopping the agent…</p>
+            ) : previewReady && diff != null && diff.trim().length > 0 ? (
+              <AgentDiffViewer diff={diff} />
+            ) : (
+              <ConfigAgentPreviewProgress stage={stage} startedAt={startedAt} activity={activity} />
+            )}
+          </div>
+        </div>
+
+        {errorMessage != null && (
+          <DesignAlert variant="error" description={errorMessage} />
+        )}
+      </div>
+    );
+  }
+
+  // Scope-check layout (and the resting state after a failed run).
   return (
     <div className="space-y-4">
-      {/* Stage progress bar — shown while running */}
-      {(phase === "running" || phase === "cancelling") && (
-        <ConfigAgentRunProgressContent
-          isCancelling={phase === "cancelling"}
-          stage={stage}
-          startedAt={startedAt}
-          activity={activity}
-          errorMessage={errorMessage}
-        />
-      )}
-
-      {/* Diff viewer — shown when awaiting review */}
-      {phase === "awaiting_review" && diff != null && diff.trim().length > 0 && (
-        <AgentDiffViewer diff={diff} />
-      )}
-
-      {/* Error */}
-      {phase !== "running" && phase !== "cancelling" && errorMessage != null && (
+      {errorMessage != null && (
         <DesignAlert variant="error" description={errorMessage} />
       )}
-
-      {/* Unlink hint — shown in idle state */}
-      {phase === "idle" && (
-        <p className="text-xs text-muted-foreground">
-          If your configuration is no longer on GitHub, you can{" "}
-          <Link href={projectSettingsHref(projectId)} className="underline">
-            unlink it in Project Settings
-          </Link>.
-        </p>
-      )}
+      {unlinkHint}
     </div>
   );
 }

@@ -65,7 +65,7 @@ export const config = defineHexclaveConfig({
     allowSignUp: true,
     password: { allowSignIn: false },
     otp: { allowSignIn: true },
-    passkey: { allowSignIn: false },
+    passkey: { allowSignIn: true },
     oauth: {
       accountMergeStrategy: "link_method",
       providers: {
