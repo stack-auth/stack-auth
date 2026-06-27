@@ -1,0 +1,24 @@
+apps/backend/src/lib/config/repo-agent.ts
+  s_f569ed9a3548aa::t_424828e2257a05 502-508
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9b088a89d563c11a2a75797122c561838d3ea949",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_f569ed9a3548aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e1027e9-5abd-4d9d-9a62-f9416eeb0fba",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
