@@ -1,13 +1,14 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
 import { grantProductToCustomer, validatePurchaseSession } from "@/lib/payments";
-import { markPromoCodeRedemptionApplied, reservePromoCodeRedemption } from "@/lib/payments/promo-codes";
+import { markPromoCodeRedemptionApplied, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -73,25 +74,42 @@ export const POST = createSmartRouteHandler({
       promoCode: promo_code,
     }) : null;
 
-    const grantResult = await grantProductToCustomer({
-      prisma,
-      tenancy,
-      customerType: data.product.customerType,
-      customerId: data.customerId,
-      product: data.product,
-      productId: data.productId,
-      priceId: price_id,
-      quantity,
-      creationSource: "TEST_MODE",
-    });
-    if (promoRedemption) {
-      await markPromoCodeRedemptionApplied({
+    const grantResult = await Result.fromPromise((async () => {
+      const granted = await grantProductToCustomer({
         prisma,
-        tenancyId: tenancy.id,
-        redemptionId: promoRedemption.redemptionId,
-        subscriptionId: grantResult.type === "subscription" ? grantResult.subscriptionId : null,
-        oneTimePurchaseId: grantResult.type === "one_time" ? grantResult.purchaseId : null,
+        tenancy,
+        customerType: data.product.customerType,
+        customerId: data.customerId,
+        product: data.product,
+        productId: data.productId,
+        priceId: price_id,
+        quantity,
+        creationSource: "TEST_MODE",
       });
+      if (promoRedemption) {
+        await markPromoCodeRedemptionApplied({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          subscriptionId: granted.type === "subscription" ? granted.subscriptionId : null,
+          oneTimePurchaseId: granted.type === "one_time" ? granted.purchaseId : null,
+        });
+      }
+      return granted;
+    })());
+    if (grantResult.status === "error") {
+      if (promoRedemption) {
+        const voidResult = await Result.fromPromise(voidExpiredOrFailedPromoCodeRedemption({
+          prisma,
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          reason: "test_mode_grant_failed",
+        }));
+        if (voidResult.status === "error") {
+          captureError("test-mode-promo-redemption-void-failed", voidResult.error);
+        }
+      }
+      throw grantResult.error;
     }
     await purchaseUrlVerificationCodeHandler.revokeCode({
       tenancy,

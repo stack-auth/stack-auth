@@ -15,6 +15,7 @@ type Props = {
   redirectStatus?: string,
   paymentIntentId?: string,
   clientSecret?: string,
+  setupIntentClientSecret?: string,
   stripeAccountId?: string,
   purchaseFullCode?: string,
   bypass?: string,
@@ -30,7 +31,7 @@ const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KE
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 
-export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass, free }: Props) {
+export default function ReturnClient({ clientSecret, setupIntentClientSecret, stripeAccountId, purchaseFullCode, bypass, free }: Props) {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("return_url");
@@ -67,6 +68,36 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       }
       const stripe = await loadStripe(stripePublicKey, { stripeAccount: stripeAccountId });
       if (!stripe) throw new Error("Stripe failed to initialize");
+      if (setupIntentClientSecret) {
+        const result = await stripe.retrieveSetupIntent(setupIntentClientSecret);
+        const status = result.setupIntent?.status;
+        const lastErrorMessage = result.setupIntent?.last_setup_error?.message;
+
+        if (status === "succeeded") {
+          runAsynchronously(checkAndReturnUser());
+          const message = `Payment method saved.${returnUrl ? " You will be redirected shortly." : " You can safely close this page."}`;
+          setState({ kind: "success", message });
+          return;
+        }
+        if (status === "processing") {
+          setState({ kind: "success", message: "Payment method setup is processing. You'll receive an update shortly." });
+          return;
+        }
+        if (status === "requires_payment_method") {
+          setState({ kind: "error", message: lastErrorMessage ?? "Payment method setup failed. Please try another payment method." });
+          return;
+        }
+        if (status === "requires_action") {
+          setState({ kind: "error", message: "Additional authentication required. Please try again." });
+          return;
+        }
+        if (status === "canceled") {
+          setState({ kind: "error", message: "Payment method setup was canceled." });
+          return;
+        }
+        setState({ kind: "error", message: "Unexpected setup state." });
+        return;
+      }
       if (!clientSecret) return;
       const result = await stripe.retrievePaymentIntent(clientSecret);
       const status = result.paymentIntent?.status;
@@ -99,7 +130,7 @@ export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFu
       const message = e instanceof Error ? e.message : "Unexpected error retrieving payment.";
       setState({ kind: "error", message });
     }
-  }, [clientSecret, stripeAccountId, bypass, free, returnUrl, checkAndReturnUser]);
+  }, [clientSecret, setupIntentClientSecret, stripeAccountId, bypass, free, returnUrl, checkAndReturnUser]);
 
   useEffect(() => {
     runAsynchronously(updateViewState());

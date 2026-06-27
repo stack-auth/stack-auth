@@ -100,6 +100,7 @@ type PromoCodePurchaseContext = {
 };
 
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
+export const PROMO_CODE_NOT_AVAILABLE_MESSAGE = "Promo code is invalid or not available for this purchase.";
 
 function enumCustomerType(customerType: CustomerType): "USER" | "TEAM" | "CUSTOM" {
   switch (customerType) {
@@ -218,31 +219,31 @@ function assertPromoCodeApplies(options: {
 }) {
   const promoCode = options.promoCode;
   if (promoCode.deletedAt != null) {
-    throw new StatusError(400, "Promo code does not exist.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.disabledAt != null) {
-    throw new StatusError(400, "Promo code is disabled.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.startsAt != null && promoCode.startsAt > options.now) {
-    throw new StatusError(400, "Promo code is not active yet.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.expiresAt != null && promoCode.expiresAt <= options.now) {
-    throw new StatusError(400, "Promo code has expired.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.customerType != null && promoCode.customerType !== enumCustomerType(options.customerType)) {
-    throw new StatusError(400, "Promo code is not available for this customer.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.customerId != null && promoCode.customerId !== options.customerId) {
-    throw new StatusError(400, "Promo code is not available for this customer.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.productLineId != null && promoCode.productLineId !== (options.product.productLineId ?? null)) {
-    throw new StatusError(400, "Promo code is not available for this product line.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.productId != null && promoCode.productId !== (options.productId ?? null)) {
-    throw new StatusError(400, "Promo code is not available for this product.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (promoCode.priceId != null && promoCode.priceId !== (options.priceId ?? null)) {
-    throw new StatusError(400, "Promo code is not available for this price.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
 }
 
@@ -309,10 +310,10 @@ async function assertRedemptionLimits(options: {
   `;
   const counts = rows[0] ?? { totalCount: 0n, customerCount: 0n };
   if (options.promoCode.maxRedemptions != null && counts.totalCount >= BigInt(options.promoCode.maxRedemptions)) {
-    throw new StatusError(400, "Promo code has reached its redemption limit.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   if (options.promoCode.maxRedemptionsPerCustomer != null && counts.customerCount >= BigInt(options.promoCode.maxRedemptionsPerCustomer)) {
-    throw new StatusError(400, "Promo code has already been used by this customer.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
 }
 
@@ -327,7 +328,7 @@ export async function quotePromoCodeForPurchase(options: PromoCodePurchaseContex
     codeHash: hashPromoCode(normalized),
   });
   if (!promoCode) {
-    throw new StatusError(400, "Promo code does not exist.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   const now = new Date();
   assertPromoCodeApplies({
@@ -420,7 +421,7 @@ export async function reservePromoCodeRedemption(options: PromoCodePurchaseConte
   `;
   const redemptionId = rows[0]?.id;
   if (!redemptionId) {
-    throw new StatusError(400, "Promo code has reached its redemption limit.");
+    throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
   return {
     ...quote,

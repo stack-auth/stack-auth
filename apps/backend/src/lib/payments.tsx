@@ -515,6 +515,17 @@ export function getClientSecretFromStripeSubscription(subscription: Stripe.Subsc
   throwErr(500, "No client secret returned from Stripe for subscription");
 }
 
+export function getSetupIntentClientSecretFromStripeSubscription(subscription: Stripe.Subscription): string {
+  const pendingSetupIntent = Reflect.get(subscription, "pending_setup_intent");
+  if (pendingSetupIntent && typeof pendingSetupIntent === "object") {
+    const clientSecret = Reflect.get(pendingSetupIntent, "client_secret");
+    if (typeof clientSecret === "string") {
+      return clientSecret;
+    }
+  }
+  throwErr(500, "No setup intent client secret returned from Stripe for subscription");
+}
+
 type GrantProductResult =
   | {
     type: "one_time",
@@ -617,4 +628,3 @@ export async function grantProductToCustomer(options: {
 
   return { type: "subscription", subscriptionId: subscription.id };
 }
-

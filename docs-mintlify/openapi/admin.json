@@ -5082,6 +5082,15 @@
                       "type": "string",
                       "example": "1234567890abcdef_secret_xyz123",
                       "description": "Stripe client secret used by the browser to confirm payment via Stripe Elements. Omitted when no payment step is required from the customer; in that case the purchase is being settled without a confirmation step and the caller should skip mounting Stripe Elements."
+                    },
+                    "client_secret_type": {
+                      "type": "string",
+                      "enum": [
+                        "payment",
+                        "setup"
+                      ],
+                      "example": "payment",
+                      "description": "The Stripe confirmation flow to use for client_secret. Defaults to payment when omitted for backwards compatibility."
                     }
                   }
                 }

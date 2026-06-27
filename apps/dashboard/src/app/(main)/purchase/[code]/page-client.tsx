@@ -49,6 +49,11 @@ type InvalidPromoQuote = {
   error?: string,
 };
 
+type PurchaseSessionResult = {
+  client_secret?: string,
+  client_secret_type?: "payment" | "setup",
+};
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -81,6 +86,16 @@ function parsePromoQuote(value: unknown): PromoQuote | InvalidPromoQuote {
     discount_amount_usd_cents: value.discount_amount_usd_cents,
     final_amount_usd_cents: value.final_amount_usd_cents,
     subscription_duration: value.subscription_duration,
+  };
+}
+
+function parsePurchaseSessionResult(value: unknown): PurchaseSessionResult {
+  if (!isObject(value)) {
+    return {};
+  }
+  return {
+    client_secret: typeof value.client_secret === "string" ? value.client_secret : undefined,
+    client_secret_type: value.client_secret_type === "payment" || value.client_secret_type === "setup" ? value.client_secret_type : undefined,
   };
 }
 
@@ -127,6 +142,14 @@ export default function PageClient({ code }: { code: string }) {
 
   const isTooLarge = rawAmountCents > MAX_STRIPE_AMOUNT_CENTS;
 
+  const isSetupAfterFirstInvoicePromo = useMemo(() => {
+    if (!selectedPriceId || !data?.product?.prices || !promoQuote) {
+      return false;
+    }
+    const price = data.product.prices[selectedPriceId];
+    return Boolean(price.interval) && promoQuote.final_amount_usd_cents === 0 && promoQuote.subscription_duration === "first_invoice";
+  }, [data, selectedPriceId, promoQuote]);
+
   const elementsAmountCents = useMemo(() => {
     if (promoQuote && promoQuote.final_amount_usd_cents > 0) {
       return promoQuote.final_amount_usd_cents;
@@ -137,11 +160,12 @@ export default function PageClient({ code }: { code: string }) {
     return rawAmountCents;
   }, [promoQuote, unitCents, rawAmountCents, isTooLarge]);
 
-  const elementsMode = useMemo<"subscription" | "payment">(() => {
+  const elementsMode = useMemo<"subscription" | "payment" | "setup">(() => {
+    if (isSetupAfterFirstInvoicePromo) return "setup";
     if (!selectedPriceId || !data?.product?.prices) return "subscription";
     const price = data.product.prices[selectedPriceId];
     return price.interval ? "subscription" : "payment";
-  }, [data, selectedPriceId]);
+  }, [data, selectedPriceId, isSetupAfterFirstInvoicePromo]);
 
   const validateCode = useCallback(async () => {
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
@@ -195,8 +219,8 @@ export default function PageClient({ code }: { code: string }) {
   }, [data, selectedPriceId]);
 
   const isFreeForCheckout = useMemo<boolean>(() => {
-    return isFreeSelected || (elementsMode === "subscription" && promoQuote?.final_amount_usd_cents === 0);
-  }, [elementsMode, isFreeSelected, promoQuote]);
+    return isFreeSelected || (promoQuote?.final_amount_usd_cents === 0 && promoQuote.subscription_duration === "forever");
+  }, [isFreeSelected, promoQuote]);
 
   const applyPromoCode = async () => {
     if (!selectedPriceId || quantityNumber < 1 || !promoCodeInput.trim()) {
@@ -256,10 +280,14 @@ export default function PageClient({ code }: { code: string }) {
       throw new Error(result?.error?.message ?? "Failed to setup subscription");
     }
 
-    if (!result.client_secret && !isFreeForCheckout) {
+    const parsedResult = parsePurchaseSessionResult(result);
+    if (!parsedResult.client_secret && !isFreeForCheckout) {
       throw new Error("Failed to setup subscription");
     }
-    return result.client_secret;
+    return {
+      clientSecret: parsedResult.client_secret,
+      clientSecretType: parsedResult.client_secret_type ?? "payment",
+    };
   };
 
   const handleBypass = useCallback(async () => {

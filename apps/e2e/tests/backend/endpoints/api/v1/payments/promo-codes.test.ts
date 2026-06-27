@@ -7,12 +7,14 @@ function uniquePromoCode(prefix: string) {
   return `${prefix}-${randomUUID().replaceAll("-", "").slice(0, 12)}`.toUpperCase();
 }
 
-async function setupProjectWithPromoProducts() {
+const promoUnavailableMessage = "Promo code is invalid or not available for this purchase.";
+
+async function setupProjectWithPromoProducts(options: { testMode?: boolean } = {}) {
   await Project.createAndSwitch();
   await Payments.setup();
   await Project.updateConfig({
     payments: {
-      testMode: true,
+      testMode: options.testMode ?? true,
       productLines: {
         promo: { displayName: "Promo Products" },
         other: { displayName: "Other Products" },
@@ -343,7 +345,7 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
     status: 200,
     body: {
       valid: false,
-      error: "Promo code does not exist.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -365,7 +367,7 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is disabled.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -384,7 +386,7 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
     status: 200,
     body: {
       valid: false,
-      error: "Promo code has expired.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -405,7 +407,7 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
     status: 200,
     body: {
       valid: false,
-      error: "Promo code does not exist.",
+      error: promoUnavailableMessage,
     },
   });
 });
@@ -432,7 +434,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is not active yet.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -450,7 +452,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is not available for this product line.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -468,7 +470,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is not available for this product.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -486,7 +488,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is not available for this price.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -505,7 +507,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
     status: 200,
     body: {
       valid: false,
-      error: "Promo code is not available for this customer.",
+      error: promoUnavailableMessage,
     },
   });
 });
@@ -534,7 +536,7 @@ it("should prevent cross-project promo code validation", async ({ expect }) => {
     status: 200,
     body: {
       valid: false,
-      error: "Promo code does not exist.",
+      error: promoUnavailableMessage,
     },
   });
 });
@@ -618,7 +620,7 @@ it("should enforce redemption limits during validation and checkout", async ({ e
     status: 200,
     body: {
       valid: false,
-      error: "Promo code has reached its redemption limit.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -631,7 +633,7 @@ it("should enforce redemption limits during validation and checkout", async ({ e
   });
   expect(globalLimitCheckout).toMatchObject({
     status: 400,
-    body: "Promo code has reached its redemption limit.",
+    body: promoUnavailableMessage,
   });
 });
 
@@ -662,7 +664,7 @@ it("should enforce per-customer redemption limits independently from global limi
     status: 200,
     body: {
       valid: false,
-      error: "Promo code has already been used by this customer.",
+      error: promoUnavailableMessage,
     },
   });
 
@@ -761,5 +763,64 @@ it("should apply percent promo codes to subscription checkout in test mode", asy
     subscription_duration: "first_invoice",
     status: "applied",
     applied_at_millis: expect.any(Number),
+  });
+});
+
+it("should return a setup client secret for live first-invoice promos that discount subscriptions to zero", async ({ expect }) => {
+  await setupProjectWithPromoProducts({ testMode: false });
+  const promo = await createPercentPromoCode({
+    code: uniquePromoCode("SETUP"),
+    percentOffBps: 10000,
+    subscriptionDuration: "first_invoice",
+  });
+  expect(promo.status).toBe(200);
+
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "promo-subscription" });
+  const purchaseSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+      promo_code: promo.body.code,
+    },
+  });
+
+  expect(purchaseSession).toMatchObject({
+    status: 200,
+    body: {
+      client_secret: expect.any(String),
+      client_secret_type: "setup",
+    },
+  });
+});
+
+it("should skip Stripe confirmation for live forever promos that discount subscriptions to zero", async ({ expect }) => {
+  await setupProjectWithPromoProducts({ testMode: false });
+  const promo = await createPercentPromoCode({
+    code: uniquePromoCode("FOREVER"),
+    percentOffBps: 10000,
+    subscriptionDuration: "forever",
+  });
+  expect(promo.status).toBe(200);
+
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "promo-subscription" });
+  const purchaseSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+      promo_code: promo.body.code,
+    },
+  });
+
+  expect(purchaseSession).toMatchObject({
+    status: 200,
+    body: {},
   });
 });

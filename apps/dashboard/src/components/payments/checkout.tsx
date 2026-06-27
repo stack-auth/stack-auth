@@ -8,7 +8,7 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
-import { StripeError, StripePaymentElementOptions } from "@stripe/stripe-js";
+import { StripePaymentElementOptions } from "@stripe/stripe-js";
 import { FlaskIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
@@ -22,8 +22,13 @@ const paymentElementOptions = {
   },
 } satisfies StripePaymentElementOptions;
 
+type CheckoutSessionSecret = {
+  clientSecret?: string,
+  clientSecretType?: "payment" | "setup",
+};
+
 type Props = {
-  setupSubscription: () => Promise<string>,
+  setupSubscription: () => Promise<CheckoutSessionSecret>,
   stripeAccountId: string,
   fullCode: string,
   returnUrl?: string,
@@ -107,7 +112,7 @@ export function CheckoutForm({
       return setMessage(submitError.message ?? "An unexpected error occurred.");
     }
 
-    const clientSecret = await setupSubscription();
+    const sessionSecret = await setupSubscription();
     const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
     stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
     stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
@@ -126,17 +131,27 @@ export function CheckoutForm({
       window.location.assign(stripeReturnUrl.toString());
       return;
     }
-    const { error } = await stripe.confirmPayment({
-      elements,
-      clientSecret,
-      confirmParams: {
-        return_url: stripeReturnUrl.toString(),
-      },
-    }) as { error?: StripeError };
-
-    if (!error) {
+    if (!sessionSecret.clientSecret) {
+      setMessage("An unexpected error occurred.");
       return;
     }
+    const confirmationResult = sessionSecret.clientSecretType === "setup"
+      ? await stripe.confirmSetup({
+        elements,
+        clientSecret: sessionSecret.clientSecret,
+        confirmParams: {
+          return_url: stripeReturnUrl.toString(),
+        },
+      })
+      : await stripe.confirmPayment({
+        elements,
+        clientSecret: sessionSecret.clientSecret,
+        confirmParams: {
+          return_url: stripeReturnUrl.toString(),
+        },
+      });
+    const error = confirmationResult.error;
+
     if (error.type === "card_error" || error.type === "validation_error") {
       setMessage(error.message ?? "An unexpected error occurred.");
     } else {
