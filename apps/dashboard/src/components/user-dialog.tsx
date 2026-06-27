@@ -135,14 +135,14 @@ export function UserDialog(props: {
           title: "Email already exists",
           description: "Please choose a different email address.",
         });
-        return 'prevent-close';
+        return 'prevent-close-and-prevent-reset';
       }
       if (KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)) {
         setErrorDialog({
           title: "Email already used for authentication",
           description: "This email is already used for sign-in by another account. Please choose a different email address.",
         });
-        return 'prevent-close';
+        return 'prevent-close-and-prevent-reset';
       }
       throw error;
     }
