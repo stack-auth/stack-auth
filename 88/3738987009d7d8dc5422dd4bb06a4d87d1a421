@@ -1,0 +1,28 @@
+apps/backend/src/lib/config/index.tsx
+  s_c7fef0a7f7d208::t_7d4ba3845ce42c 724-726
+apps/dashboard/src/components/config-update/progress-content.tsx
+  s_c7fef0a7f7d208::t_6918445329e91b 29-37,39-42,44,46,48-49
+packages/shared/src/config-eval.ts
+  s_c7fef0a7f7d208::t_f4eaaf57e76973 133-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "883738987009d7d8dc5422dd4bb06a4d87d1a421",
+  "prompts": {},
+  "humans": {
+    "h_8c1b79571cf22c": {
+      "author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_c7fef0a7f7d208": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "696c65dd-7ccb-494e-b4d1-20fe832c43cf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
