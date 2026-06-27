@@ -1,0 +1,149 @@
+apps/e2e/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/e-commerce/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+apps/skills/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+docs-mintlify/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_c7fef0a7f7d208::t_39dc52ee19798e 3
+apps/dashboard/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+apps/dev-launchpad/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+apps/backend/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/sc/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+docs-mintlify/guides/getting-started/setup.mdx
+  s_c7fef0a7f7d208::t_c32f2bc458e7be 9
+examples/middleware/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/docs-examples/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/supabase/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/dashboard-ui-components/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/shared/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/cjs-test/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+sdks/implementations/swift/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/shared/src/helpers/init-prompt.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 12
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 322-327,329-331
+docs-mintlify/llms.txt
+  s_c7fef0a7f7d208::t_b8823986b9bd69 6
+examples/react-example/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+apps/dashboard/src/lib/remote-development-environment/manager.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 39,209-247,358,373,1007-1017,1125-1128,1131-1135,1137,1140,1142-1143,1148,1151,1156-1160,1163,1165-1171,1173-1174,1177-1183,1187-1192,1196-1200,1202-1207,1214,1219-1226,1229-1234,1240-1241,1243,1254-1255,1258-1264
+packages/template/src/dev-tool/dev-tool-core.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 5,1997-2009
+apps/internal-tool/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 1
+examples/lovable-react-18-example/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/page-client.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3,10,19,63,68,88-252
+  s_c7fef0a7f7d208::t_de3a7a96e4c5d1 253-255
+apps/e2e/tests/backend/endpoints/api/v1/send-email.test.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 1,256-317
+docs-mintlify/guides/apps/authentication/cli-authentication.mdx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 10
+apps/e2e/tests/js/email.test.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 116,126,128
+apps/backend/src/lib/email-queue-step.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4,738-746,753-755
+docker/dependencies/freestyle-mock/Dockerfile
+  s_c7fef0a7f7d208::t_b8823986b9bd69 312
+examples/demo/hexclave.config.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 5
+packages/template/package-template.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 16
+examples/js-example/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/js/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 137
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3072-3085,3113,3124-3127,4209-4210
+  s_c7fef0a7f7d208::t_8404598d0521af 4211
+docs-mintlify/guides/going-further/cli.mdx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 2,4
+packages/next/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+apps/dashboard/src/app/development-environment/browser-secret/page-client.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 117
+packages/ui/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+docs/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.test.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 972-973,988,990-991,994-996
+apps/dashboard/src/app/api/development-environment/projects/route.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 1-23
+packages/cli/src/lib/dev-env-state.test.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 134
+apps/mock-oauth-server/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/demo/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/shared-backend/src/config-updater.ts
+  s_c7fef0a7f7d208::t_e1ecef769e725f 176-182,186-192,195-201,204-209,211-215
+  s_c7fef0a7f7d208::t_d31a431c817953 65,68-79,88-91,102-107,110-113,117,122-126
+  s_c7fef0a7f7d208::t_f26a17a98ae4a8 11-12,17-62
+  s_c7fef0a7f7d208::t_d89f75aa8a82cd 136-142,150-156
+  s_c7fef0a7f7d208::t_a5371dc1df369f 63
+packages/react/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 8
+apps/hosted-components/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4
+docs-mintlify/guides/going-further/local-vs-cloud-dashboard.mdx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 11,36,42
+sdks/spec/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/shared-backend/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/cli/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/tanstack-start-demo/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+apps/mcp/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+examples/convex/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 3
+packages/template/package.json
+  s_c7fef0a7f7d208::t_b8823986b9bd69 5
+apps/backend/src/lib/emails.tsx
+  s_c7fef0a7f7d208::t_b8823986b9bd69 101-142
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.cross-domain.test.ts
+  s_c7fef0a7f7d208::t_b8823986b9bd69 4,53-88
+packages/tanstack-start/package.json
+  s_c7fef0a7f7d208::t_f9c2e1e636a082 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "06d3402f34897d7804e7abc1cc7bbabf22ebc87b",
+  "prompts": {},
+  "sessions": {
+    "s_c7fef0a7f7d208": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "696c65dd-7ccb-494e-b4d1-20fe832c43cf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
