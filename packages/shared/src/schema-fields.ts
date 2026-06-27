@@ -968,7 +968,7 @@ export const branchConfigSourceSchema = yupUnion(
  */
 export const configAgentRunSchema = yupObject({
   // The run's id (the `ConfigAgentRun` row id). The dashboard polls/cancels/commits this specific run by id.
-  id: yupString().defined(),
+  id: yupString().uuid().defined(),
   // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for the user to commit;
   // "success" | "no-change" | "error" | "cancelled": terminal.
   status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),

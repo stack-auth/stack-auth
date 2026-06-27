@@ -15,7 +15,7 @@ import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery, retryT
 import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "../development-environment";
 import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "../local-emulator";
 import { listPermissionDefinitionsFromConfig } from "../permissions";
-import type { CapturedChange, ConfigAgentInFlightStage } from "./repo-agent";
+import type { CapturedChange, ConfigAgentInFlightStage, GithubRepoRef } from "./repo-agent";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 export type BranchConfigPushedError = {
@@ -738,7 +738,7 @@ export async function recordConfigAgentRunResult(options: {
   runId: string,
   nowMs: number,
   outcome:
-    | { status: "success", commitUrl?: string, newCommitHash?: string }
+    | { status: "success", commitUrl?: string, newCommitHash?: string, committedRef: GithubRepoRef }
     | { status: "no-change" }
     | { status: "error", error: ConfigAgentSafeErrorMessage },
 }): Promise<void> {
@@ -765,7 +765,11 @@ export async function recordConfigAgentRunResult(options: {
       data: { status: "success", finishedAt, commitUrl: options.outcome.commitUrl ?? null, sandboxId: null, stage: null, baseCommitSha: null },
     });
     // Advance the source's last-known commit when a commit landed and the branch
-    // is still GitHub-linked (locked in the same txn).
+    // is still linked to the SAME repo the commit was pushed against (locked in the
+    // same txn). A mid-run re-link to a different repo still reads as
+    // `pushed-from-github`, so identity — not just type — must match, or the new
+    // source would inherit a commit hash that only exists on the old repo.
+    const committedRef = options.outcome.committedRef;
     if (options.outcome.newCommitHash) {
       const sourceRows = await tx.$queryRaw<{ source: BranchConfigSourceApi | null }[]>`
         SELECT "source" FROM "BranchConfigOverride"
@@ -773,7 +777,12 @@ export async function recordConfigAgentRunResult(options: {
         FOR UPDATE
       `;
       const source = sourceRows[0]?.source ?? null;
-      if (source?.type === "pushed-from-github") {
+      if (
+        source?.type === "pushed-from-github"
+        && source.owner === committedRef.owner
+        && source.repo === committedRef.repo
+        && source.branch === committedRef.branch
+      ) {
         await tx.branchConfigOverride.update({
           where: { projectId_branchId: { projectId: options.projectId, branchId: options.branchId } },
           data: { source: { ...source, commit_hash: options.outcome.newCommitHash } as any },

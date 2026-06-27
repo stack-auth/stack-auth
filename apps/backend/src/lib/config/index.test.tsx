@@ -131,12 +131,45 @@ describe("config agent run state", () => {
         status: "success",
         commitUrl: "https://github.com/hexclave-validation/config-agent-validation/commit/new",
         newCommitHash: "new-commit",
+        committedRef: { owner: "hexclave-validation", repo: "config-agent-validation", branch: "main" },
       },
     });
 
     expect((await getConfigAgentRun({ projectId, branchId, runId }))?.status).toBe("success");
     const { source } = await readBranchRow(projectId, branchId);
     expect(isRecord(source) ? source.commit_hash : null).toBe("new-commit");
+  });
+
+  it("does not advance the commit hash when the branch was re-linked to a different repo mid-run", async () => {
+    const { projectId, branchId } = await createGithubLinkedBranch();
+    const { runId } = await startConfigAgentRun({ projectId, branchId, nowMs: 1000 });
+    await setConfigAgentRunAwaitingReview({ runId, change: { diff: "diff --git a/hexclave.config.ts b/hexclave.config.ts", baseSha: "abc123" } });
+
+    // The branch is re-linked to a DIFFERENT repo after the commit was pushed but
+    // before the result is recorded.
+    await globalPrismaClient.branchConfigOverride.update({
+      where: { projectId_branchId: { projectId, branchId } },
+      data: { source: { ...githubSource, repo: "some-other-repo", commit_hash: "other-base" } },
+    });
+
+    await recordConfigAgentRunResult({
+      projectId,
+      branchId,
+      runId,
+      nowMs: 3000,
+      outcome: {
+        status: "success",
+        commitUrl: "https://github.com/hexclave-validation/config-agent-validation/commit/new",
+        newCommitHash: "new-commit",
+        committedRef: { owner: "hexclave-validation", repo: "config-agent-validation", branch: "main" },
+      },
+    });
+
+    // The run still succeeds, but the new repo's source must NOT inherit a hash from
+    // the old repo's commit.
+    expect((await getConfigAgentRun({ projectId, branchId, runId }))?.status).toBe("success");
+    const { source } = await readBranchRow(projectId, branchId);
+    expect(isRecord(source) ? source.commit_hash : null).toBe("other-base");
   });
 
   it("ignores a terminal result for an already-cancelled run", async () => {
@@ -153,6 +186,7 @@ describe("config agent run state", () => {
         status: "success",
         commitUrl: "https://github.com/hexclave-validation/config-agent-validation/commit/stale",
         newCommitHash: "stale-commit",
+        committedRef: { owner: "hexclave-validation", repo: "config-agent-validation", branch: "main" },
       },
     });
 

@@ -129,3 +129,9 @@ import.meta.vitest?.test("evalConfigFileContent rejects missing config import ta
     export const config = { auth: missingConfigPart };
   `, "/tmp/hexclave-missing-import-config.ts")).toThrow();
 });
+
+import.meta.vitest?.test("evalConfigFileContent rejects syntactically invalid content", ({ expect }) => {
+  // jiti surfaces a ParseError (not a ConfigFileEvalError), so callers route this
+  // to "Failed to load config file" rather than "Invalid config".
+  expect(() => evalConfigFileContent("export const config = {", "stack.config.ts")).toThrow();
+});

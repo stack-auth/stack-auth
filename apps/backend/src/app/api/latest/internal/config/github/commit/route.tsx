@@ -85,7 +85,7 @@ export const POST = createSmartRouteHandler({
           branchId,
           runId,
           nowMs: Date.now(),
-          outcome: { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha },
+          outcome: { status: "success", commitUrl: result.commitUrl, newCommitHash: result.commitSha, committedRef: ref },
         });
       } catch (error) {
         if (!(error instanceof ConfigRepoCommitConflictError)) {

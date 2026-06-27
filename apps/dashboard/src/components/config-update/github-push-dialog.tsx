@@ -428,8 +428,15 @@ function GithubPushBody({
     } catch (error) {
       captureError("config-update-github-cancel", error);
     }
-    // The poll loop in handlePush will observe the terminal `cancelled` status and settle.
-  }, [adminApp, onErrorChange, onPhaseChange, onSettle]);
+    // Settle directly: the cancel request hard-stops the run, but the handlePush
+    // poll loop has already returned once the run reached "awaiting_review", so
+    // there is no observer to leave the non-dismissible "cancelling" phase. Drive
+    // the terminal transition here (mirroring the poll loop's `cancelled` branch)
+    // for every entry point and regardless of whether the cancel call threw.
+    onPhaseChange("check");
+    onStageChange(null);
+    onSettle(false);
+  }, [adminApp, onErrorChange, onPhaseChange, onStageChange, onSettle]);
 
   const handleCommit = useCallback(async () => {
     const runId = runIdRef.current;
