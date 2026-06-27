@@ -67,6 +67,17 @@ export function DataGridExportDialog<TRow>({
     }
   }, [isExporting, resolvedFields]);
 
+  // Reset the scope to its default each time the dialog opens. The dialog stays
+  // mounted between opens, so without this the scope would retain whatever the
+  // user last picked instead of honoring `defaultScope` on every open. We key
+  // off `open` so this only fires on an open transition.
+  const defaultScope = exportOptions?.defaultScope ?? "all";
+  useEffect(() => {
+    if (open && !isExporting) {
+      setScope(defaultScope);
+    }
+  }, [open, isExporting, defaultScope]);
+
   const entityName = exportOptions?.entityName ?? "row";
   const entityNamePlural = exportOptions?.entityNamePlural ?? "rows";
   const filenamePrefix = exportOptions?.filenamePrefix ?? exportFilename;
