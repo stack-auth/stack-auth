@@ -211,6 +211,9 @@ importers:
       '@vercel/sandbox':
         specifier: ^1.2.0
         version: 1.2.0
+      '@voker/voker':
+        specifier: 0.0.13
+        version: 0.0.13
       ai:
         specifier: ^6.0.0
         version: 6.0.81(zod@3.25.76)
@@ -10425,6 +10428,9 @@ packages:
 
   '@vitest/utils@1.6.0':
     resolution: {integrity: sha512-21cPiuGMoMZwiOHa2i4LXkMkMkCGzA+MVFV70jRwHo95dL4x/ts5GZhML1QWuy7yfp3WzK3lRvZi3JnXTYqrBw==}
+
+  '@voker/voker@0.0.13':
+    resolution: {integrity: sha512-PvUsF4ll14ZEZBEwdzwn4O4gP+ZX6+FB9clGtAwvVTVDlcnTXgVm6n8Ni7aU85fq6ZJiUJieQXeSKGqQXTCbHA==}
 
   '@webassemblyjs/ast@1.14.1':
     resolution: {integrity: sha512-nuBEDgQfm1ccRp/8bCQrx1frohyufl4JlbMMZ4P1wpeOfDhF6FQkxZJ1b/e+PLwr6X1Nhw6OLme5usuBWYBvuQ==}
@@ -29890,6 +29896,8 @@ snapshots:
       estree-walker: 3.0.3
       loupe: 2.3.7
       pretty-format: 29.7.0
+
+  '@voker/voker@0.0.13': {}
 
   '@webassemblyjs/ast@1.14.1':
     dependencies:
