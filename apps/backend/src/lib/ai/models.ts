@@ -19,7 +19,7 @@ const MODEL_SELECTION_MATRIX: Record<
 > = {
   dumb: {
     slow: {
-      authenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      authenticated: { modelId: "z-ai/glm-4.5-air" },
       unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b" },
     },
     fast: {
