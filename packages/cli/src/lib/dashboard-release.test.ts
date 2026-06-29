@@ -43,6 +43,17 @@ describe("parseDashboardManifest", () => {
     expect(parseDashboardManifest({ version: "1.2.3-beta.1", sha256: VALID_SHA, url: "https://x/y.zip" })?.version).toBe("1.2.3-beta.1");
   });
 
+  it("requires https for the url, allowing http only for loopback", () => {
+    const ok = (url: string) => parseDashboardManifest({ version: "1.2.3", sha256: VALID_SHA, url })?.url;
+    expect(ok("https://example.com/d.zip")).toBe("https://example.com/d.zip");
+    expect(ok("http://127.0.0.1:8000/d.zip")).toBe("http://127.0.0.1:8000/d.zip");
+    expect(ok("http://localhost:8000/d.zip")).toBe("http://localhost:8000/d.zip");
+    expect(ok("http://example.com/d.zip")).toBeUndefined();
+    expect(ok("ftp://example.com/d.zip")).toBeUndefined();
+    expect(ok("file:///etc/passwd")).toBeUndefined();
+    expect(ok("not a url")).toBeUndefined();
+  });
+
   it("rejects a non-string or path-unsafe version", () => {
     expect(parseDashboardManifest({ version: 123, sha256: VALID_SHA, url: "https://x/y.zip" })).toBeNull();
     expect(parseDashboardManifest({ version: "../../etc", sha256: VALID_SHA, url: "https://x/y.zip" })).toBeNull();

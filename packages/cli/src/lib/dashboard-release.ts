@@ -40,6 +40,29 @@ const LOG_PREFIX = "[Hexclave] ";
 // HEXCLAVE_DASHBOARD_MANIFEST_URL points at a non-default host, so restrict it to
 // a path-safe semver shape (no separators, can't start with "..").
 const SAFE_VERSION_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
+// Give up rather than hang forever when a slow/dead host stalls a fetch. The
+// manifest is tiny; the zip is large, so it gets a much longer budget. A timeout
+// surfaces as a normal fetch error → offline-cache fallback.
+const MANIFEST_FETCH_TIMEOUT_MS = 10_000;
+const DASHBOARD_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
+
+// The dashboard build is public and integrity-checked, but require https for the
+// download URL so a custom manifest can't quietly pull it over plaintext —
+// except loopback, which keeps local testing/mirrors (e.g. a `python -m
+// http.server` on 127.0.0.1) working. Also rejects non-http(s) schemes.
+function isAllowedDownloadUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "https:") return true;
+  if (parsed.protocol === "http:") {
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]" || parsed.hostname === "::1";
+  }
+  return false;
+}
 
 export type DashboardManifest = {
   version: string,
@@ -65,7 +88,7 @@ export function parseDashboardManifest(raw: unknown): DashboardManifest | null {
   const manifest = raw as Record<string, unknown>;
   if (typeof manifest.version !== "string" || !SAFE_VERSION_REGEX.test(manifest.version)) return null;
   if (typeof manifest.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(manifest.sha256)) return null;
-  if (typeof manifest.url !== "string" || manifest.url.length === 0) return null;
+  if (typeof manifest.url !== "string" || !isAllowedDownloadUrl(manifest.url)) return null;
   return { version: manifest.version, sha256: manifest.sha256.toLowerCase(), url: manifest.url };
 }
 
@@ -142,7 +165,7 @@ export function latestCachedDashboardVersion(): string | undefined {
 export async function fetchDashboardManifest(env: NodeJS.ProcessEnv = process.env): Promise<DashboardManifest | null> {
   const url = dashboardManifestUrl(env);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, redirect: "follow" });
+    const response = await fetch(url, { headers: { Accept: "application/json" }, redirect: "follow", signal: AbortSignal.timeout(MANIFEST_FETCH_TIMEOUT_MS) });
     if (!response.ok) {
       logDashboard(`Could not fetch dashboard manifest (HTTP ${response.status}) from ${url}.`);
       return null;
@@ -170,7 +193,7 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
   const tmpDir = join(cacheRoot, `.extract-${manifest.version}-${suffix}`);
   const targetDir = dashboardVersionDir(manifest.version);
   try {
-    const response = await fetch(manifest.url, { redirect: "follow" });
+    const response = await fetch(manifest.url, { redirect: "follow", signal: AbortSignal.timeout(DASHBOARD_DOWNLOAD_TIMEOUT_MS) });
     if (!response.ok || response.body == null) {
       throw new CliError(`Failed to download dashboard ${manifest.version} (HTTP ${response.status}) from ${manifest.url}.`);
     }
@@ -189,21 +212,26 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
     }
     writeFileSync(join(tmpDir, DASHBOARD_COMPLETE_MARKER), `${manifest.sha256}\n`);
 
-    // Publish atomically. A concurrent `hexclave dev` may be copying from an
-    // existing valid cache entry right now, so we must never rmSync a valid
-    // targetDir. renameSync onto a non-existent target is atomic; if it already
-    // exists, either another process published this version (valid — discard our
-    // copy) or an interrupted publish left a partial dir (no reader uses a
-    // partial entry, so replacing it is safe).
+    // Publish atomically, never rmSync-ing a *valid* targetDir (a concurrent
+    // `hexclave dev` may be copying from it right now). The completion marker is
+    // written into tmpDir above before the rename, so any fully-published
+    // targetDir already passes isDashboardCached.
     if (isDashboardCached(manifest.version)) {
+      // Another process published this version while we downloaded — discard ours.
       return;
     }
     try {
+      // Atomic when targetDir doesn't exist.
       renameSync(tmpDir, targetDir);
     } catch {
       if (isDashboardCached(manifest.version)) {
+        // A concurrent publisher won the race; its entry is valid, so keep it.
         return;
       }
+      // targetDir exists but isn't a valid cache entry — i.e. an interrupted
+      // publish left a partial dir. No reader ever uses a partial entry (it
+      // lacks the marker), so replacing it is safe. This branch does NOT handle a
+      // live concurrent publisher; that case returned just above.
       rmSync(targetDir, { recursive: true, force: true });
       renameSync(tmpDir, targetDir);
     }
