@@ -1,0 +1,19 @@
+apps/backend/src/lib/seed-dummy-data.ts
+  s_bfd585b7f42174::t_011381164655f8 2177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "2fd1e098650a43b9f0e8f1d80ec1752f92a7a936",
+  "prompts": {},
+  "sessions": {
+    "s_bfd585b7f42174": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1449-88d7-7381-b339-e6671ba6b93e",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
