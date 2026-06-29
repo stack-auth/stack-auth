@@ -11,6 +11,7 @@ import {
   ClientInterfaceOptions,
   HexclaveClientInterface
 } from "./client-interface";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
@@ -1024,6 +1025,25 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       null,
     );
     return await res.json();
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendServerRequest(
+      "/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    return await response.json();
   }
 
   async updateItemQuantity(

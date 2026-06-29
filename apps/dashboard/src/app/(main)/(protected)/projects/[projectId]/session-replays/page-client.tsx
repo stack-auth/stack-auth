@@ -25,7 +25,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { useAdminApp, useServerApp } from "../use-admin-app";
 import { SessionReplayLimitBanner } from "../analytics/shared";
 import {
   ALLOWED_PLAYER_SPEEDS,
@@ -484,6 +484,7 @@ type PageClientProps = {
 
 export default function PageClient({ initialReplayId, lockedUserId }: PageClientProps) {
   const adminApp = useAdminApp() as AdminAppWithSessionReplays;
+  const serverApp = useServerApp();
   const isStandaloneReplayPage = initialReplayId != null;
   const isEmbedded = lockedUserId != null;
   const baseFilters = useMemo<ReplayFilters>(
@@ -605,7 +606,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     if (recordings.length === 0) return;
     const ids = recordings.map(r => r.id);
     runAsynchronously(async () => {
-      const res = await adminApp.queryAnalytics({
+      const res = await serverApp.queryAnalytics({
         query: `SELECT session_replay_id, count() as cnt
                 FROM default.events
                 WHERE event_type = '$click'
@@ -621,7 +622,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
       }
       setClickCountsByReplayId(map);
     }, { noErrorLogging: true });
-  }, [isStandaloneReplayPage, recordings, adminApp]);
+  }, [isStandaloneReplayPage, recordings, serverApp]);
 
   useEffect(() => {
     if (initialReplayId == null) return;
@@ -1228,7 +1229,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     let cancelled = false;
     setTimelineEvents([]);
     runAsynchronously(async () => {
-      const res = await adminApp.queryAnalytics({
+      const res = await serverApp.queryAnalytics({
         query: `SELECT event_type,
                        toUnixTimestamp64Milli(event_at) as event_at_ms,
                        data
@@ -1253,7 +1254,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     return () => {
       cancelled = true;
     };
-  }, [selectedRecordingId, adminApp]);
+  }, [selectedRecordingId, serverApp]);
 
   useEffect(() => {
     return () => {

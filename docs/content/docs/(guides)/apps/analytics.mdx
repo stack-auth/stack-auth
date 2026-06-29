@@ -76,6 +76,16 @@ The **Queries** screen is a ClickHouse SQL workspace for deeper analysis.
 - Re-run saved queries with one click
 - Edit and overwrite saved query definitions
 
+You can run the same read-only queries from trusted backend code with `hexclaveServerApp.queryAnalytics()`:
+
+```ts
+const { result, query_id } = await hexclaveServerApp.queryAnalytics({
+  query: "SELECT count() AS event_count FROM events",
+});
+```
+
+The REST API equivalent is `POST /api/v1/analytics/query` with server authentication. Use `POST /api/v1/analytics/query/timing` with the returned `query_id` to fetch query timing stats.
+
 ## Session Replays
 
 The **Replays** screen helps you move from "an event happened" to "what the user actually saw."

@@ -82,7 +82,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { useAdminApp, useServerApp } from "../use-admin-app";
 import { validateRiskScore } from "@/lib/risk-score-utils";
 import { parseClickHouseDate } from "../analytics/shared";
 
@@ -403,7 +403,7 @@ function RuleTriggerHistoryDialog({
   timespanHours: number,
   isSparklineLoading: boolean,
 }) {
-  const hexclaveAdminApp = useAdminApp();
+  const serverApp = useServerApp();
   const [open, setOpen] = useState(false);
   const [triggers, setTriggers] = useState<RuleTriggerListItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -430,7 +430,7 @@ function RuleTriggerHistoryDialog({
     }
 
     try {
-      const response = await hexclaveAdminApp.queryAnalytics({
+      const response = await serverApp.queryAnalytics({
         query: RULE_TRIGGER_EVENTS_QUERY,
         params: {
           rule_id: ruleId,
