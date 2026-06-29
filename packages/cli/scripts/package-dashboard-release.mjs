@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// Packages the standalone RDE dashboard into a GitHub Release artifact:
-//   - dashboard-<version>.zip  (the standalone Next.js build, zipped)
-//   - manifest.json            ({ version, sha256, url }) consumed at runtime by
-//                              packages/cli/src/lib/dashboard-release.ts
-// Run by .github/workflows/dashboard-release.yaml after the dashboard standalone
-// build. Requires the `zip` CLI (present on GitHub's ubuntu runners).
+// Packages the standalone RDE dashboard into a GitHub Release artifact: a
+// dashboard-<version>.zip plus a manifest.json ({ version, sha256, url }) that
+// dashboard-release.ts fetches at runtime. Run by dashboard-release.yaml;
+// requires the `zip` CLI (present on ubuntu runners).
 import { execFileSync } from "child_process";
 import { createHash } from "crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
@@ -17,9 +15,8 @@ const repoRoot = resolve(packageRoot, "../..");
 
 // Overridable so forks / mirrors can host their own releases.
 const repository = process.env.DASHBOARD_RELEASE_REPO ?? "hexclave/hexclave";
-// For local end-to-end testing: point the manifest's asset URL at a static
-// server (e.g. http://127.0.0.1:8000) instead of GitHub, so `hexclave dev` with
-// HEXCLAVE_DASHBOARD_MANIFEST_URL can fetch the real build without a release.
+// For local testing: point the manifest's asset URL at a static server
+// (e.g. http://127.0.0.1:8000) instead of GitHub.
 const baseUrlOverride = process.env.DASHBOARD_RELEASE_BASE_URL?.replace(/\/+$/, "");
 
 const dashboardPackageJson = JSON.parse(readFileSync(join(repoRoot, "apps/dashboard/package.json"), "utf-8"));

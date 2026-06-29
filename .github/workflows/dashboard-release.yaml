@@ -57,12 +57,10 @@ jobs:
           EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
         run: |
           set -euo pipefail
-          # A published dashboard-v<version> asset is immutable: the version IS the
-          # identity, so we never replace an existing asset. We then advertise the
-          # sha256 of whatever asset is actually live, so the floating manifest can
-          # never point at a zip whose bytes it doesn't match. (We can't just trust
-          # the rebuild's hash: the staged tree gets fresh mtimes, so an identical
-          # build doesn't zip byte-for-byte identically.)
+          # A published dashboard-v<version> asset is immutable, so never replace
+          # it; advertise the sha of whatever asset is live. (The rebuild isn't
+          # byte-reproducible — staged files get fresh mtimes — so we can't just
+          # trust EXPECTED_SHA when reusing an existing asset.)
           live_sha="$EXPECTED_SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
             if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$ZIP_NAME"; then
@@ -93,8 +91,7 @@ jobs:
           LIVE_SHA: ${{ steps.publish.outputs.live_sha }}
         run: |
           set -euo pipefail
-          # Advertise the sha of the actually-published (immutable) asset, which may
-          # differ from the rebuild's hash when reusing an existing release.
+          # Advertise the live asset's sha, which may differ from the rebuild's.
           tmp="$(mktemp)"
           jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
           mv "$tmp" "$MANIFEST"

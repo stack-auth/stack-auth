@@ -338,11 +338,9 @@ export function isVersionNewer(candidate: string, current: string): boolean {
 }
 
 // Restart the running dashboard only when the latest published release is
-// strictly newer than the one currently serving the port; this is how a freshly
-// released dashboard rolls out without reinstalling the CLI. Equal/older/unknown
-// versions (e.g. a dashboard recorded by a pre-feature CLI with no version
-// field, or when the manifest can't be reached) are reused as-is. Exported for
-// unit testing.
+// strictly newer than the one serving the port. Equal/older/unknown versions (a
+// pre-feature CLI's record, or an unreachable manifest) are reused as-is.
+// Exported for unit testing.
 export function shouldRestartDashboard(latestVersion: string | undefined, runningVersion: string | undefined): boolean {
   return latestVersion != null && runningVersion != null && isVersionNewer(latestVersion, runningVersion);
 }
@@ -452,12 +450,10 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   const url = dashboardUrl(options.port);
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
 
-  // Look up the newest published dashboard so we can decide whether a running
-  // one is stale and which build to launch. Skipped entirely when a custom dev
-  // dashboard command or a local-build override is configured (local dashboard
-  // development) — those paths never fetch a release. A null manifest (offline)
-  // means "version unknown": we won't restart a healthy dashboard, and
-  // resolveDashboardRuntime falls back to the newest cached build when needed.
+  // Look up the newest published release to decide whether to restart a running
+  // dashboard and which build to launch. Skipped for a custom dev command or a
+  // local-build override; a null manifest (offline) reuses the running dashboard
+  // or falls back to cache.
   const skipReleaseLookup = devDashboardCommand != null || dashboardDirOverride() != null;
   const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
   const latestVersion = manifest?.version;

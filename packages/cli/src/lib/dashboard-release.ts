@@ -7,49 +7,35 @@ import extractZip from "extract-zip";
 import { devEnvStatePath } from "./dev-env-state.js";
 import { CliError, errorMessage } from "./errors.js";
 
-// The RDE dashboard is published as a standalone Next.js build, zipped and
-// attached to a GitHub Release, instead of being bundled into the CLI npm
-// tarball. `hexclave dev` fetches the newest published dashboard at runtime and
-// caches it on disk, so a fresh dashboard rolls out without reinstalling the
-// CLI (and without npm/npx shipping a ~165 MB tarball that trips download
-// firewalls). See dashboard-release.yaml for the publishing side.
+// The RDE dashboard ships as a zipped standalone build attached to a GitHub
+// Release rather than bundled in the CLI tarball; `hexclave dev` fetches the
+// newest one at runtime and caches it. Publishing side: dashboard-release.yaml.
 
-// Repo that hosts the dashboard releases. Matches package.json "repository".
 const DASHBOARD_REPO = "hexclave/hexclave";
-// A continuously-updated release whose `manifest.json` asset always points at
-// the newest dashboard build. A stable GitHub download URL — no API call, so no
-// unauthenticated rate limit, and it follows the standard redirect to the
-// release CDN.
+// Floating manifest pointing at the newest build — a stable download URL (no API
+// call, so no rate limit).
 const DASHBOARD_LATEST_MANIFEST_URL = `https://github.com/${DASHBOARD_REPO}/releases/download/dashboard-latest/manifest.json`;
 
-// Point the CLI at a different manifest (self-hosted mirror, staging, tests).
+// Point the CLI at a different manifest (mirror/staging/tests).
 export const DASHBOARD_MANIFEST_URL_ENV_VAR = "HEXCLAVE_DASHBOARD_MANIFEST_URL";
-// Run a local dashboard build straight from disk, skipping all networking. The
-// directory must contain apps/dashboard/server.js (a copy-runtime-assets output).
+// Run a local on-disk build, skipping all networking.
 export const DASHBOARD_DIR_OVERRIDE_ENV_VAR = "HEXCLAVE_DASHBOARD_DIR";
 
-// Server entrypoint inside an extracted dashboard build.
 export const DASHBOARD_SERVER_RELATIVE_PATH = join("apps", "dashboard", "server.js");
 
 const DASHBOARD_CACHE_DIR_NAME = "dashboards";
-// Written only after an extraction completes, so a half-extracted directory is
-// never treated as a usable cache entry.
+// Written only after extraction completes, so a half-extracted dir is never used.
 const DASHBOARD_COMPLETE_MARKER = ".hexclave-complete";
 const LOG_PREFIX = "[Hexclave] ";
-// `version` is interpolated into cache paths and the manifest is untrusted when
-// HEXCLAVE_DASHBOARD_MANIFEST_URL points at a non-default host, so restrict it to
-// a path-safe semver shape (no separators, can't start with "..").
+// `version` becomes a cache dir name and the manifest is untrusted, so require a
+// path-safe semver.
 const SAFE_VERSION_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
-// Give up rather than hang forever when a slow/dead host stalls a fetch. The
-// manifest is tiny; the zip is large, so it gets a much longer budget. A timeout
-// surfaces as a normal fetch error → offline-cache fallback.
+// Don't hang forever on a slow host; a timeout falls through to the offline cache.
 const MANIFEST_FETCH_TIMEOUT_MS = 10_000;
 const DASHBOARD_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 
-// The dashboard build is public and integrity-checked, but require https for the
-// download URL so a custom manifest can't quietly pull it over plaintext —
-// except loopback, which keeps local testing/mirrors (e.g. a `python -m
-// http.server` on 127.0.0.1) working. Also rejects non-http(s) schemes.
+// Require https for the download (loopback http allowed for local mirrors/tests);
+// also rejects non-http(s) schemes.
 function isAllowedDownloadUrl(url: string): boolean {
   let parsed: URL;
   try {
@@ -79,10 +65,6 @@ function logDashboard(message: string): void {
   console.warn(`${LOG_PREFIX}${message}`);
 }
 
-// Validate an untrusted manifest fetched over the network. A bad/empty sha256
-// would let a corrupt download through, so the digest must be a 64-char hex; the
-// version must be a path-safe semver (see SAFE_VERSION_REGEX) since it becomes a
-// cache directory name.
 export function parseDashboardManifest(raw: unknown): DashboardManifest | null {
   if (raw == null || typeof raw !== "object") return null;
   const manifest = raw as Record<string, unknown>;
@@ -92,8 +74,6 @@ export function parseDashboardManifest(raw: unknown): DashboardManifest | null {
   return { version: manifest.version, sha256: manifest.sha256.toLowerCase(), url: manifest.url };
 }
 
-// The local-build override, if set. When present the CLI runs this dashboard
-// directly and never touches the network (no manifest fetch, no download).
 export function dashboardDirOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const override = env[DASHBOARD_DIR_OVERRIDE_ENV_VAR]?.trim();
   return override != null && override.length > 0 ? override : undefined;
@@ -119,19 +99,14 @@ export function isDashboardCached(version: string): boolean {
 
 type ParsedVersion = [number, number, number];
 
-// NB: dev.ts has its own parseVersionCore/isVersionNewer that additionally
-// tracks prerelease ordering for the dashboard-restart decision. This copy only
-// ranks already-published cache directory names, so it deliberately ignores
-// prereleases. Kept separate on purpose — don't merge them.
+// Separate from dev.ts's version comparator on purpose: that one orders
+// prereleases for the restart check; this only ranks cached dir names.
 function parseVersionCore(version: string): ParsedVersion | null {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
   if (!match) return null;
   return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-// Pick the highest semver from a list, ignoring unparseable entries. Pure, so
-// the offline-fallback selection can be unit-tested. Returns undefined when no
-// entry parses as a version.
 export function pickLatestVersion(versions: string[]): string | undefined {
   let best: { version: string, core: ParsedVersion } | undefined;
   for (const version of versions) {
@@ -151,8 +126,6 @@ function isCoreNewer(candidate: ParsedVersion, current: ParsedVersion): boolean 
   return false;
 }
 
-// Newest fully-extracted dashboard already on disk, used as an offline fallback
-// when the manifest can't be fetched.
 export function latestCachedDashboardVersion(): string | undefined {
   const root = dashboardCacheRoot();
   if (!existsSync(root)) return undefined;
@@ -186,8 +159,7 @@ async function sha256File(path: string): Promise<string> {
 async function downloadDashboardRelease(manifest: DashboardManifest): Promise<void> {
   const cacheRoot = dashboardCacheRoot();
   mkdirSync(cacheRoot, { recursive: true });
-  // Unique temp names so parallel `hexclave dev` invocations don't clobber each
-  // other; the final publish into the version dir is an atomic rename.
+  // Unique temp names so parallel runs don't collide; publish is an atomic rename.
   const suffix = `${process.pid}-${randomBytes(8).toString("hex")}`;
   const tmpZip = join(cacheRoot, `.download-${manifest.version}-${suffix}.zip`);
   const tmpDir = join(cacheRoot, `.extract-${manifest.version}-${suffix}`);
@@ -212,26 +184,21 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
     }
     writeFileSync(join(tmpDir, DASHBOARD_COMPLETE_MARKER), `${manifest.sha256}\n`);
 
-    // Publish atomically, never rmSync-ing a *valid* targetDir (a concurrent
-    // `hexclave dev` may be copying from it right now). The completion marker is
-    // written into tmpDir above before the rename, so any fully-published
-    // targetDir already passes isDashboardCached.
+    // Publish atomically, never rmSync-ing a *valid* targetDir — a concurrent
+    // `hexclave dev` may be reading it. The marker is written before the rename,
+    // so any fully-published dir passes isDashboardCached.
     if (isDashboardCached(manifest.version)) {
-      // Another process published this version while we downloaded — discard ours.
       return;
     }
     try {
-      // Atomic when targetDir doesn't exist.
       renameSync(tmpDir, targetDir);
     } catch {
       if (isDashboardCached(manifest.version)) {
-        // A concurrent publisher won the race; its entry is valid, so keep it.
         return;
       }
-      // targetDir exists but isn't a valid cache entry — i.e. an interrupted
-      // publish left a partial dir. No reader ever uses a partial entry (it
-      // lacks the marker), so replacing it is safe. This branch does NOT handle a
-      // live concurrent publisher; that case returned just above.
+      // targetDir exists but isn't valid — an interrupted publish left a partial
+      // dir (never the live concurrent-publisher case, handled above). No reader
+      // uses a marker-less entry, so replacing it is safe.
       rmSync(targetDir, { recursive: true, force: true });
       renameSync(tmpDir, targetDir);
     }
@@ -241,11 +208,8 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
   }
 }
 
-// Resolve the dashboard build `hexclave dev` should launch, downloading and
-// caching it when necessary. Precedence: explicit on-disk override, then the
-// version named by `manifest` (fetched if not supplied), then — when the network
-// is unavailable — the newest already-cached build. Throws only when there is no
-// usable dashboard anywhere.
+// Resolve the build to launch: on-disk override → manifest version (downloaded if
+// not cached) → newest cached (offline). Throws only when nothing is usable.
 export async function resolveDashboardRuntime(opts: { manifest?: DashboardManifest | null } = {}): Promise<ResolvedDashboard> {
   const override = dashboardDirOverride();
   if (override != null) {
