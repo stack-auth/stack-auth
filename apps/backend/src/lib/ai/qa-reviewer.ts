@@ -40,7 +40,9 @@ const qaReviewSchema = z.object({
     severity: z.string(),
     explanation: z.string(),
   })),
-  improvementSuggestions: z.string(),
+  // Optional in practice: the model omits this for good answers with nothing to suggest.
+  // Defaulting (rather than requiring) avoids turning those into structured-output failures.
+  improvementSuggestions: z.string().default(""),
   overallScore: z.number(),
 });
 
