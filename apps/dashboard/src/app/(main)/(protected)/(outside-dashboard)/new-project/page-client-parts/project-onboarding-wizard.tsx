@@ -4,6 +4,7 @@ import { DesignCard, DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { HostedAuthMethodPreview } from "@/components/hosted-auth-preview";
 import { useRouter } from "@/components/router";
 import { StripeWordmark } from "@/components/stripe-wordmark";
 import {
@@ -30,7 +31,7 @@ import {
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
-import { AuthPage, type AdminOwnedProject } from "@hexclave/next";
+import { type AdminOwnedProject } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
@@ -252,7 +253,7 @@ export function ProjectOnboardingWizard(props: {
 
   const authPreviewProject = useMemo(() => {
     return {
-      id: project.id,
+      displayName: project.displayName,
       config: {
         signUpEnabled: true,
         credentialEnabled: signInMethods.has("credential"),
@@ -263,7 +264,7 @@ export function ProjectOnboardingWizard(props: {
           .map((providerId) => ({ id: providerId, type: "shared" as const })),
       },
     };
-  }, [project.id, signInMethods]);
+  }, [project.displayName, signInMethods]);
 
   const toggleSignInMethod = (method: SignInMethod, enabled: boolean) => {
     setSignInMethods((previous) => {
@@ -837,9 +838,7 @@ export function ProjectOnboardingWizard(props: {
                 <div className="flex min-h-[180px] items-center justify-center px-4 py-3 sm:min-h-[220px] md:min-h-[260px] md:px-5 md:py-4 lg:min-h-[300px]">
                   <div className="pointer-events-none relative flex w-full items-center justify-center" inert>
                     <div className="absolute inset-0 z-10 bg-transparent" />
-                    <div className="auth-preview-host-theme flex w-full justify-center">
-                      <AuthPage type="sign-in" mockProject={authPreviewProject} />
-                    </div>
+                    <HostedAuthMethodPreview project={authPreviewProject} />
                   </div>
                 </div>
               </BrowserFrame>

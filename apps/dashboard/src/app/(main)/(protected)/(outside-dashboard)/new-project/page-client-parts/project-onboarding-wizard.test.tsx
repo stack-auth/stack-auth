@@ -54,6 +54,10 @@ vi.mock("@/components/design-components/select", () => ({
   ),
 }));
 
+vi.mock("@/components/hosted-auth-preview", () => ({
+  HostedAuthMethodPreview: () => <div>Hosted auth preview</div>,
+}));
+
 vi.mock("@/components/router", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -92,7 +96,6 @@ vi.mock("@/lib/config-update", () => ({
 
 vi.mock("@hexclave/next", () => ({
   AdminOwnedProject: class {},
-  AuthPage: () => <div>Auth preview</div>,
 }));
 
 vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
