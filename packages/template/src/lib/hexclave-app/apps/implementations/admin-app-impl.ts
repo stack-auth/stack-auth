@@ -1232,7 +1232,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     await this._interface.deletePromoCode(promoCodeId);
   }
 
-  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse> {
+  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number, cursor?: string }): Promise<PromoCodeRedemptionListResponse> {
     return await this._interface.listPromoCodeRedemptions(promoCodeId, params);
   }
 

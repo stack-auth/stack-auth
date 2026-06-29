@@ -319,6 +319,25 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       extraVariables,
     });
   }
+  else if (event.type === "payment_intent.canceled" && event.data.object.metadata.purchaseKind === "ONE_TIME") {
+    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    const metadata = paymentIntent.metadata;
+    const accountId = event.account;
+    if (!accountId) {
+      throw new HexclaveAssertionError("Stripe webhook account id missing", { event });
+    }
+    if (!metadata.promoCodeRedemptionId) {
+      return;
+    }
+    const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    await voidExpiredOrFailedPromoCodeRedemption({
+      prisma,
+      tenancyId: tenancy.id,
+      redemptionId: metadata.promoCodeRedemptionId,
+      reason: "stripe_payment_intent_canceled",
+    });
+  }
   else if (event.type === "charge.dispute.created") {
     const telegramConfig = getTelegramConfig("chargebacks");
     if (!telegramConfig) {

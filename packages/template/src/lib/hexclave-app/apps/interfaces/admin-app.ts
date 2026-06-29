@@ -148,7 +148,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     getPromoCode(promoCodeId: string): Promise<PromoCodeRead>,
     updatePromoCode(promoCodeId: string, data: PromoCodeUpdate): Promise<PromoCodeRead>,
     deletePromoCode(promoCodeId: string): Promise<void>,
-    listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse>,
+    listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number, cursor?: string }): Promise<PromoCodeRedemptionListResponse>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,

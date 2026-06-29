@@ -4216,7 +4216,12 @@
                   "price_id",
                   "promo_code"
                 ],
-                "example": {}
+                "example": {
+                  "full_code": "proj_abc123_def456ghi789",
+                  "price_id": "monthly",
+                  "quantity": 1,
+                  "promo_code": "PROMO-SUMMER"
+                }
               }
             }
           }

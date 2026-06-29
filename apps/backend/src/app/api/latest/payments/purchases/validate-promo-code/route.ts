@@ -16,10 +16,30 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     body: yupObject({
-      full_code: yupString().defined(),
-      price_id: yupString().defined(),
-      quantity: yupNumber().integer().min(1).default(1),
-      promo_code: yupString().defined(),
+      full_code: yupString().defined().meta({
+        openapiField: {
+          description: "The verification code from the purchase URL.",
+          exampleValue: "proj_abc123_def456ghi789",
+        },
+      }),
+      price_id: yupString().defined().meta({
+        openapiField: {
+          description: "The price ID to quote.",
+          exampleValue: "monthly",
+        },
+      }),
+      quantity: yupNumber().integer().min(1).default(1).meta({
+        openapiField: {
+          description: "The quantity to quote.",
+          exampleValue: 1,
+        },
+      }),
+      promo_code: yupString().defined().meta({
+        openapiField: {
+          description: "The promo code entered by the customer.",
+          exampleValue: "PROMO-SUMMER",
+        },
+      }),
     }).defined(),
   }),
   response: yupObject({

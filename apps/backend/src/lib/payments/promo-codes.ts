@@ -862,14 +862,45 @@ export async function listPromoCodeRedemptions(options: {
   tenancyId: string,
   promoCodeId: string,
   limit: number,
-}): Promise<PromoCodeRedemptionRead[]> {
-  const rows = await options.prisma.$queryRaw<PromoCodeRedemptionRow[]>`
+  cursor?: string,
+}): Promise<{ items: PromoCodeRedemptionRead[], nextCursor: string | null }> {
+  const rows = options.cursor ? await (async () => {
+    const cursorRows = await options.prisma.$queryRaw<Array<{ createdAt: Date }>>`
+    SELECT "createdAt"
+    FROM "PromoCodeRedemption"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "promoCodeId" = ${options.promoCodeId}::uuid
+      AND "id" = ${options.cursor}::uuid
+    LIMIT 1
+    `;
+    if (cursorRows.length === 0) {
+      throw new StatusError(400, "Invalid cursor.");
+    }
+    const cursorCreatedAt = cursorRows[0].createdAt;
+    return await options.prisma.$queryRaw<PromoCodeRedemptionRow[]>`
+      SELECT *
+      FROM "PromoCodeRedemption"
+      WHERE "tenancyId" = ${options.tenancyId}::uuid
+        AND "promoCodeId" = ${options.promoCodeId}::uuid
+        AND (
+          "createdAt" < ${cursorCreatedAt}
+          OR ("createdAt" = ${cursorCreatedAt} AND "id" < ${options.cursor}::uuid)
+        )
+      ORDER BY "createdAt" DESC, "id" DESC
+      LIMIT ${options.limit + 1}
+    `;
+  })() : await options.prisma.$queryRaw<PromoCodeRedemptionRow[]>`
     SELECT *
     FROM "PromoCodeRedemption"
     WHERE "tenancyId" = ${options.tenancyId}::uuid
       AND "promoCodeId" = ${options.promoCodeId}::uuid
     ORDER BY "createdAt" DESC, "id" DESC
-    LIMIT ${options.limit}
+    LIMIT ${options.limit + 1}
   `;
-  return rows.map(redemptionRowToApi);
+  const hasNextPage = rows.length > options.limit;
+  const pageRows = hasNextPage ? rows.slice(0, options.limit) : rows;
+  return {
+    items: pageRows.map(redemptionRowToApi),
+    nextCursor: hasNextPage ? (pageRows.at(-1)?.id ?? null) : null,
+  };
 }

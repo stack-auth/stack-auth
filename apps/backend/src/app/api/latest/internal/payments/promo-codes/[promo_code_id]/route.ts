@@ -11,7 +11,7 @@ const authSchema = yupObject({
 }).defined();
 
 const paramsSchema = yupObject({
-  promo_code_id: yupString().defined(),
+  promo_code_id: yupString().uuid().defined(),
 }).defined();
 
 export const GET = createSmartRouteHandler({

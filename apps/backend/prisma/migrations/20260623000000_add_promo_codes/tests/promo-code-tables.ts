@@ -77,6 +77,117 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "id",
       "codeHash",
       "discountType",
+      "subscriptionDuration",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      'missing-percent',
+      'PERCENT'::"PromoCodeDiscountType",
+      'FIRST_INVOICE'::"PromoCodeSubscriptionDuration",
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCode_discount_fields_check/);
+
+  await expect(sql`
+    INSERT INTO "PromoCode" (
+      "tenancyId",
+      "id",
+      "codeHash",
+      "discountType",
+      "percentOffBps",
+      "subscriptionDuration",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      'too-large-percent',
+      'PERCENT'::"PromoCodeDiscountType",
+      10001,
+      'FIRST_INVOICE'::"PromoCodeSubscriptionDuration",
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCode_discount_fields_check/);
+
+  await expect(sql`
+    INSERT INTO "PromoCode" (
+      "tenancyId",
+      "id",
+      "codeHash",
+      "discountType",
+      "percentOffBps",
+      "amountOffUsdCents",
+      "subscriptionDuration",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      'mixed-discount',
+      'AMOUNT_OFF_USD'::"PromoCodeDiscountType",
+      1000,
+      500,
+      'FOREVER'::"PromoCodeSubscriptionDuration",
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCode_discount_fields_check/);
+
+  await expect(sql`
+    INSERT INTO "PromoCode" (
+      "tenancyId",
+      "id",
+      "codeHash",
+      "discountType",
+      "amountOffUsdCents",
+      "subscriptionDuration",
+      "maxRedemptions",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      'bad-max',
+      'AMOUNT_OFF_USD'::"PromoCodeDiscountType",
+      500,
+      'FOREVER'::"PromoCodeSubscriptionDuration",
+      0,
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCode_max_redemptions_check/);
+
+  await expect(sql`
+    INSERT INTO "PromoCode" (
+      "tenancyId",
+      "id",
+      "codeHash",
+      "discountType",
+      "amountOffUsdCents",
+      "subscriptionDuration",
+      "startsAt",
+      "expiresAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      'bad-window',
+      'AMOUNT_OFF_USD'::"PromoCodeDiscountType",
+      500,
+      'FOREVER'::"PromoCodeSubscriptionDuration",
+      NOW(),
+      NOW() - INTERVAL '1 minute',
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCode_time_window_check/);
+
+  await expect(sql`
+    INSERT INTO "PromoCode" (
+      "tenancyId",
+      "id",
+      "codeHash",
+      "discountType",
       "amountOffUsdCents",
       "subscriptionDuration",
       "updatedAt"
@@ -154,6 +265,267 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     )
   `;
 
+  const oneTimePurchaseId = randomUUID();
+  const subscriptionId = randomUUID();
+  const subscriptionInvoiceId = randomUUID();
+  await sql`
+    INSERT INTO "OneTimePurchase" (
+      "tenancyId",
+      "id",
+      "customerId",
+      "customerType",
+      "product",
+      "quantity",
+      "creationSource"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${oneTimePurchaseId}::uuid,
+      'customer-1',
+      'CUSTOM'::"CustomerType",
+      '{}'::jsonb,
+      1,
+      'TEST_MODE'::"PurchaseCreationSource"
+    )
+  `;
+  await sql`
+    INSERT INTO "Subscription" (
+      "tenancyId",
+      "id",
+      "customerId",
+      "customerType",
+      "product",
+      "quantity",
+      "stripeSubscriptionId",
+      "status",
+      "currentPeriodEnd",
+      "currentPeriodStart",
+      "cancelAtPeriodEnd",
+      "creationSource",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${subscriptionId}::uuid,
+      'customer-1',
+      'CUSTOM'::"CustomerType",
+      '{}'::jsonb,
+      1,
+      'sub_promo_migration',
+      'active'::"SubscriptionStatus",
+      NOW() + INTERVAL '1 month',
+      NOW(),
+      FALSE,
+      'TEST_MODE'::"PurchaseCreationSource",
+      NOW(),
+      NOW()
+    )
+  `;
+  await sql`
+    INSERT INTO "SubscriptionInvoice" (
+      "tenancyId",
+      "id",
+      "stripeSubscriptionId",
+      "stripeInvoiceId",
+      "isSubscriptionCreationInvoice",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${subscriptionInvoiceId}::uuid,
+      'sub_promo_migration',
+      'in_promo_migration',
+      TRUE,
+      NOW(),
+      NOW()
+    )
+  `;
+
+  await sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "oneTimePurchaseId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${oneTimePurchaseId}::uuid,
+      NOW()
+    )
+  `;
+  await expect(sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "oneTimePurchaseId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${oneTimePurchaseId}::uuid,
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCodeRedemption_applied_one_time_purchase_key/);
+
+  await sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "subscriptionId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${subscriptionId}::uuid,
+      NOW()
+    )
+  `;
+  await expect(sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "subscriptionId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${subscriptionId}::uuid,
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCodeRedemption_applied_subscription_promo_key/);
+
+  await sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "subscriptionInvoiceId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${subscriptionInvoiceId}::uuid,
+      NOW()
+    )
+  `;
+  await expect(sql`
+    INSERT INTO "PromoCodeRedemption" (
+      "tenancyId",
+      "id",
+      "promoCodeId",
+      "customerType",
+      "customerId",
+      "quantity",
+      "originalAmountUsdCents",
+      "discountAmountUsdCents",
+      "finalAmountUsdCents",
+      "status",
+      "subscriptionInvoiceId",
+      "updatedAt"
+    )
+    VALUES (
+      ${ctx.tenancyId1}::uuid,
+      ${randomUUID()}::uuid,
+      ${promoId1}::uuid,
+      'CUSTOM'::"CustomerType",
+      'customer-1',
+      1,
+      1000,
+      250,
+      750,
+      'APPLIED'::"PromoCodeRedemptionStatus",
+      ${subscriptionInvoiceId}::uuid,
+      NOW()
+    )
+  `).rejects.toThrow(/PromoCodeRedemption_applied_subscription_invoice_promo_key/);
+
   await sql`
     UPDATE "PromoCode"
     SET "deletedAt" = NOW()
@@ -163,7 +535,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   const rows = await sql<{ redemption_count: string, deleted_count: string }[]>`
     SELECT
       COUNT(*) FILTER (WHERE "PromoCodeRedemption"."id" = ${redemptionId}::uuid)::text AS "redemption_count",
-      COUNT(*) FILTER (WHERE "PromoCode"."deletedAt" IS NOT NULL)::text AS "deleted_count"
+      COUNT(DISTINCT "PromoCode"."id") FILTER (WHERE "PromoCode"."deletedAt" IS NOT NULL)::text AS "deleted_count"
     FROM "PromoCode"
     LEFT JOIN "PromoCodeRedemption"
       ON "PromoCodeRedemption"."tenancyId" = "PromoCode"."tenancyId"

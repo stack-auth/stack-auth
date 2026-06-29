@@ -166,8 +166,11 @@ async function redeemTestModePurchase(options: {
   });
 }
 
-async function listPromoRedemptions(promoCodeId: string) {
-  return await niceBackendFetch(`/api/latest/internal/payments/promo-codes/${promoCodeId}/redemptions`, {
+async function listPromoRedemptions(promoCodeId: string, options: { limit?: number, cursor?: string } = {}) {
+  const query = new URLSearchParams();
+  if (options.limit != null) query.set("limit", String(options.limit));
+  if (options.cursor) query.set("cursor", options.cursor);
+  return await niceBackendFetch(`/api/latest/internal/payments/promo-codes/${promoCodeId}/redemptions${query.size ? `?${query.toString()}` : ""}`, {
     accessType: "admin",
   });
 }
@@ -241,6 +244,33 @@ it("should manage promo codes with admin CRUD and soft-delete", async ({ expect 
     id: promoCodeId,
     deleted_at_millis: expect.any(Number),
   });
+});
+
+it("should reject malformed promo-code ids before database lookup", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+
+  const detailRes = await niceBackendFetch("/api/latest/internal/payments/promo-codes/not-a-uuid", {
+    accessType: "admin",
+  });
+  expect(detailRes.status).toBe(400);
+
+  const updateRes = await niceBackendFetch("/api/latest/internal/payments/promo-codes/not-a-uuid", {
+    method: "PATCH",
+    accessType: "admin",
+    body: { display_name: "bad id" },
+  });
+  expect(updateRes.status).toBe(400);
+
+  const deleteRes = await niceBackendFetch("/api/latest/internal/payments/promo-codes/not-a-uuid", {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteRes.status).toBe(400);
+
+  const redemptionsRes = await niceBackendFetch("/api/latest/internal/payments/promo-codes/not-a-uuid/redemptions", {
+    accessType: "admin",
+  });
+  expect(redemptionsRes.status).toBe(400);
 });
 
 it("should reject invalid admin promo-code mutations", async ({ expect }) => {
@@ -587,6 +617,201 @@ it("should keep checkout unchanged without promo_code and apply promo codes in t
     discount_amount_usd_cents: 1250,
     final_amount_usd_cents: 8750,
     subscription_duration: "forever",
+    status: "applied",
+    applied_at_millis: expect.any(Number),
+  });
+});
+
+it("should paginate promo-code redemptions with cursors", async ({ expect }) => {
+  await setupProjectWithPromoProducts();
+  const promo = await createAmountOffPromoCode({ code: uniquePromoCode("PAGED") });
+  expect(promo.status).toBe(200);
+
+  for (let i = 0; i < 3; i++) {
+    const { userId } = await Auth.fastSignUp();
+    const code = await createPurchaseCode({ userId, productId: "promo-one-time" });
+    const checkout = await redeemTestModePurchase({
+      fullCode: code,
+      priceId: "single",
+      promoCode: promo.body.code,
+    });
+    expect(checkout.status).toBe(200);
+  }
+
+  const firstPage = await listPromoRedemptions(promo.body.id, { limit: 2 });
+  expect(firstPage.status).toBe(200);
+  expect(firstPage.body.items).toHaveLength(2);
+  expect(firstPage.body.next_cursor).toEqual(expect.any(String));
+
+  const secondPage = await listPromoRedemptions(promo.body.id, { limit: 2, cursor: firstPage.body.next_cursor });
+  expect(secondPage.status).toBe(200);
+  expect(secondPage.body.items).toHaveLength(1);
+  expect(secondPage.body.next_cursor).toBeNull();
+
+  const seenIds = new Set([...firstPage.body.items, ...secondPage.body.items].map((item: { id: string }) => item.id));
+  expect(seenIds.size).toBe(3);
+});
+
+it("should void one-time promo redemptions when Stripe cancels the payment intent", async ({ expect }) => {
+  await setupProjectWithPromoProducts({ testMode: false });
+  const promo = await createAmountOffPromoCode({ code: uniquePromoCode("CANCELED") });
+  expect(promo.status).toBe(200);
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "promo-one-time" });
+  const purchaseSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "single",
+      quantity: 1,
+      promo_code: promo.body.code,
+    },
+  });
+  expect(purchaseSession.status).toBe(200);
+  const clientSecret = purchaseSession.body.client_secret;
+  expect(clientSecret).toEqual(expect.any(String));
+  const paymentIntentId = clientSecret.split("_secret_")[0];
+  const tenancyId = code.split("_")[0];
+
+  const beforeCancel = await listPromoRedemptions(promo.body.id);
+  expect(beforeCancel.status).toBe(200);
+  expect(beforeCancel.body.items).toHaveLength(1);
+  expect(beforeCancel.body.items[0]).toMatchObject({
+    status: "reserved",
+  });
+
+  const webhook = await Payments.sendStripeWebhook({
+    id: `evt_promo_cancel_${randomUUID()}`,
+    type: "payment_intent.canceled",
+    account: accountId,
+    data: {
+      object: {
+        id: paymentIntentId,
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId } },
+        },
+        metadata: {
+          purchaseKind: "ONE_TIME",
+          promoCodeRedemptionId: beforeCancel.body.items[0].id,
+        },
+      },
+    },
+  });
+  expect(webhook.status).toBe(200);
+
+  const afterCancel = await listPromoRedemptions(promo.body.id);
+  expect(afterCancel.status).toBe(200);
+  expect(afterCancel.body.items[0]).toMatchObject({
+    status: "voided",
+    voided_at_millis: expect.any(Number),
+  });
+});
+
+it("should only apply subscription promo redemptions after Stripe sync reports an active subscription", async ({ expect }) => {
+  await setupProjectWithPromoProducts({ testMode: false });
+  const promo = await createPercentPromoCode({ code: uniquePromoCode("SUBSTATUS") });
+  expect(promo.status).toBe(200);
+
+  const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
+    accessType: "admin",
+  });
+  expect(accountInfo.status).toBe(200);
+  const accountId: string = accountInfo.body.account_id;
+
+  const { userId } = await Auth.fastSignUp();
+  const code = await createPurchaseCode({ userId, productId: "promo-subscription" });
+  const purchaseSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: code,
+      price_id: "monthly",
+      quantity: 1,
+      promo_code: promo.body.code,
+    },
+  });
+  expect(purchaseSession.status).toBe(200);
+
+  const redemptions = await listPromoRedemptions(promo.body.id);
+  expect(redemptions.status).toBe(200);
+  expect(redemptions.body.items).toHaveLength(1);
+  const redemptionId = redemptions.body.items[0].id;
+  expect(redemptions.body.items[0]).toMatchObject({ status: "reserved" });
+
+  const tenancyId = code.split("_")[0];
+  const nowSec = Math.floor(Date.now() / 1000);
+  const product = {
+    displayName: "Promo Subscription",
+    customerType: "user",
+    serverOnly: false,
+    productLineId: "promo",
+    stackable: false,
+    prices: {
+      monthly: {
+        USD: "20",
+        interval: [1, "month"],
+      },
+      yearly: {
+        USD: "200",
+        interval: [1, "year"],
+      },
+    },
+    includedItems: {},
+  };
+  const sendSubscriptionSync = async (status: "incomplete" | "active") => await Payments.sendStripeWebhook({
+    id: `evt_promo_sub_${status}_${randomUUID()}`,
+    type: "customer.subscription.updated",
+    account: accountId,
+    data: {
+      object: {
+        customer: "cus_promo_subscription_status",
+        stack_stripe_mock_data: {
+          "accounts.retrieve": { metadata: { tenancyId } },
+          "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
+          "subscriptions.list": {
+            data: [{
+              id: "sub_promo_subscription_status",
+              status,
+              items: {
+                data: [{
+                  quantity: 1,
+                  current_period_start: nowSec,
+                  current_period_end: nowSec + 30 * 24 * 60 * 60,
+                }],
+              },
+              metadata: {
+                promoCodeRedemptionId: redemptionId,
+                productId: "promo-subscription",
+                product: JSON.stringify(product),
+                priceId: "monthly",
+              },
+              cancel_at_period_end: false,
+            }],
+          },
+        },
+      },
+    },
+  });
+
+  const incompleteWebhook = await sendSubscriptionSync("incomplete");
+  expect(incompleteWebhook.status).toBe(200);
+  const afterIncomplete = await listPromoRedemptions(promo.body.id);
+  expect(afterIncomplete.status).toBe(200);
+  expect(afterIncomplete.body.items[0]).toMatchObject({ status: "reserved" });
+
+  const activeWebhook = await sendSubscriptionSync("active");
+  expect(activeWebhook.status).toBe(200);
+  const afterActive = await listPromoRedemptions(promo.body.id);
+  expect(afterActive.status).toBe(200);
+  expect(afterActive.body.items[0]).toMatchObject({
     status: "applied",
     applied_at_millis: expect.any(Number),
   });

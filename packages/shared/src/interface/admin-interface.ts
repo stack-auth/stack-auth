@@ -1018,9 +1018,10 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
-  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number }): Promise<PromoCodeRedemptionListResponse> {
+  async listPromoCodeRedemptions(promoCodeId: string, params?: { limit?: number, cursor?: string }): Promise<PromoCodeRedemptionListResponse> {
     const qs = new URLSearchParams();
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.cursor) qs.set("cursor", params.cursor);
     const response = await this.sendAdminRequest(
       `/internal/payments/promo-codes/${encodeURIComponent(promoCodeId)}/redemptions${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },

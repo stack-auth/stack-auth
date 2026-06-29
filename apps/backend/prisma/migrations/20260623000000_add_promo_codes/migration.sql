@@ -33,7 +33,28 @@ CREATE TABLE "PromoCode" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("tenancyId","id")
+    CONSTRAINT "PromoCode_pkey" PRIMARY KEY ("tenancyId","id"),
+    CONSTRAINT "PromoCode_discount_fields_check" CHECK (
+        (
+            "discountType" = 'PERCENT'::"PromoCodeDiscountType"
+            AND "percentOffBps" IS NOT NULL
+            AND "percentOffBps" BETWEEN 1 AND 10000
+            AND "amountOffUsdCents" IS NULL
+        )
+        OR (
+            "discountType" = 'AMOUNT_OFF_USD'::"PromoCodeDiscountType"
+            AND "amountOffUsdCents" IS NOT NULL
+            AND "amountOffUsdCents" >= 1
+            AND "percentOffBps" IS NULL
+        )
+    ),
+    CONSTRAINT "PromoCode_max_redemptions_check" CHECK (
+        ("maxRedemptions" IS NULL OR "maxRedemptions" >= 1)
+        AND ("maxRedemptionsPerCustomer" IS NULL OR "maxRedemptionsPerCustomer" >= 1)
+    ),
+    CONSTRAINT "PromoCode_time_window_check" CHECK (
+        "startsAt" IS NULL OR "expiresAt" IS NULL OR "expiresAt" > "startsAt"
+    )
 );
 
 -- CreateTable
@@ -89,6 +110,15 @@ CREATE UNIQUE INDEX "PromoCodeRedemption_tenancyId_stripePaymentIntentId_key" ON
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PromoCodeRedemption_tenancyId_stripeSubscriptionId_promoCodeId_key" ON "PromoCodeRedemption"("tenancyId", "stripeSubscriptionId", "promoCodeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PromoCodeRedemption_applied_one_time_purchase_key" ON "PromoCodeRedemption"("tenancyId", "oneTimePurchaseId") WHERE "status" = 'APPLIED'::"PromoCodeRedemptionStatus" AND "oneTimePurchaseId" IS NOT NULL;
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PromoCodeRedemption_applied_subscription_promo_key" ON "PromoCodeRedemption"("tenancyId", "subscriptionId", "promoCodeId") WHERE "status" = 'APPLIED'::"PromoCodeRedemptionStatus" AND "subscriptionId" IS NOT NULL;
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PromoCodeRedemption_applied_subscription_invoice_promo_key" ON "PromoCodeRedemption"("tenancyId", "subscriptionInvoiceId", "promoCodeId") WHERE "status" = 'APPLIED'::"PromoCodeRedemptionStatus" AND "subscriptionInvoiceId" IS NOT NULL;
 
 -- CreateIndex
 CREATE INDEX "PromoCodeRedemption_tenancy_promo_created_idx" ON "PromoCodeRedemption"("tenancyId", "promoCodeId", "createdAt");

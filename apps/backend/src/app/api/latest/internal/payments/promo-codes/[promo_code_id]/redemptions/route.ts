@@ -15,10 +15,11 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      promo_code_id: yupString().defined(),
+      promo_code_id: yupString().uuid().defined(),
     }).defined(),
     query: yupObject({
       limit: yupString().optional(),
+      cursor: yupString().uuid().optional(),
     }).optional(),
   }),
   response: yupObject({
@@ -29,18 +30,19 @@ export const GET = createSmartRouteHandler({
   handler: async ({ auth, params, query }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const parsedLimit = Number.parseInt(query.limit ?? "100", 10);
-    const items = await listPromoCodeRedemptions({
+    const result = await listPromoCodeRedemptions({
       prisma,
       tenancyId: auth.tenancy.id,
       promoCodeId: params.promo_code_id,
       limit: Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 100)),
+      cursor: query.cursor,
     });
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        items,
-        next_cursor: null,
+        items: result.items,
+        next_cursor: result.nextCursor,
       },
     };
   },

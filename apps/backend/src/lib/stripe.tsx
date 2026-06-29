@@ -238,6 +238,7 @@ const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccoun
 };
 
 const TERMINAL_STRIPE_STATUSES = ["canceled", "incomplete_expired", "unpaid"] as const;
+const PROMO_APPLIED_SUBSCRIPTION_STATUSES = ["active", "trialing"] as const;
 
 function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEnd: Date): { endedAt: Date } | {} {
   if (!TERMINAL_STRIPE_STATUSES.includes(subscription.status as typeof TERMINAL_STRIPE_STATUSES[number])) {
@@ -340,13 +341,15 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
     });
     await bulldozerWriteSubscription(prisma, upsertedSub);
-    await markPromoCodeRedemptionApplied({
-      prisma,
-      tenancyId: tenancy.id,
-      redemptionId: subscription.metadata.promoCodeRedemptionId || null,
-      stripeSubscriptionId: subscription.id,
-      subscriptionId: upsertedSub.id,
-    });
+    if (PROMO_APPLIED_SUBSCRIPTION_STATUSES.includes(subscription.status as typeof PROMO_APPLIED_SUBSCRIPTION_STATUSES[number])) {
+      await markPromoCodeRedemptionApplied({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: subscription.metadata.promoCodeRedemptionId || null,
+        stripeSubscriptionId: subscription.id,
+        subscriptionId: upsertedSub.id,
+      });
+    }
   }
 
   // If this was a cancellation on our own billing (internal tenancy hosts the
@@ -404,11 +407,13 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
     },
   });
   await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
-  await markPromoCodeRedemptionApplied({
-    prisma,
-    tenancyId: tenancy.id,
-    stripeSubscriptionId,
-    stripeInvoiceId: invoice.id,
-    subscriptionInvoiceId: upsertedInvoice.id,
-  });
+  if (invoice.status === "paid") {
+    await markPromoCodeRedemptionApplied({
+      prisma,
+      tenancyId: tenancy.id,
+      stripeSubscriptionId,
+      stripeInvoiceId: invoice.id,
+      subscriptionInvoiceId: upsertedInvoice.id,
+    });
+  }
 }

@@ -7,7 +7,7 @@ import type { PromoCodeCreate, PromoCodeRead, PromoCodeRedemptionRead } from "@h
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DesignAlert,
   DesignBadge,
@@ -72,6 +72,35 @@ function readSubscriptionDuration(value: string): SubscriptionDuration {
   throw new Error(`Unexpected promo subscription duration: ${value}`);
 }
 
+function parsePercentOffBps(value: string): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const bps = Math.round(parsed * 100);
+  return bps >= 1 && bps <= 10000 ? bps : null;
+}
+
+function parseUsdCents(value: string): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const cents = Math.round(parsed * 100);
+  return cents >= 1 ? cents : null;
+}
+
+function parseOptionalPositiveInteger(value: string): number | null | undefined {
+  if (!value.trim()) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return undefined;
+  }
+  return parsed;
+}
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
@@ -90,10 +119,12 @@ export default function PageClient() {
   const [items, setItems] = useState<PromoCodeRead[]>([]);
   const [redemptions, setRedemptions] = useState<PromoCodeRedemptionRead[]>([]);
   const [selectedPromoCodeId, setSelectedPromoCodeId] = useState<string | null>(null);
+  const [redemptionsNextCursor, setRedemptionsNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [redemptionsLoading, setRedemptionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
+  const latestRedemptionsRequestId = useRef(0);
 
   const [displayName, setDisplayName] = useState("");
   const [rawCode, setRawCode] = useState("");
@@ -121,29 +152,61 @@ export default function PageClient() {
     runAsynchronously(loadPromoCodes());
   }, [loadPromoCodes]);
 
-  const loadRedemptions = useCallback(async (promoCodeId: string) => {
+  const loadRedemptions = useCallback(async (promoCodeId: string, cursor?: string) => {
+    const requestId = latestRedemptionsRequestId.current + 1;
+    latestRedemptionsRequestId.current = requestId;
     setSelectedPromoCodeId(promoCodeId);
+    if (!cursor) {
+      setRedemptions([]);
+      setRedemptionsNextCursor(null);
+    }
     setRedemptionsLoading(true);
-    const result = await Result.fromPromise(adminApp.listPromoCodeRedemptions(promoCodeId, { limit: 100 }));
+    const result = await Result.fromPromise(adminApp.listPromoCodeRedemptions(promoCodeId, { limit: 100, cursor }));
+    if (latestRedemptionsRequestId.current !== requestId) {
+      return;
+    }
     setRedemptionsLoading(false);
     if (result.status === "error") {
       setError(errorMessage(result.error));
+      setRedemptions([]);
+      setRedemptionsNextCursor(null);
       return;
     }
     setError(null);
-    setRedemptions(result.data.items);
+    setRedemptions((current) => cursor ? [...current, ...result.data.items] : result.data.items);
+    setRedemptionsNextCursor(result.data.next_cursor);
   }, [adminApp]);
 
   const selectedProductPrices = productOptions.find((product) => product.id === productId)?.prices ?? [];
 
   const createPromoCode = async () => {
-    const maxRedemptionsNumber = maxRedemptions.trim() ? Number(maxRedemptions) : null;
+    const maxRedemptionsNumber = parseOptionalPositiveInteger(maxRedemptions);
+    if (maxRedemptionsNumber === undefined) {
+      setError("Max redemptions must be a positive whole number.");
+      return;
+    }
+    let discountFields: { percent_off_bps: number } | { amount_off_usd_cents: number };
+    if (discountType === "percent") {
+      const percentOffBps = parsePercentOffBps(percentOff);
+      if (percentOffBps == null) {
+        setError("Percent discount must be greater than 0 and at most 100.");
+        return;
+      }
+      discountFields = { percent_off_bps: percentOffBps };
+    } else {
+      const amountOffUsdCents = parseUsdCents(amountOffUsd);
+      if (amountOffUsdCents == null) {
+        setError("USD discount must be greater than 0.");
+        return;
+      }
+      discountFields = { amount_off_usd_cents: amountOffUsdCents };
+    }
     const data: PromoCodeCreate = {
       ...(rawCode.trim() ? { code: rawCode.trim() } : {}),
       ...(displayName.trim() ? { display_name: displayName.trim() } : {}),
       discount_type: discountType,
       subscription_duration: subscriptionDuration,
-      ...(discountType === "percent" ? { percent_off_bps: Math.round(Number(percentOff) * 100) } : { amount_off_usd_cents: Math.round(Number(amountOffUsd) * 100) }),
+      ...discountFields,
       ...(maxRedemptionsNumber != null ? { max_redemptions: maxRedemptionsNumber } : {}),
       ...(productId ? { product_id: productId } : {}),
       ...(priceId ? { price_id: priceId } : {}),
@@ -502,8 +565,11 @@ export default function PageClient() {
         open={selectedPromoCodeId != null}
         onOpenChange={(open) => {
           if (!open) {
+            latestRedemptionsRequestId.current += 1;
             setSelectedPromoCodeId(null);
             setRedemptions([]);
+            setRedemptionsNextCursor(null);
+            setRedemptionsLoading(false);
           }
         }}
         size="4xl"
@@ -521,15 +587,27 @@ export default function PageClient() {
         ) : redemptions.length === 0 ? (
           <p className="text-sm text-muted-foreground">No redemptions recorded for this code.</p>
         ) : (
-          <DataGrid
-            columns={redemptionColumns}
-            rows={redemptionGridData.rows}
-            getRowId={(row) => row.id}
-            totalRowCount={redemptionGridData.totalRowCount}
-            state={redemptionGridState}
-            onChange={setRedemptionGridState}
-            fillHeight={false}
-          />
+          <div className="space-y-4">
+            <DataGrid
+              columns={redemptionColumns}
+              rows={redemptionGridData.rows}
+              getRowId={(row) => row.id}
+              totalRowCount={redemptionGridData.totalRowCount}
+              state={redemptionGridState}
+              onChange={setRedemptionGridState}
+              fillHeight={false}
+            />
+            {redemptionsNextCursor && selectedPromoCodeId && (
+              <DesignButton
+                variant="outline"
+                size="sm"
+                disabled={redemptionsLoading}
+                onClick={() => loadRedemptions(selectedPromoCodeId, redemptionsNextCursor)}
+              >
+                Load more
+              </DesignButton>
+            )}
+          </div>
         )}
       </DesignDialog>
     </PageLayout>

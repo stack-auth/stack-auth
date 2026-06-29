@@ -635,18 +635,19 @@ async function buildPromoDiscountLookup(options: {
     clauses.push(Prisma.sql`"subscriptionInvoiceId" IN (${Prisma.join(subscriptionInvoiceIds.map((id) => Prisma.sql`${id}::uuid`))})`);
   }
 
-  const rows = await options.prisma.$replica().$queryRaw<Array<{
-    oneTimePurchaseId: string | null,
-    subscriptionId: string | null,
-    subscriptionInvoiceId: string | null,
-    finalAmountUsdCents: number,
+	  const rows = await options.prisma.$replica().$queryRaw<Array<{
+	    oneTimePurchaseId: string | null,
+	    subscriptionId: string | null,
+	    subscriptionInvoiceId: string | null,
+	    finalAmountUsdCents: number,
   }>>`
     SELECT "oneTimePurchaseId", "subscriptionId", "subscriptionInvoiceId", "finalAmountUsdCents"
     FROM "PromoCodeRedemption"
-    WHERE "tenancyId" = ${options.tenancyId}::uuid
-      AND "status" = 'APPLIED'::"PromoCodeRedemptionStatus"
-      AND (${Prisma.join(clauses, " OR ")})
-  `;
+	    WHERE "tenancyId" = ${options.tenancyId}::uuid
+	      AND "status" = 'APPLIED'::"PromoCodeRedemptionStatus"
+	      AND (${Prisma.join(clauses, " OR ")})
+	    ORDER BY "appliedAt" DESC NULLS LAST, "createdAt" DESC, "id" DESC
+	  `;
 
   for (const row of rows) {
     if (row.oneTimePurchaseId != null) {
