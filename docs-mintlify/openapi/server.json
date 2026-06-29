@@ -5237,17 +5237,25 @@
                 "type": "object",
                 "properties": {
                   "full_code": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "proj_abc123_def456ghi789",
+                    "description": "The verification code from the purchase URL."
                   },
                   "price_id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "monthly",
+                    "description": "The price ID to quote."
                   },
                   "quantity": {
                     "type": "integer",
+                    "example": 1,
+                    "description": "The quantity to quote.",
                     "default": 1
                   },
                   "promo_code": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "PROMO-SUMMER",
+                    "description": "The promo code entered by the customer."
                   }
                 },
                 "required": [

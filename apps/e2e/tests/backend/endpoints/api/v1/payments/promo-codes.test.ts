@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 import { createPurchaseCode } from "../../../../helpers/payments";
@@ -8,6 +9,7 @@ function uniquePromoCode(prefix: string) {
 }
 
 const promoUnavailableMessage = "Promo code is invalid or not available for this purchase.";
+const promoWindowBufferMillis = 60 * 60 * 1000;
 
 async function setupProjectWithPromoProducts(options: { testMode?: boolean } = {}) {
   await Project.createAndSwitch();
@@ -175,6 +177,22 @@ async function listPromoRedemptions(promoCodeId: string, options: { limit?: numb
   });
 }
 
+async function waitForPromoRedemptionStatus(promoCodeId: string, status: "reserved" | "applied" | "voided") {
+  let lastStatus: string | undefined;
+  for (let i = 0; i < 30; i++) {
+    const redemptions = await listPromoRedemptions(promoCodeId);
+    if (redemptions.status !== 200) {
+      throw new Error(`Unexpected ${redemptions.status} reading promo redemptions`);
+    }
+    lastStatus = redemptions.body.items[0]?.status;
+    if (lastStatus === status) {
+      return redemptions.body.items[0];
+    }
+    await wait(500);
+  }
+  throw new Error(`Promo redemption never reached ${status} (last seen: ${lastStatus})`);
+}
+
 it("should manage promo codes with admin CRUD and soft-delete", async ({ expect }) => {
   await setupProjectWithPromoProducts();
   const rawCode = uniquePromoCode("CRUD");
@@ -203,6 +221,12 @@ it("should manage promo codes with admin CRUD and soft-delete", async ({ expect 
   });
   expect(listRes.status).toBe(200);
   expect(listRes.body.items.some((item: { id: string }) => item.id === promoCodeId)).toBe(true);
+
+  const defaultListRes = await niceBackendFetch("/api/latest/internal/payments/promo-codes", {
+    accessType: "admin",
+  });
+  expect(defaultListRes.status).toBe(200);
+  expect(defaultListRes.body.items.some((item: { id: string }) => item.id === promoCodeId)).toBe(true);
 
   const detailRes = await niceBackendFetch(`/api/latest/internal/payments/promo-codes/${promoCodeId}`, {
     accessType: "admin",
@@ -332,6 +356,15 @@ it("should reject invalid admin promo-code mutations", async ({ expect }) => {
     body: "Promo code must be at least 4 characters.",
   });
 
+  const duplicateCode = uniquePromoCode("DUPLICATE");
+  const firstDuplicate = await createPercentPromoCode({ code: duplicateCode });
+  expect(firstDuplicate.status).toBe(200);
+  const secondDuplicate = await createPercentPromoCode({ code: duplicateCode });
+  expect(secondDuplicate).toMatchObject({
+    status: 409,
+    body: "Promo code already exists.",
+  });
+
   const unauthorizedList = await niceBackendFetch("/api/latest/internal/payments/promo-codes", {
     accessType: "client",
   });
@@ -403,7 +436,7 @@ it("should validate promo code quotes and reject invalid, disabled, deleted, and
 
   const expiredRes = await createPercentPromoCode({
     code: uniquePromoCode("EXPIRED"),
-    expiresAtMillis: Date.now() - 60_000,
+    expiresAtMillis: Date.now() - promoWindowBufferMillis,
   });
   expect(expiredRes.status).toBe(200);
 
@@ -452,7 +485,7 @@ it("should enforce promo-code start windows and customer/product scopes", async 
 
   const notStarted = await createPercentPromoCode({
     code: uniquePromoCode("FUTURE"),
-    startsAtMillis: Date.now() + 60_000,
+    startsAtMillis: Date.now() + promoWindowBufferMillis,
   });
   expect(notStarted.status).toBe(200);
   const notStartedQuote = await quotePromoCode({
@@ -809,9 +842,7 @@ it("should only apply subscription promo redemptions after Stripe sync reports a
 
   const activeWebhook = await sendSubscriptionSync("active");
   expect(activeWebhook.status).toBe(200);
-  const afterActive = await listPromoRedemptions(promo.body.id);
-  expect(afterActive.status).toBe(200);
-  expect(afterActive.body.items[0]).toMatchObject({
+  await expect(waitForPromoRedemptionStatus(promo.body.id, "applied")).resolves.toMatchObject({
     status: "applied",
     applied_at_millis: expect.any(Number),
   });

@@ -2,7 +2,7 @@ import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, getSetupIntentClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { computeApplicationFeeAmount, getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
-import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
+import { attachStripePaymentIntentToPromoRedemption, attachStripeSubscriptionToPromoRedemption, calculateUnitAmountUsdCents, createStripeCouponParamsForPromoCode, promoRedemptionMetadata, reservePromoCodeRedemption, voidExpiredOrFailedPromoCodeRedemption, type ReservedPromoCodeRedemption } from "@/lib/payments/promo-codes";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -142,7 +142,8 @@ export const POST = createSmartRouteHandler({
       productVersionId,
       promoCode: promo_code,
     }) : null;
-    const originalAmountCents = Number(selectedPrice.USD) * 100 * Math.max(1, quantity);
+    const unitAmountCents = calculateUnitAmountUsdCents(selectedPrice);
+    const originalAmountCents = unitAmountCents * quantity;
     const effectiveAmountCents = promoRedemption?.finalAmountUsdCents ?? originalAmountCents;
     const isForeverFreeAfterPromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "forever";
     const requiresSetupAfterFirstInvoicePromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "first_invoice";
@@ -246,7 +247,7 @@ export const POST = createSmartRouteHandler({
                 id: existingItem.id,
                 price_data: {
                   currency: "usd",
-                  unit_amount: Number(selectedPrice.USD) * 100,
+                  unit_amount: unitAmountCents,
                   product: product.id,
                   recurring: {
                     interval_count: selectedInterval[0],
@@ -378,7 +379,7 @@ export const POST = createSmartRouteHandler({
         items: [{
           price_data: {
             currency: "usd",
-            unit_amount: Number(selectedPrice.USD) * 100,
+            unit_amount: unitAmountCents,
             product: product.id,
             recurring: {
               interval_count: subscriptionInterval[0],

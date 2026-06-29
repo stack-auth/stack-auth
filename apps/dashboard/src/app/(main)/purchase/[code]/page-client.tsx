@@ -151,7 +151,7 @@ export default function PageClient({ code }: { code: string }) {
   }, [data, selectedPriceId, promoQuote]);
 
   const elementsAmountCents = useMemo(() => {
-    if (promoQuote && promoQuote.final_amount_usd_cents > 0) {
+    if (promoQuote) {
       return promoQuote.final_amount_usd_cents;
     }
     if (!unitCents) return 0;

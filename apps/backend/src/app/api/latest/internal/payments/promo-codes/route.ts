@@ -17,7 +17,7 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       include_deleted: yupString().oneOf(["true", "false"]).optional(),
       limit: yupString().optional(),
-    }).optional(),
+    }).default({}),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),

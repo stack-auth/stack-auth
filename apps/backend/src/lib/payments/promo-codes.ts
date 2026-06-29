@@ -1,7 +1,7 @@
 import type { PrismaClientTransaction } from "@/prisma-client";
 import type { PromoCodeCreate, PromoCodeRead, PromoCodeRedemptionRead, PromoCodeUpdate } from "@hexclave/shared/dist/interface/crud/promo-codes";
 import type { productSchema } from "@hexclave/shared/dist/schema-fields";
-import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 import type * as yup from "yup";
@@ -179,11 +179,18 @@ export function calculateOriginalAmountUsdCents(options: {
   selectedPrice: SelectedPrice,
   quantity: number,
 }): number {
-  const amount = Number(options.selectedPrice.USD);
+  if (!Number.isFinite(options.quantity) || !Number.isInteger(options.quantity) || options.quantity < 1) {
+    throw new StatusError(400, "Quantity must be a positive integer.");
+  }
+  return calculateUnitAmountUsdCents(options.selectedPrice) * options.quantity;
+}
+
+export function calculateUnitAmountUsdCents(selectedPrice: SelectedPrice): number {
+  const amount = Number(selectedPrice.USD);
   if (!Number.isFinite(amount) || amount < 0) {
     throw new StatusError(400, "Selected price must have a finite non-negative USD amount.");
   }
-  const cents = Math.round(amount * 100) * Math.max(1, options.quantity);
+  const cents = Math.round(amount * 100);
   if (!Number.isInteger(cents) || cents < 0) {
     throw new StatusError(400, "Selected price produced an invalid USD cent amount.");
   }
@@ -354,14 +361,30 @@ export async function quotePromoCodeForPurchase(options: PromoCodePurchaseContex
 }
 
 export async function reservePromoCodeRedemption(options: PromoCodePurchaseContext): Promise<ReservedPromoCodeRedemption> {
-  const quote = await quotePromoCodeForPurchase(options);
+  const normalized = normalizePromoCode(options.promoCode);
+  if (normalized.length === 0) {
+    throw new StatusError(400, "Promo code is required.");
+  }
+  const originalAmountUsdCents = calculateOriginalAmountUsdCents(options);
+  const now = new Date();
   const reservationExpiresAt = new Date(Date.now() + RESERVATION_TTL_MS);
-  const rows = await options.prisma.$queryRaw<Array<{ id: string }>>`
+  const rows = await options.prisma.$queryRaw<Array<{
+    redemptionId: string,
+    promoCodeId: string,
+    displayName: string | null,
+    discountType: PromoCodeDiscountType,
+    percentOffBps: number | null,
+    amountOffUsdCents: number | null,
+    subscriptionDuration: PromoCodeSubscriptionDuration,
+    originalAmountUsdCents: number,
+    discountAmountUsdCents: number,
+    finalAmountUsdCents: number,
+  }>>`
     WITH "lockedPromo" AS (
       SELECT *
       FROM "PromoCode"
       WHERE "tenancyId" = ${options.tenancyId}::uuid
-        AND "id" = ${quote.promoCodeId}::uuid
+        AND "codeHash" = ${hashPromoCode(normalized)}
       FOR UPDATE
     ), "activeCounts" AS (
       SELECT
@@ -376,56 +399,102 @@ export async function reservePromoCodeRedemption(options: PromoCodePurchaseConte
           )
           AND "customerType" = ${enumCustomerType(options.customerType)}::"CustomerType"
           AND "customerId" = ${options.customerId}
-        ) AS "customerCount"
+      ) AS "customerCount"
       FROM "PromoCodeRedemption"
       WHERE "tenancyId" = ${options.tenancyId}::uuid
-        AND "promoCodeId" = ${quote.promoCodeId}::uuid
-    )
-    INSERT INTO "PromoCodeRedemption" (
-      "tenancyId",
-      "promoCodeId",
-      "customerType",
-      "customerId",
-      "productId",
-      "priceId",
-      "productVersionId",
-      "quantity",
-      "originalAmountUsdCents",
-      "discountAmountUsdCents",
-      "finalAmountUsdCents",
-      "subscriptionDuration",
-      "status",
-      "reservationExpiresAt",
-      "updatedAt"
+        AND "promoCodeId" = (SELECT "id" FROM "lockedPromo")
+    ), "eligiblePromo" AS (
+      SELECT
+        "lockedPromo".*,
+        CASE
+          WHEN "lockedPromo"."discountType" = 'PERCENT'::"PromoCodeDiscountType"
+            THEN FLOOR(${originalAmountUsdCents} * "lockedPromo"."percentOffBps" / 10000)::integer
+          ELSE LEAST("lockedPromo"."amountOffUsdCents", ${originalAmountUsdCents})::integer
+        END AS "discountAmountUsdCents"
+      FROM "lockedPromo", "activeCounts"
+      WHERE "lockedPromo"."deletedAt" IS NULL
+        AND "lockedPromo"."disabledAt" IS NULL
+        AND ("lockedPromo"."startsAt" IS NULL OR "lockedPromo"."startsAt" <= ${now})
+        AND ("lockedPromo"."expiresAt" IS NULL OR "lockedPromo"."expiresAt" > ${now})
+        AND ("lockedPromo"."customerType" IS NULL OR "lockedPromo"."customerType" = ${enumCustomerType(options.customerType)}::"CustomerType")
+        AND ("lockedPromo"."customerId" IS NULL OR "lockedPromo"."customerId" = ${options.customerId})
+        AND ("lockedPromo"."productLineId" IS NULL OR "lockedPromo"."productLineId" = ${options.product.productLineId ?? null})
+        AND ("lockedPromo"."productId" IS NULL OR "lockedPromo"."productId" = ${options.productId ?? null})
+        AND ("lockedPromo"."priceId" IS NULL OR "lockedPromo"."priceId" = ${options.priceId ?? null})
+        AND ("lockedPromo"."maxRedemptions" IS NULL OR "activeCounts"."totalCount" < "lockedPromo"."maxRedemptions")
+        AND ("lockedPromo"."maxRedemptionsPerCustomer" IS NULL OR "activeCounts"."customerCount" < "lockedPromo"."maxRedemptionsPerCustomer")
+    ), "inserted" AS (
+      INSERT INTO "PromoCodeRedemption" (
+        "tenancyId",
+        "promoCodeId",
+        "customerType",
+        "customerId",
+        "productId",
+        "priceId",
+        "productVersionId",
+        "quantity",
+        "originalAmountUsdCents",
+        "discountAmountUsdCents",
+        "finalAmountUsdCents",
+        "subscriptionDuration",
+        "status",
+        "reservationExpiresAt",
+        "updatedAt"
+      )
+      SELECT
+        ${options.tenancyId}::uuid,
+        "eligiblePromo"."id",
+        ${enumCustomerType(options.customerType)}::"CustomerType",
+        ${options.customerId},
+        ${options.productId ?? null},
+        ${options.priceId ?? null},
+        ${options.productVersionId ?? null},
+        ${options.quantity},
+        ${originalAmountUsdCents},
+        "eligiblePromo"."discountAmountUsdCents",
+        ${originalAmountUsdCents} - "eligiblePromo"."discountAmountUsdCents",
+        "eligiblePromo"."subscriptionDuration",
+        'RESERVED'::"PromoCodeRedemptionStatus",
+        ${reservationExpiresAt},
+        NOW()
+      FROM "eligiblePromo"
+      RETURNING
+        "id" AS "redemptionId",
+        "promoCodeId",
+        "originalAmountUsdCents",
+        "discountAmountUsdCents",
+        "finalAmountUsdCents",
+        "subscriptionDuration"
     )
     SELECT
-      ${options.tenancyId}::uuid,
-      ${quote.promoCodeId}::uuid,
-      ${enumCustomerType(options.customerType)}::"CustomerType",
-      ${options.customerId},
-      ${options.productId ?? null},
-      ${options.priceId ?? null},
-      ${options.productVersionId ?? null},
-      ${options.quantity},
-      ${quote.originalAmountUsdCents},
-      ${quote.discountAmountUsdCents},
-      ${quote.finalAmountUsdCents},
-      ${quote.subscriptionDuration === "first_invoice" ? "FIRST_INVOICE" : "FOREVER"}::"PromoCodeSubscriptionDuration",
-      'RESERVED'::"PromoCodeRedemptionStatus",
-      ${reservationExpiresAt},
-      NOW()
-    FROM "lockedPromo", "activeCounts"
-    WHERE ("lockedPromo"."maxRedemptions" IS NULL OR "activeCounts"."totalCount" < "lockedPromo"."maxRedemptions")
-      AND ("lockedPromo"."maxRedemptionsPerCustomer" IS NULL OR "activeCounts"."customerCount" < "lockedPromo"."maxRedemptionsPerCustomer")
-    RETURNING "id"
+      "inserted"."redemptionId",
+      "inserted"."promoCodeId",
+      "eligiblePromo"."displayName",
+      "eligiblePromo"."discountType",
+      "eligiblePromo"."percentOffBps",
+      "eligiblePromo"."amountOffUsdCents",
+      "inserted"."subscriptionDuration",
+      "inserted"."originalAmountUsdCents",
+      "inserted"."discountAmountUsdCents",
+      "inserted"."finalAmountUsdCents"
+    FROM "inserted"
+    INNER JOIN "eligiblePromo" ON "eligiblePromo"."id" = "inserted"."promoCodeId"
   `;
-  const redemptionId = rows[0]?.id;
-  if (!redemptionId) {
+  if (rows.length === 0) {
     throw new StatusError(400, PROMO_CODE_NOT_AVAILABLE_MESSAGE);
   }
+  const row = rows[0];
   return {
-    ...quote,
-    redemptionId,
+    promoCodeId: row.promoCodeId,
+    redemptionId: row.redemptionId,
+    displayName: row.displayName,
+    discountType: apiDiscountType(row.discountType),
+    percentOffBps: row.percentOffBps,
+    amountOffUsdCents: row.amountOffUsdCents,
+    subscriptionDuration: apiSubscriptionDuration(row.subscriptionDuration),
+    originalAmountUsdCents: row.originalAmountUsdCents,
+    discountAmountUsdCents: row.discountAmountUsdCents,
+    finalAmountUsdCents: row.finalAmountUsdCents,
   };
 }
 
@@ -435,7 +504,7 @@ export async function attachStripePaymentIntentToPromoRedemption(options: {
   redemptionId: string,
   stripePaymentIntentId: string,
 }) {
-  await options.prisma.$executeRaw`
+  const updatedCount = await options.prisma.$executeRaw`
     UPDATE "PromoCodeRedemption"
     SET "stripePaymentIntentId" = ${options.stripePaymentIntentId},
         "updatedAt" = NOW()
@@ -443,6 +512,13 @@ export async function attachStripePaymentIntentToPromoRedemption(options: {
       AND "id" = ${options.redemptionId}::uuid
       AND "status" = 'RESERVED'::"PromoCodeRedemptionStatus"
   `;
+  if (updatedCount !== 1) {
+    throw new HexclaveAssertionError("Expected to attach Stripe PaymentIntent to exactly one reserved promo redemption.", {
+      tenancyId: options.tenancyId,
+      redemptionId: options.redemptionId,
+      updatedCount,
+    });
+  }
 }
 
 export async function attachStripeSubscriptionToPromoRedemption(options: {
@@ -451,7 +527,7 @@ export async function attachStripeSubscriptionToPromoRedemption(options: {
   redemptionId: string,
   stripeSubscriptionId: string,
 }) {
-  await options.prisma.$executeRaw`
+  const updatedCount = await options.prisma.$executeRaw`
     UPDATE "PromoCodeRedemption"
     SET "stripeSubscriptionId" = ${options.stripeSubscriptionId},
         "updatedAt" = NOW()
@@ -459,6 +535,13 @@ export async function attachStripeSubscriptionToPromoRedemption(options: {
       AND "id" = ${options.redemptionId}::uuid
       AND "status" = 'RESERVED'::"PromoCodeRedemptionStatus"
   `;
+  if (updatedCount !== 1) {
+    throw new HexclaveAssertionError("Expected to attach Stripe subscription to exactly one reserved promo redemption.", {
+      tenancyId: options.tenancyId,
+      redemptionId: options.redemptionId,
+      updatedCount,
+    });
+  }
 }
 
 export async function markPromoCodeRedemptionApplied(options: {
@@ -543,9 +626,15 @@ export function createStripeCouponParamsForPromoCode(options: {
       },
     };
   }
+  if (options.quote.amountOffUsdCents == null) {
+    throw new HexclaveAssertionError("Amount-off promo code quote is missing configured amountOffUsdCents.", {
+      promoCodeId: options.quote.promoCodeId,
+      redemptionId: options.quote.redemptionId,
+    });
+  }
   return {
     duration,
-    amount_off: options.quote.discountAmountUsdCents,
+    amount_off: options.quote.amountOffUsdCents,
     currency: "usd",
     name: normalizePromoCode(options.promoCode),
     metadata: {
@@ -728,10 +817,11 @@ export async function createPromoCode(options: {
       ${expiresAt},
       NOW()
     )
+    ON CONFLICT ("tenancyId", "codeHash") DO NOTHING
     RETURNING *
   `;
   if (rows.length === 0) {
-    throw new StatusError(500, "Failed to create promo code.");
+    throw new StatusError(409, "Promo code already exists.");
   }
   const row = rows[0];
   return {
