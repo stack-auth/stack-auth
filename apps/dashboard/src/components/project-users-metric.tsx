@@ -9,7 +9,10 @@ const CHART_HEIGHT = 56;
 const EMPTY_BASELINE_COUNT = 30;
 
 function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+  // Append T00:00:00 to force local-time interpretation for bare YYYY-MM-DD strings,
+  // which are otherwise parsed as UTC midnight and can shift to the previous day in negative-UTC timezones
+  const date = iso.includes('T') ? new Date(iso) : new Date(`${iso}T00:00:00`);
+  return date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
 }
 
 function ProjectUsersMetricTooltip({ active, label, payload }: TooltipProps<number, string>) {

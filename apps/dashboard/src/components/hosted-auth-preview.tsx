@@ -253,6 +253,15 @@ export function HostedAuthMethodPreview(props: {
   className?: string,
 }) {
   const type = props.type ?? "sign-in";
+  if (type === "sign-up" && !props.project.config.signUpEnabled) {
+    return (
+      <PreviewFrame className={props.className}>
+        <HostedAuthHeading title="Sign up disabled">
+          New account creation is disabled for this project.
+        </HostedAuthHeading>
+      </PreviewFrame>
+    );
+  }
   const hasOAuthProviders = props.project.config.oauthProviders.length > 0;
   const hasPasskey = props.project.config.passkeyEnabled === true && type === "sign-in";
   const hasEmailMethods = props.project.config.credentialEnabled || props.project.config.magicLinkEnabled;
@@ -304,25 +313,25 @@ export function HostedAuthMethodPreview(props: {
         <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
       ) : null}
 
-      <div className={authFooterClassName}>
-        {type === "sign-in" ? (
-          props.project.config.signUpEnabled && (
+      {(type === "sign-up" || props.project.config.signUpEnabled) && (
+        <div className={authFooterClassName}>
+          {type === "sign-in" ? (
             <p className="text-muted-foreground">
               Don&apos;t have an account?{" "}
               <a href="#" className={authFooterLinkClassName} tabIndex={-1}>
                 Sign up
               </a>
             </p>
-          )
-        ) : (
-          <p className="text-muted-foreground">
-            Already have an account?{" "}
-            <a href="#" className={authFooterLinkClassName} tabIndex={-1}>
-              Sign in
-            </a>
-          </p>
-        )}
-      </div>
+          ) : (
+            <p className="text-muted-foreground">
+              Already have an account?{" "}
+              <a href="#" className={authFooterLinkClassName} tabIndex={-1}>
+                Sign in
+              </a>
+            </p>
+          )}
+        </div>
+      )}
     </PreviewFrame>
   );
 }

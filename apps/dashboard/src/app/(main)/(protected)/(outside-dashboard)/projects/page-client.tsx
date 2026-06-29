@@ -792,14 +792,17 @@ function TeamAddUserDialog(props: { team: Team }) {
         setLoadingData(false);
       }
     }
-  }, [props.team]);
+  }, [props.team.id]);
 
   useEffect(() => {
     if (!open) {
       setFormError(null);
+      setDialogData(null);
+      setLoadError(null);
       return;
     }
 
+    setDialogData(null);
     let canceled = false;
     runAsynchronously(fetchDialogData(() => canceled));
     return () => {
@@ -810,8 +813,8 @@ function TeamAddUserDialog(props: { team: Team }) {
   const refreshInvitations = useCallback(async () => {
     setLoadError(null);
     try {
-      const invitations = await listInvitations(props.team.id);
-      setDialogData((previous) => previous == null ? previous : { ...previous, invitations });
+      const data = await loadTeamAddUserDialogData(props.team);
+      setDialogData(data);
     } catch (error) {
       captureError("team-admin-invite-dialog-refresh-invitations", error);
       setLoadError("Failed to refresh pending invitations. Please try again.");
@@ -1001,7 +1004,9 @@ function TeamAddUserDialog(props: { team: Team }) {
 
           {dialogData == null && loadingData ? (
             <Skeleton className="h-10 w-full rounded-xl" />
-          ) : dialogData == null || dialogData.invitations.length === 0 ? (
+          ) : dialogData == null ? (
+            null
+          ) : dialogData.invitations.length === 0 ? (
             <div className="rounded-xl border border-dashed border-foreground/[0.12] bg-foreground/[0.02] px-3 py-3">
               <Typography variant="secondary" className="text-sm">
                 No pending invitations
