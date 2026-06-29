@@ -1,6 +1,6 @@
 import { Skeleton, cn } from "~/components/ui";
 import { Bell, Contact, CreditCard, Key, Monitor, PlusCircle, Settings, ShieldCheck } from "lucide-react";
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Team, useStackApp, useUser } from "@hexclave/react";
 import { HostedFullPage } from "./hosted-full-page";
 import { SidebarLayout } from './sidebar-layout';
@@ -26,6 +26,30 @@ const Icon = ({ name }: { name: keyof typeof iconMap }) => {
 };
 
 const emptyTeams: Team[] = [];
+
+function getReferrerSnapshot(): string {
+  if (typeof document === "undefined") return "";
+  return document.referrer;
+}
+
+function subscribeToReferrer() {
+  // document.referrer never changes after page load, so no-op subscription
+  return () => {};
+}
+
+function useExternalBackUrl(): string | null {
+  const referrer = useSyncExternalStore(subscribeToReferrer, getReferrerSnapshot, () => "");
+  return useMemo(() => {
+    if (!referrer) return null;
+    try {
+      const referrerOrigin = new URL(referrer).origin;
+      if (referrerOrigin === window.location.origin) return null;
+      return referrer;
+    } catch {
+      return null;
+    }
+  }, [referrer]);
+}
 
 const EmailsAndAuthPage = React.lazy(async () => ({
   default: (await import("./email-and-auth/email-and-auth-page")).EmailsAndAuthPage,
@@ -86,6 +110,7 @@ export function HostedAccountSettings(props: {
     },
   }>,
 }) {
+  const backUrl = useExternalBackUrl();
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
   const projectFromHook = stackApp.useProject();
@@ -267,6 +292,7 @@ export function HostedAccountSettings(props: {
       <SidebarLayout
         items={sidebarItems as any}
         title="Account Settings"
+        backUrl={backUrl}
       />
     </HostedFullPage>
   );

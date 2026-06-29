@@ -9,7 +9,7 @@ import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { XCircleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
@@ -169,6 +169,17 @@ export default function PageClient({ code }: { code: string }) {
   if (showInvalidPurchaseCode) {
     return (
       <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
+        {returnUrl && (
+          <div className="absolute left-6 top-5 z-10">
+            <a
+              href={returnUrl}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+              Back
+            </a>
+          </div>
+        )}
         <div className="w-full max-w-md text-center">
           <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
             <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
@@ -190,6 +201,17 @@ export default function PageClient({ code }: { code: string }) {
 
   return (
     <div data-hexclave-purchase-page className="relative min-h-screen bg-white dark:bg-zinc-950">
+      {returnUrl && (
+        <div className="absolute left-6 top-5 z-10">
+          <a
+            href={returnUrl}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            Back
+          </a>
+        </div>
+      )}
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
         {/* Left Panel: Product & Pricing Selection */}
         <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">

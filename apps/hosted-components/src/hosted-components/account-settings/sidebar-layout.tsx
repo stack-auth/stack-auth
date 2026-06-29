@@ -1,6 +1,6 @@
 import { Button, cn } from "~/components/ui";
 import { useHash } from '@hexclave/shared/dist/hooks/use-hash';
-import { XIcon } from 'lucide-react';
+import { ArrowLeft, XIcon } from 'lucide-react';
 import React, { ReactNode } from 'react';
 
 export type SidebarItem = {
@@ -13,16 +13,16 @@ export type SidebarItem = {
   contentTitle?: React.ReactNode,
 }
 
-export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string }) {
+export function SidebarLayout(props: { items: SidebarItem[], title?: ReactNode, className?: string, backUrl?: string | null }) {
   const hash = useHash();
   const selectedIndex = props.items.findIndex(item => item.id && (item.id === hash));
   return (
     <>
       <div className={cn("hidden sm:flex flex-1 min-h-full", props.className)}>
-        <DesktopLayout items={props.items} title={props.title} selectedIndex={selectedIndex} />
+        <DesktopLayout items={props.items} title={props.title} selectedIndex={selectedIndex} backUrl={props.backUrl} />
       </div>
       <div className={cn("sm:hidden flex-1 min-h-full", props.className)}>
-        <MobileLayout items={props.items} title={props.title} selectedIndex={selectedIndex} />
+        <MobileLayout items={props.items} title={props.title} selectedIndex={selectedIndex} backUrl={props.backUrl} />
       </div>
     </>
   );
@@ -65,7 +65,19 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
   ));
 }
 
-function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number }) {
+function BackButton({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back
+    </a>
+  );
+}
+
+function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number, backUrl?: string | null }) {
   const selectedItem = props.items[props.selectedIndex === -1 ? 0 : props.selectedIndex];
 
   return (
@@ -74,6 +86,11 @@ function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selecte
           pinned while the page scrolls with the document. Slightly darker than the page in light
           mode, slightly lighter in dark mode, so it reads as a distinct surface. */}
       <aside className="sticky top-0 h-screen flex flex-col items-stretch gap-1 overflow-y-auto shrink-0 w-[260px] border-r border-black/[0.06] dark:border-white/[0.06] bg-zinc-100/70 dark:bg-zinc-900/45 px-4 py-6">
+        {props.backUrl && (
+          <div className="ml-3 mb-3">
+            <BackButton url={props.backUrl} />
+          </div>
+        )}
         {props.title && (
           <div className="ml-3 mb-4">
             <h2 className="font-semibold text-xl tracking-tight text-foreground">
@@ -105,12 +122,17 @@ function DesktopLayout(props: { items: SidebarItem[], title?: ReactNode, selecte
   );
 }
 
-function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number }) {
+function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selectedIndex: number, backUrl?: string | null }) {
   const selectedItem = props.items[props.selectedIndex];
 
   if (props.selectedIndex === -1) {
     return (
       <div className="flex flex-col gap-2 p-2">
+        {props.backUrl && (
+          <div className="ml-2 mb-1">
+            <BackButton url={props.backUrl} />
+          </div>
+        )}
         {props.title && (
           <div className="mb-2 ml-2">
             <h2 className="text-lg font-semibold text-foreground">{props.title}</h2>
@@ -124,6 +146,11 @@ function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selected
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {props.backUrl && (
+        <div className="-mb-2">
+          <BackButton url={props.backUrl} />
+        </div>
+      )}
       <Button
         variant="ghost"
         size="sm"
