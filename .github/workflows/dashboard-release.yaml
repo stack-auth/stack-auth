@@ -1,0 +1,97 @@
+name: Publish RDE dashboard release
+
+# Builds the standalone RDE dashboard and publishes it as a GitHub Release
+# artifact (instead of bundling it into the @hexclave/cli npm tarball). The CLI
+# fetches the newest build at runtime via the `dashboard-latest` manifest. See
+# packages/cli/src/lib/dashboard-release.ts.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write  # create releases and upload assets
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false  # don't interrupt a publish in progress
+
+jobs:
+  publish-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 'latest'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dashboard standalone
+        run: pnpm exec turbo run build:rde-standalone --filter=@hexclave/dashboard
+
+      - name: Package dashboard release
+        id: package
+        env:
+          DASHBOARD_RELEASE_REPO: ${{ github.repository }}
+        run: pnpm --filter @hexclave/cli run package-dashboard-release
+
+      - name: Publish versioned release (immutable)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.package.outputs.tag }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          VERSION: ${{ steps.package.outputs.version }}
+          EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # The versioned release must serve a zip whose sha256 equals the manifest
+          # the next step publishes. If the tag already exists, prove its asset
+          # matches the freshly built zip; otherwise the floating manifest would
+          # advertise a hash that doesn't match the served zip and break every CLI.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$ZIP_NAME"; then
+              tmp="$(mktemp -d)"
+              gh release download "$TAG" -p "$ZIP_NAME" -D "$tmp"
+              existing_sha="$(sha256sum "$tmp/$ZIP_NAME" | cut -d' ' -f1)"
+              if [ "$existing_sha" != "$EXPECTED_SHA" ]; then
+                echo "::error::$TAG already exists but its asset sha256 ($existing_sha) != the freshly built dashboard ($EXPECTED_SHA). The dashboard changed without a version bump in apps/dashboard/package.json. Bump the version before publishing — refusing to advertise a manifest that points at a stale zip."
+                exit 1
+              fi
+              echo "Existing $TAG asset matches the build; reusing it."
+            else
+              echo "$TAG exists without its asset; uploading."
+              gh release upload "$TAG" "$ZIP" --clobber
+            fi
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "RDE dashboard $VERSION" \
+              --notes "Standalone RDE dashboard build for \`hexclave dev\` (version $VERSION)."
+          fi
+
+      - name: Update floating latest manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST: ${{ steps.package.outputs.manifest }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view dashboard-latest >/dev/null 2>&1; then
+            gh release create dashboard-latest \
+              --title "RDE dashboard (latest)" \
+              --notes "Always points at the newest published RDE dashboard. The manifest.json asset is consumed by the Hexclave CLI at runtime." \
+              --latest=false
+          fi
+          gh release upload dashboard-latest "$MANIFEST" --clobber
+          echo "dashboard-latest now points at $VERSION."

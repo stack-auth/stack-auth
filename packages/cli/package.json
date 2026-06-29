@@ -10,7 +10,8 @@
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",
-    "build": "tsdown && node scripts/copy-runtime-assets.mjs",
+    "build": "tsdown",
+    "package-dashboard-release": "node scripts/package-dashboard-release.mjs",
     "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",

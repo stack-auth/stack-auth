@@ -2,13 +2,12 @@ import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
+import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifest, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
-import { cliVersion } from "../lib/own-package.js";
 import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
 type ChildCommand = {
@@ -59,8 +58,6 @@ const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
 const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
 const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
 const RDE_DASHBOARD_LOG_PATH_ENV_VAR = "HEXCLAVE_RDE_DASHBOARD_LOG_PATH";
-const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
-const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
 const SENTINEL_PREFIX = "STACK_ENV_VAR_SENTINEL_";
 const USE_INLINE_ENV_VARS_SENTINEL = "STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS";
@@ -216,20 +213,6 @@ function startProgressLog(message: string): ProgressLogger {
   };
 }
 
-function bundledDashboardRoot(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), BUNDLED_DASHBOARD_DIR_NAME);
-}
-
-function assertBundledDashboardExists(): void {
-  const serverPath = join(bundledDashboardRoot(), BUNDLED_DASHBOARD_SERVER_PATH);
-  if (!existsSync(serverPath)) {
-    throw new CliError([
-      "This stack-cli build does not include the bundled development-environment dashboard.",
-      "Build the CLI package with the dashboard standalone assets before running `hexclave dev`.",
-    ].join(" "));
-  }
-}
-
 function dashboardRuntimeRoot(port: number): string {
   return join(dirname(devEnvStatePath()), `${DASHBOARD_RUNTIME_DIR_NAME}-${port}`);
 }
@@ -281,17 +264,19 @@ function dashboardRuntimeLockPath(port: number): string {
   return `${dashboardRuntimeRoot(port)}.lock`;
 }
 
-function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
-  assertBundledDashboardExists();
+function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number, dashboardRoot: string): string {
+  if (!existsSync(join(dashboardRoot, DASHBOARD_SERVER_RELATIVE_PATH))) {
+    throw new CliError("The Hexclave development-environment dashboard is missing its server entrypoint.");
+  }
   const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
-  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
+  cpSync(dashboardRoot, runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
-  const runtimeServerPath = join(runtimeRoot, BUNDLED_DASHBOARD_SERVER_PATH);
+  const runtimeServerPath = join(runtimeRoot, DASHBOARD_SERVER_RELATIVE_PATH);
   if (!existsSync(runtimeServerPath)) {
-    throw new CliError("The bundled development-environment dashboard is missing its server entrypoint.");
+    throw new CliError("The Hexclave development-environment dashboard is missing its server entrypoint.");
   }
   return runtimeServerPath;
 }
@@ -359,12 +344,14 @@ export function isVersionNewer(candidate: string, current: string): boolean {
   return !a.hasPrerelease && b.hasPrerelease;
 }
 
-// Restart the running dashboard only when ours is strictly newer; this is how a
-// re-exec'd `npx @latest` rolls out a fresh dashboard without a reinstall.
-// Equal/older/unknown versions (e.g. a dashboard recorded by a pre-feature CLI
-// with no version field) are reused as-is. Exported for unit testing.
-export function shouldRestartDashboard(currentVersion: string | undefined, runningVersion: string | undefined): boolean {
-  return currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion);
+// Restart the running dashboard only when the latest published release is
+// strictly newer than the one currently serving the port; this is how a freshly
+// released dashboard rolls out without reinstalling the CLI. Equal/older/unknown
+// versions (e.g. a dashboard recorded by a pre-feature CLI with no version
+// field, or when the manifest can't be reached) are reused as-is. Exported for
+// unit testing.
+export function shouldRestartDashboard(latestVersion: string | undefined, runningVersion: string | undefined): boolean {
+  return latestVersion != null && runningVersion != null && isVersionNewer(latestVersion, runningVersion);
 }
 
 // Whether `pid` refers to a live process. EPERM means it exists but is owned by
@@ -397,6 +384,7 @@ function startDashboardProcess(options: {
   dashboardEnv: NodeJS.ProcessEnv,
   logFd: number,
   port: number,
+  dashboardRoot?: string,
 }): ChildProcess {
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   if (devDashboardCommand != null) {
@@ -410,7 +398,10 @@ function startDashboardProcess(options: {
     });
   }
 
-  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
+  if (options.dashboardRoot == null) {
+    throw new CliError("Internal error: the Hexclave dashboard build was not resolved before starting.");
+  }
+  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port, options.dashboardRoot);
   return spawn(process.execPath, [dashboardServerPath], {
     cwd: resolve(dirname(dashboardServerPath), "../.."),
     detached: true,
@@ -466,12 +457,23 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
   const url = dashboardUrl(options.port);
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
+
+  // Look up the newest published dashboard so we can decide whether a running
+  // one is stale and which build to launch. Skipped entirely when a custom dev
+  // dashboard command or a local-build override is configured (local dashboard
+  // development) — those paths never fetch a release. A null manifest (offline)
+  // means "version unknown": we won't restart a healthy dashboard, and
+  // resolveDashboardRuntime falls back to the newest cached build when needed.
+  const skipReleaseLookup = devDashboardCommand != null || dashboardDirOverride() != null;
+  const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
+  const latestVersion = manifest?.version;
+
   if (await isDashboardReachable(url, options.secret)) {
-    const currentVersion = cliVersion();
     const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
     const runningVersion = runningDashboard?.version;
-    if (shouldRestartDashboard(currentVersion, runningVersion)) {
-      logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
+    if (shouldRestartDashboard(latestVersion, runningVersion)) {
+      logDev(`A newer Hexclave dashboard (${latestVersion}) is available; restarting from ${runningVersion}...`);
       await killLocalDashboard(url, options.port);
     } else {
       logDev(`Using existing Hexclave dashboard on ${url}.`);
@@ -482,8 +484,11 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     }
   }
 
+  // Download (or reuse a cached copy of) the dashboard build to launch. Not
+  // needed when a custom dev dashboard command runs the dashboard itself.
+  const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest }) : null;
+
   const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
-  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   const dashboardEnv = {
     ...process.env,
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
@@ -540,7 +545,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
       try {
         const child = (() => {
           try {
-            return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
+            return startDashboardProcess({ dashboardEnv, logFd, port: options.port, dashboardRoot: release?.root });
           } finally {
             closeSync(logFd);
           }
@@ -548,7 +553,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
         if (child.pid == null) {
           throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
         }
-        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, release?.version);
         logDev(`Dashboard logs: ${logPath}`);
         child.unref();
       } finally {
@@ -1023,8 +1028,10 @@ export function registerDevCommand(program: Command) {
         throw new CliError("--config-file is required.");
       }
 
-      // Before doing any work, re-exec through `npx <pkg>@latest` when a newer
-      // CLI is published so users get the latest dashboard without reinstalling.
+      // Before doing any work, re-exec through `npx <pkg>@latest` so users get
+      // the newest CLI without reinstalling. The dashboard itself is fetched
+      // independently from GitHub Releases (see dashboard-release.ts), so it
+      // stays current even on an older CLI; this only refreshes the CLI binary.
       // No-ops (and returns) when already latest, offline, in CI, or opted out.
       if (opts.autoUpdate !== false) {
         await maybeReexecToLatest({
