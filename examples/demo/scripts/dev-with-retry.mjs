@@ -46,7 +46,6 @@ function runCliDev() {
     cliChild = spawnFromRepo("pnpm", [
       "exec", "tsx", "packages/cli/src/index.ts",
       "dev",
-      "--no-auto-update",
       `--config-file=${join(demoRoot, "hexclave.config.ts")}`,
       "--",
       "pnpm", "--dir", "examples/demo", "run", "dev:inner",
@@ -58,7 +57,6 @@ function runCliDev() {
         STACK_API_URL: `http://localhost:${portPrefix}02`,
         STACK_DASHBOARD_URL: `http://localhost:${portPrefix}01`,
         STACK_CLI_PUBLISHABLE_CLIENT_KEY: "this-publishable-client-key-is-for-local-development-only",
-        STACK_CLI_NO_AUTO_UPDATE: "1",
       },
     });
 

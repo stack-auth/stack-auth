@@ -7,7 +7,7 @@ import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifest, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { CliError } from "../lib/errors.js";
+import { CliError, errorMessage } from "../lib/errors.js";
 
 type ChildCommand = {
   command: string,
@@ -87,10 +87,6 @@ type DashboardSessionState = {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
@@ -326,9 +322,8 @@ function parseVersionCore(version: string): ParsedVersion | null {
 // Returns true only when `candidate` is strictly newer than `current`. Unknown
 // or unparseable versions return false so we never act on a version we can't
 // reason about (and never downgrade). Prerelease identifiers beyond the
-// "release beats same-core prerelease" rule are intentionally not ordered. Only
-// the dashboard restart check below needs this; the CLI re-exec just always runs
-// `@latest`. Exported for unit testing.
+// "release beats same-core prerelease" rule are intentionally not ordered. Used
+// by the dashboard restart check below. Exported for unit testing.
 export function isVersionNewer(candidate: string, current: string): boolean {
   const a = parseVersionCore(candidate);
   const b = parseVersionCore(current);

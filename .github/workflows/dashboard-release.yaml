@@ -47,6 +47,7 @@ jobs:
         run: pnpm --filter @hexclave/cli run package-dashboard-release
 
       - name: Publish versioned release (immutable)
+        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.package.outputs.tag }}
@@ -56,20 +57,23 @@ jobs:
           EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
         run: |
           set -euo pipefail
-          # The versioned release must serve a zip whose sha256 equals the manifest
-          # the next step publishes. If the tag already exists, prove its asset
-          # matches the freshly built zip; otherwise the floating manifest would
-          # advertise a hash that doesn't match the served zip and break every CLI.
+          # A published dashboard-v<version> asset is immutable: the version IS the
+          # identity, so we never replace an existing asset. We then advertise the
+          # sha256 of whatever asset is actually live, so the floating manifest can
+          # never point at a zip whose bytes it doesn't match. (We can't just trust
+          # the rebuild's hash: the staged tree gets fresh mtimes, so an identical
+          # build doesn't zip byte-for-byte identically.)
+          live_sha="$EXPECTED_SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
             if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$ZIP_NAME"; then
               tmp="$(mktemp -d)"
               gh release download "$TAG" -p "$ZIP_NAME" -D "$tmp"
-              existing_sha="$(sha256sum "$tmp/$ZIP_NAME" | cut -d' ' -f1)"
-              if [ "$existing_sha" != "$EXPECTED_SHA" ]; then
-                echo "::error::$TAG already exists but its asset sha256 ($existing_sha) != the freshly built dashboard ($EXPECTED_SHA). The dashboard changed without a version bump in apps/dashboard/package.json. Bump the version before publishing — refusing to advertise a manifest that points at a stale zip."
-                exit 1
+              live_sha="$(sha256sum "$tmp/$ZIP_NAME" | cut -d' ' -f1)"
+              if [ "$live_sha" != "$EXPECTED_SHA" ]; then
+                echo "::warning::$TAG already has a published asset whose sha256 ($live_sha) differs from this rebuild ($EXPECTED_SHA). Releases are immutable, so the existing asset is kept and advertised. A differing hash is expected for nondeterministic rebuilds of identical content; if you intended to ship NEW dashboard content, bump the version in apps/dashboard/package.json."
+              else
+                echo "Existing $TAG asset matches the build; reusing it."
               fi
-              echo "Existing $TAG asset matches the build; reusing it."
             else
               echo "$TAG exists without its asset; uploading."
               gh release upload "$TAG" "$ZIP" --clobber
@@ -79,14 +83,21 @@ jobs:
               --title "RDE dashboard $VERSION" \
               --notes "Standalone RDE dashboard build for \`hexclave dev\` (version $VERSION)."
           fi
+          echo "live_sha=$live_sha" >> "$GITHUB_OUTPUT"
 
       - name: Update floating latest manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MANIFEST: ${{ steps.package.outputs.manifest }}
           VERSION: ${{ steps.package.outputs.version }}
+          LIVE_SHA: ${{ steps.publish.outputs.live_sha }}
         run: |
           set -euo pipefail
+          # Advertise the sha of the actually-published (immutable) asset, which may
+          # differ from the rebuild's hash when reusing an existing release.
+          tmp="$(mktemp)"
+          jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
+          mv "$tmp" "$MANIFEST"
           if ! gh release view dashboard-latest >/dev/null 2>&1; then
             gh release create dashboard-latest \
               --title "RDE dashboard (latest)" \
@@ -94,4 +105,4 @@ jobs:
               --latest=false
           fi
           gh release upload dashboard-latest "$MANIFEST" --clobber
-          echo "dashboard-latest now points at $VERSION."
+          echo "dashboard-latest now points at $VERSION (sha256 $LIVE_SHA)."
