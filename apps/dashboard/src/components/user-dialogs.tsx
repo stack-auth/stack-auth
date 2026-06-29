@@ -1,16 +1,19 @@
 import { ServerUser } from '@hexclave/next';
 import { ActionDialog, CopyField, Typography } from "@/components/ui";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
+import { Link } from './link';
 import { useRouter } from './router';
 
 
 export function DeleteUserDialog(props: {
   user: ServerUser,
   open: boolean,
+  profileHref: string,
   redirectTo?: string,
   onOpenChange: (open: boolean) => void,
 }) {
   const router = useRouter();
+  const userLabel = props.user.displayName ?? props.user.primaryEmail ?? props.user.id;
   return <ActionDialog
     open={props.open}
     onOpenChange={props.onOpenChange}
@@ -27,7 +30,19 @@ export function DeleteUserDialog(props: {
     }}
     confirmText="I understand that this action cannot be undone."
   >
-    {`Are you sure you want to delete the user ${props.user.displayName ? '"' + props.user.displayName + '"' : ''} with ID ${props.user.id}?`}
+    <Typography>
+      Are you sure you want to delete the user &quot;<Link
+        href={props.profileHref}
+        className="inline underline underline-offset-2"
+        onClick={(event) => {
+          event.preventDefault();
+          props.onOpenChange(false);
+          router.push(props.profileHref);
+        }}
+      >
+        {userLabel}
+      </Link>&quot;?
+    </Typography>
   </ActionDialog>;
 }
 

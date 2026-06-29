@@ -602,10 +602,16 @@ function UserActions(props: { user: ExtendedServerUser }) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const profileUrl = `/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
 
   return (
-    <div className="flex justify-end">
-      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} />
+    <div
+      className="flex justify-end"
+      data-no-row-click
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} profileHref={profileUrl} />
       <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       <CreateCheckoutDialog
         open={isCheckoutOpen}
@@ -620,9 +626,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem
-            onClick={() =>
-              router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
-            }
+            onClick={() => router.push(profileUrl)}
           >
             View details
           </DropdownMenuItem>
