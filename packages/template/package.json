@@ -64,7 +64,7 @@
     "codegen": "pnpm run env && pnpm run css",
     "codegen:watch": "concurrently -n \"env,css\" -k \"pnpm run env:watch\" \"pnpm run css:watch\"",
     "build": "rimraf dist && pnpm run codegen && tsdown",
-    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "dev": "concurrently -n \"build,env,css-tw,css-sc\" -k \"tsdown --watch\" \"chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000\" \"tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch\" \"chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000\"",
     "env": "tsx ./scripts/generate-env.ts",
     "env:watch": "chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000",
     "css": "pnpm run css-tw && pnpm run css-sc",

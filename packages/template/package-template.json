@@ -84,7 +84,13 @@
     "//": "END_PLATFORM",
 
     "build": "rimraf dist && pnpm run codegen && tsdown",
-    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+
+    "//": "IF_PLATFORM template react-like",
+    "dev": "concurrently -n \"build,env,css-tw,css-sc\" -k \"tsdown --watch\" \"chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000\" \"tailwindcss -i ./src/global.css -o ./src/generated/tailwind.css --watch\" \"chokidar --silent './src/generated/tailwind.css' -c 'pnpm run css-sc' --throttle 2000\"",
+    "//": "ELSE_PLATFORM",
+    "dev": "concurrently -n \"build,env\" -k \"tsdown --watch\" \"chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000\"",
+    "//": "END_PLATFORM",
+
     "env": "tsx ./scripts/generate-env.ts",
     "env:watch": "chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000"
 
