@@ -8,7 +8,6 @@ import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifest, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
-import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -17,7 +16,6 @@ type ChildCommand = {
 
 type DevOptions = {
   configFile?: string,
-  autoUpdate?: boolean,
 };
 
 type SessionResponse = {
@@ -856,18 +854,14 @@ child.on("error", (error) => {
 `;
 
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
-  // Scrub the internal re-exec handshake marker so it never leaks into the user's
-  // command. Done here (not in the wrapper script) to cover both spawn paths.
-  const childEnv = { ...env };
-  delete childEnv[REEXEC_MARKER_ENV];
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env: childEnv })
+      ? spawn(command.command, command.args, { stdio: "inherit", env })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
         env: {
-          ...childEnv,
+          ...env,
           [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
           [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
           [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),
@@ -1021,22 +1015,10 @@ export function registerDevCommand(program: Command) {
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
     .requiredOption("--config-file <path>", "Path to stack.config.ts")
-    .option("--no-auto-update", "Don't re-run the latest published CLI via npx before starting")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
         throw new CliError("--config-file is required.");
-      }
-
-      // Before doing any work, re-exec through `npx <pkg>@latest` so users get
-      // the newest CLI without reinstalling. The dashboard itself is fetched
-      // independently from GitHub Releases (see dashboard-release.ts), so it
-      // stays current even on an older CLI; this only refreshes the CLI binary.
-      // No-ops (and returns) when already latest, offline, in CI, or opted out.
-      if (opts.autoUpdate !== false) {
-        await maybeReexecToLatest({
-          forwardArgs: ["dev", "--config-file", opts.configFile, "--", ...commandArgs],
-        });
       }
 
       const childCommand = splitDevCommandArgs(commandArgs);
