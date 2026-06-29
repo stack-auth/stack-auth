@@ -1,7 +1,7 @@
+import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import dns from "node:dns";
 import net from "node:net";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 
 const OAUTH_SSRF_PROTECTION_ERROR = "OAuth provider URLs must use HTTPS and resolve only to public internet addresses.";
 
@@ -108,9 +108,14 @@ export async function assertSafeOAuthUrl(urlString: string): Promise<void> {
 }
 
 export function assertSafeOAuthResolvedAddress(address: string): void {
-  if (isBlockedOAuthIpAddress(address)) {
-    throw new StatusError(StatusError.BadRequest, OAUTH_SSRF_PROTECTION_ERROR);
-  }
+  const error = getUnsafeOAuthResolvedAddressError(address);
+  if (error != null) throw error;
+}
+
+function getUnsafeOAuthResolvedAddressError(address: string): StatusError | null {
+  return isBlockedOAuthIpAddress(address)
+    ? new StatusError(StatusError.BadRequest, OAUTH_SSRF_PROTECTION_ERROR)
+    : null;
 }
 
 type DnsLookupCallback = (

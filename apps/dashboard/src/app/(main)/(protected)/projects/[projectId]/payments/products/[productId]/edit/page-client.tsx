@@ -21,7 +21,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { SubpageHeader } from "@/components/design-components/subpage-header";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import { ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";

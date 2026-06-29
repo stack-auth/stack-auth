@@ -6,7 +6,7 @@ import { CheckboxField, InputField, SelectField } from "@/components/form-fields
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, SimpleTooltip, toast } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { AdminProject } from "@hexclave/next";
 import { pricesSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@hexclave/shared/dist/schema-fields";
 import { has } from "@hexclave/shared/dist/utils/objects";

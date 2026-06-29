@@ -5,7 +5,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { useHover } from "@hexclave/shared/dist/hooks/use-hover";

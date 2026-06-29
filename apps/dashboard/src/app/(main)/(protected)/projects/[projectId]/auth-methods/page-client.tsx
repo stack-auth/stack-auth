@@ -3,7 +3,7 @@
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { ActionDialog, BrandIcons, BrowserFrame, FormControl, FormField, FormItem, FormLabel, FormMessage, InlineCode, Label, SimpleTooltip, Switch, Typography } from "@/components/ui";
 import { FormDialog } from "@/components/form-dialog";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import {
   DesignAlert,

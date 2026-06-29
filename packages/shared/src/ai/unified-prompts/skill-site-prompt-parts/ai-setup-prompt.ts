@@ -985,7 +985,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
             ${!isDefinitelyNextjs && !isDefinitelyVite ? "# note: prefix the environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so" : ""}
-            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id> 
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
@@ -1011,7 +1011,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
               # as above, prefix the project ID environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so
               # do NOT prefix the secret server key environment variable with NEXT_PUBLIC_ or VITE_ as it is server-only
             ` : ""}
-            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id> 
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 

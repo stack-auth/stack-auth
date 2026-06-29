@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const mockUpdateConfig = vi.hoisted(() => vi.fn(async () => true));
+const mockPublicEnvVars = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("@/components/design-components", () => ({
   DesignCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -83,10 +84,10 @@ vi.mock("@/components/ui", () => ({
 }));
 
 vi.mock("@/lib/env", () => ({
-  getPublicEnvVar: () => "false",
+  getPublicEnvVar: (key: string) => mockPublicEnvVars.get(key) ?? "false",
 }));
 
-vi.mock("@/lib/config-update", () => ({
+vi.mock("@/components/config-update", () => ({
   useUpdateConfig: () => mockUpdateConfig,
 }));
 
@@ -152,6 +153,7 @@ import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps
 afterEach(() => {
   cleanup();
   mockUpdateConfig.mockClear();
+  mockPublicEnvVars.clear();
 });
 
 function createDeferred<T>() {
@@ -1016,6 +1018,95 @@ describe("ProjectOnboardingWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
 
     await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
+  it("waits for Get Started before applying RDE onboarding config", async () => {
+    mockPublicEnvVars.set("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "true");
+    const saveOnboardingProgress = vi.fn(async () => {});
+    const onComplete = vi.fn();
+    const getPushedConfigSource = vi.fn(async () => ({ type: "unlinked" }));
+    const app = {
+      setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      listEmailThemes: vi.fn(async () => []),
+      getStripeAccountInfo: vi.fn(async () => null),
+      useEmailThemes: () => [],
+      useStripeAccountInfo: () => null,
+    };
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: false },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app,
+          getPushedConfigSource,
+        } as never}
+        status="welcome"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails", "analytics"],
+          selected_sign_in_methods: ["credential", "google"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "US",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={onComplete}
+      />,
+    );
+
+    await Promise.resolve();
+
+    expect(getPushedConfigSource).not.toHaveBeenCalled();
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(mockUpdateConfig).toHaveBeenCalledWith({
+        adminApp: app,
+        configUpdate: {
+          "auth.password.allowSignIn": true,
+          "emails.selectedThemeId": "default",
+          "apps.installed.authentication.enabled": true,
+          "apps.installed.emails.enabled": true,
+          "apps.installed.analytics.enabled": true,
+          "auth.oauth.providers.google": {
+            type: "google",
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+          "auth.oauth.providers.github": null,
+          "auth.oauth.providers.microsoft": null,
+        },
+        pushable: true,
+      });
       expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
       expect(onComplete).toHaveBeenCalled();
     });

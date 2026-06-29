@@ -475,3 +475,28 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
 :where([data-pacifica-children-min-width-0] > *) {
   min-width: 0;
 }
+
+
+/* Config-agent commit-preview diff (Pierre `@pierre/diffs`).
+ *
+ * Pierre renders into a shadow-DOM `diffs-container`. We can't reach inside with
+ * normal selectors, but CSS custom properties inherit through the shadow
+ * boundary, so setting Pierre's documented override hooks on the light-DOM
+ * wrapper recolors the diff chrome. Syntax-token colors still come from the
+ * shiki github-light/github-dark themes (chosen via `themeType`).
+ *
+ * We only set the *base* surface/accent/number colors and let Pierre derive the
+ * row tints, emphasis, gutters and separators from them (`color-mix` over the
+ * base). The project tokens already flip between light and dark via `.dark`, so
+ * both `light-dark()` branches are pointed at the same token. */
+.config-agent-diff {
+  --diffs-light-bg: hsl(var(--background));
+  --diffs-dark-bg: hsl(var(--background));
+  --diffs-light: hsl(var(--foreground));
+  --diffs-dark: hsl(var(--foreground));
+
+  --diffs-fg-number-override: hsl(var(--muted-foreground));
+
+  --diffs-addition-color-override: hsl(var(--success));
+  --diffs-deletion-color-override: hsl(var(--destructive));
+}

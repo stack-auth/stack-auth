@@ -447,15 +447,15 @@ function ProjectsListPage() {
       return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
     }
     if (/Win/i.test(p)) {
-      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a stack.config.ts` (or `realpath stack.config.ts`) and paste that here.";
+      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a hexclave.config.ts` (or `realpath hexclave.config.ts`) and paste that here.";
     }
-    return "Tip: from your project folder, run `realpath stack.config.ts` in a terminal.";
+    return "Tip: from your project folder, run `realpath hexclave.config.ts` in a terminal.";
   }, []);
 
   const handleOpenConfigFile = async () => {
     const trimmedPath = absoluteConfigFilePath.trim();
     if (trimmedPath.length === 0) {
-      toast({ description: "Please enter a path to your project or stack.config.ts.", variant: "destructive" });
+      toast({ description: "Please enter a path to your project or hexclave.config.ts.", variant: "destructive" });
       return;
     }
 
@@ -464,7 +464,7 @@ function ProjectsListPage() {
       toast({
         description: looksWindows
           ? "The local emulator runs in a Linux VM and only accepts POSIX paths (e.g. /Users/you/project). Windows paths aren't supported — use WSL or the in-VM path."
-          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).",
+          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/hexclave.config.ts).",
         variant: "destructive",
       });
       return;
@@ -488,7 +488,7 @@ function ProjectsListPage() {
       const responseBody = await response.json();
 
       if (!response.ok) {
-        let message = "Couldn't open that path. Make sure it points to your project folder or a valid stack.config.ts.";
+        let message = "Couldn't open that path. Make sure it points to your project folder or a valid hexclave.config.ts.";
         if (typeof responseBody === "string" && responseBody.length > 0) {
           message = responseBody;
         } else if (
@@ -632,10 +632,10 @@ function ProjectsListPage() {
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Point the local dashboard at the <code>stack.config.ts</code> in your project.
+              Point the local dashboard at the <code>hexclave.config.ts</code> in your project. If you just ran <code>hexclave init</code>, it was created at the root of that project.
             </Typography>
             <Typography variant="secondary" className="text-xs">
-              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>stack.config.ts</code> for you.
+              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>hexclave.config.ts</code> for you.
             </Typography>
             {recentConfigProjects.length > 0 && (
               <div className="space-y-1">
@@ -662,7 +662,7 @@ function ProjectsListPage() {
             )}
             <Input
               autoFocus
-              placeholder="/Users/you/project/stack.config.ts"
+              placeholder="/Users/you/project/hexclave.config.ts"
               value={absoluteConfigFilePath}
               onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
             />
