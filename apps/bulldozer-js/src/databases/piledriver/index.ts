@@ -82,9 +82,16 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   const rootStore = lowLevelDb.declareKvStore("root");
   const heapDump = lowLevelDb.declareKvDump("heap");
 
-  const heapObjectsByHeapKeyBase64 = new Map<string, [string, Promise<{ object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq } | null>]>();
-  const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.[0] === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
+  const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq }>();
+  const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.refIdentity === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
   const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>>();
+
+  const cacheHeapObjectByKey = (key: ArrayBuffer, heapObj: PiledriverHeapObject, seq: DatabaseSeq) => {
+    const keyBase64 = encodeBase64(new Uint8Array(key));
+    const refIdentity = crypto.randomUUID();
+    heapObjectsByHeapKeyBase64.set(keyBase64, { refIdentity, object: new WeakRef(heapObj), seq });
+    heapObjectsByHeapKeyFinalizer.register(heapObj, [keyBase64, refIdentity]);
+  };
 
   const getHeapKeyAndSeq = async (heapObj: PiledriverHeapObject, path: SerializationPath = emptySerializationPath): Promise<{ key: ArrayBuffer, seq: DatabaseSeq }> => {
     // Must be checked before the memo lookup: awaiting the memoized promise of an ancestor
@@ -116,56 +123,48 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
       throw error;
     }
-    const keyBase64 = encodeBase64(new Uint8Array(result.key));
-    const refIdentity = crypto.randomUUID();
-    heapObjectsByHeapKeyBase64.set(keyBase64, [refIdentity, Promise.resolve({ object: new WeakRef(heapObj), seq: result.seq })]);
-    heapObjectsByHeapKeyFinalizer.register(heapObj, [keyBase64, refIdentity]);
+    cacheHeapObjectByKey(result.key, heapObj, result.seq);
     return result;
   };
 
-  const getHeapObjectByKey = async (key: ArrayBuffer): Promise<{ object: PiledriverHeapObject | null, seq: DatabaseSeq }> => {
+  const getHeapObjectByKey = (key: ArrayBuffer, seq: DatabaseSeq): { object: PiledriverHeapObject, seq: DatabaseSeq } => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const existingEntry = heapObjectsByHeapKeyBase64.get(keyBase64);
     if (!options.disableHeapReadCache && existingEntry) {
-      const existing = (await existingEntry[1]);
-      if (existing === null) return { object: null, seq: lowLevelDb.initialSeq };
-      const existingObject = existing.object.deref();
+      const existingObject = existingEntry.object.deref();
       if (existingObject) {
         return {
           object: existingObject,
-          seq: existing.seq,
+          seq: existingEntry.seq,
         };
       } else {
         // object has been gc'd, let's not return it from cache and just fetch it again below
       }
     }
 
-    const promise = (async () => {
-      return await traceSpan({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
-        const { buffer, seq } = await heapDump.get(key);
-        if (buffer === null) return { object: null, seq };
-        const deserialized = await deserializePiledriverObject(buffer);
-        return { object: asHeapObject(deserialized.object), seq: lowLevelDb.combineSeqs(deserialized.seq, seq) };
-      });
-    })();
-    const refIdentity = crypto.randomUUID();
-    if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.set(keyBase64, [refIdentity, promise.then(p => p.object === null ? null : { object: new WeakRef(p.object), seq: p.seq })]);
-    let heapObjAndSeq;
-    try {
-      heapObjAndSeq = await promise;
-    } catch (error) {
-      if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.delete(keyBase64);
-      throw error;
-    }
-    if (heapObjAndSeq.object === null) {
-      if (!options.disableHeapReadCache) heapObjectsByHeapKeyBase64.delete(keyBase64);
-      return { object: null, seq: lowLevelDb.initialSeq };
-    }
+    let loadPromise: Promise<PiledriverObject> | undefined;
+    const heapObj: PiledriverHeapObject = {
+      async get() {
+        loadPromise ??= traceSpan({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
+          const { buffer, seq: heapSeq } = await heapDump.get(key);
+          if (buffer === null) throw new Error(`Assertion error: Heap object with base64 key "${keyBase64}" not found`);
+          const deserialized = await deserializePiledriverObject(buffer, heapSeq);
+          return deserialized.object;
+        });
+        try {
+          return await loadPromise;
+        } catch (error) {
+          loadPromise = undefined;
+          throw error;
+        }
+      },
+      [isPiledriverHeapObjectSymbol]: true,
+    };
+    heapKeysAndSeqByHeapObjects.set(heapObj, Promise.resolve({ key, seq }));
     if (!options.disableHeapReadCache) {
-      heapObjectsByHeapKeyFinalizer.register(heapObjAndSeq.object, [keyBase64, refIdentity]);
+      cacheHeapObjectByKey(key, heapObj, seq);
     }
-    heapKeysAndSeqByHeapObjects.set(heapObjAndSeq.object, Promise.resolve({ key, seq: heapObjAndSeq.seq }));
-    return heapObjAndSeq;
+    return { object: heapObj, seq };
   };
 
   const serializePiledriverObjectToJsonableObject = async (obj: PiledriverObject, path: SerializationPath): Promise<{ jsonableObject: unknown, seq: DatabaseSeq }> => {
@@ -223,7 +222,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     };
   };
 
-  const deserializePiledriverObjectFromJsonableObject = async (jsonableObject: unknown): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
+  const deserializePiledriverObjectFromJsonableObject = async (jsonableObject: unknown, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
     switch (typeof jsonableObject) {
       case "string":
       case "number":
@@ -236,12 +235,11 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         } else if (Array.isArray(jsonableObject)) {
           switch (jsonableObject[0]) {
             case "array": {
-              const itemsDeserializeResults = await Promise.all(jsonableObject[1].map(async (o: any) => await deserializePiledriverObjectFromJsonableObject(o)));
+              const itemsDeserializeResults = await Promise.all(jsonableObject[1].map(async (o: any) => await deserializePiledriverObjectFromJsonableObject(o, enclosingSeq)));
               return { object: itemsDeserializeResults.map(r => r.object), seq: lowLevelDb.combineSeqs(...itemsDeserializeResults.map(r => r.seq)) };
             }
             case "heap-reference": {
-              const heapObjAndSeq = await getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer);
-              if (heapObjAndSeq.object === null) throw new Error(`Assertion error: Heap object with base64 key "${jsonableObject[1]}" not found`);
+              const heapObjAndSeq = getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer, enclosingSeq);
               return { object: heapObjAndSeq.object, seq: heapObjAndSeq.seq };
             }
             case "NaN": {
@@ -262,7 +260,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           }
         } else {
           const entries = Object.entries(jsonableObject);
-          const entriesDeserializeResults = await Promise.all(entries.map(async ([k, v]) => [k, await deserializePiledriverObjectFromJsonableObject(v)] as const));
+          const entriesDeserializeResults = await Promise.all(entries.map(async ([k, v]) => [k, await deserializePiledriverObjectFromJsonableObject(v, enclosingSeq)] as const));
           return {
             object: Object.fromEntries(entriesDeserializeResults.map(([k, v]) => [k, v.object] as const)),
             seq: lowLevelDb.combineSeqs(...entriesDeserializeResults.map(([_, v]) => v.seq)),
@@ -275,8 +273,8 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     }
   };
 
-  const deserializePiledriverObject = async (buffer: ArrayBuffer): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
-    return await deserializePiledriverObjectFromJsonableObject(JSON.parse(new TextDecoder().decode(buffer)));
+  const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
+    return await deserializePiledriverObjectFromJsonableObject(JSON.parse(new TextDecoder().decode(buffer)), enclosingSeq);
   };
 
   const parseDebugEntryValue = (valueUtf8: string | null) => {
@@ -293,7 +291,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
         const { buffer, seq: rootSeq } = await rootStore.get(key);
         if (buffer === null) throw new Error("Root object not found");
-        const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer);
+        const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer, rootSeq);
         return { object, seq: lowLevelDb.combineSeqs(deserializeSeq, rootSeq) };
       });
     },

@@ -1,5 +1,53 @@
 import { describe, expect, it } from "vitest";
-import { piledriverObjectEquals } from "./index.js";
+import { LowLevelDatabase } from "../low-level/index.js";
+import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
+import { asHeapObject, declarePiledriverDatabase, isPiledriverHeapObjectSymbol, piledriverObjectEquals } from "./index.js";
+
+function wrapWithHeapGetCounter(lowLevel: LowLevelDatabase, onHeapGet: () => void): LowLevelDatabase {
+  return {
+    ...lowLevel,
+    declareKvDump(id) {
+      const dump = lowLevel.declareKvDump(id);
+      if (id !== "heap") return dump;
+      return {
+        ...dump,
+        async get(key) {
+          onHeapGet();
+          return await dump.get(key);
+        },
+      };
+    },
+  };
+}
+
+describe("PiledriverDatabase", () => {
+  it("deserializes heap references lazily", async () => {
+    const key = new TextEncoder().encode("root").buffer;
+    let heapGets = 0;
+    const lowLevel = wrapWithHeapGetCounter(declareInMemoryLowLevelDatabase(crypto.randomUUID()), () => heapGets++);
+
+    await declarePiledriverDatabase(lowLevel).setRootObject(key, {
+      child: asHeapObject({ nested: "value" }),
+    });
+
+    const reader = declarePiledriverDatabase(lowLevel);
+    const { object } = await reader.getRootObject(key);
+    expect(heapGets).toBe(0);
+
+    await reader.setRootObject(new TextEncoder().encode("copy").buffer, object);
+    expect(heapGets).toBe(0);
+
+    if (typeof object !== "object" || object === null || Array.isArray(object) || !("child" in object)) {
+      throw new Error("Expected root object with child heap reference");
+    }
+    const { child } = object;
+    if (typeof child !== "object" || child === null || Array.isArray(child) || !(isPiledriverHeapObjectSymbol in child)) {
+      throw new Error("Expected child to be a heap object");
+    }
+    expect(await child.get()).toEqual({ nested: "value" });
+    expect(heapGets).toBe(1);
+  });
+});
 
 describe("piledriverObjectEquals", () => {
   it("compares primitives", () => {
