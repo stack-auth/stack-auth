@@ -1,0 +1,23 @@
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.test.tsx
+  s_bfd585b7f42174::t_aa1c909df718eb 8,87,156,1026-1109
+  s_bfd585b7f42174::t_421a36b694f86c 1110-1112
+  s_bfd585b7f42174::t_1458eb7a9443e9 1113-1114
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_bfd585b7f42174::t_18d48874f2daab 333-340,343,372,387,394,398-400,409
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "835206c5827a9f19018ac1e91503784bd4cdf4a0",
+  "prompts": {},
+  "sessions": {
+    "s_bfd585b7f42174": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1449-88d7-7381-b339-e6671ba6b93e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
