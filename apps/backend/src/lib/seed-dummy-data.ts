@@ -2174,7 +2174,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       branchId: DEFAULT_BRANCH_ID,
       source: {
         type: "pushed-from-github",
-        owner: "hexcalve",
+        owner: "hexclave",
         repo: "config-test",
         branch: "main",
         commit_hash: "abc123def456789",

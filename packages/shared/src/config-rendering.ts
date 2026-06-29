@@ -115,4 +115,3 @@ import.meta.vitest?.test("detectConfigImportPackage picks first matching package
   expect(detectConfigImportPackage(["lodash", "express"])).toBeUndefined();
   expect(detectConfigImportPackage([])).toBeUndefined();
 });
-
