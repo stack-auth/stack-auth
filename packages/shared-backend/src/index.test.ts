@@ -57,24 +57,50 @@ afterEach(() => {
   }
 });
 
-// Config with an import triggers the agent path (tryParseHexclaveConfigFileContent returns null)
+// Config with an unresolvable import — jiti can't evaluate it, so validation
+// falls back to the structural check.
 const CUSTOM_CONFIG = `import emailHtml from "./emails/welcome.html" with { type: "text" };
 export const config = { auth: { allowSignUp: true }, emails: { welcomeHtml: emailHtml } };
 `;
 
-describe("local config updater fast path", () => {
-  it("uses the fast path for plain static configs (no agent invoked)", async () => {
+describe("local config updater always uses the agent (no deterministic fast path)", () => {
+  it("routes even a plain static config through the agent", async () => {
+    // A plain object literal could be re-rendered deterministically, but we
+    // deliberately don't: every write goes through the agent so authoring is
+    // preserved. The agent (mocked) must therefore be invoked here.
     const configPath = writeTempConfig("export const config = { auth: { allowSignUp: true } };\n");
-    mockScriptedWrites = [{ tool_name: "Write", file_path: path.join(getTempDir(), "x.ts") }];
+    mockScriptedWrites = [{ tool_name: "Edit", file_path: configPath }];
+    mockAfterWrites = () => {
+      writeFileSync(configPath, "export const config = { auth: { allowSignUp: false } };\n", "utf-8");
+    };
 
     const { updateConfigObject } = await import("./index");
 
     await expect(updateConfigObject(configPath, { "auth.allowSignUp": false })).resolves.toBeUndefined();
 
-    // Agent was never called, so no hook decisions were recorded
-    expect(mockHookDecisions).toEqual([]);
-    // The config file was updated deterministically
-    expect(readFileSync(configPath, "utf-8")).toContain('"allowSignUp": false');
+    expect(mockHookDecisions).toEqual([{ continue: true }]);
+    expect(readFileSync(configPath, "utf-8")).toContain("allowSignUp: false");
+  });
+
+  it("preserves a helper-wrapped config's authoring when applying an update", async () => {
+    // A local helper avoids depending on `@hexclave/next` resolving in the temp dir.
+    const wrapped = `function defineConfig(c) { return c; }\nexport const config = defineConfig({ auth: { allowSignUp: true } });\n`;
+    const configPath = writeTempConfig(wrapped);
+    mockScriptedWrites = [{ tool_name: "Edit", file_path: configPath }];
+    mockAfterWrites = () => {
+      // The real agent edits in place, preserving the helper wrapper.
+      writeFileSync(configPath, `function defineConfig(c) { return c; }\nexport const config = defineConfig({ auth: { allowSignUp: false } });\n`, "utf-8");
+    };
+
+    const { updateConfigObject } = await import("./index");
+
+    await expect(updateConfigObject(configPath, { "auth.allowSignUp": false })).resolves.toBeUndefined();
+
+    expect(mockHookDecisions).toEqual([{ continue: true }]);
+    // The helper wrapper survived — the file was NOT replaced by a rendered blob.
+    const result = readFileSync(configPath, "utf-8");
+    expect(result).toContain("defineConfig(");
+    expect(result).toContain("allowSignUp: false");
   });
 });
 

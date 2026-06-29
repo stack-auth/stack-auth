@@ -44,7 +44,7 @@ import {
   visualTreeToCel,
   type RuleNode,
 } from "@/lib/cel-visual-parser";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';

@@ -1,9 +1,9 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { describe, expect, it, vi } from "vitest";
 import dns from "node:dns";
+import { describe, expect, it, vi } from "vitest";
 import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./ssrf-protection";
 
-async function withProductionNodeEnv<T>(callback: () => Promise<T>): Promise<T> {
+async function withProductionOAuthSsrfProtection<T>(callback: () => Promise<T>): Promise<T> {
   vi.stubEnv("NODE_ENV", "production");
   try {
     return await callback();
@@ -11,6 +11,17 @@ async function withProductionNodeEnv<T>(callback: () => Promise<T>): Promise<T> 
     vi.unstubAllEnvs();
   }
 }
+
+type SingleLookupResult = {
+  error: NodeJS.ErrnoException | null,
+  address: string | dns.LookupAddress[],
+  family?: number,
+};
+
+type AllLookupResult = {
+  error: NodeJS.ErrnoException | null,
+  addresses: string | dns.LookupAddress[],
+};
 
 describe("isBlockedOAuthIpAddress", () => {
   it("blocks AWS metadata, loopback, and private IPv4 ranges", () => {
@@ -62,23 +73,27 @@ describe("assertSafeOAuthResolvedAddress", () => {
 
 describe("safeOAuthDnsLookup", () => {
   it("reports blocked single-address lookup results through the callback", async () => {
-    const error = await withProductionNodeEnv(async () => await new Promise<NodeJS.ErrnoException | null>((resolve) => {
-      safeOAuthDnsLookup("127.0.0.1", {}, (lookupError) => {
-        resolve(lookupError);
-      });
-    }));
+    const result = await withProductionOAuthSsrfProtection(async () =>
+      await new Promise<SingleLookupResult>((resolve) => {
+        safeOAuthDnsLookup("127.0.0.1", { all: false }, (error, address, family) => {
+          resolve({ error, address, family });
+        });
+      }));
 
-    expect(error).toBeInstanceOf(StatusError);
+    expect(result.error).toBeInstanceOf(StatusError);
+    expect(result.address).toBe("");
+    expect(result.family).toBe(0);
   });
 
   it("reports blocked all-address lookup results through the callback", async () => {
-    const error = await withProductionNodeEnv(async () => await new Promise<NodeJS.ErrnoException | null>((resolve) => {
-      safeOAuthDnsLookup("127.0.0.1", { all: true, verbatim: true } satisfies dns.LookupAllOptions, (lookupError) => {
-        resolve(lookupError);
-      });
-    }));
+    const result = await withProductionOAuthSsrfProtection(async () =>
+      await new Promise<AllLookupResult>((resolve) => {
+        safeOAuthDnsLookup("127.0.0.1", { all: true, verbatim: true } satisfies dns.LookupAllOptions, (error, addresses) => {
+          resolve({ error, addresses });
+        });
+      }));
 
-    expect(error).toBeInstanceOf(StatusError);
+    expect(result.error).toBeInstanceOf(StatusError);
+    expect(result.addresses).toEqual([]);
   });
 });
-

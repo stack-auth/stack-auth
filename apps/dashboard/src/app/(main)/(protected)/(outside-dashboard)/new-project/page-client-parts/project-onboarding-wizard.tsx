@@ -20,7 +20,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import {
   ArrowsClockwiseIcon,
   ChartBarIcon,
@@ -331,25 +331,17 @@ export function ProjectOnboardingWizard(props: {
         configUpdate[`apps.installed.${appId}.enabled`] = true;
       }
     }
-    if (isLocalEmulator) {
-      configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {
-        type: "google",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
-      configUpdate["auth.oauth.providers.github"] = signInMethods.has("github") ? {
-        type: "github",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
-      configUpdate["auth.oauth.providers.microsoft"] = signInMethods.has("microsoft") ? {
-        type: "microsoft",
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
+    if (isDevelopmentEnvironment) {
+      for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
+        configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
+          type: providerId,
+          allowSignIn: true,
+          allowConnectedAccounts: true,
+        } : null;
+      }
     }
     return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isLocalEmulator, selectedApps, selectedEmailThemeId, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
     const configUpdate: EnvironmentConfigOverrideOverride = {};
@@ -378,7 +370,7 @@ export function ProjectOnboardingWizard(props: {
       return false;
     }
 
-    if (!isLocalEmulator) {
+    if (!isDevelopmentEnvironment) {
       const providersUpdated = await updateConfig({
         adminApp: props.project.app,
         configUpdate: buildEnvironmentOAuthConfigUpdate(),
@@ -393,17 +385,20 @@ export function ProjectOnboardingWizard(props: {
   }, [
     buildBranchConfigUpdate,
     buildEnvironmentOAuthConfigUpdate,
+    isDevelopmentEnvironment,
     isLinkExistingMode,
-    isLocalEmulator,
     props.project.app,
     updateConfig,
   ]);
 
   useEffect(() => {
-    if (status !== "welcome" || isLinkExistingMode || isLocalEmulator || finalConfigSavePromiseRef.current != null) {
+    if (status !== "welcome" || isLinkExistingMode || isDevelopmentEnvironment || finalConfigSavePromiseRef.current != null) {
       return;
     }
 
+    // Cloud onboarding can quietly pre-save unlinked config. In a development
+    // environment that same save opens the visible local config apply dialog, so
+    // it must only start from the final user action.
     finalConfigSavePromiseRef.current = (async () => {
       const pushedConfigSource = await props.project.getPushedConfigSource();
       if (pushedConfigSource.type !== "unlinked") {
@@ -412,7 +407,7 @@ export function ProjectOnboardingWizard(props: {
       return await saveFinalConfig();
     })();
     runAsynchronously(finalConfigSavePromiseRef.current, { noErrorLogging: true });
-  }, [isLinkExistingMode, isLocalEmulator, props.project, saveFinalConfig, status]);
+  }, [isDevelopmentEnvironment, isLinkExistingMode, props.project, saveFinalConfig, status]);
 
   const finalizeOnboarding = useCallback(async () => {
     await runWithSaving(async () => {

@@ -1,5 +1,5 @@
 import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
-import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-rendering";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -195,26 +195,30 @@ function sourceToSdkSource(source: BranchConfigSourceApi):
   return { type: "unlinked" };
 }
 
-// Resolve the path for `config pull` when `--config-file` was omitted. Falls
-// back to a config file in cwd, and throws a CliError with a clear hint
-// if it isn't there. Exported for unit tests.
+// Resolve the path for `config pull` when `--config-file` was omitted. Prefer
+// an existing config file in cwd, otherwise use the Hexclave default path so a
+// prod-to-local pull can create the local config file without extra flags.
 export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
   if (opts.configFile != null && opts.configFile !== "") {
     return resolveConfigFilePathOption(opts.configFile);
   }
   // Hexclave rebrand: prefer the new `hexclave.config.ts` filename, fall back
   // to the legacy `stack.config.ts` so existing projects keep working. If
-  // neither exists, default to the new filename for the error/directory hint.
+  // neither exists, create the new filename.
   const hexclaveCandidate = path.join(cwd, "hexclave.config.ts");
   const legacyCandidate = path.join(cwd, "stack.config.ts");
   const candidate = fs.existsSync(hexclaveCandidate) ? hexclaveCandidate : legacyCandidate;
   if (!fs.existsSync(candidate)) {
-    throw new CliError("No --config-file provided and no hexclave.config.ts (or stack.config.ts) found in the current directory. Pass --config-file <path> or run this command in a directory containing a config file.");
+    return hexclaveCandidate;
   }
   if (fs.statSync(candidate).isDirectory()) {
     throw new CliError(`Default config path points to a directory instead of a file: ${candidate}`);
   }
   return candidate;
+}
+
+export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
+  return opts.overwrite === true || !fs.existsSync(filePath);
 }
 
 export function registerConfigCommand(program: Command) {
@@ -226,7 +230,7 @@ export function registerConfigCommand(program: Command) {
     .command("pull")
     .description("Pull branch config to a local file")
     .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
-    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./stack.config.ts in the current directory")
+    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
     .option("--overwrite", "Overwrite an existing config file instead of updating it in place")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
@@ -246,10 +250,10 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
       }
 
-      if (fs.existsSync(filePath) && !opts.overwrite) {
-        await updateConfigObject(filePath, configOverride);
-      } else {
+      if (shouldReplaceConfigFileForPull(filePath, opts)) {
         await replaceConfigObject(filePath, configOverride);
+      } else {
+        await updateConfigObject(filePath, configOverride);
       }
       console.log(`Config written to ${filePath}`);
     });

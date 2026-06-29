@@ -26,7 +26,7 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";

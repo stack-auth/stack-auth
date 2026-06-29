@@ -9,9 +9,9 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { ALL_APPS } from '@hexclave/shared/dist/apps/apps-config';
+import { type Config } from '@hexclave/shared/dist/config/format';
 import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
-import { type Config } from '@hexclave/shared/dist/config/format';
 import { DayInterval } from '@hexclave/shared/dist/utils/dates';
 import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
@@ -2174,12 +2174,12 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       branchId: DEFAULT_BRANCH_ID,
       source: {
         type: "pushed-from-github",
-        owner: "stack-auth",
-        repo: "dummy-config-repo",
+        owner: "hexclave",
+        repo: "config-test",
         branch: "main",
         commit_hash: "abc123def456789",
-        config_file_path: "stack.config.json",
-        workflow_path: ".github/workflows/stack-auth-config-sync.yml",
+        config_file_path: "hexclave.config.ts",
+        workflow_path: ".github/workflows/hexclave-config-sync.yml",
       },
     })],
     globalPrismaClient.project.update({

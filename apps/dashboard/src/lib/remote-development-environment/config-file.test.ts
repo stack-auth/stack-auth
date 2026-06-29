@@ -215,6 +215,18 @@ describe("remote development environment config file", () => {
     );
   });
 
+  it("throws a helpful error when the config file is syntactically invalid", async () => {
+    const configPath = writeTempConfig(`
+      export const config = {
+    `);
+
+    const { readConfigFile } = await import("./config-file");
+
+    await expect(readConfigFile(configPath)).rejects.toThrow(
+      `Failed to load config file ${configPath}.`
+    );
+  });
+
   it("rejects modules without a valid config export", async () => {
     const configPath = writeTempConfig(`
       export const config = () => ({ auth: { allowSignUp: true } });

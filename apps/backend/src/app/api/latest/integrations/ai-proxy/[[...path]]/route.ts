@@ -1,4 +1,5 @@
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
+import { PRODUCTION_AI_PROXY_BASE_URL } from "@/lib/ai/proxy-url";
 import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -6,7 +7,6 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-const PRODUCTION_PROXY_BASE_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {
@@ -49,7 +49,7 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
     : undefined;
 
   if (apiKey === "FORWARD_TO_PRODUCTION") {
-    const targetUrl = `${PRODUCTION_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`;
+    const targetUrl = `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`;
     const headers: Record<string, string> = {};
     if (contentType) {
       headers["Content-Type"] = contentType;

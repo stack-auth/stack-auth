@@ -40,7 +40,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
 import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
 import type { CustomerType } from "@/components/payments/customer-selector";
