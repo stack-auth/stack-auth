@@ -113,22 +113,39 @@ function FreeCheckoutForm({
   chargesEnabled,
 }: Omit<Props, "isFree">) {
   const [message, setMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    const sessionSecret = await setupSubscription();
-    if (sessionSecret.clientSecret) {
-      setMessage("An unexpected error occurred.");
+    if (isSubmitting) {
       return;
     }
-    const stripeReturnUrl = buildReturnUrl({ stripeAccountId, fullCode, returnUrl });
-    stripeReturnUrl.searchParams.set("free", "1");
-    window.location.assign(stripeReturnUrl.toString());
+    setMessage(null);
+    setIsSubmitting(true);
+    let didStartNavigation = false;
+    try {
+      const sessionSecret = await setupSubscription();
+      if (sessionSecret.clientSecret) {
+        setMessage("An unexpected error occurred.");
+        return;
+      }
+      const stripeReturnUrl = buildReturnUrl({ stripeAccountId, fullCode, returnUrl });
+      stripeReturnUrl.searchParams.set("free", "1");
+      didStartNavigation = true;
+      window.location.assign(stripeReturnUrl.toString());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to complete checkout. Please try again.");
+    } finally {
+      if (!didStartNavigation) {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   return (
     <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
       <DesignButton
-        disabled={disabled || !chargesEnabled}
+        disabled={disabled || !chargesEnabled || isSubmitting}
+        loading={isSubmitting}
         onClick={handleSubmit}
         className="w-full"
       >
