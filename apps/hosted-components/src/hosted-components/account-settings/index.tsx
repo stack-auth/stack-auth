@@ -40,14 +40,10 @@ function subscribeToReferrer() {
 function useExternalBackUrl(): string | null {
   const referrer = useSyncExternalStore(subscribeToReferrer, getReferrerSnapshot, () => "");
   return useMemo(() => {
-    if (!referrer) return null;
-    try {
-      const referrerOrigin = new URL(referrer).origin;
-      if (referrerOrigin === window.location.origin) return null;
-      return referrer;
-    } catch {
-      return null;
-    }
+    if (!referrer || !URL.canParse(referrer)) return null;
+    const referrerOrigin = new URL(referrer).origin;
+    if (referrerOrigin === window.location.origin) return null;
+    return referrer;
   }, [referrer]);
 }
 

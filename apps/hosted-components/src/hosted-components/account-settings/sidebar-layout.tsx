@@ -65,14 +65,14 @@ function Items(props: { items: SidebarItem[], selectedIndex: number }) {
   ));
 }
 
-function BackButton({ url }: { url: string }) {
+function BackButton({ url, label = "Back" }: { url: string, label?: string }) {
   return (
     <a
       href={url}
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" />
-      Back
+      {label}
     </a>
   );
 }
@@ -148,7 +148,7 @@ function MobileLayout(props: { items: SidebarItem[], title?: ReactNode, selected
     <div className="flex flex-col gap-4 p-4">
       {props.backUrl && (
         <div className="-mb-2">
-          <BackButton url={props.backUrl} />
+          <BackButton url={props.backUrl} label="Back to site" />
         </div>
       )}
       <Button
