@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
       price_id: yupString().defined().meta({
         openapiField: {
           description: "The price ID to quote.",
-          exampleValue: "monthly",
+          exampleValue: "price_1234567890abcdef",
         },
       }),
       quantity: yupNumber().integer().min(1).default(1).meta({

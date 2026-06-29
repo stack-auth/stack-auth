@@ -106,10 +106,11 @@ export const POST = createSmartRouteHandler({
     if (!Number.isFinite(priceAmount) || priceAmount < 0) {
       throw new StatusError(400, `Price amount must be a finite, non-negative number (got ${JSON.stringify(selectedPrice.USD)})`);
     }
+    const unitAmountCents = calculateUnitAmountUsdCents(selectedPrice);
     // TODO(default-plans): when default/free plans become first-class, route
     // these directly via an ensureDefaultPlan-style grant instead of forcing
     // callers to configure an interval just to make Stripe happy.
-    const isFreePrice = priceAmount === 0;
+    const isFreePrice = unitAmountCents === 0;
     if (isFreePrice && !selectedPrice.interval) {
       throw new StatusError(400, "Free products must have a billing interval");
     }
@@ -119,7 +120,7 @@ export const POST = createSmartRouteHandler({
     // PaymentIntent.create time. Recurring sub items don't have this minimum
     // (handled above for the $0 case).
     const stripeOneTimeMin = getStripeOneTimeMinAmount('USD');
-    if (!selectedPrice.interval && priceAmount > 0 && priceAmount < stripeOneTimeMin) {
+    if (!selectedPrice.interval && unitAmountCents > 0 && unitAmountCents < stripeOneTimeMin * 100) {
       throw new StatusError(400, `One-time prices must be at least $${stripeOneTimeMin.toFixed(2)} (Stripe minimum)`);
     }
 
@@ -142,17 +143,35 @@ export const POST = createSmartRouteHandler({
       productVersionId,
       promoCode: promo_code,
     }) : null;
-    const unitAmountCents = calculateUnitAmountUsdCents(selectedPrice);
     const originalAmountCents = unitAmountCents * quantity;
     const effectiveAmountCents = promoRedemption?.finalAmountUsdCents ?? originalAmountCents;
     const isForeverFreeAfterPromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "forever";
     const requiresSetupAfterFirstInvoicePromo = promoRedemption?.finalAmountUsdCents === 0 && promoRedemption.subscriptionDuration === "first_invoice";
 
+    const promoStripeIdempotencyKey = (operation: string, redemption: ReservedPromoCodeRedemption) =>
+      `promo:${tenancy.id}:${codeId}:${redemption.redemptionId}:${operation}`;
+
+    const isAmbiguousStripeFailure = (error: unknown) =>
+      error instanceof Stripe.errors.StripeConnectionError
+      || error instanceof Stripe.errors.StripeAPIError
+      || error instanceof Stripe.errors.StripeRateLimitError
+      || error instanceof Stripe.errors.StripeIdempotencyError;
+
+    const captureAmbiguousStripePromoFailure = (location: string, error: unknown, redemption: ReservedPromoCodeRedemption, couponId: string | null) => {
+      captureError(location, new HexclaveAssertionError("Ambiguous Stripe failure while processing promo subscription checkout; preserving local promo state for reconciliation.", {
+        tenancyId: tenancy.id,
+        redemptionId: redemption.redemptionId,
+        promoCodeId: redemption.promoCodeId,
+        couponId,
+        cause: error,
+      }));
+    };
+
     const createPromoCoupon = async (redemption: ReservedPromoCodeRedemption) => {
       const coupon = await stripe.coupons.create(createStripeCouponParamsForPromoCode({
         quote: redemption,
         promoCode: promo_code ?? "",
-      }));
+      }), { idempotencyKey: promoStripeIdempotencyKey("coupon-create", redemption) });
       return coupon.id;
     };
 
@@ -174,20 +193,32 @@ export const POST = createSmartRouteHandler({
     const runSubscriptionWithPromoCouponCleanup = async <T extends Stripe.Subscription>(options: {
       redemption: ReservedPromoCodeRedemption | null,
       failureReason: string,
-      run: (couponId: string | null) => Promise<T>,
+      operation: "subscription-create" | "subscription-update",
+      run: (couponId: string | null, idempotencyKey: string | undefined) => Promise<T>,
     }): Promise<T> => {
       let couponId: string | null = null;
       if (options.redemption) {
         const couponResult = await Result.fromPromise(createPromoCoupon(options.redemption));
         if (couponResult.status === "error") {
-          await voidPromoRedemptionAfterSubscriptionFailure(options.redemption, options.failureReason);
+          if (isAmbiguousStripeFailure(couponResult.error)) {
+            captureAmbiguousStripePromoFailure("promo-stripe-coupon-create-ambiguous", couponResult.error, options.redemption, null);
+          } else {
+            await voidPromoRedemptionAfterSubscriptionFailure(options.redemption, options.failureReason);
+          }
           throw couponResult.error;
         }
         couponId = couponResult.data;
       }
-      const result = await Result.fromPromise(options.run(couponId));
+      const result = await Result.fromPromise(options.run(
+        couponId,
+        options.redemption ? promoStripeIdempotencyKey(options.operation, options.redemption) : undefined,
+      ));
       if (result.status === "ok") {
         return result.data;
+      }
+      if (options.redemption && isAmbiguousStripeFailure(result.error)) {
+        captureAmbiguousStripePromoFailure("promo-stripe-subscription-ambiguous", result.error, options.redemption, couponId);
+        throw result.error;
       }
       if (couponId) {
         const deleteResult = await Result.fromPromise(stripe.coupons.del(couponId));
@@ -239,7 +270,8 @@ export const POST = createSmartRouteHandler({
           const updated = await runSubscriptionWithPromoCouponCleanup({
             redemption: promoRedemption,
             failureReason: "stripe_subscription_update_failed",
-            run: async (couponId) => await stripe.subscriptions.update(conflictingStripeSubscriptionId, {
+            operation: "subscription-update",
+            run: async (couponId, idempotencyKey) => await stripe.subscriptions.update(conflictingStripeSubscriptionId, {
               payment_behavior: 'default_incomplete',
               payment_settings: { save_default_payment_method: 'on_subscription' },
               expand: ['latest_invoice.confirmation_secret', 'pending_setup_intent'],
@@ -264,7 +296,7 @@ export const POST = createSmartRouteHandler({
               },
               ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
               ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
-            }),
+            }, idempotencyKey ? { idempotencyKey } : undefined),
           });
           if (promoRedemption) {
             await attachStripeSubscriptionToPromoRedemption({
@@ -371,7 +403,8 @@ export const POST = createSmartRouteHandler({
     const created = await runSubscriptionWithPromoCouponCleanup({
       redemption: promoRedemption,
       failureReason: "stripe_subscription_create_failed",
-      run: async (couponId) => await stripe.subscriptions.create({
+      operation: "subscription-create",
+      run: async (couponId, idempotencyKey) => await stripe.subscriptions.create({
         customer: stripeCustomerId,
         payment_behavior: 'default_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
@@ -396,7 +429,7 @@ export const POST = createSmartRouteHandler({
         },
         ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
         ...(applicationFeePercent !== undefined ? { application_fee_percent: applicationFeePercent } : {}),
-      }),
+      }, idempotencyKey ? { idempotencyKey } : undefined),
     });
     if (promoRedemption) {
       await attachStripeSubscriptionToPromoRedemption({

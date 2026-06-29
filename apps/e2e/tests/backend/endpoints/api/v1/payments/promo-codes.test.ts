@@ -66,6 +66,36 @@ async function setupProjectWithPromoProducts(options: { testMode?: boolean } = {
           },
           includedItems: {},
         },
+        "zero-subscription": {
+          displayName: "Zero Subscription",
+          customerType: "user",
+          serverOnly: false,
+          productLineId: "promo",
+          stackable: false,
+          prices: {
+            zero: {
+              USD: "0.00",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+        "tiny-one-time": {
+          displayName: "Tiny One-Time",
+          customerType: "user",
+          serverOnly: false,
+          productLineId: "promo",
+          stackable: true,
+          prices: {
+            zero: {
+              USD: "0.00",
+            },
+            belowMinimum: {
+              USD: "0.01",
+            },
+          },
+          includedItems: {},
+        },
       },
     },
   });
@@ -740,9 +770,7 @@ it("should void one-time promo redemptions when Stripe cancels the payment inten
   });
   expect(webhook.status).toBe(200);
 
-  const afterCancel = await listPromoRedemptions(promo.body.id);
-  expect(afterCancel.status).toBe(200);
-  expect(afterCancel.body.items[0]).toMatchObject({
+  await expect(waitForPromoRedemptionStatus(promo.body.id, "voided")).resolves.toMatchObject({
     status: "voided",
     voided_at_millis: expect.any(Number),
   });
@@ -1078,5 +1106,57 @@ it("should skip Stripe confirmation for live forever promos that discount subscr
   expect(purchaseSession).toMatchObject({
     status: 200,
     body: {},
+  });
+});
+
+it("should use Stripe cents for free and minimum purchase-session checks", async ({ expect }) => {
+  await setupProjectWithPromoProducts({ testMode: false });
+
+  const { userId: subscriptionUserId } = await Auth.fastSignUp();
+  const subscriptionCode = await createPurchaseCode({ userId: subscriptionUserId, productId: "zero-subscription" });
+  const subscriptionSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: subscriptionCode,
+      price_id: "zero",
+      quantity: 1,
+    },
+  });
+  expect(subscriptionSession).toMatchObject({
+    status: 200,
+    body: {},
+  });
+
+  const { userId: zeroOneTimeUserId } = await Auth.fastSignUp();
+  const zeroOneTimeCode = await createPurchaseCode({ userId: zeroOneTimeUserId, productId: "tiny-one-time" });
+  const zeroOneTimeSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: zeroOneTimeCode,
+      price_id: "zero",
+      quantity: 1,
+    },
+  });
+  expect(zeroOneTimeSession).toMatchObject({
+    status: 400,
+    body: "Free products must have a billing interval",
+  });
+
+  const { userId: belowMinimumUserId } = await Auth.fastSignUp();
+  const belowMinimumCode = await createPurchaseCode({ userId: belowMinimumUserId, productId: "tiny-one-time" });
+  const belowMinimumSession = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      full_code: belowMinimumCode,
+      price_id: "belowMinimum",
+      quantity: 1,
+    },
+  });
+  expect(belowMinimumSession).toMatchObject({
+    status: 400,
+    body: "One-time prices must be at least $0.50 (Stripe minimum)",
   });
 });

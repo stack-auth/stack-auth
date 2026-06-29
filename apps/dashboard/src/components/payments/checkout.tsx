@@ -90,15 +90,67 @@ export function TestModeBypassForm({
   );
 }
 
-export function CheckoutForm({
+function buildReturnUrl(options: {
+  stripeAccountId: string,
+  fullCode: string,
+  returnUrl?: string,
+}) {
+  const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
+  stripeReturnUrl.searchParams.set("stripe_account_id", options.stripeAccountId);
+  stripeReturnUrl.searchParams.set("purchase_full_code", options.fullCode);
+  if (options.returnUrl) {
+    stripeReturnUrl.searchParams.set("return_url", options.returnUrl);
+  }
+  return stripeReturnUrl;
+}
+
+function FreeCheckoutForm({
   setupSubscription,
   stripeAccountId,
   fullCode,
   returnUrl,
   disabled,
   chargesEnabled,
-  isFree,
-}: Props) {
+}: Omit<Props, "isFree">) {
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    const sessionSecret = await setupSubscription();
+    if (sessionSecret.clientSecret) {
+      setMessage("An unexpected error occurred.");
+      return;
+    }
+    const stripeReturnUrl = buildReturnUrl({ stripeAccountId, fullCode, returnUrl });
+    stripeReturnUrl.searchParams.set("free", "1");
+    window.location.assign(stripeReturnUrl.toString());
+  };
+
+  return (
+    <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
+      <DesignButton
+        disabled={disabled || !chargesEnabled}
+        onClick={handleSubmit}
+        className="w-full"
+      >
+        Submit
+      </DesignButton>
+      {message && (
+        <Typography type="p" variant="destructive" className="text-sm">
+          {message}
+        </Typography>
+      )}
+    </DesignCard>
+  );
+}
+
+function StripeCheckoutForm({
+  setupSubscription,
+  stripeAccountId,
+  fullCode,
+  returnUrl,
+  disabled,
+  chargesEnabled,
+}: Omit<Props, "isFree">) {
   const stripe = useStripe();
   const elements = useElements();
   const [message, setMessage] = useState<string | null>(null);
@@ -113,24 +165,8 @@ export function CheckoutForm({
     }
 
     const sessionSecret = await setupSubscription();
-    const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
-    stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
-    stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
-    if (returnUrl) {
-      stripeReturnUrl.searchParams.set("return_url", returnUrl);
-    }
+    const stripeReturnUrl = buildReturnUrl({ stripeAccountId, fullCode, returnUrl });
 
-    if (isFree) {
-      // $0 subs: backend creates the Stripe subscription synchronously and
-      // returns no client_secret (nothing to confirm). Skip Stripe Elements
-      // and route through /purchase/return with `free=1` so the return page
-      // renders a terminal success state instead of waiting on a Stripe
-      // PaymentIntent that will never exist. The return page handles the
-      // `return_url` bounce (or shows the success page when none was given).
-      stripeReturnUrl.searchParams.set("free", "1");
-      window.location.assign(stripeReturnUrl.toString());
-      return;
-    }
     if (!sessionSecret.clientSecret) {
       setMessage("An unexpected error occurred.");
       return;
@@ -180,4 +216,14 @@ export function CheckoutForm({
       )}
     </DesignCard>
   );
+}
+
+export function CheckoutForm(props: Props) {
+  if (!props.chargesEnabled) {
+    return <PaymentsNotEnabledCard />;
+  }
+  if (props.isFree) {
+    return <FreeCheckoutForm {...props} />;
+  }
+  return <StripeCheckoutForm {...props} />;
 }

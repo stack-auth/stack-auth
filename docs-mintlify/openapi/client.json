@@ -4204,7 +4204,7 @@
                   },
                   "price_id": {
                     "type": "string",
-                    "example": "monthly",
+                    "example": "price_1234567890abcdef",
                     "description": "The price ID to quote."
                   },
                   "quantity": {
@@ -4226,7 +4226,7 @@
                 ],
                 "example": {
                   "full_code": "proj_abc123_def456ghi789",
-                  "price_id": "monthly",
+                  "price_id": "price_1234567890abcdef",
                   "quantity": 1,
                   "promo_code": "PROMO-SUMMER"
                 }

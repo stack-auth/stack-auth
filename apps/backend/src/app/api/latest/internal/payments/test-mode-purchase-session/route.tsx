@@ -74,29 +74,17 @@ export const POST = createSmartRouteHandler({
       promoCode: promo_code,
     }) : null;
 
-    const grantResult = await Result.fromPromise((async () => {
-      const granted = await grantProductToCustomer({
-        prisma,
-        tenancy,
-        customerType: data.product.customerType,
-        customerId: data.customerId,
-        product: data.product,
-        productId: data.productId,
-        priceId: price_id,
-        quantity,
-        creationSource: "TEST_MODE",
-      });
-      if (promoRedemption) {
-        await markPromoCodeRedemptionApplied({
-          prisma,
-          tenancyId: tenancy.id,
-          redemptionId: promoRedemption.redemptionId,
-          subscriptionId: granted.type === "subscription" ? granted.subscriptionId : null,
-          oneTimePurchaseId: granted.type === "one_time" ? granted.purchaseId : null,
-        });
-      }
-      return granted;
-    })());
+    const grantResult = await Result.fromPromise(grantProductToCustomer({
+      prisma,
+      tenancy,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
+      priceId: price_id,
+      quantity,
+      creationSource: "TEST_MODE",
+    }));
     if (grantResult.status === "error") {
       if (promoRedemption) {
         const voidResult = await Result.fromPromise(voidExpiredOrFailedPromoCodeRedemption({
@@ -110,6 +98,22 @@ export const POST = createSmartRouteHandler({
         }
       }
       throw grantResult.error;
+    }
+    if (promoRedemption) {
+      const applyResult = await Result.fromPromise(markPromoCodeRedemptionApplied({
+        prisma,
+        tenancyId: tenancy.id,
+        redemptionId: promoRedemption.redemptionId,
+        subscriptionId: grantResult.data.type === "subscription" ? grantResult.data.subscriptionId : null,
+        oneTimePurchaseId: grantResult.data.type === "one_time" ? grantResult.data.purchaseId : null,
+      }));
+      if (applyResult.status === "error") {
+        captureError("test-mode-promo-redemption-apply-failed-after-grant", new HexclaveAssertionError("Test-mode promo redemption failed to mark applied after product grant succeeded.", {
+          tenancyId: tenancy.id,
+          redemptionId: promoRedemption.redemptionId,
+          cause: applyResult.error,
+        }));
+      }
     }
     await purchaseUrlVerificationCodeHandler.revokeCode({
       tenancy,

@@ -516,6 +516,16 @@ export default function PageClient({ code }: { code: string }) {
                   />
                 ) : data.stripe_account_id == null ? (
                   <PaymentsNotEnabledCard />
+                ) : isFreeForCheckout ? (
+                  <CheckoutForm
+                    fullCode={code}
+                    stripeAccountId={data.stripe_account_id}
+                    setupSubscription={setupSubscription}
+                    returnUrl={returnUrl ?? undefined}
+                    disabled={checkoutDisabled}
+                    chargesEnabled={data.charges_enabled ?? false}
+                    isFree={isFreeForCheckout}
+                  />
                 ) : (
                   <StripeElementsProvider
                     stripeAccountId={data.stripe_account_id}
