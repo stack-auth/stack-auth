@@ -5728,11 +5728,37 @@
                       "type": "string",
                       "example": "MyMusic",
                       "description": "Human-readable project display name. This is not a unique identifier."
+                    },
+                    "pushed_config_error": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "message"
+                      ]
+                    },
+                    "config_warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "message"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "id",
-                    "display_name"
+                    "display_name",
+                    "config_warnings"
                   ]
                 }
               }
@@ -8082,6 +8108,16 @@
               "description": "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email."
             },
             "description": "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email.",
+            "required": false
+          },
+          {
+            "name": "excluded_email_domains",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "A comma-separated list of primary email domains to exclude from the results."
+            },
+            "description": "A comma-separated list of primary email domains to exclude from the results.",
             "required": false
           },
           {

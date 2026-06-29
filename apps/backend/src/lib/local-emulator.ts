@@ -1,8 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { showOnboardingHexclaveConfigValue } from "@hexclave/shared/dist/config-authoring";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
-import { parseHexclaveConfigFileContent } from "@hexclave/shared/dist/hexclave-config-file";
-import { isValidConfig } from "@hexclave/shared/dist/config/format";
+import { detectImportPackageFromDir, evalConfigFileContent, type ParsedConfigValue } from "@hexclave/shared/dist/config-eval";
+import { renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -18,7 +17,7 @@ export const LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE =
 export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT";
 export const LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE = showOnboardingHexclaveConfigValue;
 
-type LocalEmulatorConfigValue = Record<string, unknown> | typeof LOCAL_EMULATOR_SHOW_ONBOARDING_VALUE;
+type LocalEmulatorConfigValue = ParsedConfigValue;
 
 export function isLocalEmulatorEnabled() {
   return getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
@@ -76,7 +75,10 @@ async function readConfigContent(filePath: string): Promise<string> {
 async function readConfigValueFromFile(filePath: string): Promise<LocalEmulatorConfigValue> {
   const content = await readConfigContent(filePath);
   try {
-    return parseHexclaveConfigFileContent(content, filePath);
+    // `evalConfigFileContent` already guarantees the value is a config object or
+    // the `"show-onboarding"` sentinel (it throws otherwise), so no further
+    // shape check is needed here.
+    return evalConfigFileContent(content, filePath);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     throw new StatusError(StatusError.BadRequest, `Error evaluating config in ${filePath}: ${message}`);

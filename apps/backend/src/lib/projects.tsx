@@ -76,6 +76,8 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         owner_team_id: row.ownerTeamId,
         onboarding_status: row.onboardingStatus,
         onboarding_state: onboardingState ?? undefined,
+        pushed_config_error: null,
+        config_warnings: [],
       };
     },
   };
@@ -206,13 +208,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
     return [project.id, branchId];
   });
 
-  // Update project config override
-  await overrideProjectConfigOverride({
-    projectId: projectId,
-    projectConfigOverrideOverride: {
-      sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
-    },
-  });
+  // Metadata-only onboarding updates should stay cheap and avoid touching config
+  // source state; creation still needs the default project config override.
+  if (options.type === "create" || options.sourceOfTruth !== undefined) {
+    await overrideProjectConfigOverride({
+      projectId: projectId,
+      projectConfigOverrideOverride: {
+        sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
+      },
+    });
+  }
 
   // Update environment config override
   const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {

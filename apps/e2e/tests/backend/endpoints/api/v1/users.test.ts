@@ -1004,6 +1004,89 @@ describe("with server access", () => {
     expect(response.body).toBe("only_anonymous=true requires include_anonymous=true");
   });
 
+  it("lists users excluding exact primary email domains", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const blockedResponse = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        primary_email: "blocked@example.com",
+        primary_email_verified: true,
+      },
+    });
+    const secondaryMatchResponse = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        primary_email: "keeper@work.example",
+        primary_email_verified: true,
+      },
+    });
+    const noEmailResponse = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        display_name: "No Email",
+      },
+    });
+    await niceBackendFetch("/api/v1/contact-channels", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        user_id: secondaryMatchResponse.body.id,
+        type: "email",
+        value: "secondary@gmail.com",
+        is_verified: true,
+        used_for_auth: false,
+      },
+    });
+
+    const response = await niceBackendFetch("/api/v1/users?include_restricted=true&excluded_email_domains=@EXAMPLE.com,gmail.com", {
+      accessType: "server",
+    });
+
+    const userIds = response.body.items.map((user: { id: string }) => user.id);
+    expect(userIds).not.toContain(blockedResponse.body.id);
+    expect(userIds).toContain(secondaryMatchResponse.body.id);
+    expect(userIds).toContain(noEmailResponse.body.id);
+  });
+
+  it("rejects invalid excluded email domains", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const response = await niceBackendFetch("/api/v1/users?excluded_email_domains=*.gmail.com", {
+      accessType: "server",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toBe("excluded_email_domains must be a comma-separated list of valid domains");
+  });
+
+  it("treats empty excluded email domains as omitted", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const userResponse = await niceBackendFetch("/api/v1/users", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        primary_email: "included@example.com",
+        primary_email_verified: true,
+      },
+    });
+
+    const emptyResponse = await niceBackendFetch("/api/v1/users?excluded_email_domains=", {
+      accessType: "server",
+    });
+    const trailingCommaResponse = await niceBackendFetch("/api/v1/users?excluded_email_domains=,", {
+      accessType: "server",
+    });
+
+    expect(emptyResponse.status).toBe(200);
+    expect(trailingCommaResponse.status).toBe(200);
+    expect(emptyResponse.body.items.map((user: { id: string }) => user.id)).toContain(userResponse.body.id);
+    expect(trailingCommaResponse.body.items.map((user: { id: string }) => user.id)).toContain(userResponse.body.id);
+  });
+
   it("lists users with pagination", async ({ expect }) => {
     await Project.createAndSwitch();
     for (let i = 0; i < 5; i++) {

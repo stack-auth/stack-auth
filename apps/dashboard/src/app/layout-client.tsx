@@ -94,7 +94,7 @@ async function refreshDevEnvironmentHealth() {
     }
     setSnapshotIfCurrent({
       status: "unhealthy",
-      restartCommand: "stack dev --config-file <path-to-stack.config.ts> -- <your app command>",
+      restartCommand: "hexclave dev --config-file <path-to-hexclave.config.ts> -- <your app command>",
     });
   }
 }

@@ -2,7 +2,7 @@
 
 import Loading from "@/app/loading";
 import { CursorBlastEffect } from "@hexclave/dashboard-ui-components";
-import { ConfigUpdateDialogProvider } from "@/lib/config-update";
+import { ConfigUpdateDialogProvider } from "@/components/config-update";
 import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@hexclave/next";

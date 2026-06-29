@@ -1,12 +1,12 @@
+import { StackAdminApp } from "@hexclave/js";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { StackAdminApp } from "@hexclave/js";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { Result } from "@hexclave/shared/dist/utils/results";
-import { describe, beforeAll, afterAll } from "vitest";
-import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
+import { afterAll, beforeAll, describe } from "vitest";
+import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from "../helpers";
 
 const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 
@@ -457,7 +457,7 @@ describe("Stack CLI", () => {
   it("config pull writes a .ts file", async ({ expect }) => {
     configTsPath = path.join(tmpDir, "config.ts");
     const { stdout, exitCode } = await runCli(
-      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", configTsPath, "--overwrite"],
+      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", configTsPath],
     );
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
@@ -494,27 +494,28 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("plain `config` object");
   });
 
-  it("config pull rejects overwriting an existing file without --overwrite", async ({ expect }) => {
+  it("config pull overwrites an existing file by default", async ({ expect }) => {
     const existingConfigPath = path.join(tmpDir, "existing-config.ts");
     fs.writeFileSync(existingConfigPath, "existing\n");
 
-    const { stderr, exitCode } = await runCli(
+    const { stdout, exitCode } = await runCli(
       ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", existingConfigPath],
     );
 
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("re-run with --overwrite");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Config written to");
+    const content = fs.readFileSync(existingConfigPath, "utf-8");
+    expect(content).toContain("export const config: HexclaveConfig");
   });
 
-  it("config pull falls back to ./stack.config.ts in cwd when --config-file is omitted", async ({ expect }) => {
+  it("config pull falls back to ./hexclave.config.ts in cwd when --config-file is omitted", async ({ expect }) => {
     // realpathSync normalizes macOS's /var/folders/... → /private/var/folders/...
     // (Node resolves the symlink when reporting the written path).
     const cwdDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-cwd-")));
-    const expected = path.join(cwdDir, "stack.config.ts");
-    fs.writeFileSync(expected, "// placeholder so the file exists\n");
+    const expected = path.join(cwdDir, "hexclave.config.ts");
     try {
       const { stdout, exitCode } = await runCli(
-        ["config", "pull", "--cloud-project-id", createdProjectId, "--overwrite"],
+        ["config", "pull", "--cloud-project-id", createdProjectId],
         undefined,
         cwdDir,
       );
@@ -527,16 +528,20 @@ describe("Stack CLI", () => {
     }
   });
 
-  it("config pull errors when --config-file is omitted and cwd has no stack.config.ts", async ({ expect }) => {
+  it("config pull still prefers an existing ./stack.config.ts when --config-file is omitted", async ({ expect }) => {
     const cwdDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-empty-")));
+    const expected = path.join(cwdDir, "stack.config.ts");
+    fs.writeFileSync(expected, "// placeholder so the file exists\n");
     try {
-      const { stderr, exitCode } = await runCli(
+      const { stdout, exitCode } = await runCli(
         ["config", "pull", "--cloud-project-id", createdProjectId],
         undefined,
         cwdDir,
       );
-      expect(exitCode).toBe(1);
-      expect(stderr).toContain("Pass --config-file");
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(`Config written to ${expected}`);
+      const content = fs.readFileSync(expected, "utf-8");
+      expect(content).toContain("export const config: HexclaveConfig");
     } finally {
       fs.rmSync(cwdDir, { recursive: true });
     }

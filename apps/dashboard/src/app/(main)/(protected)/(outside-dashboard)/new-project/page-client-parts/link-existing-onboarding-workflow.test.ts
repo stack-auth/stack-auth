@@ -17,10 +17,10 @@ describe("buildWorkflowYaml", () => {
     expect(workflowYaml).toContain(`      - ${JSON.stringify(branch)}`);
     expect(workflowYaml).toContain(`      - ${JSON.stringify(configPath)}`);
     expect(workflowYaml).toContain(`      - ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
-    expect(workflowYaml).toContain(`          STACK_AUTH_CONFIG_PATH: ${JSON.stringify(configPath)}`);
-    expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_REPO: \${{ github.repository }}`);
-    expect(workflowYaml).toContain(`          STACK_AUTH_SOURCE_WORKFLOW_PATH: ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
-    expect(workflowYaml).toContain("run: npx --yes @hexclave/cli@latest config push --config-file \"$STACK_AUTH_CONFIG_PATH\" --source github --source-repo \"$STACK_AUTH_SOURCE_REPO\" --source-path \"$STACK_AUTH_CONFIG_PATH\" --source-workflow-path \"$STACK_AUTH_SOURCE_WORKFLOW_PATH\"");
+    expect(workflowYaml).toContain(`          HEXCLAVE_CONFIG_PATH: ${JSON.stringify(configPath)}`);
+    expect(workflowYaml).toContain(`          HEXCLAVE_SOURCE_REPO: \${{ github.repository }}`);
+    expect(workflowYaml).toContain(`          HEXCLAVE_SOURCE_WORKFLOW_PATH: ${JSON.stringify(WORKFLOW_FILE_PATH)}`);
+    expect(workflowYaml).toContain("run: npx --yes @hexclave/cli@latest config push --config-file \"$HEXCLAVE_CONFIG_PATH\" --source github --source-repo \"$HEXCLAVE_SOURCE_REPO\" --source-path \"$HEXCLAVE_CONFIG_PATH\" --source-workflow-path \"$HEXCLAVE_SOURCE_WORKFLOW_PATH\"");
     expect(workflowYaml).not.toContain(`--config-file "${configPath}"`);
   });
 
@@ -32,9 +32,9 @@ describe("buildWorkflowYaml", () => {
   });
 
   it("uses the GitHub Actions runtime repository context for --source-repo", () => {
-    const workflowYaml = buildWorkflowYaml("main", "stack.config.ts");
-    expect(workflowYaml).toContain("STACK_AUTH_SOURCE_REPO: ${{ github.repository }}");
-    expect(workflowYaml).not.toMatch(/STACK_AUTH_SOURCE_REPO:\s+"[^$]/);
+    const workflowYaml = buildWorkflowYaml("main", "hexclave.config.ts");
+    expect(workflowYaml).toContain("HEXCLAVE_SOURCE_REPO: ${{ github.repository }}");
+    expect(workflowYaml).not.toMatch(/HEXCLAVE_SOURCE_REPO:\s+"[^$]/);
   });
 });
 

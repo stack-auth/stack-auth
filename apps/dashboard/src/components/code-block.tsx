@@ -17,6 +17,10 @@ Object.entries({ tsx, bash, typescript, python, sql }).forEach(([key, value]) =>
   SyntaxHighlighter.registerLanguage(key, value);
 });
 
+export const codePanelShellClasses = "overflow-hidden transition-all duration-150 hover:transition-none rounded-xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] shadow-none border border-black/[0.06] dark:border-white/[0.06]";
+
+export const codePanelHeaderClasses = "text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center bg-black/[0.015] dark:bg-white/[0.015] py-2.5 border-b border-black/[0.06] dark:border-white/[0.06]";
+
 type CodeBlockProps = {
   language: string,
   content: string,
@@ -32,7 +36,7 @@ type CodeBlockProps = {
 };
 
 export function CodeBlock(props: CodeBlockProps) {
-  const { theme, mounted } = useThemeWatcher();
+  const { theme } = useThemeWatcher();
 
   let icon = null;
   switch (props.icon) {
@@ -47,8 +51,20 @@ export function CodeBlock(props: CodeBlockProps) {
   }
 
   return (
-    <div className={cn("overflow-hidden", !props.fullWidth && "rounded-xl", props.neutralBackground ? "bg-background" : "bg-muted")}>
-      <div className={cn("text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center", props.compact && !props.noSeparator && "py-1", !props.compact && !props.noSeparator && "py-2", props.noSeparator && "pt-1 pb-0", !props.noSeparator && "border-b")}>
+    <div className={cn(
+      props.neutralBackground
+        ? "overflow-hidden transition-all duration-150 hover:transition-none rounded-xl bg-background border border-black/[0.08] dark:border-white/[0.06] shadow-sm"
+        : !props.fullWidth
+          ? codePanelShellClasses
+          : "overflow-hidden transition-all duration-150 hover:transition-none bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1] shadow-none border border-black/[0.06] dark:border-white/[0.06]"
+    )}>
+      <div className={cn(
+        "text-muted-foreground font-medium pl-4 pr-2 text-sm flex justify-between items-center bg-black/[0.015] dark:bg-white/[0.015]",
+        props.compact && !props.noSeparator && "py-1.5",
+        !props.compact && !props.noSeparator && "py-2.5",
+        props.noSeparator && "pt-1 pb-0",
+        !props.noSeparator && "border-b border-black/[0.06] dark:border-white/[0.06]"
+      )}>
         <h5 className={cn("font-medium flex items-center gap-2", props.compact && "text-xs")}>
           {icon}
           {props.title}

@@ -122,7 +122,7 @@ export async function lookupLocalEmulatorProjectIdByPath(absolutePath: string): 
   const projects = await listLocalEmulatorProjects();
   const match = findProjectByAbsolutePath(projects, absolutePath);
   if (!match) {
-    throw new CliError(`No development-environment project registered for ${absolutePath}. Open it in the dashboard or run \`hexclave init\` from that directory first.`);
+    throw new CliError(`No development-environment project registered for ${absolutePath}. Open it in the dashboard from that directory first.`);
   }
   return match.projectId;
 }

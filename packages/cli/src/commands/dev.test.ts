@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { devDashboardCommandFromEnv, isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -85,6 +85,60 @@ describe("devDashboardCommandFromEnv", () => {
   it("ignores missing and blank custom dashboard commands", () => {
     expect(devDashboardCommandFromEnv({})).toBeUndefined();
     expect(devDashboardCommandFromEnv({ HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND: "   " })).toBeUndefined();
+  });
+});
+
+describe("configErrorLogPrefix", () => {
+  it("highlights the config error badge when color is supported", () => {
+    expect(configErrorLogPrefix(true)).toBe("[Hexclave] \x1b[41;37;1m[CONFIG ERROR]\x1b[0m ");
+  });
+
+  it("keeps a readable plain-text badge without color support", () => {
+    expect(configErrorLogPrefix(false)).toBe("[Hexclave] [CONFIG ERROR] ");
+  });
+});
+
+describe("isHeartbeatResponse", () => {
+  it("accepts config sync events from the dashboard heartbeat", () => {
+    expect(isHeartbeatResponse({
+      ok: true,
+      config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "success",
+          created_at_millis: 1_718_000_000_000,
+        },
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "error",
+          error_message: "Could not reach the API.",
+          created_at_millis: 1_718_000_000_001,
+        },
+      ],
+    })).toBe(true);
+  });
+
+  it("rejects malformed config sync events", () => {
+    expect(isHeartbeatResponse({
+      ok: true,
+      config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "pending",
+          created_at_millis: 1_718_000_000_000,
+        },
+      ],
+    })).toBe(false);
+    expect(isHeartbeatResponse({
+      ok: true,
+      config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "error",
+          created_at_millis: 1_718_000_000_000,
+        },
+      ],
+    })).toBe(false);
   });
 });
 

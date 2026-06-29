@@ -31,6 +31,11 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       ({ productId: string } | { product: InlineProduct }) &
       { quantity?: number }
     )): Promise<void>,
+    createCheckoutUrl(options: (
+      ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+      ({ productId: string } | { product: InlineProduct }) &
+      { returnUrl?: string }
+    )): Promise<string>,
 
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,

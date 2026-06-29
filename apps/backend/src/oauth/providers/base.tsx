@@ -4,6 +4,7 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, custom, generators } from "openid-client";
+import { assertSafeOAuthUrl, safeOAuthDnsLookup } from "../ssrf-protection";
 import { OAuthUserInfo } from "../utils";
 
 const OAUTH_USERINFO_TOTAL_ATTEMPTS = 3;
@@ -32,6 +33,7 @@ const RETRYABLE_OAUTH_PROVIDER_ERROR_CODES = new Set([
 // requests a little more room while still bounding backend request latency.
 custom.setHttpOptionsDefaults({
   timeout: OAUTH_HTTP_TIMEOUT_MS,
+  lookup: safeOAuthDnsLookup,
 });
 
 export type TokenSet = {
@@ -305,6 +307,26 @@ function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAc
   };
 }
 
+async function assertSafeDiscoveredIssuerMetadata(issuer: {
+  metadata: {
+    authorization_endpoint?: string,
+    token_endpoint?: string,
+    userinfo_endpoint?: string,
+    jwks_uri?: string,
+  },
+}) {
+  for (const url of [
+    issuer.metadata.authorization_endpoint,
+    issuer.metadata.token_endpoint,
+    issuer.metadata.userinfo_endpoint,
+    issuer.metadata.jwks_uri,
+  ]) {
+    if (url !== undefined) {
+      await assertSafeOAuthUrl(url);
+    }
+  }
+}
+
 export abstract class OAuthBaseProvider {
   constructor(
     public readonly oauthClient: Client,
@@ -354,13 +376,20 @@ export abstract class OAuthBaseProvider {
       }
     )
   ) {
-    const issuer = "discoverFromUrl" in options ? await Issuer.discover(options.discoverFromUrl) : new Issuer({
-      issuer: options.issuer,
-      authorization_endpoint: options.authorizationEndpoint,
-      token_endpoint: options.tokenEndpoint,
-      userinfo_endpoint: options.userinfoEndpoint,
-      jwks_uri: options.openid ? options.jwksUri : undefined,
-    });
+    const issuer = "discoverFromUrl" in options
+      ? await (async () => {
+        await assertSafeOAuthUrl(options.discoverFromUrl);
+        const discoveredIssuer = await Issuer.discover(options.discoverFromUrl);
+        await assertSafeDiscoveredIssuerMetadata(discoveredIssuer);
+        return discoveredIssuer;
+      })()
+      : new Issuer({
+        issuer: options.issuer,
+        authorization_endpoint: options.authorizationEndpoint,
+        token_endpoint: options.tokenEndpoint,
+        userinfo_endpoint: options.userinfoEndpoint,
+        jwks_uri: options.openid ? options.jwksUri : undefined,
+      });
     const oauthClient = new issuer.Client({
       client_id: options.clientId,
       client_secret: options.clientSecret,

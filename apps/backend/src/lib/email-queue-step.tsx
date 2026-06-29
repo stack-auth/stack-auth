@@ -1,7 +1,7 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
 import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
-import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
+import { EmailOutboxRecipient, getEmailConfig, isCustomEmailForSharedServer, wrapSharedDevEmail, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getHexclaveServerApp } from "@/hexclave";
@@ -203,32 +203,40 @@ async function failEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWher
 export const _forTesting = {
   failEmailsStuckInSending,
   STUCK_EMAIL_TIMEOUT_MS,
+  updateLastExecutionTime,
 };
 
-async function updateLastExecutionTime(): Promise<number> {
-  const key = "EMAIL_QUEUE_METADATA_KEY";
-
+async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promise<number> {
   // This query atomically claims the next execution slot and returns the delta.
-  // It uses FOR UPDATE to lock the row, preventing concurrent workers from reading
-  // the same previous timestamp. The pattern is:
+  // It uses FOR UPDATE to lock the row, preventing concurrent workers from reading the
+  // same previous timestamp. Use clock_timestamp(), not NOW(): NOW() is fixed at the
+  // transaction start, so a transaction that started earlier but acquired the row lock
+  // later could otherwise move lastExecutedAt backwards by a few milliseconds.
+  // The pattern is:
   // 1. Try UPDATE first (locks row with FOR UPDATE, returns old and new timestamps)
   // 2. If no row exists, INSERT (with ON CONFLICT DO NOTHING for race handling)
   // 3. Compute delta based on the result
   const [{ delta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
-    WITH now_ts AS (
-      SELECT NOW() AS now
-    ),
-    do_update AS (
+    WITH do_update AS (
       -- Update existing row, locking it first and capturing the old timestamp
       UPDATE "EmailOutboxProcessingMetadata" AS m
       SET 
-        "updatedAt" = (SELECT now FROM now_ts),
-        "lastExecutedAt" = (SELECT now FROM now_ts)
+        "updatedAt" = old.next_timestamp,
+        "lastExecutedAt" = old.next_timestamp
       FROM (
-        SELECT "key", "lastExecutedAt" AS previous_timestamp
-      FROM "EmailOutboxProcessingMetadata"
-      WHERE "key" = ${key}
-        FOR UPDATE
+        SELECT
+          locked."key",
+          locked."lastExecutedAt" AS previous_timestamp,
+          GREATEST(locked.observed_timestamp, COALESCE(locked."lastExecutedAt", locked.observed_timestamp)) AS next_timestamp
+        FROM (
+          SELECT
+            "key",
+            "lastExecutedAt",
+            clock_timestamp()::timestamp(3) AS observed_timestamp
+          FROM "EmailOutboxProcessingMetadata"
+          WHERE "key" = ${key}
+            FOR UPDATE
+        ) AS locked
       ) AS old
       WHERE m."key" = old."key"
       RETURNING old.previous_timestamp, m."lastExecutedAt" AS new_timestamp
@@ -236,7 +244,8 @@ async function updateLastExecutionTime(): Promise<number> {
     do_insert AS (
       -- Insert new row if no existing row was updated
       INSERT INTO "EmailOutboxProcessingMetadata" ("key", "lastExecutedAt", "updatedAt")
-      SELECT ${key}, (SELECT now FROM now_ts), (SELECT now FROM now_ts)
+      SELECT ${key}, observed_timestamp, observed_timestamp
+      FROM (SELECT clock_timestamp()::timestamp(3) AS observed_timestamp) AS now_ts
       WHERE NOT EXISTS (SELECT 1 FROM do_update)
       ON CONFLICT ("key") DO NOTHING
       RETURNING NULL::timestamp AS previous_timestamp, "lastExecutedAt" AS new_timestamp
@@ -261,8 +270,7 @@ async function updateLastExecutionTime(): Promise<number> {
   `;
 
   if (delta < 0) {
-    // TODO: why does this happen, actually? investigate.
-    console.warn("Email queue step delta is negative. Not sure why it happened. Ignoring the delta. TODO investigate", { delta });
+    console.warn("Email queue step delta is negative after monotonic timestamp update; ignoring the delta so the send quota cannot go negative", { delta });
     return 0;
   }
 
@@ -735,15 +743,24 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         return;
       }
     }
+    const baseContent = {
+      subject: row.renderedSubject ?? "",
+      html: row.renderedHtml ?? undefined,
+      text: row.renderedText ?? undefined,
+    };
+    const emailContent = context.emailConfig.type === "shared" && isCustomEmailForSharedServer(recipient, row.createdWith, row.emailProgrammaticCallTemplateId)
+      ? wrapSharedDevEmail(baseContent)
+      : baseContent;
+
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectWithoutRetries({
         tenancyId: context.tenancy.id,
         emailConfig: context.emailConfig,
         to: resolution.emails,
-        subject: row.renderedSubject ?? "",
-        html: row.renderedHtml ?? undefined,
-        text: row.renderedText ?? undefined,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
       });
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;
