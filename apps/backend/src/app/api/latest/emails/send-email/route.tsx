@@ -63,9 +63,6 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if (auth.tenancy.config.emails.server.isShared) {
-      throw new KnownErrors.RequiresCustomEmailServer();
-    }
     if ((body.user_ids && body.all_users) || (!body.user_ids && !body.all_users)) {
       throw new KnownErrors.SchemaError("Exactly one of user_ids or all_users must be provided");
     }

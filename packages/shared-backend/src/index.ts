@@ -14,6 +14,7 @@ const jiti = createJiti(import.meta.url, { moduleCache: false });
 const LOG_PREFIX = "[Stack config updater]";
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000;
 const CONFIG_UPDATE_LOG_PATH_LIMIT = 40;
+const AGENT_OUTPUT_LOG_MAX_LENGTH = 20_000;
 
 type ConfigModule = {
   config?: unknown,
@@ -41,6 +42,31 @@ function configUpdatePathDetailsForLog(changes: ConfigChange[]): Record<string, 
     configUpdatePathCount: paths.length,
     configUpdatePaths: paths.slice(0, CONFIG_UPDATE_LOG_PATH_LIMIT),
     configUpdatePathsTruncated: paths.length > CONFIG_UPDATE_LOG_PATH_LIMIT,
+  };
+}
+
+function appendBoundedAgentOutput(current: string, chunk: string): string {
+  const next = `${current}${chunk}`;
+  if (next.length <= AGENT_OUTPUT_LOG_MAX_LENGTH) {
+    return next;
+  }
+  return next.slice(next.length - AGENT_OUTPUT_LOG_MAX_LENGTH);
+}
+
+function stringifyAgentMessageForLog(message: unknown): string {
+  try {
+    return `${JSON.stringify(message)}\n`;
+  } catch {
+    return `${String(message)}\n`;
+  }
+}
+
+function agentOutputDetailsForLog(agentStdout: string, agentStderr: string): Record<string, unknown> {
+  return {
+    agentStdout,
+    agentStdoutTruncated: agentStdout.length >= AGENT_OUTPUT_LOG_MAX_LENGTH,
+    agentStderr,
+    agentStderrTruncated: agentStderr.length >= AGENT_OUTPUT_LOG_MAX_LENGTH,
   };
 }
 
@@ -237,6 +263,8 @@ async function runConfigUpdateAgent(options: {
   const timeoutMs = parseAgentTimeoutMs();
   const deniedOutOfBoundsWrites = new Set<string>();
   const startedAtMs = performance.now();
+  let agentStdout = "";
+  let agentStderr = "";
   console.log(`${LOG_PREFIX} Starting config update agent`, {
     cwd: options.cwd,
     timeoutMs,
@@ -248,7 +276,13 @@ async function runConfigUpdateAgent(options: {
       allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
       strictIsolation: true,
       timeoutMs,
-      stderr: (data) => { console.warn(`${LOG_PREFIX} [agent] ${data}`); },
+      stderr: (data) => {
+        agentStderr = appendBoundedAgentOutput(agentStderr, data);
+        console.warn(`${LOG_PREFIX} [agent] ${data}`);
+      },
+      onMessage: (message) => {
+        agentStdout = appendBoundedAgentOutput(agentStdout, stringifyAgentMessageForLog(message));
+      },
       onPreToolUse: (input) => {
         const target = getToolWriteTargetPath(input.tool_name, input.tool_input, options.cwd);
         if (target == null) return { continue: true };
@@ -273,6 +307,7 @@ async function runConfigUpdateAgent(options: {
         timeoutMs,
         elapsedMs: Math.round(performance.now() - startedAtMs),
         ...formatConfigUpdaterErrorForLog(error),
+        ...agentOutputDetailsForLog(agentStdout, agentStderr),
       });
       throw new Error(`Config update agent timed out after ${timeoutMs}ms. It was unable to apply the config changes to the file.`);
     }
@@ -282,6 +317,7 @@ async function runConfigUpdateAgent(options: {
         timeoutMs,
         elapsedMs: Math.round(performance.now() - startedAtMs),
         ...formatConfigUpdaterErrorForLog(error),
+        ...agentOutputDetailsForLog(agentStdout, agentStderr),
       });
       throw new Error(`${error.message} It was unable to apply the config changes to the file.`);
     }
@@ -290,6 +326,7 @@ async function runConfigUpdateAgent(options: {
       timeoutMs,
       elapsedMs: Math.round(performance.now() - startedAtMs),
       ...formatConfigUpdaterErrorForLog(error),
+      ...agentOutputDetailsForLog(agentStdout, agentStderr),
     });
     throw error;
   }

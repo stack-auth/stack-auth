@@ -317,12 +317,18 @@ export function ProjectOnboardingWizard(props: {
     const emailThemeId = selectedEmailThemeId ?? completeConfig.emails.selectedThemeId;
     const configUpdate: EnvironmentConfigOverrideOverride = {
       "auth.password.allowSignIn": signInMethods.has("credential"),
-      "auth.otp.allowSignIn": signInMethods.has("magicLink"),
-      "auth.passkey.allowSignIn": signInMethods.has("passkey"),
       "emails.selectedThemeId": emailThemeId,
     };
+    if (signInMethods.has("magicLink")) {
+      configUpdate["auth.otp.allowSignIn"] = true;
+    }
+    if (signInMethods.has("passkey")) {
+      configUpdate["auth.passkey.allowSignIn"] = true;
+    }
     for (const appId of ALL_APP_IDS) {
-      configUpdate[`apps.installed.${appId}.enabled`] = selectedApps.has(appId);
+      if (selectedApps.has(appId)) {
+        configUpdate[`apps.installed.${appId}.enabled`] = true;
+      }
     }
     if (isLocalEmulator) {
       configUpdate["auth.oauth.providers.google"] = signInMethods.has("google") ? {

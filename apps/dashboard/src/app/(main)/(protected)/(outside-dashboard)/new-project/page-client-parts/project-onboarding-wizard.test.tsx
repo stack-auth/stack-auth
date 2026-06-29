@@ -969,8 +969,8 @@ describe("ProjectOnboardingWizard", () => {
         status="welcome"
         onboardingState={{
           selected_config_choice: "create-new",
-          selected_apps: ["authentication", "emails"],
-          selected_sign_in_methods: ["credential", "google"],
+          selected_apps: ["authentication", "emails", "payments", "analytics"],
+          selected_sign_in_methods: ["credential", "magicLink", "google"],
           selected_email_theme_id: "default",
           selected_payments_country: "US",
         }}
@@ -985,11 +985,15 @@ describe("ProjectOnboardingWizard", () => {
       expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
       expect(mockUpdateConfig).toHaveBeenNthCalledWith(1, {
         adminApp: app,
-        configUpdate: expect.objectContaining({
+        configUpdate: {
           "auth.password.allowSignIn": true,
+          "auth.otp.allowSignIn": true,
+          "emails.selectedThemeId": "default",
           "apps.installed.authentication.enabled": true,
           "apps.installed.emails.enabled": true,
-        }),
+          "apps.installed.payments.enabled": true,
+          "apps.installed.analytics.enabled": true,
+        },
         pushable: true,
       });
       expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {

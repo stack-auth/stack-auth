@@ -2,7 +2,7 @@
  * Hexclave project configuration as code (demo app).
  *
  * Source of truth for RBAC permissions/roles, auth methods, OAuth providers,
- * sign-up rules, API keys, and payment plans. The Hexclave CLI (`stack dev`)
+ * sign-up rules, API keys, and payment plans. The Hexclave CLI (`hexclave dev`)
  * bundles + executes this file and provisions the project to match.
  *
  * It's wrapped in `defineHexclaveConfig(...)`, so the shared-backend config updater takes

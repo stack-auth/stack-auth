@@ -1,3 +1,4 @@
+import { DEFAULT_TEMPLATE_IDS } from "@hexclave/shared/dist/helpers/emails";
 import { randomUUID } from "crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -76,43 +77,6 @@ describe("invalid requests", () => {
         "status": 200,
         "body": { "results": [{ "user_id": "<stripped UUID>" }] },
         "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
-  });
-
-  it("should return 400 when using shared email config", async ({ expect }) => {
-    await Project.createAndSwitch();
-    const createUserResponse = await niceBackendFetch("/api/v1/users", {
-      method: "POST",
-      accessType: "server",
-      body: {
-        primary_email: "test@example.com",
-      },
-    });
-    const response = await niceBackendFetch(
-      "/api/v1/emails/send-email",
-      {
-        method: "POST",
-        accessType: "server",
-        body: {
-          user_ids: [createUserResponse.body.id],
-          html: "<p>Test email</p>",
-          subject: "Test Subject",
-          notification_category_name: "Marketing",
-        }
-      }
-    );
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REQUIRES_CUSTOM_EMAIL_SERVER",
-          "error": "This action requires a custom SMTP server. Please edit your email server configuration and try again.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "REQUIRES_CUSTOM_EMAIL_SERVER",
-          <some fields may have been hidden>,
-        },
       }
     `);
   });
@@ -289,6 +253,68 @@ it("should return 200 and send email successfully", async ({ expect }) => {
       },
     ]
   `);
+});
+
+describe("shared email server", () => {
+  it("should send custom emails over the shared server wrapped as Hexclave dev emails", async ({ expect }) => {
+    await Project.createAndSwitch({ display_name: "Shared Server Email Project" });
+    const mailbox = await bumpEmailAddress();
+    const user = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
+
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          html: "<p>Original custom email body</p>",
+          subject: "Original Subject",
+          notification_category_name: "Transactional",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "results": [{ "user_id": "<stripped UUID>" }] },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    const messages = await mailbox.waitForMessagesWithSubject("[Hexclave dev email] Original Subject");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    const html = messages[0].body?.html ?? "";
+    expect(html).toContain("set up a custom email server in your Hexclave dashboard");
+    expect(html).toContain("Original custom email body");
+    // The notice must be injected inside <body>, not before the document, to keep the markup valid.
+    expect(html.indexOf("set up a custom email server in your Hexclave dashboard")).toBeGreaterThan(html.indexOf("<body"));
+  });
+
+  it("should NOT wrap Hexclave default-template emails sent over the shared server", async ({ expect }) => {
+    await Project.createAndSwitch({ display_name: "Shared Default Template Project" });
+    const mailbox = await bumpEmailAddress();
+    const user = await User.create({ primary_email: mailbox.emailAddress, primary_email_verified: true });
+
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          template_id: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
+          variables: { teamDisplayName: "My Team", signInInvitationLink: "https://example.com" },
+        }
+      }
+    );
+    expect(response.status).toBe(200);
+
+    const messages = await mailbox.waitForMessagesWithSubject("You have been invited to sign in to Shared Default Template Project");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages[0].subject).not.toContain("[Hexclave dev email]");
+    expect(messages[0].body?.html ?? "").not.toContain("set up a custom email server in your Hexclave dashboard");
+  });
 });
 
 it("should handle user that does not exist", async ({ expect }) => {
