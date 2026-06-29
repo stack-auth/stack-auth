@@ -1,0 +1,110 @@
+apps/hosted-components/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+packages/ui/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/dev-launchpad/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-keys/page-client.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3,7,9-10,20-38,45,88-129,131
+  s_da899a3c0fdfdc::t_3ab314c9878924 130,132
+examples/e-commerce/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/js-example/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/js/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+packages/template/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 5
+sdks/implementations/swift/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/backend/src/lib/seed-dummy-data.ts
+  s_da899a3c0fdfdc::t_99d3bd191ba781 2177
+examples/lovable-react-18-example/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+packages/dashboard-ui-components/src/components/data-grid/types.ts
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 254-255
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/setup-page.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 76-112,119,137-146,176,183-187,203-227,261,385-396,399
+  s_da899a3c0fdfdc::t_c61ac395cf4e90 397-398,400
+apps/backend/src/lib/email-queue-step.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 206,209,211-215,220,224-225,227-239,247-248,273
+packages/dashboard-ui-components/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/template/package-template.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 16
+examples/convex/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/supabase/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/backend/src/lib/email-queue-step.test.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3,7-45
+examples/react-example/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+apps/backend/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/docs-examples/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/e2e/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/next/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+packages/sc/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/dashboard/src/components/data-table/user-table.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 429-430
+apps/dashboard/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/internal-tool/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+apps/mock-oauth-server/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/demo/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/mcp/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/dashboard/src/components/user-dialog.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 6-8,30,134-138,141-145,151-178,180-186,189-191,193-214,216-232,235-236,238-279,283-288
+docs-mintlify/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/cjs-test/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/cli/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/dashboard-ui-components/src/components/data-grid/data-grid-export-dialog.tsx
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4,58,70-84
+  s_da899a3c0fdfdc::t_aa9bb3ef489746 85
+docs/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/tanstack-start-demo/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+examples/middleware/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/react/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 4
+packages/shared/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/shared-backend/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+sdks/spec/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+apps/skills/package.json
+  s_da899a3c0fdfdc::t_0cfa04fd8ac421 3
+packages/tanstack-start/package.json
+  s_da899a3c0fdfdc::t_8a951fb768d468 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "6cf0e899a06be149da4d6a5d125b256e5e4f619a",
+  "prompts": {},
+  "sessions": {
+    "s_da899a3c0fdfdc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f145c-fe8b-7d20-8b15-47f62e568e16",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
