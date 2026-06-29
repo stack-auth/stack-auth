@@ -205,6 +205,33 @@ async function setManualTransactionRow(options: { tenancyId: string, transaction
   });
 }
 
+function readBatchRows(body: unknown): unknown[] {
+  const record = readObjectBody(body);
+  const rows = record.rows;
+  if (!Array.isArray(rows)) throw new StatusError(StatusError.BadRequest, "Expected `rows` array");
+  return rows;
+}
+
+/**
+ * Ingests a whole batch of stored rows into one table in a single snapshot
+ * write, applying the downstream cascade once for the batch (see
+ * `setOrDeleteRows`). Each element has the same `{ rowData }` shape as the
+ * single-row routes; the row identifier is read from `rowIdField` (defaults to
+ * `id`, but manual transactions key on `txnId`). The whole batch shares a tenancy
+ * — we validate each row matches the URL tenancy, same as the single routes.
+ */
+async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: string, body: unknown, rowIdField?: string }) {
+  const idField = options.rowIdField ?? "id";
+  const rows = readBatchRows(options.body).map(element => {
+    const rowData = readRowData(element);
+    if (readRowTenancyId(rowData) !== options.tenancyId) {
+      throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(rowData)} does not match URL tenancyId ${options.tenancyId}`);
+    }
+    return { rowIdentifier: readStringField(rowData, idField), newRowData: rowData as unknown as PiledriverObject };
+  });
+  await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+}
+
 async function getOwnedProductsForCustomer(options: { tenancyId: string, customerType: CustomerType, customerId: string }) {
   const row = await latestRowData<OwnedProductsRow>({ ...options, tableId: schema.ownedProducts });
   return row?.ownedProducts ?? {};
@@ -609,7 +636,6 @@ function ok() {
 const app = new Elysia({ adapter: node() })
   .use(instrumentation)
   .get("/health", () => ({ ok: true }))
-  .post("/internal/payments/init", () => handler("init", async () => ok()))
   .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
@@ -686,6 +712,30 @@ const app = new Elysia({ adapter: node() })
   }))
   .post("/v1/:tenancyId/stripe/one-time-purchases/changed", ({ params, body }) => handler("set-one-time-purchase", async () => {
     await setStoredRowFromBody({ tenancyId: params.tenancyId, tableId: schema.oneTimePurchases, body });
+    return ok();
+  }))
+  // ── Batch ingress ────────────────────────────────────────────────────
+  // One snapshot write + one downstream cascade per batch (see setOrDeleteRows).
+  // Used by the Postgres->bulldozer backfill; the live dual-write still uses the
+  // single-row routes above. Body shape: { rows: [{ rowData }, ...] }.
+  .post("/v1/:tenancyId/stripe/subscriptions/changed-batch", ({ params, body }) => handler("set-subscriptions-batch", async () => {
+    await setStoredRowsFromBodies({ tenancyId: params.tenancyId, tableId: schema.subscriptions, body });
+    return ok();
+  }))
+  .post("/v1/:tenancyId/stripe/subscription-invoices/changed-batch", ({ params, body }) => handler("set-subscription-invoices-batch", async () => {
+    await setStoredRowsFromBodies({ tenancyId: params.tenancyId, tableId: schema.subscriptionInvoices, body });
+    return ok();
+  }))
+  .post("/v1/:tenancyId/stripe/one-time-purchases/changed-batch", ({ params, body }) => handler("set-one-time-purchases-batch", async () => {
+    await setStoredRowsFromBodies({ tenancyId: params.tenancyId, tableId: schema.oneTimePurchases, body });
+    return ok();
+  }))
+  .post("/v1/:tenancyId/manual-item-quantity-changes/changed-batch", ({ params, body }) => handler("set-manual-item-quantity-changes-batch", async () => {
+    await setStoredRowsFromBodies({ tenancyId: params.tenancyId, tableId: schema.manualItemQuantityChanges, body });
+    return ok();
+  }))
+  .post("/v1/:tenancyId/transactions/refund-batch", ({ params, body }) => handler("set-manual-transactions-batch", async () => {
+    await setStoredRowsFromBodies({ tenancyId: params.tenancyId, tableId: schema.manualTransactions, body, rowIdField: "txnId" });
     return ok();
   }))
   .post("/v1/:tenancyId/test-mode/subscriptions", () => notImplemented("create-test-mode-subscription"))

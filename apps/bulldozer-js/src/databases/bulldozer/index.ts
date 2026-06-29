@@ -1,10 +1,10 @@
 import { isShallowEqual } from "@hexclave/shared/dist/utils/arrays";
 import { traceSpan } from "../../otel.js";
-import { Database, DatabaseSeq } from "../index.js";
+import { DatabaseSeq } from "../index.js";
+import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 import { AugmentedTreeMap, AugmentedTreeMultiMap } from "../piledriver/data-structures/augmented-tree-map.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
-import { isPiledriverHeapObjectSymbol, piledriverObjectEquals, PiledriverDatabase, PiledriverDatabaseDebugSnapshot, PiledriverObject } from "../piledriver/index.js";
-import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
+import { isPiledriverHeapObjectSymbol, PiledriverDatabase, PiledriverDatabaseDebugSnapshot, PiledriverObject, piledriverObjectEquals } from "../piledriver/index.js";
 
 // Code-unit comparison; localeCompare would persist trees whose order depends on the runtime locale.
 function compareStrings(a: string, b: string) {
@@ -90,6 +90,15 @@ function normalizeGroupLifecycle(outputChanges: TableChanges) {
   const deletedByKey = new Map(outputChanges.deletedGroups.map(group => [canonicalGroupKeyString(group.groupKey), group]));
   outputChanges.addedGroups = outputChanges.addedGroups.filter(group => !deletedByKey.has(canonicalGroupKeyString(group.groupKey)));
   outputChanges.deletedGroups = outputChanges.deletedGroups.filter(group => !addedByKey.has(canonicalGroupKeyString(group.groupKey)));
+}
+
+/** Concatenates `from` into `into`, in place. Used to fold a batch of per-row source-table outputs into one change set before cascading. */
+function mergeTableChanges(into: TableChanges, from: TableChanges) {
+  into.addedRows.push(...from.addedRows);
+  into.modifiedRows.push(...from.modifiedRows);
+  into.deletedRows.push(...from.deletedRows);
+  into.addedGroups.push(...from.addedGroups);
+  into.deletedGroups.push(...from.deletedGroups);
 }
 
 function changedRowsFromTableChanges(changes: Pick<TableChanges, "addedRows" | "modifiedRows" | "deletedRows">): {
@@ -383,6 +392,56 @@ class BulldozerDatabaseSnapshot {
       rowIdentifier: options.rowIdentifier,
       newRowData: options.newRowData,
     }));
+  }
+
+  /**
+   * Applies many source-table mutations and cascades downstream exactly once.
+   *
+   * Each row is applied to the source (stored) table in turn, threading its
+   * serialized state forward, and the per-row output changes are folded into a
+   * single change set. The downstream DAG then runs once over that combined set
+   * instead of once per row — collapsing N cascades (and N root reads/writes at
+   * the snapshot layer) into one. This is the throughput path for bulk ingestion
+   * such as the Postgres->bulldozer backfill.
+   *
+   * Soundness relies on every row touching a distinct identifier: merging an
+   * add+modify (or add+delete) for the same id would feed the cascade
+   * contradictory events. Callers ingesting primary keys satisfy this; we assert
+   * rather than silently dedupe. (Group add/delete churn within the batch is
+   * reconciled by `normalizeGroupLifecycle`, since the source table only ever has
+   * the single null group.)
+   */
+  async setOrDeleteRows(options: {
+    tableId: string,
+    rows: { rowIdentifier: string, newRowData: PiledriverObject | undefined }[],
+  }): Promise<BulldozerDatabaseSnapshot> {
+    if (!(options.tableId in this.tablesState.tables)) throw new Error(`Table ${options.tableId} does not exist`);
+    const setOrDeleteRow = this.tablesState.tables[options.tableId].table.setOrDeleteRow;
+    if (!setOrDeleteRow) throw new Error("Table is not mutable");
+    if (options.rows.length === 0) return this;
+
+    const seenIdentifiers = new Set<string>();
+    for (const row of options.rows) {
+      if (seenIdentifiers.has(row.rowIdentifier)) throw new Error(`Duplicate row identifier ${row.rowIdentifier} in batch for table ${options.tableId}`);
+      seenIdentifiers.add(row.rowIdentifier);
+    }
+
+    return await this._applyTableMutation(options.tableId, async ({ serializedTable, inputTables }) => {
+      let currentSerializedTable = serializedTable;
+      const combined: TableChanges = { addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] };
+      for (const row of options.rows) {
+        const result = await setOrDeleteRow({
+          serializedTable: currentSerializedTable,
+          inputTables,
+          rowIdentifier: row.rowIdentifier,
+          newRowData: row.newRowData,
+        });
+        currentSerializedTable = result.newSerializedTable;
+        mergeTableChanges(combined, result.outputChanges);
+      }
+      normalizeGroupLifecycle(combined);
+      return { newSerializedTable: currentSerializedTable, outputChanges: combined };
+    });
   }
 
   async tick(now: Date): Promise<BulldozerDatabaseSnapshot> {
