@@ -15,7 +15,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -87,6 +87,18 @@ export default function PageClient() {
     setUsersMetricsSnapshot({ metrics, userCounts });
   }, [hexclaveAdminApp]);
 
+  useEffect(() => {
+    const refresh = () => runAsynchronouslyWithAlert(refreshUsersMetrics);
+    const refreshAfterPageRestore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        refresh();
+      }
+    };
+    refresh();
+    window.addEventListener("pageshow", refreshAfterPageRestore);
+    return () => window.removeEventListener("pageshow", refreshAfterPageRestore);
+  }, [refreshUsersMetrics]);
+
   const handleTableReloadChange = useCallback((reload: () => void) => {
     tableReloadRef.current = reload;
   }, []);
@@ -96,9 +108,9 @@ export default function PageClient() {
     runAsynchronouslyWithAlert(refreshUsersMetrics);
   }, [refreshUsersMetrics]);
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(() => {
     tableReloadRef.current();
-    await refreshUsersMetrics();
+    runAsynchronouslyWithAlert(refreshUsersMetrics);
   }, [refreshUsersMetrics]);
 
   const hasUsers = usersMetricsSnapshot != null

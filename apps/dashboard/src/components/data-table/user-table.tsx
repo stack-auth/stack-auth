@@ -133,7 +133,7 @@ function parseEmailDomains(input: string) {
 // ─── Column definitions ──────────────────────────────────────────────
 
 function createUserTableColumns(
-  onUserMutated?: () => void | Promise<void>,
+  onUserMutated: () => void | Promise<void>,
 ): DataGridColumnDef<ExtendedServerUser>[] {
   return [
     {
@@ -223,7 +223,7 @@ const USER_EXPORT_FIELDS: DataGridExportField<ExtendedServerUser>[] = [
 // ─── UserTable ───────────────────────────────────────────────────────
 
 export function UserTable(props: {
-  onUserMutated?: () => void | Promise<void>,
+  onUserMutated: () => void | Promise<void>,
   onReloadChange?: (reload: () => void) => void,
 }) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -236,7 +236,7 @@ export function UserTable(props: {
 function UserTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
-  onUserMutated?: () => void | Promise<void>,
+  onUserMutated: () => void | Promise<void>,
   onReloadChange?: (reload: () => void) => void,
 }) {
   const { filters, setFilters, onUserMutated, onReloadChange } = props;
@@ -612,7 +612,7 @@ function EmailDomainFilter(props: {
 
 function UserActions(props: {
   user: ExtendedServerUser,
-  onUserMutated?: () => void | Promise<void>,
+  onUserMutated: () => void | Promise<void>,
 }) {
   const { user, onUserMutated } = props;
   const hexclaveAdminApp = useAdminApp();
