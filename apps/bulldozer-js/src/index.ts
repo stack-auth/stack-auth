@@ -22,7 +22,7 @@ import { createPaymentsSchema } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
 import { initSentry } from "./sentry.js";
 
-initSentry();
+const sentryEnabled = initSentry();
 
 const REFUND_TXN_PREFIX = "refund:";
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
@@ -988,7 +988,7 @@ const app = new Elysia({ adapter: node() })
   .listen(port);
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
-logBulldozerService("service-started", {
+const startupFields = {
   port: app.server?.port ?? port,
   pid: process.pid,
   nodeVersion: process.version,
@@ -999,7 +999,21 @@ logBulldozerService("service-started", {
   heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
   memory: serviceMemoryUsage(),
-});
+};
+logBulldozerService("service-started", startupFields);
+
+// Emit every boot to Sentry so restart/crash loops are visible. An OOM kill (and
+// most hard crashes) terminate the process before anything can be reported, so we
+// can't observe the death directly — but the *next* startup is observable. One
+// occasional startup is normal (deploy/scale); a burst of them means the process
+// keeps dying and being restarted. Gated on a real DSN so local dev reloads (which
+// have no DSN and would otherwise route to console.error) don't look like errors.
+if (sentryEnabled) {
+  captureError("bulldozer-js:service-started", new HexclaveAssertionError(
+    "bulldozer-js started. Emitted on every boot to surface restart/crash loops (e.g. OOM kills, which can't be captured at the moment of death).",
+    startupFields,
+  ));
+}
 
 // Periodically tick the bulldozer clock to process timefold-queued rows; clamp monotonically so a
 // backwards wall-clock jump can't rewind it.
