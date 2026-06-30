@@ -15,6 +15,8 @@ overrides:
   '@types/react': 19.2.7
   '@types/react-dom': 19.2.3
   sharp: ^0.34.5
+  rolldown: 1.1.2
+  '@napi-rs/wasm-runtime': 1.1.5
 
 packageExtensions:
   '@mintlify/link-rot':
@@ -32,6 +34,7 @@ allowBuilds:
   '@tailwindcss/oxide': true
   '@vercel/speed-insights': true
   bcrypt: true
+  codebuff: set this to true or false
   core-js: true
   esbuild: true
   iframe-resizer: false
@@ -40,3 +43,4 @@ allowBuilds:
   protobufjs: true
   puppeteer: true
   sharp: true
+  unrs-resolver: set this to true or false
