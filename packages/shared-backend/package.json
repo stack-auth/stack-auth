@@ -23,7 +23,6 @@
   "scripts": {
     "build": "rimraf dist && tsdown",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

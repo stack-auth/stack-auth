@@ -6,10 +6,9 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "scripts": {
-    "build": "rimraf dist && tsdown && pnpm run build-iife && pnpm run copy-iife",
+    "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsdown --watch --onSuccess 'pnpm run build-iife && pnpm run copy-iife'",
     "build-iife": "tsx scripts/build-iife.ts",
     "copy-iife": "tsx scripts/copy-iife.ts",
     "lint": "eslint --ext .tsx,.ts ."

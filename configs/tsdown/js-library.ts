@@ -42,7 +42,7 @@ const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
 });
 
 
-export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined }) {
+export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | ((...args: unknown[]) => void) | undefined }) {
   return defineConfig({
     entry: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
@@ -50,6 +50,7 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
     noExternal: [...customNoExternal],
     inlineOnly: false,
     dts: true,
+    onSuccess: _options.onSuccess,
     format: {
       esm: {
         outDir: 'dist/esm',

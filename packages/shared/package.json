@@ -7,7 +7,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [

@@ -84,7 +84,7 @@
     "//": "END_PLATFORM",
 
     "build": "rimraf dist && pnpm run codegen && tsdown",
-    "dev": "concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
+    "dev": "pnpm run codegen:watch",
     "env": "tsx ./scripts/generate-env.ts",
     "env:watch": "chokidar --silent './scripts/generate-env.ts' -c 'pnpm run env' --throttle 2000"
 
