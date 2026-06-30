@@ -1,0 +1,23 @@
+packages/shared/src/ai/hexclave-ask.ts
+  s_79c83501f4deab::t_d7986526ae1ed4 1-149
+apps/mcp/src/mcp-handler.ts
+  s_79c83501f4deab::t_f9f50ef45e2919 1,12,14,31-54,122-129,132,134,140
+apps/skills/src/ask-route.ts
+  s_79c83501f4deab::t_4ad7df72e5ae6c 1-2,76-99,107-115,117-118,121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1a06066797107723cf8554764e8647f0d325e3f3",
+  "prompts": {},
+  "sessions": {
+    "s_79c83501f4deab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5223c55-e77b-4d85-a7e5-802c5b74e683",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
