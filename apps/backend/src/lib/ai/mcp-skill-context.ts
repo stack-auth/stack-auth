@@ -4,6 +4,10 @@ const CACHE_TTL_MS = 5 * 60 * 1_000; // 5 minutes
 
 let cachedDocs: { text: string, fetchedAt: number } | null = null;
 
+export function isHexclaveDocsAssistantRequest(toolName: string | null | undefined): boolean {
+  return toolName === "skill_site_ask" || toolName === "ask_hexclave";
+}
+
 async function fetchDocsText(): Promise<string> {
   const now = performance.now();
   if (cachedDocs && now - cachedDocs.fetchedAt < CACHE_TTL_MS) {
@@ -40,16 +44,20 @@ async function fetchDocsText(): Promise<string> {
 }
 
 export async function getMcpSkillContextPrompt(toolName: string | null | undefined): Promise<string> {
-  if (toolName !== "ask_hexclave") {
+  if (!isHexclaveDocsAssistantRequest(toolName)) {
     return "";
   }
 
   const docsContext = await fetchDocsText();
+  const requestSource = toolName === "skill_site_ask"
+    ? "the public https://skill.hexclave.com/ask endpoint"
+    : "the public Hexclave MCP server's ask_hexclave tool";
+
   return `
 
-## MCP-Provided Hexclave Documentation Context
+## Hexclave Documentation Context
 
-The current request came through the public Hexclave MCP server's ask_hexclave tool.
+The current request came through ${requestSource}.
 The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
 immediately before spawning this assistant. Treat this documentation as baseline context
 for answering the user's question, while still using documentation tools for specific

@@ -519,7 +519,7 @@ export const aiAgentConfigPreparationPrompt = deindent`
 
   For any other agent, register the same HTTP MCP server using its standard MCP config file.
 
-  After installation, use the \`ask_hexclave\` MCP tool for Hexclave questions when available. If the MCP server is not available, fetch the latest docs from \`https://docs.hexclave.com\`.
+  After installation, the MCP server's \`ask_hexclave\` tool can answer Hexclave questions from agents that support MCP. For public URL-based questions, use only \`https://skill.hexclave.com/ask?question=<...>\`. If neither is available, fetch the latest docs from \`https://docs.hexclave.com\`.
 
   ### Update AGENTS.md
 

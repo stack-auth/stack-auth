@@ -5,6 +5,7 @@ import { createEmailDraftTool } from "./create-email-draft";
 import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
 import { createDocsTools } from "./docs";
+import { isHexclaveDocsAssistantRequest } from "../mcp-skill-context";
 import { createSqlQueryTool } from "./sql-query";
 
 export const TOOL_NAMES = [
@@ -32,7 +33,7 @@ export async function getTools(
   for (const toolName of toolNames) {
     switch (toolName) {
       case "docs": {
-        if (context.mcpToolName === "ask_hexclave") {
+        if (isHexclaveDocsAssistantRequest(context.mcpToolName)) {
           break;
         }
         const docsTools = await createDocsTools();
