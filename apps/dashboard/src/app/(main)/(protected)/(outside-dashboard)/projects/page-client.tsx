@@ -265,11 +265,6 @@ function ProjectsListPage() {
   const teams = user.useTeams();
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
-  const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
-  const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
-  const [openingConfigFile, setOpeningConfigFile] = useState(false);
-  const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
-  const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const [projectTotalUsers, setProjectTotalUsers] = useState<Map<string, number>>(new Map());
@@ -396,16 +391,6 @@ function ProjectsListPage() {
     };
   }, [appInternals, rawProjects.length]);
 
-  useEffect(() => {
-    return;
-  }, []);
-
-  const pathCopyTip = useMemo(() => {
-    return "Tip: use an absolute path to your project folder or hexclave.config.ts.";
-  }, []);
-
-  const handleOpenConfigFile = async () => {};
-
   const teamIdMap = useMemo(() => {
     return new Map(teams.map((team) => [team.id, team.displayName]));
   }, [teams]);
@@ -474,74 +459,6 @@ function ProjectsListPage() {
           )}
         </div>
       </div>
-
-      <Dialog
-        open={openConfigFileDialog}
-        onOpenChange={(open) => {
-          setOpenConfigFileDialog(open);
-          if (!open) {
-            setAbsoluteConfigFilePath("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Open your Hexclave project</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Typography variant="secondary">
-              Point the local dashboard at the <code>hexclave.config.ts</code> in your project. If you just ran <code>hexclave init</code>, it was created at the root of that project.
-            </Typography>
-            <Typography variant="secondary" className="text-xs">
-              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>hexclave.config.ts</code> for you.
-            </Typography>
-            {recentConfigProjects.length > 0 && (
-              <div className="space-y-1">
-                <Typography variant="secondary" className="text-xs uppercase tracking-wide">Recent</Typography>
-                <div className="max-h-40 overflow-y-auto rounded-md border">
-                  {recentConfigProjects.map((p) => (
-                    <button
-                      key={p.project_id}
-                      type="button"
-                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
-                      onClick={() => setAbsoluteConfigFilePath(p.absolute_file_path)}
-                      title={p.absolute_file_path}
-                    >
-                      {p.absolute_file_path}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {recentConfigProjectsError && recentConfigProjects.length === 0 && (
-              <Typography variant="secondary" className="text-xs text-destructive">
-                Couldn&apos;t load recent projects. Paste a path below to continue.
-              </Typography>
-            )}
-            <Input
-              autoFocus
-              placeholder="/Users/you/project/hexclave.config.ts"
-              value={absoluteConfigFilePath}
-              onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
-            />
-            <Typography variant="secondary" className="text-xs">
-              {pathCopyTip}
-            </Typography>
-          </div>
-          <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleOpenConfigFile}
-              loading={openingConfigFile}
-              disabled={absoluteConfigFilePath.trim().length === 0}
-            >
-              Open project
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {projectsByTeam.map(({ teamId, projects }) => {
         const team = teamId ? teams.find((t) => t.id === teamId) : undefined;

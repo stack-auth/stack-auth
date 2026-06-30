@@ -16,12 +16,8 @@ export type ProjectListFlags = {
   cloud?: boolean,
 };
 
-// Returns which sources `project list` should query. Mutually exclusive; with
-// no flags we hit both. Exported for unit tests.
+// Returns which sources `project list` should query. Exported for unit tests.
 export function resolveProjectListSources(opts: ProjectListFlags): { cloud: boolean, dev: boolean } {
-  if (opts.cloud === false) {
-    return { cloud: false, dev: false };
-  }
   return { cloud: true, dev: false };
 }
 
