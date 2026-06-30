@@ -8,6 +8,7 @@ import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
+import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 import { cliVersion } from "../lib/own-package.js";
 import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
@@ -19,13 +20,6 @@ type ChildCommand = {
 type DevOptions = {
   configFile?: string,
   autoUpdate?: boolean,
-};
-
-type SessionResponse = {
-  session_id: string,
-  env: Record<string, string>,
-  project_id: string,
-  onboarding_outstanding: boolean,
 };
 
 type ConfigSyncEventBase = {
@@ -50,8 +44,6 @@ type HeartbeatResponse = {
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
-const DEFAULT_DASHBOARD_PORT = 26700;
-const DASHBOARD_PORT_ENV_VAR = "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT";
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
@@ -86,7 +78,7 @@ type ProgressLogger = {
 };
 
 type DashboardSessionState = {
-  session: SessionResponse,
+  session: DashboardSessionResponse,
   dashboardReachableSinceMs: number,
 };
 
@@ -104,25 +96,6 @@ function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   }
   const command = commandArgs[0];
   return { command, args: commandArgs.slice(1) };
-}
-
-function dashboardPort(): number {
-  const rawPort = process.env[DASHBOARD_PORT_ENV_VAR];
-  if (rawPort == null || rawPort.length === 0) {
-    return DEFAULT_DASHBOARD_PORT;
-  }
-  if (!/^[0-9]+$/.test(rawPort)) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  const port = Number(rawPort);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  return port;
-}
-
-function dashboardUrl(port = dashboardPort()): string {
-  return `http://127.0.0.1:${port}`;
 }
 
 export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
@@ -172,7 +145,7 @@ function openUrlInBrowser(url: string): boolean {
   }
 }
 
-function maybeOpenOnboardingPage(session: SessionResponse, port: number): void {
+function maybeOpenOnboardingPage(session: DashboardSessionResponse, port: number): void {
   if (!session.onboarding_outstanding) {
     return;
   }
@@ -576,66 +549,8 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 }
 
-async function dashboardRequest(path: string, options: RequestInit, secret: string, port: number): Promise<Response> {
-  const url = `${dashboardUrl(port)}${path}`;
-  try {
-    return await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        ...options.headers,
-      },
-    });
-  } catch (error) {
-    throw new CliError(`Failed to reach local Hexclave dashboard at ${url}: ${errorMessage(error)}`);
-  }
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function responseErrorMessage(response: Response): Promise<string> {
-  const text = await response.text();
-  if (text.length === 0) return "empty response body";
-
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (isRecord(parsed)) {
-      const error = parsed.error;
-      if (typeof error === "string") return error;
-      if (isRecord(error) && typeof error.message === "string") return error.message;
-    }
-  } catch {
-    // Fall back to the raw response below.
-  }
-
-  return text;
-}
-
-function isSessionResponse(value: unknown): value is SessionResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "session_id" in value &&
-    typeof value.session_id === "string" &&
-    "project_id" in value &&
-    typeof value.project_id === "string" &&
-    "onboarding_outstanding" in value &&
-    typeof value.onboarding_outstanding === "boolean" &&
-    "env" in value &&
-    isStringRecord(value.env)
-  );
 }
 
 function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
@@ -736,32 +651,6 @@ async function logPendingBrowserSecretConfirmationCodesUntilStopped(options: {
     lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
     await wait(1_000);
   }
-}
-
-async function createRemoteDevelopmentEnvironmentSession(options: {
-  apiBaseUrl: string,
-  configFilePath: string,
-  port: number,
-  secret: string,
-}): Promise<SessionResponse> {
-  const response = await dashboardRequest("/api/remote-development-environment/sessions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      api_base_url: options.apiBaseUrl,
-      config_path: options.configFilePath,
-    }),
-  }, options.secret, options.port);
-  if (!response.ok) {
-    throw new CliError(`Failed to register development environment session (${response.status}): ${await responseErrorMessage(response)}`);
-  }
-  const body: unknown = await response.json();
-  if (!isSessionResponse(body)) {
-    throw new CliError("Local dashboard returned an invalid development environment session response.");
-  }
-  return body;
 }
 
 const APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_PARENT_PID";
@@ -889,7 +778,7 @@ async function restartDashboardForHeartbeat(options: {
   dashboardReachableSinceMs: number,
   port: number,
   secret: string,
-}): Promise<SessionResponse> {
+}): Promise<DashboardSessionResponse> {
   const dashboardUptimeMs = performance.now() - options.dashboardReachableSinceMs;
   if (dashboardUptimeMs < DASHBOARD_RESTART_MIN_UPTIME_MS) {
     throw new CliError(`Local Hexclave dashboard stopped before it had been running for ${DASHBOARD_RESTART_MIN_UPTIME_MS / 1000} seconds. Not restarting to avoid a restart loop.`);
