@@ -89,7 +89,7 @@ export function isProjectOnboardingState(value: unknown): value is ProjectOnboar
 
 export function normalizeProjectOnboardingState(
   value: ProjectOnboardingState,
-  options?: { developmentEnvironment: boolean, isLocalEmulator?: boolean },
+  options?: { developmentEnvironment: boolean },
 ): ProjectOnboardingState {
   const selectedApps = ALL_APP_IDS.filter((appId) => (
     value.selected_apps.some((selectedAppId) => selectedAppId === appId)
@@ -99,17 +99,10 @@ export function normalizeProjectOnboardingState(
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
   const developmentEnvironment = options?.developmentEnvironment === true;
-  const isLocalEmulator = options?.isLocalEmulator === true;
-  // Only strip OAuth sign-in methods for the local emulator, which lacks real OAuth
-  // infrastructure. The RDE connects to the production backend where shared OAuth
-  // providers work normally.
-  const normalizedSignInMethods = isLocalEmulator
-    ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
-    : selectedSignInMethods;
   return {
     selected_config_choice: developmentEnvironment ? "create-new" : value.selected_config_choice,
     selected_apps: selectedApps,
-    selected_sign_in_methods: normalizedSignInMethods,
+    selected_sign_in_methods: selectedSignInMethods,
     selected_email_theme_id: value.selected_email_theme_id,
     selected_payments_country: value.selected_payments_country,
   };
@@ -122,7 +115,6 @@ export function createProjectOnboardingState(options: {
   selectedEmailThemeId: string | null,
   selectedPaymentsCountry: OnboardingPaymentsCountry,
   developmentEnvironment: boolean,
-  isLocalEmulator?: boolean,
 }): ProjectOnboardingState {
   return normalizeProjectOnboardingState({
     selected_config_choice: options.selectedConfigChoice,
@@ -132,7 +124,7 @@ export function createProjectOnboardingState(options: {
       .filter((methodId) => options.selectedSignInMethods.has(methodId)),
     selected_email_theme_id: options.selectedEmailThemeId,
     selected_payments_country: options.selectedPaymentsCountry,
-  }, { developmentEnvironment: options.developmentEnvironment, isLocalEmulator: options.isLocalEmulator });
+  }, { developmentEnvironment: options.developmentEnvironment });
 }
 
 export function isStackAppInternals(value: unknown): value is HexclaveAppInternals {
