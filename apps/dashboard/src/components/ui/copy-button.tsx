@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { CopyIcon, SparkleIcon } from "@phosphor-icons/react";
+import { CheckIcon, CopyIcon, SparkleIcon } from "@phosphor-icons/react";
 import { forwardRefIfNeeded } from "@hexclave/shared/dist/utils/react";
 import React from "react";
 import { Button, type ButtonProps } from "./button";
@@ -9,9 +9,27 @@ import { useToast } from "./use-toast";
 
 const CopyButton = forwardRefIfNeeded<
   HTMLButtonElement,
-  ButtonProps & { content: string }
->((props, ref) => {
+  ButtonProps & { content: string, initialCopied?: boolean }
+>(({ content, initialCopied, ...props }, ref) => {
   const { toast } = useToast();
+  const [copied, setCopied] = React.useState(false);
+  const resetTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showCopied = React.useCallback(() => {
+    setCopied(true);
+    if (resetTimeout.current != null) clearTimeout(resetTimeout.current);
+    resetTimeout.current = setTimeout(() => setCopied(false), 2000);
+  }, []);
+
+  React.useEffect(() => () => {
+    if (resetTimeout.current != null) clearTimeout(resetTimeout.current);
+  }, []);
+
+  // Reflect a copy that already happened elsewhere (e.g. the snippet was
+  // auto-copied to the clipboard when this field was rendered).
+  React.useEffect(() => {
+    if (initialCopied) showCopied();
+  }, [initialCopied, showCopied]);
 
   return (
     <Button
@@ -22,14 +40,14 @@ const CopyButton = forwardRefIfNeeded<
       onClick={async (...args) => {
         await props.onClick?.(...args);
         try {
-          await navigator.clipboard.writeText(props.content);
-          toast({ description: 'Copied to clipboard!', variant: 'success' });
+          await navigator.clipboard.writeText(content);
+          showCopied();
         } catch (e) {
           toast({ description: 'Failed to copy to clipboard', variant: 'destructive' });
         }
       }}
     >
-      <CopyIcon />
+      {copied ? <CheckIcon className="text-green-500 dark:text-green-400" weight="bold" /> : <CopyIcon />}
     </Button>
   );
 });
@@ -63,4 +81,3 @@ const CopyPromptButton = forwardRefIfNeeded<
 CopyPromptButton.displayName = "CopyPromptButton";
 
 export { CopyButton, CopyPromptButton };
-

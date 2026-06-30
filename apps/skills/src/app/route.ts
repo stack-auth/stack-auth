@@ -20,11 +20,11 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-const INSTALL_CMD = "npx @hexclave/cli@latest init";
+const SETUP_PROMPT_URL = "https://docs.hexclave.com/guides/getting-started/setup";
 
 function renderHtml(): string {
   const skillEscaped = escapeHtml(SKILL_MD);
-  const installEscaped = escapeHtml(INSTALL_CMD);
+  const setupPromptUrlEscaped = escapeHtml(SETUP_PROMPT_URL);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -166,11 +166,11 @@ function renderHtml(): string {
   <h1>The Hexclave Agent Skill</h1>
   <p class="lede">This endpoint serves the canonical <span translate="no">SKILL.md</span> that teaches coding agents how to wire Hexclave into a project — auth, orgs, payments, emails, analytics, and the <span translate="no">hexclave-cli</span>.</p>
 
-  <h2>Install in One Command</h2>
-  <p>Run this in any project root. It detects your agent, installs the skill, registers the MCP server, and writes credentials.</p>
-  <div class="install" role="group" aria-label="Install command">
-    <code id="install-cmd" translate="no">${installEscaped}</code>
-    <button class="copy-btn" type="button" aria-label="Copy install command" data-copy="${installEscaped}">Copy</button>
+  <h2>Set Up with the Prompt</h2>
+  <p>Copy the canonical setup prompt into your coding agent. It contains the current Hexclave setup instructions and links back to this skill for follow-up questions.</p>
+  <div class="install" role="group" aria-label="Setup prompt URL">
+    <code id="install-cmd" translate="no">${setupPromptUrlEscaped}</code>
+    <button class="copy-btn" type="button" aria-label="Copy setup prompt URL" data-copy="${setupPromptUrlEscaped}">Copy</button>
   </div>
 
   <h2>Fetch the Skill Directly</h2>

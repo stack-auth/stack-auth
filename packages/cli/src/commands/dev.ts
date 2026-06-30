@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
@@ -8,8 +8,9 @@ import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError } from "../lib/errors.js";
+import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 import { cliVersion } from "../lib/own-package.js";
-import { maybeReexecToLatest } from "../lib/self-update.js";
+import { maybeReexecToLatest, REEXEC_MARKER_ENV } from "../lib/self-update.js";
 
 type ChildCommand = {
   command: string,
@@ -21,30 +22,35 @@ type DevOptions = {
   autoUpdate?: boolean,
 };
 
-type SessionResponse = {
-  session_id: string,
-  env: Record<string, string>,
-  project_id: string,
-  onboarding_outstanding: boolean,
+type ConfigSyncEventBase = {
+  config_file_path: string,
+  created_at_millis: number,
 };
+
+type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "success",
+} | {
+  status: "error",
+  error_message: string,
+});
 
 type HeartbeatResponse = {
   ok: true,
   browser_secret_confirmation_code?: string,
   browser_secret_confirmation_code_expires_at_millis?: number,
+  config_sync_events?: ConfigSyncEvent[],
 };
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
-const DEFAULT_DASHBOARD_PORT = 26700;
-const DASHBOARD_PORT_ENV_VAR = "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT";
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
 const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
 const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
+const RDE_DASHBOARD_LOG_PATH_ENV_VAR = "HEXCLAVE_RDE_DASHBOARD_LOG_PATH";
 const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
 const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
@@ -72,7 +78,7 @@ type ProgressLogger = {
 };
 
 type DashboardSessionState = {
-  session: SessionResponse,
+  session: DashboardSessionResponse,
   dashboardReachableSinceMs: number,
 };
 
@@ -92,25 +98,6 @@ function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   return { command, args: commandArgs.slice(1) };
 }
 
-function dashboardPort(): number {
-  const rawPort = process.env[DASHBOARD_PORT_ENV_VAR];
-  if (rawPort == null || rawPort.length === 0) {
-    return DEFAULT_DASHBOARD_PORT;
-  }
-  if (!/^[0-9]+$/.test(rawPort)) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  const port = Number(rawPort);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  return port;
-}
-
-function dashboardUrl(port = dashboardPort()): string {
-  return `http://127.0.0.1:${port}`;
-}
-
 export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   const command = env[DEV_DASHBOARD_COMMAND_ENV_VAR]?.trim();
   return command == null || command.length === 0 ? undefined : command;
@@ -126,6 +113,19 @@ function normalizeApiBaseUrl(apiBaseUrl: string): string {
 
 function logDev(message: string): void {
   console.warn(`${LOG_PREFIX}${message}`);
+}
+
+function stderrSupportsAnsiColor(): boolean {
+  return process.stderr.isTTY && process.env.NO_COLOR == null && process.env.TERM !== "dumb";
+}
+
+export function configErrorLogPrefix(supportsColor = stderrSupportsAnsiColor()): string {
+  const label = supportsColor ? "\x1b[41;37;1m[CONFIG ERROR]\x1b[0m" : "[CONFIG ERROR]";
+  return `${LOG_PREFIX}${label} `;
+}
+
+function logDevConfigError(message: string): void {
+  console.warn(`${configErrorLogPrefix()}${message}`);
 }
 
 function openUrlInBrowser(url: string): boolean {
@@ -145,7 +145,7 @@ function openUrlInBrowser(url: string): boolean {
   }
 }
 
-function maybeOpenOnboardingPage(session: SessionResponse, port: number): void {
+function maybeOpenOnboardingPage(session: DashboardSessionResponse, port: number): void {
   if (!session.onboarding_outstanding) {
     return;
   }
@@ -248,6 +248,10 @@ function replaceDashboardRuntimeSentinels(root: string, env: NodeJS.ProcessEnv):
     }
     writeFileSync(path, replaceSentinels(buffer.toString("utf-8"), env));
   }
+}
+
+function dashboardRuntimeLockPath(port: number): string {
+  return `${dashboardRuntimeRoot(port)}.lock`;
 }
 
 function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
@@ -472,6 +476,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
     NEXT_PUBLIC_STACK_IS_PREVIEW: "false",
     [DASHBOARD_PORT_ENV_VAR]: String(options.port),
+    [RDE_DASHBOARD_LOG_PATH_ENV_VAR]: dashboardLogPath(options.port),
   };
   try {
     const logPath = dashboardLogPath(options.port);
@@ -479,19 +484,54 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     const logFd = openSync(logPath, "a", 0o600);
     chmodSync(logPath, 0o600);
     writeSync(logFd, `\n[${new Date().toISOString()}] Starting Hexclave development-environment dashboard on ${url}\n`);
-    const child = (() => {
-      try {
-        return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
-      } finally {
-        closeSync(logFd);
+    // Acquire a filesystem lock so parallel `hexclave dev` invocations don't
+    // race on the runtime directory. openSync with 'wx' is an atomic
+    // exclusive-create; EEXIST means another process holds the lock.
+    let lockAcquired = false;
+    const lockPath = dashboardRuntimeLockPath(options.port);
+    // Remove stale lock left behind if a previous process was killed mid-prepare
+    // (normal hold time is <1 s, so 5 s is certainly stale).
+    try {
+      const lockStat = statSync(lockPath);
+      if (Date.now() - lockStat.mtimeMs > 5000) {
+        unlinkSync(lockPath);
       }
-    })();
-    if (child.pid == null) {
-      throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+    } catch {
+      // lock doesn't exist or was already removed — fine
     }
-    recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
-    logDev(`Dashboard logs: ${logPath}`);
-    child.unref();
+    try {
+      closeSync(openSync(lockPath, "wx"));
+      lockAcquired = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+
+    if (!lockAcquired) {
+      closeSync(logFd);
+      logDev("Another process is starting the dashboard; waiting for it...");
+    } else {
+      try {
+        const child = (() => {
+          try {
+            return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
+          } finally {
+            closeSync(logFd);
+          }
+        })();
+        if (child.pid == null) {
+          throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
+        }
+        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+        logDev(`Dashboard logs: ${logPath}`);
+        child.unref();
+      } finally {
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          // best-effort cleanup
+        }
+      }
+    }
 
     const startedAt = performance.now();
     while (performance.now() - startedAt < DASHBOARD_START_TIMEOUT_MS) {
@@ -509,69 +549,32 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 }
 
-async function dashboardRequest(path: string, options: RequestInit, secret: string, port: number): Promise<Response> {
-  const url = `${dashboardUrl(port)}${path}`;
-  try {
-    return await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        ...options.headers,
-      },
-    });
-  } catch (error) {
-    throw new CliError(`Failed to reach local Hexclave dashboard at ${url}: ${errorMessage(error)}`);
-  }
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function responseErrorMessage(response: Response): Promise<string> {
-  const text = await response.text();
-  if (text.length === 0) return "empty response body";
-
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (isRecord(parsed)) {
-      const error = parsed.error;
-      if (typeof error === "string") return error;
-      if (isRecord(error) && typeof error.message === "string") return error.message;
-    }
-  } catch {
-    // Fall back to the raw response below.
+function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
+  if (
+    !isRecord(value) ||
+    !("config_file_path" in value) ||
+    typeof value.config_file_path !== "string" ||
+    !("status" in value) ||
+    !("created_at_millis" in value) ||
+    typeof value.created_at_millis !== "number"
+  ) {
+    return false;
   }
-
-  return text;
-}
-
-function isSessionResponse(value: unknown): value is SessionResponse {
+  if (value.status === "success") {
+    return true;
+  }
   return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "session_id" in value &&
-    typeof value.session_id === "string" &&
-    "project_id" in value &&
-    typeof value.project_id === "string" &&
-    "onboarding_outstanding" in value &&
-    typeof value.onboarding_outstanding === "boolean" &&
-    "env" in value &&
-    isStringRecord(value.env)
+    value.status === "error" &&
+    "error_message" in value &&
+    typeof value.error_message === "string"
   );
 }
 
-function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
+export function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -585,6 +588,10 @@ function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
     (
       !("browser_secret_confirmation_code_expires_at_millis" in value) ||
       typeof value.browser_secret_confirmation_code_expires_at_millis === "number"
+    ) &&
+    (
+      !("config_sync_events" in value) ||
+      (Array.isArray(value.config_sync_events) && value.config_sync_events.every(isConfigSyncEvent))
     )
   );
 }
@@ -598,6 +605,16 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
   logDev(expiresInSeconds == null
     ? `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code}`
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
+}
+
+function logConfigSyncEvents(response: HeartbeatResponse): void {
+  for (const event of response.config_sync_events ?? []) {
+    if (event.status === "success") {
+      logDev(`Config synced to development environment project: ${event.config_file_path}`);
+    } else {
+      logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
+    }
+  }
 }
 
 function pendingBrowserSecretConfirmationCodeFromState(port: number): HeartbeatResponse | null {
@@ -634,32 +651,6 @@ async function logPendingBrowserSecretConfirmationCodesUntilStopped(options: {
     lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
     await wait(1_000);
   }
-}
-
-async function createRemoteDevelopmentEnvironmentSession(options: {
-  apiBaseUrl: string,
-  configFilePath: string,
-  port: number,
-  secret: string,
-}): Promise<SessionResponse> {
-  const response = await dashboardRequest("/api/remote-development-environment/sessions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      api_base_url: options.apiBaseUrl,
-      config_path: options.configFilePath,
-    }),
-  }, options.secret, options.port);
-  if (!response.ok) {
-    throw new CliError(`Failed to register development environment session (${response.status}): ${await responseErrorMessage(response)}`);
-  }
-  const body: unknown = await response.json();
-  if (!isSessionResponse(body)) {
-    throw new CliError("Local dashboard returned an invalid development environment session response.");
-  }
-  return body;
 }
 
 const APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_PARENT_PID";
@@ -749,14 +740,18 @@ child.on("error", (error) => {
 `;
 
 function runChildProcess(command: ChildCommand, env: NodeJS.ProcessEnv): Promise<number> {
+  // Scrub the internal re-exec handshake marker so it never leaks into the user's
+  // command. Done here (not in the wrapper script) to cover both spawn paths.
+  const childEnv = { ...env };
+  delete childEnv[REEXEC_MARKER_ENV];
   return new Promise((resolvePromise, reject) => {
     const child = process.platform === "win32"
-      ? spawn(command.command, command.args, { stdio: "inherit", env })
+      ? spawn(command.command, command.args, { stdio: "inherit", env: childEnv })
       : spawn(process.execPath, ["-e", APP_COMMAND_WRAPPER_SCRIPT], {
         detached: true,
         stdio: "inherit",
         env: {
-          ...env,
+          ...childEnv,
           [APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR]: String(process.pid),
           [APP_COMMAND_WRAPPER_COMMAND_ENV_VAR]: command.command,
           [APP_COMMAND_WRAPPER_ARGS_ENV_VAR]: JSON.stringify(command.args),
@@ -783,7 +778,7 @@ async function restartDashboardForHeartbeat(options: {
   dashboardReachableSinceMs: number,
   port: number,
   secret: string,
-}): Promise<SessionResponse> {
+}): Promise<DashboardSessionResponse> {
   const dashboardUptimeMs = performance.now() - options.dashboardReachableSinceMs;
   if (dashboardUptimeMs < DASHBOARD_RESTART_MIN_UPTIME_MS) {
     throw new CliError(`Local Hexclave dashboard stopped before it had been running for ${DASHBOARD_RESTART_MIN_UPTIME_MS / 1000} seconds. Not restarting to avoid a restart loop.`);
@@ -885,6 +880,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       logBrowserSecretConfirmationCode(heartbeatBody);
       lastLoggedConfirmationCode = heartbeatBody.browser_secret_confirmation_code;
     }
+    logConfigSyncEvents(heartbeatBody);
   }
 }
 

@@ -27,7 +27,7 @@ import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,

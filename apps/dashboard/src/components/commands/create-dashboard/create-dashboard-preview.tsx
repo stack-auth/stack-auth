@@ -7,7 +7,7 @@ import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { createUnifiedAiTransport } from "@/components/assistant-ui/chat-stream";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import type { AppId } from "@/lib/apps-frontend";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
@@ -124,7 +124,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     systemPrompt: "create-dashboard",
     tools: ["update-dashboard"],
     quality: "smart",
-    speed: "slow",
+    speed: "fast",
     projectId: projectIdRef.current,
     transformMessages: async (userMessages) => {
       const contextMessages = await buildDashboardMessages(

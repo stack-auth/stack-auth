@@ -1907,7 +1907,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                     <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                       <div
-                        className="grid flex-1 grid-cols-[minmax(0,1fr)_260px] gap-px overflow-hidden bg-black/[0.06] dark:bg-border/40"
+                        className="grid flex-1 min-h-0 grid-cols-[minmax(0,1fr)_260px] gap-px overflow-hidden bg-black/[0.06] dark:bg-border/40"
                         style={{
                           gridTemplateColumns: showRightColumn ? "minmax(0, 1fr) 260px" : "minmax(0, 1fr) 0px",
                           gridTemplateRows: showRightColumn ? `repeat(${EXTRA_TABS_TO_SHOW}, auto) 1fr` : "1fr",

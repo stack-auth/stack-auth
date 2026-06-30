@@ -26,7 +26,7 @@ export function envPortFirstSet(names: [string, ...string[]], fallback: number):
 }
 
 export function emulatorHome(): string {
-  return process.env.STACK_EMULATOR_HOME ?? join(homedir(), ".hexclave", "emulator");
+  return process.env.HEXCLAVE_EMULATOR_HOME ?? process.env.STACK_EMULATOR_HOME ?? join(homedir(), ".hexclave", "emulator");
 }
 
 export function emulatorRunDir(): string {

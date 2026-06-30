@@ -19,8 +19,8 @@ jobs:
     if: ${{ (github.head_ref || github.ref_name) == 'dev' }}
     runs-on: ubicloud-standard-16
     env:
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
-      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

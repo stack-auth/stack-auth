@@ -1,7 +1,7 @@
-export const WORKFLOW_FILE_NAME = "stack-auth-config-sync.yml";
+export const WORKFLOW_FILE_NAME = "hexclave-config-sync.yml";
 export const WORKFLOW_FILE_PATH = `.github/workflows/${WORKFLOW_FILE_NAME}`;
-export const GITHUB_PROJECT_ID_SECRET_NAME = "STACK_AUTH_PROJECT_ID";
-export const GITHUB_SECRET_SERVER_KEY_SECRET_NAME = "STACK_AUTH_SECRET_SERVER_KEY";
+export const GITHUB_PROJECT_ID_SECRET_NAME = "HEXCLAVE_PROJECT_ID";
+export const GITHUB_SECRET_SERVER_KEY_SECRET_NAME = "HEXCLAVE_SECRET_SERVER_KEY";
 
 function encodeYamlScalar(value: string): string {
   return JSON.stringify(value);
@@ -41,7 +41,7 @@ on:
       - ${encodedWorkflowPath}
 
 jobs:
-  push-stack-config:
+  push-hexclave-config:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -54,11 +54,11 @@ jobs:
           node-version: "20"
       - name: Push Hexclave config
         env:
-          STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
-          STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
-          STACK_AUTH_CONFIG_PATH: ${encodedConfigPath}
-          STACK_AUTH_SOURCE_REPO: \${{ github.repository }}
-          STACK_AUTH_SOURCE_WORKFLOW_PATH: ${encodedWorkflowPath}
-        run: npx --yes @hexclave/cli@latest config push --config-file "$STACK_AUTH_CONFIG_PATH" --source github --source-repo "$STACK_AUTH_SOURCE_REPO" --source-path "$STACK_AUTH_CONFIG_PATH" --source-workflow-path "$STACK_AUTH_SOURCE_WORKFLOW_PATH"
+          HEXCLAVE_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
+          HEXCLAVE_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
+          HEXCLAVE_CONFIG_PATH: ${encodedConfigPath}
+          HEXCLAVE_SOURCE_REPO: \${{ github.repository }}
+          HEXCLAVE_SOURCE_WORKFLOW_PATH: ${encodedWorkflowPath}
+        run: npx --yes @hexclave/cli@latest config push --config-file "$HEXCLAVE_CONFIG_PATH" --source github --source-repo "$HEXCLAVE_SOURCE_REPO" --source-path "$HEXCLAVE_CONFIG_PATH" --source-workflow-path "$HEXCLAVE_SOURCE_WORKFLOW_PATH"
 `;
 }

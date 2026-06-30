@@ -1,6 +1,7 @@
 import * as yup from "yup";
 import { KnownErrors } from "./known-errors";
 import { isBase64 } from "./utils/bytes";
+import { isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import type { DayInterval, Interval } from "./utils/dates";
 import { getProcessEnv } from "./utils/env";
@@ -9,7 +10,6 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
@@ -605,6 +605,8 @@ export const oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { d
 export const oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: { description: 'Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).', exampleValue: ['com.example.ios', 'com.example.macos'] } });
 export const oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: { description: 'Apple Bundle ID for native iOS/macOS apps.', exampleValue: 'com.example.ios' } });
 export const oauthAccountMergeStrategySchema = yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).meta({ openapiField: { description: 'Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.', exampleValue: 'link_method' } });
+export const oauthIssuerUrlSchema = urlSchema.meta({ openapiField: { description: 'OIDC issuer URL for custom OIDC providers. Must support OIDC discovery (/.well-known/openid-configuration). Only used when type is "custom_oidc".', exampleValue: 'https://accounts.google.com' } });
+export const oauthScopeSchema = yupString().meta({ openapiField: { description: 'Space-separated OAuth scopes to request from the custom OIDC provider. Defaults to "openid email profile" if not specified.', exampleValue: 'openid email profile' } });
 // Project email config
 export const emailTypeSchema = yupString().oneOf(['shared', 'standard']).meta({ openapiField: { description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.', exampleValue: 'standard' } });
 export const emailSenderNameSchema = yupString().meta({ openapiField: { description: 'Email sender name. Needs to be specified when using type="standard"', exampleValue: 'Stack' } });
@@ -882,6 +884,15 @@ export const oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ ope
 export const oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: 'Account ID of the OAuth provider. This uniquely identifies the account on the provider side.', exampleValue: 'google-account-id-12345' } });
 export const oauthProviderProviderConfigIdSchema = yupString().meta({ openapiField: { description: 'Provider config ID of the OAuth provider. This uniquely identifies the provider config on config.json file', exampleValue: 'google' } });
 
+export const configAgentSafeErrorMessages = [
+  "The config agent failed to apply the change.",
+  "Sandbox session expired. Please retry the update.",
+  "Failed to commit and push the config changes.",
+  "The GitHub branch changed before the config commit could be pushed. Retry the update to apply the same changes on the latest branch.",
+] as const;
+export type ConfigAgentSafeErrorMessage = typeof configAgentSafeErrorMessages[number];
+export const configAgentSafeErrorMessageSchema = yupString().oneOf(configAgentSafeErrorMessages);
+
 // Headers
 export const basicAuthorizationHeaderSchema = yupString().test('is-basic-authorization-header', 'Authorization header must be in the format "Basic <base64>"', (value) => {
   if (!value) return true;
@@ -928,6 +939,9 @@ export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
   });
 }
 
+// `source` describes only WHERE a branch's config came from. The ephemeral state
+// of the dashboard→GitHub config agent lives separately in `configAgentRunSchema`
+// (its own DB column), so it doesn't pollute the source descriptor.
 export const branchConfigSourceSchema = yupUnion(
   yupObject({
     type: yupString().oneOf(["pushed-from-github"]).defined(),
@@ -945,3 +959,49 @@ export const branchConfigSourceSchema = yupUnion(
     type: yupString().oneOf(["unlinked"]).defined(),
   }),
 );
+
+/**
+ * State of a single dashboard→GitHub config agent run, so the dashboard can poll for
+ * progress and surface the resulting commit (or error). Each run is one row in the
+ * `ConfigAgentRun` table, addressed by `id`; runs are NOT serialized, so many can
+ * target the same branch at once and GitHub catches conflicts at push time.
+ */
+export const configAgentRunSchema = yupObject({
+  // The run's id (the `ConfigAgentRun` row id). The dashboard polls/cancels/commits this specific run by id.
+  id: yupString().uuid().defined(),
+  // "running": agent is working; "awaiting_review": agent done, diff ready, waiting for the user to commit;
+  // "success" | "no-change" | "error" | "cancelled": terminal.
+  status: yupString().oneOf(["running", "awaiting_review", "success", "no-change", "error", "cancelled"]).defined(),
+  started_at: yupNumber().defined(),
+  finished_at: yupNumber().optional(),
+  commit_url: urlSchema.optional(),
+  error: configAgentSafeErrorMessageSchema.optional(),
+  // Vercel Sandbox id of the in-flight run, recorded only while `status` is "running"
+  // so a cancel request (a different invocation) can hard-stop the sandbox. Cleared once
+  // the change set is captured ("awaiting_review") or the run goes terminal.
+  sandbox_id: yupString().optional(),
+  // A short, SANITIZED live activity feed (recent agent actions, e.g. "Editing
+  // hexclave.config.ts", "Running: git push"). Never file contents, tool inputs, or tokens.
+  progress: yupString().optional(),
+  // Current stage, for the dashboard progress bar. Absent once terminal.
+  stage: yupString().oneOf(["initializing_sandbox", "cloning_repo", "agent_making_changes", "awaiting_review"]).optional(),
+  // The git unified diff produced by the agent, set when status becomes "awaiting_review".
+  diff: yupString().optional(),
+});
+export type ConfigAgentRunApi = yup.InferType<typeof configAgentRunSchema>;
+
+import.meta.vitest?.test("configAgentRunSchema only allows safe config-agent error messages", async ({ expect }) => {
+  expect(await configAgentRunSchema.isValid({
+    id: "00000000-0000-0000-0000-000000000000",
+    status: "error",
+    started_at: 1,
+    error: "The config agent failed to apply the change.",
+  })).toMatchInlineSnapshot(`true`);
+
+  expect(await configAgentRunSchema.isValid({
+    id: "00000000-0000-0000-0000-000000000000",
+    status: "error",
+    started_at: 1,
+    error: "ENOENT: tokenized internal failure",
+  })).toMatchInlineSnapshot(`false`);
+});

@@ -19,21 +19,13 @@ Before proceeding, you MUST identify the project framework:
 
 **IMPORTANT**: Only proceed with the installation if you can clearly identify the project as either Next.js or React.
 
-### 1) Run the Stack Auth initializer
-- Use the `stack-auth` MCP server (`ask_stack_auth` tool), or run the command:
-  - **For Next.js projects**: 
-    ```bash
-    npx @stackframe/stack-cli@latest init
-    ```
-  - **For React projects**:
-    ```bash
-    npx @stackframe/stack-cli@latest init
-    ```
-- Accept defaults for Next.js (App Router) or React.
-- Add all generated files to the repo.
+### 1) Follow the setup prompt
+- Use the setup prompt from the docs as the source of truth.
+- Apply only the sections relevant to the detected framework.
+- Do not run the Stack Auth CLI initializer unless the user explicitly asks for that workflow.
 
 ### 2) Scaffold the auth setup
-Confirm these files exist (created by the initializer):
+Create or confirm the setup files from the relevant setup prompt section:
 - `src/stack.tsx`
 - `src/app/handler/[...stack]/page.tsx`
 - `src/app/loading.tsx`

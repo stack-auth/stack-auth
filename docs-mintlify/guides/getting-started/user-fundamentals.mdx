@@ -97,7 +97,7 @@ await user.update({ displayName: "New Name" });
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function MyClientComponent() {
   const user = useUser();
@@ -134,7 +134,7 @@ await user.update({
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function ThemeToggle() {
   const user = useUser({ or: "redirect" });
@@ -190,7 +190,7 @@ await user.update({
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function SubscriptionBadge() {
   const user = useUser({ or: "redirect" });
@@ -219,7 +219,7 @@ await user.signOut();
 
 ```tsx my-client-component.tsx
 'use client';
-import { useUser } from "@hexclave/next";
+import { useUser } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 export default function MyClientComponent() {
   const user = useUser();

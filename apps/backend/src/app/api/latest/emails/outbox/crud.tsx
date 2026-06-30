@@ -296,6 +296,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
   querySchema: yupObject({
     status: yupString().optional(),
     simple_status: yupString().optional(),
+    user_id: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "Filter for emails whose recipient is the given user ID." } }),
     limit: yupString().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: `The maximum number of items to return. Maximum allowed is ${MAX_LIMIT}` } }),
     cursor: yupString().uuid().optional().meta({ openapiField: { onlyShowInOperations: ['List'], description: "The cursor to start the result set from (email ID)" } }),
   }),
@@ -339,6 +340,12 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
     }
     if (query.simple_status) {
       where.simpleStatus = query.simple_status.toUpperCase().replace(/-/g, "_") as any;
+    }
+    if (query.user_id) {
+      where.to = {
+        path: ["userId"],
+        equals: query.user_id,
+      };
     }
 
     const emails = await globalPrismaClient.emailOutbox.findMany({

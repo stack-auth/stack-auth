@@ -7,7 +7,7 @@ import {
   type DesignEditableGridItem,
 } from "@/components/design-components";
 import { Switch } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { GearSix, KeyIcon, UsersIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";

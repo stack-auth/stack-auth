@@ -1,9 +1,29 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-
-const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/v1/integrations/ai-proxy";
-const ANTHROPIC_PROXY_BASE_URL: string = process.env.STACK_CLAUDE_PROXY_URL ?? DEFAULT_PROXY_URL;
+import { runHeadlessClaudeAgent } from "@hexclave/shared-backend/config-agent";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+type ToolUseBlock = {
+  type: "tool_use",
+  id: string,
+  name: string,
+  input: Record<string, unknown>,
+};
+
+type TopLevelAssistantMessage = {
+  type: "assistant",
+  parent_tool_use_id: null,
+  message: {
+    content: unknown[],
+  },
+};
+
+type SystemMessage = {
+  type: "system",
+  subtype?: string,
+  task_id?: unknown,
+  description?: unknown,
+  summary?: unknown,
+};
 
 class AgentProgressUI {
   private mainLabel: string;
@@ -34,7 +54,6 @@ class AgentProgressUI {
     this.completeAllActive();
     this.clearLines();
     const icon = success ? "\x1b[32m✔\x1b[0m" : "\x1b[31m✖\x1b[0m";
-    // Re-print header + all completed items as final output
     console.log(`${icon} ${this.mainLabel}`);
     for (const label of this.pendingCompleted) {
       console.log(`  \x1b[32m✔\x1b[0m ${label}`);
@@ -72,9 +91,7 @@ class AgentProgressUI {
     if (this.pendingCompleted.length === 0) {
       return;
     }
-    // Clear the spinner area, print completed items permanently, then re-render spinner below
     this.clearLines();
-    // Re-print the header line if this is the first flush
     if (this.flushedCount === 0) {
       const frame = SPINNER_FRAMES[this.spinnerFrame];
       process.stdout.write(`\x1b[36m${frame}\x1b[0m ${this.mainLabel}\n`);
@@ -84,7 +101,7 @@ class AgentProgressUI {
     }
     this.flushedCount += this.pendingCompleted.length;
     this.pendingCompleted = [];
-    this.lastLineCount = 0; // reset since we printed permanent lines
+    this.lastLineCount = 0;
   }
 
   private render() {
@@ -94,7 +111,6 @@ class AgentProgressUI {
     const frame = SPINNER_FRAMES[this.spinnerFrame];
     const lines: string[] = [];
 
-    // Only show header in spinner area if nothing has been flushed yet
     if (this.flushedCount === 0) {
       lines.push(`\x1b[36m${frame}\x1b[0m ${this.mainLabel}`);
     }
@@ -141,10 +157,36 @@ function truncate(str: string, maxLen: number): string {
   return str.length > maxLen ? str.slice(0, maxLen - 1) + "…" : str;
 }
 
-function stripClaudeCodeEnv(): Record<string, string> {
-  const env = { ...process.env };
-  delete env.CLAUDECODE;
-  return env as Record<string, string>;
+function isTopLevelAssistantMessage(message: unknown): message is TopLevelAssistantMessage {
+  return typeof message === "object"
+    && message !== null
+    && "type" in message
+    && message.type === "assistant"
+    && "parent_tool_use_id" in message
+    && message.parent_tool_use_id === null
+    && "message" in message
+    && typeof message.message === "object"
+    && message.message !== null
+    && "content" in message.message
+    && Array.isArray(message.message.content);
+}
+
+function isSystemMessage(message: unknown): message is SystemMessage {
+  return typeof message === "object" && message !== null && "type" in message && message.type === "system";
+}
+
+function isToolUseBlock(block: unknown): block is ToolUseBlock {
+  return typeof block === "object"
+    && block !== null
+    && "type" in block
+    && block.type === "tool_use"
+    && "id" in block
+    && "name" in block
+    && "input" in block
+    && typeof block.id === "string"
+    && typeof block.name === "string"
+    && typeof block.input === "object"
+    && block.input !== null;
 }
 
 export async function runClaudeAgent(options: {
@@ -156,48 +198,36 @@ export async function runClaudeAgent(options: {
   ui.start();
 
   try {
-    let resultText = "";
-
-    for await (const message of query({
+    const result = await runHeadlessClaudeAgent({
       prompt: options.prompt,
-      options: {
-        allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-        permissionMode: "dontAsk",
-        cwd: options.cwd,
-        // stripClaudeCodeEnv removes CLAUDECODE env var to prevent nested agent detection. Anthropic api key cannot be empty otherwise users without claude code installed get a login error
-        env: { ...stripClaudeCodeEnv(), ANTHROPIC_BASE_URL: ANTHROPIC_PROXY_BASE_URL, ANTHROPIC_API_KEY: "stack-auth-proxy" },
-        stderr: (data: string) => { process.stderr.write(data); },
-      },
-    })) {
-      if ("result" in message) {
-        resultText = message.result;
-      } else if (message.type === "assistant" && message.parent_tool_use_id === null) {
-        // New parent assistant turn — previous tools are done
-        ui.completeAllActive();
-        // Register new tool calls from this turn
-        for (const block of message.message.content) {
-          if (block.type === "tool_use") {
-            ui.setSpinner(block.id, getToolLabel(block.name, block.input as Record<string, unknown>));
+      cwd: options.cwd,
+      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+      stderr: (data: string) => { process.stderr.write(data); },
+      onMessage: (message) => {
+        if (isTopLevelAssistantMessage(message)) {
+          ui.completeAllActive();
+          for (const block of message.message.content) {
+            if (isToolUseBlock(block)) {
+              ui.setSpinner(block.id, getToolLabel(block.name, block.input));
+            }
+          }
+        } else if (isSystemMessage(message)) {
+          const taskId = typeof message.task_id === "string" ? message.task_id : undefined;
+
+          if (message.subtype === "task_started" && taskId) {
+            ui.setSpinner(taskId, String(message.description ?? "Working..."));
+          } else if (message.subtype === "task_progress" && taskId) {
+            ui.setSpinner(taskId, String(message.description ?? "Working..."));
+          } else if (message.subtype === "task_notification" && taskId) {
+            ui.complete(taskId, String(message.summary ?? message.description ?? "Done"));
           }
         }
-      } else if (message.type === "system") {
-        // Subagent task lifecycle
-        const msg = message as Record<string, unknown>;
-        const taskId = msg.task_id as string | undefined;
-
-        if (msg.subtype === "task_started" && taskId) {
-          ui.setSpinner(taskId, String(msg.description ?? "Working..."));
-        } else if (msg.subtype === "task_progress" && taskId) {
-          ui.setSpinner(taskId, String(msg.description ?? "Working..."));
-        } else if (msg.subtype === "task_notification" && taskId) {
-          ui.complete(taskId, String(msg.summary ?? msg.description ?? "Done"));
-        }
-      }
-    }
+      },
+    });
 
     ui.stop(true);
-    if (resultText) {
-      console.log(`\n${resultText}`);
+    if (result.resultText) {
+      console.log(`\n${result.resultText}`);
     }
     return true;
   } catch (error) {

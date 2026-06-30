@@ -6,10 +6,8 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { filterUndefined, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
+import { filterUndefined, typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
-import { splitOAuthProvider } from "@hexclave/shared/dist/config/oauth-providers";
-import { allProviders } from "@hexclave/shared/dist/utils/oauth";
 import { RawQuery, getPrismaClientForTenancy, globalPrismaClient, rawQuery, retryTransaction } from "../prisma-client";
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, overrideProjectConfigOverride, resetEnvironmentConfigOverrideKeys } from "./config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
@@ -78,6 +76,8 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         owner_team_id: row.ownerTeamId,
         onboarding_status: row.onboardingStatus,
         onboarding_state: onboardingState ?? undefined,
+        pushed_config_error: null,
+        config_warnings: [],
       };
     },
   };
@@ -208,13 +208,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
     return [project.id, branchId];
   });
 
-  // Update project config override
-  await overrideProjectConfigOverride({
-    projectId: projectId,
-    projectConfigOverrideOverride: {
-      sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
-    },
-  });
+  // Metadata-only onboarding updates should stay cheap and avoid touching config
+  // source state; creation still needs the default project config override.
+  if (options.type === "create" || options.sourceOfTruth !== undefined) {
+    await overrideProjectConfigOverride({
+      projectId: projectId,
+      projectConfigOverrideOverride: {
+        sourceOfTruth: options.sourceOfTruth || (JSON.parse(getEnvVariable("STACK_OVERRIDE_SOURCE_OF_TRUTH", "null")) ?? undefined),
+      },
+    });
+  }
 
   // Update environment config override
   const translateDefaultPermissions = (permissions: { id: string }[] | undefined) => {
@@ -222,41 +225,62 @@ export async function createOrUpdateProjectWithLegacyConfig(
   };
   const dataOptions = options.data.config || {};
 
-  // OAuth providers are split across two config layers: the BRANCH layer owns the
-  // provider roster + enabled state, the ENVIRONMENT layer owns credentials (written
-  // as leaf keys so they don't override the branch roster at render). See
-  // `splitOAuthProvider` for the canonical partition.
+  // OAuth providers span two config layers: the BRANCH layer owns the provider roster
+  // + enable fields, the ENVIRONMENT layer owns credentials. We write each as an
+  // ordinary `auth.oauth.providers.<id>` object; `migrateConfigOverride("environment")`
+  // flattens the environment objects into credential leaf keys and drops branch fields,
+  // so the environment write can't clobber the branch roster at render.
   //
   // This legacy API treats `oauth_providers` as the FULL desired set (a roster
-  // replacement, not a patch), so when it's provided we (1) replace the whole branch
-  // roster and (2) wipe the env provider credentials before re-writing them. Writing
-  // the roster as individual `auth.oauth.providers.<id>` keys would be additive and
-  // leave removed providers behind.
+  // replacement, not a patch): we replace the whole branch roster and wipe + rewrite
+  // the env credentials.
+  //
+  // Custom OIDC providers aren't representable in the legacy `oauth_providers` array,
+  // so a naive roster replacement would silently delete them — the branch replacement
+  // drops their enable fields and the env reset clears their credentials. On update we
+  // read the existing custom_oidc providers and merge them back into BOTH layers.
   const oauthProvidersSpecified = dataOptions.oauth_providers !== undefined;
-  const oauthProviderSplits = (dataOptions.oauth_providers ?? []).map((provider) => splitOAuthProvider({
-    id: provider.id as (typeof allProviders)[number],
-    shared: provider.type === "shared",
-    allowSignIn: true,
-    allowConnectedAccounts: true,
-    // Injecting the hexclave-branded callback for new providers is the dashboard's
-    // job; this legacy path leaves customCallbackUrl unset so providers fall back to
-    // the stack-auth callback.
-    credentials: provider.type === "shared" ? undefined : {
-      clientId: provider.client_id,
-      clientSecret: provider.client_secret,
-      facebookConfigId: provider.facebook_config_id,
-      microsoftTenantId: provider.microsoft_tenant_id,
-      appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
-    },
-  }));
+  const oauthBranchProviders: Record<string, { type: string, allowSignIn: boolean, allowConnectedAccounts: boolean }> = {};
+  const oauthEnvProviders: EnvironmentConfigOverrideOverride = {};
+
+  if (oauthProvidersSpecified && options.type === "update") {
+    // Preserve existing custom_oidc providers (not representable in the legacy array).
+    const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId);
+    for (const [id, provider] of typedEntries(tenancy.config.auth.oauth.providers)) {
+      if (provider.type !== "custom_oidc") {
+        continue;
+      }
+      oauthBranchProviders[id] = { type: "custom_oidc", allowSignIn: provider.allowSignIn, allowConnectedAccounts: provider.allowConnectedAccounts };
+      oauthEnvProviders[`auth.oauth.providers.${id}`] = filterUndefined({
+        isShared: false,
+        clientId: provider.clientId,
+        clientSecret: provider.clientSecret,
+        customCallbackUrl: provider.customCallbackUrl,
+        issuerUrl: provider.issuerUrl,
+        scope: provider.scope,
+        displayName: provider.displayName,
+      });
+    }
+  }
+
+  for (const provider of dataOptions.oauth_providers ?? []) {
+    oauthBranchProviders[provider.id] = { type: provider.id, allowSignIn: true, allowConnectedAccounts: true };
+    if (provider.type !== "shared") {
+      oauthEnvProviders[`auth.oauth.providers.${provider.id}`] = filterUndefined({
+        isShared: false,
+        clientId: provider.client_id,
+        clientSecret: provider.client_secret,
+        // Injecting the hexclave-branded callback for new providers is the dashboard's
+        // job; this legacy path leaves customCallbackUrl unset so providers fall back to
+        // the stack-auth callback.
+        facebookConfigId: provider.facebook_config_id,
+        microsoftTenantId: provider.microsoft_tenant_id,
+        appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
+      });
+    }
+  }
   // The entire branch roster, as a single key, so `override` clobbers the old roster.
-  const oauthBranchProvidersWholeObject = oauthProvidersSpecified
-    ? typedFromEntries((dataOptions.oauth_providers ?? []).map((provider, i) => [
-      provider.id,
-      oauthProviderSplits[i].branchEnable,
-    ] as const))
-    : undefined;
-  const oauthEnvCredentialLeafKeys = Object.assign({}, ...oauthProviderSplits.map((split) => split.envCredentialLeafKeys));
+  const oauthBranchProvidersWholeObject = oauthProvidersSpecified ? oauthBranchProviders : undefined;
 
   const configOverrideOverride: EnvironmentConfigOverrideOverride = filterUndefined({
     // ======================= auth =======================
@@ -265,9 +289,10 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
     'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
     'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
-    // Provider credentials live in the environment layer as leaf keys (shared
-    // providers contribute nothing here — they are branch-only).
-    ...oauthEnvCredentialLeafKeys,
+    // Provider credentials live in the environment layer (shared providers contribute
+    // nothing here — they are branch-only). Written as whole `auth.oauth.providers.<id>`
+    // objects; the environment config normalizer flattens them to leaf keys.
+    ...oauthEnvProviders,
     // ======================= users =======================
     'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
     // ======================= teams =======================

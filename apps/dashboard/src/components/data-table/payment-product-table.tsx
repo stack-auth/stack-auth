@@ -2,7 +2,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { ActionCell, ActionDialog, toast } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { branchPaymentsSchema } from "@hexclave/shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import {

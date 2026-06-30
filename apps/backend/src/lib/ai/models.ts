@@ -1,7 +1,8 @@
 import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { PRODUCTION_AI_PROXY_BASE_URL } from "./proxy-url";
 
 export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
 export const MODEL_SPEEDS = ["slow", "fast"] as const;
@@ -18,32 +19,32 @@ const MODEL_SELECTION_MATRIX: Record<
 > = {
   dumb: {
     slow: {
-      authenticated: { modelId: "z-ai/glm-4.5-air:free" },
-      unauthenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      authenticated: { modelId: "z-ai/glm-4.5-air" },
+      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-oss-120b:nitro" },
-      unauthenticated: { modelId: "openai/gpt-oss-120b:nitro" },
+      unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b:nitro" },
     },
   },
   smart: {
     slow: {
-      authenticated: { modelId: "x-ai/grok-build-0.1" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "z-ai/glm-5.2" },
     },
     fast: {
-      authenticated: { modelId: "x-ai/grok-build-0.1" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
+      authenticated: { modelId: "openai/gpt-5.5" },
+      unauthenticated: { modelId: "google/gemini-3.5-flash" },
     },
   },
   smartest: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.2" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "deepseek/deepseek-v4-flash:nitro" },
+      unauthenticated: { modelId: "google/gemini-3.5-flash" },
     },
   },
 };
@@ -51,6 +52,7 @@ const MODEL_SELECTION_MATRIX: Record<
 // All unique model IDs referenced in the selection matrix, plus sonnet as the proxy default
 export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
   "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-haiku-4.5",
   ...Object.values(MODEL_SELECTION_MATRIX).flatMap(quality =>
     Object.values(quality).flatMap(speed =>
       Object.values(speed).map(config => config.modelId)
@@ -61,7 +63,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 export function createOpenRouterProvider() {
   const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.hexclave.com/api/latest/integrations/ai-proxy/v1";
+    : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,

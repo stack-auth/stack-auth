@@ -1,5 +1,4 @@
-import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
-import { KnownErrors, HexclaveServerInterface } from "@hexclave/shared";
+import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -19,6 +18,7 @@ import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
@@ -60,14 +60,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     includeAnonymous?: boolean,
     onlyAnonymous?: boolean,
     teamId?: string,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous, teamId]) => {
+    excludedEmailDomains?: string,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous, teamId, excludedEmailDomains]) => {
     if (onlyAnonymous && !includeAnonymous) {
       throw new HexclaveAssertionError("onlyAnonymous=true requires includeAnonymous=true");
     }
+    const excludedEmailDomainList = excludedEmailDomains?.split(",");
     if (onlyAnonymous) {
-      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true, teamId });
+      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, excludedEmailDomains: excludedEmailDomainList, includeRestricted, includeAnonymous: true, onlyAnonymous: true, teamId });
     }
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, teamId });
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, excludedEmailDomains: excludedEmailDomainList, includeRestricted, includeAnonymous, teamId });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
@@ -362,7 +364,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       isPrimary: crud.is_primary,
       usedForAuth: crud.used_for_auth,
       async sendVerificationEmail(options?: { callbackUrl?: string }) {
-        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app.urls.emailVerification, "callbackUrl"));
+        await app._interface.sendServerContactChannelVerificationEmail(userId, crud.id, options?.callbackUrl ?? constructRedirectUrl(app._getUrls().emailVerification, "callbackUrl"));
       },
       async update(data: ServerContactChannelUpdateOptions) {
         await app._interface.updateServerContactChannel(userId, crud.id, serverContactChannelUpdateOptionsToCrud(data));
@@ -1074,7 +1076,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         await app._interface.sendServerTeamInvitation({
           teamId: crud.id,
           email: options.email,
-          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app.urls.teamInvitation, "callbackUrl"),
+          callbackUrl: options.callbackUrl ?? constructRedirectUrl(app._getUrls().teamInvitation, "callbackUrl"),
         });
         await app._serverTeamInvitationsCache.refresh([crud.id]);
       },
@@ -1393,7 +1395,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId], "write-only"));
+    const excludedEmailDomains = options?.excludedEmailDomains && options.excludedEmailDomains.length > 0 ? options.excludedEmailDomains.join(",") : undefined;
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId, excludedEmailDomains], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1401,7 +1404,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId] as const, "serverApp.useUsers()");
+    const excludedEmailDomains = options?.excludedEmailDomains && options.excludedEmailDomains.length > 0 ? options.excludedEmailDomains.join(",") : undefined;
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous, options?.teamId, excludedEmailDomains] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1480,23 +1484,24 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return useMemo(() => this._serverItemFromCrud({ type, id }, result), [result]);
   }
   // END_PLATFORM
+  private _resolveCustomer(
+    options: { userId: string } | { teamId: string } | { customCustomerId: string }
+  ): { customerType: "user" | "team" | "custom", customerId: string } {
+    if ("userId" in options) {
+      return { customerType: "user", customerId: options.userId };
+    }
+    if ("teamId" in options) {
+      return { customerType: "team", customerId: options.teamId };
+    }
+    return { customerType: "custom", customerId: options.customCustomerId };
+  }
+
   async grantProduct(options: (
     ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
     ({ productId: string } | { product: InlineProduct }) &
     { quantity?: number }
   )): Promise<void> {
-    let customerType: "user" | "team" | "custom";
-    let customerId: string;
-    if ("userId" in options) {
-      customerType = "user";
-      customerId = options.userId;
-    } else if ("teamId" in options) {
-      customerType = "team";
-      customerId = options.teamId;
-    } else {
-      customerType = "custom";
-      customerId = options.customCustomerId;
-    }
+    const { customerType, customerId } = this._resolveCustomer(options);
 
     await this._interface.grantProduct({
       customerType,
@@ -1512,6 +1517,17 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         ? this._serverTeamProductsCache
         : this._serverCustomProductsCache;
     await cache.refresh([customerId, null, null]);
+  }
+
+  async createCheckoutUrl(options: (
+    ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+    ({ productId: string } | { product: InlineProduct }) &
+    { returnUrl?: string }
+  )): Promise<string> {
+    const { customerType, customerId } = this._resolveCustomer(options);
+
+    const productIdOrInline = "productId" in options ? options.productId : options.product;
+    return await this._interface.createCheckoutUrl(customerType, customerId, productIdOrInline, null, options.returnUrl, "server");
   }
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {

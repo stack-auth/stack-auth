@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { typeAssertExtends } from "./utils/types";
 import { defineStackConfig, type StackConfig } from "./config-authoring";
+import { typeAssertExtends } from "./utils/types";
 
 const validConfig = defineStackConfig({
   payments: {

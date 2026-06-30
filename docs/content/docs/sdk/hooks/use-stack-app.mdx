@@ -11,6 +11,6 @@ import { useStackApp } from "@stackframe/stack";
 
 function MyComponent() {
   const stackApp = useStackApp();
-  return <div>Sign In URL: {stackApp.urls.signIn}</div>;
+  return <button onClick={async () => await stackApp.redirectToSignIn()}>Sign in</button>;
 }
 ```

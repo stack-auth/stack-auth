@@ -240,26 +240,39 @@ export function Mapping({
       return <Twitch iconSize={iconSize}/>;
     }
     default: {
-      throw new HexclaveAssertionError(`Icon not found for provider: ${provider}`);
+      return <DefaultOidcIcon iconSize={iconSize} />;
     }
   }
 }
 
-export function toTitle(id: string) {
-  return {
-    github: "GitHub",
-    google: "Google",
-    facebook: "Facebook",
-    microsoft: "Microsoft",
-    spotify: "Spotify",
-    discord: "Discord",
-    gitlab: "GitLab",
-    apple: "Apple",
-    bitbucket: "Bitbucket",
-    linkedin: "LinkedIn",
-    x: "X",
-    twitch: "Twitch"
-  }[id] || throwErr(`Unknown provider: ${id}`);
+function DefaultOidcIcon({ iconSize }: { iconSize: number }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4l2 2" />
+      <path d="M8 12h0" />
+      <path d="M16 12h0" />
+    </svg>
+  );
+}
+
+const KNOWN_TITLES = new Map<string, string>([
+  ["github", "GitHub"],
+  ["google", "Google"],
+  ["facebook", "Facebook"],
+  ["microsoft", "Microsoft"],
+  ["spotify", "Spotify"],
+  ["discord", "Discord"],
+  ["gitlab", "GitLab"],
+  ["apple", "Apple"],
+  ["bitbucket", "Bitbucket"],
+  ["linkedin", "LinkedIn"],
+  ["x", "X"],
+  ["twitch", "Twitch"],
+]);
+
+export function toTitle(id: string): string {
+  return KNOWN_TITLES.get(id) ?? id;
 }
 
 export const BRAND_COLORS: Record<string, string> = {

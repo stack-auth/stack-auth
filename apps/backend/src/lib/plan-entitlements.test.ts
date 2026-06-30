@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   arePlanLimitsEnforced,
   getBillingTeamId,
+  getNonAnonymousUserCountForTenancies,
+  getOwnedProjectAndTenancyIdsForBillingTeam,
   getOwnedProjectIdsForBillingTeam,
   getOwnedTenancyIdsForBillingTeam,
   getTeamWideItemCapacityForTests,
@@ -96,6 +98,28 @@ describe("team-wide ownership aggregation", () => {
   it("lists all tenancies for projects owned by billing team", async () => {
     const tenancyIds = await getOwnedTenancyIdsForBillingTeam("team-1", globalPrisma);
     expect(tenancyIds).toEqual(["tenancy-a-main", "tenancy-a-dev", "tenancy-b-main"]);
+  });
+
+  it("lists owned project and tenancy ids from one ownership scope", async () => {
+    const scope = await getOwnedProjectAndTenancyIdsForBillingTeam("team-1", globalPrisma);
+    expect(scope).toMatchInlineSnapshot(`
+      {
+        "projectIds": [
+          "project-a",
+          "project-b",
+        ],
+        "tenancyIds": [
+          "tenancy-a-main",
+          "tenancy-a-dev",
+          "tenancy-b-main",
+        ],
+      }
+    `);
+  });
+
+  it("counts non-anonymous users from already-resolved tenancies", async () => {
+    const usage = await getNonAnonymousUserCountForTenancies(["tenancy-a-main", "tenancy-b-main"], globalPrisma);
+    expect(usage).toBe(2);
   });
 
   it("counts only non-anonymous users across all owned tenancies", async () => {
@@ -194,25 +218,25 @@ describe("arePlanLimitsEnforced", () => {
   });
 
   it("returns true when env var is unset (default-on enforcement)", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns false when env var is exactly 'true'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "true");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "true");
     expect(arePlanLimitsEnforced()).toBe(false);
   });
 
   it("returns true when env var is 'false'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "false");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "false");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns true for any non-'true' value (e.g. '1', 'yes', 'TRUE')", () => {
     // Explicit string match is intentional — we don't want to risk a typo
-    // like STACK_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
+    // like HEXCLAVE_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
     for (const value of ["1", "yes", "TRUE", "True", " true", "true ", "trueee"]) {
-      vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", value);
+      vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", value);
       expect(arePlanLimitsEnforced()).toBe(true);
     }
   });

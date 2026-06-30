@@ -1,12 +1,12 @@
 import * as yup from "yup";
+import type { EnvironmentConfigOverrideOverride } from "../config/schema";
 import { KnownErrors } from "../known-errors";
-import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
+import { branchConfigSourceSchema, type ConfigAgentRunApi, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
-import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
-import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
+import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -14,9 +14,9 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
-  AdminGetSessionReplayResponse,
   AdminGetSessionReplayAllEventsResponse,
   AdminGetSessionReplayChunkEventsResponse,
+  AdminGetSessionReplayResponse,
   AdminListSessionReplayChunksOptions,
   AdminListSessionReplayChunksResponse,
   AdminListSessionReplaysOptions,
@@ -25,7 +25,10 @@ import type {
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
-import { ServerAuthApplicationOptions, HexclaveServerInterface } from "./server-interface";
+import type { PlanUsageResponse } from "./plan-usage";
+import { HexclaveServerInterface, ServerAuthApplicationOptions } from "./server-interface";
+
+export type { PlanUsageResponse } from "./plan-usage";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -424,6 +427,17 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     };
   }
 
+  async getPlanUsage(): Promise<PlanUsageResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/plan-usage",
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async getUserActivity(userId: string): Promise<UserActivityResponse> {
     const response = await this.sendAdminRequest(
       urlString`/internal/user-activity?user_id=${userId}`,
@@ -433,6 +447,48 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return (await response.json()) as UserActivityResponse;
+  }
+
+  async getAnalyticsClickmap(options: {
+    kind: AnalyticsClickmapKind,
+    member_user_ids?: string[],
+    route_path?: string,
+    route_regex?: string,
+    url_pattern?: string,
+    user_id?: string,
+    replay_id?: string,
+    device?: AnalyticsClickmapDevice,
+    viewport_width_min?: number,
+    viewport_width_max?: number,
+    sampling?: number,
+    since: string,
+    until: string,
+  }): Promise<AnalyticsClickmapResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapResponse;
+  }
+
+  async createAnalyticsClickmapToken(options: {
+    origin: string,
+  }): Promise<AnalyticsClickmapTokenResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/clickmap-token",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return (await response.json()) as AnalyticsClickmapTokenResponse;
   }
 
   async getMetricsUserCounts(): Promise<MetricsUserCounts> {
@@ -778,6 +834,86 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     );
   }
 
+  /**
+   * Reads a specific config-agent run's state (or `null`) for the linked GitHub
+   * repo. Polled by the dashboard — using the id returned by `applyConfigViaAgent`
+   * — for live progress and the review diff. Runs are independent, so each is
+   * addressed by its own id rather than "the" run on the branch.
+   */
+  async getConfigAgentRun(runId: string): Promise<ConfigAgentRunApi | null> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/run?run_id=${encodeURIComponent(runId)}`,
+      { method: "GET" },
+      null,
+    );
+    const data = await response.json();
+    return data.agent_run ?? null;
+  }
+
+  /**
+   * Applies a dashboard config change to the linked GitHub repo by running the
+   * config agent in a sandbox (server-side). Returns immediately with the new run's
+   * `id`; poll `getConfigAgentRun(id)` for progress. The GitHub access token is the
+   * caller's own OAuth token and is used transiently server-side.
+   */
+  async applyConfigViaAgent(options: { configUpdate: EnvironmentConfigOverrideOverride, githubAccessToken: string }): Promise<{ status: "started", id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/apply`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          github_access_token: options.githubAccessToken,
+          config_update_string: JSON.stringify(options.configUpdate),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Cancels a specific in-flight agent-driven config write: hard-stops the sandbox
+   * so the agent stops mid-work. Also cancels runs in `awaiting_review`. No revert
+   * — if the agent already pushed, the commit stays. Returns `not-running` if the
+   * run is gone or already terminal.
+   */
+  async cancelConfigAgentRun(runId: string): Promise<{ status: "cancelling" | "not-running" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/cancel`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: runId }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Commits a specific run's reviewed change to GitHub. Only valid when that run is in
+   * `awaiting_review` status; the change (diff + base commit) was captured at apply time
+   * and is rebuilt + pushed via the GitHub API here, so no live sandbox is involved.
+   * Returns `not-awaiting-review` if the run isn't in a committable state.
+   */
+  async commitConfigAgentRun(runId: string, options: { githubAccessToken: string, commitMessage?: string }): Promise<{ status: "committing" | "not-awaiting-review" }> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/github/commit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          run_id: runId,
+          github_access_token: options.githubAccessToken,
+          ...(options.commitMessage ? { commit_message: options.commitMessage } : {}),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}/reset-keys`,
@@ -1049,10 +1185,11 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
-  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, user_id?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
     if (options?.status) qs.set('status', options.status);
     if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.user_id) qs.set('user_id', options.user_id);
     if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
     if (options?.cursor) qs.set('cursor', options.cursor);
     const response = await this.sendServerRequest(

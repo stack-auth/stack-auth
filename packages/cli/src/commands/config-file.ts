@@ -1,13 +1,15 @@
-import { Command } from "commander";
-import * as path from "path";
-import * as fs from "fs";
-import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
-import { getAdminProject } from "../lib/app.js";
-import { CliError } from "../lib/errors.js";
-import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
+import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
+import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import { detectImportPackageFromDir, renderConfigFileContent } from "@hexclave/shared/dist/config-rendering";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { Command } from "commander";
+import * as fs from "fs";
+import * as path from "path";
+import { getAdminProject } from "../lib/app.js";
+import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
+import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
+import { CliError } from "../lib/errors.js";
 
 const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
 
@@ -193,26 +195,30 @@ function sourceToSdkSource(source: BranchConfigSourceApi):
   return { type: "unlinked" };
 }
 
-// Resolve the path for `config pull` when `--config-file` was omitted. Falls
-// back to a config file in cwd, and throws a CliError with a clear hint
-// if it isn't there. Exported for unit tests.
+// Resolve the path for `config pull` when `--config-file` was omitted. Prefer
+// an existing config file in cwd, otherwise use the Hexclave default path so a
+// prod-to-local pull can create the local config file without extra flags.
 export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd: string): string {
   if (opts.configFile != null && opts.configFile !== "") {
     return resolveConfigFilePathOption(opts.configFile);
   }
   // Hexclave rebrand: prefer the new `hexclave.config.ts` filename, fall back
   // to the legacy `stack.config.ts` so existing projects keep working. If
-  // neither exists, default to the new filename for the error/directory hint.
+  // neither exists, create the new filename.
   const hexclaveCandidate = path.join(cwd, "hexclave.config.ts");
   const legacyCandidate = path.join(cwd, "stack.config.ts");
   const candidate = fs.existsSync(hexclaveCandidate) ? hexclaveCandidate : legacyCandidate;
   if (!fs.existsSync(candidate)) {
-    throw new CliError("No --config-file provided and no hexclave.config.ts (or stack.config.ts) found in the current directory. Pass --config-file <path> or run this command in a directory containing a config file.");
+    return hexclaveCandidate;
   }
   if (fs.statSync(candidate).isDirectory()) {
     throw new CliError(`Default config path points to a directory instead of a file: ${candidate}`);
   }
   return candidate;
+}
+
+export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
+  return opts.overwrite === true || !fs.existsSync(filePath);
 }
 
 export function registerConfigCommand(program: Command) {
@@ -224,8 +230,8 @@ export function registerConfigCommand(program: Command) {
     .command("pull")
     .description("Pull branch config to a local file")
     .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
-    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./stack.config.ts in the current directory")
-    .option("--overwrite", "Overwrite an existing config file")
+    .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
+    .option("--overwrite", "Overwrite an existing config file instead of updating it in place")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
@@ -234,6 +240,9 @@ export function registerConfigCommand(program: Command) {
       const project = await getAdminProject(auth);
 
       const configOverride = await project.getConfigOverride("branch");
+      if (!isValidConfig(configOverride)) {
+        throw new CliError("Pulled branch config is not a valid local config object.");
+      }
       const filePath = resolveConfigFilePathForPull(opts, process.cwd());
       const ext = path.extname(filePath);
 
@@ -241,14 +250,11 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
       }
 
-      if (fs.existsSync(filePath) && !opts.overwrite) {
-        throw new CliError(`Config file already exists at ${filePath}. Stage or back up your changes, then re-run with --overwrite.`);
+      if (shouldReplaceConfigFileForPull(filePath, opts)) {
+        await replaceConfigObject(filePath, configOverride);
+      } else {
+        await updateConfigObject(filePath, configOverride);
       }
-
-      const importPackage = detectImportPackageFromDir(path.dirname(filePath));
-      const content = renderConfigFileContent(configOverride, importPackage);
-
-      fs.writeFileSync(filePath, content);
       console.log(`Config written to ${filePath}`);
     });
 

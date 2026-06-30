@@ -8,7 +8,7 @@ import {
   DesignCard,
   DesignInput,
 } from "@/components/design-components";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { AdminEmailConfig } from "@hexclave/next";

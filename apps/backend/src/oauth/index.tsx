@@ -8,6 +8,7 @@ import { OAuthModel } from "./model";
 import { AppleProvider } from "./providers/apple";
 import { OAuthBaseProvider } from "./providers/base";
 import { BitbucketProvider } from "./providers/bitbucket";
+import { CustomOidcProvider } from "./providers/custom-oidc";
 import { FacebookProvider } from "./providers/facebook";
 import { GithubProvider } from "./providers/github";
 import { GitlabProvider } from "./providers/gitlab";
@@ -105,8 +106,27 @@ import.meta.vitest?.test("getRedirectUri keeps existing customers on the stack-a
 
 export async function getProvider(
   provider: Tenancy['config']['auth']['oauth']['providers'][string],
+  /** The config key for this provider (e.g. "github", "my-okta"). Needed to
+   *  build the callback URL when customCallbackUrl is absent. */
+  configId?: string,
 ): Promise<OAuthBaseProvider> {
   const providerType = provider.type || throwErr("Provider type is required for shared providers");
+
+  // Custom OIDC providers use a generic OIDC implementation with discovery.
+  // The callback URL is keyed by the user-chosen config ID (not "custom_oidc"),
+  // so customCallbackUrl should always be set for these providers.
+  if (providerType === "custom_oidc") {
+    const issuerUrl = provider.issuerUrl ?? throwErr("Issuer URL is required for custom OIDC providers");
+    const redirectUri = getRedirectUri(provider, configId ?? providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+    return await CustomOidcProvider.create({
+      clientId: provider.clientId ?? throwErr("Client ID is required for custom OIDC providers"),
+      clientSecret: provider.clientSecret ?? throwErr("Client secret is required for custom OIDC providers"),
+      redirectUri,
+      issuerUrl,
+      scope: provider.scope,
+    });
+  }
+
   const redirectUri = getRedirectUri(provider, providerType, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   if (provider.isShared) {
     const clientId = _getEnvForProvider(providerType).clientId;

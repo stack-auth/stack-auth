@@ -6,10 +6,20 @@ import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
 
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
-  if (process.env.STACK_SPACETIME_PUBLISH_URL) {
-    return process.env.STACK_SPACETIME_PUBLISH_URL;
+  const publishUrl = resolveHexclaveStackEnvVar("HEXCLAVE_SPACETIME_PUBLISH_URL", "STACK_SPACETIME_PUBLISH_URL");
+  if (publishUrl) {
+    return publishUrl;
   }
   const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
   return `http://127.0.0.1:${prefix}39`;
@@ -36,8 +46,8 @@ if (!args) {
   process.exit(1);
 }
 
-if (target === "prod" && !process.env.STACK_MCP_LOG_TOKEN) {
-  console.error("Error: STACK_MCP_LOG_TOKEN must be set for prod publish");
+if (target === "prod" && !resolveHexclaveStackEnvVar("HEXCLAVE_MCP_LOG_TOKEN", "STACK_MCP_LOG_TOKEN")) {
+  console.error("Error: HEXCLAVE_MCP_LOG_TOKEN (or legacy STACK_MCP_LOG_TOKEN) must be set for prod publish");
   process.exit(1);
 }
 

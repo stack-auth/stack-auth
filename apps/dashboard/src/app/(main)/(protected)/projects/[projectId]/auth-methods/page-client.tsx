@@ -1,8 +1,10 @@
 "use client";
 
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
-import { ActionDialog, BrandIcons, BrowserFrame, Label, SimpleTooltip, Switch, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { ActionDialog, BrandIcons, BrowserFrame, FormControl, FormField, FormItem, FormLabel, FormMessage, InlineCode, Label, SimpleTooltip, Switch, Typography } from "@/components/ui";
+import { FormDialog } from "@/components/form-dialog";
+import { useUpdateConfig } from "@/components/config-update";
+import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import {
   DesignAlert,
   DesignBadge,
@@ -18,6 +20,7 @@ import {
   EnvelopeSimpleIcon,
   EyeIcon,
   GearSixIcon,
+  GlobeIcon,
   KeyIcon,
   LinkIcon,
   MagnifyingGlassIcon,
@@ -29,16 +32,20 @@ import {
   UserPlusIcon,
 } from "@phosphor-icons/react";
 import { AdminProject, AuthPage } from "@hexclave/next";
+import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
+import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
+import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { resolvePlanId } from "@hexclave/shared/dist/plans";
 import { useCallback, useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { getNewProviderCallbackUrl } from "./oauth-callback-url";
-import { envConfigIsWritable, providerEnvKey, splitProviderConfig } from "./provider-config";
+import { getNewProviderCallbackUrl, resolveProviderCallbackUrl } from "./oauth-callback-url";
+import { buildCustomOidcConfigUpdate, buildProviderConfigUpdate, envConfigIsWritable, providerEnvKey } from "./provider-config";
 import { ProviderIcon, ProviderSettingDialog, ProviderSettingSwitch, TurnOffProviderDialog } from "./providers";
 
 type AdminOAuthProviderConfig = AdminProject['config']['oauthProviders'][number];
@@ -104,7 +111,7 @@ function ConfirmSignUpDisabledDialog(props: {
 /**
  * The single source of truth for adding/editing/removing an OAuth provider from
  * the dashboard. Saves are split across the two config layers the provider
- * actually spans (see `splitProviderConfig`):
+ * actually spans (see `buildProviderConfigUpdate`):
  *
  *   1. Enable fields go to the BRANCH layer (`pushable: true`). Branch writes
  *      are always allowed, including in development environments, and may route
@@ -127,7 +134,7 @@ function useOAuthProviderConfigActions() {
 
   const updateProvider = useCallback(async (provider: AdminOAuthProviderConfig) => {
     const existing = completeConfig.auth.oauth.providers[provider.id];
-    const { branchUpdate, envWrite } = splitProviderConfig(provider, existing, getNewProviderCallbackUrl(provider.id));
+    const { branchUpdate, envWrite } = buildProviderConfigUpdate(provider, existing, getNewProviderCallbackUrl(provider.id));
 
     // Pre-check: custom credentials require an environment write, impossible in
     // a development environment. Abort before any write (UI gating should
@@ -145,9 +152,9 @@ function useOAuthProviderConfigActions() {
     // Stage 2 — credentials (environment, production only). Reset the WHOLE
     // provider env subtree first so any prior/removed/migrated credential is
     // cleared (robust to future credential fields and old whole-object env
-    // entries), then write the fresh credential leaf keys. For shared providers
-    // there is no `envWrite`, so the reset alone drops the provider back to the
-    // default `isShared: true`.
+    // entries), then write the fresh credential object (the backend normalizes it
+    // into leaf keys). For shared providers there is no `envWrite`, so the reset
+    // alone drops the provider back to the default `isShared: true`.
     if (envWritable) {
       const adminProject = await hexclaveAdminApp.getProject();
       await adminProject.resetConfigOverrideKeys("environment", [providerEnvKey(provider.id)]);
@@ -172,6 +179,387 @@ function useOAuthProviderConfigActions() {
   }, [hexclaveAdminApp, updateConfig, envWritable]);
 
   return { updateProvider, deleteProvider };
+}
+
+// ─── Plan gating ─────────────────────────────────────────────────────────
+
+function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
+  const project = useAdminApp().useProject();
+  const user = useDashboardInternalUser();
+  const teams = user.useTeams();
+  const ownerTeam = useMemo(
+    () => teams.find(t => t.id === project.ownerTeamId),
+    [teams, project.ownerTeamId],
+  );
+
+  if (ownerTeam == null) {
+    return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
+  }
+
+  return <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />;
+}
+
+function AddCustomOidcButtonInner({
+  team,
+  onClick,
+}: {
+  team: { useProducts: () => Array<{ id: string | null, type?: string }> },
+  onClick: () => void,
+}) {
+  const products = team.useProducts();
+  const planId = resolvePlanId(products);
+  const isTeamPlanOrAbove = planId === "team" || planId === "growth";
+
+  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={isTeamPlanOrAbove} />;
+}
+
+function AddCustomOidcButtonDisabled({ onClick, isTeamPlanOrAbove }: { onClick: () => void, isTeamPlanOrAbove: boolean }) {
+  return (
+    <SimpleTooltip tooltip={!isTeamPlanOrAbove ? "Custom OIDC providers require a Team plan or above." : undefined}>
+      <DesignButton
+        onClick={onClick}
+        variant="secondary"
+        disabled={!isTeamPlanOrAbove}
+      >
+        <GlobeIcon size={16} className="mr-1.5" />
+        Add Custom OIDC
+        {!isTeamPlanOrAbove && <span className="ml-1.5"><DesignBadge label="Team+" color="blue" size="sm" /></span>}
+      </DesignButton>
+    </SimpleTooltip>
+  );
+}
+
+// ─── Custom OIDC types and helpers ────────────────────────────────────────
+
+type CustomOidcConfigEntry = {
+  id: string,
+  type: "custom_oidc",
+  issuerUrl: string,
+  clientId: string,
+  clientSecret: string,
+  scope?: string,
+  displayName?: string,
+  customCallbackUrl?: string,
+};
+
+function getCustomOidcProviders(config: CompleteConfig): CustomOidcConfigEntry[] {
+  return typedEntries(config.auth.oauth.providers)
+    .filter(([, p]) => p.type === "custom_oidc")
+    .map(([id, p]) => ({
+      id,
+      type: "custom_oidc" as const,
+      issuerUrl: p.issuerUrl ?? throwErr(`Custom OIDC provider "${id}" is missing issuerUrl`),
+      clientId: p.clientId ?? throwErr(`Custom OIDC provider "${id}" is missing clientId`),
+      clientSecret: p.clientSecret ?? throwErr(`Custom OIDC provider "${id}" is missing clientSecret`),
+      scope: p.scope,
+      displayName: p.displayName,
+      customCallbackUrl: p.customCallbackUrl,
+    }));
+}
+
+const customOidcFormSchema = yupObject({
+  providerId: yupString().defined().nonEmpty().matches(
+    /^[a-z0-9_-]+$/,
+    "Provider ID must only contain lowercase letters, numbers, hyphens, and underscores"
+  ).test(
+    "not-reserved",
+    "This ID is reserved for a standard provider. Choose a different name.",
+    (v) => !allProviders.includes(v as any),
+  ),
+  displayName: yupString().defined().nonEmpty(),
+  issuerUrl: urlSchema.defined().nonEmpty(),
+  clientId: yupString().defined().nonEmpty(),
+  clientSecret: yupString().defined().nonEmpty(),
+  scope: yupString().optional(),
+});
+
+type CustomOidcFormValues = {
+  providerId: string,
+  displayName: string,
+  issuerUrl: string,
+  clientId: string,
+  clientSecret: string,
+  scope?: string,
+};
+
+function CustomOidcProviderDialog({
+  open,
+  onClose,
+  existing,
+}: {
+  open: boolean,
+  onClose: () => void,
+  existing?: CustomOidcConfigEntry,
+}) {
+  const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
+  const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
+  const envWritable = envConfigIsWritable(project);
+
+  const defaultValues: CustomOidcFormValues = {
+    providerId: existing?.id ?? "",
+    displayName: existing?.displayName ?? "",
+    issuerUrl: existing?.issuerUrl ?? "",
+    clientId: existing?.clientId ?? "",
+    clientSecret: existing?.clientSecret ?? "",
+    scope: existing?.scope ?? "",
+  };
+
+  const isEditing = !!existing;
+
+  const onSubmit = async (values: CustomOidcFormValues) => {
+    const providerId = isEditing ? existing.id : values.providerId;
+    if (!isEditing && providerId in config.auth.oauth.providers) {
+      throw new HexclaveAssertionError(`OAuth provider ID "${providerId}" already exists`);
+    }
+    // Custom OIDC providers span both config layers, exactly like standard
+    // providers: the enable fields go to the branch roster, the credentials
+    // (incl. issuerUrl/scope/displayName) go to the environment layer. Both are
+    // written as whole `auth.oauth.providers.<id>` objects; the backend normalizes
+    // the environment object into credential leaf keys — see
+    // `buildCustomOidcConfigUpdate`.
+    const { branchUpdate, envWrite } = buildCustomOidcConfigUpdate(
+      {
+        providerId,
+        displayName: values.displayName,
+        issuerUrl: values.issuerUrl,
+        clientId: values.clientId,
+        clientSecret: values.clientSecret,
+        scope: values.scope || undefined,
+      },
+      config.auth.oauth.providers[providerId],
+      getNewProviderCallbackUrl(providerId),
+    );
+
+    // Credentials only exist in the environment layer, which is read-only in
+    // development environments. Bail before any write so we never half-apply an
+    // enabled-but-credential-less provider (UI gating should prevent reaching here).
+    if (!envWritable) {
+      alert("Custom OIDC providers can only be configured in your production deployment.");
+      return;
+    }
+
+    // Stage 1 — branch (roster + enable). Bail if the push/CLI dialog is cancelled.
+    const branchApplied = await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: branchUpdate, pushable: true });
+    if (!branchApplied) {
+      return;
+    }
+    // Stage 2 — credentials (environment). Reset the whole provider env subtree
+    // first so cleared fields (e.g. a removed scope) don't linger, then write fresh.
+    const adminProject = await hexclaveAdminApp.getProject();
+    await adminProject.resetConfigOverrideKeys("environment", [providerEnvKey(providerId)]);
+    if (envWrite) {
+      await updateConfig({ adminApp: hexclaveAdminApp, configUpdate: envWrite, pushable: false });
+    }
+  };
+
+  const callbackUrl = isEditing
+    ? resolveProviderCallbackUrl(existing.id, config.auth.oauth.providers[existing.id])
+    : null;
+
+  return (
+    <FormDialog<CustomOidcFormValues>
+      defaultValues={defaultValues}
+      formSchema={customOidcFormSchema}
+      onSubmit={onSubmit}
+      open={open}
+      onClose={onClose}
+      title={isEditing ? `Edit ${existing.displayName || "Custom OIDC Provider"}` : "Add Custom OIDC Provider"}
+      cancelButton
+      okButton={{ label: isEditing ? "Save" : "Add Provider" }}
+      render={(form) => (
+        <div className="flex flex-col gap-4 w-full">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04]">
+              <GlobeIcon size={18} className="text-foreground/70" />
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-foreground">Custom OIDC Provider</span>
+                <DesignBadge label="OIDC" color="blue" size="sm" />
+              </div>
+              <span className="text-[11px] text-muted-foreground">Connect any OIDC-compliant identity provider</span>
+            </div>
+          </div>
+
+          {!isEditing && (
+            <FormField
+              control={form.control}
+              name="providerId"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-xs font-medium text-muted-foreground">Provider ID</FormLabel>
+                  <FormControl>
+                    <DesignInput {...field} value={field.value} placeholder="my-oidc-provider" size="sm" autoComplete="off" />
+                  </FormControl>
+                  <FormMessage />
+                  <span className="text-[10px] text-muted-foreground">Unique identifier — lowercase letters, numbers, hyphens, underscores only.</span>
+                </FormItem>
+              )}
+            />
+          )}
+
+          <FormField
+            control={form.control}
+            name="displayName"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium text-muted-foreground">Display Name</FormLabel>
+                <FormControl>
+                  <DesignInput {...field} value={field.value} placeholder="My Identity Provider" size="sm" autoComplete="off" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="issuerUrl"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium text-muted-foreground">Issuer URL</FormLabel>
+                <FormControl>
+                  <DesignInput {...field} value={field.value} placeholder="https://your-idp.example.com" size="sm" autoComplete="off" />
+                </FormControl>
+                <FormMessage />
+                <span className="text-[10px] text-muted-foreground">Must support OIDC discovery (/.well-known/openid-configuration).</span>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="clientId"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium text-muted-foreground">Client ID</FormLabel>
+                <FormControl>
+                  <DesignInput {...field} value={field.value} placeholder="Client ID" size="sm" autoComplete="off" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="clientSecret"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium text-muted-foreground">Client Secret</FormLabel>
+                <FormControl>
+                  <DesignInput {...field} value={field.value} type="password" placeholder="Client Secret" size="sm" autoComplete="off" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="scope"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium text-muted-foreground">Scopes (optional)</FormLabel>
+                <FormControl>
+                  <DesignInput {...field} value={field.value ?? ""} placeholder="openid email profile" size="sm" autoComplete="off" />
+                </FormControl>
+                <FormMessage />
+                <span className="text-[10px] text-muted-foreground">Space-separated. Defaults to &quot;openid email profile&quot;.</span>
+              </FormItem>
+            )}
+          />
+
+          {callbackUrl && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Redirect URL</span>
+              <Typography type="footnote" className="break-all">
+                <InlineCode>{callbackUrl}</InlineCode>
+              </Typography>
+            </div>
+          )}
+        </div>
+      )}
+    />
+  );
+}
+
+function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigEntry }) {
+  // Delete goes through the shared action: a branch null-write to drop the roster
+  // entry (which removes `type`, so the provider is filtered out at render), plus an
+  // environment reset to clear credentials. No environment write is needed.
+  const { deleteProvider: deleteProviderConfig } = useOAuthProviderConfigActions();
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [turnOffDialogOpen, setTurnOffDialogOpen] = useState(false);
+
+  const deleteProvider = async () => {
+    await deleteProviderConfig(provider.id);
+  };
+
+  const items: DesignMenuActionItem[] = [
+    {
+      id: "configure",
+      label: "Configure",
+      icon: <GearSixIcon size={14} />,
+      onClick: () => setEditDialogOpen(true),
+    },
+    {
+      id: "disable",
+      label: "Disable Provider",
+      icon: <PowerIcon size={14} />,
+      itemVariant: "destructive",
+      onClick: () => setTurnOffDialogOpen(true),
+    },
+  ];
+
+  return (
+    <DesignCardTint gradient="default" className="px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04]">
+            <GlobeIcon size={18} className="text-foreground/70" />
+          </div>
+          <span className="text-sm font-semibold text-foreground truncate">{provider.displayName || provider.id}</span>
+          <DesignBadge label="Custom OIDC" color="blue" size="sm" />
+        </div>
+        <DesignMenu
+          variant="actions"
+          trigger="icon"
+          triggerLabel="Open menu"
+          align="end"
+          withIcons
+          items={items}
+        />
+      </div>
+
+      <CustomOidcProviderDialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        existing={provider}
+      />
+
+      <ActionDialog
+        title={`Disable ${provider.displayName || provider.id}`}
+        open={turnOffDialogOpen}
+        onClose={() => setTurnOffDialogOpen(false)}
+        danger
+        okButton={{
+          label: `Disable ${provider.displayName || provider.id}`,
+          onClick: deleteProvider,
+        }}
+        cancelButton
+        confirmText="I understand that this will disable sign-in and sign-up for new and existing users with this provider."
+      >
+        <DesignAlert
+          variant="error"
+          title="This action affects existing users"
+          description="Disabling this provider will prevent users from signing in with it, including existing users who have already used it."
+        />
+      </ActionDialog>
+    </DesignCardTint>
+  );
 }
 
 function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void }) {
@@ -538,6 +926,9 @@ export default function PageClient() {
   const [confirmSignUpEnabled, setConfirmSignUpEnabled] = useState(false);
   const [confirmSignUpDisabled, setConfirmSignUpDisabled] = useState(false);
   const [disabledProvidersDialogOpen, setDisabledProvidersDialogOpen] = useState(false);
+  const [customOidcDialogOpen, setCustomOidcDialogOpen] = useState(false);
+
+  const customOidcProviders = useMemo(() => getCustomOidcProviders(config), [config]);
 
   // ===== AUTH METHODS local state =====
   const [localPasswordEnabled, setLocalPasswordEnabled] = useState<boolean | undefined>(undefined);
@@ -704,21 +1095,26 @@ export default function PageClient() {
                 {enabledProvidersList.map(provider => (
                   <ProviderInlineRow key={provider.id} provider={provider} />
                 ))}
-                {enabledProvidersList.length === 0 && (
+                {customOidcProviders.map(provider => (
+                  <CustomOidcProviderInlineRow key={provider.id} provider={provider} />
+                ))}
+                {enabledProvidersList.length === 0 && customOidcProviders.length === 0 && (
                   <DesignAlert
                     variant="info"
                     description="No SSO providers enabled. Add one to let users sign in with their existing accounts."
                   />
                 )}
               </div>
-              <DesignButton
-                className="mt-4 w-fit"
-                onClick={() => setDisabledProvidersDialogOpen(true)}
-                variant="secondary"
-              >
-                <PlusCircleIcon size={16} className="mr-1.5" />
-                Add SSO providers
-              </DesignButton>
+              <div className="flex gap-2 mt-4 flex-wrap">
+                <DesignButton
+                  onClick={() => setDisabledProvidersDialogOpen(true)}
+                  variant="secondary"
+                >
+                  <PlusCircleIcon size={16} className="mr-1.5" />
+                  Add SSO providers
+                </DesignButton>
+                <AddCustomOidcButton onClick={() => setCustomOidcDialogOpen(true)} />
+              </div>
             </DesignCard>
             <DesignCard
               title="Live preview"
@@ -812,6 +1208,10 @@ export default function PageClient() {
         <DisabledProvidersDialog
           open={disabledProvidersDialogOpen}
           onOpenChange={(x) => setDisabledProvidersDialogOpen(x)}
+        />
+        <CustomOidcProviderDialog
+          open={customOidcDialogOpen}
+          onClose={() => setCustomOidcDialogOpen(false)}
         />
         {emailVerification.dialog}
       </PageLayout>

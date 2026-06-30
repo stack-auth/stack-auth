@@ -37,8 +37,9 @@ import React, {
 
 import { DesignSkeleton } from "../skeleton";
 import { DEFAULT_COL_WIDTH, clampColumnWidth, getEffectiveMaxWidth, getEffectiveMinWidth } from "./data-grid-sizing";
+import { DataGridExportDialog } from "./data-grid-export-dialog";
 import { DataGridToolbar } from "./data-grid-toolbar";
-import { exportToCsv, formatGridDate, resolveColumnValue } from "./state";
+import { formatGridDate, resolveColumnValue } from "./state";
 import { resolveDataGridStrings } from "./strings";
 import type {
   DataGridCellContext,
@@ -628,6 +629,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     footer,
     footerExtra,
     exportFilename = "export",
+    exportOptions,
     strings: stringsOverride,
     className,
     onRowClick,
@@ -894,24 +896,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     );
   }, [rowIds, state.selection.selectedIds, fireSelection]);
 
-  // ── CSV export ───────────────────────────────────────────────
-  // The grid only knows about rows currently in memory (the visible page in
-  // paginated mode, or the loaded prefix in infinite mode). To avoid users
-  // assuming "Export CSV" means "everything that exists on the server", we
-  // confirm with the loaded-row count before downloading. Consumers that
-  // want true full-dataset export can override this via a parent toolbar.
+  // ── Export ───────────────────────────────────────────────────
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const handleExportCsv = useCallback(() => {
-    if (typeof window !== "undefined" && rows.length > 0) {
-      const totalSuffix = totalRowCount != null && totalRowCount > rows.length
-        ? ` of ${totalRowCount} total — load more rows first to include them`
-        : "";
-      const confirmed = window.confirm(
-        `Export ${rows.length.toLocaleString()} loaded row${rows.length === 1 ? "" : "s"}${totalSuffix}?`,
-      );
-      if (!confirmed) return;
-    }
-    exportToCsv(rows, visibleColumns, exportFilename);
-  }, [rows, visibleColumns, exportFilename, totalRowCount]);
+    setExportDialogOpen(true);
+  }, []);
 
   // ── Virtualizer ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1019,81 +1008,90 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const isBounded = fillHeight || maxHeight != null;
 
   return (
-    <div
-      ref={gridRef}
-      className={cn(
-        "isolate flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
-        fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
-        isBounded && "overflow-hidden",
-        className,
-      )}
-      style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
-      role="grid"
-      aria-rowcount={totalRowCount ?? rows.length}
-      aria-colcount={visibleColumns.length}
-    >
+    <>
+      <DataGridExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        rows={rows}
+        columns={visibleColumns}
+        exportFilename={exportFilename}
+        exportOptions={exportOptions}
+      />
       <div
-        ref={stickyChromeRef}
-        className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
-        style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
-      >
-        {toolbar !== false && (
-          <div className="relative bg-transparent">
-            {toolbar
-              ? toolbar(toolbarCtx)
-              : (
-                <DataGridToolbar
-                  ctx={toolbarCtx}
-                  extra={typeof toolbarExtra === "function" ? toolbarExtra(toolbarCtx) : toolbarExtra}
-                />
-              )}
-          </div>
+        ref={gridRef}
+        className={cn(
+          "isolate flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
+          fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
+          isBounded && "overflow-hidden",
+          className,
         )}
-
-        <div className="relative">
-          {isRefetching && (
-            <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
-              <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+        style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
+        role="grid"
+        aria-rowcount={totalRowCount ?? rows.length}
+        aria-colcount={visibleColumns.length}
+      >
+        <div
+          ref={stickyChromeRef}
+          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
+          style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
+        >
+          {toolbar !== false && (
+            <div className="relative bg-transparent">
+              {toolbar
+                ? toolbar(toolbarCtx)
+                : (
+                  <DataGridToolbar
+                    ctx={toolbarCtx}
+                    extra={typeof toolbarExtra === "function" ? toolbarExtra(toolbarCtx) : toolbarExtra}
+                  />
+                )}
             </div>
           )}
-          <div
-            ref={headerScrollRef}
-            className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
-          >
+
+          <div className="relative">
+            {isRefetching && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
+                <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+              </div>
+            )}
             <div
-              className="flex"
-              style={{ height: headerHeight, minWidth: totalContentWidth }}
-              role="row"
+              ref={headerScrollRef}
+              className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
             >
-              {selectionMode !== "none" && (
-                <div
-                  className="flex items-center justify-center border-r border-foreground/[0.04]"
-                  style={{ width: 44 }}
-                >
-                  {selectionMode === "multiple" && (
-                    <SelectionCheckbox
-                      checked={allSelected}
-                      indeterminate={someSelected}
-                      onChange={handleSelectAll}
-                      ariaLabel="Select all rows on this page"
-                      title="Select all rows on this page"
-                    />
-                  )}
-                </div>
-              )}
-              {visibleColumns.map((col) => {
-                const header = headerByColId.get(col.id);
-                if (!header) return null;
-                return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
-              })}
+              <div
+                className="flex"
+                style={{ height: headerHeight, minWidth: totalContentWidth }}
+                role="row"
+              >
+                {selectionMode !== "none" && (
+                  <div
+                    className="flex items-center justify-center border-r border-foreground/[0.04]"
+                    style={{ width: 44 }}
+                  >
+                    {selectionMode === "multiple" && (
+                      <SelectionCheckbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={handleSelectAll}
+                        ariaLabel="Select all rows on this page"
+                        title="Select all rows on this page"
+                      />
+                    )}
+                  </div>
+                )}
+                {visibleColumns.map((col) => {
+                  const header = headerByColId.get(col.id);
+                  if (!header) return null;
+                  return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
+                })}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div
-        ref={scrollContainerRef}
-        className={cn(
+        <div
+          ref={scrollContainerRef}
+          className={cn(
           "relative z-0 w-full min-w-0 overflow-auto bg-transparent",
           isBounded ? "min-h-0 flex-1" : "flex-none",
           "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
@@ -1101,61 +1099,61 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
         )}
-        onScroll={handleBodyScroll}
-      >
-        <div
-          ref={rowsClipRef}
-          data-data-grid-rows-clip=""
-          className="relative z-0"
-          style={{
-            minWidth: totalContentWidth,
-            clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)",
-          }}
+          onScroll={handleBodyScroll}
         >
-          {isLoading && (
-            <div style={{ minWidth: totalContentWidth }}>
-              {loadingState ?? Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonRow
-                  key={i}
-                  columns={visibleColumns}
-                  height={estimatedRowHeight}
-                  showCheckbox={selectionMode !== "none"}
-                />
-              ))}
-            </div>
-          )}
+          <div
+            ref={rowsClipRef}
+            data-data-grid-rows-clip=""
+            className="relative z-0"
+            style={{
+              minWidth: totalContentWidth,
+              clipPath: "inset(var(--data-grid-sticky-overlap, 0px) 0 0 0)",
+            }}
+          >
+            {isLoading && (
+              <div style={{ minWidth: totalContentWidth }}>
+                {loadingState ?? Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonRow
+                    key={i}
+                    columns={visibleColumns}
+                    height={estimatedRowHeight}
+                    showCheckbox={selectionMode !== "none"}
+                  />
+                ))}
+              </div>
+            )}
 
-          {!isLoading && rows.length === 0 && (
-            <div
-              className="flex items-center justify-center py-16 text-sm text-muted-foreground"
-              style={{ minWidth: totalContentWidth }}
-            >
-              {emptyState ?? strings.noData}
-            </div>
-          )}
+            {!isLoading && rows.length === 0 && (
+              <div
+                className="flex items-center justify-center py-16 text-sm text-muted-foreground"
+                style={{ minWidth: totalContentWidth }}
+              >
+                {emptyState ?? strings.noData}
+              </div>
+            )}
 
-          {!isLoading && rows.length > 0 && (
-            <div
-              style={{
-                height: rowVirtualizer.getTotalSize(),
-                width: "100%",
-                minWidth: totalContentWidth,
-                position: "relative",
-              }}
-            >
-              {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
-                const row = rows[virtualRow.index] ?? throwErr(
+            {!isLoading && rows.length > 0 && (
+              <div
+                style={{
+                  height: rowVirtualizer.getTotalSize(),
+                  width: "100%",
+                  minWidth: totalContentWidth,
+                  position: "relative",
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
+                  const row = rows[virtualRow.index] ?? throwErr(
                   `DataGrid: virtualized row index ${virtualRow.index} out of range (rows.length=${rows.length})`,
                 );
-                const rowId = getRowId(row);
-                const isSelected = state.selection.selectedIds.has(rowId);
-                const isOddRow = virtualRow.index % 2 === 1;
-                return (
-                  <div
-                    key={rowId}
-                    ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
-                    data-index={virtualRow.index}
-                    className={cn(
+                  const rowId = getRowId(row);
+                  const isSelected = state.selection.selectedIds.has(rowId);
+                  const isOddRow = virtualRow.index % 2 === 1;
+                  return (
+                    <div
+                      key={rowId}
+                      ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
+                      data-index={virtualRow.index}
+                      className={cn(
                       "absolute left-0 w-full flex",
                       "border-b border-black/[0.03] dark:border-white/[0.03]",
                       "transition-colors duration-75",
@@ -1166,66 +1164,67 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                           : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
                       (selectionMode !== "none" || onRowClick) && "cursor-pointer",
                     )}
-                    style={{
-                      ...(isDynamicRowHeight
-                        ? { minHeight: estimatedRowHeight }
-                        : { height: fixedRowHeight }),
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
-                    onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
-                    role="row"
-                    aria-rowindex={virtualRow.index + 2}
-                    aria-selected={isSelected}
-                    data-row-id={rowId}
-                    data-state={isSelected ? "selected" : undefined}
-                  >
-                    {selectionMode !== "none" && (
-                      <div
-                        className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
-                        style={{ width: 44 }}
-                      >
-                        <SelectionCheckbox
-                          checked={isSelected}
-                          onChange={(event) => handleRowClick(row, rowId, event)}
-                          ariaLabel={`Select row ${rowId}`}
+                      style={{
+                        ...(isDynamicRowHeight
+                          ? { minHeight: estimatedRowHeight }
+                          : { height: fixedRowHeight }),
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
+                      onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
+                      role="row"
+                      aria-rowindex={virtualRow.index + 2}
+                      aria-selected={isSelected}
+                      data-row-id={rowId}
+                      data-state={isSelected ? "selected" : undefined}
+                    >
+                      {selectionMode !== "none" && (
+                        <div
+                          className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
+                          style={{ width: 44 }}
+                        >
+                          <SelectionCheckbox
+                            checked={isSelected}
+                            onChange={(event) => handleRowClick(row, rowId, event)}
+                            ariaLabel={`Select row ${rowId}`}
+                          />
+                        </div>
+                      )}
+                      {visibleColumns.map((col) => (
+                        <DataCell
+                          key={col.id}
+                          col={col}
+                          row={row}
+                          rowId={rowId}
+                          rowIndex={virtualRow.index}
+                          isSelected={isSelected}
+                          dateDisplay={state.dateDisplay}
                         />
-                      </div>
-                    )}
-                    {visibleColumns.map((col) => (
-                      <DataCell
-                        key={col.id}
-                        col={col}
-                        row={row}
-                        rowId={rowId}
-                        rowIndex={virtualRow.index}
-                        isSelected={isSelected}
-                        dateDisplay={state.dateDisplay}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-          {paginationMode === "infinite" && hasMore && !isLoading && (
-            <InfiniteScrollSentinel
-              onIntersect={onLoadMore ?? NOOP}
-              isLoading={isLoadingMore}
-              rootRef={infiniteScrollRootRef}
-              strings={strings}
-            />
-          )}
+            {paginationMode === "infinite" && hasMore && !isLoading && (
+              <InfiniteScrollSentinel
+                onIntersect={onLoadMore ?? NOOP}
+                isLoading={isLoadingMore}
+                rootRef={infiniteScrollRootRef}
+                strings={strings}
+              />
+            )}
+          </div>
         </div>
+
+        {footer !== false && (
+          <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl">
+            {footer ? footer(footerCtx) : <DefaultFooter ctx={footerCtx} pagination={paginationMode} onChange={onChange} />}
+            {footerExtra && (typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra)}
+          </div>
+        )}
       </div>
-
-      {footer !== false && (
-        <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl">
-          {footer ? footer(footerCtx) : <DefaultFooter ctx={footerCtx} pagination={paginationMode} onChange={onChange} />}
-          {footerExtra && (typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra)}
-        </div>
-      )}
-    </div>
+    </>
   );
 }

@@ -11,18 +11,20 @@ import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { HexclaveAssertionError } from "../utils/errors";
-import { allProviders } from "../utils/oauth";
+import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
+import { OAUTH_PROVIDER_BRANCH_ENABLE_FIELDS } from "./oauth-providers";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+const providerIdRegex = /^[a-z0-9_-]+$/;
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -114,9 +116,13 @@ const branchAuthSchema = yupObject({
   oauth: yupObject({
     accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
     providers: yupRecord(
-      yupString().matches(permissionRegex),
+      // Provider ids (incl. user-chosen custom_oidc ids) may contain hyphens, so this must
+      // match the environment layer's `providerIdRegex` — NOT `permissionRegex`, which forbids
+      // `-`. The branch layer owns the provider roster + enable fields, so a custom_oidc id like
+      // `my-oidc` is written here; using permissionRegex would 400 such writes at the override route.
+      yupString().matches(providerIdRegex),
       yupObject({
-        type: yupString().oneOf(allProviders).optional(),
+        type: yupString().oneOf(allProviderTypes).optional(),
         allowSignIn: yupBoolean(),
         allowConnectedAccounts: yupBoolean(),
       }),
@@ -376,9 +382,9 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
-        yupString().matches(permissionRegex),
+        yupString().matches(providerIdRegex),
         yupObject({
-          type: yupString().oneOf(allProviders).optional(),
+          type: yupString().oneOf(allProviderTypes).optional(),
           isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
@@ -395,6 +401,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
               bundleId: schemaFields.oauthAppleBundleIdSchema,
             }),
           ).optional(),
+          // Custom OIDC provider fields (only used when type is "custom_oidc")
+          issuerUrl: schemaFields.oauthIssuerUrlSchema.optional(),
+          scope: schemaFields.oauthScopeSchema.optional(),
+          displayName: yupString().optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
@@ -562,9 +572,194 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // The branch config owns the OAuth provider roster + enable fields; the environment
+  // config owns each provider's credentials only. Normalize any whole-provider object
+  // in an environment config into credential leaf keys so it can't clobber the branch
+  // roster at render (see `flattenEnvironmentOAuthProviderCredentials`).
+  if (type === "environment") {
+    res = flattenEnvironmentOAuthProviderCredentials(res);
+  }
+
   // return the result
   return res;
 };
+
+// OAuth provider config spans two layers: the BRANCH config owns the roster and its
+// enable fields (`type`/`allowSignIn`/`allowConnectedAccounts`), the ENVIRONMENT config
+// owns each provider's credentials. At render the environment layer overrides the branch
+// layer per stored key, so a whole `auth.oauth.providers.<id>` object (or the whole
+// providers map) stored in the environment config would replace — and thereby erase —
+// the branch's roster. This rewrites any such whole-object environment write into
+// individual credential leaf keys (`auth.oauth.providers.<id>.<field>`), dropping the
+// branch-owned enable fields. The config layer (not each caller) thus guarantees the
+// leaf-key shape, so callers and old stored data can write provider objects naturally.
+//
+// Config overrides may be written/stored either as flat dotted top-level keys (e.g.
+// `"auth.oauth.providers.google.clientId"`, the form every internal caller uses) or
+// nested (`"auth.oauth": { providers: { google: {...} } }`), so — like the sibling
+// migration helpers — we recurse down the `auth.oauth.providers` path to find provider
+// objects in either representation. Field values are kept whole (e.g. `appleBundles`
+// stays a single object leaf, never deep-flattened).
+function flattenEnvironmentOAuthProviderCredentials(configOverride: Record<string, any>): Record<string, any> {
+  const PROVIDERS_PATH = ["auth", "oauth", "providers"] as const;
+  const out: Record<string, any> = {};
+
+  const emitProviderLeaves = (id: string, provider: unknown) => {
+    // A null/non-object provider is dropped: the environment config can't delete or
+    // replace a branch-owned roster entry — that's the branch config's job.
+    if (!isObjectLike(provider)) return;
+    for (const [field, value] of typedEntries(provider as Record<string, any>)) {
+      if ((OAUTH_PROVIDER_BRANCH_ENABLE_FIELDS as readonly string[]).includes(field)) continue;
+      set(out, `auth.oauth.providers.${id}.${field}`, value);
+    }
+  };
+
+  const walk = (path: string[], value: unknown) => {
+    const underProviders = path.length >= 3 && path[0] === "auth" && path[1] === "oauth" && path[2] === "providers";
+    if (underProviders) {
+      if (path.length === 3) {
+        // The whole providers map: `{ <id>: providerObject }`.
+        if (isObjectLike(value)) {
+          for (const [id, provider] of typedEntries(value as Record<string, any>)) {
+            emitProviderLeaves(id, provider);
+          }
+        }
+      } else if (path.length === 4) {
+        // A whole provider object.
+        emitProviderLeaves(path[3], value);
+      } else if (!(OAUTH_PROVIDER_BRANCH_ENABLE_FIELDS as readonly string[]).includes(path[4])) {
+        // A field-level (or deeper) leaf — keep credentials, drop any branch-owned field.
+        set(out, path.join("."), value);
+      }
+      return;
+    }
+    // A nested object still on the path toward `auth.oauth.providers` — descend so a
+    // nested provider representation is flattened too. Off-path children fall through to
+    // the verbatim branch below (re-keyed as dotted keys), which can't clobber providers.
+    const onProvidersPath = path.length < PROVIDERS_PATH.length && PROVIDERS_PATH.slice(0, path.length).every((seg, i) => seg === path[i]);
+    if (onProvidersPath && isObjectLike(value)) {
+      for (const [childKey, childValue] of typedEntries(value as Record<string, any>)) {
+        walk([...path, ...childKey.split(".")], childValue);
+      }
+      return;
+    }
+    // Not on the providers subtree — preserve verbatim.
+    set(out, path.join("."), value);
+  };
+
+  for (const [key, value] of typedEntries(configOverride)) {
+    walk(key.split("."), value);
+  }
+  return out;
+}
+
+import.meta.vitest?.test("migrateConfigOverride(environment): whole-provider object is flattened to credential leaf keys, branch fields dropped", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "auth.oauth.providers.google": {
+      type: "google",                 // branch-owned -> dropped
+      allowSignIn: true,              // branch-owned -> dropped
+      allowConnectedAccounts: true,   // branch-owned -> dropped
+      isShared: false,
+      clientId: "cid",
+      clientSecret: "secret",
+    },
+  })).toEqual({
+    "auth.oauth.providers.google.isShared": false,
+    "auth.oauth.providers.google.clientId": "cid",
+    "auth.oauth.providers.google.clientSecret": "secret",
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(environment): custom_oidc fields flatten; appleBundles stays a whole-object leaf", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "auth.oauth.providers.my-oidc": {
+      type: "custom_oidc",
+      isShared: false,
+      clientId: "cid",
+      issuerUrl: "https://issuer.example",
+      scope: "openid email",
+      displayName: "My OIDC",
+      appleBundles: { "uuid-1": { bundleId: "com.example.app" } },
+    },
+  })).toEqual({
+    "auth.oauth.providers.my-oidc.isShared": false,
+    "auth.oauth.providers.my-oidc.clientId": "cid",
+    "auth.oauth.providers.my-oidc.issuerUrl": "https://issuer.example",
+    "auth.oauth.providers.my-oidc.scope": "openid email",
+    "auth.oauth.providers.my-oidc.displayName": "My OIDC",
+    // appleBundles is kept as a single object leaf, NOT deep-flattened.
+    "auth.oauth.providers.my-oidc.appleBundles": { "uuid-1": { bundleId: "com.example.app" } },
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(environment): existing credential leaf keys pass through; a stray branch leaf is dropped", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "auth.oauth.providers.google.clientId": "cid",
+    "auth.oauth.providers.google.type": "google",   // branch-owned leaf -> dropped
+    "auth.allowSignUp": true,                        // unrelated -> untouched
+  })).toEqual({
+    "auth.oauth.providers.google.clientId": "cid",
+    "auth.allowSignUp": true,
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(environment): the whole providers map is flattened per provider", ({ expect }) => {
+  expect(migrateConfigOverride("environment", {
+    "auth.oauth.providers": {
+      google: { type: "google", isShared: false, clientId: "cid" },
+      spotify: null,   // can't delete a branch roster entry from env -> dropped
+    },
+  })).toEqual({
+    "auth.oauth.providers.google.isShared": false,
+    "auth.oauth.providers.google.clientId": "cid",
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(branch): provider objects are NOT flattened (branch owns the roster)", ({ expect }) => {
+  expect(migrateConfigOverride("branch", {
+    "auth.oauth.providers.google": { type: "google", allowSignIn: true, allowConnectedAccounts: true },
+  })).toEqual({
+    "auth.oauth.providers.google": { type: "google", allowSignIn: true, allowConnectedAccounts: true },
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(environment): NESTED provider representations are flattened too (can't clobber the branch roster)", ({ expect }) => {
+  // A whole `auth.oauth` object nesting providers — must be flattened, not passed through.
+  expect(migrateConfigOverride("environment", {
+    "auth.oauth": {
+      accountMergeStrategy: "link_method",
+      providers: { google: { type: "google", allowSignIn: true, isShared: false, clientId: "cid" } },
+    },
+  })).toEqual({
+    // The non-provider sibling is re-keyed as a dotted leaf (can't clobber providers).
+    "auth.oauth.accountMergeStrategy": "link_method",
+    "auth.oauth.providers.google.isShared": false,
+    "auth.oauth.providers.google.clientId": "cid",
+  });
+
+  // Fully nested under `auth` — same outcome, branch fields dropped.
+  expect(migrateConfigOverride("environment", {
+    auth: { oauth: { providers: { google: { type: "google", clientId: "cid" } } } },
+  })).toEqual({
+    "auth.oauth.providers.google.clientId": "cid",
+  });
+});
+
+import.meta.vitest?.test("migrateConfigOverride(environment): is idempotent and leaves non-provider config untouched", ({ expect }) => {
+  const once = migrateConfigOverride("environment", {
+    "auth.allowSignUp": true,
+    "rbac.permissions": { team_admin: { scope: "team" } },
+    "auth.oauth.providers.google": { type: "google", isShared: false, clientId: "cid" },
+  });
+  expect(once).toEqual({
+    "auth.allowSignUp": true,
+    "rbac.permissions": { team_admin: { scope: "team" } },
+    "auth.oauth.providers.google.isShared": false,
+    "auth.oauth.providers.google.clientId": "cid",
+  });
+  // Re-running on already-flattened output is a no-op.
+  expect(migrateConfigOverride("environment", once)).toEqual(once);
+});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {

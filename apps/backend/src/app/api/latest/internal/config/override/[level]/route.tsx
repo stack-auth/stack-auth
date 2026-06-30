@@ -17,7 +17,6 @@ import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@hexclave/shared/dist/config/schema";
-import { OAUTH_PROVIDER_BRANCH_ENABLE_FIELDS } from "@hexclave/shared/dist/config/oauth-providers";
 import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import * as yup from "yup";
@@ -197,47 +196,9 @@ function findIncludeByDefaultPath(value: unknown, path: string[] = []): string |
   return null;
 }
 
-// OAuth config is split across two layers: the branch config owns the provider roster and its
-// enabled state (which providers exist, plus `type`/`allowSignIn`/`allowConnectedAccounts`), while
-// the environment config only holds each provider's secret credentials, set as individual leaf
-// keys like `auth.oauth.providers.google.clientId`.
-//
-// At render the environment config takes precedence over the branch config, so the environment
-// config must not write anything under `auth.oauth.providers` other than those credential leaves —
-// otherwise it would override the branch's roster. This finds the first key in an environment
-// config that breaks that rule and returns its path (or null if there's nothing wrong). A key is
-// not allowed if it sets:
-//   - the whole providers map (`auth.oauth.providers`) or a whole provider (`auth.oauth.providers.<id>`),
-//     including setting it to null, which would replace or delete the branch's entry; or
-//   - a provider's enabled-state field (`type`/`allowSignIn`/`allowConnectedAccounts`), which the
-//     branch config owns.
-// Deeper credential keys (e.g. `...clientId`, or object-valued ones like `...appleBundles`) are fine.
-function findDisallowedEnvOAuthPath(value: unknown, path: string[] = []): string | null {
-  const underProviders = path[0] === "auth" && path[1] === "oauth" && path[2] === "providers";
-
-  if (underProviders && (path.length === 3 || path.length === 4)) {
-    return path.join(".");
-  }
-  if (
-    underProviders && path.length === 5
-    && (OAUTH_PROVIDER_BRANCH_ENABLE_FIELDS as readonly string[]).includes(path[4])
-  ) {
-    return path.join(".");
-  }
-
-  if (value != null && typeof value === "object" && !Array.isArray(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      const found = findDisallowedEnvOAuthPath(child, [...path, ...key.split(".")]);
-      if (found !== null) return found;
-    }
-  }
-  return null;
-}
-
 async function parseAndValidateConfig(
   configString: string,
   levelConfig: typeof levelConfigs["branch" | "environment" | "project"],
-  level: yup.InferType<typeof levelSchema>,
 ) {
   let parsedConfig;
   try {
@@ -260,16 +221,9 @@ async function parseAndValidateConfig(
     );
   }
 
-  if (level === "environment") {
-    const disallowedPath = findDisallowedEnvOAuthPath(parsedConfig);
-    if (disallowedPath !== null) {
-      throw new StatusError(
-        StatusError.BadRequest,
-        `The environment config can only set OAuth credentials as individual leaf keys (e.g. auth.oauth.providers.google.clientId). The value at "${disallowedPath}" sets the provider roster or its enabled state, which must be configured on the branch config instead.`,
-      );
-    }
-  }
-
+  // Whole-object OAuth provider writes to the environment config are normalized into
+  // credential leaf keys by `migrateConfigOverride("environment", ...)`, so the
+  // environment layer can never clobber the branch-owned provider roster at render.
   const migratedConfig = levelConfig.migrate(parsedConfig);
   const overrideError = await getConfigOverrideErrors(levelConfig.schema, migratedConfig);
   if (overrideError.status === "error") {
@@ -321,7 +275,7 @@ export const PUT = createSmartRouteHandler({
     await assertConfigOverrideWriteAllowed(req.params.level, req.auth.tenancy.project.id);
 
     const levelConfig = levelConfigs[req.params.level];
-    const parsedConfig = await parseAndValidateConfig(req.body.config_string, levelConfig, req.params.level);
+    const parsedConfig = await parseAndValidateConfig(req.body.config_string, levelConfig);
 
     // Validate that source is provided for branch level
     if (levelConfig.requiresSource && !req.body.source) {
@@ -377,7 +331,7 @@ export const PATCH = createSmartRouteHandler({
     await assertConfigOverrideWriteAllowed(req.params.level, req.auth.tenancy.project.id);
 
     const levelConfig = levelConfigs[req.params.level];
-    const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig, req.params.level);
+    const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
     const newConfig = await levelConfig.override({
       projectId: req.auth.tenancy.project.id,

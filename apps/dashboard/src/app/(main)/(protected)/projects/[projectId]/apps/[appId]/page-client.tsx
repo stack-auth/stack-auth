@@ -3,11 +3,11 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
-import { useUpdateConfig } from "@/lib/config-update";
-import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { useUpdateConfig } from "@/components/config-update";
+import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, type AppId } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
+import { getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { PageLayout } from "../../page-layout";
 
 export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
@@ -24,7 +24,7 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   if (!(appFrontend as any)) {
     throw new HexclaveAssertionError(`App frontend not found for appId: ${appId}`, { appId });
   }
-  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppId = getParentAppId(appId);
   const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
   const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
   const appPath = getAppPath(project.id, appFrontend);
@@ -70,9 +70,9 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
       <AppStoreEntry
         appId={appId}
         isEnabled={isEnabled}
-        onEnable={async () => runAsynchronouslyWithAlert(handleEnable())}
+        onEnable={handleEnable}
         onOpen={handleOpen}
-        onDisable={async () => runAsynchronouslyWithAlert(handleDisable())}
+        onDisable={handleDisable}
       />
     </PageLayout>
   );

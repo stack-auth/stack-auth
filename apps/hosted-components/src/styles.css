@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes hosted-shimmer {
+  0% {
+    background-position: 180% 0;
+  }
+
+  100% {
+    background-position: -80% 0;
+  }
+}
+
+.hosted-skeleton {
+  background-color: rgb(228 228 231 / 0.46);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.38) 42%,
+    rgb(255 255 255 / 0.62) 50%,
+    rgb(255 255 255 / 0.38) 58%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  animation: hosted-shimmer 1.45s ease-in-out infinite;
+}
+
+html:has(head > [data-stack-theme="dark"]) .hosted-skeleton {
+  background-color: rgb(39 39 42 / 0.55);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.035) 42%,
+    rgb(255 255 255 / 0.075) 50%,
+    rgb(255 255 255 / 0.035) 58%,
+    transparent 100%
+  );
+}
+
+@layer base {
+  /* The SDK's theme-detection script resolves the theme in this order: computed `color-scheme`,
+     theme attributes on <html>, then the luma of `--background`. Since we define a light
+     `--background` on :root, the luma check would always answer "light" and dark mode would never
+     activate. Setting `color-scheme` from the system preference makes the script's *first* check
+     succeed, so it follows the OS theme and sets data-stack-theme accordingly.
+     Important: do NOT set `color-scheme` inside the data-stack-theme dark block below — that would
+     make the script read back its own output and get stuck in dark mode. */
+  :root {
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+    }
+  }
+
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-in-card: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-in-card: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 240 4.8% 95.9%;
+    --accent-in-card: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 120 40% 50%;
+    --success-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --border-in-card: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --input-in-card: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+
+    --radius: 0.5rem;
+  }
+
+  html:has(head > [data-stack-theme="dark"]) {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 9.4%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-in-card: 240 3.7% 23.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-in-card: 240 3.7% 23.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 15.9%;
+    --accent-in-card: 240 3.7% 23.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 120 40% 50%;
+    --success-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 35.9%;
+    --border-in-card: 240 3.7% 43.9%;
+    --input: 240 3.7% 25.9%;
+    --input-in-card: 240 3.7% 43.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+  }
+}
+
+.stack-scope {
+  --background: inherit !important;
+  --foreground: inherit !important;
+  --card: inherit !important;
+  --card-foreground: inherit !important;
+  --popover: inherit !important;
+  --popover-foreground: inherit !important;
+  --primary: inherit !important;
+  --primary-foreground: inherit !important;
+  --secondary: inherit !important;
+  --secondary-in-card: inherit !important;
+  --secondary-foreground: inherit !important;
+  --muted: inherit !important;
+  --muted-in-card: inherit !important;
+  --muted-foreground: inherit !important;
+  --accent: inherit !important;
+  --accent-in-card: inherit !important;
+  --accent-foreground: inherit !important;
+  --destructive: inherit !important;
+  --destructive-foreground: inherit !important;
+  --success: inherit !important;
+  --success-foreground: inherit !important;
+  --border: inherit !important;
+  --border-in-card: inherit !important;
+  --input: inherit !important;
+  --input-in-card: inherit !important;
+  --ring: inherit !important;
+  --radius: inherit !important;
+}

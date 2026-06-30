@@ -66,11 +66,13 @@ function getDebugInternals(app: ReturnType<typeof useStackApp>): {
 }
 
 function getDemoApiUrl(): string {
-  const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
-    ?? process.env.NEXT_PUBLIC_STACK_URL;
+  const baseUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL
+    || process.env.NEXT_PUBLIC_STACK_API_URL
+    || process.env.NEXT_PUBLIC_HEXCLAVE_URL
+    || process.env.NEXT_PUBLIC_STACK_URL;
 
   if (typeof baseUrl !== "string" || baseUrl.length === 0) {
-    throw new Error("Expected NEXT_PUBLIC_STACK_API_URL to be configured for Turnstile OAuth debug flows");
+    throw new Error("Expected NEXT_PUBLIC_HEXCLAVE_API_URL to be configured for Turnstile OAuth debug flows");
   }
 
   return `${baseUrl.replace(/\/$/, "")}/api/v1`;
@@ -301,9 +303,11 @@ export default function TurnstileSignupPageClient() {
   const signInWithTokens = internals.signInWithTokens;
   const apiUrl = getDemoApiUrl();
   const oauthClientSecret = app[hexclaveAppInternalsSymbol].toClientJson().publishableClientKey
-    ?? process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
-    ?? process.env.STACK_PUBLISHABLE_CLIENT_KEY
-    ?? publishableClientKeyNotNecessarySentinel;
+    || process.env.NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY
+    || process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
+    || process.env.HEXCLAVE_PUBLISHABLE_CLIENT_KEY
+    || process.env.STACK_PUBLISHABLE_CLIENT_KEY
+    || publishableClientKeyNotNecessarySentinel;
 
   useEffect(() => {
     const redirectSource = window.sessionStorage.getItem(authReturnStorageKey);

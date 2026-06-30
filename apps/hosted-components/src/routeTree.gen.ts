@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as EmailVerificationDemoRouteImport } from './routes/email-verification-demo'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler/$'
 
+const EmailVerificationDemoRoute = EmailVerificationDemoRouteImport.update({
+  id: '/email-verification-demo',
+  path: '/email-verification-demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -25,32 +31,43 @@ const HandlerSplatRoute = HandlerSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/email-verification-demo': typeof EmailVerificationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/email-verification-demo': typeof EmailVerificationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/email-verification-demo': typeof EmailVerificationDemoRoute
   '/handler/$': typeof HandlerSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/handler/$'
+  fullPaths: '/' | '/email-verification-demo' | '/handler/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/handler/$'
-  id: '__root__' | '/' | '/handler/$'
+  to: '/' | '/email-verification-demo' | '/handler/$'
+  id: '__root__' | '/' | '/email-verification-demo' | '/handler/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EmailVerificationDemoRoute: typeof EmailVerificationDemoRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/email-verification-demo': {
+      id: '/email-verification-demo'
+      path: '/email-verification-demo'
+      fullPath: '/email-verification-demo'
+      preLoaderRoute: typeof EmailVerificationDemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EmailVerificationDemoRoute: EmailVerificationDemoRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport

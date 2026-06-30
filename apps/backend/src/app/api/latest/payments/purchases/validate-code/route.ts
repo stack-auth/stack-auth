@@ -97,7 +97,11 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        product: productToInlineProduct(product),
+        product: productToInlineProduct(product, {
+          productId: verificationCode.data.productId ?? null,
+          customerType: product.customerType,
+          customerId: verificationCode.data.customerId,
+        }),
         stripe_account_id: verificationCode.data.stripeAccountId ?? null,
         project_id: tenancy.project.id,
         project_logo_url: tenancy.project.logo_url ?? null,
