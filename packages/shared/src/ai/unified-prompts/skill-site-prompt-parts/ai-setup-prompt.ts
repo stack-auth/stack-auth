@@ -840,6 +840,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           - React: \`@hexclave/react\`
           - TanStack Start: \`@hexclave/tanstack-start\`
           - Other & vanilla JS: \`@hexclave/js\`
+            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\`
 
           You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`

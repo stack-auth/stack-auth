@@ -949,6 +949,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
   async sendEmail(options: {
     userIds?: string[],
     allUsers?: true,
+    emails?: string[],
     themeId?: string | null | false,
     html?: string,
     subject?: string,
@@ -968,6 +969,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
         body: JSON.stringify({
           user_ids: options.userIds,
           all_users: options.allUsers,
+          emails: options.emails,
           theme_id: options.themeId,
           html: options.html,
           subject: options.subject,

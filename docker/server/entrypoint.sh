@@ -48,9 +48,9 @@ fi
 
 # ============= ENV VARS =============
 
-export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -hex 32)}
-export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -hex 32)}
-export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -hex 32)}
+export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
+export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
+export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
@@ -111,39 +111,6 @@ else
   cd apps/backend
   node dist/db-migrations.mjs seed
   cd ../..
-fi
-
-# ============= BOOTSTRAP INTERNAL API KEY SET =============
-# The build-time seed ran without any keys. The slim image strips apps/backend/dist
-# so we can't re-run the full seed here. Instead, targeted-upsert the internal
-# api key set with the runtime-generated keys.
-if [ -n "${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-}" ] && [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ]; then
-  # Validate the keys are hex-only to defuse any SQL-injection risk (the VM
-  # generates them via `openssl rand -hex 32`, so this is an assert, not a filter).
-  for varname in STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY; do
-    val="${!varname:-}"
-    if [ -z "$val" ]; then
-      echo "ERROR: $varname is not set; refusing to bootstrap internal api key set." >&2
-      exit 1
-    fi
-    if ! printf '%s' "$val" | grep -Eq '^[0-9a-fA-F]+$'; then
-      echo "ERROR: $varname is not hex-only; refusing to bootstrap internal api key set." >&2
-      exit 1
-    fi
-  done
-  echo "Bootstrapping internal API key set..."
-  psql "$STACK_DATABASE_CONNECTION_STRING" -v ON_ERROR_STOP=1 <<SQL
-INSERT INTO "ApiKeySet" ("projectId", id, description, "expiresAt", "createdAt", "updatedAt", "publishableClientKey", "secretServerKey", "superSecretAdminKey")
-VALUES ('internal', '3142e763-b230-44b5-8636-aa62f7489c26', 'Internal API key set', '2099-12-31T23:59:59Z', NOW(), NOW(),
-        '${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}',
-        '${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY}',
-        '${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}')
-ON CONFLICT ("projectId", id) DO UPDATE SET
-  "publishableClientKey" = EXCLUDED."publishableClientKey",
-  "secretServerKey" = EXCLUDED."secretServerKey",
-  "superSecretAdminKey" = EXCLUDED."superSecretAdminKey",
-  "updatedAt" = NOW();
-SQL
 fi
 
 # ============= ENV VARS =============

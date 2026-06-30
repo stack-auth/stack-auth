@@ -1,13 +1,12 @@
 {
   "name": "@hexclave/shared",
-  "version": "1.0.39",
+  "version": "1.0.42",
   "repository": "https://github.com/hexclave/hexclave",
   "scripts": {
     "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
