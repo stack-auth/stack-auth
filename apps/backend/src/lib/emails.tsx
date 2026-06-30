@@ -161,7 +161,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
         senderEmail: `${projectEmailConfig.managedSenderLocalPart}@${projectEmailConfig.managedSubdomain}`,
         senderName: tenancy.project.display_name,
         secure: true,
-        type: "standard",
+        type: "managed",
       };
     }
 

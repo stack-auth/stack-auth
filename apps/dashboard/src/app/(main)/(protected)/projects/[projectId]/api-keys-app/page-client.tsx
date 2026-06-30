@@ -114,8 +114,8 @@ export default function PageClient() {
         />
 
         <DesignCard
-          title="API Key Settings"
-          subtitle="Configure which types of API keys are allowed in your project"
+          title="Client-Side API Key Creation Settings"
+          subtitle="Configure whether clients can create these types of API keys for themselves"
           icon={GearSix}
           glassmorphic
         >

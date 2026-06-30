@@ -130,13 +130,13 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   };
 }
 
-async function encodeAnalyticsBody(
+async function encodeGzipJsonBody(
   jsonBody: string,
   options: { keepalive: boolean },
 ): Promise<{ body: BodyInit, contentType: string }> {
-  // pagehide/visibilitychange flushes use keepalive: true. The browser must
-  // dispatch the fetch before tearing the page down — awaiting async gzip
-  // first lets the request slip past tear-down and never start.
+  // Used by analytics-event and session-replay batch uploads; the server
+  // gunzips application/octet-stream bodies before schema validation.
+  // keepalive flushes must dispatch before page tear-down, so skip async gzip.
   if (options.keepalive) {
     return { body: jsonBody, contentType: "application/json" };
   }
@@ -150,8 +150,7 @@ async function encodeAnalyticsBody(
     const buffer = await new Response(stream).arrayBuffer();
     return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
   } catch {
-    // Partial/broken CompressionStream support: fall back to plain JSON so
-    // EventTracker._flush() doesn't drop the batch via Result.error.
+    // Broken CompressionStream (e.g. Safari < 16.4): fall back to plain JSON.
     return { body: jsonBody, contentType: "application/json" };
   }
 }
@@ -551,12 +550,13 @@ export class HexclaveClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
+      const encoded = await encodeGzipJsonBody(body, { keepalive: options.keepalive });
       const response = await this.sendClientRequest(
         "/session-replays/batch",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+          headers: { "Content-Type": encoded.contentType },
+          body: encoded.body,
           keepalive: options.keepalive,
         },
         session,
@@ -576,7 +576,7 @@ export class HexclaveClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
-      const encoded = await encodeAnalyticsBody(body, { keepalive: options.keepalive });
+      const encoded = await encodeGzipJsonBody(body, { keepalive: options.keepalive });
       const response = await this.sendClientRequest(
         "/analytics/events/batch",
         {
