@@ -93,8 +93,6 @@ const stripFields = [
   "cpu_time",
   "hourly_counts",
   "live_users",
-  "config_warnings",
-  "pushed_config_error",
 ] as const;
 
 const stripFieldsIfString = [
