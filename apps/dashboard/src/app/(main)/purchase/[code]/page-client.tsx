@@ -18,6 +18,26 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 
+function isValidReturnUrl(url: string): boolean {
+  if (!URL.canParse(url)) return false;
+  const parsed = new URL(url);
+  return parsed.protocol === "https:" || parsed.protocol === "http:";
+}
+
+function BackButton({ url }: { url: string }) {
+  return (
+    <div className="absolute left-6 top-5 z-10">
+      <a
+        href={url}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
+      >
+        <ArrowLeftIcon className="h-4 w-4" />
+        Back
+      </a>
+    </div>
+  );
+}
+
 type ProductData = {
   product?: Omit<yup.InferType<typeof inlineProductSchema>, "included_items" | "server_only"> & { stackable: boolean },
   stripe_account_id: string | null,
@@ -40,7 +60,8 @@ export default function PageClient({ code }: { code: string }) {
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [quantityInput, setQuantityInput] = useState<string>("1");
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("return_url");
+  const rawReturnUrl = searchParams.get("return_url");
+  const returnUrl = rawReturnUrl && isValidReturnUrl(rawReturnUrl) ? rawReturnUrl : null;
 
   const quantityNumber = useMemo((): number => {
     const n = parseInt(quantityInput, 10);
@@ -169,17 +190,7 @@ export default function PageClient({ code }: { code: string }) {
   if (showInvalidPurchaseCode) {
     return (
       <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
-        {returnUrl && (
-          <div className="absolute left-6 top-5 z-10">
-            <a
-              href={returnUrl}
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-              Back
-            </a>
-          </div>
-        )}
+        {returnUrl && <BackButton url={returnUrl} />}
         <div className="w-full max-w-md text-center">
           <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
             <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
@@ -201,17 +212,7 @@ export default function PageClient({ code }: { code: string }) {
 
   return (
     <div data-hexclave-purchase-page className="relative min-h-screen bg-white dark:bg-zinc-950">
-      {returnUrl && (
-        <div className="absolute left-6 top-5 z-10">
-          <a
-            href={returnUrl}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back
-          </a>
-        </div>
-      )}
+      {returnUrl && <BackButton url={returnUrl} />}
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
         {/* Left Panel: Product & Pricing Selection */}
         <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">
