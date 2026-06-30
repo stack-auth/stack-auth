@@ -191,10 +191,14 @@ describe("ProjectOnboardingWizard", () => {
       selected_payments_country: "US",
     }, { developmentEnvironment: true });
 
-    expect(normalizedState.selected_sign_in_methods).toContain("credential");
-    expect(normalizedState.selected_sign_in_methods).toContain("google");
-    expect(normalizedState.selected_sign_in_methods).toContain("github");
-    expect(normalizedState.selected_sign_in_methods).toContain("microsoft");
+    expect(normalizedState.selected_sign_in_methods).toMatchInlineSnapshot(`
+      [
+        "credential",
+        "google",
+        "github",
+        "microsoft",
+      ]
+    `);
   });
 
   it("does not offer alpha apps during app selection", () => {

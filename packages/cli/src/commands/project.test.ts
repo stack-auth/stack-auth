@@ -3,11 +3,11 @@ import { formatProjectList, resolveProjectListSources, type ProjectListEntry } f
 
 describe("resolveProjectListSources", () => {
   it("defaults to cloud projects when no flag is passed", () => {
-    expect(resolveProjectListSources({})).toEqual({ cloud: true, dev: false });
-  });
-
-  it("filters to cloud-only when --cloud is set", () => {
-    expect(resolveProjectListSources({ cloud: true })).toEqual({ cloud: true, dev: false });
+    expect(resolveProjectListSources()).toMatchInlineSnapshot(`
+      {
+        "cloud": true,
+      }
+    `);
   });
 });
 

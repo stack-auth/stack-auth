@@ -358,25 +358,36 @@ export async function seed() {
   // Upsert the internal API key set before any flake-prone work (dummy-project
   // seed, email/svix, clickhouse).
   const rawPck = getEnvVariable("STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY", "");
-  const keySet = {
-    publishableClientKey: rawPck || throwErr('HEXCLAVE_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
-    secretServerKey: getEnvVariable("STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY", "") || throwErr('HEXCLAVE_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set'),
-    superSecretAdminKey: getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY", "") || throwErr('HEXCLAVE_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
-  };
+  const rawSsk = getEnvVariable("STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY", "");
+  const rawAdminKey = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY", "");
+  const hasAnyKey = rawPck !== "" || rawSsk !== "" || rawAdminKey !== "";
+  const hasAllKeys = rawPck !== "" && rawSsk !== "" && rawAdminKey !== "";
 
-  await globalPrismaClient.apiKeySet.upsert({
-    where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
-    update: {
-      ...keySet,
-    },
-    create: {
-      id: apiKeyId,
-      projectId: 'internal',
-      description: "Internal API key set",
-      expiresAt: new Date('2099-12-31T23:59:59Z'),
-      ...keySet,
-    }
-  });
+  if (hasAnyKey && !hasAllKeys) {
+    throwErr('HEXCLAVE internal API key bootstrap requires STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY, STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY, and STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY together');
+  }
+
+  if (hasAllKeys) {
+    const keySet = {
+      publishableClientKey: rawPck,
+      secretServerKey: rawSsk,
+      superSecretAdminKey: rawAdminKey,
+    };
+
+    await globalPrismaClient.apiKeySet.upsert({
+      where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
+      update: {
+        ...keySet,
+      },
+      create: {
+        id: apiKeyId,
+        projectId: 'internal',
+        description: "Internal API key set",
+        expiresAt: new Date('2099-12-31T23:59:59Z'),
+        ...keySet,
+      }
+    });
+  }
 
   console.log('Updated internal API key set');
 

@@ -12,13 +12,9 @@ export type ProjectListEntry = {
   target: ProjectTarget,
 };
 
-export type ProjectListFlags = {
-  cloud?: boolean,
-};
-
 // Returns which sources `project list` should query. Exported for unit tests.
-export function resolveProjectListSources(opts: ProjectListFlags): { cloud: boolean, dev: boolean } {
-  return { cloud: true, dev: false };
+export function resolveProjectListSources(): { cloud: true } {
+  return { cloud: true };
 }
 
 // Render projects for the human-readable list output. Each line is
@@ -38,18 +34,13 @@ export function registerProjectCommand(program: Command) {
   project
     .command("list")
     .description("List your cloud projects")
-    .option("--cloud", "Only list cloud projects")
-    .action(async (opts: ProjectListFlags) => {
-      const sources = resolveProjectListSources(opts);
+    .action(async () => {
       const results: ProjectListEntry[] = [];
-
-      if (sources.cloud) {
-        const auth = resolveSessionAuth();
-        const user = await getInternalUser(auth);
-        const cloudProjects = await user.listOwnedProjects();
-        for (const p of cloudProjects) {
-          results.push({ id: p.id, displayName: p.displayName, target: "cloud" });
-        }
+      const auth = resolveSessionAuth();
+      const user = await getInternalUser(auth);
+      const cloudProjects = await user.listOwnedProjects();
+      for (const p of cloudProjects) {
+        results.push({ id: p.id, displayName: p.displayName, target: "cloud" });
       }
 
       if (program.opts().json) {

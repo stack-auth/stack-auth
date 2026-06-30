@@ -31,10 +31,14 @@ export type ProjectAuth = (ProjectAuthWithRefreshToken | ProjectAuthWithSecretSe
 function resolveHexclaveStackEnvVar(hexclaveName: string, stackName: string): string | undefined {
   const hexclaveValue = process.env[hexclaveName];
   const stackValue = process.env[stackName];
-  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+  const hasHexclaveValue = hexclaveValue != null && hexclaveValue !== "";
+  const hasStackValue = stackValue != null && stackValue !== "";
+  if (hasHexclaveValue && hasStackValue && hexclaveValue !== stackValue) {
     throw new CliError(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
   }
-  return hexclaveValue || stackValue || undefined;
+  if (hasHexclaveValue) return hexclaveValue;
+  if (hasStackValue) return stackValue;
+  return undefined;
 }
 
 function resolveApiUrl(): string {
@@ -59,7 +63,7 @@ function resolveRefreshToken(): string {
 }
 
 function resolveSecretServerKey(): string | null {
-  return resolveHexclaveStackEnvVar("HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY") || null;
+  return resolveHexclaveStackEnvVar("HEXCLAVE_SECRET_SERVER_KEY", "STACK_SECRET_SERVER_KEY") ?? null;
 }
 
 export function resolveLoginConfig(): LoginConfig {
