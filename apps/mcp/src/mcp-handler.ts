@@ -143,7 +143,7 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               quality: "smart",
-              speed: "slow",
+              speed: "fast",
               tools: ["docs"],
               systemPrompt: "docs-ask-ai",
               messages: [{ role: "user", content: question }],

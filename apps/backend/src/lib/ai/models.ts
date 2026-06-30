@@ -18,7 +18,7 @@ const MODEL_SELECTION_MATRIX: Record<
 > = {
   dumb: {
     slow: {
-      authenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      authenticated: { modelId: "z-ai/glm-4.5-air" },
       unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b" },
     },
     fast: {
@@ -33,7 +33,7 @@ const MODEL_SELECTION_MATRIX: Record<
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "google/gemini-3.5-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5:nitro" },
     },
   },
   smartest: {
@@ -43,7 +43,7 @@ const MODEL_SELECTION_MATRIX: Record<
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "google/gemini-3.5-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
   },
 };
