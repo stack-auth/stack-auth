@@ -28,7 +28,7 @@ const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "US
 const schema = createPaymentsSchema();
 const port = Number(process.env.BULLDOZER_JS_PORT ?? process.env.BULLDOZER_SERVER_PORT ?? `${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}46`);
 const HEAP_GC_USAGE_THRESHOLD = 0.6;
-const HEAP_GC_PASSES = 5;
+const HEAP_GC_MAX_PASSES = 5;
 const HEAP_GC_FINALIZATION_DELAY_MS = 20;
 const HEAP_GC_RETRY_COOLDOWN_MS = 60_000;
 type BulldozerSnapshot = Awaited<ReturnType<BulldozerDatabase["getSnapshot"]>>["snapshot"];
@@ -166,7 +166,8 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
   logHeapGcMaintenance("heap-gc-start", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
 
   let previous = before;
-  for (let pass = 1; pass <= HEAP_GC_PASSES; pass++) {
+  let completedPasses = 0;
+  for (let pass = 1; pass <= HEAP_GC_MAX_PASSES; pass++) {
     const passStartedAt = performance.now();
     const gcStartedAt = performance.now();
     globalThis.gc();
@@ -185,6 +186,8 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
       passElapsedMs: performance.now() - passStartedAt,
     });
     previous = afterPass;
+    completedPasses = pass;
+    if (afterPass.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD) break;
   }
 
   const after = currentHeapUsage();
@@ -193,6 +196,8 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
     threshold: HEAP_GC_USAGE_THRESHOLD,
     after,
     totalFreedHeapMb: (before.heapUsed - after.heapUsed) / 1_000_000,
+    completedPasses,
+    maxPasses: HEAP_GC_MAX_PASSES,
     elapsedMs: performance.now() - startedAt,
   });
 
