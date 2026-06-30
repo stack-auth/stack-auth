@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/dashboard-ui-components",
-  "version": "1.0.41",
+  "version": "1.0.42",
   "repository": "https://github.com/hexclave/hexclave",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,7 +9,6 @@
     "build": "rimraf dist && tsdown && pnpm run build-iife && pnpm run copy-iife",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsdown --watch --onSuccess 'pnpm run build-iife && pnpm run copy-iife'",
     "build-iife": "tsx scripts/build-iife.ts",
     "copy-iife": "tsx scripts/copy-iife.ts",
     "lint": "eslint --ext .tsx,.ts ."
