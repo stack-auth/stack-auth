@@ -95,13 +95,16 @@ importers:
         version: 5.0.10
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       turbo:
         specifier: ^2.8.15
         version: 2.9.18
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+      unrun:
+        specifier: ^0.2.39
+        version: 0.2.39
       vite-tsconfig-paths:
         specifier: ^4.3.2
         version: 4.3.2(typescript@6.0.3)(vite@7.3.5(@types/node@20.17.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -357,7 +360,7 @@ importers:
         version: 5.0.10
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.7.2
         version: 4.22.4
@@ -1894,7 +1897,7 @@ importers:
         version: 6.1.3
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -2049,7 +2052,7 @@ importers:
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -2194,7 +2197,7 @@ importers:
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -2333,7 +2336,7 @@ importers:
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -2619,7 +2622,7 @@ importers:
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -2770,7 +2773,7 @@ importers:
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
       tsdown:
         specifier: ^0.22.3
-        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)
+        version: 0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39)
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -15819,6 +15822,16 @@ packages:
 
   unrs-resolver@1.12.2:
     resolution: {integrity: sha512-dmlRxBJJayXjqTwC+JtF1HhJmgf3ftQ3YejFcZrf4+KKtJv0qDsK1pjqaaVjG7wJ5NJ6UVP1OqRMQ71Z4C3rxQ==}
+
+  unrun@0.2.39:
+    resolution: {integrity: sha512-h9FxYVpztY/wwq+bauLOh6Y3CWu2IVeRLq5lxzneBiIU9Tn86OGp9xiQrGhnYspAmg5dzdY0Cc8+Y70kuTARCg==}
+    engines: {node: '>=20.19.0'}
+    hasBin: true
+    peerDependencies:
+      synckit: ^0.11.11
+    peerDependenciesMeta:
+      synckit:
+        optional: true
 
   unstorage@2.0.0-alpha.3:
     resolution: {integrity: sha512-BeoqISVh8jxqnPseHH7/92twe2VkQztrudXg8RFZVbXb4ckkFdpLk1LnNvsUndDltyodBMVxgI6V7JcbJYt2VQ==}
@@ -33422,7 +33435,7 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tsdown@0.22.3(tsx@4.22.4)(typescript@6.0.3):
+  tsdown@0.22.3(tsx@4.22.4)(typescript@6.0.3)(unrun@0.2.39):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -33442,6 +33455,7 @@ snapshots:
     optionalDependencies:
       tsx: 4.22.4
       typescript: 6.0.3
+      unrun: 0.2.39
     transitivePeerDependencies:
       - '@ts-macro/tsc'
       - '@typescript/native-preview'
@@ -33750,6 +33764,10 @@ snapshots:
       '@unrs/resolver-binding-win32-arm64-msvc': 1.12.2
       '@unrs/resolver-binding-win32-ia32-msvc': 1.12.2
       '@unrs/resolver-binding-win32-x64-msvc': 1.12.2
+
+  unrun@0.2.39:
+    dependencies:
+      rolldown: 1.1.2
 
   unstorage@2.0.0-alpha.3(@vercel/functions@2.2.13(@aws-sdk/credential-provider-web-identity@3.972.55))(chokidar@4.0.3)(db0@0.3.4(@electric-sql/pglite@0.4.1)(mysql2@3.15.3))(lru-cache@11.5.1)(ofetch@1.5.1):
     optionalDependencies:
