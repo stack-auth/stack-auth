@@ -1,0 +1,25 @@
+apps/skills/src/ask-route.ts
+  s_79c83501f4deab::t_028c5d90ddde7b 8-10,160-185,193-200,204
+  s_79c83501f4deab::t_42f230849fc233 127-130,132,188-192,201
+apps/skills/src/ask-route.test.ts
+  s_79c83501f4deab::t_b25deb3f49d33b 65,99,113-130
+  s_79c83501f4deab::t_305b97403f8833 134-162
+  s_79c83501f4deab::t_594c046a76b0eb 131-132,163-205
+  s_79c83501f4deab::t_f977efe7ddee32 133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d373c4b440c907e5d47b522861bc1819778c3175",
+  "prompts": {},
+  "sessions": {
+    "s_79c83501f4deab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5223c55-e77b-4d85-a7e5-802c5b74e683",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}

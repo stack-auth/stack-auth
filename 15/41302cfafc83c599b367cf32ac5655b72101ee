@@ -1,0 +1,42 @@
+packages/shared/src/ai/unified-prompts/skill-site-prompt.ts
+  s_79c83501f4deab::t_72cbc4be4642ff 16,29
+apps/skills/src/app/[toolName]/route.test.ts
+  s_79c83501f4deab::t_2224a5de802326 8,14-18,21
+  s_79c83501f4deab::t_272576f7189a16 5
+  s_79c83501f4deab::t_cef7afe39dacf3 6,20,22-25,28
+apps/skills/src/ask-route.ts
+  s_79c83501f4deab::t_b830920e218e8c 37,163,173,180
+  s_79c83501f4deab::t_68e62a33babc87 1,10-18,36,40-45,47,49-50,56-61,63-64,67-69,72-77,80,83-85,91-93,96,98-99,102-103,106-110,112-117,120,123-125,128-131,133,140,146-162,164-165,167-168,171-172,176,178-179,187,197,200
+apps/backend/src/lib/ai/tools/index.ts
+  s_79c83501f4deab::t_0ad44bedc5363d 8,36
+apps/skills/src/app/[toolName]/route.ts
+  s_79c83501f4deab::t_474fd2aa02e2a1 1,6,10,14
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_79c83501f4deab::t_131fd39f650781 7-10,47,52-55,58,60
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_79c83501f4deab::t_819c82f7773e14 8-9,11
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_79c83501f4deab::t_4eca08a6776423 522
+apps/skills/src/ask-route.test.ts
+  s_79c83501f4deab::t_414ccac0339a79 3,13-17,19-25,28-31,33-35,37-40,58,60-61,64,66-70,72-92,98,100-102,104,108,112,114-115,117-120,124-126,129
+  s_79c83501f4deab::t_90dd6ebe5f0537 36,71,103
+  s_79c83501f4deab::t_c93995e80a4288 43-46,49-52,54
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_79c83501f4deab::t_176178fc4f742e 2,10-16,37,42,45,47,64-71,77,86,94-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1541302cfafc83c599b367cf32ac5655b72101ee",
+  "prompts": {},
+  "sessions": {
+    "s_79c83501f4deab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5223c55-e77b-4d85-a7e5-802c5b74e683",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
