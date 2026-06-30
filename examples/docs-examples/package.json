@@ -13,16 +13,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.3",
-    "@emotion/styled": "^11.11.0",
     "@hexclave/next": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "@hexclave/ui": "workspace:*",
     "next": "^14.2.35",
-    "next-themes": "^0.2.1",
     "react": "^18.2",
-    "react-dom": "^18",
-    "react-icons": "^5.0.1"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@types/react": "18.3.12",

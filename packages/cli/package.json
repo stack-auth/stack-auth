@@ -12,7 +12,6 @@
     "clean": "rimraf node_modules && rimraf dist",
     "build": "tsdown",
     "package-dashboard-release": "node scripts/package-dashboard-release.mjs",
-    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -41,7 +40,7 @@
   "devDependencies": {
     "@types/node": "20.17.6",
     "rimraf": "^6.0.1",
-    "tsdown": "^0.20.3",
+    "tsdown": "^0.22.3",
     "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.5.0"
