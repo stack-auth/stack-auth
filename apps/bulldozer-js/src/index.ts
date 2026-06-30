@@ -396,11 +396,23 @@ async function setStoredRow(options: { tenancyId: string, tableId: string, rowId
   if (readRowTenancyId(options.rowData) !== options.tenancyId) {
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
   }
-  await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
-    tableId: options.tableId,
-    rowIdentifier: options.rowId,
-    newRowData: options.rowData as unknown as PiledriverObject,
-  }));
+  try {
+    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+      tableId: options.tableId,
+      rowIdentifier: options.rowId,
+      newRowData: options.rowData as unknown as PiledriverObject,
+    }));
+  } catch (error) {
+    // Attach which table/row poisoned the cascade so Sentry's beforeSend surfaces it
+    // (extraData is enumerable -> errorProps/nicifiedError). Single-row: include full rowData.
+    throw new HexclaveAssertionError(`bulldozer-js write failed for table ${options.tableId}`, {
+      cause: error,
+      tableId: options.tableId,
+      tenancyId: options.tenancyId,
+      rowId: options.rowId,
+      rowData: options.rowData,
+    });
+  }
 }
 
 async function setStoredRowFromBody(options: { tenancyId: string, tableId: string, body: unknown }) {
@@ -447,7 +459,19 @@ async function setStoredRowsFromBodies(options: { tenancyId: string, tableId: st
     }
     return { rowIdentifier: readStringField(rowData, idField), newRowData: rowData as unknown as PiledriverObject };
   });
-  await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+  try {
+    await bulldozerDb.withSnapshot(async snapshot => await snapshot.setOrDeleteRows({ tableId: options.tableId, rows }));
+  } catch (error) {
+    // A batch is one cascade, so a cascade-phase failure can't be pinned to a single row.
+    // Attach the table + the batch's row identifiers (no rowData here, to keep batch events small).
+    throw new HexclaveAssertionError(`bulldozer-js batch write failed for table ${options.tableId}`, {
+      cause: error,
+      tableId: options.tableId,
+      tenancyId: options.tenancyId,
+      rowIdentifiers: rows.map(row => row.rowIdentifier),
+      rowCount: rows.length,
+    });
+  }
 }
 
 async function getOwnedProductsForCustomer(options: { tenancyId: string, customerType: CustomerType, customerId: string }) {
