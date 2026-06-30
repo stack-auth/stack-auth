@@ -216,7 +216,7 @@ async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promis
   // 1. Try UPDATE first (locks row with FOR UPDATE, returns old and new timestamps)
   // 2. If no row exists, INSERT (with ON CONFLICT DO NOTHING for race handling)
   // 3. Compute delta based on the result
-  const [{ delta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
+  const [{ delta: rawDelta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
     WITH do_update AS (
       -- Update existing row, locking it first and capturing the old timestamp
       UPDATE "EmailOutboxProcessingMetadata" AS m
@@ -268,6 +268,8 @@ async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promis
         )
     END AS delta;
   `;
+
+  const delta = Object.is(rawDelta, -0) ? 0 : Number(rawDelta);
 
   if (delta < 0) {
     console.warn("Email queue step delta is negative after monotonic timestamp update; ignoring the delta so the send quota cannot go negative", { delta });

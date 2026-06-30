@@ -48,19 +48,9 @@ fi
 
 # ============= ENV VARS =============
 
-if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ]; then
-  for v in STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY; do
-    if [ -z "${!v:-}" ]; then
-      echo "$v must be set in local-emulator mode (injected by the QEMU VM)." >&2
-      exit 1
-    fi
-  done
-  export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY
-else
-  export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
-  export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
-  export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
-fi
+export STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -hex 32)}
+export STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -hex 32)}
+export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -hex 32)}
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
@@ -123,16 +113,11 @@ else
   cd ../..
 fi
 
-# ============= LOCAL EMULATOR: BOOTSTRAP INTERNAL API KEY SET =============
-# The build-time seed ran without any keys (the VM generates random ones on
-# first boot). The slim image strips apps/backend/dist so we can't re-run the
-# full seed here. Instead, targeted-upsert the internal api key set with the
-# VM-supplied keys:
-#   - pck: used by stack-cli to auth against /api/v1/internal/local-emulator/project
-#   - ssk/sak: required by the emulator's own dashboard (StackServerApp ctor
-#     throws without ssk). User-app flows don't use these — per-project
-#     credentials come from the /local-emulator/project route.
-if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ] && [ -n "${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-}" ] && [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ]; then
+# ============= BOOTSTRAP INTERNAL API KEY SET =============
+# The build-time seed ran without any keys. The slim image strips apps/backend/dist
+# so we can't re-run the full seed here. Instead, targeted-upsert the internal
+# api key set with the runtime-generated keys.
+if [ -n "${STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-}" ] && [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ]; then
   # Validate the keys are hex-only to defuse any SQL-injection risk (the VM
   # generates them via `openssl rand -hex 32`, so this is an assert, not a filter).
   for varname in STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY; do
@@ -146,7 +131,7 @@ if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ] && [ -n "${STACK_INTERNAL
       exit 1
     fi
   done
-  echo "Bootstrapping internal API key set (emulator runtime)..."
+  echo "Bootstrapping internal API key set..."
   psql "$STACK_DATABASE_CONNECTION_STRING" -v ON_ERROR_STOP=1 <<SQL
 INSERT INTO "ApiKeySet" ("projectId", id, description, "expiresAt", "createdAt", "updatedAt", "publishableClientKey", "secretServerKey", "superSecretAdminKey")
 VALUES ('internal', '3142e763-b230-44b5-8636-aa62f7489c26', 'Internal API key set', '2099-12-31T23:59:59Z', NOW(), NOW(),
@@ -172,7 +157,7 @@ fi
 mirror_hexclave_stack_env
 
 # Create a working directory for our processed files.
-# Keep this off /tmp so local-emulator config sharing can bind-mount /tmp
+# Keep this off /tmp so config sharing can bind-mount /tmp
 # without pushing the whole runtime copy step onto the host filesystem.
 WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/var/tmp/stack-runtime}"
 mkdir -p "$WORK_DIR"
@@ -183,11 +168,10 @@ if [ "$WORK_DIR" != "/app" ]; then
 fi
 
 # The full-tree sentinel scan is expensive (several seconds over the whole built
-# app tree). On a fast-restart — triggered by the emulator snapshot rotation
-# path — the placeholders have already been sed-replaced by rotate-secrets,
-# and no new sentinels need substitution. Skip the scan in that case. Marker
-# lives in WORK_DIR because the docker/server image runs as the unprivileged
-# `node` user and cannot write to /var/run.
+# app tree). On a fast-restart the placeholders have already been sed-replaced
+# by rotate-secrets, and no new sentinels need substitution. Skip the scan in
+# that case. Marker lives in WORK_DIR because the docker/server image runs as
+# the unprivileged `node` user and cannot write to /var/run.
 SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 if [ -f "$SENTINEL_MARKER" ]; then
   echo "Sentinels already replaced on a previous start; skipping scan."

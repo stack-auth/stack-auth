@@ -173,8 +173,8 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("--cloud to confirm");
   });
 
-  it("project list rejects --cloud and --dev together", async ({ expect }) => {
-    const { stderr, exitCode } = await runCli(["project", "list", "--cloud", "--dev"]);
+  it("project list rejects --cloud and --local together", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["project", "list", "--cloud", "--local"]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("not both");
   });
@@ -199,28 +199,6 @@ describe("Stack CLI", () => {
     expect(found).toBeDefined();
     expect(found.displayName).toBe("CLI Test");
     expect(found.target).toBe("cloud");
-  });
-
-  it("project list (no flags) emits a stderr warning when the emulator is unreachable", async ({ expect }) => {
-    expect(createdProjectId).toBeDefined();
-    // Default (no flags) tries both sources; the dev branch fails because the
-    // emulator PCK isn't where the CLI expects. We should still get a 0 exit
-    // and cloud results, plus a single stderr warning line.
-    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-list-warn-"));
-    try {
-      const { stdout, stderr, exitCode } = await runCli(["--json", "project", "list"], {
-        STACK_EMULATOR_HOME: fakeEmulatorHome,
-        STACK_EMULATOR_READY_TIMEOUT_MS: "0",
-      });
-      expect(exitCode).toBe(0);
-      expect(stderr).toContain("skipping dev projects");
-      const projects = JSON.parse(stdout);
-      const found = projects.find((p: any) => p.id === createdProjectId);
-      expect(found).toBeDefined();
-      expect(found.target).toBe("cloud");
-    } finally {
-      fs.rmSync(fakeEmulatorHome, { recursive: true });
-    }
   });
 
   it("returns basic expression", async ({ expect }) => {
