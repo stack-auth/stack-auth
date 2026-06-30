@@ -1,4 +1,3 @@
-import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
@@ -19,7 +18,7 @@ const MODEL_SELECTION_MATRIX: Record<
 > = {
   dumb: {
     slow: {
-      authenticated: { modelId: "z-ai/glm-4.5-air:free" },
+      authenticated: { modelId: "z-ai/glm-4.5-air" },
       unauthenticated: { modelId: "nvidia/nemotron-3-super-120b-a12b" },
     },
     fast: {
@@ -30,21 +29,21 @@ const MODEL_SELECTION_MATRIX: Record<
   smart: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "z-ai/glm-5.2" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "google/gemini-3.5-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
   },
   smartest: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "z-ai/glm-5.2" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "google/gemini-3.5-flash" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
   },
 };
@@ -61,7 +60,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export function createOpenRouterProvider() {
-  const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
+  const baseURL = getNodeEnvironment() === "development"
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
     : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
   return createOpenRouter({

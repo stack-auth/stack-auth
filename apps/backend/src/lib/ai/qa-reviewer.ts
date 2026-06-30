@@ -1,7 +1,8 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { generateText, stepCountIs } from "ai";
+import { generateText, Output, stepCountIs } from "ai";
+import { z } from "zod";
 import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
 import { getVerifiedQaContext } from "./verified-qa";
@@ -15,15 +16,7 @@ Your tasks:
 
 The repo name for all tool calls is "stack-auth/stack-auth". Only use the repository documentation tools (read_wiki_structure, read_wiki_contents, ask_question) — do not create sessions or modify any other resources.
 
-You MUST respond with ONLY valid JSON matching this exact schema (no markdown, no explanation outside the JSON):
-{
-  "needsHumanReview": boolean,
-  "answerCorrect": boolean,
-  "answerRelevant": boolean,
-  "flags": [{"type": string, "severity": "low" | "medium" | "high" | "critical", "explanation": string}],
-  "improvementSuggestions": string,
-  "overallScore": number
-}
+Produce a structured review. For each issue you find, add an entry to "flags" with a type, severity (one of "low", "medium", "high", "critical"), and explanation.
 
 Flag types: "factual_error", "incomplete_answer", "off_topic", "hallucination", "outdated_info", "missing_context", "misleading", "reason_mismatch"
 
@@ -37,6 +30,21 @@ Scoring:
 Set needsHumanReview=true if: score < 50, any critical flag, or you are uncertain about correctness.`;
 
 const REVIEW_MODEL_ID = "anthropic/claude-haiku-4.5";
+
+const qaReviewSchema = z.object({
+  needsHumanReview: z.boolean(),
+  answerCorrect: z.boolean(),
+  answerRelevant: z.boolean(),
+  flags: z.array(z.object({
+    type: z.string(),
+    severity: z.string(),
+    explanation: z.string(),
+  })),
+  // Optional in practice: the model omits this for good answers with nothing to suggest.
+  // Defaulting (rather than requiring) avoids turning those into structured-output failures.
+  improvementSuggestions: z.string().default(""),
+  overallScore: z.number(),
+});
 
 export async function reviewMcpCall(entry: {
   logPromise: Promise<void>;
@@ -107,6 +115,7 @@ export async function reviewMcpCall(entry: {
       system: QA_SYSTEM_PROMPT + verifiedQa,
       tools: devinTools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(10),
+      output: Output.object({ schema: qaReviewSchema }),
       messages: [{ role: "user", content: userMessage }],
     });
 
@@ -125,28 +134,9 @@ export async function reviewMcpCall(entry: {
       };
     });
 
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON found in QA review response");
-    }
-    const raw = JSON.parse(jsonMatch[0]);
-    if (
-      typeof raw.needsHumanReview !== "boolean" ||
-      typeof raw.answerCorrect !== "boolean" ||
-      typeof raw.answerRelevant !== "boolean" ||
-      !Array.isArray(raw.flags) ||
-      typeof raw.overallScore !== "number"
-    ) {
-      throw new Error(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
-    }
-    const parsed = raw as {
-      needsHumanReview: boolean,
-      answerCorrect: boolean,
-      answerRelevant: boolean,
-      flags: Array<{ type: string, severity: string, explanation: string }>,
-      improvementSuggestions: string,
-      overallScore: number,
-    };
+    // The model is constrained to the schema via structured output, so the result is
+    // already a validated object — no fragile text extraction or JSON.parse needed.
+    const parsed = result.output;
     parsed.overallScore = Math.max(0, Math.min(100, Math.round(parsed.overallScore)));
 
     update = {

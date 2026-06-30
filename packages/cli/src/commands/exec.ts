@@ -1,9 +1,8 @@
 import { Command } from "commander";
-import { isProjectAuthWithRefreshToken, resolveAuth, resolveLocalEmulatorAuth, type ProjectAuthWithRefreshToken } from "../lib/auth.js";
-import { lookupLocalEmulatorProjectIdByPath } from "../lib/local-emulator-client.js";
+import { isProjectAuthWithRefreshToken, resolveAuth, type ProjectAuthWithRefreshToken } from "../lib/auth.js";
+import { resolveLocalDashboardAuthByConfigPath } from "../lib/local-dashboard-client.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
-import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -68,9 +67,7 @@ export function registerExecCommand(program: Command) {
         }
         auth = cloudAuth;
       } else {
-        const absPath = resolveConfigFilePathOption(target.configFile, { mustExist: true });
-        const projectId = await lookupLocalEmulatorProjectIdByPath(absPath);
-        auth = await resolveLocalEmulatorAuth(projectId);
+        auth = await resolveLocalDashboardAuthByConfigPath(target.configFile);
       }
       const project = await getAdminProject(auth);
 

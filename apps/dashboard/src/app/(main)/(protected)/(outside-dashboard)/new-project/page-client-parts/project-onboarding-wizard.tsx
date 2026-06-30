@@ -53,7 +53,6 @@ import {
   getStepIndex,
   normalizeProjectOnboardingState,
   createProjectOnboardingState,
-  OAUTH_SIGN_IN_METHODS,
   type OnboardingConfigChoice,
   type OnboardingPaymentsCountry,
   type OnboardingProgressUpdate,
@@ -80,9 +79,8 @@ export function ProjectOnboardingWizard(props: {
 }) {
   const router = useRouter();
   const { project, status, onboardingState, setMode, saveOnboardingProgress, onComplete } = props;
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const isDevelopmentEnvironment = isRemoteDevelopmentEnvironment;
   const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const finishProjectOnboarding = onComplete;
@@ -94,13 +92,12 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry: "US",
       developmentEnvironment: isDevelopmentEnvironment,
-      isLocalEmulator,
     });
     if (onboardingState == null) {
       return defaultState;
     }
-    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment, isLocalEmulator });
-  }, [completeConfig, isDevelopmentEnvironment, isLocalEmulator, onboardingState, project]);
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
+  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
   const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
@@ -302,9 +299,8 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry,
       developmentEnvironment: isDevelopmentEnvironment,
-      isLocalEmulator,
     });
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
   const saveCurrentOnboardingProgress = useCallback(async (nextStatus: ProjectOnboardingStatus) => {
     await saveOnboardingProgress({
@@ -740,10 +736,6 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
-    const availableSignInMethods = isLocalEmulator
-      ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
-      : SIGN_IN_METHODS;
-
     return (
       <OnboardingPage
         stepKey="auth-setup"
@@ -800,14 +792,14 @@ export function ProjectOnboardingWizard(props: {
                   Sign-in methods
                 </Typography>
                 <div className="overflow-hidden rounded-xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-foreground/[0.04] dark:ring-white/[0.06]">
-                  {availableSignInMethods.map((method, index) => {
+                  {SIGN_IN_METHODS.map((method, index) => {
                     const checked = signInMethods.has(method.id);
                     return (
                       <label
                         key={method.id}
                         className={cn(
                           "flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 md:gap-4 md:px-4 md:py-3",
-                          index !== availableSignInMethods.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
+                          index !== SIGN_IN_METHODS.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
                         )}
                       >
                         <span className="text-sm">{method.label}</span>

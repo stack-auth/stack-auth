@@ -60,9 +60,8 @@ function PageClientInner() {
   const projects = user.useOwnedProjects();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const isDevelopmentEnvironment = isRemoteDevelopmentEnvironment;
 
   const selectedProjectId = searchParams.get("project_id");
   const displayNameFromSearch = searchParams.get("display_name");
@@ -199,7 +198,7 @@ function PageClientInner() {
   };
 
   if (isDevelopmentEnvironment && selectedProjectId == null) {
-    const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
+    const developmentEnvironmentName = "development environment";
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">

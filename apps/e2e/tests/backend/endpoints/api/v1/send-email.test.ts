@@ -542,8 +542,8 @@ describe("all users", () => {
         "status": 400,
         "body": {
           "code": "SCHEMA_ERROR",
-          "details": { "message": "Exactly one of user_ids or all_users must be provided" },
-          "error": "Exactly one of user_ids or all_users must be provided",
+          "details": { "message": "Exactly one of user_ids, all_users, or emails must be provided" },
+          "error": "Exactly one of user_ids, all_users, or emails must be provided",
         },
         "headers": Headers {
           "x-stack-known-error": "SCHEMA_ERROR",
@@ -768,5 +768,192 @@ describe("notification categories", () => {
 
     // Verify the email was sent
     await backendContext.value.mailbox.waitForMessagesWithSubject("Default Category Test Subject");
+  });
+});
+
+describe("arbitrary email addresses", () => {
+  it("should send to an arbitrary email address that does not belong to a user", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Arbitrary Emails Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const mailbox = await bumpEmailAddress();
+
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          emails: [mailbox.emailAddress],
+          html: "<p>Hello arbitrary recipient</p>",
+          subject: "Arbitrary Email Subject",
+        }
+      }
+    );
+    expect(response.status).toBe(200);
+    // The response echoes back the email addresses (no user_id, since there is no user).
+    expect(response.body.results).toEqual([{ email: mailbox.emailAddress }]);
+
+    const messages = await mailbox.waitForMessagesWithSubject("Arbitrary Email Subject");
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(messages[0].body?.html ?? "").toContain("Hello arbitrary recipient");
+  });
+
+  it("should send to multiple arbitrary email addresses", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Multiple Arbitrary Emails Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const mailbox1 = await bumpEmailAddress();
+    const mailbox2 = await bumpEmailAddress();
+
+    const subject = "Multiple Arbitrary Emails Subject";
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          emails: [mailbox1.emailAddress, mailbox2.emailAddress],
+          html: "<p>Broadcast to arbitrary recipients</p>",
+          subject,
+        }
+      }
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.results).toEqual([
+      { email: mailbox1.emailAddress },
+      { email: mailbox2.emailAddress },
+    ]);
+
+    await mailbox1.waitForMessagesWithSubject(subject);
+    await mailbox2.waitForMessagesWithSubject(subject);
+  });
+
+  it("should return 200 with empty results when emails is an empty array", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Empty Emails Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          emails: [],
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "results": [] },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should return 400 when both user_ids and emails are provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Both user_ids and emails Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const user = await User.create();
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [user.userId],
+          emails: ["someone@example.com"],
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Exactly one of user_ids, all_users, or emails must be provided" },
+          "error": "Exactly one of user_ids, all_users, or emails must be provided",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("should return 400 when none of user_ids, all_users, or emails are provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test No Recipient Selector Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+        }
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 400,
+        "body": {
+          "code": "SCHEMA_ERROR",
+          "details": { "message": "Exactly one of user_ids, all_users, or emails must be provided" },
+          "error": "Exactly one of user_ids, all_users, or emails must be provided",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SCHEMA_ERROR",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("should return 400 when an invalid email address is provided", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Invalid Email Project",
+      config: {
+        email_config: testEmailConfig,
+      },
+    });
+    const response = await niceBackendFetch(
+      "/api/v1/emails/send-email",
+      {
+        method: "POST",
+        accessType: "server",
+        body: {
+          emails: ["not-an-email"],
+          html: "<p>Test email</p>",
+          subject: "Test Subject",
+        }
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("SCHEMA_ERROR");
   });
 });
