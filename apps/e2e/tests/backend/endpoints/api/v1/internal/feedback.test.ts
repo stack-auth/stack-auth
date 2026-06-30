@@ -1,14 +1,12 @@
 import { randomUUID } from "crypto";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
-const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 const supportConversationsPath = "/api/v1/internal/dogfood/support/conversations";
 
 describe("POST /api/v1/internal/feedback", () => {
-  it.runIf(!isLocalEmulator)("should send feedback from an authenticated user", async ({ expect }) => {
+  it("should send feedback from an authenticated user", async ({ expect }) => {
     const senderEmail = backendContext.value.mailbox.emailAddress;
     const signInResult = await Auth.Otp.signIn();
     const recipientMailbox = createMailbox("team@hexclave.com");
@@ -59,7 +57,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(fromSupportForm.preview).toContain("Authenticated feedback from the dashboard.");
   });
 
-  it.runIf(!isLocalEmulator)("should send feedback without authentication (dev tool)", async ({ expect }) => {
+  it("should send feedback without authentication (dev tool)", async ({ expect }) => {
     const recipientMailbox = createMailbox("team@hexclave.com");
     const senderEmail = `devtool-user-${randomUUID()}@example.com`;
     const subject = `[Support] ${senderEmail}`;
@@ -96,7 +94,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(messages[0].body?.text).toContain("Unauthenticated feedback from the dev tool.");
   });
 
-  it.runIf(!isLocalEmulator)("should send bug reports with correct label", async ({ expect }) => {
+  it("should send bug reports with correct label", async ({ expect }) => {
     const recipientMailbox = createMailbox("team@hexclave.com");
     const reporterEmail = `bug-${randomUUID()}@example.com`;
     const subject = `[Bug Report] ${reporterEmail}`;

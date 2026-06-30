@@ -9,7 +9,6 @@ import {
   DesignInput,
 } from "@/components/design-components";
 import { useUpdateConfig } from "@/components/config-update";
-import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { AdminEmailConfig } from "@hexclave/next";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
@@ -712,7 +711,6 @@ export function DomainSettings() {
   const emailConfig = project.useConfig().emails.server;
   const updateConfig = useUpdateConfig();
   const { toast } = useToast();
-  const isEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   const savedServerType = getServerTypeFromConfig(emailConfig);
   const savedValues = getFormValuesFromConfig(emailConfig, project.displayName);
@@ -901,18 +899,6 @@ export function DomainSettings() {
       setSaving(false);
     }
   }, [serverType, formValues, hexclaveAdminApp, updateConfig, toast, draftManagedDomainId, domains, refreshDomains]);
-
-  if (isEmulator) {
-    return (
-      <DesignCard title="Mock Emails" subtitle="View all emails sent through the emulator in Inbucket" icon={Envelope} gradient="default">
-        <DesignButton variant="secondary" onClick={() => {
-          window.open(getPublicEnvVar("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL") + "/monitor", "_blank");
-        }}>
-          Open Inbox
-        </DesignButton>
-      </DesignCard>
-    );
-  }
 
   const emailFormatError = visibleSenderFields && formValues.senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.senderEmail)
     ? "Invalid email format" : null;

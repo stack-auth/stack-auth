@@ -13,7 +13,6 @@ import { deindent, stringCompare } from "@hexclave/shared/dist/utils/strings";
 import * as yup from "yup";
 import { PrismaClientTransaction, RawQuery, globalPrismaClient, rawQuery, retryTransaction } from "../../prisma-client";
 import { DEVELOPMENT_ENVIRONMENT_ENV_CONFIG_BLOCKED_MESSAGE, getEnvironmentConfigWriteBlockReason, isDevelopmentEnvironmentProject } from "../development-environment";
-import { getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "../local-emulator";
 import { listPermissionDefinitionsFromConfig } from "../permissions";
 import type { CapturedChange, ConfigAgentInFlightStage, GithubRepoRef } from "./repo-agent";
 
@@ -170,30 +169,7 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
       return migrateConfigOverride("branch", queryResult[0]?.config ?? {});
     },
   };
-  const fetchFromLocalEmulatorQuery: RawQuery<Promise<BranchConfigOverride | null>> = {
-    supportedPrismaClients: ["global"],
-    readOnlyQuery: true,
-    sql: Prisma.sql`SELECT "LocalEmulatorProject"."absoluteFilePath" FROM "LocalEmulatorProject" WHERE "LocalEmulatorProject"."projectId" = ${options.projectId}`,
-    postProcess: async (queryResult) => {
-      if (!queryResult[0]) {
-        return null;
-      }
-      const fileConfig = await readConfigFromFile(queryResult[0].absoluteFilePath);
-      return migrateConfigOverride("branch", fileConfig);
-    },
-  };
-
-  if (isLocalEmulatorEnabled()) {
-    return RawQuery.then(
-      RawQuery.all([fetchFromDbQuery, fetchFromLocalEmulatorQuery] as const),
-      async ([dbConfig, localEmulatorConfig]) => {
-        return await localEmulatorConfig ?? await dbConfig;
-      },
-    );
-  } else {
-    // fetch branch config from DB
-    return fetchFromDbQuery;
-  }
+  return fetchFromDbQuery;
 }
 
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
@@ -286,14 +262,6 @@ export async function setBranchConfigOverride(options: {
   branchConfigOverride: BranchConfigOverride,
 }): Promise<void> {
   const newConfig = migrateConfigOverride("branch", options.branchConfigOverride);
-
-  if (isLocalEmulatorEnabled() && await isLocalEmulatorProject(options.projectId)) {
-    const filePath = await getLocalEmulatorFilePath(options.projectId);
-    if (filePath) {
-      await writeConfigToFile(filePath, newConfig);
-      return;
-    }
-  }
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);

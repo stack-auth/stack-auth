@@ -6,14 +6,12 @@ import { ConfigUpdateDialogProvider } from "@/components/config-update";
 import { HexclaveRebrandModal } from "@/components/hexclave-rebrand-modal";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@hexclave/next";
-import { LOCAL_EMULATOR_ADMIN_EMAIL, LOCAL_EMULATOR_ADMIN_PASSWORD } from "@hexclave/shared/dist/local-emulator";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { useEffect, useRef } from "react";
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const app = useStackApp();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
   const user = useUser(
@@ -37,12 +35,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     autoLoginStarted.current = true;
 
     const autoLogin = async () => {
-      if (isLocalEmulator) {
-        await app.signInWithCredential({
-          email: LOCAL_EMULATOR_ADMIN_EMAIL,
-          password: LOCAL_EMULATOR_ADMIN_PASSWORD,
-        });
-      } else if (isPreview) {
+      if (isPreview) {
         const id = generateUuid();
         const email = `preview-${id}@preview.hexclave.com`;
         const password = `PreviewPass-${id}`;
@@ -53,9 +46,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       }
     };
     runAsynchronouslyWithAlert(autoLogin());
-  }, [user, app, isLocalEmulator, isRemoteDevelopmentEnvironment, isPreview]);
+  }, [user, app, isRemoteDevelopmentEnvironment, isPreview]);
 
-  if ((isLocalEmulator || isRemoteDevelopmentEnvironment || isPreview) && !user) {
+  if ((isRemoteDevelopmentEnvironment || isPreview) && !user) {
     return <Loading />;
   } else {
     return (
