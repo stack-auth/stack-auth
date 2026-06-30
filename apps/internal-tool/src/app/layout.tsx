@@ -1,22 +1,39 @@
-import LayoutClient from "./layout-client";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { StackProvider, StackTheme } from "@hexclave/next";
+import { getHexclaveClientApp } from "../hexclave";
+import Loading from "./loading";
 import "./globals.css";
 
-// internal-tool is not adopting Cache Components. Its pages are entirely client-rendered
-// and read Hexclave config that is injected at container startup via the sentinel-replacement
-// model (built with REPLACE_ME placeholders). Next.js 16.3 prerenders "use client" pages at
-// build time (16.2.x did not), which constructs StackClientApp with the unreplaced placeholders
-// and fails validation. Opt the whole app out of build-time prerendering so the client app is
-// only constructed at request time, after the real values are in place.
-export const dynamic = "force-dynamic";
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // The Hexclave client app reads NEXT_PUBLIC_HEXCLAVE_* config that is injected at container
+  // startup via the sentinel-replacement model. Construct it on the client (after the real values
+  // have replaced the REPLACE_ME placeholders) rather than during build-time prerender, where the
+  // SDK's eager projectId validation would reject the sentinel. This keeps the routes statically
+  // prerenderable while deferring the "must be configured" check to first runtime use.
+  const [app, setApp] = useState<ReturnType<typeof getHexclaveClientApp> | null>(null);
+  useEffect(() => {
+    setApp(getHexclaveClientApp());
+  }, []);
+
   return (
     <html lang="en">
       <head>
         <title>Hexclave — MCP Review Tool</title>
       </head>
       <body>
-        <LayoutClient>{children}</LayoutClient>
+        {app == null ? (
+          <Loading />
+        ) : (
+          <StackProvider app={app}>
+            <StackTheme>
+              <Suspense fallback={<Loading />}>
+                {children}
+              </Suspense>
+            </StackTheme>
+          </StackProvider>
+        )}
       </body>
     </html>
   );
