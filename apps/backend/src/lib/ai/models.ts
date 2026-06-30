@@ -30,17 +30,17 @@ const MODEL_SELECTION_MATRIX: Record<
   smart: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "z-ai/glm-5.2" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "z-ai/glm-5:nitro" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
   },
   smartest: {
     slow: {
       authenticated: { modelId: "openai/gpt-5.5" },
-      unauthenticated: { modelId: "z-ai/glm-5.2" },
+      unauthenticated: { modelId: "z-ai/glm-5.2:nitro" },
     },
     fast: {
       authenticated: { modelId: "openai/gpt-5.5" },
