@@ -9,6 +9,7 @@ import { Elysia } from "elysia";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getHeapStatistics } from "node:v8";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
@@ -26,9 +27,16 @@ const REFUND_TXN_PREFIX = "refund:";
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
 const schema = createPaymentsSchema();
 const port = Number(process.env.BULLDOZER_JS_PORT ?? process.env.BULLDOZER_SERVER_PORT ?? `${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}46`);
+const HEAP_GC_USAGE_THRESHOLD = 0.6;
+const HEAP_GC_PASSES = 5;
+const HEAP_GC_FINALIZATION_DELAY_MS = 20;
+const HEAP_GC_RETRY_COOLDOWN_MS = 60_000;
 type BulldozerSnapshot = Awaited<ReturnType<BulldozerDatabase["getSnapshot"]>>["snapshot"];
 type OwnedProductsRow = { ownedProducts: Record<string, unknown> };
 type SubscriptionMapRow = { subscriptions: Record<string, SubscriptionRow> };
+let heapGcMaintenanceScheduled = false;
+let mostRecentHeapGcMaintenanceLabel: string | null = null;
+let heapGcMaintenanceRetryAfter = 0;
 
 function defaultLmdbPath() {
   const configured = process.env.HEXCLAVE_BULLDOZER_JS_LMDB_PATH;
@@ -85,11 +93,156 @@ function timingHeaders(startedAt: number): HeadersInit | undefined {
   return { "x-bulldozer-handler-ms": (performance.now() - startedAt).toFixed(3) };
 }
 
+function currentHeapUsage() {
+  const heapUsed = process.memoryUsage().heapUsed;
+  const heapSizeLimit = getHeapStatistics().heap_size_limit;
+  return {
+    heapUsed,
+    heapSizeLimit,
+    heapUsedMb: heapUsed / 1_000_000,
+    heapSizeLimitMb: heapSizeLimit / 1_000_000,
+    heapUsedRatio: heapUsed / heapSizeLimit,
+  };
+}
+
+function logHeapGcMaintenance(event: string, fields: Record<string, unknown>) {
+  console.log(JSON.stringify({
+    component: "bulldozer-js",
+    event,
+    ...fields,
+  }));
+}
+
+function delayNextHeapGcMaintenance(reason: string, label: string, usage: ReturnType<typeof currentHeapUsage>) {
+  heapGcMaintenanceRetryAfter = performance.now() + HEAP_GC_RETRY_COOLDOWN_MS;
+  logHeapGcMaintenance("heap-gc-retry-delayed", {
+    label,
+    reason,
+    threshold: HEAP_GC_USAGE_THRESHOLD,
+    retryAfterMs: HEAP_GC_RETRY_COOLDOWN_MS,
+    usage,
+  });
+}
+
+/**
+ * V8's automatic GC is intentionally heuristic. During the Postgres->Bulldozer
+ * backfill investigation on 2026-06-29, we reproduced OOMs even though the
+ * Piledriver heap-key interner stores values through WeakRef. The issue was not
+ * stale dead WeakRefs: probes showed remaining entries had live `WeakRef.deref()`
+ * results until V8 chose to collect them. Once we explicitly ran a short GC
+ * sequence at a clean request/batch boundary, FinalizationRegistry callbacks
+ * removed those live-until-then interner entries and memory returned to a stable
+ * baseline.
+ *
+ * Reproduction probes used during that investigation:
+ * - `payments-backfill-weakref-liveness-probe.untracked.mjs` distinguishes live
+ *   WeakRefs from dead-not-finalized entries. In the bad state, entries were live.
+ * - `payments-backfill-strong-gc-idle-after-return-probe.untracked.mjs` compares
+ *   no forced GC vs forced GC using `STRONG_GC_AFTER_RETURN_FORCE_GC`.
+ * - The relevant stress runs were 500x50 and 1000x100 subscription batches
+ *   against instant-LMDB. Re-run them on new Node.js versions to check whether
+ *   automatic GC/finalization has become aggressive enough to remove this guard.
+ *
+ * This is not cache eviction. The map is a weak interner required for reference
+ * equality while a heap object is live. We do not manually delete entries here;
+ * we only give V8/FinalizationRegistry a chance to do their normal work at a
+ * point where the just-finished request's stack has unwound.
+ */
+async function runHeapGcMaintenanceIfNeeded(label: string) {
+  const before = currentHeapUsage();
+  if (before.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD) return;
+
+  if (globalThis.gc === undefined) {
+    captureError("bulldozer-js:heap-gc-unavailable", new HexclaveAssertionError(
+      "Bulldozer JS heap crossed the GC threshold, but Node was not started with --expose-gc",
+      { label, threshold: HEAP_GC_USAGE_THRESHOLD, before },
+    ));
+    logHeapGcMaintenance("heap-gc-unavailable", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
+    delayNextHeapGcMaintenance("gc-unavailable", label, before);
+    return;
+  }
+
+  const startedAt = performance.now();
+  logHeapGcMaintenance("heap-gc-start", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
+
+  let previous = before;
+  for (let pass = 1; pass <= HEAP_GC_PASSES; pass++) {
+    const passStartedAt = performance.now();
+    const gcStartedAt = performance.now();
+    globalThis.gc();
+    const gcBlockingMs = performance.now() - gcStartedAt;
+    await wait(HEAP_GC_FINALIZATION_DELAY_MS);
+
+    const afterPass = currentHeapUsage();
+    logHeapGcMaintenance("heap-gc-pass", {
+      label,
+      pass,
+      before: previous,
+      after: afterPass,
+      freedHeapMb: (previous.heapUsed - afterPass.heapUsed) / 1_000_000,
+      freedHeapRatioPoints: previous.heapUsedRatio - afterPass.heapUsedRatio,
+      gcBlockingMs,
+      passElapsedMs: performance.now() - passStartedAt,
+    });
+    previous = afterPass;
+  }
+
+  const after = currentHeapUsage();
+  logHeapGcMaintenance("heap-gc-finish", {
+    label,
+    threshold: HEAP_GC_USAGE_THRESHOLD,
+    after,
+    totalFreedHeapMb: (before.heapUsed - after.heapUsed) / 1_000_000,
+    elapsedMs: performance.now() - startedAt,
+  });
+
+  if (after.heapUsedRatio > HEAP_GC_USAGE_THRESHOLD) {
+    captureError("bulldozer-js:heap-still-above-threshold-after-gc", new HexclaveAssertionError(
+      "Bulldozer JS heap remained above the GC threshold after explicit collection",
+      { label, threshold: HEAP_GC_USAGE_THRESHOLD, before, after },
+    ));
+    delayNextHeapGcMaintenance("still-above-threshold", label, after);
+  } else {
+    heapGcMaintenanceRetryAfter = 0;
+  }
+}
+
+function scheduleHeapGcMaintenanceIfNeeded(label: string) {
+  const before = currentHeapUsage();
+  if (before.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD) return;
+
+  const now = performance.now();
+  if (now < heapGcMaintenanceRetryAfter) return;
+
+  mostRecentHeapGcMaintenanceLabel = label;
+  if (heapGcMaintenanceScheduled) {
+    logHeapGcMaintenance("heap-gc-already-scheduled", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
+    return;
+  }
+
+  heapGcMaintenanceScheduled = true;
+  logHeapGcMaintenance("heap-gc-scheduled", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
+  runAsynchronously(async () => {
+    // Give the response-producing handler frame a tick to unwind before asking
+    // V8 what is still genuinely live. The scheduled task only closes over the
+    // route label, not the response body that was just returned.
+    await wait(0);
+    try {
+      await runHeapGcMaintenanceIfNeeded(mostRecentHeapGcMaintenanceLabel ?? label);
+    } finally {
+      heapGcMaintenanceScheduled = false;
+      mostRecentHeapGcMaintenanceLabel = null;
+    }
+  });
+}
+
 async function handler(label: string, operation: () => Promise<unknown>) {
   const startedAt = performance.now();
   return await traceSpan("bulldozer-js.http.handler", async () => {
     try {
-      return jsonResponse(await operation(), { headers: timingHeaders(startedAt) });
+      const body = await operation();
+      scheduleHeapGcMaintenanceIfNeeded(label);
+      return jsonResponse(body, { headers: timingHeaders(startedAt) });
     } catch (error) {
       if (StatusError.isStatusError(error) && error.isClientError()) {
         // Bad request from the caller (malformed body, params, cursor, etc.). The
