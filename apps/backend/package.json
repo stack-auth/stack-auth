@@ -139,7 +139,7 @@
     "prisma": "^7.0.0",
     "require-in-the-middle": "^7.4.0",
     "rimraf": "^5.0.5",
-    "tsdown": "^0.20.3",
+    "tsdown": "^0.22.3",
     "tsx": "^4.7.2"
   },
   "packageManager": "pnpm@11.5.0"
