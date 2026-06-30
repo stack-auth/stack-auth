@@ -374,6 +374,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       elkjs:
         specifier: ^0.11.1
         version: 0.11.1
@@ -3843,6 +3846,7 @@ packages:
 
   '@clickhouse/client-common@1.16.0':
     resolution: {integrity: sha512-qMzkI1NmV29ZjFkNpVSvGNfA0c7sCExlufAQMv+V+5xtNeYXnRfdqzmBLIQoq6Pf1ij0kw/wGLD3HQrl7pTFLA==}
+    deprecated: 'Deprecated: import from @clickhouse/client or @clickhouse/client-web instead.'
 
   '@clickhouse/client@1.16.0':
     resolution: {integrity: sha512-ThPhoRMsKsf/hmBEgWlUsGxFecsr3i+k3JI8JV0Od7UpH2BSmk9VKMGJoyPCrTL0vPUs5rJH+7o4iCqBF09Xvg==}

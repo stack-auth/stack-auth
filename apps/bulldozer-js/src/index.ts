@@ -16,6 +16,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-leve
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";

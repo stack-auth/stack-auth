@@ -1,1 +1,4 @@
 .data
+
+# local env files (secrets / per-machine overrides) — committed env lives in .env and .env.development
+.env*.local

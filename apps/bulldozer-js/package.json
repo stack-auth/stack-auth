@@ -22,6 +22,7 @@
     "@opentelemetry/exporter-trace-otlp-proto": "^0.200.0",
     "@sentry/node": "^10.42.0",
     "@sinclair/typebox": "^0.34.49",
+    "dotenv": "^16.6.1",
     "elkjs": "^0.11.1",
     "elysia": "^1.4.28",
     "lmdb": "^3.5.5",
