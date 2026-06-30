@@ -6,12 +6,13 @@ import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, serverOrHigherAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
 const MAX_QUERY_TIMEOUT_MS = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
 const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
+const MAX_RESULT_ROWS = 10_000;
+const MAX_RESULT_BYTES = 10 * 1024 * 1024; 
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -96,5 +97,4 @@ export const POST = createSmartRouteHandler({
   },
 });
 
-const MAX_RESULT_ROWS = 10_000;
-const MAX_RESULT_BYTES = 10 * 1024 * 1024;
+
