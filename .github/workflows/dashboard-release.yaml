@@ -105,6 +105,17 @@ jobs:
           tmp="$(mktemp)"
           jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
           mv "$tmp" "$MANIFEST"
+          # dashboard-latest is only ever a plain X.Y.Z release. Refuse to advance
+          # it to a prerelease/build-metadata version rather than guess SemVer
+          # prerelease ordering in bash (`sort -V` is not a SemVer comparator).
+          # The dashboard always ships plain releases, so this should never fire.
+          new="${VERSION#v}"
+          case "$new" in
+            *[-+]*)
+              echo "::error::Refusing to publish prerelease/build version $VERSION as dashboard-latest; it must be a plain X.Y.Z release."
+              exit 1
+              ;;
+          esac
           if gh release view dashboard-latest >/dev/null 2>&1; then
             # dashboard-latest must only ever move forward. Re-running on an older
             # commit must not roll clients back to a stale dashboard. Re-publishing
@@ -112,17 +123,12 @@ jobs:
             published_dir="$(mktemp -d)"
             if gh release download dashboard-latest -p manifest.json -D "$published_dir" 2>/dev/null; then
               published_version="$(jq -r '.version // ""' "$published_dir/manifest.json")"
-              # Build SemVer-precedence sort keys (also strips a leading 'v' so a
-              # prefix-style change doesn't read as a different version): drop
-              # '+build' metadata, and map the prerelease '-' to '~', which sort -V
-              # ranks before end-of-string. Without this, sort -V would rank
-              # 1.2.3-rc.1 ABOVE 1.2.3 and the guard would block advancing a
-              # prerelease to its final release.
-              pub="${published_version#v}"; pub_key="${pub%%+*}"; pub_key="${pub_key/-/~}"
-              new="${VERSION#v}"; new_key="${new%%+*}"; new_key="${new_key/-/~}"
-              if [ -n "$pub" ] && [ "$pub_key" != "$new_key" ]; then
-                newest="$(printf '%s\n%s\n' "$pub_key" "$new_key" | sort -V | tail -n1)"
-                if [ "$newest" = "$pub_key" ]; then
+              # Both sides are plain releases (the published one was gated the same
+              # way), so a leading-'v'-stripped, numeric-aware `sort -V` is exact.
+              pub="${published_version#v}"
+              if [ -n "$pub" ] && [ "$pub" != "$new" ]; then
+                newest="$(printf '%s\n%s\n' "$pub" "$new" | sort -V | tail -n1)"
+                if [ "$newest" = "$pub" ]; then
                   echo "::warning::dashboard-latest already points at $published_version, which is newer than $VERSION; refusing to roll it back."
                   exit 0
                 fi
