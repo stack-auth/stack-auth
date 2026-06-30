@@ -1,0 +1,58 @@
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_79c83501f4deab::t_819c82f7773e14 8-9,11
+apps/skills/src/ask-route.ts
+  s_79c83501f4deab::t_4ad7df72e5ae6c 1,84,112,115,123-131,133-134,137
+  s_79c83501f4deab::t_68e62a33babc87 4,25-30,32-33,36-38,41-46,49,52-54,60-63,65,72,116-122,140,146,156,159
+  s_79c83501f4deab::t_028c5d90ddde7b 11
+  s_79c83501f4deab::t_4ebe43b19418aa 2,12,78-83,85-111,113-114
+apps/skills/src/app/ask/route.ts
+  s_79c83501f4deab::t_81b2da789f5e7f 1,6,10,14
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_79c83501f4deab::t_131fd39f650781 7-10,47,52-55,58,60
+apps/mcp/src/mcp-handler.ts
+  s_79c83501f4deab::t_f9f50ef45e2919 1,13,15,39,67,69-70,138-145,148,150,156
+  s_79c83501f4deab::t_14ec055dd46e4d 5,21,33-38,40-66,68
+apps/skills/src/ask-route.test.ts
+  s_79c83501f4deab::t_90dd6ebe5f0537 58,90
+  s_79c83501f4deab::t_594c046a76b0eb 82-84,96,114,144,146-147,149-152,156-159,161-166,170,172-176
+  s_79c83501f4deab::t_5639d15322a18c 1-13,26-27,108,135,153
+  s_79c83501f4deab::t_5f2fc99375d69f 52
+  s_79c83501f4deab::t_305b97403f8833 117-127,130-134,139-140
+  s_79c83501f4deab::t_b25deb3f49d33b 51,85,99-102,104-107,112-113
+  s_79c83501f4deab::t_f73f508678cf27 109-111,136-137,154-155
+  s_79c83501f4deab::t_414ccac0339a79 15,25,30-33,35-41,44-50,53-57,59-79,86-88,91-95,182,184-185,187-190,194-196,199
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_79c83501f4deab::t_4eca08a6776423 522
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_79c83501f4deab::t_176178fc4f742e 2,10-16,37,42,45,47,64-71,77,86,94-95
+apps/backend/src/lib/ai/tools/index.ts
+  s_79c83501f4deab::t_0ad44bedc5363d 8,36
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_79c83501f4deab::t_75184d5e30ad14 3
+packages/shared/src/ai/hexclave-ask.ts
+  s_79c83501f4deab::t_d7986526ae1ed4 1-149
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_79c83501f4deab::t_16f2936f4f5c77 1
+packages/shared/src/ai/unified-prompts/skill-site-prompt.ts
+  s_79c83501f4deab::t_72cbc4be4642ff 16,29
+docs-mintlify/llms.txt
+  s_79c83501f4deab::t_76c141e6f0d836 6-7,9
+docs-mintlify/guides/getting-started/setup.mdx
+  s_79c83501f4deab::t_bc3c16a8b3577c 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f3f5f1008edfbfba220abb83dcb191d0ce1109d9",
+  "prompts": {},
+  "sessions": {
+    "s_79c83501f4deab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5223c55-e77b-4d85-a7e5-802c5b74e683",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
