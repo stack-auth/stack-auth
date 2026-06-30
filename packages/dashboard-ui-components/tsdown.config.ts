@@ -6,7 +6,7 @@ const pkgDir = path.resolve(import.meta.dirname);
 
 export default createJsLibraryTsupConfig({
   barrelFiles: ["src/index.ts"],
-  onSuccess: async () => {
+  onSuccess: () => {
     execSync('pnpm run build-iife && pnpm run copy-iife', { cwd: pkgDir, stdio: 'inherit' });
   },
 });
