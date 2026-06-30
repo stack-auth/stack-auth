@@ -18,6 +18,7 @@ const metadataDocsUrl = "https://docs.hexclave.com/guides/getting-started/user-f
 export function UserDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
+  onUserMutated?: () => void | Promise<void>,
   trigger?: React.ReactNode,
 } & ({
   type: 'create',
@@ -129,6 +130,7 @@ export function UserDialog(props: {
       } else {
         await adminApp.createUser(userValues);
       }
+      await props.onUserMutated?.();
     } catch (error) {
       if (KnownErrors.UserWithEmailAlreadyExists.isInstance(error)) {
         setErrorDialog({

@@ -11,6 +11,7 @@ export function DeleteUserDialog(props: {
   profileHref: string,
   redirectTo?: string,
   onOpenChange: (open: boolean) => void,
+  onDeleted?: () => void | Promise<void>,
 }) {
   const router = useRouter();
   const userLabel = props.user.displayName ?? props.user.primaryEmail ?? props.user.id;
@@ -23,6 +24,7 @@ export function DeleteUserDialog(props: {
     okButton={{
       label: "Delete User", onClick: async () => {
         await props.user.delete();
+        await props.onDeleted?.();
         if (props.redirectTo) {
           router.push(props.redirectTo);
         }
