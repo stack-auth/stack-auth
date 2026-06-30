@@ -71,7 +71,7 @@ WORKDIR /app
 # Install packages needed for deployment
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y openssl socat && \
+    apt-get install -y openssl postgresql-client socat && \
     rm -rf /var/lib/apt/lists
 
 # Copy built backend
