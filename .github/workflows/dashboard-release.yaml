@@ -112,13 +112,17 @@ jobs:
             published_dir="$(mktemp -d)"
             if gh release download dashboard-latest -p manifest.json -D "$published_dir" 2>/dev/null; then
               published_version="$(jq -r '.version // ""' "$published_dir/manifest.json")"
-              # Compare on the v-stripped semver so a 'v'-prefix style change
-              # between runs doesn't read as a different (or older) version.
-              pub="${published_version#v}"
-              new="${VERSION#v}"
-              if [ -n "$pub" ] && [ "$pub" != "$new" ]; then
-                newest="$(printf '%s\n%s\n' "$pub" "$new" | sort -V | tail -n1)"
-                if [ "$newest" = "$pub" ]; then
+              # Build SemVer-precedence sort keys (also strips a leading 'v' so a
+              # prefix-style change doesn't read as a different version): drop
+              # '+build' metadata, and map the prerelease '-' to '~', which sort -V
+              # ranks before end-of-string. Without this, sort -V would rank
+              # 1.2.3-rc.1 ABOVE 1.2.3 and the guard would block advancing a
+              # prerelease to its final release.
+              pub="${published_version#v}"; pub_key="${pub%%+*}"; pub_key="${pub_key/-/~}"
+              new="${VERSION#v}"; new_key="${new%%+*}"; new_key="${new_key/-/~}"
+              if [ -n "$pub" ] && [ "$pub_key" != "$new_key" ]; then
+                newest="$(printf '%s\n%s\n' "$pub_key" "$new_key" | sort -V | tail -n1)"
+                if [ "$newest" = "$pub_key" ]; then
                   echo "::warning::dashboard-latest already points at $published_version, which is newer than $VERSION; refusing to roll it back."
                   exit 0
                 fi

@@ -434,7 +434,13 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   if (await isDashboardReachable(url, options.secret)) {
     const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
     const runningVersion = runningDashboard?.version;
-    if (dashboardOverride != null && runningVersion !== "local") {
+    if (devDashboardCommand != null && runningVersion != null) {
+      // A custom dev command should take over a release/override dashboard left
+      // running from a prior run. A custom-command dashboard records no version,
+      // so `runningVersion != null` avoids needlessly restarting that one.
+      logDev("A custom Hexclave dashboard command is configured; restarting the running dashboard...");
+      await killLocalDashboard(url, options.port);
+    } else if (dashboardOverride != null && runningVersion !== "local") {
       // A local-build override should win over a release dashboard left running
       // from a prior run; the override always resolves to version "local".
       logDev("A local Hexclave dashboard override is configured; restarting the running dashboard...");
