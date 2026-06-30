@@ -29,9 +29,12 @@ type ProductData = {
   charges_enabled: boolean | null,
 };
 
-const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-const baseUrl = new URL("/api/v1", apiUrl).toString();
 const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
+
+function getBaseUrl() {
+  const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
+  return new URL("/api/v1", apiUrl).toString();
+}
 
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
@@ -77,6 +80,7 @@ export default function PageClient({ code }: { code: string }) {
   }, [data, selectedPriceId]);
 
   const validateCode = useCallback(async () => {
+    const baseUrl = getBaseUrl();
     const response = await fetch(`${baseUrl}/payments/purchases/validate-code`, {
       method: "POST",
       headers: {
@@ -121,6 +125,7 @@ export default function PageClient({ code }: { code: string }) {
   }, [data, selectedPriceId]);
 
   const setupSubscription = async () => {
+    const baseUrl = getBaseUrl();
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,6 +147,7 @@ export default function PageClient({ code }: { code: string }) {
     if (quantityNumber < 1 || isTooLarge) {
       return;
     }
+    const baseUrl = getBaseUrl();
     const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -50,8 +50,10 @@ function TotalUsersDisplay() {
   );
 }
 
-function TotalUsersErrorComponent(props: { error: Error }) {
-  captureUsersMetricsErrorOnce(props.error);
+function TotalUsersErrorComponent(props: { error: unknown }) {
+  if (props.error instanceof Error) {
+    captureUsersMetricsErrorOnce(props.error);
+  }
   return <>Unavailable</>;
 }
 

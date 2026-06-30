@@ -8,7 +8,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Inter as FontSans } from "next/font/google";
-import React from 'react';
+import React, { Suspense } from 'react';
 import '../polyfills';
 import './globals.css';
 import { LayoutClient } from './layout-client';
@@ -95,9 +95,11 @@ export default function RootLayout({
       >
         <Analytics />
         <SpeedInsights />
-        <LayoutClient translationLocale={translationLocale}>
-          {children}
-        </LayoutClient>
+        <Suspense>
+          <LayoutClient translationLocale={translationLocale}>
+            {children}
+          </LayoutClient>
+        </Suspense>
       </body>
     </html>
   );

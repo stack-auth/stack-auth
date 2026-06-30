@@ -1491,8 +1491,9 @@ export default function MetricsPage() {
   );
 }
 
-function MetricsErrorComponent(props: { error: Error, reset?: () => void }) {
-  return <MetricsErrorFallback error={props.error} onRetryAction={props.reset} />;
+function MetricsErrorComponent(props: { error: unknown, reset?: () => void }) {
+  const error = props.error instanceof Error ? props.error : new Error(String(props.error));
+  return <MetricsErrorFallback error={error} onRetryAction={props.reset} />;
 }
 
 function MetricsFilterPreloader({
