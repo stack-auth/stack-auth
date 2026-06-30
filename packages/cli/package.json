@@ -33,7 +33,6 @@
     "@hexclave/js": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "commander": "^13.1.0",
-    "extract-zip": "^2.0.1",
     "jiti": "^2.4.2"
   },
   "devDependencies": {
