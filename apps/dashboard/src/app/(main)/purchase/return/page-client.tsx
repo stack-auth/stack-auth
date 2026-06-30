@@ -4,8 +4,8 @@ import { StyledLink } from "@/components/link";
 import { DesignCard } from "@/components/design-components/card";
 import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { getApiBaseUrl } from "../get-api-base-url";
 import { CheckCircleIcon, SpinnerGapIcon, XCircleIcon } from "@phosphor-icons/react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
@@ -17,11 +17,6 @@ type ViewState =
   | { kind: "error", message: string };
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? "";
-
-function getBaseUrl() {
-  const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-  return new URL("/api/v1", apiUrl).toString();
-}
 
 export default function ReturnClient() {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
@@ -37,7 +32,7 @@ export default function ReturnClient() {
     if (!returnUrl || !purchaseFullCode) {
       return;
     }
-    const baseUrl = getBaseUrl();
+    const baseUrl = getApiBaseUrl();
     const url = new URL(`${baseUrl}/payments/purchases/validate-code`);
     url.searchParams.set("full_code", purchaseFullCode);
     url.searchParams.set("return_url", returnUrl);

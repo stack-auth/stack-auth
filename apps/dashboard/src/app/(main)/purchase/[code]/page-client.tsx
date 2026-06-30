@@ -8,11 +8,10 @@ import { StripeElementsProvider } from "@/components/payments/stripe-elements-pr
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Skeleton, Typography } from "@/components/ui";
-import { getPublicEnvVar } from "@/lib/env";
 import { XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
+import { getApiBaseUrl } from "../get-api-base-url";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -31,17 +30,12 @@ type ProductData = {
 
 const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
 
-function getBaseUrl() {
-  const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-  return new URL("/api/v1", apiUrl).toString();
-}
-
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // A missing NEXT_PUBLIC_STACK_API_URL is a deployment/config error, not a bad purchase
-  // code. getBaseUrl() can only run client-side (the var is blank during prerender), so we
+  // code. getApiBaseUrl() can only run client-side (the var is blank during prerender), so we
   // resolve it in the effect below and surface a failure here loudly via the error boundary
   // instead of letting it fall into the "Invalid Purchase Code" catch path.
   const [configError, setConfigError] = useState<unknown>(null);
@@ -111,7 +105,7 @@ export default function PageClient({ code }: { code: string }) {
   useEffect(() => {
     let baseUrl: string;
     try {
-      baseUrl = getBaseUrl();
+      baseUrl = getApiBaseUrl();
     } catch (err) {
       setConfigError(err);
       return;
@@ -136,7 +130,7 @@ export default function PageClient({ code }: { code: string }) {
   }, [data, selectedPriceId]);
 
   const setupSubscription = async () => {
-    const baseUrl = getBaseUrl();
+    const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/payments/purchases/purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -158,7 +152,7 @@ export default function PageClient({ code }: { code: string }) {
     if (quantityNumber < 1 || isTooLarge) {
       return;
     }
-    const baseUrl = getBaseUrl();
+    const baseUrl = getApiBaseUrl();
     const response = await fetch(`${baseUrl}/internal/payments/test-mode-purchase-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
