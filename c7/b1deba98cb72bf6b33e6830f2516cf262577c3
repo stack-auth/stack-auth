@@ -1,0 +1,162 @@
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 83,99-100,303,795,802
+packages/cli/src/lib/auth.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 31-43,66,117-118,121-122
+packages/cli/src/commands/project.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 7,17,20-26,28-37,41,58,62-68,88-92
+apps/backend/src/lib/config/index.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 172
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/skills/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+docs-mintlify/guides/other/self-host.mdx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 37,301
+examples/tanstack-start-demo/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+packages/sc/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/mock-oauth-server/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+docs-mintlify/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/dashboard/src/app/(main)/(protected)/layout-client.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 38,49,51
+apps/backend/src/lib/stripe.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 16
+packages/js/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/content.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 64,201
+apps/backend/prisma/seed.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 359,361-370,372-374,392-393
+packages/cli/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+sdks/spec/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/backend/src/lib/email-queue-step.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 219,272
+  s_39718ad427cb97::t_073401fb49acbb 273
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 16
+apps/dashboard/next.config.mjs
+  s_39718ad427cb97::t_c6c09e7e64e1cc 152
+packages/ui/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+docs-mintlify/guides/getting-started/setup.mdx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 9
+packages/cli/src/lib/config.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 31
+apps/e2e/tests/general/cli.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 176-177
+apps/backend/prisma/migrations/20260513000000_add_project_development_environment/tests/default-and-updates.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 11
+apps/dashboard/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/backend/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/dashboard/src/components/hexclave-rebrand-modal.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 33,45
+apps/backend/src/lib/ai/models.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 63
+docker/server/Dockerfile
+  s_39718ad427cb97::t_c6c09e7e64e1cc 74
+apps/backend/prisma/migrations/20260630000000_drop_local_emulator_project_mapping/tests/table-dropped.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 1-34
+examples/convex/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+packages/shared/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+examples/e-commerce/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails/page-client.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 87,100,111,113
+apps/dev-launchpad/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+examples/cjs-test/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+examples/middleware/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/backend/src/lib/js-execution.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 30,152
+apps/backend/prisma/migrations/20260630000000_drop_local_emulator_project_mapping/migration.sql
+  s_39718ad427cb97::t_c6c09e7e64e1cc 1
+examples/js-example/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+examples/lovable-react-18-example/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+apps/e2e/tests/backend/endpoints/api/v1/internal/feedback.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 9,60,97
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 422,465,914
+apps/e2e/tests/backend/endpoints/api/v1/internal/email-templates.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 86
+apps/hosted-components/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/shared.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 92,105,127
+examples/react-example/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+docs/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/internal-tool/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+packages/template/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 5
+examples/docs-examples/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+sdks/implementations/swift/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/e2e/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+docs-mintlify/llms.txt
+  s_39718ad427cb97::t_c6c09e7e64e1cc 14
+packages/dashboard-ui-components/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/mcp/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/projects/page-client.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 277,280,457
+docker/server/entrypoint.sh
+  s_39718ad427cb97::t_c6c09e7e64e1cc 51-53,116-120,134,160,171-174
+apps/dashboard/src/app/layout-client.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 159
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 1
+examples/demo/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+examples/supabase/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+packages/template/package-template.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 16
+packages/react/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+packages/cli/src/lib/auth.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 2
+packages/shared-backend/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 3
+packages/next/package.json
+  s_39718ad427cb97::t_c6c09e7e64e1cc 4
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.test.tsx
+  s_39718ad427cb97::t_c6c09e7e64e1cc 185,192-201
+packages/cli/src/commands/project.test.ts
+  s_39718ad427cb97::t_c6c09e7e64e1cc 6-11,14-20,23-29,32-35,47,49
+packages/tanstack-start/package.json
+  s_39718ad427cb97::t_1a974f44c54b02 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "c7b1deba98cb72bf6b33e6830f2516cf262577c3",
+  "prompts": {},
+  "sessions": {
+    "s_39718ad427cb97": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "43591aec-494e-4693-8354-e3a5a25e2520",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
