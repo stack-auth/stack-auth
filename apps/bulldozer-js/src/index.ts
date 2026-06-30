@@ -31,6 +31,7 @@ const HEAP_GC_USAGE_THRESHOLD = 0.6;
 const HEAP_GC_MAX_PASSES = 5;
 const HEAP_GC_FINALIZATION_DELAY_MS = 20;
 const HEAP_GC_RETRY_COOLDOWN_MS = 60_000;
+const TICK_LOOP_SLOW_MS = 500;
 type BulldozerSnapshot = Awaited<ReturnType<BulldozerDatabase["getSnapshot"]>>["snapshot"];
 type OwnedProductsRow = { ownedProducts: Record<string, unknown> };
 type SubscriptionMapRow = { subscriptions: Record<string, SubscriptionRow> };
@@ -105,6 +106,31 @@ function currentHeapUsage() {
   };
 }
 
+function serviceMemoryUsage() {
+  const memory = process.memoryUsage();
+  const heapStats = getHeapStatistics();
+  return {
+    heapUsedMb: memory.heapUsed / 1_000_000,
+    heapTotalMb: memory.heapTotal / 1_000_000,
+    heapSizeLimitMb: heapStats.heap_size_limit / 1_000_000,
+    heapUsedRatio: memory.heapUsed / heapStats.heap_size_limit,
+    rssMb: memory.rss / 1_000_000,
+    externalMb: memory.external / 1_000_000,
+    arrayBuffersMb: memory.arrayBuffers / 1_000_000,
+    totalAvailableHeapMb: heapStats.total_available_size / 1_000_000,
+    nativeContexts: heapStats.number_of_native_contexts,
+    detachedContexts: heapStats.number_of_detached_contexts,
+  };
+}
+
+function logBulldozerService(event: string, fields: Record<string, unknown>) {
+  console.log(JSON.stringify({
+    component: "bulldozer-js",
+    event,
+    ...fields,
+  }));
+}
+
 function logHeapGcMaintenance(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({
     component: "bulldozer-js",
@@ -175,6 +201,8 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
     await wait(HEAP_GC_FINALIZATION_DELAY_MS);
 
     const afterPass = currentHeapUsage();
+    const passElapsedMs = performance.now() - passStartedAt;
+    const thresholdReached = afterPass.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD;
     logHeapGcMaintenance("heap-gc-pass", {
       label,
       pass,
@@ -183,11 +211,11 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
       freedHeapMb: (previous.heapUsed - afterPass.heapUsed) / 1_000_000,
       freedHeapRatioPoints: previous.heapUsedRatio - afterPass.heapUsedRatio,
       gcBlockingMs,
-      passElapsedMs: performance.now() - passStartedAt,
+      passElapsedMs,
     });
     previous = afterPass;
     completedPasses = pass;
-    if (afterPass.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD) break;
+    if (thresholdReached) break;
   }
 
   const after = currentHeapUsage();
@@ -244,21 +272,53 @@ function scheduleHeapGcMaintenanceIfNeeded(label: string) {
 async function handler(label: string, operation: () => Promise<unknown>) {
   const startedAt = performance.now();
   return await traceSpan("bulldozer-js.http.handler", async () => {
+    logBulldozerService("http-handler-start", {
+      label,
+      memory: serviceMemoryUsage(),
+    });
     try {
+      const operationStartedAt = performance.now();
       const body = await operation();
+      const operationMs = performance.now() - operationStartedAt;
       scheduleHeapGcMaintenanceIfNeeded(label);
-      return jsonResponse(body, { headers: timingHeaders(startedAt) });
+      const serializationStartedAt = performance.now();
+      const response = jsonResponse(body, { headers: timingHeaders(startedAt) });
+      const responseSerializationMs = performance.now() - serializationStartedAt;
+      logBulldozerService("http-handler-finish", {
+        label,
+        outcome: "success",
+        status: 200,
+        operationMs,
+        responseSerializationMs,
+        elapsedMs: performance.now() - startedAt,
+        memory: serviceMemoryUsage(),
+      });
+      return response;
     } catch (error) {
       if (StatusError.isStatusError(error) && error.isClientError()) {
         // Bad request from the caller (malformed body, params, cursor, etc.). The
         // message is non-sensitive and helps the caller fix the request, so echo
         // it; don't capture it as a server fault (it isn't one).
+        logBulldozerService("http-handler-finish", {
+          label,
+          outcome: "client-error",
+          status: error.getStatusCode(),
+          elapsedMs: performance.now() - startedAt,
+          memory: serviceMemoryUsage(),
+        });
         return jsonResponse({ error: "bad_request", message: error.message }, { status: error.getStatusCode(), headers: timingHeaders(startedAt) });
       }
       // Genuine server fault (including poisoned stored data). Keep full context
       // server-side via Sentry, but never leak internal error messages to the
       // caller — only a generic body.
       captureError(`bulldozer-js:${label}`, error);
+      logBulldozerService("http-handler-finish", {
+        label,
+        outcome: "server-error",
+        status: 500,
+        elapsedMs: performance.now() - startedAt,
+        memory: serviceMemoryUsage(),
+      });
       return jsonResponse({ error: "bulldozer_server_error" }, { status: 500, headers: timingHeaders(startedAt) });
     }
   });
@@ -903,6 +963,18 @@ const app = new Elysia({ adapter: node() })
   .listen(port);
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
+logBulldozerService("service-started", {
+  port: app.server?.port ?? port,
+  pid: process.pid,
+  nodeVersion: process.version,
+  lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
+  usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+  gcExposed: globalThis.gc !== undefined,
+  heapGcUsageThreshold: HEAP_GC_USAGE_THRESHOLD,
+  heapGcMaxPasses: HEAP_GC_MAX_PASSES,
+  memory: serviceMemoryUsage(),
+});
 
 // Periodically tick the bulldozer clock to process timefold-queued rows; clamp monotonically so a
 // backwards wall-clock jump can't rewind it.
@@ -910,11 +982,26 @@ runAsynchronously(async () => {
   let lastTickMillis = 0;
   while (true) {
     await traceSpan("bulldozer-js-tick-loop-iteration", async () => {
+      const tickStartedAt = performance.now();
       try {
         lastTickMillis = Math.max(Date.now(), lastTickMillis);
         await bulldozerDb.withSnapshotReplicated(async snapshot => await snapshot.tick(new Date(lastTickMillis)));
       } catch (error) {
+        logBulldozerService("tick-loop-error", {
+          elapsedMs: performance.now() - tickStartedAt,
+          lastTickMillis,
+          memory: serviceMemoryUsage(),
+        });
         captureError("bulldozer-js-tick-loop", error);
+      }
+      const elapsedMs = performance.now() - tickStartedAt;
+      if (elapsedMs > TICK_LOOP_SLOW_MS) {
+        logBulldozerService("tick-loop-slow", {
+          elapsedMs,
+          slowThresholdMs: TICK_LOOP_SLOW_MS,
+          lastTickMillis,
+          memory: serviceMemoryUsage(),
+        });
       }
       await wait(1000);
     });
