@@ -792,7 +792,7 @@ function TeamAddUserDialog(props: { team: Team }) {
         setLoadingData(false);
       }
     }
-  }, [props.team.id]);
+  }, [props.team]);
 
   useEffect(() => {
     if (!open) {
@@ -819,7 +819,7 @@ function TeamAddUserDialog(props: { team: Team }) {
       captureError("team-admin-invite-dialog-refresh-invitations", error);
       setLoadError("Failed to refresh pending invitations. Please try again.");
     }
-  }, [props.team.id]);
+  }, [props.team]);
 
   const activeSeats = dialogData == null ? null : dialogData.userCount + dialogData.invitations.length;
   const atCapacity = dialogData != null && activeSeats != null && activeSeats >= dialogData.seatLimit;
