@@ -269,7 +269,7 @@ async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promis
     END AS delta;
   `;
 
-  const delta = Object.is(rawDelta, -0) ? 0 : rawDelta;
+  const delta = Object.is(rawDelta, -0) ? 0 : Number(rawDelta);
 
   if (delta < 0) {
     console.warn("Email queue step delta is negative after monotonic timestamp update; ignoring the delta so the send quota cannot go negative", { delta });
