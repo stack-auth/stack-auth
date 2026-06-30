@@ -6,7 +6,7 @@ describe("resolveProjectListSources", () => {
     expect(resolveProjectListSources()).toMatchInlineSnapshot(`
       {
         "cloud": true,
-        "dev": true,
+        "local": true,
       }
     `);
   });
@@ -15,22 +15,22 @@ describe("resolveProjectListSources", () => {
     expect(resolveProjectListSources({ cloud: true })).toMatchInlineSnapshot(`
       {
         "cloud": true,
-        "dev": false,
+        "local": false,
       }
     `);
   });
 
-  it("returns dev-only when --dev is passed", () => {
-    expect(resolveProjectListSources({ dev: true })).toMatchInlineSnapshot(`
+  it("returns local-only when --local is passed", () => {
+    expect(resolveProjectListSources({ local: true })).toMatchInlineSnapshot(`
       {
         "cloud": false,
-        "dev": true,
+        "local": true,
       }
     `);
   });
 
   it("rejects both flags", () => {
-    expect(() => resolveProjectListSources({ cloud: true, dev: true })).toThrow(
+    expect(() => resolveProjectListSources({ cloud: true, local: true })).toThrow(
       /not both/,
     );
   });
@@ -44,8 +44,8 @@ describe("formatProjectList", () => {
   it("formats each project as `<id>\\t<name>\\t[<target>]`", () => {
     const projects: ProjectListEntry[] = [
       { id: "p1", displayName: "Cloud A", target: "cloud" },
-      { id: "p2", displayName: "Local B", target: "dev" },
+      { id: "p2", displayName: "Local B", target: "local" },
     ];
-    expect(formatProjectList(projects)).toBe("p1\tCloud A\t[cloud]\np2\tLocal B\t[dev]");
+    expect(formatProjectList(projects)).toBe("p1\tCloud A\t[cloud]\np2\tLocal B\t[local]");
   });
 });

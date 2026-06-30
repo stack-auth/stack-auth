@@ -173,8 +173,8 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("--cloud to confirm");
   });
 
-  it("project list rejects --cloud and --dev together", async ({ expect }) => {
-    const { stderr, exitCode } = await runCli(["project", "list", "--cloud", "--dev"]);
+  it("project list rejects --cloud and --local together", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["project", "list", "--cloud", "--local"]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("not both");
   });
