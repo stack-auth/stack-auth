@@ -82,7 +82,7 @@
     "generate-sdks:watch": "chokidar --silent -c 'pnpm run generate-sdks' './packages/template' --ignore './packages/template/package.json' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000",
     "generate-openapi-docs:watch": "pnpm exec tsx ./scripts/wait-for-dev-package-imports.ts && pnpm run --filter=@hexclave/backend codegen-docs && chokidar --silent -c 'pnpm run --filter=@hexclave/backend codegen-docs' './apps/backend/src/app/api/latest/**/route.{js,jsx,ts,tsx}' './apps/backend/src/lib/openapi.ts' './packages/shared/src/interface/webhooks.ts' --throttle 2000",
     "generate-setup-prompt-docs:watch": "pnpm run generate-setup-prompt-docs && chokidar --silent -c 'pnpm run generate-setup-prompt-docs' './docs-mintlify/docs.json' './packages/shared/src/ai/unified-prompts/**/*.ts' './scripts/generate-setup-prompt-docs.ts' --throttle 2000",
-    "build-packages:watch": "chokidar --initial --silent -c 'tsdown -W' './packages/*/src/**' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000"
+    "build-packages:watch": "chokidar --initial --silent -c 'tsdown -W' './packages/*/src/**' './packages/*/tsdown.config.ts' './configs/tsdown/**/*.ts' --ignore '**/node_modules/**' --ignore '**/dist/**' --ignore '**/.turbo/**' --throttle 2000"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
