@@ -5,14 +5,15 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
-import { adaptSchema, serverOrHigherAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, jsonSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
 
 const MAX_QUERY_TIMEOUT_MS = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
 const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
 const MAX_RESULT_ROWS = 10_000;
-const MAX_RESULT_BYTES = 10 * 1024 * 1024; 
+const MAX_RESULT_BYTES = 10 * 1024 * 1024;
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -36,7 +37,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      result: jsonSchema.defined().meta({ openapiField: { description: "Query result rows as plain JSON objects.", exampleValue: [{ event_count: 42 }] } }),
+      result: yupArray(jsonSchema.defined()).defined().meta({ openapiField: { description: "Query result rows as plain JSON objects.", exampleValue: [{ event_count: 42 }] } }),
       query_id: yupString().defined().meta({ openapiField: { description: "The ClickHouse query ID. Use it to fetch query timing stats.", exampleValue: "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001" } }),
     }).defined(),
   }),
@@ -85,7 +86,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.AnalyticsQueryError(message);
     }
 
-    const rows = await resultSet.data.json<Record<string, unknown>[]>();
+    const rows = await resultSet.data.json<Record<string, Json>>();
     return {
       statusCode: 200,
       bodyType: "json",
@@ -96,5 +97,4 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
-
 

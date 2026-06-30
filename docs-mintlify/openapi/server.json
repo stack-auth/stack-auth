@@ -257,7 +257,10 @@
                   "type": "object",
                   "properties": {
                     "result": {
-                      "type": "object",
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
                       "example": [
                         {
                           "event_count": 42
@@ -272,6 +275,7 @@
                     }
                   },
                   "required": [
+                    "result",
                     "query_id"
                   ]
                 }
