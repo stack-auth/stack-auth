@@ -31,7 +31,7 @@ export const POST = createSmartRouteHandler({
   response: yupMixed<SmartResponse>().defined(),
   async handler({ params, body }, fullReq) {
     const { mode } = params;
-    const isAuthenticated = fullReq.auth != null;
+    const isAuthenticated = fullReq.auth?.user != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
     if (projectId != null) {

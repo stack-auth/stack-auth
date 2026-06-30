@@ -41,7 +41,7 @@ export async function getTools(
       }
 
       case "sql-query": {
-        const sqlTool = createSqlQueryTool(context.auth, context.targetProjectId);
+        const sqlTool = createSqlQueryTool(context.targetProjectId);
         if (sqlTool != null) {
           tools["queryAnalytics"] = sqlTool;
         }

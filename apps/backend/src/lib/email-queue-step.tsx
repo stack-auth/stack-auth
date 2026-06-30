@@ -65,10 +65,13 @@ const emailQueueFirstRunKey = Symbol.for("__hexclave_email_queue_first_run_compl
 async function verifyEmailDeliverability(
   email: string,
   shouldSkipDeliverabilityCheck: boolean,
-  emailConfigType: "shared" | "standard"
+  emailConfigType: "shared" | "managed" | "standard"
 ): Promise<EmailableCheckResult> {
-  // Skip deliverability check if requested or using non-shared email config
-  if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
+  // We run the Emailable deliverability check whenever the email goes out through infrastructure whose sending
+  // reputation we own: our shared server ("shared") and custom domains we provision & send on the user's behalf
+  // ("managed", Resend under our account). We skip it for "standard" (the user's own SMTP server or Resend API key),
+  // where the user owns their own deliverability, and whenever the caller explicitly opts out.
+  if (shouldSkipDeliverabilityCheck || (emailConfigType !== "shared" && emailConfigType !== "managed")) {
     return { status: "deliverable", emailableScore: null };
   }
 
@@ -216,7 +219,7 @@ async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promis
   // 1. Try UPDATE first (locks row with FOR UPDATE, returns old and new timestamps)
   // 2. If no row exists, INSERT (with ON CONFLICT DO NOTHING for race handling)
   // 3. Compute delta based on the result
-  const [{ delta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
+  const [{ delta: rawDelta }] = await globalPrismaClient.$queryRaw<{ delta: number }[]>`
     WITH do_update AS (
       -- Update existing row, locking it first and capturing the old timestamp
       UPDATE "EmailOutboxProcessingMetadata" AS m
@@ -268,6 +271,8 @@ async function updateLastExecutionTime(key = "EMAIL_QUEUE_METADATA_KEY"): Promis
         )
     END AS delta;
   `;
+
+  const delta = Object.is(rawDelta, -0) ? 0 : Number(rawDelta);
 
   if (delta < 0) {
     console.warn("Email queue step delta is negative after monotonic timestamp update; ignoring the delta so the send quota cannot go negative", { delta });

@@ -256,7 +256,6 @@ function RdeProjectsListPage() {
 function ProjectsListPage() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   const user = useUser({
     or: isRemoteDevelopmentEnvironment ? "anonymous-if-exists[deprecated]" : "redirect",
@@ -266,11 +265,6 @@ function ProjectsListPage() {
   const teams = user.useTeams();
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
-  const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
-  const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
-  const [openingConfigFile, setOpeningConfigFile] = useState(false);
-  const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
-  const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const [projectTotalUsers, setProjectTotalUsers] = useState<Map<string, number>>(new Map());
@@ -280,10 +274,10 @@ function ProjectsListPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0 && !isLocalEmulator && !isRemoteDevelopmentEnvironment) {
+    if (rawProjects.length === 0 && !isRemoteDevelopmentEnvironment) {
       router.push('/new-project');
     }
-  }, [isLocalEmulator, isRemoteDevelopmentEnvironment, router, rawProjects]);
+  }, [isRemoteDevelopmentEnvironment, router, rawProjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,153 +391,6 @@ function ProjectsListPage() {
     };
   }, [appInternals, rawProjects.length]);
 
-  useEffect(() => {
-    if (!openConfigFileDialog || !isLocalEmulator) return;
-    let cancelled = false;
-    setRecentConfigProjectsError(false);
-    runAsynchronously(async () => {
-      try {
-        const response = await appInternals.sendRequest("/internal/local-emulator/project", { method: "GET" }, "client");
-        if (!response.ok) {
-          if (!cancelled) {
-            setRecentConfigProjects([]);
-            setRecentConfigProjectsError(true);
-          }
-          return;
-        }
-        const body = await response.json() as { projects?: unknown };
-        if (cancelled) return;
-        if (!Array.isArray(body.projects)) {
-          throw new Error("Invalid recent-projects payload");
-        }
-        const parsed = body.projects.map((p: unknown): { project_id: string, absolute_file_path: string, display_name: string } => {
-          if (
-            !p || typeof p !== "object"
-            || typeof (p as Record<string, unknown>).project_id !== "string"
-            || typeof (p as Record<string, unknown>).absolute_file_path !== "string"
-            || typeof (p as Record<string, unknown>).display_name !== "string"
-          ) {
-            throw new Error("Invalid recent-projects payload");
-          }
-          const r = p as Record<string, string>;
-          return { project_id: r.project_id, absolute_file_path: r.absolute_file_path, display_name: r.display_name };
-        });
-        setRecentConfigProjects(parsed);
-      } catch {
-        if (!cancelled) {
-          setRecentConfigProjects([]);
-          setRecentConfigProjectsError(true);
-        }
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [openConfigFileDialog, isLocalEmulator, appInternals]);
-
-  const pathCopyTip = useMemo(() => {
-    const p = typeof navigator !== "undefined" ? navigator.platform : "";
-    if (/Mac|iPhone|iPad|iPod/i.test(p)) {
-      return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
-    }
-    if (/Win/i.test(p)) {
-      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a hexclave.config.ts` (or `realpath hexclave.config.ts`) and paste that here.";
-    }
-    return "Tip: from your project folder, run `realpath hexclave.config.ts` in a terminal.";
-  }, []);
-
-  const handleOpenConfigFile = async () => {
-    const trimmedPath = absoluteConfigFilePath.trim();
-    if (trimmedPath.length === 0) {
-      toast({ description: "Please enter a path to your project or hexclave.config.ts.", variant: "destructive" });
-      return;
-    }
-
-    if (!trimmedPath.startsWith("/")) {
-      const looksWindows = /^[a-zA-Z]:[\\/]/.test(trimmedPath) || trimmedPath.startsWith("\\\\");
-      toast({
-        description: looksWindows
-          ? "The local emulator runs in a Linux VM and only accepts POSIX paths (e.g. /Users/you/project). Windows paths aren't supported — use WSL or the in-VM path."
-          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/hexclave.config.ts).",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setOpeningConfigFile(true);
-    try {
-      const response = await appInternals.sendRequest(
-        "/internal/local-emulator/project",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            absolute_file_path: trimmedPath,
-          }),
-        },
-        "client",
-      );
-      const responseBody = await response.json();
-
-      if (!response.ok) {
-        let message = "Couldn't open that path. Make sure it points to your project folder or a valid hexclave.config.ts.";
-        if (typeof responseBody === "string" && responseBody.length > 0) {
-          message = responseBody;
-        } else if (
-          responseBody != null &&
-          typeof responseBody === "object" &&
-          "error" in responseBody &&
-          typeof responseBody.error === "string" &&
-          responseBody.error.length > 0
-        ) {
-          message = responseBody.error;
-        }
-        toast({ description: message, variant: "destructive" });
-        return;
-      }
-
-      if (
-        responseBody == null ||
-        typeof responseBody !== "object" ||
-        !("project_id" in responseBody) ||
-        typeof responseBody.project_id !== "string"
-      ) {
-        toast({ description: "Local emulator endpoint returned an invalid response.", variant: "destructive" });
-        return;
-      }
-      const onboardingStatus = "onboarding_status" in responseBody
-        ? responseBody.onboarding_status
-        : undefined;
-      if (!isProjectOnboardingStatus(onboardingStatus)) {
-        throw new Error("Local emulator endpoint returned an invalid onboarding status.");
-      }
-
-      setOpenConfigFileDialog(false);
-      setAbsoluteConfigFilePath("");
-      setProjectStatuses((previous) => {
-        const next = new Map(previous);
-        next.set(responseBody.project_id, onboardingStatus);
-        return next;
-      });
-      await appInternals.refreshOwnedProjects();
-      if (onboardingStatus === "completed") {
-        router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
-      } else {
-        router.push(`/new-project?project_id=${encodeURIComponent(responseBody.project_id)}`);
-      }
-      await wait(2000);
-    } catch (e) {
-      toast({
-        description: e instanceof Error ? e.message : "Something went wrong opening that project.",
-        variant: "destructive",
-      });
-    } finally {
-      setOpeningConfigFile(false);
-    }
-  };
-
   const teamIdMap = useMemo(() => {
     return new Map(teams.map((team) => [team.id, team.displayName]));
   }, [teams]);
@@ -604,86 +451,14 @@ function ProjectsListPage() {
             <Button
               className="rounded-xl"
               onClick={async () => {
-                if (isLocalEmulator) {
-                  setOpenConfigFileDialog(true);
-                  return;
-                }
                 router.push("/new-project");
                 return await wait(2000);
               }}
-            >{isLocalEmulator ? "Open a project" : "Create Project"}
+            >Create Project
             </Button>
           )}
         </div>
       </div>
-
-      <Dialog
-        open={openConfigFileDialog}
-        onOpenChange={(open) => {
-          setOpenConfigFileDialog(open);
-          if (!open) {
-            setAbsoluteConfigFilePath("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>Open your Hexclave project</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Typography variant="secondary">
-              Point the local dashboard at the <code>hexclave.config.ts</code> in your project. If you just ran <code>hexclave init</code>, it was created at the root of that project.
-            </Typography>
-            <Typography variant="secondary" className="text-xs">
-              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>hexclave.config.ts</code> for you.
-            </Typography>
-            {recentConfigProjects.length > 0 && (
-              <div className="space-y-1">
-                <Typography variant="secondary" className="text-xs uppercase tracking-wide">Recent</Typography>
-                <div className="max-h-40 overflow-y-auto rounded-md border">
-                  {recentConfigProjects.map((p) => (
-                    <button
-                      key={p.project_id}
-                      type="button"
-                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
-                      onClick={() => setAbsoluteConfigFilePath(p.absolute_file_path)}
-                      title={p.absolute_file_path}
-                    >
-                      {p.absolute_file_path}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {recentConfigProjectsError && recentConfigProjects.length === 0 && (
-              <Typography variant="secondary" className="text-xs text-destructive">
-                Couldn&apos;t load recent projects. Paste a path below to continue.
-              </Typography>
-            )}
-            <Input
-              autoFocus
-              placeholder="/Users/you/project/hexclave.config.ts"
-              value={absoluteConfigFilePath}
-              onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
-            />
-            <Typography variant="secondary" className="text-xs">
-              {pathCopyTip}
-            </Typography>
-          </div>
-          <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleOpenConfigFile}
-              loading={openingConfigFile}
-              disabled={absoluteConfigFilePath.trim().length === 0}
-            >
-              Open project
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {projectsByTeam.map(({ teamId, projects }) => {
         const team = teamId ? teams.find((t) => t.id === teamId) : undefined;

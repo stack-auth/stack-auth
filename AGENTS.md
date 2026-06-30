@@ -120,6 +120,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Security-sensitive code on the backend that shouldn't be public should be in the `private` part of the backend.
 - When you fix some obscure bug, or otherwise make a small change that is the result of a complex thought, add a concise comment explaining the thought in detail. Your mental model should be that we want to keep track of all the tiny decisions that are not clearly visible in the code, such that when/if we rewrite the code in the future, we don't have to re-learn all the tiny decisions that were made iteratively.
 - If you create any temporary files, always suffix them with `.untracked` or `.untracked.<ext>` so they don't get committed to Git.
+- Super important: WE ARE AN OPEN-SOURCE PROJECT. NEVER PUT ANYTHING POTENTIALLY PRIVATE, SECURITY-SENSITIVE, OR CONFIDENTIAL INTO THE CODEBASE OR ANY PULL REQUEST DESCRIPTIONS. Don't mention customer data, security details, or other potentially sensitive information in comments, pull request descriptions, commit messages, or anywhere else.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
