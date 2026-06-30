@@ -1,5 +1,4 @@
 import { StackAdminApp } from "@hexclave/js";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { execFile } from "child_process";
 import * as fs from "fs";
@@ -7,8 +6,6 @@ import * as os from "os";
 import * as path from "path";
 import { afterAll, beforeAll, describe } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from "../helpers";
-
-const isLocalEmulator = getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
 
 const CLI_BIN = path.resolve("packages/cli/dist/index.js");
 
@@ -360,95 +357,57 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("Config file not found");
   });
 
-  it("exec --config-file errors when emulator PCK file is missing", async ({ expect }) => {
-    // The file exists on disk but the emulator PCK file isn't where the CLI
-    // expects. PCK lookup fires before any network call so this fails fast.
-    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
-    const configFile = path.join(tmpDir, `cfg-pck-missing-${crypto.randomUUID()}.config.ts`);
+  it("exec --config-file errors when no local dashboard session exists", async ({ expect }) => {
+    const devEnvStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-no-dashboard-"));
+    const configFile = path.join(tmpDir, `cfg-no-dashboard-${crypto.randomUUID()}.config.ts`);
     fs.writeFileSync(configFile, "");
     try {
       const { stderr, exitCode } = await runCli(
         ["exec", "--config-file", configFile, "return 1"],
         {
-          STACK_EMULATOR_HOME: fakeEmulatorHome,
-          STACK_EMULATOR_READY_TIMEOUT_MS: "0",
+          STACK_DEV_ENVS_PATH: path.join(devEnvStateDir, "dev-envs.json"),
         },
       );
       expect(exitCode).toBe(1);
-      expect(stderr).toContain("Development environment publishable client key not found");
+      expect(stderr).toContain("No local dashboard session found");
     } finally {
-      fs.rmSync(fakeEmulatorHome, { recursive: true });
+      fs.rmSync(devEnvStateDir, { recursive: true });
     }
   });
 
-  it("exec --config-file errors when emulator API is unreachable", async ({ expect }) => {
-    // PCK file present but the API URL points at a port nothing is listening
-    // on — fetch fails with a clear error. READY_TIMEOUT_MS=0 keeps the retry
-    // loop from waiting.
-    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-fake-emulator-"));
-    const configFile = path.join(tmpDir, `cfg-unreachable-${crypto.randomUUID()}.config.ts`);
+  it("exec --config-file runs against the local dashboard project from dev-env state", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    const devEnvStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-dashboard-state-"));
+    const configFile = path.join(tmpDir, `cfg-dashboard-state-${crypto.randomUUID()}.config.ts`);
     fs.writeFileSync(configFile, "");
-    try {
-      const pckDir = path.join(fakeEmulatorHome, "run", "vm");
-      fs.mkdirSync(pckDir, { recursive: true });
-      fs.writeFileSync(path.join(pckDir, "internal-pck"), "pck_stub_for_test");
-      const { stderr, exitCode } = await runCli(
-        ["exec", "--config-file", configFile, "return 1"],
-        {
-          STACK_EMULATOR_HOME: fakeEmulatorHome,
-          STACK_EMULATOR_API_URL: "http://127.0.0.1:1",
-          STACK_EMULATOR_READY_TIMEOUT_MS: "0",
+    const statePath = path.join(devEnvStateDir, "dev-envs.json");
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      anonymousRefreshToken: refreshToken,
+      projectsByConfigPath: {
+        [configFile]: {
+          projectId: createdProjectId,
+          teamId: "team_e2e_placeholder",
+          publishableClientKey: "pck_e2e_placeholder",
+          secretServerKey: "ssk_e2e_placeholder",
+          apiBaseUrl: STACK_BACKEND_BASE_URL,
+          updatedAtMillis: Date.now(),
         },
-      );
-      expect(exitCode).toBe(1);
-      expect(stderr).toContain("Cannot reach development environment");
-    } finally {
-      fs.rmSync(fakeEmulatorHome, { recursive: true });
-    }
-  });
-
-  // Positive happy-path: only runs when the backend is in local-emulator mode
-  // (the password sign-in for local-emulator@hexclave.com only succeeds
-  // there). Mints a project against the local-emulator backend keyed by an
-  // absolute config-file path, then runs `stack exec --config-file <path>`
-  // and expects it to resolve the same project.
-  it.runIf(isLocalEmulator)("exec --config-file runs against the local emulator backend", async ({ expect }) => {
-    const emulatorConfigPath = path.join(tmpDir, `stack-emulator-${crypto.randomUUID()}.config.ts`);
-    fs.writeFileSync(emulatorConfigPath, "");
-    const projectRes = await niceFetch(`${STACK_BACKEND_BASE_URL}/api/v1/internal/local-emulator/project`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-stack-access-type": "server",
-        "x-stack-project-id": "internal",
-        "x-stack-publishable-client-key": STACK_INTERNAL_PROJECT_CLIENT_KEY,
-        "x-stack-secret-server-key": STACK_INTERNAL_PROJECT_SERVER_KEY,
       },
-      body: JSON.stringify({ absolute_file_path: emulatorConfigPath }),
-    });
-    if (projectRes.status !== 200) {
-      throw new Error(`Failed to mint local emulator project: ${projectRes.status} ${JSON.stringify(projectRes.body)}`);
-    }
-
-    const fakeEmulatorHome = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-emu-positive-"));
+    }), { mode: 0o600 });
     try {
-      const pckDir = path.join(fakeEmulatorHome, "run", "vm");
-      fs.mkdirSync(pckDir, { recursive: true });
-      fs.writeFileSync(path.join(pckDir, "internal-pck"), STACK_INTERNAL_PROJECT_CLIENT_KEY);
       const { stdout, stderr, exitCode } = await runCli(
-        ["exec", "--config-file", emulatorConfigPath, "return 1+1"],
+        ["exec", "--config-file", configFile, "return 1+1"],
         {
-          STACK_EMULATOR_HOME: fakeEmulatorHome,
-          STACK_EMULATOR_API_URL: STACK_BACKEND_BASE_URL,
+          STACK_DEV_ENVS_PATH: statePath,
         },
       );
       if (exitCode !== 0) {
         throw new Error(`CLI exited ${exitCode}. stderr: ${stderr}`);
       }
-      expect(exitCode).toBe(0);
       expect(stdout.trim()).toBe("2");
     } finally {
-      fs.rmSync(fakeEmulatorHome, { recursive: true });
+      fs.rmSync(devEnvStateDir, { recursive: true });
     }
   });
 

@@ -26,7 +26,8 @@ export const remindersPrompt = deindent`
         - There is a \`useHexclaveApp()\` hook as a named export from the package itself that serves as a shortcut to get the current Hexclave App object from the React context. Similarly, the \`useUser(...args)\` named export is short for \`useHexclaveApp().useUser(...args)\`.
     - Other
       - Hexclave also has a REST API with near-full feature parity with the SDK. It can be used for both client and server-side code.
-  - If available, always prefer editing the \`hexclave.config.ts\` file directly over asking the user to make changes on the dashboard. When implementing new features, you can always update the config file, and then tell the user about the changes you've made.
+  - If available, always prefer editing the \`hexclave.config.ts\` file directly over asking the user to make changes on the dashboard. When implementing new features, you can always update the config file, and then tell the user about the changes you've made. The config file is automatically synced when using the local dashboard/dev environment with \`npx @hexclave/cli dev --config-file <path-to-config-file>\`.
   - Hexclave's config files allow dot notation for nested properties. For example, the config \`{ auth: { allowSignUp: true }, "auth.password": { allowSignIn: true } }\` is the same as \`{ auth: { allowSignUp: true, password: { allowSignIn: true } } }\`.
+  - You can use the \`npx @hexclave/cli exec <javascript>\` command to run JavaScript with a pre-configured HexclaveServerApp available as \`hexclaveServerApp\`. This allows you to read and write from and to the Hexclave project as you would on the dashboard, but from the CLI. To read and write project configuration, see the note on the config file above.
   - Hexclave was formerly known as Stack Auth. You may still see references to it as Stack Auth in some places.
 `;
