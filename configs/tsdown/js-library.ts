@@ -42,7 +42,7 @@ const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
 });
 
 
-export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | ((...args: unknown[]) => void) | undefined }) {
+export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | undefined }) {
   return defineConfig((inlineConfig) => ({
     entry: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
@@ -51,31 +51,23 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
       alwaysBundle: [...customNoExternal],
       onlyBundle: false,
     },
-    // In watch mode, DTS and CJS are disabled to keep the rolldown watcher count
-    // at 11 (one per package). The DTS plugin doubles the watcher count, and
-    // dual format (ESM+CJS) doubles it again — either of which pushes us past
-    // rolldown's concurrency limit, causing a deadlock in rolldown 1.1.2
-    // (rolldown/tsdown#789, rolldown/rolldown#8643).
-    // TypeScript's language server provides type checking during dev anyway,
-    // and CJS dist isn't needed during development.
-    dts: inlineConfig.watch ? false : true,
-    onSuccess: _options.onSuccess,
-    ...(inlineConfig.watch ? {
-      format: 'esm',
-      outDir: 'dist/esm',
-      outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-    } : {
-      format: {
-        esm: {
-          outDir: 'dist/esm',
-          outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-        },
+    // In watch mode, skip DTS and CJS — rolldown 1.1.2 has a concurrency bug
+    // (rolldown/tsdown#789) where 6+ watchers in one process stop firing events.
+    // TS language server handles types during dev; CJS isn't needed either.
+    dts: !inlineConfig.watch,
+    onSuccess: inlineConfig.watch ? _options.onSuccess : undefined,
+    format: {
+      esm: {
+        outDir: 'dist/esm',
+        outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+      },
+      ...(!inlineConfig.watch && {
         cjs: {
           outDir: 'dist',
           outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
         },
-      },
-    }),
+      }),
+    },
     plugins: [
       fixImportExtensions(),
       createBasePlugin({}),
