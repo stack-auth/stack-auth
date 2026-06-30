@@ -19,10 +19,15 @@ const repository = process.env.DASHBOARD_RELEASE_REPO ?? "hexclave/hexclave";
 // (e.g. http://127.0.0.1:8000) instead of GitHub.
 const baseUrlOverride = process.env.DASHBOARD_RELEASE_BASE_URL?.replace(/\/+$/, "");
 
+// Must mirror SAFE_VERSION_REGEX in packages/cli/src/lib/dashboard-release.ts:
+// the CLI rejects any manifest whose version fails this pattern, and the version
+// becomes a release tag and zip filename, so fail loudly here before publishing
+// an artifact every CLI would ignore.
+const SAFE_VERSION_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
 const dashboardPackageJson = JSON.parse(readFileSync(join(repoRoot, "apps/dashboard/package.json"), "utf-8"));
 const version = dashboardPackageJson.version;
-if (typeof version !== "string" || version.length === 0) {
-  throw new Error("Could not read a version from apps/dashboard/package.json");
+if (typeof version !== "string" || !SAFE_VERSION_REGEX.test(version)) {
+  throw new Error(`apps/dashboard/package.json has an invalid version ${JSON.stringify(version)}; expected a path-safe semver matching ${SAFE_VERSION_REGEX}.`);
 }
 
 const dashboardDist = join(packageRoot, "dist", "dashboard");

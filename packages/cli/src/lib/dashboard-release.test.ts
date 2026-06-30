@@ -101,6 +101,14 @@ describe("pickLatestVersion", () => {
     expect(pickLatestVersion([".extract-tmp", "1.0.5", "garbage", "1.0.10"])).toBe("1.0.10");
   });
 
+  it("prefers a final release over a same-core prerelease regardless of order", () => {
+    expect(pickLatestVersion(["1.2.3-beta.1", "1.2.3"])).toBe("1.2.3");
+    expect(pickLatestVersion(["1.2.3", "1.2.3-beta.1"])).toBe("1.2.3");
+    // `+build` metadata is not a prerelease, so it still outranks a same-core prerelease.
+    expect(pickLatestVersion(["1.2.3-rc.1", "1.2.3+build"])).toBe("1.2.3+build");
+    expect(pickLatestVersion(["1.2.3+build", "1.2.3-rc.1"])).toBe("1.2.3+build");
+  });
+
   it("returns undefined when nothing parses", () => {
     expect(pickLatestVersion([])).toBeUndefined();
     expect(pickLatestVersion([".tmp", "latest"])).toBeUndefined();

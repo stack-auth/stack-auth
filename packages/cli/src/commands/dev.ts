@@ -454,14 +454,20 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   // dashboard and which build to launch. Skipped for a custom dev command or a
   // local-build override; a null manifest (offline) reuses the running dashboard
   // or falls back to cache.
-  const skipReleaseLookup = devDashboardCommand != null || dashboardDirOverride() != null;
+  const dashboardOverride = dashboardDirOverride();
+  const skipReleaseLookup = devDashboardCommand != null || dashboardOverride != null;
   const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
   const latestVersion = manifest?.version;
 
   if (await isDashboardReachable(url, options.secret)) {
     const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
     const runningVersion = runningDashboard?.version;
-    if (shouldRestartDashboard(latestVersion, runningVersion)) {
+    if (dashboardOverride != null && runningVersion !== "local") {
+      // A local-build override should win over a release dashboard left running
+      // from a prior run; the override always resolves to version "local".
+      logDev("A local Hexclave dashboard override is configured; restarting the running dashboard...");
+      await killLocalDashboard(url, options.port);
+    } else if (shouldRestartDashboard(latestVersion, runningVersion)) {
       logDev(`A newer Hexclave dashboard (${latestVersion}) is available; restarting from ${runningVersion}...`);
       await killLocalDashboard(url, options.port);
     } else {

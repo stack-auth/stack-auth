@@ -9,7 +9,14 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+    # Only rebuild/publish when the dashboard or its packaging actually changes.
+    # A new release is keyed by the version in apps/dashboard/package.json, so
+    # changes outside these paths can't produce a new dashboard build anyway.
+    paths:
+      - 'apps/dashboard/**'
+      - 'packages/cli/scripts/package-dashboard-release.mjs'
+      - 'packages/cli/scripts/copy-runtime-assets.mjs'
+      - '.github/workflows/dashboard-release.yaml'
 
 permissions:
   contents: write  # create releases and upload assets
@@ -25,6 +32,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          # Don't leave the contents:write token in .git/config for the
+          # install/build/package steps; the gh steps below pass GH_TOKEN directly.
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -95,7 +105,26 @@ jobs:
           tmp="$(mktemp)"
           jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
           mv "$tmp" "$MANIFEST"
-          if ! gh release view dashboard-latest >/dev/null 2>&1; then
+          if gh release view dashboard-latest >/dev/null 2>&1; then
+            # dashboard-latest must only ever move forward. Re-running on an older
+            # commit must not roll clients back to a stale dashboard. Re-publishing
+            # the same version is allowed (it refreshes the advertised sha).
+            published_dir="$(mktemp -d)"
+            if gh release download dashboard-latest -p manifest.json -D "$published_dir" 2>/dev/null; then
+              published_version="$(jq -r '.version // ""' "$published_dir/manifest.json")"
+              # Compare on the v-stripped semver so a 'v'-prefix style change
+              # between runs doesn't read as a different (or older) version.
+              pub="${published_version#v}"
+              new="${VERSION#v}"
+              if [ -n "$pub" ] && [ "$pub" != "$new" ]; then
+                newest="$(printf '%s\n%s\n' "$pub" "$new" | sort -V | tail -n1)"
+                if [ "$newest" = "$pub" ]; then
+                  echo "::warning::dashboard-latest already points at $published_version, which is newer than $VERSION; refusing to roll it back."
+                  exit 0
+                fi
+              fi
+            fi
+          else
             gh release create dashboard-latest \
               --title "RDE dashboard (latest)" \
               --notes "Always points at the newest published RDE dashboard. The manifest.json asset is consumed by the Hexclave CLI at runtime." \

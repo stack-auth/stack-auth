@@ -97,32 +97,42 @@ export function isDashboardCached(version: string): boolean {
   return existsSync(join(dir, DASHBOARD_COMPLETE_MARKER)) && existsSync(join(dir, DASHBOARD_SERVER_RELATIVE_PATH));
 }
 
-type ParsedVersion = [number, number, number];
+type ParsedVersion = {
+  core: [number, number, number],
+  // A `-suffix` after the core marks a prerelease (1.2.3-rc.1); `+build`
+  // metadata does not. A final release outranks a prerelease of the same core.
+  hasPrerelease: boolean,
+};
 
-// Separate from dev.ts's version comparator on purpose: that one orders
-// prereleases for the restart check; this only ranks cached dir names.
-function parseVersionCore(version: string): ParsedVersion | null {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+// Uses the same "final release beats a same-core prerelease" rule as dev.ts's
+// isVersionNewer, but kept separate: that one takes raw version strings for the
+// restart check, while this ranks already-parsed cached dir names. Neither
+// orders two distinct same-core prereleases against each other.
+function parseVersion(version: string): ParsedVersion | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(.*)$/.exec(version.trim());
   if (!match) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
+  return { core: [Number(match[1]), Number(match[2]), Number(match[3])], hasPrerelease: match[4].startsWith("-") };
 }
 
 export function pickLatestVersion(versions: string[]): string | undefined {
-  let best: { version: string, core: ParsedVersion } | undefined;
+  let best: { version: string, parsed: ParsedVersion } | undefined;
   for (const version of versions) {
-    const core = parseVersionCore(version);
-    if (core == null) continue;
-    if (best == null || isCoreNewer(core, best.core)) {
-      best = { version, core };
+    const parsed = parseVersion(version);
+    if (parsed == null) continue;
+    if (best == null || isVersionNewer(parsed, best.parsed)) {
+      best = { version, parsed };
     }
   }
   return best?.version;
 }
 
-function isCoreNewer(candidate: ParsedVersion, current: ParsedVersion): boolean {
+function isVersionNewer(candidate: ParsedVersion, current: ParsedVersion): boolean {
   for (let i = 0; i < 3; i++) {
-    if (candidate[i] !== current[i]) return candidate[i] > current[i];
+    if (candidate.core[i] !== current.core[i]) return candidate.core[i] > current.core[i];
   }
+  // Same core: prefer the final release over a prerelease so the offline pick is
+  // deterministic regardless of directory order (1.2.3 beats 1.2.3-rc.1).
+  if (candidate.hasPrerelease !== current.hasPrerelease) return !candidate.hasPrerelease;
   return false;
 }
 
@@ -166,6 +176,11 @@ async function downloadDashboardRelease(manifest: DashboardManifest): Promise<vo
   const targetDir = dashboardVersionDir(manifest.version);
   try {
     const response = await fetch(manifest.url, { redirect: "follow", signal: AbortSignal.timeout(DASHBOARD_DOWNLOAD_TIMEOUT_MS) });
+    // The manifest URL passed isAllowedDownloadUrl, but redirects can land on a
+    // different host/scheme; re-check the final URL before streaming the archive.
+    if (!isAllowedDownloadUrl(response.url)) {
+      throw new CliError(`Dashboard ${manifest.version} download was redirected to a disallowed URL (${response.url}).`);
+    }
     if (!response.ok || response.body == null) {
       throw new CliError(`Failed to download dashboard ${manifest.version} (HTTP ${response.status}) from ${manifest.url}.`);
     }
