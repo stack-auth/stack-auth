@@ -387,9 +387,11 @@ export async function seed() {
         ...keySet,
       }
     });
-  }
 
-  console.log('Updated internal API key set');
+    console.log('Updated internal API key set');
+  } else {
+    console.log('Skipped internal API key set bootstrap');
+  }
 
   const shouldSeedDummyProject = getEnvVariable("STACK_SEED_ENABLE_DUMMY_PROJECT", "") === 'true';
   if (shouldSeedDummyProject) {
