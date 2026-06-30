@@ -671,6 +671,7 @@ function UserActions(props: {
               onClick={() =>
                 runAsynchronouslyWithAlert(async () => {
                   await user.update({ totpMultiFactorSecret: null });
+                  runAsynchronouslyWithAlert(Promise.resolve().then(() => onUserMutated()));
                 })
               }
             >

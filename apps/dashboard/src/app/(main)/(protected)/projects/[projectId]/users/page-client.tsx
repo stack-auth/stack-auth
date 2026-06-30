@@ -12,7 +12,7 @@ import {
   useMetricsUserCountsOrThrow,
 } from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -88,7 +88,7 @@ export default function PageClient() {
   }, [hexclaveAdminApp]);
 
   useEffect(() => {
-    const refresh = () => runAsynchronouslyWithAlert(refreshUsersMetrics);
+    const refresh = () => runAsynchronously(refreshUsersMetrics);
     const refreshAfterPageRestore = (event: PageTransitionEvent) => {
       if (event.persisted) {
         refresh();
