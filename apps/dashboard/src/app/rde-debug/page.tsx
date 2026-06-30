@@ -36,10 +36,6 @@ function EmptyRow(props: { colSpan: number, children: React.ReactNode }) {
 }
 
 export default function RemoteDevelopmentEnvironmentDebugPage() {
-  if (!isRemoteDevelopmentEnvironmentEnabled()) {
-    notFound();
-  }
-
   return (
     <main className="min-h-screen bg-background p-3 text-foreground">
       <Suspense fallback={<div className="mx-auto max-w-[1600px] text-xs text-muted-foreground">Loading snapshot…</div>}>
@@ -51,6 +47,13 @@ export default function RemoteDevelopmentEnvironmentDebugPage() {
 
 async function RemoteDevelopmentEnvironmentDebugContent() {
   await connection();
+
+  // The feature gate must run after `connection()` so it's evaluated per-request. With
+  // cacheComponents, anything above the `connection()` boundary is prerendered, which would
+  // otherwise bake the build-time (sentinel) enabled/disabled decision into the route.
+  if (!isRemoteDevelopmentEnvironmentEnabled()) {
+    notFound();
+  }
 
   const snapshot = getRemoteDevelopmentEnvironmentDebugSnapshot();
   const totalTimers = snapshot.pendingSyncConfigFiles.length;
