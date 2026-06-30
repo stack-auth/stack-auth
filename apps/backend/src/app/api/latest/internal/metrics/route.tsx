@@ -661,11 +661,6 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
-// Fallback visitor counts derived purely from `$token-refresh` events so the
-// "Unique Visitors" card can render a number for projects without the analytics
-// app installed (no `$page-view` events). Always counts anonymous sessions only
-// — non-anon users are already represented by MAU/DAU, and the value here is to
-// surface anonymous traffic that otherwise wouldn't be visible.
 async function loadAnonymousVisitorsFromTokenRefresh(
   tenancy: Tenancy,
   now: Date,
@@ -673,19 +668,37 @@ async function loadAnonymousVisitorsFromTokenRefresh(
   const { since, untilExclusive } = getMetricsWindowBounds(now);
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
+  // GROUPING SETS keeps the exact old normalized-UUID semantics, but collapses
+  // the result to 31 daily rows plus one total row. The previous `GROUP BY day,
+  // user_id` returned every distinct (day, user) pair to Node and rebuilt those
+  // sets in JS, so response size and V8 memory grew with tenant activity.
   const query = `
     SELECT
-      toDate(event_at) AS day,
-      assumeNotNull(user_id) AS user_id
-    FROM analytics_internal.events
-    WHERE event_type = '$token-refresh'
-      AND project_id = {projectId:String}
-      AND branch_id = {branchId:String}
-      AND user_id IS NOT NULL
-      AND event_at >= {since:DateTime}
-      AND event_at < {untilExclusive:DateTime}
-      AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 1
-    GROUP BY day, user_id
+      if(GROUPING(event_day) = 1, '', toString(event_day)) AS day,
+      uniqExact(normalized_user_uuid) AS visitors
+    FROM (
+      SELECT
+        event_day,
+        normalized_user_id,
+        toUUIDOrNull(normalized_user_id) AS normalized_user_uuid
+      FROM (
+        SELECT
+          toDate(event_at) AS event_day,
+          lower(trim(assumeNotNull(user_id))) AS normalized_user_id
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
+          AND event_at < {untilExclusive:DateTime}
+          AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 1
+      )
+    )
+    WHERE normalized_user_uuid IS NOT NULL
+      AND match(normalized_user_id, {uuidRe:String})
+    GROUP BY GROUPING SETS ((event_day), ())
+    ORDER BY GROUPING(event_day) ASC, day ASC
   `;
 
   try {
@@ -696,33 +709,32 @@ async function loadAnonymousVisitorsFromTokenRefresh(
         branchId: tenancy.branchId,
         since: formatClickhouseDateTimeParam(since),
         untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+        uuidRe: MAU_UUID_V4_REGEX,
       },
       format: "JSONEachRow",
     });
-    const rows: { day: string, user_id: string }[] = await result.json();
+    const rows: { day: string, visitors: string | number }[] = await result.json();
+    const totalRow = rows.at(-1);
+    if (totalRow == null || totalRow.day !== "") {
+      throw new HexclaveAssertionError("Anonymous visitor query did not return the expected total row.", { rows });
+    }
 
-    const idsByDay = new Map<string, Set<string>>();
-    const allIds = new Set<string>();
-    for (const row of rows) {
-      const userId = normalizeUuidFromEvent(row.user_id);
-      if (userId == null) continue;
-      const day = row.day.split('T')[0];
-      let set = idsByDay.get(day);
-      if (set == null) {
-        set = new Set<string>();
-        idsByDay.set(day, set);
+    const visitorsByDay = new Map<string, number>();
+    for (const row of rows.slice(0, -1)) {
+      const visitors = Number(row.visitors);
+      if (!Number.isFinite(visitors) || visitors < 0) {
+        throw new HexclaveAssertionError("Invalid anonymous visitor count returned by ClickHouse.", { row });
       }
-      set.add(userId);
-      allIds.add(userId);
+      visitorsByDay.set(row.day.split('T')[0], visitors);
     }
 
     const dailyVisitors: DataPoints = [];
     for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
       const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
-      dailyVisitors.push({ date, activity: idsByDay.get(date)?.size ?? 0 });
+      dailyVisitors.push({ date, activity: visitorsByDay.get(date) ?? 0 });
     }
 
-    return { dailyVisitors, visitors: allIds.size };
+    return { dailyVisitors, visitors: Number(totalRow.visitors) };
   } catch (error) {
     // Swallow all failures so callers can `await` this without guarding — the
     // fallback is best-effort and must never take down the main metrics call.
