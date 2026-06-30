@@ -34,7 +34,7 @@ allowBuilds:
   '@tailwindcss/oxide': true
   '@vercel/speed-insights': true
   bcrypt: true
-  codebuff: set this to true or false
+  codebuff: false
   core-js: true
   esbuild: true
   iframe-resizer: false
@@ -43,4 +43,4 @@ allowBuilds:
   protobufjs: true
   puppeteer: true
   sharp: true
-  unrs-resolver: set this to true or false
+  unrs-resolver: false
