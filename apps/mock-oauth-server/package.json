@@ -14,7 +14,6 @@
   "dependencies": {
     "@types/express": "^5.0.0",
     "@types/oidc-provider": "^8.5.1",
-    "body-parser": "^1.20.3",
     "express": "^4.21.2",
     "handlebars": "^4.7.8",
     "oidc-provider": "^8.5.1"

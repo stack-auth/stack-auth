@@ -23,12 +23,10 @@
     "date-fns": "^4.1.0",
     "next": "16.2.9",
     "react-markdown": "^10.1.0",
-    "zod": "^3.24.0",
     "remark-gfm": "^4.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "spacetimedb": "^2.1.0",
-    "tailwind-merge": "^3.3.1"
+    "spacetimedb": "^2.1.0"
   },
   "devDependencies": {
     "@types/react": "19.2.7",
