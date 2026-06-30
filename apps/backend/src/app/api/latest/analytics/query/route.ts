@@ -1,11 +1,11 @@
+import { getHexclaveServerApp } from "@/hexclave";
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
-import { adaptSchema, serverOrHigherAuthTypeSchema, jsonSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { randomUUID } from "crypto";
@@ -42,9 +42,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth }) {
-    if (body.include_all_branches) {
-      throw new KnownErrors.SchemaError("include_all_branches is not supported yet");
-    }
+    // include_all_branches is currently a no-op. Multiple branches per project
+    // are not implemented yet: every project has a single branch hardcoded to
+    // DEFAULT_BRANCH_ID ("main"), with no way to create or switch branches (see
+    // lib/tenancies.tsx). So there are no other branches to include, and queries
+    // stay scoped to the current branch via the ClickHouse row policy that
+    // filters on SQL_branch_id (set below).
+    // TODO: when multi-branch support lands, make include_all_branches=true query
+    // across all branches in the project instead of just auth.tenancy.branchId.
+
 
     let effectiveTimeoutMs = body.timeout_ms;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);

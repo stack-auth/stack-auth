@@ -65,10 +65,13 @@ const emailQueueFirstRunKey = Symbol.for("__hexclave_email_queue_first_run_compl
 async function verifyEmailDeliverability(
   email: string,
   shouldSkipDeliverabilityCheck: boolean,
-  emailConfigType: "shared" | "standard"
+  emailConfigType: "shared" | "managed" | "standard"
 ): Promise<EmailableCheckResult> {
-  // Skip deliverability check if requested or using non-shared email config
-  if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
+  // We run the Emailable deliverability check whenever the email goes out through infrastructure whose sending
+  // reputation we own: our shared server ("shared") and custom domains we provision & send on the user's behalf
+  // ("managed", Resend under our account). We skip it for "standard" (the user's own SMTP server or Resend API key),
+  // where the user owns their own deliverability, and whenever the caller explicitly opts out.
+  if (shouldSkipDeliverabilityCheck || (emailConfigType !== "shared" && emailConfigType !== "managed")) {
     return { status: "deliverable", emailableScore: null };
   }
 

@@ -106,9 +106,16 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
-// The server rejects payloads > 1MB. Stay well under to account for JSON
-// envelope overhead (browser_session_id, timestamps, wrapper keys, etc.).
-const MAX_FLUSH_PAYLOAD_BYTES = 900_000;
+// Uncompressed per-batch target; the transport gzips before sending.
+const MAX_BATCH_UNCOMPRESSED_BYTES = 900_000;
+// The server gunzips the whole batch (envelope + events) and rejects anything
+// whose decompressed size exceeds MAX_DECOMPRESSED_BYTES (8 MiB) in the backend
+// route. Since a single oversized event is sent alone, reserve headroom for the
+// JSON envelope (session/batch ids, timestamps, wrapper keys) so an event that
+// passes this check can't render a batch that trips the server's cap by a few
+// hundred bytes. Keep the server's MAX_DECOMPRESSED_BYTES >= this + the margin.
+const BATCH_ENVELOPE_OVERHEAD_BYTES = 1024;
+const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024 - BATCH_ENVELOPE_OVERHEAD_BYTES;
 
 // Reused across the emit hot path to avoid per-event allocation.
 const textEncoder = new TextEncoder();
@@ -281,20 +288,25 @@ export class SessionRecorder {
     this._eventSizes = [];
     this._approxBytes = 0;
 
+    // Non-keepalive flushes gzip before sending, so a single event up to the
+    // server's decompressed budget can be sent alone. Keepalive flushes
+    // (pagehide/visibilitychange/stop) skip async gzip to dispatch before page
+    // tear-down, so they're bound by the server's raw ~1MB body limit; cap their
+    // single-event size at the uncompressed batch target so an oversized event
+    // is dropped rather than 413-ing the flush and losing the events behind it.
+    const maxSingleEventBytes = options.keepalive ? MAX_BATCH_UNCOMPRESSED_BYTES : MAX_SINGLE_EVENT_BYTES;
+
     this._flushInProgress = true;
     try {
       let offset = 0;
       while (offset < allEvents.length) {
-        // Build a batch that fits under the server's payload limit.
-        // When _flushInProgress blocked earlier flushes, events can accumulate
-        // well past MAX_APPROX_BYTES_PER_BATCH; sending them all at once would
-        // exceed the server's 1MB body limit (413).
-        // A single event over the limit can't be sent (rrweb events aren't splittable); drop it and move on.
+        // A single event over the limit can't be sent (rrweb events aren't
+        // splittable); drop it and move on to the rest of the buffer.
         const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
-        if (firstSize > MAX_FLUSH_PAYLOAD_BYTES) {
+        if (firstSize > maxSingleEventBytes) {
           captureWarning(
             "SessionRecorder.flush",
-            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${MAX_FLUSH_PAYLOAD_BYTES} byte limit); it cannot be sent without a 413.`),
+            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${maxSingleEventBytes} byte limit); it cannot be sent without exceeding the server's body limit.`),
           );
           offset += 1;
           continue;
@@ -304,7 +316,7 @@ export class SessionRecorder {
         let batchEnd = offset;
         for (let i = offset; i < allEvents.length; i++) {
           const nextSize = allSizes[i] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
-          if (batchBytes + nextSize > MAX_FLUSH_PAYLOAD_BYTES && batchEnd > offset) break;
+          if (batchBytes + nextSize > MAX_BATCH_UNCOMPRESSED_BYTES && batchEnd > offset) break;
           batchBytes += nextSize;
           batchEnd = i + 1;
         }
@@ -342,7 +354,21 @@ export class SessionRecorder {
         }
 
         if (!res.data.ok) {
-          captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
+          // On any non-2xx we stop the loop, so this batch and every event still
+          // buffered behind it are dropped (not retried). Count them for the log.
+          const droppedCount = batchEvents.length + (allEvents.length - offset);
+          if (res.data.status === 413) {
+            // The payload exceeded the server's body limit despite the client-side
+            // size caps — most likely a single poorly-compressible event (e.g. an
+            // embedded image/canvas) that gzipped above the wire limit. Distinct
+            // from other failures because the caps are supposed to prevent it.
+            captureWarning(
+              "SessionRecorder.flush",
+              new Error(`Session replay batch rejected with 413 (payload too large) despite client-side size caps; dropping ${droppedCount} buffered event(s). A poorly-compressible event likely exceeded the server's body limit after gzip.`),
+            );
+            return;
+          }
+          captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed (dropping ${droppedCount} buffered event(s)): ${res.data.status} ${await res.data.text()}`));
           return;
         }
       }
