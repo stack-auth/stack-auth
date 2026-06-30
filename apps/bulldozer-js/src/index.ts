@@ -16,6 +16,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-leve
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
+import { isBulldozerRequestAuthorized } from "./auth.js";
 import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema } from "./payments/schema/index.js";
@@ -876,8 +877,23 @@ function ok() {
   return { success: true };
 }
 
+const bulldozerServerSecret = process.env.HEXCLAVE_BULLDOZER_SERVER_SECRET ?? "";
+if (bulldozerServerSecret.length === 0) {
+  throw new HexclaveAssertionError("bulldozer-js refuses to start: HEXCLAVE_BULLDOZER_SERVER_SECRET is not set. This shared secret authenticates the backend to bulldozer-js and must be configured (it has a default in .env.development for local/self-host).");
+}
+
 const app = new Elysia({ adapter: node() })
   .use(instrumentation)
+  // Blanket auth gate: runs before routing so it covers every route, including
+  // /health (no unauthenticated surface). Returning a Response short-circuits.
+  .onRequest(({ request }) => {
+    if (!isBulldozerRequestAuthorized(request.headers.get("authorization"), bulldozerServerSecret)) {
+      return new Response(JSON.stringify({ error: "unauthenticated" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
+  })
   .get("/health", () => ({ ok: true }))
   .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {

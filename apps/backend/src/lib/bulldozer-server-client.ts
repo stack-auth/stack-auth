@@ -31,6 +31,7 @@ export async function fetchBulldozerServerJson<T>(options: {
     method: options.method,
     headers: {
       "content-type": "application/json",
+      "authorization": `Bearer ${getEnvVariable("HEXCLAVE_BULLDOZER_SERVER_SECRET")}`,
     },
     ...options.body === undefined ? {} : { body: JSON.stringify(options.body) },
   });
