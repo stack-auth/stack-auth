@@ -4,7 +4,7 @@ import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { CliError } from "../lib/errors.js";
 
-export type ProjectTarget = "cloud";
+export type ProjectTarget = "cloud" | "dev";
 
 export type ProjectListEntry = {
   id: string,
@@ -12,9 +12,29 @@ export type ProjectListEntry = {
   target: ProjectTarget,
 };
 
+export type ProjectListFlags = {
+  cloud?: boolean,
+  dev?: boolean,
+};
+
 // Returns which sources `project list` should query. Exported for unit tests.
-export function resolveProjectListSources(): { cloud: true } {
-  return { cloud: true };
+export function resolveProjectListSources(opts: ProjectListFlags = {}): {
+  cloud: boolean,
+  dev: boolean,
+} {
+  if (opts.cloud && opts.dev) {
+    throw new CliError("Pass either --cloud or --dev, not both. Omit both flags to list projects from both sources.");
+  }
+
+  if (opts.cloud) {
+    return { cloud: true, dev: false };
+  }
+
+  if (opts.dev) {
+    return { cloud: false, dev: true };
+  }
+
+  return { cloud: true, dev: true };
 }
 
 // Render projects for the human-readable list output. Each line is
@@ -33,14 +53,20 @@ export function registerProjectCommand(program: Command) {
 
   project
     .command("list")
-    .description("List your cloud projects")
-    .action(async () => {
+    .description("List your projects (defaults to both cloud and development-environment projects)")
+    .option("--cloud", "Only list cloud projects")
+    .option("--dev", "Only list development-environment projects")
+    .action(async (opts: ProjectListFlags) => {
+      const sources = resolveProjectListSources(opts);
       const results: ProjectListEntry[] = [];
       const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
-      const cloudProjects = await user.listOwnedProjects();
-      for (const p of cloudProjects) {
-        results.push({ id: p.id, displayName: p.displayName, target: "cloud" });
+      const ownedProjects = await user.listOwnedProjects();
+      for (const p of ownedProjects) {
+        const target: ProjectTarget = p.isDevelopmentEnvironment ? "dev" : "cloud";
+        if ((target === "cloud" && sources.cloud) || (target === "dev" && sources.dev)) {
+          results.push({ id: p.id, displayName: p.displayName, target });
+        }
       }
 
       if (program.opts().json) {
@@ -59,6 +85,11 @@ export function registerProjectCommand(program: Command) {
       if (!opts.cloud) {
         throw new CliError("hexclave project create currently only creates cloud projects. Pass --cloud to confirm.");
       }
+      const [{ getInternalUser }, { resolveLoginConfig, resolveSessionAuth }, { createProjectInteractively }] = await Promise.all([
+        import("../lib/app.js"),
+        import("../lib/auth.js"),
+        import("../lib/create-project.js"),
+      ]);
       const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
       const { dashboardUrl } = resolveLoginConfig();
