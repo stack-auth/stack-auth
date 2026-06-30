@@ -689,23 +689,23 @@ describe("_withFallback", () => {
   });
 });
 
+function getRequestInit(fetchMock: { mock: { calls: unknown[][] } }): RequestInit {
+  const init = fetchMock.mock.calls[0]?.[1];
+  if (init == null || typeof init !== "object") throw new Error("expected RequestInit");
+  return init as RequestInit;
+}
+
+async function gunzipToText(body: unknown): Promise<string> {
+  if (!(body instanceof Uint8Array)) throw new Error("expected Uint8Array body");
+  const stream = new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(stream).text();
+}
+
 describe("sendAnalyticsEventBatch encoding", () => {
   function captureFetch() {
     const fetchMock = vi.fn(async () => createJsonResponse({ inserted: 0 }));
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
-  }
-
-  function getRequestInit(fetchMock: { mock: { calls: unknown[][] } }): RequestInit {
-    const init = fetchMock.mock.calls[0]?.[1];
-    if (init == null || typeof init !== "object") throw new Error("expected RequestInit");
-    return init as RequestInit;
-  }
-
-  async function gunzipToText(body: unknown): Promise<string> {
-    if (!(body instanceof Uint8Array)) throw new Error("expected Uint8Array body");
-    const stream = new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(stream).text();
   }
 
   it("gzips body and sends application/octet-stream when keepalive is false", async () => {
@@ -769,18 +769,6 @@ describe("sendSessionReplayBatch encoding", () => {
     const fetchMock = vi.fn(async () => createJsonResponse({ session_replay_id: "r", batch_id: "b", s3_key: "k", deduped: false }));
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
-  }
-
-  function getRequestInit(fetchMock: { mock: { calls: unknown[][] } }): RequestInit {
-    const init = fetchMock.mock.calls[0]?.[1];
-    if (init == null || typeof init !== "object") throw new Error("expected RequestInit");
-    return init as RequestInit;
-  }
-
-  async function gunzipToText(body: unknown): Promise<string> {
-    if (!(body instanceof Uint8Array)) throw new Error("expected Uint8Array body");
-    const stream = new Blob([body as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(stream).text();
   }
 
   it("gzips body and sends application/octet-stream when keepalive is false", async () => {

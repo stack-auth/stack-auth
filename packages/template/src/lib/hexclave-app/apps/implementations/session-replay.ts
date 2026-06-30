@@ -109,8 +109,9 @@ const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 // Uncompressed per-batch target; the transport gzips before sending.
 const MAX_BATCH_UNCOMPRESSED_BYTES = 900_000;
 // Single events above the server's decompressed budget can never be accepted,
-// so drop them. Keep in sync with MAX_DECOMPRESSED_BYTES in the backend route.
-const MAX_SINGLE_EVENT_BYTES = 8_000_000;
+// so drop them. Keep in sync with MAX_DECOMPRESSED_BYTES in the backend route
+// (binary mebibytes, matching the server's gunzip maxOutputLength).
+const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024;
 
 // Reused across the emit hot path to avoid per-event allocation.
 const textEncoder = new TextEncoder();
@@ -283,17 +284,25 @@ export class SessionRecorder {
     this._eventSizes = [];
     this._approxBytes = 0;
 
+    // Non-keepalive flushes gzip before sending, so a single event up to the
+    // server's decompressed budget can be sent alone. Keepalive flushes
+    // (pagehide/visibilitychange/stop) skip async gzip to dispatch before page
+    // tear-down, so they're bound by the server's raw ~1MB body limit; cap their
+    // single-event size at the uncompressed batch target so an oversized event
+    // is dropped rather than 413-ing the flush and losing the events behind it.
+    const maxSingleEventBytes = options.keepalive ? MAX_BATCH_UNCOMPRESSED_BYTES : MAX_SINGLE_EVENT_BYTES;
+
     this._flushInProgress = true;
     try {
       let offset = 0;
       while (offset < allEvents.length) {
-        // An oversized single event is sent alone and gzipped under the wire
-        // limit; only one past the server's decompressed budget is unsendable.
+        // A single event over the limit can't be sent (rrweb events aren't
+        // splittable); drop it and move on to the rest of the buffer.
         const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
-        if (firstSize > MAX_SINGLE_EVENT_BYTES) {
+        if (firstSize > maxSingleEventBytes) {
           captureWarning(
             "SessionRecorder.flush",
-            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${MAX_SINGLE_EVENT_BYTES} byte limit); it exceeds the server's decompressed budget and cannot be sent.`),
+            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${maxSingleEventBytes} byte limit); it cannot be sent without exceeding the server's body limit.`),
           );
           offset += 1;
           continue;

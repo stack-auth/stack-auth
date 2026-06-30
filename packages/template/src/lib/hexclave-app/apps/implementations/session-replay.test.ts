@@ -260,6 +260,58 @@ describe("SessionRecorder flush", () => {
     }
   });
 
+  it("on a keepalive flush, drops an event over the uncompressed batch target (it can't be gzipped before page tear-down)", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // ~2MB is under the 8MB gzipped ceiling but over the 900KB uncompressed
+      // batch target. Keepalive flushes skip gzip, so this event would 413 the
+      // server's ~1MB raw body limit; it must be dropped, but the next event
+      // (small enough to send raw) still goes out.
+      const midEvent = { type: 2, timestamp: Date.now(), data: "z".repeat(2_000_000) };
+      const smallEvent = { type: 3, timestamp: Date.now(), data: "ok" };
+      const sizeOf = (e: unknown) => new TextEncoder().encode(JSON.stringify(e)).byteLength;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [midEvent, smallEvent];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(midEvent), sizeOf(smallEvent)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(midEvent) + sizeOf(smallEvent);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      await (recorder as any)._flush({ keepalive: true });
+
+      expect(sentBodies).toHaveLength(1);
+      const batch = JSON.parse(sentBodies[0]);
+      expect(batch.events).toHaveLength(1);
+      expect(batch.events[0].type).toBe(3);
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
   it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
     vi.useFakeTimers();
 
