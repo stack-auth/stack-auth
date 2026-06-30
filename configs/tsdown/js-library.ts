@@ -43,7 +43,7 @@ const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
 
 
 export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | ((...args: unknown[]) => void) | undefined }) {
-  return defineConfig({
+  return defineConfig((inlineConfig) => ({
     entry: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
     clean: false,
@@ -51,18 +51,31 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
       alwaysBundle: [...customNoExternal],
       onlyBundle: false,
     },
-    dts: true,
+    // In watch mode, DTS and CJS are disabled to keep the rolldown watcher count
+    // at 11 (one per package). The DTS plugin doubles the watcher count, and
+    // dual format (ESM+CJS) doubles it again — either of which pushes us past
+    // rolldown's concurrency limit, causing a deadlock in rolldown 1.1.2
+    // (rolldown/tsdown#789, rolldown/rolldown#8643).
+    // TypeScript's language server provides type checking during dev anyway,
+    // and CJS dist isn't needed during development.
+    dts: inlineConfig.watch ? false : true,
     onSuccess: _options.onSuccess,
-    format: {
-      esm: {
-        outDir: 'dist/esm',
-        outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+    ...(inlineConfig.watch ? {
+      format: 'esm',
+      outDir: 'dist/esm',
+      outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+    } : {
+      format: {
+        esm: {
+          outDir: 'dist/esm',
+          outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+        },
+        cjs: {
+          outDir: 'dist',
+          outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+        },
       },
-      cjs: {
-        outDir: 'dist',
-        outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-      },
-    },
+    }),
     plugins: [
       fixImportExtensions(),
       createBasePlugin({}),
@@ -80,5 +93,5 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
         },
       }
     ],
-  });
+  }));
 }
