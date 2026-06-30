@@ -47,8 +47,10 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
     entry: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
     clean: false,
-    noExternal: [...customNoExternal],
-    inlineOnly: false,
+    deps: {
+      alwaysBundle: [...customNoExternal],
+      onlyBundle: false,
+    },
     dts: true,
     onSuccess: _options.onSuccess,
     format: {
