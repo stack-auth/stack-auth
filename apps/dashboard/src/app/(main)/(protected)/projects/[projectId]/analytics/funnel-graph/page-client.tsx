@@ -8,7 +8,7 @@ import { SpinnerGapIcon, ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeUrlPath } from "./normalize-url";
-import { computeForceLayout, type GraphNode, type GraphEdge } from "./force-layout";
+import { computeLayout, type GraphNode, type GraphEdge } from "./force-layout";
 import { FunnelGraphCanvas } from "./funnel-graph-canvas";
 
 type TransitionRow = {
@@ -127,11 +127,8 @@ export default function PageClient() {
       }
       const filteredNodeArray = nodeArray.filter((n) => visibleNodes.has(n.id));
 
-      // Yield to event loop so the loading spinner renders before the expensive computation
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-      // Compute force-directed layout
-      const laidOutNodes = computeForceLayout(filteredNodeArray, edges);
+      // Compute ForceAtlas2 layout with landing page distance for x-position
+      const laidOutNodes = computeLayout(filteredNodeArray, edges);
 
       setData({ nodes: laidOutNodes, edges });
     } catch (e) {

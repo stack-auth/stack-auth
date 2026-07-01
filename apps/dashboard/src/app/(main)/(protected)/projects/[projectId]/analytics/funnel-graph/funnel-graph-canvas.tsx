@@ -15,10 +15,48 @@ function edgeOpacity(count: number, maxCount: number): number {
 
 function edgeWidth(count: number, maxCount: number): number {
   if (maxCount === 0) return 1;
-  // Logarithmic thickness normalized by log of max edge
   const logMax = Math.log2(maxCount + 1);
   if (logMax === 0) return 1;
   return 1 + 4 * (Math.log2(count + 1) / logMax);
+}
+
+/**
+ * Compute edge path with bundling offset for parallel edges.
+ * Uses rectangular node bounds for connection points.
+ */
+function getEdgePath(from: GraphNode, to: GraphNode, bundleOffset: number) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return null;
+
+  const ndx = dx / dist;
+  const ndy = dy / dist;
+
+  // Ray-rectangle intersection for exit/entry points
+  const hw = CARD_WIDTH / 2;
+  const hh = CARD_HEIGHT / 2;
+
+  const tFromX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
+  const tFromY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
+  const tFrom = Math.min(tFromX, tFromY);
+  const fromX = from.x + ndx * tFrom;
+  const fromY = from.y + ndy * tFrom;
+
+  const tToX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
+  const tToY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
+  const tTo = Math.min(tToX, tToY);
+  const toX = to.x - ndx * tTo;
+  const toY = to.y - ndy * tTo;
+
+  // Perpendicular offset for bundling + subtle curve
+  const nx = -ndy;
+  const ny = ndx;
+  const curvature = Math.min(dist * 0.08, 15) + bundleOffset * 8;
+  const cx = (fromX + toX) / 2 + nx * curvature;
+  const cy = (fromY + toY) / 2 + ny * curvature;
+
+  return { fromX, fromY, toX, toY, cx, cy };
 }
 
 export function FunnelGraphCanvas({
@@ -35,7 +73,6 @@ export function FunnelGraphCanvas({
   const panStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
-  // Track container size
   useEffect(() => {
     const el = containerRef.current;
     if (el == null) return;
@@ -49,7 +86,6 @@ export function FunnelGraphCanvas({
 
   const maxCount = useMemo(() => edges.reduce((m, e) => Math.max(m, e.count), 0), [edges]);
 
-  // Compute per-node stats: total inbound, total outbound
   const nodeStats = useMemo(() => {
     const stats = new Map<string, { inbound: number, outbound: number }>();
     for (const n of nodes) {
@@ -64,7 +100,6 @@ export function FunnelGraphCanvas({
     return stats;
   }, [nodes, edges]);
 
-  // Highlighted edges when hovering a node
   const highlightedEdges = useMemo(() => {
     if (hoveredNode == null) return null;
     const set = new Set<string>();
@@ -76,7 +111,20 @@ export function FunnelGraphCanvas({
     return set;
   }, [hoveredNode, edges]);
 
-  // Pan handlers
+  // Compute bundle offsets for parallel edges
+  const edgeBundleOffsets = useMemo(() => {
+    const pairCounts = new Map<string, number>();
+    const offsets = new Map<string, number>();
+    for (const e of edges) {
+      const [a, b] = [e.from, e.to].sort();
+      const pairKey = `${a}\0${b}`;
+      const count = pairCounts.get(pairKey) ?? 0;
+      offsets.set(`${e.from}\0${e.to}`, count);
+      pairCounts.set(pairKey, count + 1);
+    }
+    return offsets;
+  }, [edges]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setIsPanning(true);
@@ -104,7 +152,6 @@ export function FunnelGraphCanvas({
     return () => window.removeEventListener("mouseup", handleGlobalUp);
   }, []);
 
-  // Zoom with scroll
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -114,7 +161,6 @@ export function FunnelGraphCanvas({
     }));
   }, []);
 
-  // Reset view
   const resetView = useCallback(() => {
     setTransform({ x: 0, y: 0, scale: 1 });
   }, []);
@@ -125,7 +171,6 @@ export function FunnelGraphCanvas({
     return map;
   }, [nodes]);
 
-  // Center offset: shift graph so center of all nodes is at center of container
   const graphCenter = useMemo(() => {
     if (nodes.length === 0) return { x: 0, y: 0 };
     let cx = 0, cy = 0;
@@ -136,44 +181,8 @@ export function FunnelGraphCanvas({
     return { x: cx / nodes.length, y: cy / nodes.length };
   }, [nodes]);
 
-  // The offset to translate node coordinates to screen coordinates (centered in container)
   const offsetX = containerSize.w / 2 - graphCenter.x;
   const offsetY = containerSize.h / 2 - graphCenter.y;
-
-  // Compute edge connection points (from card border to card border)
-  const getEdgePath = useCallback((from: GraphNode, to: GraphNode) => {
-    const hw = CARD_WIDTH / 2;
-    const hh = CARD_HEIGHT / 2;
-
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return null;
-
-    // Ray-rectangle intersection for exit/entry points
-    const ndx = dx / dist;
-    const ndy = dy / dist;
-
-    // From-node exit point
-    const tFromX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
-    const tFromY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
-    const tFrom = Math.min(tFromX, tFromY);
-    const fromX = from.x + ndx * tFrom;
-    const fromY = from.y + ndy * tFrom;
-
-    // To-node entry point
-    const toX = to.x - ndx * tFrom;
-    const toY = to.y - ndy * tFrom;
-
-    // Subtle curve perpendicular to the edge
-    const nx = -ndy;
-    const ny = ndx;
-    const curvature = Math.min(dist * 0.08, 15);
-    const cx = (fromX + toX) / 2 + nx * curvature;
-    const cy = (fromY + toY) / 2 + ny * curvature;
-
-    return { fromX, fromY, toX, toY, cx, cy };
-  }, []);
 
   return (
     <div
@@ -201,7 +210,7 @@ export function FunnelGraphCanvas({
         <div>Scroll to zoom, drag to pan</div>
       </div>
 
-      {/* SVG layer for edges — fills container, uses same coordinate transform */}
+      {/* SVG layer for edges */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none"
         style={{ overflow: "visible" }}
@@ -225,7 +234,8 @@ export function FunnelGraphCanvas({
             const toNode = nodeMap.get(edge.to);
             if (fromNode == null || toNode == null) return null;
 
-            const path = getEdgePath(fromNode, toNode);
+            const bundleOffset = edgeBundleOffsets.get(`${edge.from}\0${edge.to}`) ?? 0;
+            const path = getEdgePath(fromNode, toNode, bundleOffset);
             if (path == null) return null;
 
             const isHighlighted = highlightedEdges == null || highlightedEdges.has(`${edge.from}\0${edge.to}`);
@@ -284,10 +294,6 @@ export function FunnelGraphCanvas({
         {nodes.map((node) => {
           const stats = nodeStats.get(node.id);
           const isHovered = hoveredNode === node.id;
-          const isDimmed = hoveredNode != null && !isHovered &&
-            !highlightedEdges?.has(`${hoveredNode}\0${node.id}`) &&
-            !highlightedEdges?.has(`${node.id}\0${hoveredNode}`);
-
           return (
             <div
               key={node.id}
@@ -295,7 +301,6 @@ export function FunnelGraphCanvas({
                 "absolute rounded-lg border px-2.5 py-1.5 pointer-events-auto cursor-pointer transition-shadow hover:transition-none",
                 "bg-card text-card-foreground border-border shadow-sm",
                 isHovered && "ring-2 ring-blue-500/50 shadow-md border-blue-400/60",
-                isDimmed && "opacity-20",
               )}
               style={{
                 left: offsetX + node.x - CARD_WIDTH / 2,

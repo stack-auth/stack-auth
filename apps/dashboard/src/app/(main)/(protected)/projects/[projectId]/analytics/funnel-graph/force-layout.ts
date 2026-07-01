@@ -1,10 +1,9 @@
 /**
- * Force-directed graph layout using a simple velocity-Verlet simulation.
- *
- * Forces:
- * - Repulsion between all node pairs (Coulomb-like)
- * - Attraction along edges proportional to edge weight (spring)
- * - Centering force to keep the graph from drifting
+ * Graph layout using ForceAtlas2-style simulation with:
+ * 1. Landing page detection → average distance for soft x-position
+ * 2. ForceAtlas2 forces with collision avoidance
+ * 3. Spring strength proportional to log(clicks)
+ * 4. Edge bundling for parallel edges
  */
 
 export type GraphNode = {
@@ -22,6 +21,122 @@ export type GraphEdge = {
   weight: number,
 };
 
+// Layout constants
+const CARD_WIDTH = 140;
+const CARD_HEIGHT = 52;
+const ITERATIONS = 400;
+const GRAVITY = 0.005;
+const REPULSION_SCALE = 5000;
+const X_CONSTRAINT_STRENGTH = 0.15;
+const DAMPING = 0.85;
+const MIN_DIST = 40;
+
+/**
+ * Detect landing pages: pages with high outbound relative to inbound,
+ * or common root paths like "/", "/home", etc.
+ */
+function findLandingPages(nodes: GraphNode[], edges: GraphEdge[]): Set<string> {
+  const inbound = new Map<string, number>();
+  const outbound = new Map<string, number>();
+  for (const n of nodes) {
+    inbound.set(n.id, 0);
+    outbound.set(n.id, 0);
+  }
+  for (const e of edges) {
+    outbound.set(e.from, (outbound.get(e.from) ?? 0) + e.count);
+    inbound.set(e.to, (inbound.get(e.to) ?? 0) + e.count);
+  }
+
+  const rootPatterns = ["/", "/index", "/home", "/landing"];
+  const landings = new Set<string>();
+
+  for (const n of nodes) {
+    const out = outbound.get(n.id) ?? 0;
+    const inn = inbound.get(n.id) ?? 0;
+    if (rootPatterns.some((p) => n.id === p || (n.id.endsWith("/") && n.id.slice(0, -1) === p))) {
+      landings.add(n.id);
+      continue;
+    }
+    if (out > inn * 1.3 && out > 30) {
+      landings.add(n.id);
+    }
+  }
+
+  if (landings.size === 0) {
+    const sorted = [...nodes].sort((a, b) => (outbound.get(b.id) ?? 0) - (outbound.get(a.id) ?? 0));
+    for (let i = 0; i < Math.min(3, sorted.length); i++) {
+      landings.add(sorted[i]!.id);
+    }
+  }
+
+  return landings;
+}
+
+/**
+ * Compute average shortest-path distance from landing pages using BFS.
+ */
+function computeDistanceFromLandings(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  landings: Set<string>,
+): Map<string, number> {
+  const adj = new Map<string, { to: string }[]>();
+  for (const n of nodes) {
+    adj.set(n.id, []);
+  }
+  for (const e of edges) {
+    adj.get(e.from)?.push({ to: e.to });
+  }
+
+  const distances = new Map<string, number[]>();
+  for (const n of nodes) {
+    distances.set(n.id, []);
+  }
+
+  for (const landing of landings) {
+    const dist = new Map<string, number>();
+    const queue: string[] = [landing];
+    dist.set(landing, 0);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const currentDist = dist.get(current)!;
+      const neighbors = adj.get(current) ?? [];
+      for (const { to } of neighbors) {
+        if (!dist.has(to)) {
+          dist.set(to, currentDist + 1);
+          queue.push(to);
+        }
+      }
+    }
+
+    for (const [nodeId, d] of dist) {
+      distances.get(nodeId)?.push(d);
+    }
+  }
+
+  const avgDist = new Map<string, number>();
+  let maxDist = 0;
+  for (const [nodeId, dists] of distances) {
+    if (dists.length > 0) {
+      const avg = dists.reduce((a, b) => a + b, 0) / dists.length;
+      avgDist.set(nodeId, avg);
+      maxDist = Math.max(maxDist, avg);
+    } else {
+      avgDist.set(nodeId, maxDist + 1);
+    }
+  }
+
+  // Normalize unreachable nodes
+  for (const [nodeId, d] of avgDist) {
+    if (d > maxDist) {
+      avgDist.set(nodeId, maxDist + 1);
+    }
+  }
+
+  return avgDist;
+}
+
 type SimNode = {
   id: string,
   label: string,
@@ -29,33 +144,40 @@ type SimNode = {
   y: number,
   vx: number,
   vy: number,
+  targetX: number,
 };
 
-const REPULSION_STRENGTH = 50000;
-const ATTRACTION_STRENGTH = 0.002;
-const CENTERING_STRENGTH = 0.005;
-const DAMPING = 0.85;
-const ITERATIONS = 500;
-const MIN_DISTANCE = 80;
-const MAX_NODES = 200;
-
-export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
+/**
+ * ForceAtlas2-style layout with:
+ * - Soft x-constraint from landing page distance
+ * - Repulsion inversely proportional to distance
+ * - Spring attraction proportional to log(clicks)
+ * - Collision avoidance based on card dimensions
+ */
+export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
   if (nodes.length === 0) return [];
-  if (nodes.length > MAX_NODES) {
-    throw new Error(`Too many nodes for force layout (${nodes.length} > ${MAX_NODES}). Consider filtering the data.`);
-  }
 
-  // Initialize positions in a circle with generous spacing
-  const simNodes: SimNode[] = nodes.map((node, i) => {
-    const angle = (2 * Math.PI * i) / nodes.length;
-    const radius = Math.max(300, nodes.length * 40);
+  // Find landing pages and compute distances
+  const landings = findLandingPages(nodes, edges);
+  const distFromLanding = computeDistanceFromLandings(nodes, edges, landings);
+
+  // Normalize distances to x-range
+  const maxDist = Math.max(...distFromLanding.values(), 1);
+  const xSpread = nodes.length * 50;
+
+  // Initialize simulation nodes
+  const simNodes: SimNode[] = nodes.map((n, i) => {
+    const dist = distFromLanding.get(n.id) ?? 0;
+    const targetX = (dist / maxDist) * xSpread;
+    const ySpread = nodes.length * 60;
     return {
-      id: node.id,
-      label: node.label,
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
+      id: n.id,
+      label: n.label,
+      x: targetX + (Math.random() - 0.5) * 80,
+      y: (i / nodes.length - 0.5) * ySpread,
       vx: 0,
       vy: 0,
+      targetX,
     };
   });
 
@@ -64,37 +186,53 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
     nodeIndex.set(simNodes[i]!.id, i);
   }
 
-  // Precompute max count for normalization (non-logarithmic for proximity)
-  const maxCount = edges.reduce((max, e) => Math.max(max, e.count), 1);
+  const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight), 1);
+
+  // Collision dimensions (half-widths with generous padding)
+  const collisionW = CARD_WIDTH / 2 + 25;
+  const collisionH = CARD_HEIGHT / 2 + 20;
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
-    // Adaptive cooling: reduce force influence as iterations progress
     const alpha = 1 - iter / ITERATIONS;
-    const coolFactor = alpha * alpha;
+    const cool = 0.1 + 0.9 * alpha;
 
-    // Repulsion between all pairs (Barnes-Hut would be better for huge
-    // graphs, but for ≤500 edges / ~100 nodes this is fine)
+    // Repulsion between all pairs + collision avoidance
     for (let i = 0; i < simNodes.length; i++) {
       for (let j = i + 1; j < simNodes.length; j++) {
         const a = simNodes[i]!;
         const b = simNodes[j]!;
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < MIN_DISTANCE) dist = MIN_DISTANCE;
+        if (dist < MIN_DIST) dist = MIN_DIST;
 
-        const force = (REPULSION_STRENGTH * coolFactor) / (dist * dist);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
+        // Repulsion
+        const repForce = REPULSION_SCALE * cool / (dist * dist);
+        const fx = (dx / dist) * repForce;
+        const fy = (dy / dist) * repForce;
 
         a.vx -= fx;
         a.vy -= fy;
         b.vx += fx;
         b.vy += fy;
+
+        // Collision avoidance: push apart if rectangular bounds overlap
+        const overlapX = collisionW * 2 - Math.abs(dx);
+        const overlapY = collisionH * 2 - Math.abs(dy);
+        if (overlapX > 0 && overlapY > 0) {
+          // Push apart along both axes proportional to overlap
+          const pushX = (overlapX / 2) * Math.sign(dx || 1) * 0.5;
+          const pushY = (overlapY / 2) * Math.sign(dy || 1) * 0.5;
+          a.x -= pushX;
+          b.x += pushX;
+          a.y -= pushY;
+          b.y += pushY;
+        }
       }
     }
 
-    // Attraction along edges (stronger edges pull more)
+    // Spring attraction along edges, strength ∝ log(clicks)
+    // Reverse x-force when arrow points left to bias left-to-right flow
     for (const edge of edges) {
       const ai = nodeIndex.get(edge.from);
       const bi = nodeIndex.get(edge.to);
@@ -107,14 +245,11 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < 1) continue;
 
-      // Non-logarithmic: raw count ratio determines proximity
-      const normalizedCount = edge.count / maxCount;
-      // Use spring-like attraction: pull toward ideal distance
-      const idealDist = 150 * (1 - normalizedCount * 0.7);
-      const displacement = dist - idealDist;
-      const force = ATTRACTION_STRENGTH * displacement * normalizedCount * coolFactor;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
+      const strength = 0.005 * (edge.weight / maxWeight) * cool;
+      const fy = dy * strength;
+      // Reverse x-component when edge points left (to.x < from.x)
+      // This makes backward edges repulsive on x, reinforcing left-to-right flow
+      const fx = dx < 0 ? -(dx * strength) : dx * strength;
 
       a.vx += fx;
       a.vy += fy;
@@ -122,10 +257,15 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
       b.vy -= fy;
     }
 
-    // Centering force
+    // Soft x-constraint: pull toward target x based on distance from landings
     for (const node of simNodes) {
-      node.vx -= node.x * CENTERING_STRENGTH * coolFactor;
-      node.vy -= node.y * CENTERING_STRENGTH * coolFactor;
+      const xDiff = node.targetX - node.x;
+      node.vx += xDiff * X_CONSTRAINT_STRENGTH * cool;
+    }
+
+    // Gravity toward center (y-axis only)
+    for (const node of simNodes) {
+      node.vy -= node.y * GRAVITY * cool;
     }
 
     // Apply velocity with damping
