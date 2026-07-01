@@ -1,0 +1,136 @@
+packages/shared/src/interface/client-interface.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 133,137-139,153,553,558-559,579
+apps/skills/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+apps/hosted-components/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4
+examples/react-example/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4
+"docs-mintlify/guides/getting-started/# Custom Events + Spans.md"
+  s_61399de5b8f78f::t_4f57c1c5dca5c9 7,61,82
+  s_61399de5b8f78f::t_83932a5c261a84 64-65
+  s_61399de5b8f78f::t_ec4c0a7a46f0d6 62-63
+  s_61399de5b8f78f::t_69f32ef549316b 4-6
+  s_61399de5b8f78f::t_49cf341076b1fa 8-10,58-60
+  s_61399de5b8f78f::t_4fc675d371bc5c 66-68,79-81
+  s_61399de5b8f78f::t_40b481d8f460cb 83
+packages/dashboard-ui-components/tsdown.config.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 3-5
+packages/shared/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3,81
+docs-mintlify/guides/getting-started/setup.mdx
+  s_369a5897688756::t_77d44a190e7972 9
+examples/js-example/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/lovable-react-18-example/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4
+examples/cjs-test/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+apps/e2e/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/convex/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+apps/mock-oauth-server/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+docs/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+apps/backend/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3,136
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_369a5897688756::t_4381c5c6e0a9a4 14,22-50,92
+configs/tsdown/js-library.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 45-46,50-52,54-78,96
+packages/cli/tsdown.config.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 9-11
+packages/shared/src/interface/client-interface.test.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 692-703,766-824,826-829
+  s_369a5897688756::t_361c96dacca9d8 825,830
+packages/template/package-template.json
+  s_369a5897688756::t_4381c5c6e0a9a4 16,87,203
+apps/internal-tool/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4,29
+package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 47-49,52,76-77,97,99
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 1-2,166-270
+  s_369a5897688756::t_1f4527a9898db5 271
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_369a5897688756::t_77d44a190e7972 3
+examples/docs-examples/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3,21
+examples/supabase/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/demo/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3,26
+packages/sc/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/shared-backend/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 109-118,291-298,303-304,306,309,319,357-371
+packages/ui/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/e-commerce/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/next/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4,55,133
+apps/mcp/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+pnpm-workspace.yaml
+  s_369a5897688756::t_4381c5c6e0a9a4 18-21,35,40,49
+sdks/implementations/swift/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+sdks/spec/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/cli/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3,41
+apps/dashboard/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/middleware/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+docs-mintlify/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/dashboard-ui-components/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+examples/tanstack-start-demo/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/js/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4,55,98
+packages/react/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 4,55,130
+packages/template/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 5,67,153
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_369a5897688756::t_4381c5c6e0a9a4 5,203,214-370
+  s_369a5897688756::t_4d3afb126a52be 371
+apps/dev-launchpad/package.json
+  s_369a5897688756::t_4381c5c6e0a9a4 3
+packages/tanstack-start/package.json
+  s_369a5897688756::t_8d334f8bd15e96 4,66,145
+pnpm-lock.yaml
+  s_369a5897688756::t_9ace7314dbdf1f 11-12,85-86,93-95,176,179,263,324,332-333,513,779,1673,1746-1747,1892-1893,2037-2038,2176-2177,2447-2448,2598-2599,3206-3208,3296-3298,3304-3306,3338-3340,3428-3430,3570-3574,3579-3580,5358-5362,6430-6431,7561-7562,7567-7568,7573-7574,7579-7580,7585-7586,7591-7592,7598-7599,7605-7606,7612-7613,7619-7620,7626-7627,7633-7634,7639-7640,7644-7645,7650-7651,7662-7663,9331-9332,10141-10144,10244-10246,10557-10560,11465-11467,11617-11619,11694-11697,12634-12637,12919-12920,13069-13071,14599,14772-14774,15107-15110,16058-16060,16063-16066,16077-16078,16238-16242,16949-16952,16957-16960,17048-17050,17054-17055,17057-17059,17061,17065-17068,17073,17075,17079-17080,17371-17372,19473,19475-19476,19606,19610,19639,19641,19748,19750-19751,19976,19978,19982,19987,19992,19994-19995,21776,21778-21780,23072,23227,23231-23232,23247,23264,23282,23284,25513,25516,25519,25522,25525,25528,25531,25534,25537,25540,25543,25546,25549,25551-25553,25556,25559,25566,27991,28977-28978,29120,29122,29502-29503,30431-30432,30559,30631-30632,31901-31904,32030,32407-32410,32871,33060,34655,34657,35073,35093,35125,35145,35336,35690-35691,35929,35932,35938,36892,36987,36989-36992,36994-36997,37003-37022,37251-37252,38310-38311,38317-38321,38390-38404,38408-38410,38417-38458,38462,38464,38824,38826,38977,38979
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d704009b0e1bfde13829b592545a143235dc869e",
+  "prompts": {},
+  "sessions": {
+    "s_369a5897688756": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "98518120-31f4-4c57-946f-1cece61815b8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_61399de5b8f78f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a277d56f-aa99-4835-b372-5bd29be9d245",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
