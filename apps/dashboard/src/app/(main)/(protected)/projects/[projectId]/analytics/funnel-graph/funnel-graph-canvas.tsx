@@ -5,44 +5,20 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "./force-layout";
 
-type ViewBox = {
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-};
-
-const NODE_RADIUS = 8;
-const LABEL_FONT_SIZE = 13;
-const PADDING = 120;
-
-function computeViewBox(nodes: GraphNode[]): ViewBox {
-  if (nodes.length === 0) return { x: -500, y: -500, width: 1000, height: 1000 };
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of nodes) {
-    if (n.x < minX) minX = n.x;
-    if (n.y < minY) minY = n.y;
-    if (n.x > maxX) maxX = n.x;
-    if (n.y > maxY) maxY = n.y;
-  }
-  return {
-    x: minX - PADDING,
-    y: minY - PADDING,
-    width: (maxX - minX) + PADDING * 2,
-    height: (maxY - minY) + PADDING * 2,
-  };
-}
+const CARD_WIDTH = 140;
+const CARD_HEIGHT = 52;
 
 function edgeOpacity(count: number, maxCount: number): number {
   if (maxCount === 0) return 0.1;
-  // Non-logarithmic: linear ratio of raw count with base 0.1
   return 0.1 + 0.7 * (count / maxCount);
 }
 
-function edgeWidth(weight: number, maxWeight: number): number {
-  if (maxWeight === 0) return 1;
-  // Logarithmic thickness based on log-weight
-  return 1 + 4 * (weight / maxWeight);
+function edgeWidth(count: number, maxCount: number): number {
+  if (maxCount === 0) return 1;
+  // Logarithmic thickness normalized by log of max edge
+  const logMax = Math.log2(maxCount + 1);
+  if (logMax === 0) return 1;
+  return 1 + 4 * (Math.log2(count + 1) / logMax);
 }
 
 export function FunnelGraphCanvas({
@@ -53,39 +29,42 @@ export function FunnelGraphCanvas({
   edges: GraphEdge[],
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
-  const viewBox = useMemo(() => computeViewBox(nodes), [nodes]);
-  const maxWeight = useMemo(() => edges.reduce((m, e) => Math.max(m, e.weight), 0), [edges]);
+  // Track container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el == null) return;
+    const obs = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry != null) {
+        setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   const maxCount = useMemo(() => edges.reduce((m, e) => Math.max(m, e.count), 0), [edges]);
 
-  // Node degree for sizing
-  const nodeDegree = useMemo(() => {
-    const degree = new Map<string, number>();
+  // Compute per-node stats: total inbound, total outbound
+  const nodeStats = useMemo(() => {
+    const stats = new Map<string, { inbound: number, outbound: number }>();
+    for (const n of nodes) {
+      stats.set(n.id, { inbound: 0, outbound: 0 });
+    }
     for (const e of edges) {
-      degree.set(e.from, (degree.get(e.from) ?? 0) + e.count);
-      degree.set(e.to, (degree.get(e.to) ?? 0) + e.count);
+      const from = stats.get(e.from);
+      const to = stats.get(e.to);
+      if (from != null) from.outbound += e.count;
+      if (to != null) to.inbound += e.count;
     }
-    return degree;
-  }, [edges]);
-
-  const maxDegree = useMemo(() => {
-    let max = 0;
-    for (const d of nodeDegree.values()) {
-      if (d > max) max = d;
-    }
-    return max;
-  }, [nodeDegree]);
-
-  const nodeRadius = useCallback((id: string) => {
-    const deg = nodeDegree.get(id) ?? 0;
-    if (maxDegree === 0) return NODE_RADIUS;
-    return NODE_RADIUS + 10 * (deg / maxDegree);
-  }, [nodeDegree, maxDegree]);
+    return stats;
+  }, [nodes, edges]);
 
   // Highlighted edges when hovering a node
   const highlightedEdges = useMemo(() => {
@@ -108,18 +87,14 @@ export function FunnelGraphCanvas({
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return;
-    const dxPx = e.clientX - panStart.current.x;
-    const dyPx = e.clientY - panStart.current.y;
-    // Convert CSS pixel deltas to SVG user-unit space
-    const svg = svgRef.current;
-    const scaleX = svg != null && svg.clientWidth > 0 ? viewBox.width / svg.clientWidth : 1;
-    const scaleY = svg != null && svg.clientHeight > 0 ? viewBox.height / svg.clientHeight : 1;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
     setTransform((t) => ({
       ...t,
-      x: panStart.current.tx + dxPx * scaleX,
-      y: panStart.current.ty + dyPx * scaleY,
+      x: panStart.current.tx + dx,
+      y: panStart.current.ty + dy,
     }));
-  }, [isPanning, viewBox.width, viewBox.height]);
+  }, [isPanning]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -152,8 +127,55 @@ export function FunnelGraphCanvas({
     return map;
   }, [nodes]);
 
-  // Compute arrow marker offset for each edge to stop at node boundary
-  const arrowId = "funnel-arrow";
+  // Center offset: shift graph so center of all nodes is at center of container
+  const graphCenter = useMemo(() => {
+    if (nodes.length === 0) return { x: 0, y: 0 };
+    let cx = 0, cy = 0;
+    for (const n of nodes) {
+      cx += n.x;
+      cy += n.y;
+    }
+    return { x: cx / nodes.length, y: cy / nodes.length };
+  }, [nodes]);
+
+  // The offset to translate node coordinates to screen coordinates (centered in container)
+  const offsetX = containerSize.w / 2 - graphCenter.x;
+  const offsetY = containerSize.h / 2 - graphCenter.y;
+
+  // Compute edge connection points (from card border to card border)
+  const getEdgePath = useCallback((from: GraphNode, to: GraphNode) => {
+    const hw = CARD_WIDTH / 2;
+    const hh = CARD_HEIGHT / 2;
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return null;
+
+    // Ray-rectangle intersection for exit/entry points
+    const ndx = dx / dist;
+    const ndy = dy / dist;
+
+    // From-node exit point
+    const tFromX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
+    const tFromY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
+    const tFrom = Math.min(tFromX, tFromY);
+    const fromX = from.x + ndx * tFrom;
+    const fromY = from.y + ndy * tFrom;
+
+    // To-node entry point
+    const toX = to.x - ndx * tFrom;
+    const toY = to.y - ndy * tFrom;
+
+    // Subtle curve perpendicular to the edge
+    const nx = -ndy;
+    const ny = ndx;
+    const curvature = Math.min(dist * 0.08, 15);
+    const cx = (fromX + toX) / 2 + nx * curvature;
+    const cy = (fromY + toY) / 2 + ny * curvature;
+
+    return { fromX, fromY, toX, toY, cx, cy };
+  }, []);
 
   return (
     <div
@@ -177,20 +199,18 @@ export function FunnelGraphCanvas({
 
       {/* Legend */}
       <div className="absolute bottom-3 left-3 z-10 px-3 py-2 rounded-lg bg-background/80 backdrop-blur border border-border/50 text-xs text-muted-foreground space-y-1">
-        <div>Node size = total traffic</div>
         <div>Edge thickness = log(transitions)</div>
         <div>Scroll to zoom, drag to pan</div>
       </div>
 
+      {/* SVG layer for edges — fills container, uses same coordinate transform */}
       <svg
-        ref={svgRef}
-        className="w-full h-full"
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-        preserveAspectRatio="xMidYMid meet"
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ overflow: "visible" }}
       >
         <defs>
           <marker
-            id={arrowId}
+            id="funnel-arrow"
             viewBox="0 0 10 10"
             refX="8"
             refY="5"
@@ -201,96 +221,30 @@ export function FunnelGraphCanvas({
             <path d="M 0 0 L 10 5 L 0 10 z" className="fill-foreground/40" />
           </marker>
         </defs>
-
-        <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-          {/* Edges as quadratic curves */}
+        <g transform={`translate(${offsetX + transform.x}, ${offsetY + transform.y}) scale(${transform.scale})`}>
           {edges.map((edge) => {
             const fromNode = nodeMap.get(edge.from);
             const toNode = nodeMap.get(edge.to);
             if (fromNode == null || toNode == null) return null;
+
+            const path = getEdgePath(fromNode, toNode);
+            if (path == null) return null;
 
             const isHighlighted = highlightedEdges == null || highlightedEdges.has(`${edge.from}\0${edge.to}`);
             const opacity = isHighlighted
               ? edgeOpacity(edge.count, maxCount)
               : (hoveredNode != null ? 0.03 : edgeOpacity(edge.count, maxCount));
 
-            const dx = toNode.x - fromNode.x;
-            const dy = toNode.y - fromNode.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 1) return null;
-
-            const fromR = nodeRadius(edge.from);
-            const toR = nodeRadius(edge.to);
-            const startX = fromNode.x + (dx / dist) * fromR;
-            const startY = fromNode.y + (dy / dist) * fromR;
-            const endX = toNode.x - (dx / dist) * (toR + 6);
-            const endY = toNode.y - (dy / dist) * (toR + 6);
-
-            // Compute a subtle curve offset perpendicular to the edge
-            const nx = -dy / dist;
-            const ny = dx / dist;
-            const curvature = Math.min(dist * 0.1, 20);
-            const cx = (startX + endX) / 2 + nx * curvature;
-            const cy = (startY + endY) / 2 + ny * curvature;
-
             return (
               <path
                 key={`${edge.from}\0${edge.to}`}
-                d={`M ${startX} ${startY} Q ${cx} ${cy} ${endX} ${endY}`}
+                d={`M ${path.fromX} ${path.fromY} Q ${path.cx} ${path.cy} ${path.toX} ${path.toY}`}
                 fill="none"
                 className="stroke-foreground"
-                strokeWidth={edgeWidth(edge.weight, maxWeight)}
+                strokeWidth={edgeWidth(edge.count, maxCount)}
                 strokeOpacity={opacity}
-                markerEnd={`url(#${arrowId})`}
+                markerEnd="url(#funnel-arrow)"
               />
-            );
-          })}
-
-          {/* Nodes */}
-          {nodes.map((node) => {
-            const r = nodeRadius(node.id);
-            const isHovered = hoveredNode === node.id;
-            const isDimmed = hoveredNode != null && !isHovered &&
-              !highlightedEdges?.has(`${hoveredNode}\0${node.id}`) &&
-              !highlightedEdges?.has(`${node.id}\0${hoveredNode}`);
-
-            return (
-              <g
-                key={node.id}
-                onMouseEnter={() => setHoveredNode(node.id)}
-                onMouseLeave={() => setHoveredNode(null)}
-                className="cursor-pointer"
-                opacity={isDimmed ? 0.2 : 1}
-              >
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={r}
-                  className={cn(
-                    "fill-blue-500/90 stroke-blue-400/60",
-                    isHovered && "fill-blue-400 stroke-blue-300"
-                  )}
-                  strokeWidth={isHovered ? 2.5 : 1.5}
-                />
-                <text
-                  x={node.x}
-                  y={node.y + r + LABEL_FONT_SIZE + 4}
-                  textAnchor="middle"
-                  className="fill-foreground/80"
-                  fontSize={LABEL_FONT_SIZE}
-                  fontFamily="monospace"
-                  fontWeight={isHovered ? 600 : 400}
-                >
-                  {node.label}
-                </text>
-                {/* Invisible larger hit area for easier hovering */}
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={r + 8}
-                  fill="transparent"
-                />
-              </g>
             );
           })}
 
@@ -307,10 +261,10 @@ export function FunnelGraphCanvas({
                 <text
                   key={`label-${edge.from}\0${edge.to}`}
                   x={mx}
-                  y={my - 6}
+                  y={my - 8}
                   textAnchor="middle"
                   className="fill-foreground"
-                  fontSize={10}
+                  fontSize={11}
                   fontWeight="bold"
                 >
                   {edge.count.toLocaleString()}
@@ -320,6 +274,51 @@ export function FunnelGraphCanvas({
           }
         </g>
       </svg>
+
+      {/* HTML layer for node cards */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+          transformOrigin: `${containerSize.w / 2}px ${containerSize.h / 2}px`,
+        }}
+      >
+        {nodes.map((node) => {
+          const stats = nodeStats.get(node.id);
+          const isHovered = hoveredNode === node.id;
+          const isDimmed = hoveredNode != null && !isHovered &&
+            !highlightedEdges?.has(`${hoveredNode}\0${node.id}`) &&
+            !highlightedEdges?.has(`${node.id}\0${hoveredNode}`);
+
+          return (
+            <div
+              key={node.id}
+              className={cn(
+                "absolute rounded-lg border px-2.5 py-1.5 pointer-events-auto cursor-pointer transition-shadow hover:transition-none",
+                "bg-card text-card-foreground border-border shadow-sm",
+                isHovered && "ring-2 ring-blue-500/50 shadow-md border-blue-400/60",
+                isDimmed && "opacity-20",
+              )}
+              style={{
+                left: offsetX + node.x - CARD_WIDTH / 2,
+                top: offsetY + node.y - CARD_HEIGHT / 2,
+                width: CARD_WIDTH,
+                height: CARD_HEIGHT,
+              }}
+              onMouseEnter={() => setHoveredNode(node.id)}
+              onMouseLeave={() => setHoveredNode(null)}
+            >
+              <div className="text-[11px] font-mono font-medium truncate leading-tight" title={node.label}>
+                {node.label}
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                <span title="Inbound transitions">→ {stats?.inbound.toLocaleString() ?? 0}</span>
+                <span title="Outbound transitions">{stats?.outbound.toLocaleString() ?? 0} →</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
