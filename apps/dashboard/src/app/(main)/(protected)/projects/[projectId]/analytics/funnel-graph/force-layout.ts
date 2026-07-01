@@ -31,12 +31,12 @@ type SimNode = {
   vy: number,
 };
 
-const REPULSION_STRENGTH = 5000;
-const ATTRACTION_STRENGTH = 0.005;
-const CENTERING_STRENGTH = 0.01;
-const DAMPING = 0.9;
-const ITERATIONS = 300;
-const MIN_DISTANCE = 30;
+const REPULSION_STRENGTH = 50000;
+const ATTRACTION_STRENGTH = 0.002;
+const CENTERING_STRENGTH = 0.005;
+const DAMPING = 0.85;
+const ITERATIONS = 500;
+const MIN_DISTANCE = 80;
 const MAX_NODES = 200;
 
 export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
@@ -45,10 +45,10 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
     throw new Error(`Too many nodes for force layout (${nodes.length} > ${MAX_NODES}). Consider filtering the data.`);
   }
 
-  // Initialize positions in a circle for deterministic starting layout
+  // Initialize positions in a circle with generous spacing
   const simNodes: SimNode[] = nodes.map((node, i) => {
     const angle = (2 * Math.PI * i) / nodes.length;
-    const radius = Math.min(400, nodes.length * 15);
+    const radius = Math.max(300, nodes.length * 40);
     return {
       id: node.id,
       label: node.label,
@@ -109,7 +109,11 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
 
       // Normalized weight so the strongest edges pull the most
       const normalizedWeight = edge.weight / maxWeight;
-      const force = ATTRACTION_STRENGTH * dist * normalizedWeight * coolFactor;
+      // Use spring-like attraction: pull toward ideal distance rather than
+      // linearly scaling with current distance
+      const idealDist = 150 * (1 - normalizedWeight * 0.7);
+      const displacement = dist - idealDist;
+      const force = ATTRACTION_STRENGTH * displacement * normalizedWeight * coolFactor;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 

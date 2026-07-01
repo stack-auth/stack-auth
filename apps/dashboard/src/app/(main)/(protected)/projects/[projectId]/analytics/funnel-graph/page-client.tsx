@@ -103,23 +103,35 @@ export default function PageClient() {
         y: 0,
       }));
 
-      // Build edges with logarithmic weight
-      const edges: GraphEdge[] = [];
+      // Build edges with logarithmic weight, filtering out very weak edges
+      const allEdges: { from: string, to: string, count: number, weight: number }[] = [];
       for (const [key, count] of edgeMap) {
         const [from, to] = key.split("\0") as [string, string];
-        edges.push({
+        allEdges.push({
           from,
           to,
           count,
           weight: Math.log2(count + 1),
         });
       }
+      // Sort by count and keep top edges to avoid visual clutter
+      allEdges.sort((a, b) => b.count - a.count);
+      const maxEdges = Math.min(allEdges.length, 80);
+      const edges: GraphEdge[] = allEdges.slice(0, maxEdges);
+
+      // Only include nodes that have at least one visible edge
+      const visibleNodes = new Set<string>();
+      for (const e of edges) {
+        visibleNodes.add(e.from);
+        visibleNodes.add(e.to);
+      }
+      const filteredNodeArray = nodeArray.filter((n) => visibleNodes.has(n.id));
 
       // Yield to event loop so the loading spinner renders before the expensive computation
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       // Compute force-directed layout
-      const laidOutNodes = computeForceLayout(nodeArray, edges);
+      const laidOutNodes = computeForceLayout(filteredNodeArray, edges);
 
       setData({ nodes: laidOutNodes, edges });
     } catch (e) {

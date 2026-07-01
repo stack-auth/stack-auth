@@ -12,9 +12,9 @@ type ViewBox = {
   height: number,
 };
 
-const NODE_RADIUS = 6;
-const LABEL_FONT_SIZE = 11;
-const PADDING = 80;
+const NODE_RADIUS = 8;
+const LABEL_FONT_SIZE = 13;
+const PADDING = 120;
 
 function computeViewBox(nodes: GraphNode[]): ViewBox {
   if (nodes.length === 0) return { x: -500, y: -500, width: 1000, height: 1000 };
@@ -35,14 +35,14 @@ function computeViewBox(nodes: GraphNode[]): ViewBox {
 
 function edgeOpacity(weight: number, maxWeight: number): number {
   if (maxWeight === 0) return 0.2;
-  // Map weight to 0.1..0.9
-  return 0.1 + 0.8 * (weight / maxWeight);
+  // Map weight to 0.15..0.7
+  return 0.15 + 0.55 * (weight / maxWeight);
 }
 
 function edgeWidth(weight: number, maxWeight: number): number {
   if (maxWeight === 0) return 1;
-  // Map weight to 1..6
-  return 1 + 5 * (weight / maxWeight);
+  // Map weight to 1..4
+  return 1 + 3 * (weight / maxWeight);
 }
 
 export function FunnelGraphCanvas({
@@ -83,7 +83,7 @@ export function FunnelGraphCanvas({
   const nodeRadius = useCallback((id: string) => {
     const deg = nodeDegree.get(id) ?? 0;
     if (maxDegree === 0) return NODE_RADIUS;
-    return NODE_RADIUS + 8 * (deg / maxDegree);
+    return NODE_RADIUS + 10 * (deg / maxDegree);
   }, [nodeDegree, maxDegree]);
 
   // Highlighted edges when hovering a node
@@ -202,7 +202,7 @@ export function FunnelGraphCanvas({
         </defs>
 
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-          {/* Edges */}
+          {/* Edges as quadratic curves */}
           {edges.map((edge) => {
             const fromNode = nodeMap.get(edge.from);
             const toNode = nodeMap.get(edge.to);
@@ -211,9 +211,8 @@ export function FunnelGraphCanvas({
             const isHighlighted = highlightedEdges == null || highlightedEdges.has(`${edge.from}\0${edge.to}`);
             const opacity = isHighlighted
               ? edgeOpacity(edge.weight, maxWeight)
-              : (hoveredNode != null ? 0.05 : edgeOpacity(edge.weight, maxWeight));
+              : (hoveredNode != null ? 0.03 : edgeOpacity(edge.weight, maxWeight));
 
-            // Shorten line to stop at node radius
             const dx = toNode.x - fromNode.x;
             const dy = toNode.y - fromNode.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -223,16 +222,21 @@ export function FunnelGraphCanvas({
             const toR = nodeRadius(edge.to);
             const startX = fromNode.x + (dx / dist) * fromR;
             const startY = fromNode.y + (dy / dist) * fromR;
-            const endX = toNode.x - (dx / dist) * (toR + 4);
-            const endY = toNode.y - (dy / dist) * (toR + 4);
+            const endX = toNode.x - (dx / dist) * (toR + 6);
+            const endY = toNode.y - (dy / dist) * (toR + 6);
+
+            // Compute a subtle curve offset perpendicular to the edge
+            const nx = -dy / dist;
+            const ny = dx / dist;
+            const curvature = Math.min(dist * 0.1, 20);
+            const cx = (startX + endX) / 2 + nx * curvature;
+            const cy = (startY + endY) / 2 + ny * curvature;
 
             return (
-              <line
+              <path
                 key={`${edge.from}\0${edge.to}`}
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
+                d={`M ${startX} ${startY} Q ${cx} ${cy} ${endX} ${endY}`}
+                fill="none"
                 className="stroke-foreground"
                 strokeWidth={edgeWidth(edge.weight, maxWeight)}
                 strokeOpacity={opacity}
@@ -262,18 +266,19 @@ export function FunnelGraphCanvas({
                   cy={node.y}
                   r={r}
                   className={cn(
-                    "fill-blue-500 stroke-blue-600",
-                    isHovered && "fill-blue-400 stroke-blue-500"
+                    "fill-blue-500/90 stroke-blue-400/60",
+                    isHovered && "fill-blue-400 stroke-blue-300"
                   )}
-                  strokeWidth={isHovered ? 2 : 1}
+                  strokeWidth={isHovered ? 2.5 : 1.5}
                 />
                 <text
                   x={node.x}
-                  y={node.y + r + LABEL_FONT_SIZE + 2}
+                  y={node.y + r + LABEL_FONT_SIZE + 4}
                   textAnchor="middle"
-                  className="fill-foreground"
+                  className="fill-foreground/80"
                   fontSize={LABEL_FONT_SIZE}
                   fontFamily="monospace"
+                  fontWeight={isHovered ? 600 : 400}
                 >
                   {node.label}
                 </text>
