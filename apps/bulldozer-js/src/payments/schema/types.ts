@@ -128,7 +128,10 @@ export type TransactionEntryData =
   | { type: "product-grant", customerType: CustomerType, customerId: string, productId: string | null, priceId: string | null, product: ProductSnapshot, quantity: number, productLineId: string | null, subscriptionId?: string | null, oneTimePurchaseId?: string | null }
   | { type: "product-revocation", customerType: CustomerType, customerId: string, adjustedTransactionId: string, adjustedEntryIndex: number, quantity: number, productId: string | null, productLineId: string | null }
   | { type: "item-quantity-expire", customerType: CustomerType, customerId: string, adjustedTransactionId: string, adjustedEntryIndex: number, quantity: number, itemId: string }
-  | { type: "item-quantity-change", customerType: CustomerType, customerId: string, quantity: number, itemId: string, expiresWhen: "when-purchase-expires" | "when-repeated" | number | null };
+  // `stampedExpiresAtMillis` is the concrete expiry time the ledger ranks the grant by (soonest-
+  // first). It's only set for subscription/one-time-purchase grants whose `expiresWhen` is a
+  // string; manual grants carry their absolute expiry directly in `expiresWhen` as a number.
+  | { type: "item-quantity-change", customerType: CustomerType, customerId: string, quantity: number, itemId: string, expiresWhen: "when-purchase-expires" | "when-repeated" | number | null, stampedExpiresAtMillis?: number | null };
 
 export type TransactionRow = {
   txnId: string,

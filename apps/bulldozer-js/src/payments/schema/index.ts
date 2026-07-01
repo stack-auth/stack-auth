@@ -1,3 +1,4 @@
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
   declareBulldozerDatabase,
@@ -34,7 +35,7 @@ export type * from "./types.js";
 type Migration = Parameters<typeof declareBulldozerDatabase>[1]["migrations"][number];
 type InitTableStep = Extract<Migration[number], { type: "initTable" }>;
 type Row = { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject };
-type ItemGrant = { itemId: string, quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null };
+type ItemGrant = { itemId: string, quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null, expiresAtMillis: number | null };
 type OutstandingGrant = { txnId: string, entryIndex: number, itemId: string, quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null };
 type RepeatSchedule = Record<string, { quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null, repeatIntervalMs: number | null, nextRepeatMillis: number | null }>;
 type SubscriptionFoldState = {
@@ -96,6 +97,9 @@ type ItemCompactionBoundary = {
   txnEffectiveAtMillis: number,
   txnId: string,
   index: number,
+  // The item this expiry belongs to; compaction windows are per-item, so a boundary only stops
+  // merges of its own item.
+  itemId: string,
 };
 
 const DAY_MS = 86_400_000;
@@ -171,11 +175,32 @@ const chargedAmount = (product: ProductSnapshot, priceId: string | null, quantit
   }
   return result;
 };
-const itemGrants = (product: ProductSnapshot, quantity: number): ItemGrant[] => Object.entries(product.includedItems).map(([itemId, item]) => ({
-  itemId,
-  quantity: item.quantity * quantity,
-  expiresWhen: normalizedExpiresWhen(item),
-}));
+// The concrete millis at which a stamped (subscription/one-time-purchase) grant expires, so the
+// ledger can rank grants by real expiry (soonest-first) instead of treating them all as permanent.
+// `when-repeated` grants drop at the sooner of their next reset or the purchase end; `when-purchase-
+// expires` grants drop at the purchase end; `null` never expires. This always matches the time of
+// the id-referencing expire marker that actually removes the grant (or is a harmless over-estimate
+// when no marker ever fires — e.g. an ongoing purchase — in which case the grant stays live anyway).
+const grantExpiryMillis = (
+  expiresWhen: "when-purchase-expires" | "when-repeated" | null,
+  nextResetMillis: number | null,
+  endMillis: number | null,
+): number | null => {
+  const candidates: number[] = [];
+  if (expiresWhen === "when-repeated" && nextResetMillis !== null) candidates.push(nextResetMillis);
+  if ((expiresWhen === "when-repeated" || expiresWhen === "when-purchase-expires") && endMillis !== null) candidates.push(endMillis);
+  return candidates.length === 0 ? null : Math.min(...candidates);
+};
+const itemGrants = (product: ProductSnapshot, quantity: number, anchorMillis: number, endMillis: number | null): ItemGrant[] => Object.entries(product.includedItems).map(([itemId, item]) => {
+  const expiresWhen = normalizedExpiresWhen(item);
+  const intervalMs = repeatIntervalMs(item.repeat);
+  return {
+    itemId,
+    quantity: item.quantity * quantity,
+    expiresWhen,
+    expiresAtMillis: grantExpiryMillis(expiresWhen, intervalMs === null ? null : anchorMillis + intervalMs, endMillis),
+  };
+});
 const repeatSchedule = (product: ProductSnapshot, quantity: number, anchorMillis: number): RepeatSchedule => Object.fromEntries(
   Object.entries(product.includedItems).map(([itemId, item]) => {
     const intervalMs = repeatIntervalMs(item.repeat);
@@ -254,7 +279,7 @@ function subscriptionStartEvent(row: SubscriptionRow) {
     priceId: row.priceId,
     quantity: row.quantity,
     chargedAmount: chargedAmount(row.product, row.priceId, row.quantity),
-    itemGrants: itemGrants(row.product, row.quantity),
+    itemGrants: itemGrants(row.product, row.quantity, row.createdAtMillis, row.endedAtMillis),
     paymentProvider: provider,
     effectiveAtMillis: row.createdAtMillis,
     createdAtMillis: row.createdAtMillis,
@@ -284,18 +309,18 @@ function subscriptionRepeatStep(state: SubscriptionFoldState, currentMillis: num
   const dueItems = dueItemEntries(state, currentMillis);
   const dueIds = new Set(dueItems.map(([itemId]) => itemId));
   const previousGrantsToExpire = grantRefsToExpire(state.outstandingGrants, "when-repeated", dueIds);
-  const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen }));
-  const txnId = `igr:${state.subscriptionId}:${currentMillis}`;
-  const nextOutstanding = [
-    ...state.outstandingGrants.filter(grant => !(grant.expiresWhen === "when-repeated" && dueIds.has(grant.itemId))),
-    ...dueItems.map(([itemId, schedule], index) => ({ txnId, entryIndex: previousGrantsToExpire.length + index, itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen })),
-  ];
   const nextSchedule = Object.fromEntries(Object.entries(state.itemRepeatSchedule).map(([itemId, schedule]) => [
     itemId,
     schedule.nextRepeatMillis !== null && schedule.nextRepeatMillis <= currentMillis && schedule.repeatIntervalMs !== null
       ? { ...schedule, nextRepeatMillis: schedule.nextRepeatMillis + schedule.repeatIntervalMs }
       : schedule,
   ]));
+  const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen, expiresAtMillis: grantExpiryMillis(schedule.expiresWhen, nextSchedule[itemId].nextRepeatMillis, state.endedAtMillis) }));
+  const txnId = `igr:${state.subscriptionId}:${currentMillis}`;
+  const nextOutstanding = [
+    ...state.outstandingGrants.filter(grant => !(grant.expiresWhen === "when-repeated" && dueIds.has(grant.itemId))),
+    ...dueItems.map(([itemId, schedule], index) => ({ txnId, entryIndex: previousGrantsToExpire.length + index, itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen })),
+  ];
   return {
     state: { ...state, outstandingGrants: nextOutstanding, itemRepeatSchedule: nextSchedule, repeatCount: state.repeatCount + 1 },
     event: toPiledriverObject({
@@ -337,18 +362,18 @@ function otpRepeatStep(state: OtpFoldState, currentMillis: number): { state: Otp
   const dueItems = dueItemEntries(state, currentMillis);
   const dueIds = new Set(dueItems.map(([itemId]) => itemId));
   const previousGrantsToExpire = grantRefsToExpire(state.outstandingGrants, "when-repeated", dueIds);
-  const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen }));
-  const txnId = `igr:${state.purchaseId}:${currentMillis}`;
-  const nextOutstanding = [
-    ...state.outstandingGrants.filter(grant => !(grant.expiresWhen === "when-repeated" && dueIds.has(grant.itemId))),
-    ...dueItems.map(([itemId, schedule], index) => ({ txnId, entryIndex: previousGrantsToExpire.length + index, itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen })),
-  ];
   const nextSchedule = Object.fromEntries(Object.entries(state.itemRepeatSchedule).map(([itemId, schedule]) => [
     itemId,
     schedule.nextRepeatMillis !== null && schedule.nextRepeatMillis <= currentMillis && schedule.repeatIntervalMs !== null
       ? { ...schedule, nextRepeatMillis: schedule.nextRepeatMillis + schedule.repeatIntervalMs }
       : schedule,
   ]));
+  const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen, expiresAtMillis: grantExpiryMillis(schedule.expiresWhen, nextSchedule[itemId].nextRepeatMillis, state.revokedAtMillis) }));
+  const txnId = `igr:${state.purchaseId}:${currentMillis}`;
+  const nextOutstanding = [
+    ...state.outstandingGrants.filter(grant => !(grant.expiresWhen === "when-repeated" && dueIds.has(grant.itemId))),
+    ...dueItems.map(([itemId, schedule], index) => ({ txnId, entryIndex: previousGrantsToExpire.length + index, itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen })),
+  ];
   return {
     state: { ...state, outstandingGrants: nextOutstanding, itemRepeatSchedule: nextSchedule, repeatCount: state.repeatCount + 1 },
     event: toPiledriverObject({
@@ -368,11 +393,25 @@ function otpRepeatStep(state: OtpFoldState, currentMillis: number): { state: Otp
 }
 
 const sortTxnRows = (rows: TransactionRow[]) => rows.sort((a, b) => a.effectiveAtMillis - b.effectiveAtMillis || stringCompare(a.txnId, b.txnId));
-const sumItemQuantity = (state: Record<string, { grants: { q: number, e: number | null }[], debt: number }>, itemId: string) => {
-  const item = state[itemId];
-  return item.grants.reduce((sum, grant) => sum + grant.q, 0) + item.debt;
-};
-const currentItemQuantities = (state: Record<string, { grants: { q: number, e: number | null }[], debt: number }>) => Object.fromEntries(Object.keys(state).map(itemId => [itemId, sumItemQuantity(state, itemId)]));
+// A live grant in the item-quantities ledger. `q` is the granted amount minus any frozen debt baked
+// in at arrival (see the fold reducer). `e` is the grant's expiry (null = never; sorted last). `id`
+// is the granting entry's identity (`${txnId}:${entryIndex}`) so an expiry can drop the *specific*
+// grant it belongs to; `id` is null for grants that can never be expired (permanent/compacted).
+type LedgerGrant = { q: number, e: number | null, id: string | null };
+// Per-item ledger state. `consumption` is the running total of covered removals, distributed over
+// the grants soonest-expiring-first (never materialized — recomputed on demand), so a later,
+// sooner-expiring grant automatically absorbs it (reassignment). `debt` is removals that had no
+// grant to land on; it freezes onto the first grant(s) to arrive (baked into their `q`) and never
+// reassigns. Balance = sum(grant.q) - consumption - debt.
+type LedgerItemState = { grants: LedgerGrant[], consumption: number, debt: number };
+type LedgerState = Record<string, LedgerItemState>;
+const grantExpiry = (grant: LedgerGrant) => grant.e ?? Number.POSITIVE_INFINITY;
+// Soonest-expiring first, with a stable id tiebreak so the soonest-first distribution is
+// deterministic among grants that expire at the same instant.
+const compareGrantsByExpiry = (a: LedgerGrant, b: LedgerGrant) => grantExpiry(a) - grantExpiry(b) || stringCompare(a.id ?? "", b.id ?? "");
+const sumGrantQuantities = (grants: LedgerGrant[]) => grants.reduce((sum, grant) => sum + grant.q, 0);
+const sumItemQuantity = (item: LedgerItemState) => sumGrantQuantities(item.grants) - item.consumption - item.debt;
+const currentItemQuantities = (state: LedgerState) => Object.fromEntries(Object.keys(state).map(itemId => [itemId, sumItemQuantity(state[itemId])]));
 const isCompactionBoundary = (value: PiledriverObject): value is ItemCompactionBoundary =>
   isObject(value) && value.type === "item-quantity-compaction-boundary";
 const compactableEntryToAggregate = (entry: ItemQuantityChangeEntry): ItemCompactionAggregate => ({
@@ -401,9 +440,16 @@ export const mergeCompactionAggregates = (a: ItemCompactionAggregate, b: ItemCom
   }
   return { type: "item-quantity-compaction-aggregate", txnEffectiveAtMillis: a.txnEffectiveAtMillis, txnId: a.txnId, index: a.index, items: Object.fromEntries(items) };
 };
+// The item a compaction row belongs to: boundaries carry `itemId`; aggregates hold exactly one item
+// (single-item at creation, and the compactor only merges same-item aggregates), so its sole key.
+const compactionRowItemId = (value: PiledriverObject): string => {
+  if (isCompactionBoundary(value)) return value.itemId;
+  return Object.keys(rowObject<ItemCompactionAggregate>(value).items)[0] ?? throwErr("compaction aggregate has no item");
+};
 const compactionSortKey = (row: { rowIdentifier: string, rowData: PiledriverObject }) => {
   const data = rowObject<{ txnEffectiveAtMillis: number, txnId?: string, index?: number, type?: string }>(row.rowData);
   return {
+    itemId: compactionRowItemId(row.rowData),
     txnEffectiveAtMillis: data.txnEffectiveAtMillis,
     boundaryOrder: data.type === "item-quantity-compaction-boundary" ? 0 : 1,
     txnId: data.txnId ?? row.rowIdentifier,
@@ -412,16 +458,85 @@ const compactionSortKey = (row: { rowIdentifier: string, rowData: PiledriverObje
   };
 };
 const compareCompactionSortKeys = (a: PiledriverObject, b: PiledriverObject) => {
-  const left = rowObject<{ txnEffectiveAtMillis: number, boundaryOrder: number, txnId: string, index: number, rowIdentifier: string }>(a);
-  const right = rowObject<{ txnEffectiveAtMillis: number, boundaryOrder: number, txnId: string, index: number, rowIdentifier: string }>(b);
-  return left.txnEffectiveAtMillis - right.txnEffectiveAtMillis
+  const left = rowObject<{ itemId: string, txnEffectiveAtMillis: number, boundaryOrder: number, txnId: string, index: number, rowIdentifier: string }>(a);
+  const right = rowObject<{ itemId: string, txnEffectiveAtMillis: number, boundaryOrder: number, txnId: string, index: number, rowIdentifier: string }>(b);
+  // itemId first so each item's compactable changes are contiguous (the compactor only merges
+  // adjacent same-item aggregates); an interleaving other item would otherwise split them.
+  return stringCompare(left.itemId, right.itemId)
+    || left.txnEffectiveAtMillis - right.txnEffectiveAtMillis
     || left.boundaryOrder - right.boundaryOrder
     || stringCompare(left.txnId, right.txnId)
     || left.index - right.index
     || stringCompare(left.rowIdentifier, right.rowIdentifier);
 };
 
+// Ledger tie-order for equal-timestamp changes: apply non-expiry changes before expiry markers
+// (so a removal at the expiry instant lands before the grant is dropped), then soonest-expiring
+// grants first (so removals/debt hit the grant that will expire first), then positive before
+// negative, then a stable id tiebreak.
+const ledgerSortKey = (row: { rowIdentifier: string, rowData: PiledriverObject }) => {
+  const data = rowObject<{ txnEffectiveAtMillis: number, quantity: number, expiresAtMillis: number | null, grantId?: string | null, expireGrantId?: string | null, txnId?: string }>(row.rowData);
+  return {
+    txnEffectiveAtMillis: data.txnEffectiveAtMillis,
+    kind: (data.expireGrantId ?? null) !== null ? 1 : 0,
+    expiresAtMillis: data.expiresAtMillis ?? null,
+    sign: data.quantity < 0 ? 1 : 0,
+    id: data.grantId ?? data.expireGrantId ?? data.txnId ?? row.rowIdentifier,
+  };
+};
+const compareLedgerSortKeys = (a: PiledriverObject, b: PiledriverObject) => {
+  const left = rowObject<{ txnEffectiveAtMillis: number, kind: number, expiresAtMillis: number | null, sign: number, id: string }>(a);
+  const right = rowObject<{ txnEffectiveAtMillis: number, kind: number, expiresAtMillis: number | null, sign: number, id: string }>(b);
+  return left.txnEffectiveAtMillis - right.txnEffectiveAtMillis
+    || left.kind - right.kind
+    || (left.expiresAtMillis ?? Number.POSITIVE_INFINITY) - (right.expiresAtMillis ?? Number.POSITIVE_INFINITY)
+    || left.sign - right.sign
+    || stringCompare(left.id, right.id);
+};
+
+// Builds one compaction sub-pipeline for a single sign of non-expiring changes. Compaction must
+// only ever merge changes of the *same* sign: a non-expiring deduction has to reach the ledger as a
+// deduction so it consumes the soonest-expiring grant. If we merged it with permanent grants
+// (opposite sign) it would silently net against them and never touch the expiring grant. The
+// `boundaries` input (one marker per item-quantity-expire) is shared across both signs so neither
+// merges across an expiry event in time.
+const compactionSubPipelineSteps = (suffix: string, signedAggregatesTable: string, boundariesTable: string): { steps: InitTableStep[], output: string } => {
+  const inputTable = `payments-entries-compaction-input-${suffix}`;
+  const sortedTable = `${inputTable}-sorted`;
+  const rawTable = `payments-entries-compacted-raw-${suffix}`;
+  const aggregatesTable = `payments-entries-compacted-aggregates-${suffix}`;
+  const output = `payments-entries-compacted-item-quantity-change-${suffix}`;
+  return {
+    output,
+    steps: [
+      table(inputTable, defineConcatTable(), { compactable: signedAggregatesTable, boundary: boundariesTable }),
+      table(sortedTable, defineSortTable({ sortKeyExtractor: compactionSortKey, sortKeyComparator: compareCompactionSortKeys }), { input: inputTable }),
+      table(rawTable, defineCompactTable({
+        compactor: (left, right) => {
+          // A boundary (an expiry of this item) stops the merge; different items never merge (the
+          // sort groups by item, so this only happens at the edge between two items' windows).
+          if (isCompactionBoundary(left) || isCompactionBoundary(right)) return [{ newRowData: left }, { newRowData: right }];
+          if (compactionRowItemId(left) !== compactionRowItemId(right)) return [{ newRowData: left }, { newRowData: right }];
+          return [{ newRowData: toPiledriverObject(mergeCompactionAggregates(asCompactionAggregate(left), asCompactionAggregate(right))) }];
+        },
+      }), { input: sortedTable }),
+      table(aggregatesTable, defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type === "item-quantity-compaction-aggregate"), { input: rawTable }),
+      table(output, defineFlatMapTable(row => {
+        const aggregate = rowObject<ItemCompactionAggregate>(row.rowData);
+        return Object.values(aggregate.items).map(item => toPiledriverObject({
+          ...item.firstRow,
+          type: "compacted-item-quantity-change",
+          quantity: item.quantity,
+          expiresWhen: null,
+        }));
+      }), { input: aggregatesTable }),
+    ],
+  };
+};
+
 export function createPaymentsSchema() {
+  const positiveCompaction = compactionSubPipelineSteps("positive", "payments-entries-item-quantity-change-compactable-positive-aggregates", "payments-entries-compaction-boundaries");
+  const negativeCompaction = compactionSubPipelineSteps("negative", "payments-entries-item-quantity-change-compactable-negative-aggregates", "payments-entries-compaction-boundaries");
   const migrations: Migration[] = [[
     table("payments-subscriptions", defineStoredTable()),
     table("payments-subscription-invoices", defineStoredTable()),
@@ -516,7 +631,7 @@ export function createPaymentsSchema() {
         priceId: purchase.priceId,
         quantity: purchase.quantity,
         chargedAmount: chargedAmount(purchase.product, purchase.priceId, purchase.quantity),
-        itemGrants: itemGrants(purchase.product, purchase.quantity),
+        itemGrants: itemGrants(purchase.product, purchase.quantity, purchase.createdAtMillis, purchase.revokedAtMillis),
         paymentProvider: paymentProvider(purchase.creationSource),
         effectiveAtMillis: purchase.createdAtMillis,
         createdAtMillis: purchase.createdAtMillis,
@@ -594,7 +709,7 @@ export function createPaymentsSchema() {
         { type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, priceId: event.priceId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, subscriptionId: event.subscriptionId },
       ];
       if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
-      entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })));
+      entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen, stampedExpiresAtMillis: grant.expiresAtMillis })));
       return toPiledriverObject({ txnId: `sub-start:${event.subscriptionId}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "subscription-start", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-subscription-start-events" }),
     table("payments-subscription-end-events-natural", defineFilterTable(row => rowObject<{ productRevokedAtMillis: number | null }>(row.rowData).productRevokedAtMillis === null), { input: "payments-subscription-end-events" }),
@@ -611,7 +726,7 @@ export function createPaymentsSchema() {
       const event = rowObject<{ sourceId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, previousGrantsToExpire: Array<{ transactionId: string, entryIndex: number, itemId: string, quantity: number }>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
       const entries: TransactionEntryData[] = [
         ...event.previousGrantsToExpire.map(entry => ({ type: "item-quantity-expire" as const, customerType: event.customerType, customerId: event.customerId, adjustedTransactionId: entry.transactionId, adjustedEntryIndex: entry.entryIndex, quantity: entry.quantity, itemId: entry.itemId })),
-        ...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })),
+        ...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen, stampedExpiresAtMillis: grant.expiresAtMillis })),
       ];
       return toPiledriverObject({ txnId: `igr:${event.sourceId}:${event.effectiveAtMillis}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "item-grant-repeat", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-item-grant-repeat-events" }),
@@ -621,7 +736,7 @@ export function createPaymentsSchema() {
       // [0] product-grant, optional money-transfer before item changes.
       const entries: TransactionEntryData[] = [{ type: "product-grant", customerType: event.customerType, customerId: event.customerId, productId: event.productId, priceId: event.priceId, product: event.product, productLineId: event.productLineId, quantity: event.quantity, oneTimePurchaseId: event.purchaseId }];
       if (event.paymentProvider !== "test_mode" && Object.keys(event.chargedAmount).length > 0) entries.push({ type: "money-transfer", customerType: event.customerType, customerId: event.customerId, chargedAmount: event.chargedAmount });
-      entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen })));
+      entries.push(...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen, stampedExpiresAtMillis: grant.expiresAtMillis })));
       return toPiledriverObject({ txnId: `otp:${event.purchaseId}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "one-time-purchase", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-one-time-purchase-events" }),
     table("payments-txn-manual-item-quantity-change", defineMapTable(row => {
@@ -668,41 +783,52 @@ export function createPaymentsSchema() {
     table("payments-entries-item-quantity-change-all", defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type === "item-quantity-change"), { input: "payments-transaction-entries" }),
     table("payments-entries-item-quantity-change-compactable", defineFilterTable(row => rowObject<{ expiresWhen: unknown }>(row.rowData).expiresWhen === null), { input: "payments-entries-item-quantity-change-all" }),
     table("payments-entries-item-quantity-change-non-compactable", defineFilterTable(row => rowObject<{ expiresWhen: unknown }>(row.rowData).expiresWhen !== null), { input: "payments-entries-item-quantity-change-all" }),
-    table("payments-entries-item-quantity-change-compactable-aggregates", defineMapTable(row => toPiledriverObject(compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(row.rowData)))), { input: "payments-entries-item-quantity-change-compactable" }),
+    // Split compactable (non-expiring) changes by sign and compact each sign on its own — see the
+    // note on compactionSubPipelineSteps. A zero-quantity non-expiring change is a no-op and is
+    // dropped by both filters.
+    table("payments-entries-item-quantity-change-compactable-positive", defineFilterTable(row => rowObject<{ quantity: number }>(row.rowData).quantity > 0), { input: "payments-entries-item-quantity-change-compactable" }),
+    table("payments-entries-item-quantity-change-compactable-negative", defineFilterTable(row => rowObject<{ quantity: number }>(row.rowData).quantity < 0), { input: "payments-entries-item-quantity-change-compactable" }),
+    table("payments-entries-item-quantity-change-compactable-positive-aggregates", defineMapTable(row => toPiledriverObject(compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(row.rowData)))), { input: "payments-entries-item-quantity-change-compactable-positive" }),
+    table("payments-entries-item-quantity-change-compactable-negative-aggregates", defineMapTable(row => toPiledriverObject(compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(row.rowData)))), { input: "payments-entries-item-quantity-change-compactable-negative" }),
     table("payments-entries-item-quantity-expire", defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type === "item-quantity-expire"), { input: "payments-transaction-entries" }),
-    table("payments-entries-compaction-boundaries", defineMapTable(row => {
-      const entry = rowObject<{ txnEffectiveAtMillis: number, txnId: string, index: number }>(row.rowData);
+    // Compaction boundaries mark, per item, the instants at which a grant of that item expires, so
+    // non-expiring changes on either side don't compact across them (which would move a change
+    // relative to the expiry and corrupt point-in-time balances). They come from two sources:
+    // subscription/one-time-purchase expiry markers, and manual absolute-expiry grants (whose expiry
+    // marker is synthesized later in the split, so we derive the boundary here from the grant's own
+    // absolute expiry time).
+    table("payments-entries-expire-marker-boundaries", defineMapTable(row => {
+      const entry = rowObject<{ txnEffectiveAtMillis: number, txnId: string, index: number, itemId: string }>(row.rowData);
       return toPiledriverObject({
         type: "item-quantity-compaction-boundary",
         txnEffectiveAtMillis: entry.txnEffectiveAtMillis,
         txnId: entry.txnId,
         index: entry.index,
+        itemId: entry.itemId,
       });
     }), { input: "payments-entries-item-quantity-expire" }),
-    table("payments-entries-compaction-input", defineConcatTable(), {
-      compactable: "payments-entries-item-quantity-change-compactable-aggregates",
-      boundary: "payments-entries-compaction-boundaries",
+    table("payments-entries-absolute-expiry-boundaries", defineFlatMapTable(row => {
+      const entry = rowObject<{ txnEffectiveAtMillis: number, txnId: string, index: number, itemId: string, quantity: number, expiresWhen?: number | string | null }>(row.rowData);
+      // Only manual grants with a real, still-future absolute expiry create a boundary at that time.
+      if (typeof entry.expiresWhen !== "number" || entry.quantity <= 0 || entry.expiresWhen <= entry.txnEffectiveAtMillis) return [];
+      return [toPiledriverObject({
+        type: "item-quantity-compaction-boundary",
+        txnEffectiveAtMillis: entry.expiresWhen,
+        txnId: entry.txnId,
+        index: entry.index,
+        itemId: entry.itemId,
+      })];
+    }), { input: "payments-entries-item-quantity-change-non-compactable" }),
+    table("payments-entries-compaction-boundaries", defineConcatTable(), {
+      markers: "payments-entries-expire-marker-boundaries",
+      absolute: "payments-entries-absolute-expiry-boundaries",
     }),
-    table("payments-entries-compaction-input-sorted", defineSortTable({
-      sortKeyExtractor: compactionSortKey,
-      sortKeyComparator: compareCompactionSortKeys,
-    }), { input: "payments-entries-compaction-input" }),
-    table("payments-entries-compacted-raw", defineCompactTable({
-      compactor: (left, right) => {
-        if (isCompactionBoundary(left) || isCompactionBoundary(right)) return [{ newRowData: left }, { newRowData: right }];
-        return [{ newRowData: toPiledriverObject(mergeCompactionAggregates(asCompactionAggregate(left), asCompactionAggregate(right))) }];
-      },
-    }), { input: "payments-entries-compaction-input-sorted" }),
-    table("payments-entries-compacted-aggregates", defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type === "item-quantity-compaction-aggregate"), { input: "payments-entries-compacted-raw" }),
-    table("payments-entries-compacted-item-quantity-change", defineFlatMapTable(row => {
-      const aggregate = rowObject<ItemCompactionAggregate>(row.rowData);
-      return Object.values(aggregate.items).map(item => toPiledriverObject({
-        ...item.firstRow,
-        type: "compacted-item-quantity-change",
-        quantity: item.quantity,
-        expiresWhen: null,
-      }));
-    }), { input: "payments-entries-compacted-aggregates" }),
+    ...positiveCompaction.steps,
+    ...negativeCompaction.steps,
+    table("payments-entries-compacted-item-quantity-change", defineConcatTable(), {
+      positive: positiveCompaction.output,
+      negative: negativeCompaction.output,
+    }),
     table("payments-entries-passthrough-non-item-quantity-change", defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type !== "item-quantity-change"), { input: "payments-transaction-entries" }),
     table("payments-compacted-transaction-entries", defineConcatTable(), {
       passthrough: "payments-entries-passthrough-non-item-quantity-change",
@@ -739,50 +865,81 @@ export function createPaymentsSchema() {
     }), { input: "payments-product-entries-sorted" }),
 
     table("payments-split-item-changes-with-expiry", defineFlatMapTable(row => {
-      const entry = rowObject<{ type: string, txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresWhen?: number | string | null }>(row.rowData);
-      if (entry.type === "item-quantity-expire") return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: -entry.quantity, expiresAtMillis: null })];
-      if (entry.type === "compacted-item-quantity-change") return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: null })];
-      if (entry.type !== "item-quantity-change") return [];
-      // A deduction or a grant with no expiry applies immediately and permanently.
-      if (typeof entry.expiresWhen !== "number" || entry.quantity < 0) {
-        return [toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: null })];
+      const entry = rowObject<{ type: string, index: number, txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresWhen?: number | string | null, stampedExpiresAtMillis?: number | null, adjustedTransactionId?: string, adjustedEntryIndex?: number }>(row.rowData);
+      const base = { txnId: entry.txnId, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId };
+      // The id under which a grant entry is pushed into the ledger, and which an expiry references
+      // to drop that exact grant. It matches the granting item-quantity-change entry's identity:
+      // for absolute expiries that's this entry itself; for subscription/repeat expiries the
+      // item-quantity-expire entry carries the granting entry's (adjustedTransactionId, index).
+      const grantId = `${entry.txnId}:${entry.index}`;
+      // An expiry drops the specific grant it belongs to (clamped to whatever remains of it). We
+      // model it as an explicit expire marker carrying the target grant's id — NOT as a negative
+      // change — so the ledger never applies it as a cross-grant, debt-creating deduction.
+      if (entry.type === "item-quantity-expire") {
+        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: 0, expiresAtMillis: null, expireGrantId: `${entry.adjustedTransactionId}:${entry.adjustedEntryIndex}` })];
       }
-      // The grant expires at or before the moment it's granted, so it's already expired —
-      // a no-op. Emit nothing (net 0) instead of a permanent grant. Otherwise the grant
-      // (+qty) and its expiry (-qty) would land at the same/earlier instant, leaving the
-      // grant permanently active.
+      if (entry.type === "compacted-item-quantity-change") return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
+      if (entry.type !== "item-quantity-change") return [];
+      // A deduction applies immediately and permanently, and never needs an id (nothing expires it).
+      if (entry.quantity < 0) {
+        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId: null })];
+      }
+      // A subscription/one-time-purchase grant (`expiresWhen` is a string) carries its stamped
+      // expiry so the ledger ranks it soonest-first; the id-referencing expire marker that actually
+      // drops it is emitted separately from the transaction's item-quantity-expire entries.
+      if (typeof entry.expiresWhen === "string") {
+        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.stampedExpiresAtMillis ?? null, grantId })];
+      }
+      // A grant with no expiry applies permanently. It gets an id anyway (harmless — nothing expires it).
+      if (typeof entry.expiresWhen !== "number") {
+        return [toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: null, grantId })];
+      }
+      // A manual grant with an absolute expiry: grant row + a synthesized expire marker for it. If
+      // the grant expires at or before the moment it's granted it's already expired — emit nothing.
       if (entry.expiresWhen <= entry.txnEffectiveAtMillis) return [];
       return [
-        toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: entry.quantity, expiresAtMillis: entry.expiresWhen }),
-        toPiledriverObject({ txnId: entry.txnId, txnEffectiveAtMillis: entry.expiresWhen, customerType: entry.customerType, customerId: entry.customerId, tenancyId: entry.tenancyId, itemId: entry.itemId, quantity: -entry.quantity, expiresAtMillis: null }),
+        toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.txnEffectiveAtMillis, quantity: entry.quantity, expiresAtMillis: entry.expiresWhen, grantId }),
+        toPiledriverObject({ ...base, txnEffectiveAtMillis: entry.expiresWhen, quantity: 0, expiresAtMillis: null, expireGrantId: grantId }),
       ];
     }), { input: "payments-compacted-transaction-entries" }),
     table("payments-changes-sorted-for-ledger", defineSortTable({
-      sortKeyExtractor: row => rowObject<{ txnEffectiveAtMillis: number }>(row.rowData).txnEffectiveAtMillis,
-      sortKeyComparator: compareNumbers,
+      sortKeyExtractor: ledgerSortKey,
+      sortKeyComparator: compareLedgerSortKeys,
     }), { input: "payments-split-item-changes-with-expiry" }),
     table("payments-item-quantities", declareLeftFoldTable({
       initialState: {},
       reducer: async (state, row) => {
-        const current = rowObject<Record<string, { grants: { q: number, e: number | null }[], debt: number }>>(state);
-        const change = rowObject<{ txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresAtMillis: number | null }>(row.rowData);
-        const oldItem = current[change.itemId] ?? { grants: [], debt: 0 };
+        const current = rowObject<LedgerState>(state);
+        const change = rowObject<{ txnId: string, txnEffectiveAtMillis: number, customerType: CustomerType, customerId: string, tenancyId: string, itemId: string, quantity: number, expiresAtMillis: number | null, grantId?: string | null, expireGrantId?: string | null }>(row.rowData);
+        const oldItem = current[change.itemId] ?? { grants: [], consumption: 0, debt: 0 };
         let nextItem = oldItem;
-        if (change.quantity > 0) {
-          const afterDebt = change.quantity + oldItem.debt;
-          nextItem = { grants: afterDebt > 0 ? [...oldItem.grants, { q: afterDebt, e: change.expiresAtMillis }] : oldItem.grants, debt: Math.min(0, afterDebt) };
-        } else if (change.quantity < 0) {
-          let remaining = Math.abs(change.quantity);
-          const grants = [...oldItem.grants].sort((a, b) => (a.e ?? Number.POSITIVE_INFINITY) - (b.e ?? Number.POSITIVE_INFINITY));
-          const nextGrants: { q: number, e: number | null }[] = [];
-          for (const grant of grants) {
-            const consumed = Math.min(grant.q, remaining);
-            remaining -= consumed;
-            if (grant.q > consumed) nextGrants.push({ q: grant.q - consumed, e: grant.e });
+        if (change.expireGrantId != null) {
+          // Expiry: drop the one grant it belongs to. The consumption that had landed on it settles
+          // with it — under the soonest-first distribution that grant absorbed `alloc`, so we drop
+          // `alloc` from the running consumption too. Everything left keeps re-distributing over the
+          // remaining grants. A grant already gone (never existed / earlier duplicate) is a no-op.
+          const target = oldItem.grants.find(grant => grant.id === change.expireGrantId);
+          if (target !== undefined) {
+            const consumedBefore = sumGrantQuantities(oldItem.grants.filter(grant => grant !== target && compareGrantsByExpiry(grant, target) < 0));
+            const alloc = Math.max(0, Math.min(target.q, oldItem.consumption - consumedBefore));
+            nextItem = { grants: oldItem.grants.filter(grant => grant !== target), consumption: oldItem.consumption - alloc, debt: oldItem.debt };
           }
-          nextItem = { grants: nextGrants, debt: oldItem.debt - remaining };
-        } else {
-          nextItem = { grants: oldItem.grants.filter(grant => grant.e === null || grant.e > change.txnEffectiveAtMillis), debt: oldItem.debt };
+        } else if (change.quantity > 0) {
+          // Grant: pay down any frozen debt right here (baked into this grant's quantity so it never
+          // reassigns — "debt applies to the first grant that comes in"). Keep the grant if it has
+          // anything left or an id an expiry marker will later target.
+          const baked = Math.min(change.quantity, oldItem.debt);
+          const q = change.quantity - baked;
+          const grantId = change.grantId ?? null;
+          const grant = { q, e: change.expiresAtMillis, id: grantId };
+          nextItem = { grants: q > 0 || grantId !== null ? [...oldItem.grants, grant] : oldItem.grants, consumption: oldItem.consumption, debt: oldItem.debt - baked };
+        } else if (change.quantity < 0) {
+          // Removal: as much as the grants can currently cover joins the reassigning consumption
+          // total; the overflow becomes frozen debt. (Invariant: debt only grows once grants are
+          // fully consumed, i.e. sum(q) - consumption == 0.)
+          const amount = -change.quantity;
+          const covered = Math.max(0, Math.min(amount, sumGrantQuantities(oldItem.grants) - oldItem.consumption));
+          nextItem = { grants: oldItem.grants, consumption: oldItem.consumption + covered, debt: oldItem.debt + (amount - covered) };
         }
         const next = { ...current, [change.itemId]: nextItem };
         return { newState: toPiledriverObject(next), newRowData: toPiledriverObject({ txnEffectiveAtMillis: change.txnEffectiveAtMillis, txnId: change.txnId, itemQuantities: currentItemQuantities(next), customerType: change.customerType, customerId: change.customerId, tenancyId: change.tenancyId }) };

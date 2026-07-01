@@ -2,7 +2,7 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe, expect, it } from "vitest";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema, mergeCompactionAggregates, repeatIntervalMs, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
-import { asRecord, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowDatas, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
+import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowDatas, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
 import type { CustomerType, TransactionRow } from "./types.js";
 
 describe("payments schema", () => {
@@ -163,10 +163,13 @@ describe("payments schema", () => {
 
     const group = customerGroup("u-manual");
     const splits = (await rowDatas(snapshot, schema.splitChanges, group)).map(asRecord);
+    // The grant is emitted with its expiry, plus a zero-quantity expire marker at the expiry time
+    // that references the grant's id (so expiry drops that grant's remaining, not a blind -5).
     expect(splits.map(row => ({ quantity: row.quantity, at: row.txnEffectiveAtMillis }))).toEqual([
       { quantity: 5, at: 4000 },
-      { quantity: -5, at: 5000 },
+      { quantity: 0, at: 5000 },
     ]);
+    expect(splits[1].expireGrantId).toBe("miqc:manual-1:0");
     const quantities = (await rowDatas(snapshot, schema.itemQuantities, group)).map(asRecord);
     expect(asRecord(quantities[0].itemQuantities).boosts).toBe(5);
     expect(asRecord(quantities[1].itemQuantities).boosts).toBe(0);
@@ -213,58 +216,41 @@ describe("payments schema", () => {
     expect(asRecord(quantities.itemQuantities).credits).toBe(12);
   });
 
-  it("does not compact item quantity changes across expiry boundaries", async () => {
+  it("does not compact non-expiring changes across an expiring grant of the same item, and drops it on expiry", async () => {
+    /*
+     * credits timeline (one customer):
+     *   t=1000  +5  (no expiry)         -> compactable "before" grant
+     *   t=1000  +3  expires at 1500     -> a real, identity-bearing expiring grant
+     *   t=2000  +7  (no expiry)         -> compactable "after" grant
+     *
+     * The expiring grant's expiry at 1500 is a per-item compaction boundary, so the +5 and +7
+     * permanent changes must NOT merge into one compacted entry (they'd otherwise sum to 12 at t=1000
+     * and corrupt point-in-time balances). The expiring grant then actually drops its remaining 3 at
+     * 1500.
+     */
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();
-    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "boundary-before", {
-      id: "boundary-before",
-      tenancyId: "t1",
-      customerId: "u-boundary",
-      customerType: "user",
-      itemId: "credits",
-      quantity: 5,
-      description: null,
-      expiresAtMillis: null,
-      createdAtMillis: 1000,
+    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "perm-before", {
+      id: "perm-before", tenancyId: "t1", customerId: "u-boundary", customerType: "user",
+      itemId: "credits", quantity: 5, description: null, expiresAtMillis: null, createdAtMillis: 1000,
     });
-    snapshot = await set(snapshot, schema.manualTransactions, "boundary-expire", {
-      txnId: "boundary-expire",
-      tenancyId: "t1",
-      effectiveAtMillis: 1500,
-      type: "refund",
-      entries: [
-        { type: "item-quantity-expire", customerType: "user", customerId: "u-boundary", adjustedTransactionId: "grant-before-boundary", adjustedEntryIndex: 0, quantity: 5, itemId: "credits" },
-      ],
-      customerType: "user",
-      customerId: "u-boundary",
-      paymentProvider: null,
-      createdAtMillis: 1500,
+    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "expiring", {
+      id: "expiring", tenancyId: "t1", customerId: "u-boundary", customerType: "user",
+      itemId: "credits", quantity: 3, description: null, expiresAtMillis: 1500, createdAtMillis: 1000,
     });
-    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "boundary-after", {
-      id: "boundary-after",
-      tenancyId: "t1",
-      customerId: "u-boundary",
-      customerType: "user",
-      itemId: "credits",
-      quantity: 7,
-      description: null,
-      expiresAtMillis: null,
-      createdAtMillis: 2000,
+    snapshot = await set(snapshot, schema.manualItemQuantityChanges, "perm-after", {
+      id: "perm-after", tenancyId: "t1", customerId: "u-boundary", customerType: "user",
+      itemId: "credits", quantity: 7, description: null, expiresAtMillis: null, createdAtMillis: 2000,
     });
 
     const group = customerGroup("u-boundary");
+    // The two permanent grants stay as separate compacted entries (5 and 7), never merged to 12.
     const compacted = (await rowDatas(snapshot, schema.compactedItemQuantityChangeEntries, group)).map(asRecord);
     expect(compacted.map(row => Number(row.quantity)).sort((a, b) => a - b)).toEqual([5, 7]);
 
-    const finalEntries = (await rowDatas(snapshot, schema.compactedTransactionEntries, group)).map(asRecord);
-    expect(finalEntries.map(row => String(row.type)).sort((a, b) => stringCompare(a, b))).toEqual([
-      "compacted-item-quantity-change",
-      "compacted-item-quantity-change",
-      "item-quantity-expire",
-    ]);
-
-    const quantities = asRecord((await rowsBySortKey(snapshot, schema.itemQuantities, group)).at(-1)?.rowData ?? null);
-    expect(asRecord(quantities.itemQuantities).credits).toBe(7);
+    expect(await balanceAt(snapshot, group, "credits", 1200)).toBe(8); // 5 + 3
+    expect(await balanceAt(snapshot, group, "credits", 1600)).toBe(5); // expiring grant dropped
+    expect(await balanceAt(snapshot, group, "credits", 2500)).toBe(12); // 5 + 7
   });
 
   it("passes refund manual transactions through and applies product revocation", async () => {

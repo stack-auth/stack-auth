@@ -6,11 +6,12 @@ import { asRecord, balanceAt, customerGroup, initializedSnapshot, MONTH_MS, prod
 // Item-quantities parity suite: restores the ledger coverage from the retired bulldozer-server
 // payments tests, driven through the real payments schema.
 //
-// A few cases use `it.fails`: they assert the OLD (correct) behaviour but fail today because of a
-// known regression. bulldozer-js expires a grant by removing its *original* granted quantity
-// instead of only what is *left*, so a grant that was consumed before it expires gets over-removed
-// (it can eat into other grants and even go negative). Remove the `.fails` once the ledger expires
-// only the remaining quantity. Each affected case spells out the divergence in its own comment.
+// Ledger model (consumption total): each item tracks its live grants (each with a quantity and an
+// expiry), one reassigning `consumption` total (covered removals, always distributed soonest-
+// expiring-first), and frozen `debt` (removals that had no grant to land on, baked into the first
+// grant to arrive and never reassigned). A removal rides the soonest-expiring grant and reassigns to
+// sooner grants that arrive later; a grant's share of consumption settles (disappears) when it
+// expires. Every case below spells out its timeline and expected balances at specific times.
 
 const DAY_MS = 86_400_000;
 
@@ -48,7 +49,7 @@ describe("item quantities: ledger semantics", () => {
     expect(await balanceAt(snapshot, customerGroup("u"), "coins", 9_999_999)).toBe(100);
   });
 
-  it.fails("consumes a removal from the soonest-expiring grant first, then expires only what remains", async () => {
+  it("consumes a removal from the soonest-expiring grant first, then expires only what remains", async () => {
     /*
      * t=1000  +20 coins, expires at 3000   (grant A)
      * t=1000  +10 coins, expires at 5000   (grant B)
@@ -58,11 +59,8 @@ describe("item quantities: ledger semantics", () => {
      *
      * Expected coins:
      *   t=2000  -> 22   (12 left in A + 10 in B)
-     *   t=3100  -> 10   A expires; only its *remaining* 12 should drop, leaving B's 10
+     *   t=3100  -> 10   A expires; only its *remaining* 12 drops, leaving B's 10
      *   t=5100  -> 0    B expires
-     *
-     * FAILS today: the expiry removes A's original 20 (not the remaining 12), so the balance
-     * becomes 2 at t=3100 and -8 at t=5100.
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("gA", "u", "coins", 20, 1000, 3000));
@@ -74,7 +72,7 @@ describe("item quantities: ledger semantics", () => {
     expect(await balanceAt(snapshot, g, "coins", 5100)).toBe(0);
   });
 
-  it.fails("applies a grant expiry and a later removal together", async () => {
+  it("applies a grant expiry and a later removal together", async () => {
     /*
      * t=1000  +20 coins, expires at 3000   (grant A)
      * t=1000  +10 coins, expires at 5000   (grant B)
@@ -85,8 +83,6 @@ describe("item quantities: ledger semantics", () => {
      *   t=3100  -> 10   A's full 20 expires (nothing was consumed from it)
      *   t=3600  -> 2    the -8 hits B (10 -> 2)
      *   t=5100  -> 0    B expires its remaining 2
-     *
-     * FAILS today: at t=5100 the expiry removes B's original 10, giving -8.
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("gA", "u", "coins", 20, 1000, 3000));
@@ -183,7 +179,7 @@ describe("item quantities: ledger semantics", () => {
     expect(await balanceAt(snapshot, customerGroup("u"), "coins", 9_999_999)).toBe(5);
   });
 
-  it.fails("handles the worked example: net grant/refill/removals then an expiry no-op", async () => {
+  it("handles the worked example: net grant/refill/removals then an expiry no-op", async () => {
     /*
      * t=0  +50 credits, expires at 1000
      * t=1  +30 credits
@@ -191,13 +187,12 @@ describe("item quantities: ledger semantics", () => {
      * t=3  -60 credits
      * t=4  +25 credits
      *
-     * The non-expiring changes net to -45, draining the 50 grant down to 5.
+     * The removals consume the soonest-expiring grant first, so they drain the 50@1000 grant to
+     * nothing by t=3; the leftover debt is absorbed by the +25 into the permanent bucket.
      *
      * Expected credits:
-     *   t=500   -> 5   before the grant expires
-     *   t=1001  -> 5   the grant is already down to 5, so its expiry removes nothing
-     *
-     * FAILS today: the expiry removes the original 50 again, giving -45.
+     *   t=500   -> 5   before the grant's expiry time
+     *   t=1001  -> 5   the 50@1000 grant is already fully consumed, so its expiry removes nothing
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("t0", "u", "credits", 50, 0, 1000));
@@ -210,20 +205,18 @@ describe("item quantities: ledger semantics", () => {
     expect(await balanceAt(snapshot, g, "credits", 1001)).toBe(5);
   });
 
-  it.fails("handles multiple expiring grants plus a removal", async () => {
+  it("handles multiple expiring grants plus a removal", async () => {
     /*
      * t=1000  +30 coins, expires at 2000   (early grant)
      * t=1000  +50 coins, expires at 4000   (late grant)
      * t=1500  -10 coins                    (consumption)
      *
-     * With no permanent grant around, the -10 truly consumes the soonest-expiring grant (early: 30 -> 20).
+     * The -10 consumes the soonest-expiring grant (early: 30 -> 20).
      *
      * Expected coins:
      *   t=1500 -> 70   (20 in early + 50 in late)
      *   t=2100 -> 50   early grant expires its remaining 20
      *   t=4100 -> 0    late grant expires
-     *
-     * FAILS today: the expiries remove the original quantities, giving 40 then -10.
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("gEarly", "u", "coins", 30, 1000, 2000));
@@ -262,53 +255,115 @@ describe("item quantities: ledger semantics", () => {
   });
 });
 
+describe("item quantities: reassignment and frozen debt", () => {
+  it("reassigns a removal to a later grant that expires sooner, then settles it on that grant's expiry", async () => {
+    /*
+     * coins timeline:
+     *   t=1000  +10 coins, expires at 10000   (grant g1)
+     *   t=2000  -5 coins                       (removal r1 — only g1 exists, so it rides g1)
+     *   t=3000  +10 coins, expires at 8000    (grant g2, expires sooner than g1)
+     *   t=4000  +10 coins, expires at 6000    (grant g3, expires soonest)
+     *
+     * A removal always rides the soonest-expiring live grant, so r1 reassigns g1 -> g2 -> g3 as the
+     * sooner grants arrive. When g3 expires it settles r1 (its 5 disappears with g3); g2 and g1 then
+     * expire untouched.
+     *
+     * Expected coins:
+     *   t=5000  -> 25   (30 granted - 5 consumed; nothing expired yet)
+     *   t=6001  -> 20   g3 expires and takes r1's 5 with it (NOT 15, which is what leaving r1 on g1 gives)
+     *   t=8001  -> 10   g2 expires untouched
+     *   t=10001 -> 0    g1 expires untouched
+     */
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("g1", "u", "coins", 10, 1000, 10000));
+    snapshot = await setManualChange(snapshot, manualChange("r1", "u", "coins", -5, 2000, null));
+    snapshot = await setManualChange(snapshot, manualChange("g2", "u", "coins", 10, 3000, 8000));
+    snapshot = await setManualChange(snapshot, manualChange("g3", "u", "coins", 10, 4000, 6000));
+    const g = customerGroup("u");
+    expect(await balanceAt(snapshot, g, "coins", 5000)).toBe(25);
+    expect(await balanceAt(snapshot, g, "coins", 6001)).toBe(20);
+    expect(await balanceAt(snapshot, g, "coins", 8001)).toBe(10);
+    expect(await balanceAt(snapshot, g, "coins", 10001)).toBe(0);
+  });
+
+  it("freezes debt onto the first grant to arrive and never reassigns it to a later, sooner-expiring grant", async () => {
+    /*
+     * coins timeline:
+     *   t=1000  -10 coins             (removal with no grant yet -> becomes debt)
+     *   t=2000  +10 coins (no expiry) (the first grant to arrive absorbs the debt -> frozen)
+     *   t=3000  +10 coins, expires at 5000 (a later, sooner-expiring grant)
+     *
+     * Debt "can't look into the future": it sticks to the permanent grant that first covered it and
+     * does NOT jump to the sooner-expiring grant. So when the expiring grant drops at 5000 it takes
+     * nothing with it.
+     *
+     * Expected coins:
+     *   t=2500  -> 0    (-10 debt fully absorbed by the +10 permanent grant)
+     *   t=3500  -> 10   (the expiring grant adds 10)
+     *   t=5001  -> 0    the expiring grant expires untouched (10 -> 0). If the debt had reassigned
+     *                   here, the permanent grant would still hold 10 and this would read 10.
+     */
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("r1", "u", "coins", -10, 1000, null));
+    snapshot = await setManualChange(snapshot, manualChange("gPerm", "u", "coins", 10, 2000, null));
+    snapshot = await setManualChange(snapshot, manualChange("gExp", "u", "coins", 10, 3000, 5000));
+    const g = customerGroup("u");
+    expect(await balanceAt(snapshot, g, "coins", 2500)).toBe(0);
+    expect(await balanceAt(snapshot, g, "coins", 3500)).toBe(10);
+    expect(await balanceAt(snapshot, g, "coins", 5001)).toBe(0);
+  });
+});
+
 describe("item quantities: split algorithm (expiring grants)", () => {
-  // A grant with an absolute expiry is stored as the grant row plus a negative row at the expiry
-  // time. splitChanges isn't stored in time order, so we sort by (effective time, then expiry).
+  // A grant with an absolute expiry is stored as the grant row (carrying a grantId and its expiry)
+  // plus a zero-quantity *expire marker* at the expiry time that references that same grantId — so
+  // expiry drops that specific grant's remaining rather than being a blind negative deduction.
+  // splitChanges isn't stored in time order, so we sort by (effective time, then expiry).
   const splitRows = async (snapshot: Snapshot, customerId: string) => {
     const schema = createPaymentsSchema();
     return (await rowsBySortKey(snapshot, schema.splitChanges, customerGroup(customerId)))
       .map(row => asRecord(row.rowData))
-      .map(row => ({ quantity: Number(row.quantity), at: Number(row.txnEffectiveAtMillis), expiresAtMillis: row.expiresAtMillis }))
+      .map(row => ({ quantity: Number(row.quantity), at: Number(row.txnEffectiveAtMillis), expiresAtMillis: row.expiresAtMillis, grantId: row.grantId ?? null, expireGrantId: row.expireGrantId ?? null }))
       .sort((a, b) => a.at - b.at || Number(a.expiresAtMillis ?? Infinity) - Number(b.expiresAtMillis ?? Infinity));
   };
 
   it("passes a non-expiring grant through as a single permanent row", async () => {
     /*
-     * t=1000  +10 coins (no expiry)  ->  one row: +10 at 1000, no expiry
+     * t=1000  +10 coins (no expiry)  ->  one row: +10 at 1000, no expiry, no expire marker.
+     * A non-expiring grant is compacted, so it carries no grantId (nothing will ever expire it).
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("g", "u", "coins", 10, 1000, null));
-    expect(await splitRows(snapshot, "u")).toEqual([{ quantity: 10, at: 1000, expiresAtMillis: null }]);
+    expect(await splitRows(snapshot, "u")).toEqual([{ quantity: 10, at: 1000, expiresAtMillis: null, grantId: null, expireGrantId: null }]);
   });
 
-  it("splits an absolute-expiry grant into a grant row and a negative expiry row", async () => {
+  it("splits an absolute-expiry grant into a grant row and a zero-quantity expire marker for that grant", async () => {
     /*
      * t=1000  +10 coins, expires at 5000
-     *   ->  +10 at 1000 (exp 5000),  then  -10 at 5000
+     *   ->  +10 at 1000 (exp 5000, grantId G),  then  an expire marker at 5000 targeting grant G
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("g", "u", "coins", 10, 1000, 5000));
     expect(await splitRows(snapshot, "u")).toEqual([
-      { quantity: 10, at: 1000, expiresAtMillis: 5000 },
-      { quantity: -10, at: 5000, expiresAtMillis: null },
+      { quantity: 10, at: 1000, expiresAtMillis: 5000, grantId: "miqc:g:0", expireGrantId: null },
+      { quantity: 0, at: 5000, expiresAtMillis: null, grantId: null, expireGrantId: "miqc:g:0" },
     ]);
   });
 
-  it("produces one grant+expiry pair per grant for staggered expiries of the same item", async () => {
+  it("produces one grant + one expire marker per grant for staggered expiries of the same item", async () => {
     /*
-     * t=100  +2 coins, expires at 200
-     * t=100  +3 coins, expires at 300
-     *   ->  +2 at 100 (exp 200), +3 at 100 (exp 300),  then  -2 at 200,  -3 at 300
+     * t=100  +2 coins, expires at 200  (grant gA)
+     * t=100  +3 coins, expires at 300  (grant gB)
+     *   ->  the two grants, then an expire marker at 200 for gA and at 300 for gB
      */
     let snapshot = await initializedSnapshot();
     snapshot = await setManualChange(snapshot, manualChange("gA", "u", "coins", 2, 100, 200));
     snapshot = await setManualChange(snapshot, manualChange("gB", "u", "coins", 3, 100, 300));
     expect(await splitRows(snapshot, "u")).toEqual([
-      { quantity: 2, at: 100, expiresAtMillis: 200 },
-      { quantity: 3, at: 100, expiresAtMillis: 300 },
-      { quantity: -2, at: 200, expiresAtMillis: null },
-      { quantity: -3, at: 300, expiresAtMillis: null },
+      { quantity: 2, at: 100, expiresAtMillis: 200, grantId: "miqc:gA:0", expireGrantId: null },
+      { quantity: 3, at: 100, expiresAtMillis: 300, grantId: "miqc:gB:0", expireGrantId: null },
+      { quantity: 0, at: 200, expiresAtMillis: null, grantId: null, expireGrantId: "miqc:gA:0" },
+      { quantity: 0, at: 300, expiresAtMillis: null, grantId: null, expireGrantId: "miqc:gB:0" },
     ]);
   });
 });
@@ -427,19 +482,17 @@ describe("item quantities: full-pipeline integration", () => {
     expect(asRecord(asRecord(owned.ownedProducts)["prod-complex"]).quantity).toBe(1);
   });
 
-  it.fails("handles consumption + staggered when-purchase-expires expiry across two subscriptions", async () => {
+  it("handles consumption + staggered when-purchase-expires expiry across two subscriptions", async () => {
     /*
      * Two subscriptions grant the same item, each expiring when its purchase ends.
      *   grant A: 100 energy, subscription ends day 10
      *   grant B: 200 energy, subscription ends day 30
-     * day 5:  -40 energy  (consumed from the soonest-ending grant, A: 100 -> 60)
+     * day 5:  -40 energy  (consumed from grant A, which was granted first)
      *
      * Expected energy:
      *   day 5       -> 260   (60 in A + 200 in B)
      *   day 10 + 1  -> 200   A expires its remaining 60
      *   day 30 + 1  -> 0     B expires
-     *
-     * FAILS today: the expiry removes A's original 100, giving 160, then goes negative.
      */
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();
@@ -508,6 +561,36 @@ describe("item quantities: full-pipeline integration", () => {
     }) as unknown as PiledriverObject);
     snapshot = await snapshot.tick(new Date(11 * DAY_MS));
     expect(await balanceAt(snapshot, customerGroup("u-upgrade"), "emails", 11 * DAY_MS)).toBe(500);
+  });
+
+  it("ranks a resetting (when-repeated) grant ahead of a later-expiring grant so a removal rides the reset", async () => {
+    /*
+     * The stamped expiry lets a removal prefer a monthly-resetting grant over a grant that expires
+     * later, even though the resetting grant reaches the ledger as a "when-repeated" string.
+     *   t=0        subscription grants 100 emails/month (when-repeated; first reset at 1 month)
+     *   t=1000     manual +100 emails, absolute expiry at 3 months (expires AFTER the reset)
+     *   t=2000     -30 emails  (rides the resetting grant, which expires soonest)
+     *   tick to 1 month: the resetting grant expires and re-grants 100.
+     *
+     * Because the -30 rode the resetting grant, it settles when that grant resets; the manual grant
+     * keeps its full 100. Right after the reset: 100 (manual) + 100 (fresh reset) = 200.
+     * If the removal had instead lingered on the manual grant (no stamped expiry), this would read 170.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-reset", subscription("sub-reset", {
+      customerId: "u-reset",
+      productId: "prod-reset",
+      product: product({ emails: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" } }),
+      currentPeriodEndMillis: 12 * MONTH_MS,
+      createdAtMillis: 0,
+    }) as unknown as PiledriverObject);
+    snapshot = await setManualChange(snapshot, manualChange("manual-later", "u-reset", "emails", 100, 1000, 3 * MONTH_MS));
+    snapshot = await setManualChange(snapshot, manualChange("spend", "u-reset", "emails", -30, 2000, null));
+    const g = customerGroup("u-reset");
+    expect(await balanceAt(snapshot, g, "emails", 5000)).toBe(170); // 100 + 100 - 30 before the reset
+    snapshot = await snapshot.tick(new Date(MONTH_MS));
+    expect(await balanceAt(snapshot, g, "emails", MONTH_MS)).toBe(200);
   });
 });
 

@@ -35,8 +35,11 @@ export const rows = async (snapshot: Snapshot, tableId: string, groupKey: Piledr
 export const rowDatas = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject = null) =>
   (await rows(snapshot, tableId, groupKey)).map(row => row.rowData);
 
+// `listRowsInGroup` already yields rows in stored sort-key order (the table's own comparator), so we
+// return them as-is. Re-sorting here by `Number(rowSortKey)` would be wrong for tables whose sort key
+// is a composite object (e.g. the item-quantities ledger), which stringifies/coerces to NaN.
 export const rowsBySortKey = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject = null) =>
-  (await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))).sort((a, b) => Number(a.rowSortKey) - Number(b.rowSortKey) || stringCompare(a.rowIdentifier, b.rowIdentifier));
+  await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }));
 
 export const set = async (snapshot: Snapshot, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
   await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData });
