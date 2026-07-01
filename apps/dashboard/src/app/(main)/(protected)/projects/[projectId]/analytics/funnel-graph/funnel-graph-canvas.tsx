@@ -60,9 +60,11 @@ function getEdgePath(from: GraphNode, to: GraphNode, bundleOffset: number) {
 export function FunnelGraphCanvas({
   nodes,
   edges,
+  weakEdges,
 }: {
   nodes: GraphNode[],
   edges: GraphEdge[],
+  weakEdges: GraphEdge[],
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -106,8 +108,20 @@ export function FunnelGraphCanvas({
         set.add(`${e.from}\0${e.to}`);
       }
     }
+    // Also include weak edges connected to the hovered node
+    for (const e of weakEdges) {
+      if (e.from === hoveredNode || e.to === hoveredNode) {
+        set.add(`${e.from}\0${e.to}`);
+      }
+    }
     return set;
-  }, [hoveredNode, edges]);
+  }, [hoveredNode, edges, weakEdges]);
+
+  // Weak edges visible only on hover
+  const visibleWeakEdges = useMemo(() => {
+    if (hoveredNode == null) return [];
+    return weakEdges.filter((e) => e.from === hoveredNode || e.to === hoveredNode);
+  }, [hoveredNode, weakEdges]);
 
   // Compute bundle offsets for parallel edges
   const edgeBundleOffsets = useMemo(() => {
@@ -254,8 +268,31 @@ export function FunnelGraphCanvas({
             );
           })}
 
+          {/* Weak edges shown on hover */}
+          {visibleWeakEdges.map((edge) => {
+            const fromNode = nodeMap.get(edge.from);
+            const toNode = nodeMap.get(edge.to);
+            if (fromNode == null || toNode == null) return null;
+
+            const path = getEdgePath(fromNode, toNode, 0);
+            if (path == null) return null;
+
+            return (
+              <path
+                key={`weak-${edge.from}\0${edge.to}`}
+                d={`M ${path.fromX} ${path.fromY} Q ${path.cx} ${path.cy} ${path.toX} ${path.toY}`}
+                fill="none"
+                className="stroke-foreground"
+                strokeWidth={edgeWidth(edge.count, maxCount)}
+                strokeOpacity={edgeOpacity(edge.count, maxCount) * 0.6}
+                strokeDasharray="3 3"
+                markerEnd="url(#funnel-arrow)"
+              />
+            );
+          })}
+
           {/* Edge labels on hover */}
-          {hoveredNode != null && edges
+          {hoveredNode != null && [...edges, ...visibleWeakEdges]
             .filter((e) => e.from === hoveredNode || e.to === hoveredNode)
             .map((edge) => {
               const fromNode = nodeMap.get(edge.from);

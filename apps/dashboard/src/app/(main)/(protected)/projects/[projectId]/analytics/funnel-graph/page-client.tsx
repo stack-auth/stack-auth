@@ -20,6 +20,7 @@ type TransitionRow = {
 type FunnelData = {
   nodes: GraphNode[],
   edges: GraphEdge[],
+  weakEdges: GraphEdge[],
 };
 
 const NAVIGATION_QUERY = `
@@ -179,10 +180,16 @@ export default function PageClient() {
       }
 
       // Filter: keep only edges with >= 10% of the strongest edge from the same source
-      const edges: GraphEdge[] = allEdges.filter((e) => {
+      const edges: GraphEdge[] = [];
+      const weakEdges: GraphEdge[] = [];
+      for (const e of allEdges) {
         const maxFromSource = maxOutgoing.get(e.from) ?? 1;
-        return e.count >= maxFromSource * 0.1;
-      });
+        if (e.count >= maxFromSource * 0.1) {
+          edges.push(e);
+        } else {
+          weakEdges.push(e);
+        }
+      }
 
       // Only include nodes that have at least one visible edge
       const visibleNodes = new Set<string>();
@@ -193,9 +200,10 @@ export default function PageClient() {
       const filteredNodeArray = nodeArray.filter((n) => visibleNodes.has(n.id));
 
       // Compute ForceAtlas2 layout with landing page distance for x-position
+      // Only strong edges are used for force calculations
       const laidOutNodes = computeLayout(filteredNodeArray, edges);
 
-      setData({ nodes: laidOutNodes, edges });
+      setData({ nodes: laidOutNodes, edges, weakEdges });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -243,7 +251,7 @@ export default function PageClient() {
             </div>
           )}
           {data != null && !loading && error == null && (
-            <FunnelGraphCanvas nodes={data.nodes} edges={data.edges} />
+            <FunnelGraphCanvas nodes={data.nodes} edges={data.edges} weakEdges={data.weakEdges} />
           )}
         </div>
       </PageLayout>
