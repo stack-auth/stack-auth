@@ -243,6 +243,17 @@ function ActionBadge({ type, dim = false, size = "sm" }: { type: ActionType, dim
   );
 }
 
+// Trigger rows contain user PII (email, auth method), so assertion metadata must only expose
+// non-sensitive diagnostics (which columns and value types came back), never the raw row.
+function triggerRowAssertionExtra(row: Record<string, unknown>, fieldName: string) {
+  const value = row[fieldName];
+  return {
+    fieldName,
+    actualType: value == null ? "null" : typeof value,
+    rowKeys: Object.keys(row),
+  };
+}
+
 function parseNullableStringField(row: Record<string, unknown>, fieldName: string, rowLabel: string): string | null {
   const value = row[fieldName];
   if (value == null) {
@@ -252,7 +263,7 @@ function parseNullableStringField(row: Record<string, unknown>, fieldName: strin
     return value;
   }
 
-  throw new HexclaveAssertionError(`Expected ${rowLabel} to include ${fieldName}:null|string`, { row });
+  throw new HexclaveAssertionError(`Expected ${rowLabel} to include ${fieldName}:null|string`, triggerRowAssertionExtra(row, fieldName));
 }
 
 function parseActionTypeField(row: Record<string, unknown>, fieldName: string): ActionType | null {
@@ -261,7 +272,7 @@ function parseActionTypeField(row: Record<string, unknown>, fieldName: string): 
     return null;
   }
   if (typeof value !== "string") {
-    throw new HexclaveAssertionError(`Expected sign-up rule trigger row to include ${fieldName}:null|string`, { row });
+    throw new HexclaveAssertionError(`Expected sign-up rule trigger row to include ${fieldName}:null|string`, triggerRowAssertionExtra(row, fieldName));
   }
   return isActionType(value) ? value : null;
 }
@@ -329,7 +340,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
   return resultRows.map((row) => {
     const triggeredAt = row.triggered_at;
     if (typeof triggeredAt !== "string") {
-      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", { row });
+      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", triggerRowAssertionExtra(row, "triggered_at"));
     }
 
     const emailRaw = row.email;
@@ -340,7 +351,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
       return { id: generateUuid(), triggeredAt, email: emailRaw };
     }
 
-    throw new HexclaveAssertionError("Expected sign-up rule trigger row to include email:null|string", { row });
+    throw new HexclaveAssertionError("Expected sign-up rule trigger row to include email:null|string", triggerRowAssertionExtra(row, "email"));
   });
 }
 
@@ -348,7 +359,7 @@ function parseAllRuleTriggerRows(resultRows: Record<string, unknown>[]): AllRule
   return resultRows.map((row) => {
     const triggeredAt = row.triggered_at;
     if (typeof triggeredAt !== "string") {
-      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", { row });
+      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", triggerRowAssertionExtra(row, "triggered_at"));
     }
 
     return {
@@ -468,7 +479,7 @@ function RecentTriggerRow({
   ruleDisplayNameById: Map<string, string>,
 }) {
   const { date, time, relative } = formatTriggerTime(trigger.triggeredAt);
-  const ruleDisplayName = trigger.ruleId == null ? null : ruleDisplayNameById.get(trigger.ruleId) || null;
+  const ruleDisplayName = trigger.ruleId == null ? null : ruleDisplayNameById.get(trigger.ruleId) ?? null;
   const isDeletedRule = trigger.ruleId != null && ruleDisplayName == null;
 
   return (
@@ -628,7 +639,7 @@ function RecentTriggersCard({
     runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: triggers.length, reset: false }));
   };
 
-  const hasActiveFilters = ruleFilter !== ALL_FILTER_VALUE || actionFilter !== ALL_FILTER_VALUE || debouncedEmailSearch !== "";
+  const hasActiveFilters = ruleFilter !== ALL_FILTER_VALUE || actionFilter !== ALL_FILTER_VALUE || emailSearchInput !== "" || debouncedEmailSearch !== "";
 
   return (
     <DesignCard
