@@ -570,7 +570,7 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2026-07-01: product-level freeTrial removed; free trials are now configured per-price only.
   // Strip any saved product-level freeTrial overrides so they don't cause validation errors.
   if (isBranchOrHigher) {
-    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.includes("prices"));
+    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.slice(3).includes("prices"));
   }
   // END
 
