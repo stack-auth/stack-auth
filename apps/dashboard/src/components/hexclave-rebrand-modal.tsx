@@ -30,10 +30,7 @@ const REBRAND_CUTOFF = new Date("2026-05-27T00:00:00.000Z");
 /**
  * One-time informational modal announcing the Stack Auth → Hexclave rebrand.
  *
- * Skipped entirely in preview / local-emulator / remote-development environments
- * — those auto-create throwaway users or seed a fixture admin, so the rebrand
- * notice would be friction for developers and meaningless for preview visitors
- * who never used "Stack Auth" in the first place.
+ * Skipped entirely in preview and development environments.
  *
  * For real customers: only renders for a logged-in user who signed up before
  * {@link REBRAND_CUTOFF}. On any dismissal (confirm button, close button,
@@ -45,8 +42,7 @@ export function HexclaveRebrandModal() {
   // gates on. Read at top so we can short-circuit before any hook runs the
   // useEffect or computes the user-based gate.
   const isDevEnvironment =
-    getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true"
-    || getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true"
+    getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true"
     || getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
 
   // `or: "return-null"` keeps this from triggering the sign-in redirect when

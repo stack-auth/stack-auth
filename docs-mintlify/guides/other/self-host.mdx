@@ -34,7 +34,7 @@ In production, plan for these components:
 - **ClickHouse**: Required for the supported Docker deployment path. The migration script creates ClickHouse databases, tables, views, users, grants, and row policies after Postgres migrations.
 - **Freestyle and OpenRouter keys**: Freestyle is required for custom, manual, or programmatic email sending. OpenRouter is optional and used by AI-assisted dashboard features.
 
-For local app development, use [Local Development](/guides/going-further/local-development) or the [Local Emulator](/guides/going-further/local-emulator). Do not use the production Docker guide as your day-to-day local development setup.
+For local app development, use [Local Development](/guides/going-further/local-development) or a development environment. Do not use the production Docker guide as your day-to-day local development setup.
 
 ## Deploy With Docker
 
@@ -298,7 +298,7 @@ Add your application origin to the project's allowed domains in the dashboard. O
 
 #### Emails Do Not Arrive
 
-Check the email provider configuration, sender domain verification, and any provider logs. For development-only email testing, use the [Local Emulator](/guides/going-further/local-emulator) instead of a production self-host deployment.
+Check the email provider configuration, sender domain verification, and any provider logs. For development-only email testing, use a development environment instead of a production self-host deployment.
 
 #### You Cannot Access the Dashboard
 
