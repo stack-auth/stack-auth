@@ -1,6 +1,7 @@
 "use client";
 
 import { DesignButton } from "@/components/design-components/button";
+import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Typography } from "@/components/ui";
 import {
@@ -8,7 +9,8 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
-import { StripeError, StripePaymentElementOptions } from "@stripe/stripe-js";
+import { Result } from "@hexclave/shared/dist/utils/results";
+import { StripePaymentElementOptions } from "@stripe/stripe-js";
 import { FlaskIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
@@ -22,8 +24,15 @@ const paymentElementOptions = {
   },
 } satisfies StripePaymentElementOptions;
 
+function getErrorMessage(error: unknown, fallbackMessage: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallbackMessage;
+}
+
 type Props = {
-  setupSubscription: () => Promise<string>,
+  setupSubscription: () => Promise<string | null>,
   stripeAccountId: string,
   fullCode: string,
   returnUrl?: string,
@@ -59,6 +68,19 @@ export function TestModeBypassForm({
   onBypass: () => Promise<void>,
   disabled?: boolean,
 }) {
+  const [bypassError, setBypassError] = useState<string | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const handleBypass = async () => {
+    setBypassError(null);
+    setIsCompleting(true);
+    const result = await Result.fromPromise(onBypass());
+    if (result.status === "error") {
+      setBypassError(getErrorMessage(result.error, "We couldn't complete the test purchase. Please try again."));
+    }
+    setIsCompleting(false);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center space-y-6 py-8 text-center">
       <div className="flex size-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.05)]">
@@ -75,12 +97,21 @@ export function TestModeBypassForm({
       </div>
 
       <DesignButton
-        disabled={disabled}
-        onClick={onBypass}
+        disabled={disabled || isCompleting}
+        loading={isCompleting}
+        onClick={handleBypass}
         className="h-11 w-full max-w-xs rounded-xl text-sm font-semibold"
       >
         Complete test purchase
       </DesignButton>
+      {bypassError && (
+        <DesignAlert
+          variant="error"
+          title="Could not complete test purchase"
+          description={bypassError}
+          className="w-full max-w-xs text-left"
+        />
+      )}
     </div>
   );
 }
@@ -102,12 +133,25 @@ export function CheckoutForm({
     if (!stripe || !elements) {
       return;
     }
-    const { error: submitError } = await elements.submit();
+    setMessage(null);
+
+    const submitResult = await Result.fromPromise(elements.submit());
+    if (submitResult.status === "error") {
+      setMessage(getErrorMessage(submitResult.error, "An unexpected error occurred."));
+      return;
+    }
+    const { error: submitError } = submitResult.data;
     if (submitError) {
-      return setMessage(submitError.message ?? "An unexpected error occurred.");
+      setMessage(submitError.message ?? "An unexpected error occurred.");
+      return;
     }
 
-    const clientSecret = await setupSubscription();
+    const setupResult = await Result.fromPromise(setupSubscription());
+    if (setupResult.status === "error") {
+      setMessage(getErrorMessage(setupResult.error, "We couldn't complete the purchase. Please try again."));
+      return;
+    }
+    const clientSecret = setupResult.data;
     const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
     stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
     stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
@@ -126,17 +170,23 @@ export function CheckoutForm({
       window.location.assign(stripeReturnUrl.toString());
       return;
     }
-    const { error } = await stripe.confirmPayment({
+    if (clientSecret == null) {
+      setMessage("We couldn't complete the purchase. Please try again.");
+      return;
+    }
+    const confirmResult = await Result.fromPromise(stripe.confirmPayment({
       elements,
       clientSecret,
       confirmParams: {
         return_url: stripeReturnUrl.toString(),
       },
-    }) as { error?: StripeError };
-
-    if (!error) {
+    }));
+    if (confirmResult.status === "error") {
+      setMessage(getErrorMessage(confirmResult.error, "An unexpected error occurred."));
       return;
     }
+    const { error } = confirmResult.data;
+
     if (error.type === "card_error" || error.type === "validation_error") {
       setMessage(error.message ?? "An unexpected error occurred.");
     } else {
