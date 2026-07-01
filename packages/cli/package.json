@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/cli",
-  "version": "1.0.42",
+  "version": "1.0.43",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "The CLI for Hexclave. https://hexclave.com",
   "main": "dist/index.js",
@@ -10,7 +10,8 @@
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",
-    "build": "tsdown && node scripts/copy-runtime-assets.mjs",
+    "build": "tsdown",
+    "package-dashboard-release": "node scripts/package-dashboard-release.mjs",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -33,6 +34,7 @@
     "@hexclave/js": "workspace:*",
     "@hexclave/shared": "workspace:*",
     "commander": "^13.1.0",
+    "extract-zip": "^2.0.1",
     "jiti": "^2.4.2"
   },
   "devDependencies": {
