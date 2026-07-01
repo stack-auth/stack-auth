@@ -33,16 +33,16 @@ function computeViewBox(nodes: GraphNode[]): ViewBox {
   };
 }
 
-function edgeOpacity(weight: number, maxWeight: number): number {
-  if (maxWeight === 0) return 0.2;
-  // Map weight to 0.15..0.7
-  return 0.15 + 0.55 * (weight / maxWeight);
+function edgeOpacity(count: number, maxCount: number): number {
+  if (maxCount === 0) return 0.1;
+  // Non-logarithmic: linear ratio of raw count with base 0.1
+  return 0.1 + 0.7 * (count / maxCount);
 }
 
 function edgeWidth(weight: number, maxWeight: number): number {
   if (maxWeight === 0) return 1;
-  // Map weight to 1..4
-  return 1 + 3 * (weight / maxWeight);
+  // Logarithmic thickness based on log-weight
+  return 1 + 4 * (weight / maxWeight);
 }
 
 export function FunnelGraphCanvas({
@@ -61,6 +61,7 @@ export function FunnelGraphCanvas({
 
   const viewBox = useMemo(() => computeViewBox(nodes), [nodes]);
   const maxWeight = useMemo(() => edges.reduce((m, e) => Math.max(m, e.weight), 0), [edges]);
+  const maxCount = useMemo(() => edges.reduce((m, e) => Math.max(m, e.count), 0), [edges]);
 
   // Node degree for sizing
   const nodeDegree = useMemo(() => {
@@ -210,8 +211,8 @@ export function FunnelGraphCanvas({
 
             const isHighlighted = highlightedEdges == null || highlightedEdges.has(`${edge.from}\0${edge.to}`);
             const opacity = isHighlighted
-              ? edgeOpacity(edge.weight, maxWeight)
-              : (hoveredNode != null ? 0.03 : edgeOpacity(edge.weight, maxWeight));
+              ? edgeOpacity(edge.count, maxCount)
+              : (hoveredNode != null ? 0.03 : edgeOpacity(edge.count, maxCount));
 
             const dx = toNode.x - fromNode.x;
             const dy = toNode.y - fromNode.y;

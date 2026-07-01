@@ -64,8 +64,8 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
     nodeIndex.set(simNodes[i]!.id, i);
   }
 
-  // Precompute max weight for normalization
-  const maxWeight = edges.reduce((max, e) => Math.max(max, e.weight), 1);
+  // Precompute max count for normalization (non-logarithmic for proximity)
+  const maxCount = edges.reduce((max, e) => Math.max(max, e.count), 1);
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
     // Adaptive cooling: reduce force influence as iterations progress
@@ -107,13 +107,12 @@ export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): Grap
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < 1) continue;
 
-      // Normalized weight so the strongest edges pull the most
-      const normalizedWeight = edge.weight / maxWeight;
-      // Use spring-like attraction: pull toward ideal distance rather than
-      // linearly scaling with current distance
-      const idealDist = 150 * (1 - normalizedWeight * 0.7);
+      // Non-logarithmic: raw count ratio determines proximity
+      const normalizedCount = edge.count / maxCount;
+      // Use spring-like attraction: pull toward ideal distance
+      const idealDist = 150 * (1 - normalizedCount * 0.7);
       const displacement = dist - idealDist;
-      const force = ATTRACTION_STRENGTH * displacement * normalizedWeight * coolFactor;
+      const force = ATTRACTION_STRENGTH * displacement * normalizedCount * coolFactor;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 
