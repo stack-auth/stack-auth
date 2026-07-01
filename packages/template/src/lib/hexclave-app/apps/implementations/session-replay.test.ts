@@ -2,6 +2,7 @@
 
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { describe, expect, it, vi } from "vitest";
+import * as errors from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions, SessionRecorder } from "./session-replay";
 
@@ -199,13 +200,171 @@ describe("SessionRecorder flush", () => {
       (recorder as any)._tick();
       await vi.advanceTimersByTimeAsync(0);
 
-      // Should still send the event (the server may reject it, but we don't drop it client-side)
+      // Sent (not dropped): the transport gzips it under the wire limit.
       expect(sentBodies).toHaveLength(1);
       const batch = JSON.parse(sentBodies[0]);
       expect(batch.events).toHaveLength(1);
     } finally {
       recorder.stop();
       localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a single event that exceeds the server's decompressed budget", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // >8MB (MAX_SINGLE_EVENT_BYTES) is dropped; the next event still sends.
+      const hugeEvent = { type: 2, timestamp: Date.now(), data: "z".repeat(9_000_000) };
+      const smallEvent = { type: 3, timestamp: Date.now(), data: "ok" };
+      const sizeOf = (e: unknown) => JSON.stringify(e).length;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [hugeEvent, smallEvent];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(hugeEvent), sizeOf(smallEvent)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(hugeEvent) + sizeOf(smallEvent);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      (recorder as any)._tick();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(sentBodies).toHaveLength(1);
+      const batch = JSON.parse(sentBodies[0]);
+      expect(batch.events).toHaveLength(1);
+      expect(batch.events[0].type).toBe(3);
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("on a keepalive flush, drops an event over the uncompressed batch target (it can't be gzipped before page tear-down)", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      // ~2MB is under the 8MB gzipped ceiling but over the 900KB uncompressed
+      // batch target. Keepalive flushes skip gzip, so this event would 413 the
+      // server's ~1MB raw body limit; it must be dropped, but the next event
+      // (small enough to send raw) still goes out.
+      const midEvent = { type: 2, timestamp: Date.now(), data: "z".repeat(2_000_000) };
+      const smallEvent = { type: 3, timestamp: Date.now(), data: "ok" };
+      const sizeOf = (e: unknown) => new TextEncoder().encode(JSON.stringify(e)).byteLength;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [midEvent, smallEvent];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(midEvent), sizeOf(smallEvent)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(midEvent) + sizeOf(smallEvent);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      await (recorder as any)._flush({ keepalive: true });
+
+      expect(sentBodies).toHaveLength(1);
+      const batch = JSON.parse(sentBodies[0]);
+      expect(batch.events).toHaveLength(1);
+      expect(batch.events[0].type).toBe(3);
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
+  it("logs a distinct 413 warning and drops the buffered events when the server rejects a batch as too large", async () => {
+    vi.useFakeTimers();
+    const captureWarningSpy = vi.spyOn(errors, "captureWarning").mockImplementation(() => {});
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    let calls = 0;
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async () => {
+          calls += 1;
+          // A poorly-compressible event can clear the client-side caps yet still
+          // exceed the server's body limit after gzip → 413.
+          return Result.ok(new Response("payload too large", { status: 413 }));
+        },
+      },
+      {},
+    );
+
+    try {
+      const eventA = { type: 3, timestamp: Date.now(), data: "a" };
+      const eventB = { type: 3, timestamp: Date.now(), data: "b" };
+      const sizeOf = (e: unknown) => new TextEncoder().encode(JSON.stringify(e)).byteLength;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [eventA, eventB];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(eventA), sizeOf(eventB)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(eventA) + sizeOf(eventB);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      await (recorder as any)._flush({ keepalive: false });
+
+      // The 413 stops the loop; no retry of the rejected batch.
+      expect(calls).toBe(1);
+      expect(captureWarningSpy).toHaveBeenCalledTimes(1);
+      const warned = captureWarningSpy.mock.calls[0]?.[1];
+      expect(warned).toBeInstanceOf(Error);
+      expect((warned as Error).message).toContain("413");
+      // Both buffered events are reported as dropped.
+      expect((warned as Error).message).toContain("2 buffered event");
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      captureWarningSpy.mockRestore();
       vi.useRealTimers();
     }
   });
