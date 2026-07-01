@@ -381,49 +381,6 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
-  apps/bulldozer-server:
-    dependencies:
-      '@elysiajs/node':
-        specifier: ^1.4.5
-        version: 1.4.5(elysia@1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3))
-      '@hexclave/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@sinclair/typebox':
-        specifier: ^0.34.49
-        version: 0.34.49
-      concurrently:
-        specifier: ^8.2.2
-        version: 8.2.2
-      dotenv-cli:
-        specifier: ^7.3.0
-        version: 7.4.1
-      elkjs:
-        specifier: ^0.11.1
-        version: 0.11.1
-      elysia:
-        specifier: ^1.4.28
-        version: 1.4.28(@sinclair/typebox@0.34.49)(exact-mirror@1.1.1)(file-type@22.0.1)(openapi-types@12.1.3)(typescript@5.9.3)
-      openapi-types:
-        specifier: ^12.1.3
-        version: 12.1.3
-    devDependencies:
-      '@types/node':
-        specifier: 20.17.6
-        version: 20.17.6
-      postgres:
-        specifier: ^3.4.5
-        version: 3.4.7
-      rimraf:
-        specifier: ^5.0.5
-        version: 5.0.10
-      tsx:
-        specifier: 4.15.5
-        version: 4.15.5
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-
   apps/dashboard:
     dependencies:
       '@ai-sdk/react':

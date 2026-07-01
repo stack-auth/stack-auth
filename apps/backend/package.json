@@ -52,7 +52,7 @@
     "run-cron-jobs:test": "pnpm run with-env:test tsx scripts/run-cron-jobs.ts",
     "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
     "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts",
-    "run-bulldozer-studio": "pnpm --filter=@hexclave/bulldozer-server run run-bulldozer-studio"
+    "run-bulldozer-studio": "pnpm --filter=@hexclave/bulldozer-js run run-bulldozer-studio"
   },
   "prisma": {
     "seed": "pnpm run db-seed-script"
