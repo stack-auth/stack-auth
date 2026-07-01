@@ -36,12 +36,21 @@ export function generateImpersonateSnippet(
   refreshToken: string,
   expiresAtDate: Date,
 ): string {
+  // Clear ALL cookie variants (both hexclave- and legacy stack- prefixes, with
+  // and without __Host-) so no stale token takes precedence over the one we set.
+  // Set the cookie under the primary hexclave-refresh- name the SDK reads first;
+  // using the legacy stack-refresh- name caused impersonation to silently fail on
+  // production because not all deployed SDK versions fall back to it.
+  const pid = encodeURIComponent(projectId);
   return deindent`
     document.cookie = 'hexclave-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
     document.cookie = 'stack-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = 'hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = '__Host-hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
-    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'stack-refresh-${encodeURIComponent(projectId)}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = 'hexclave-refresh-${pid}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = '__Host-hexclave-refresh-${pid}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = 'stack-refresh-${pid}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = '__Host-stack-refresh-${pid}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = 'stack-refresh-${pid}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${pid}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
     window.location.reload();
   `;
 }
