@@ -114,7 +114,8 @@ export async function createFreePlanSubscriptionRow(options: {
  *      TimeFold in its dependencies, so its row-change triggers cascade
  *      synchronously during `bulldozerWriteSubscription`'s `setRow`
  *      (unlike `ownedProducts`, which sits downstream of a TimeFold and
- *      only catches up when `pg_cron` drains the queue). That means
+ *      only catches up when bulldozer-js's in-process tick loop drains
+ *      the queue). That means
  *      callers that just committed a sub mutation upstream (the DELETE
  *      cancel route, the Stripe webhook handler) see their own writes
  *      here and we don't spuriously regrant on stale data.

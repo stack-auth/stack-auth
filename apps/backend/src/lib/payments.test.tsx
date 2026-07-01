@@ -5,7 +5,8 @@ import { validatePurchaseSession } from './payments';
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { globalPrismaClient } from "@/prisma-client";
 
-// Uses globalPrismaClient which connects to the real dev DB (with BulldozerStorageEngine).
+// Uses globalPrismaClient which connects to the real dev DB. Payment state is
+// written to bulldozer-js (LMDB) via the dual-write functions below, not Postgres.
 // customerType: 'custom' avoids needing a real ProjectUser/Team in the DB.
 // Each test writes data to Bulldozer stored tables via the dual-write functions
 // AND (for subscriptions) to the Prisma Subscription table — validatePurchaseSession
