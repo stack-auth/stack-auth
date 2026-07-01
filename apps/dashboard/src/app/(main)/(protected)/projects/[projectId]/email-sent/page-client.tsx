@@ -258,16 +258,9 @@ export default function PageClient() {
               contentClassName="p-3 min-w-0"
               gradient="default"
               glassmorphic
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-                    <Envelope className="h-3 w-3 text-foreground/70 dark:text-muted-foreground" />
-                  </div>
-                  <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                    Email Log
-                  </span>
-                </div>
+              title="Email Log"
+              icon={Envelope}
+              actions={(
                 <DesignPillToggle
                   options={[...VIEW_MODE_OPTIONS]}
                   selected={viewMode}
@@ -275,7 +268,8 @@ export default function PageClient() {
                   size="sm"
                   gradient="default"
                 />
-              </div>
+              )}
+            >
               {viewMode === "list" ? <EmailSendDataTable /> : <GroupedEmailTable />}
             </DesignCard>
           </div>

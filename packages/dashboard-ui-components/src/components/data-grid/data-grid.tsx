@@ -1032,7 +1032,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       >
         <div
           ref={stickyChromeRef}
-          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
+          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl"
           style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
         >
           {toolbar !== false && (
@@ -1219,7 +1219,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         </div>
 
         {footer !== false && (
-          <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl">
+          <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl">
             {footer ? footer(footerCtx) : <DefaultFooter ctx={footerCtx} pagination={paginationMode} onChange={onChange} />}
             {footerExtra && (typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra)}
           </div>
