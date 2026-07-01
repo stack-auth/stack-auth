@@ -6,6 +6,8 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { tool } from "ai";
 import { z } from "zod";
 
+export const READ_CONFIG_RESULT_MAX_CHARS = 50_000;
+
 /**
  * Resolves the project/branch whose config should be read. Prefers an explicit
  * `targetProjectId` (set by dashboard chats that manage a specific project on
@@ -44,6 +46,15 @@ export function readConfigTool(auth: SmartRequestAuth | null, targetProjectId?: 
     execute: async () => {
       try {
         const config = await rawQuery(globalPrismaClient, getRenderedBranchConfigQuery(target));
+        const serialized = JSON.stringify(config);
+        if (serialized.length > READ_CONFIG_RESULT_MAX_CHARS) {
+          return {
+            success: false as const,
+            error:
+              `The project config is too large to return in full (${serialized.length} characters, limit ${READ_CONFIG_RESULT_MAX_CHARS}). ` +
+              `Ask the user about the specific part of the configuration you need (eg. apps, auth, rbac, teams, payments) so it can be inspected directly instead.`,
+          };
+        }
         return {
           success: true as const,
           config,
