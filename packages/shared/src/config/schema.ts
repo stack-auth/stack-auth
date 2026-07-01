@@ -570,7 +570,11 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2026-07-01: product-level freeTrial removed; free trials are now configured per-price only.
   // Strip any saved product-level freeTrial overrides so they don't cause validation errors.
   if (isBranchOrHigher) {
-    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.slice(3).includes("prices"));
+    // p.slice(3, -2) checks for "prices" only in positions where it structurally indicates a price sub-object
+    // (i.e., followed by at least a price-ID segment before the trailing "freeTrial"). This correctly handles
+    // dotted product IDs containing "prices" as a segment (e.g., "pro.prices") — those land at p.length-2
+    // which is excluded by the slice, so the product-level freeTrial is still removed.
+    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.slice(3, -2).includes("prices"));
   }
   // END
 
@@ -620,6 +624,11 @@ import.meta.vitest?.test("migrateConfigOverride strips product-level freeTrial b
   })).toEqual({
     payments: { products: { pro: { prices: { monthly: { freeTrial: [14, "day"] } } } } },
   });
+
+  // Dotted product ID containing "prices" as a segment — product-level freeTrial should still be removed
+  expect(migrateConfigOverride("branch", {
+    "payments.products.pro.prices.freeTrial": [7, "day"],
+  })).toEqual({});
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
