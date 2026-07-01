@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "./force-layout";

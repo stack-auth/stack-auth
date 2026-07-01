@@ -63,7 +63,15 @@ export default function PageClient() {
         timeout_ms: 30000,
       });
 
-      const rows = response.result as TransitionRow[];
+      const rows = response.result.map((r) => {
+        const from_path = r.from_path;
+        const to_path = r.to_path;
+        const cnt = r.cnt;
+        if (typeof from_path !== "string" || typeof to_path !== "string" || typeof cnt !== "string") {
+          throw new Error("Unexpected navigation query result shape");
+        }
+        return { from_path, to_path, cnt } satisfies TransitionRow;
+      });
 
       // Normalize paths and aggregate
       const edgeMap = new Map<string, number>();
@@ -76,6 +84,9 @@ export default function PageClient() {
 
         const key = `${fromNorm}\0${toNorm}`;
         const count = Number(row.cnt);
+        if (!Number.isFinite(count)) {
+          throw new Error(`Invalid count value: ${row.cnt}`);
+        }
         edgeMap.set(key, (edgeMap.get(key) ?? 0) + count);
         nodeSet.add(fromNorm);
         nodeSet.add(toNorm);

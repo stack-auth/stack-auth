@@ -37,9 +37,13 @@ const CENTERING_STRENGTH = 0.01;
 const DAMPING = 0.9;
 const ITERATIONS = 300;
 const MIN_DISTANCE = 30;
+const MAX_NODES = 200;
 
 export function computeForceLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
   if (nodes.length === 0) return [];
+  if (nodes.length > MAX_NODES) {
+    throw new Error(`Too many nodes for force layout (${nodes.length} > ${MAX_NODES}). Consider filtering the data.`);
+  }
 
   // Initialize positions in a circle for deterministic starting layout
   const simNodes: SimNode[] = nodes.map((node, i) => {
