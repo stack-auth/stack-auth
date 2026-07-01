@@ -184,9 +184,10 @@ Commands:
   reset                            Drop all data and recreate the database, then apply migrations and seed
   generate-migration-file          Generate a new migration file using Prisma, then reset and migrate
   seed                             [Advanced] Run database seeding only
-  init                             Apply migrations, seed, then backfill bulldozer-js from Postgres
+  init                             Apply migrations, then seed
   migrate                          Apply migrations
   backfill-bulldozer-from-prisma   One-way backfill of the payment tables from Postgres into bulldozer-js.
+                                   In dev, run after restart-deps once the bulldozer-js server is running.
                                    Idempotent; safe to re-run. Optional resume for very large tables:
                                    --resume-table=<TableName> --resume-cursor=<tenancyId>,<id>
                                    --continue-on-error skips rows bulldozer-js rejects and reports them
@@ -231,11 +232,7 @@ const main = async () => {
     case 'init': {
       await migrate(undefined, { interactive });
       await seed();
-      // The only command that backfills bulldozer-js automatically: this is
-      // what `restart-deps` -> `start-deps` -> `db:init` runs, so local dev
-      // ends up with a populated bulldozer. Everywhere else the backfill is
-      // an explicit `backfill-bulldozer-from-prisma` step.
-      await runBulldozerPaymentsInit();
+      // To populate bulldozer, run db:backfill-bulldozer-from-prisma after restart-deps.
       break;
     }
     case 'migrate': {
