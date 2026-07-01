@@ -12,9 +12,14 @@ const backendDir = resolve(__dirname, '..');
 
 const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
 
-// Packages that must remain as runtime imports (can't be statically bundled)
+// Packages that must remain as runtime imports (can't be statically bundled).
+// @aws-sdk is externalized because rolldown mis-orders @smithy class declarations
+// (e.g. ErrorSchema$1 referencing StructureSchema$2 before it's defined) when the
+// AWS SDK is inlined, causing a ReferenceError at runtime. These packages are
+// available in node_modules inside the Docker image, so externalizing is safe.
 const externalPackages = [
   '@prisma/client',
+  '@aws-sdk',
 ];
 
 const customNoExternal = new Set([
@@ -47,8 +52,15 @@ export default defineConfig({
   platform: 'node',
   noExternal: [...customNoExternal],
   inlineOnly: false,
-  // Externalize Node.js builtins so they're imported rather than shimmed
-  external: [...nodeBuiltins, ...externalPackages],
+  // Externalize Node.js builtins so they're imported rather than shimmed.
+  // externalPackages entries that are scope prefixes (e.g. '@aws-sdk') are
+  // converted to regexps so every package under that scope is externalized.
+  external: [
+    ...nodeBuiltins,
+    ...externalPackages.map((pkg) =>
+      pkg.includes('/') ? pkg : new RegExp(`^${pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`)
+    ),
+  ],
   clean: true,
   // Use banner to add createRequire for CommonJS modules that use require() for builtins
   // The imported require is used by the shimmed __require2 function
