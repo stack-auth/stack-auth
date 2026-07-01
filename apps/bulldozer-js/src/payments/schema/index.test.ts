@@ -1,67 +1,9 @@
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe, expect, it } from "vitest";
-import { declareInMemoryLowLevelDatabase } from "../../databases/low-level/implementations/in-memory.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
-import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
+import type { PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema, mergeCompactionAggregates, repeatIntervalMs, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
-import type { CustomerType, ProductSnapshot, SubscriptionRow, TransactionRow } from "./types.js";
-
-type Snapshot = Awaited<ReturnType<typeof initializedSnapshot>>;
-type Row = { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject };
-
-const MONTH_MS = 2_592_000_000;
-const byId = (a: Row, b: Row) => stringCompare(a.rowIdentifier, b.rowIdentifier);
-const collect = async <T>(iterable: AsyncIterable<T>) => {
-  const result: T[] = [];
-  for await (const item of iterable) result.push(item);
-  return result;
-};
-const initializedSnapshot = async () => {
-  const schema = createPaymentsSchema();
-  const db = declareBulldozerDatabase(declarePiledriverDatabase(declareInMemoryLowLevelDatabase(crypto.randomUUID())), { migrations: schema.migrations });
-  await db.applyRemainingMigrations();
-  return (await db.getSnapshot()).snapshot;
-};
-const rows = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject = null) =>
-  (await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))).sort(byId);
-const rowDatas = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject = null) =>
-  (await rows(snapshot, tableId, groupKey)).map(row => row.rowData);
-const rowsBySortKey = async (snapshot: Snapshot, tableId: string, groupKey: PiledriverObject = null) =>
-  (await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }))).sort((a, b) => Number(a.rowSortKey) - Number(b.rowSortKey) || stringCompare(a.rowIdentifier, b.rowIdentifier));
-const set = async (snapshot: Snapshot, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
-  await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData });
-const customerGroup = (customerId: string, customerType: CustomerType = "user"): PiledriverObject => ({ tenancyId: "t1", customerType, customerId });
-const asRecord = (value: PiledriverObject) => value as Record<string, PiledriverObject>;
-
-const product = (includedItems: ProductSnapshot["includedItems"] = {}): ProductSnapshot => ({
-  displayName: "Test Plan",
-  customerType: "user",
-  productLineId: "line-main",
-  prices: { p1: { USD: "10.00" } },
-  includedItems,
-});
-const subscription = (id: string, overrides: Partial<SubscriptionRow> = {}): SubscriptionRow => ({
-  id,
-  tenancyId: "t1",
-  customerId: `customer-${id}`,
-  customerType: "user",
-  productId: `prod-${id}`,
-  priceId: "p1",
-  product: product(),
-  quantity: 1,
-  stripeSubscriptionId: null,
-  status: "active",
-  currentPeriodStartMillis: 0,
-  currentPeriodEndMillis: MONTH_MS,
-  cancelAtPeriodEnd: false,
-  canceledAtMillis: null,
-  endedAtMillis: null,
-  refundedAtMillis: null,
-  productRevokedAtMillis: null,
-  creationSource: "TEST_MODE",
-  createdAtMillis: 0,
-  ...overrides,
-});
+import { asRecord, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowDatas, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
+import type { CustomerType, TransactionRow } from "./types.js";
 
 describe("payments schema", () => {
   it("generates subscription renewal events and ignores creation invoices", async () => {
