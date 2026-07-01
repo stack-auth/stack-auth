@@ -9,6 +9,9 @@
 export type GraphNode = {
   id: string,
   label: string,
+  domain: string,
+  pageViews: number,
+  width: number,
   x: number,
   y: number,
 };
@@ -17,13 +20,12 @@ export type GraphEdge = {
   from: string,
   to: string,
   count: number,
-  /** Logarithmic weight: Math.log2(count + 1) */
+  /** Weight (linear): raw transition count */
   weight: number,
 };
 
 // Layout constants
-const CARD_WIDTH = 140;
-const CARD_HEIGHT = 52;
+const CARD_HEIGHT = 60;
 const ITERATIONS = 500;
 const GRAVITY = 0.005;
 const REPULSION_SCALE = 8000;
@@ -140,6 +142,7 @@ function computeDistanceFromLandings(
 type SimNode = {
   id: string,
   label: string,
+  width: number,
   x: number,
   y: number,
   vx: number,
@@ -173,6 +176,7 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
     return {
       id: n.id,
       label: n.label,
+      width: n.width,
       x: targetX + (Math.random() - 0.5) * 80,
       y: (i / nodes.length - 0.5) * ySpread,
       vx: 0,
@@ -188,9 +192,10 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
 
   const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight), 1);
 
-  // Collision dimensions (half-widths with generous padding)
-  const collisionW = CARD_WIDTH / 2 + 30;
-  const collisionH = CARD_HEIGHT / 2 + 25;
+  // Collision padding
+  const collisionPadX = 30;
+  const collisionPadY = 25;
+  const collisionH = CARD_HEIGHT / 2 + collisionPadY;
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
     const alpha = 1 - iter / ITERATIONS;
@@ -217,10 +222,11 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
         b.vy += fy;
 
         // Collision avoidance: push apart if rectangular bounds overlap
-        const overlapX = collisionW * 2 - Math.abs(dx);
+        // Use per-node width for accurate collision detection
+        const collisionW = (a.width + b.width) / 2 + collisionPadX;
+        const overlapX = collisionW - Math.abs(dx);
         const overlapY = collisionH * 2 - Math.abs(dy);
         if (overlapX > 0 && overlapY > 0) {
-          // Push apart along both axes proportional to overlap (strong)
           const pushX = (overlapX / 2) * Math.sign(dx || 1) * 0.8;
           const pushY = (overlapY / 2) * Math.sign(dy || 1) * 0.8;
           a.x -= pushX;
@@ -298,9 +304,10 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
     }
   }
 
+  // Restore full node data with updated positions
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
   return simNodes.map((n) => ({
-    id: n.id,
-    label: n.label,
+    ...nodeById.get(n.id)!,
     x: n.x,
     y: n.y,
   }));

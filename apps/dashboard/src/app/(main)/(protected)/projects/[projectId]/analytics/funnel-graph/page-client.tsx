@@ -46,6 +46,28 @@ ORDER BY cnt DESC
 LIMIT 500
 `;
 
+const PAGE_VIEWS_QUERY = `
+SELECT
+  JSONExtractString(toString(data), 'path') as path,
+  any(domain(JSONExtractString(toString(data), 'url'))) as page_domain,
+  count() as views
+FROM default.events
+WHERE event_type = '$page-view'
+  AND JSONExtractString(toString(data), 'path') != ''
+GROUP BY path
+ORDER BY views DESC
+LIMIT 200
+`;
+
+const MIN_CARD_WIDTH = 100;
+const MAX_CARD_WIDTH = 220;
+
+function computeCardWidth(label: string): number {
+  // ~6.5px per character in 11px monospace font, plus padding (20px)
+  const textWidth = label.length * 6.5 + 20;
+  return Math.max(MIN_CARD_WIDTH, Math.min(MAX_CARD_WIDTH, textWidth));
+}
+
 export default function PageClient() {
   const adminApp = useAdminApp();
   const [data, setData] = useState<FunnelData | null>(null);
@@ -95,15 +117,47 @@ export default function PageClient() {
         nodeSet.add(toNorm);
       }
 
-      // Build nodes
-      const nodeArray: GraphNode[] = Array.from(nodeSet).map((path) => ({
-        id: path,
-        label: path,
-        x: 0,
-        y: 0,
-      }));
+      // Query page views and domain info
+      const pvResponse = await adminApp.queryAnalytics({
+        query: PAGE_VIEWS_QUERY,
+        include_all_branches: false,
+        timeout_ms: 30000,
+      });
 
-      // Build edges with logarithmic weight, filtering out very weak edges
+      const pageViewsMap = new Map<string, { views: number, domain: string }>();
+      for (const row of pvResponse.result) {
+        const path = row.path;
+        const domain = row.page_domain;
+        const views = row.views;
+        if (typeof path !== "string") continue;
+        const normPath = normalizeUrlPath(path);
+        const existing = pageViewsMap.get(normPath);
+        const viewCount = Number(views) || 0;
+        if (existing == null) {
+          pageViewsMap.set(normPath, { views: viewCount, domain: typeof domain === "string" ? domain : "" });
+        } else {
+          existing.views += viewCount;
+          if (existing.domain === "" && typeof domain === "string") {
+            existing.domain = domain;
+          }
+        }
+      }
+
+      // Build nodes
+      const nodeArray: GraphNode[] = Array.from(nodeSet).map((path) => {
+        const pvInfo = pageViewsMap.get(path);
+        return {
+          id: path,
+          label: path,
+          domain: pvInfo?.domain ?? "",
+          pageViews: pvInfo?.views ?? 0,
+          width: computeCardWidth(path),
+          x: 0,
+          y: 0,
+        };
+      });
+
+      // Build edges
       const allEdges: { from: string, to: string, count: number, weight: number }[] = [];
       for (const [key, count] of edgeMap) {
         const [from, to] = key.split("\0") as [string, string];
@@ -111,13 +165,24 @@ export default function PageClient() {
           from,
           to,
           count,
-          weight: Math.log2(count + 1),
+          weight: count,
         });
       }
-      // Sort by count and keep top edges to avoid visual clutter
-      allEdges.sort((a, b) => b.count - a.count);
-      const maxEdges = Math.min(allEdges.length, 80);
-      const edges: GraphEdge[] = allEdges.slice(0, maxEdges);
+
+      // For each source node, find the max outgoing edge count
+      const maxOutgoing = new Map<string, number>();
+      for (const e of allEdges) {
+        const current = maxOutgoing.get(e.from) ?? 0;
+        if (e.count > current) {
+          maxOutgoing.set(e.from, e.count);
+        }
+      }
+
+      // Filter: keep only edges with >= 10% of the strongest edge from the same source
+      const edges: GraphEdge[] = allEdges.filter((e) => {
+        const maxFromSource = maxOutgoing.get(e.from) ?? 1;
+        return e.count >= maxFromSource * 0.1;
+      });
 
       // Only include nodes that have at least one visible edge
       const visibleNodes = new Set<string>();

@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "./force-layout";
 
-const CARD_WIDTH = 140;
-const CARD_HEIGHT = 52;
+const CARD_HEIGHT = 60;
 
 function edgeOpacity(count: number, maxCount: number): number {
   if (maxCount === 0) return 0.1;
@@ -15,9 +14,7 @@ function edgeOpacity(count: number, maxCount: number): number {
 
 function edgeWidth(count: number, maxCount: number): number {
   if (maxCount === 0) return 0.5;
-  const logMax = Math.log2(maxCount + 1);
-  if (logMax === 0) return 0.5;
-  return 0.5 + 1.5 * (Math.log2(count + 1) / logMax);
+  return 0.5 + 1.5 * (count / maxCount);
 }
 
 /**
@@ -33,17 +30,18 @@ function getEdgePath(from: GraphNode, to: GraphNode, bundleOffset: number) {
   const ndx = dx / dist;
   const ndy = dy / dist;
 
-  // Ray-rectangle intersection for exit/entry points
-  const hw = CARD_WIDTH / 2;
+  // Ray-rectangle intersection for exit/entry points (per-node width)
+  const hwFrom = from.width / 2;
+  const hwTo = to.width / 2;
   const hh = CARD_HEIGHT / 2;
 
-  const tFromX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
+  const tFromX = ndx !== 0 ? hwFrom / Math.abs(ndx) : Infinity;
   const tFromY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
   const tFrom = Math.min(tFromX, tFromY);
   const fromX = from.x + ndx * tFrom;
   const fromY = from.y + ndy * tFrom;
 
-  const tToX = ndx !== 0 ? hw / Math.abs(ndx) : Infinity;
+  const tToX = ndx !== 0 ? hwTo / Math.abs(ndx) : Infinity;
   const tToY = ndy !== 0 ? hh / Math.abs(ndy) : Infinity;
   const tTo = Math.min(tToX, tToY);
   const toX = to.x - ndx * tTo;
@@ -206,7 +204,7 @@ export function FunnelGraphCanvas({
 
       {/* Legend */}
       <div className="absolute bottom-3 left-3 z-10 px-3 py-2 rounded-lg bg-background/80 backdrop-blur border border-border/50 text-xs text-muted-foreground space-y-1">
-        <div>Edge thickness = log(transitions)</div>
+        <div>Edge thickness = transitions</div>
         <div>Scroll to zoom, drag to pan</div>
       </div>
 
@@ -303,20 +301,27 @@ export function FunnelGraphCanvas({
                 isHovered && "ring-2 ring-blue-500/50 shadow-md border-blue-400/60",
               )}
               style={{
-                left: node.x - CARD_WIDTH / 2,
+                left: node.x - node.width / 2,
                 top: node.y - CARD_HEIGHT / 2,
-                width: CARD_WIDTH,
+                width: node.width,
                 height: CARD_HEIGHT,
               }}
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
             >
+              {node.domain !== "" && (
+                <div className="text-[9px] text-muted-foreground/70 truncate leading-tight">
+                  {node.domain}
+                </div>
+              )}
               <div className="text-[11px] font-mono font-medium truncate leading-tight" title={node.label}>
                 {node.label}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
-                <span title="Inbound transitions">→ {stats?.inbound.toLocaleString() ?? 0}</span>
-                <span title="Outbound transitions">{stats?.outbound.toLocaleString() ?? 0} →</span>
+              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                <span title="Page views">{node.pageViews.toLocaleString()} views</span>
+                <span className="text-muted-foreground/50">·</span>
+                <span title="Inbound transitions">→{stats?.inbound.toLocaleString() ?? 0}</span>
+                <span title="Outbound transitions">{stats?.outbound.toLocaleString() ?? 0}→</span>
               </div>
             </div>
           );
