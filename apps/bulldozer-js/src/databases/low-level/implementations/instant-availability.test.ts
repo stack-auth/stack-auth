@@ -116,4 +116,31 @@ describe("instant-availability low-level database", () => {
 
     slow.releaseSet();
   });
+
+  it("only allows a single winner for concurrent compareAndSet on the same key", async () => {
+    const slow = createSlowSetDatabase();
+    const db = declareInstantAvailabilityLowLevelDatabase(slow.db, { dbId: "instant-test" });
+    const store = db.declareKvStore("store");
+
+    // Seed the key so both racers observe the same starting value from the in-memory cache.
+    await store.setAll([{ key: buffer("key"), value: buffer("start") }]);
+
+    // Launch both compare-and-sets concurrently. The read+compare must be gated together with
+    // the write, so exactly one of them may observe "start" and win — the other must lose.
+    const [first, second] = await Promise.all([
+      store.compareAndSet(buffer("key"), buffer("start"), buffer("a")),
+      store.compareAndSet(buffer("key"), buffer("start"), buffer("b")),
+    ]);
+
+    const winners = [first, second].filter(result => result.wasSet);
+    const losers = [first, second].filter(result => !result.wasSet);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect(losers[0].seq).toBeNull();
+    // Only the winner's write should have reached the wrapped store (plus the seed set).
+    expect(slow.setCallCount()).toBe(2);
+
+    // The stored value must reflect the single winner.
+    expect(text((await store.get(buffer("key"))).buffer)).toBe(first.wasSet ? "a" : "b");
+  });
 });

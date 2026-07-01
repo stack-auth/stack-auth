@@ -154,6 +154,19 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         .catch(() => {});
     };
 
+    const setAllLocked = (entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>, setOptions?: { requiresSeq?: DatabaseSeq }): { seq: DatabaseSeq } => {
+      const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
+      const underlyingSeq = (async () => {
+        const requiresSeq = await getUnderlyingSeq(setOptions?.requiresSeq);
+        const { seq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
+        return seq;
+      })();
+      const seq = createSeq(underlyingSeq);
+      for (const { key, value } of entries) setCachedValue(key, value, seq);
+      evictAfterWrappedAvailability(entries.map(({ key }) => key), seq);
+      return { seq };
+    };
+
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
         return await traceSpan({ description: "bulldozer-js.low-level.instant.get", attributes }, async (span) => {
@@ -174,18 +187,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       async setAll(entries, setOptions) {
         return await traceSpan({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
-          return await withWriteGate(async () => {
-            const entriesForWrapped = entries.map(({ key, value }) => ({ key: cloneArrayBuffer(key), value: cloneArrayBuffer(value) }));
-            const underlyingSeq = (async () => {
-              const requiresSeq = await getUnderlyingSeq(setOptions?.requiresSeq);
-              const { seq } = await wrappedStore.setAll(entriesForWrapped, { requiresSeq });
-              return seq;
-            })();
-            const seq = createSeq(underlyingSeq);
-            for (const { key, value } of entries) setCachedValue(key, value, seq);
-            evictAfterWrappedAvailability(entries.map(({ key }) => key), seq);
-            return { seq };
-          });
+          return await withWriteGate(async () => setAllLocked(entries, setOptions));
         });
       },
       async deleteAll(keys) {
@@ -220,10 +222,16 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       },
       async compareAndSet(key, compare, value, compareAndSetOptions) {
         return await traceSpan({ description: "bulldozer-js.low-level.instant.compareAndSet", attributes }, async () => {
-          const existing = await result.get(key);
-          if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
-          const { seq } = await result.setAll([{ key, value }], compareAndSetOptions);
-          return { wasSet: true, seq };
+          // The read+compare must happen inside the SAME write-gate critical section as the
+          // subsequent write; otherwise two concurrent calls could both read the same value,
+          // both pass the comparison, and both write — each returning wasSet: true, defeating
+          // compare-and-set's single-winner guarantee.
+          return await withWriteGate(async () => {
+            const existing = await result.get(key);
+            if (existing.buffer === null || !arrayBuffersAreEqual(existing.buffer, compare)) return { wasSet: false, seq: null };
+            const { seq } = setAllLocked([{ key, value }], compareAndSetOptions);
+            return { wasSet: true, seq };
+          });
         });
       },
       async debugEntries() {
