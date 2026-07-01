@@ -394,6 +394,21 @@ async function latestRowData<T>(options: { tableId: string, tenancyId: string, c
   return rows[0].rowData as unknown as T;
 }
 
+// The latest fold row whose txnEffectiveAtMillis <= asOfMillis (i.e. the state "as of now"), or null
+// if none has taken effect yet. Some folds (notably item-quantities) materialize future-dated rows —
+// e.g. a manual grant with a future absolute expiry eagerly emits the grant AND its expire marker at
+// the future expiry time. Reading the absolute final row would report the fully-expired balance, so
+// we must cut off at the present. The fold preserves its input's ledgerSortKey (primary key
+// txnEffectiveAtMillis), so iterating in reverse only skips the handful of future-dated rows before
+// reaching the current state. Mirrors the `balanceAt` test helper.
+async function latestRowDataAsOf<T>(options: { tableId: string, tenancyId: string, customerType: CustomerType, customerId: string }, asOfMillis: number): Promise<T | null> {
+  const { snapshot } = await bulldozerDb.getSnapshot();
+  for await (const row of snapshot.listRowsInGroup({ tableId: options.tableId, groupKey: customerGroupKey(options), range: { reverse: true } })) {
+    if ((row.rowData as { txnEffectiveAtMillis: number }).txnEffectiveAtMillis <= asOfMillis) return row.rowData as unknown as T;
+  }
+  return null;
+}
+
 async function setStoredRow(options: { tenancyId: string, tableId: string, rowId: string, rowData: Record<string, unknown> }): Promise<void> {
   if (readRowTenancyId(options.rowData) !== options.tenancyId) {
     throw new StatusError(StatusError.BadRequest, `Row tenancyId ${readRowTenancyId(options.rowData)} does not match URL tenancyId ${options.tenancyId}`);
@@ -482,7 +497,9 @@ async function getOwnedProductsForCustomer(options: { tenancyId: string, custome
 }
 
 async function getItemQuantitiesForCustomer(options: { tenancyId: string, customerType: CustomerType, customerId: string }) {
-  const row = await latestRowData<{ itemQuantities: Record<string, number> }>({ ...options, tableId: schema.itemQuantities });
+  // Read the balance as of now, not the fold's final row: a manual grant with a future expiry
+  // materializes a future-dated expire marker, and the final row would already show it as expired.
+  const row = await latestRowDataAsOf<{ itemQuantities: Record<string, number> }>({ ...options, tableId: schema.itemQuantities }, Date.now());
   return row?.itemQuantities ?? {};
 }
 

@@ -609,6 +609,29 @@ describe("item quantities: row invariants", () => {
     expect(await balanceAt(snapshot, customerGroup("u"), "bonus", 2500)).toBe(7);
   });
 
+  it("materializes a future expiry in the final row, so 'as of now' must be read instead", async () => {
+    /*
+     * t=1000  +10 coins, expires at 5000
+     *
+     * The fold eagerly materializes the future-dated expire marker at 5000, so its ABSOLUTE FINAL
+     * row already reports the grant as expired (0). Reading the balance "as of now" (t=2000, via
+     * balanceAt) must instead see the live grant (10). This invariant is why the server reads the
+     * latest row with txnEffectiveAtMillis <= now rather than the fold's final row.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("g", "u", "coins", 10, 1000, 5000));
+    const g = customerGroup("u");
+
+    const finalRow = asRecord((await rowsBySortKey(snapshot, schema.itemQuantities, g)).at(-1)?.rowData ?? null);
+    // Final row sits at the future expiry time and shows the grant already gone.
+    expect(Number(finalRow.txnEffectiveAtMillis)).toBe(5000);
+    expect(Number(asRecord(finalRow.itemQuantities).coins ?? 0)).toBe(0);
+
+    // But as of now (before the expiry) the grant is still live.
+    expect(await balanceAt(snapshot, g, "coins", 2000)).toBe(10);
+  });
+
   it("stamps every emitted row with the owning customer", async () => {
     /*
      * t=1000  +10 coins, expires at 5000
