@@ -222,8 +222,17 @@
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper {
-    z-index: 9999 !important;
+    z-index: 2147483647 !important;
     overflow: visible !important;
+  }
+
+  .analytics-card-tooltip-escape:has(.recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    z-index: 2147483647 !important;
+  }
+
+  main:has(.analytics-card-tooltip-escape .recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    position: relative;
+    z-index: 60;
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper > * {
