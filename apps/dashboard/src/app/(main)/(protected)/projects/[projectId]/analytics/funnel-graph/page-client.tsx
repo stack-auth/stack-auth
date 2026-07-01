@@ -30,14 +30,14 @@ SELECT
 FROM (
   SELECT
     user_id,
-    JSONExtractString(data, 'path') as path,
-    lagInFrame(JSONExtractString(data, 'path')) OVER (
+    JSONExtractString(toString(data), 'path') as path,
+    lagInFrame(JSONExtractString(toString(data), 'path')) OVER (
       PARTITION BY user_id
       ORDER BY event_at ASC
     ) as prev_path
   FROM default.events
   WHERE event_type = '$page-view'
-    AND JSONExtractString(data, 'path') != ''
+    AND JSONExtractString(toString(data), 'path') != ''
     AND user_id != ''
 ) sub
 WHERE prev_path != '' AND prev_path != path
