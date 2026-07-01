@@ -86,6 +86,38 @@ describe("payments schema", () => {
     expect(asRecord(quantities.itemQuantities).coins).toBe(200);
   });
 
+  it("keeps grant entry indices aligned for a free non-test-mode one-time purchase on repeat", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.oneTimePurchases, "otp-free", {
+      id: "otp-free",
+      tenancyId: "t1",
+      customerId: "u-otp-free",
+      customerType: "user",
+      productId: "prod-free",
+      priceId: null,
+      product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" } }),
+      quantity: 1,
+      stripePaymentIntentId: "pi-free",
+      revokedAtMillis: null,
+      refundedAtMillis: null,
+      creationSource: "PURCHASE_PAGE",
+      createdAtMillis: 0,
+    });
+
+    const group = customerGroup("u-otp-free");
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    expect(txns[0].entries).toMatchObject([
+      { type: "product-grant", productId: "prod-free" },
+      { type: "item-quantity-change", itemId: "credits", quantity: 10 },
+    ]);
+
+    snapshot = await snapshot.tick(new Date(MONTH_MS));
+
+    expect(await balanceAt(snapshot, group, "credits", 0)).toBe(10);
+    expect(await balanceAt(snapshot, group, "credits", MONTH_MS)).toBe(10);
+  });
+
   it("handles subscription start, repeat replacement, and end expiry", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();

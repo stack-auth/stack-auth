@@ -341,7 +341,7 @@ function subscriptionRepeatStep(state: SubscriptionFoldState, currentMillis: num
 
 function otpInitialState(row: OneTimePurchaseRow): OtpFoldState {
   const provider = paymentProvider(row.creationSource);
-  const hasMoneyTransfer = provider !== "test_mode";
+  const hasMoneyTransfer = provider !== "test_mode" && Object.keys(chargedAmount(row.product, row.priceId, row.quantity)).length > 0;
   const txnId = `otp:${row.id}`;
   return {
     purchaseId: row.id,
