@@ -47,6 +47,13 @@ function useExternalBackUrl(): string | null {
   }, [referrer]);
 }
 
+function useAccountSettingsBackUrl(): string {
+  const externalBackUrl = useExternalBackUrl();
+  // Direct visits and same-origin navigations do not have a useful referrer, but the full-page
+  // account settings route still needs an obvious way back to the hosted app surface.
+  return externalBackUrl ?? "/";
+}
+
 const EmailsAndAuthPage = React.lazy(async () => ({
   default: (await import("./email-and-auth/email-and-auth-page")).EmailsAndAuthPage,
 }));
@@ -106,7 +113,7 @@ export function HostedAccountSettings(props: {
     },
   }>,
 }) {
-  const backUrl = useExternalBackUrl();
+  const backUrl = useAccountSettingsBackUrl();
   const userFromHook = useUser({ or: props.mockUser ? 'return-null' : 'redirect' });
   const stackApp = useStackApp();
   const projectFromHook = stackApp.useProject();
