@@ -14,6 +14,7 @@ const mockElements = vi.hoisted(() => ({
 }));
 
 const alertMock = vi.hoisted(() => vi.fn());
+const locationAssignMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@stripe/react-stripe-js", () => ({
   PaymentElement: () => <div>Payment details</div>,
@@ -68,6 +69,15 @@ describe("checkout forms", () => {
   beforeEach(() => {
     vi.stubGlobal("alert", alertMock);
     alertMock.mockReset();
+    locationAssignMock.mockReset();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        assign: locationAssignMock,
+        origin: "http://localhost",
+      },
+    });
     mockElements.submit.mockResolvedValue({});
     mockStripe.confirmPayment.mockResolvedValue({});
   });
@@ -159,6 +169,36 @@ describe("checkout forms", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(await screen.findByText("Your card was declined.")).toBeTruthy();
+    expect(alertMock).not.toHaveBeenCalled();
+  });
+
+  it("skips Stripe Elements for free checkout success", async () => {
+    const setupSubscription = vi.fn(async () => null);
+
+    renderCheckoutForm({ setupSubscription, isFree: true });
+
+    expect(screen.queryByText("Payment details")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(locationAssignMock).toHaveBeenCalledWith("http://localhost/purchase/return?stripe_account_id=acct_123&purchase_full_code=purchase-code&free=1");
+    });
+    expect(setupSubscription).toHaveBeenCalledTimes(1);
+    expect(mockElements.submit).not.toHaveBeenCalled();
+    expect(mockStripe.confirmPayment).not.toHaveBeenCalled();
+    expect(alertMock).not.toHaveBeenCalled();
+  });
+
+  it("treats confirmPayment without an error as success", async () => {
+    renderCheckoutForm();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(mockStripe.confirmPayment).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
     expect(alertMock).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,20 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   return fallbackMessage;
 }
 
+function getStripeConfirmationError(result: unknown) {
+  if (typeof result !== "object" || result === null || !("error" in result)) {
+    return null;
+  }
+  const error = result.error;
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  return {
+    type: "type" in error && typeof error.type === "string" ? error.type : null,
+    message: "message" in error && typeof error.message === "string" ? error.message : null,
+  };
+}
+
 type Props = {
   setupSubscription: () => Promise<string | null>,
   stripeAccountId: string,
@@ -130,12 +144,42 @@ export function CheckoutForm({
   const [message, setMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
-    if (!stripe || !elements) {
+    if (!isFree && (!stripe || !elements)) {
       return;
     }
     setMessage(null);
 
-    const submitResult = await Result.fromPromise(elements.submit());
+    const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
+    stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
+    stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
+    if (returnUrl) {
+      stripeReturnUrl.searchParams.set("return_url", returnUrl);
+    }
+
+    if (isFree) {
+      const setupResult = await Result.fromPromise(setupSubscription());
+      if (setupResult.status === "error") {
+        setMessage(getErrorMessage(setupResult.error, "We couldn't complete the purchase. Please try again."));
+        return;
+      }
+      // $0 subs: backend creates the Stripe subscription synchronously and
+      // returns no client_secret (nothing to confirm). Skip Stripe Elements
+      // and route through /purchase/return with `free=1` so the return page
+      // renders a terminal success state instead of waiting on a Stripe
+      // PaymentIntent that will never exist. The return page handles the
+      // `return_url` bounce (or shows the success page when none was given).
+      stripeReturnUrl.searchParams.set("free", "1");
+      window.location.assign(stripeReturnUrl.toString());
+      return;
+    }
+
+    if (!stripe || !elements) {
+      return;
+    }
+    const activeStripe = stripe;
+    const activeElements = elements;
+
+    const submitResult = await Result.fromPromise(activeElements.submit());
     if (submitResult.status === "error") {
       setMessage(getErrorMessage(submitResult.error, "An unexpected error occurred."));
       return;
@@ -152,30 +196,13 @@ export function CheckoutForm({
       return;
     }
     const clientSecret = setupResult.data;
-    const stripeReturnUrl = new URL(`/purchase/return`, window.location.origin);
-    stripeReturnUrl.searchParams.set("stripe_account_id", stripeAccountId);
-    stripeReturnUrl.searchParams.set("purchase_full_code", fullCode);
-    if (returnUrl) {
-      stripeReturnUrl.searchParams.set("return_url", returnUrl);
-    }
 
-    if (isFree) {
-      // $0 subs: backend creates the Stripe subscription synchronously and
-      // returns no client_secret (nothing to confirm). Skip Stripe Elements
-      // and route through /purchase/return with `free=1` so the return page
-      // renders a terminal success state instead of waiting on a Stripe
-      // PaymentIntent that will never exist. The return page handles the
-      // `return_url` bounce (or shows the success page when none was given).
-      stripeReturnUrl.searchParams.set("free", "1");
-      window.location.assign(stripeReturnUrl.toString());
-      return;
-    }
     if (clientSecret == null) {
       setMessage("We couldn't complete the purchase. Please try again.");
       return;
     }
-    const confirmResult = await Result.fromPromise(stripe.confirmPayment({
-      elements,
+    const confirmResult = await Result.fromPromise(activeStripe.confirmPayment({
+      elements: activeElements,
       clientSecret,
       confirmParams: {
         return_url: stripeReturnUrl.toString(),
@@ -185,8 +212,11 @@ export function CheckoutForm({
       setMessage(getErrorMessage(confirmResult.error, "An unexpected error occurred."));
       return;
     }
-    const { error } = confirmResult.data;
+    const error = getStripeConfirmationError(confirmResult.data);
 
+    if (error == null) {
+      return;
+    }
     if (error.type === "card_error" || error.type === "validation_error") {
       setMessage(error.message ?? "An unexpected error occurred.");
     } else {
@@ -200,9 +230,9 @@ export function CheckoutForm({
 
   return (
     <DesignCard glassmorphic contentClassName="space-y-5 p-5 sm:p-6">
-      <PaymentElement options={paymentElementOptions} />
+      {!isFree && <PaymentElement options={paymentElementOptions} />}
       <DesignButton
-        disabled={!stripe || !elements || disabled || !chargesEnabled}
+        disabled={(!isFree && (!stripe || !elements)) || disabled || !chargesEnabled}
         onClick={handleSubmit}
         className="w-full"
       >
