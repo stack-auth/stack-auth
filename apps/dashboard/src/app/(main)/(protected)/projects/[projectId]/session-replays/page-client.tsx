@@ -352,7 +352,7 @@ function Timeline({
                   className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
                   style={{ left: `${left}%` }}
                 >
-                  <div className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground whitespace-nowrap max-w-52">
+                  <div className="max-w-52 whitespace-nowrap rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs text-foreground shadow-md ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-primary dark:text-primary-foreground dark:ring-white/[0.08]">
                     <div className="truncate">{hoveredMarker.label}</div>
                     <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
                   </div>
