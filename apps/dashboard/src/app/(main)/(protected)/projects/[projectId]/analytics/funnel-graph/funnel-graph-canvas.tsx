@@ -41,9 +41,7 @@ export function FunnelGraphCanvas({
     if (el == null) return;
     const obs = new ResizeObserver((entries) => {
       const entry = entries[0];
-      if (entry != null) {
-        setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
-      }
+      setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
     });
     obs.observe(el);
     return () => obs.disconnect();
