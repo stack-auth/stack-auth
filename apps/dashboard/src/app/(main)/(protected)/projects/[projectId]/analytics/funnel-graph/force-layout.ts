@@ -24,12 +24,12 @@ export type GraphEdge = {
 // Layout constants
 const CARD_WIDTH = 140;
 const CARD_HEIGHT = 52;
-const ITERATIONS = 400;
+const ITERATIONS = 500;
 const GRAVITY = 0.005;
-const REPULSION_SCALE = 5000;
-const X_CONSTRAINT_STRENGTH = 0.15;
+const REPULSION_SCALE = 8000;
+const X_CONSTRAINT_STRENGTH = 0.25;
 const DAMPING = 0.85;
-const MIN_DIST = 40;
+const MIN_DIST = 50;
 
 /**
  * Detect landing pages: pages with high outbound relative to inbound,
@@ -189,8 +189,8 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
   const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight), 1);
 
   // Collision dimensions (half-widths with generous padding)
-  const collisionW = CARD_WIDTH / 2 + 25;
-  const collisionH = CARD_HEIGHT / 2 + 20;
+  const collisionW = CARD_WIDTH / 2 + 30;
+  const collisionH = CARD_HEIGHT / 2 + 25;
 
   for (let iter = 0; iter < ITERATIONS; iter++) {
     const alpha = 1 - iter / ITERATIONS;
@@ -220,9 +220,9 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
         const overlapX = collisionW * 2 - Math.abs(dx);
         const overlapY = collisionH * 2 - Math.abs(dy);
         if (overlapX > 0 && overlapY > 0) {
-          // Push apart along both axes proportional to overlap
-          const pushX = (overlapX / 2) * Math.sign(dx || 1) * 0.5;
-          const pushY = (overlapY / 2) * Math.sign(dy || 1) * 0.5;
+          // Push apart along both axes proportional to overlap (strong)
+          const pushX = (overlapX / 2) * Math.sign(dx || 1) * 0.8;
+          const pushY = (overlapY / 2) * Math.sign(dy || 1) * 0.8;
           a.x -= pushX;
           b.x += pushX;
           a.y -= pushY;
@@ -245,7 +245,7 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < 1) continue;
 
-      const strength = 0.005 * (edge.weight / maxWeight) * cool;
+      const strength = 0.008 * (edge.weight / maxWeight) * cool;
       const fy = dy * strength;
       // Reverse x-component when edge points left (to.x < from.x)
       // This makes backward edges repulsive on x, reinforcing left-to-right flow
@@ -254,6 +254,27 @@ export function computeLayout(nodes: GraphNode[], edges: GraphEdge[]): GraphNode
       a.vx += fx;
       a.vy += fy;
       b.vx -= fx;
+      b.vy -= fy;
+    }
+
+    // Horizontal alignment bias: strong edges pull nodes toward same y-level
+    // Weak edges don't care about vertical alignment
+    for (const edge of edges) {
+      const ai = nodeIndex.get(edge.from);
+      const bi = nodeIndex.get(edge.to);
+      if (ai == null || bi == null) continue;
+
+      const a = simNodes[ai]!;
+      const b = simNodes[bi]!;
+      const dy = b.y - a.y;
+
+      // Strength proportional to normalized edge weight (squared for emphasis)
+      const relWeight = edge.weight / maxWeight;
+      const alignStrength = 0.012 * relWeight * relWeight * cool;
+      const fy = dy * alignStrength;
+
+      // Pull both nodes toward their shared y-midpoint
+      a.vy += fy;
       b.vy -= fy;
     }
 

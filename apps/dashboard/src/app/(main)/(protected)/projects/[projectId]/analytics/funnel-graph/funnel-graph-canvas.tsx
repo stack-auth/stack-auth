@@ -14,10 +14,10 @@ function edgeOpacity(count: number, maxCount: number): number {
 }
 
 function edgeWidth(count: number, maxCount: number): number {
-  if (maxCount === 0) return 1;
+  if (maxCount === 0) return 0.5;
   const logMax = Math.log2(maxCount + 1);
-  if (logMax === 0) return 1;
-  return 1 + 4 * (Math.log2(count + 1) / logMax);
+  if (logMax === 0) return 0.5;
+  return 0.5 + 1.5 * (Math.log2(count + 1) / logMax);
 }
 
 /**
@@ -219,13 +219,13 @@ export function FunnelGraphCanvas({
           <marker
             id="funnel-arrow"
             viewBox="0 0 10 10"
-            refX="8"
+            refX="9"
             refY="5"
-            markerWidth="5"
-            markerHeight="5"
+            markerWidth="4"
+            markerHeight="4"
             orient="auto-start-reverse"
           >
-            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-foreground/40" />
+            <path d="M 2 1 L 9 5 L 2 9" fill="none" className="stroke-foreground/50" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </marker>
         </defs>
         <g transform={`translate(${offsetX + transform.x}, ${offsetY + transform.y}) scale(${transform.scale})`}>
