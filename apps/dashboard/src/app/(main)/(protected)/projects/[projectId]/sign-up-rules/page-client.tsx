@@ -191,6 +191,8 @@ ORDER BY event_at DESC
 LIMIT {limit:UInt32}
 OFFSET {offset:UInt32}
 `;
+// Radix Select forbids empty-string item values, so the "all" option uses a sentinel that maps to an empty query param.
+const ALL_FILTER_VALUE = "__all__";
 const ALL_RULE_TRIGGER_EVENTS_QUERY = `
 SELECT
   event_at AS triggered_at,
@@ -526,8 +528,8 @@ function RecentTriggersCard({
 }) {
   const [emailSearchInput, setEmailSearchInput] = useState("");
   const [debouncedEmailSearch, setDebouncedEmailSearch] = useState("");
-  const [ruleFilter, setRuleFilter] = useState("");
-  const [actionFilter, setActionFilter] = useState("");
+  const [ruleFilter, setRuleFilter] = useState(ALL_FILTER_VALUE);
+  const [actionFilter, setActionFilter] = useState(ALL_FILTER_VALUE);
   const [triggers, setTriggers] = useState<AllRuleTriggerListItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(false);
@@ -543,7 +545,7 @@ function RecentTriggersCard({
     [signUpRules],
   );
   const ruleFilterOptions = useMemo(() => [
-    { value: "", label: "All rules" },
+    { value: ALL_FILTER_VALUE, label: "All rules" },
     ...signUpRules.map((entry) => ({
       value: entry.id,
       label: entry.rule.displayName || entry.id,
@@ -582,8 +584,8 @@ function RecentTriggersCard({
       const response = await hexclaveAdminApp.queryAnalytics({
         query: ALL_RULE_TRIGGER_EVENTS_QUERY,
         params: {
-          rule_id: ruleFilter,
-          action: actionFilter,
+          rule_id: ruleFilter === ALL_FILTER_VALUE ? "" : ruleFilter,
+          action: actionFilter === ALL_FILTER_VALUE ? "" : actionFilter,
           email_search: debouncedEmailSearch,
           limit: RULE_TRIGGER_EVENTS_PAGE_SIZE,
           offset,
@@ -626,7 +628,7 @@ function RecentTriggersCard({
     runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: triggers.length, reset: false }));
   };
 
-  const hasActiveFilters = ruleFilter !== "" || actionFilter !== "" || debouncedEmailSearch !== "";
+  const hasActiveFilters = ruleFilter !== ALL_FILTER_VALUE || actionFilter !== ALL_FILTER_VALUE || debouncedEmailSearch !== "";
 
   return (
     <DesignCard
@@ -657,7 +659,7 @@ function RecentTriggersCard({
             value={actionFilter}
             onValueChange={setActionFilter}
             options={[
-              { value: "", label: "All actions" },
+              { value: ALL_FILTER_VALUE, label: "All actions" },
               { value: "allow", label: "Allow" },
               { value: "reject", label: "Reject" },
               { value: "restrict", label: "Restrict" },
