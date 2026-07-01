@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Payments as PaymentsHelper, Project, Team, User, niceBackendFetch } from "../../../../backend-helpers";
@@ -72,7 +73,7 @@ async function createPurchaseCodeForCustomer(options: { customerType: "user" | "
   return code as string;
 }
 
-const stripeWebhookSecret = process.env.STACK_STRIPE_WEBHOOK_SECRET ?? "mock_stripe_webhook_secret";
+const stripeWebhookSecret = getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET", "mock_stripe_webhook_secret");
 
 async function sendStripeWebhook(payload: unknown) {
   const timestamp = Math.floor(Date.now() / 1000);

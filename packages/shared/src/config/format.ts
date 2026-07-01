@@ -375,6 +375,24 @@ import.meta.vitest?.test("normalize(...)", ({ expect }) => {
   expect(normalize({
     "b.c": 2,
   }, { onDotIntoNonObject: "ignore" })).toEqual({});
+  expect(normalize({
+    "auth.allowSignUp": false,
+    "apps.installed.payments.enabled": false,
+  }, {
+    onDotIntoNonObject: "ignore",
+    onDotIntoNull: "empty-object",
+  })).toEqual({
+    auth: {
+      allowSignUp: false,
+    },
+    apps: {
+      installed: {
+        payments: {
+          enabled: false,
+        },
+      },
+    },
+  });
 
   // dotting into non-object
   expect(() => normalize({

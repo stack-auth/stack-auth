@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,

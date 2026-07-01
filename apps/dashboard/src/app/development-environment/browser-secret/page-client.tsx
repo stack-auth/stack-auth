@@ -114,7 +114,7 @@ export function BrowserSecretConfirmationPageClient() {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">Authorize this browser</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          This dashboard is reachable through a forwarded address. To keep it private, enter the 6-character confirmation code shown by the running <code className="rounded bg-black/[0.04] dark:bg-white/[0.06] px-1 py-0.5 text-xs">stack dev</code> command.
+          This dashboard is reachable through a forwarded address. To keep it private, enter the 6-character confirmation code shown by the running <code className="rounded bg-black/[0.04] dark:bg-white/[0.06] px-1 py-0.5 text-xs">hexclave dev</code> command.
         </p>
         <p className="mt-3 text-sm text-muted-foreground">{expiresText}</p>
         <form className="mt-5 space-y-4" onSubmit={(event) => {

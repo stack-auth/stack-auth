@@ -1,3 +1,4 @@
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe, expect } from "vitest";
@@ -12,6 +13,8 @@ type FailedEmailsBatch = {
 };
 
 type DigestResponse = Awaited<ReturnType<typeof niceBackendFetch>>;
+
+const isSourceOfTruthTest = () => getEnvVariable("STACK_TEST_SOURCE_OF_TRUTH", "") === "true";
 
 // Always uses dry_run=true: the only callers are the polling helper below
 // (which must be side-effect-free since it fires repeatedly) and the snapshot
@@ -168,7 +171,7 @@ describe("with valid credentials", () => {
     const { response, batches: mockProjectFailedEmails } = await waitForFailedEmailsDigest(2);
       expect(response.status).toBe(200);
 
-      if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+      if (isSourceOfTruthTest()) {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`[]`);
       } else {
       expect(mockProjectFailedEmails).toMatchInlineSnapshot(`
@@ -460,7 +463,7 @@ describe("with valid credentials", () => {
       (batch: any) => batch.project_id === projectId
     );
 
-    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    if (isSourceOfTruthTest()) {
       expect(currentResponses).toMatchInlineSnapshot(`[]`);
     } else {
       expect(currentResponses.length).toBe(1);

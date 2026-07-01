@@ -1,11 +1,68 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { seedDummyProject } from "@/lib/seed-dummy-data";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
+
+/**
+ * Atomically claims one pre-seeded preview project from the pool by flipping
+ * its `isAvailableAsPreviewProject` flag to false and assigning the given owner
+ * team. Returns the project ID if one was available, or null otherwise.
+ */
+async function claimPoolProject(ownerTeamId: string): Promise<string | null> {
+  const rows = await globalPrismaClient.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    UPDATE "Project"
+    SET "isAvailableAsPreviewProject" = false,
+        "ownerTeamId" = ${ownerTeamId}::uuid,
+        "updatedAt" = NOW()
+    WHERE "id" = (
+      SELECT "id" FROM "Project"
+      WHERE "isAvailableAsPreviewProject" = true
+      ORDER BY "createdAt" ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING "id"
+  `);
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Asynchronously seeds a new preview project into the pool (with
+ * isAvailableAsPreviewProject = true) so a future request can claim it
+ * instantly.
+ *
+ * Pool projects have ownerTeamId = null so they don't appear in any user's
+ * dashboard. The claim query assigns the real ownerTeamId when a project is
+ * claimed.
+ */
+function replenishPreviewProjectPool(ownerTeamId: string): void {
+  runAsynchronouslyAndWaitUntil(async () => {
+    const clickhouseClient = getClickhouseAdminClient();
+    const projectId = await seedDummyProject({
+      ownerTeamId,
+      oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
+      excludeAlphaApps: true,
+      skipGithubConfigSource: true,
+      clickhouseClient,
+    });
+    // Mark as available and null out ownerTeamId so the pool project doesn't
+    // appear in the seeding user's dashboard. The claim query sets the real
+    // ownerTeamId when the project is claimed.
+    await globalPrismaClient.project.update({
+      where: { id: projectId },
+      data: {
+        isAvailableAsPreviewProject: true,
+        ownerTeamId: null,
+      },
+    });
+  });
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -37,17 +94,6 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.Forbidden, "This endpoint is only available in preview mode");
     }
 
-    // Pre-warm the ClickHouse Cloud connection, then hand the same client to
-    // seedDummyProject so every analytics insert reuses it. The first insert
-    // otherwise pays a one-time ~0.7s cold cost (idle-service wake-up + TLS).
-    // Firing a trivial query now — unawaited — overlaps that wake-up and the
-    // TLS handshake with the Postgres-heavy seeding below; threading the warmed
-    // client through means the handshake is established exactly once.
-    const clickhouseClient = getClickhouseAdminClient();
-    const clickhouseWarmup = clickhouseClient
-      .command({ query: "SELECT 1" });
-    ignoreUnhandledRejection(clickhouseWarmup);
-
     const userId = auth.user.id;
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
@@ -66,17 +112,33 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "User must belong to a team to create a preview project");
     }
 
-    const projectId = await seedDummyProject({
-      ownerTeamId: membership.teamId,
-      oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
-      excludeAlphaApps: true,
-      skipGithubConfigSource: true,
-      clickhouseClient,
-    });
+    // Try to claim a pre-seeded project from the pool (near-instant).
+    const claimedProjectId = await claimPoolProject(membership.teamId);
 
-    // Settle the warm-up promise (long since resolved by now) so it does not
-    // float past the handler return.
-    await clickhouseWarmup;
+    let projectId: string;
+    if (claimedProjectId) {
+      projectId = claimedProjectId;
+    } else {
+      // Pool empty — fall back to creating a fresh project synchronously.
+      const clickhouseClient = getClickhouseAdminClient();
+      const clickhouseWarmup = clickhouseClient.command({ query: "SELECT 1" });
+      ignoreUnhandledRejection(clickhouseWarmup);
+
+      projectId = await seedDummyProject({
+        ownerTeamId: membership.teamId,
+        oauthProviderIds: ['github', 'google', 'microsoft', 'spotify'],
+        excludeAlphaApps: true,
+        skipGithubConfigSource: true,
+        clickhouseClient,
+      });
+
+      await clickhouseWarmup;
+    }
+
+    // Replenish the pool asynchronously so the next request can be served
+    // instantly. ownerTeamId is needed for seedDummyProject but gets nulled out
+    // afterward — the claim query assigns the real owner.
+    replenishPreviewProjectPool(membership.teamId);
 
     return {
       statusCode: 200,

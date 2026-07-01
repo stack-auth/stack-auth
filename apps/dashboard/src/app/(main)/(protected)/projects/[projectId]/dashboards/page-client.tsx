@@ -6,7 +6,7 @@ import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
 import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import {
   ChartBarIcon,
   PlusIcon,

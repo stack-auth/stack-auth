@@ -304,6 +304,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       orderBy?: 'signedUpAt' | 'lastActiveAt',
       desc?: boolean,
       query?: string,
+      excludedEmailDomains?: string[],
       includeRestricted?: boolean,
       teamId?: string,
     }
@@ -331,6 +332,9 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.excludedEmailDomains && options.excludedEmailDomains.length > 0 ? {
+        excluded_email_domains: options.excludedEmailDomains.join(","), // backend expects comma-separated list of domains.
       } : {},
       ...options.includeRestricted ? {
         include_restricted: 'true',
@@ -945,6 +949,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
   async sendEmail(options: {
     userIds?: string[],
     allUsers?: true,
+    emails?: string[],
     themeId?: string | null | false,
     html?: string,
     subject?: string,
@@ -964,6 +969,7 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
         body: JSON.stringify({
           user_ids: options.userIds,
           all_users: options.allUsers,
+          emails: options.emails,
           theme_id: options.themeId,
           html: options.html,
           subject: options.subject,

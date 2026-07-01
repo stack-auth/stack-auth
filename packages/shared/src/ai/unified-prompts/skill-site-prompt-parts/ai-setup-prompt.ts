@@ -1,6 +1,7 @@
 import { ALL_APPS, type AppId } from "../../../apps/apps-config";
 import { typedEntries } from "../../../utils/objects";
 import { deindent } from "../../../utils/strings";
+import { remindersPrompt } from "../reminders";
 
 export const convexSetupPrompt = deindent`
   ## Convex Setup
@@ -26,15 +27,7 @@ export const convexSetupPrompt = deindent`
     </Step>
 
     <Step title="Install and configure Hexclave">
-      Install Hexclave in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
-
-      \`\`\`sh
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Create or select a Hexclave project in the dashboard. Copy the Hexclave environment variables into the app's \`.env.local\` file.
-
-      Also add the same Hexclave environment variables to the Convex deployment environment in the Convex dashboard.
+      Install Hexclave in the app. If you have not already completed the SDK setup steps above, follow the instructions in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Configure Convex auth providers">
@@ -134,31 +127,7 @@ export const supabaseSetupPrompt = deindent`
     </Step>
 
     <Step title="Install Hexclave and Supabase dependencies">
-      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
-
-      \`\`\`sh
-      npx create-next-app@latest -e with-supabase hexclave-supabase
-      cd hexclave-supabase
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Add the Supabase environment variables to \`.env.local\`:
-
-      \`\`\`.env .env.local
-      NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
-      NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-      SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
-      \`\`\`
-
-      Also add the Hexclave environment variables:
-
-      \`\`\`.env .env.local
-      # The project ID is the only client-exposed Hexclave variable; in Next.js it must
-      # be prefixed with NEXT_PUBLIC_. HEXCLAVE_SECRET_SERVER_KEY is server-only and must
-      # NEVER be prefixed or exposed to the client.
-      NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=<your-hexclave-project-id>
-      HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
-      \`\`\`
+      First, follow the instructions on how to get started with Hexclave for your framework in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Mint Supabase JWTs from Hexclave users">
@@ -593,6 +562,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add handler/auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
   "fraud-protection": deindent`
+    Key concepts: sign-up rules are ordered checks that decide whether a sign-up should be allowed, rejected, restricted, or logged; rule priority decides which matching rule wins when multiple rules apply.
+
     Start by writing the first sign-up rules in \`hexclave.config.ts\`. For a company-only product, default to reject and explicitly allow the company domain:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -633,6 +604,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     In the app, use team IDs in deep links wherever possible, then add a team switcher for navigation convenience. If team-specific authorization matters, configure RBAC next and enforce checks on the server. See [Teams](https://docs.hexclave.com/guides/apps/teams/overview), [Team Selection](https://docs.hexclave.com/guides/apps/teams/team-selection), and [hexclave.config.ts: Teams and Users](https://docs.hexclave.com/guides/going-further/hexclave-config#teams-and-users).
   `,
   "rbac": deindent`
+    Key concepts: permissions are stable IDs your app checks before protected actions; scopes decide whether a permission applies globally or within a team; contained permissions let one permission include other permissions recursively.
+
     Start with the permission IDs the product will check in code. For a basic team app, define reader/writer permissions and an admin-style composed permission:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -663,6 +636,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Use \`scope: "project"\` only for global project-level actions. Client-side permission checks are UX only; always enforce the same permissions on the server. See [RBAC Permissions](https://docs.hexclave.com/guides/apps/rbac/overview) and [hexclave.config.ts: RBAC](https://docs.hexclave.com/guides/going-further/hexclave-config#rbac).
   `,
   "api-keys": deindent`
+    API keys allow you to programmatically create API keys for your own users. This is useful if you have an API yourself that you want to authenticate users against.
+
     Start by enabling only the owner types the product actually needs. For a platform with both personal and workspace APIs:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -681,6 +656,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Then expose built-in account/team settings UI or build focused create/list/revoke screens. Always validate API keys on a trusted backend before serving protected requests. See [API Keys](https://docs.hexclave.com/guides/apps/api-keys/overview) and [hexclave.config.ts: API Keys](https://docs.hexclave.com/guides/going-further/hexclave-config#api-keys).
   `,
   "payments": deindent`
+    Key concepts: products are the sellable plans or one-time offers customers buy; product lines group mutually exclusive products such as pricing tiers; items are quantifiable entitlements such as credits, seats, or API calls granted by products; customers are the users, teams, or custom entities that own purchases and item balances.
+
     Start with a minimal catalog. For a user-plan SaaS with monthly credits:
 
     \`\`\`ts title="hexclave.config.ts"
@@ -691,6 +668,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
         },
         items: {
           credits: { displayName: "Credits", customerType: "user" },
+          access: { displayName: "Product Access", customerType: "user" },
         },
         products: {
           pro: {
@@ -702,6 +680,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
             },
             includedItems: {
               credits: { quantity: 1000, repeat: [1, "month"], expires: "when-repeated" },
+              access: { quantity: 1, expires: "when-purchase-expires" },
             },
           },
         },
@@ -714,6 +693,8 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     Keep purchases in test mode while building; Stripe connection and \`payments.testMode\` are environment-specific, so configure them in the dashboard/environment rather than hard-coding secrets. In code, generate checkout URLs and read products/items to gate access. See [Payments: Getting started](https://docs.hexclave.com/guides/apps/payments/overview#getting-started), [Defining products](https://docs.hexclave.com/guides/apps/payments/overview#defining-products), and [Checking item balances](https://docs.hexclave.com/guides/apps/payments/overview#checking-item-balances).
   `,
   "emails": deindent`
+    Key concepts: templates define reusable email content with variables; themes provide shared branding around templates; transactional emails are required product emails, while marketing emails must respect opt-out expectations.
+
     Start with delivery: shared delivery is fine for development, but production should use Managed, Resend, or custom SMTP from **Emails -> Email Settings**. Delivery credentials and sender settings are environment-specific, so do not put secrets in \`hexclave.config.ts\`.
 
     Use config for versioned content. For example, add a product-specific template once you have the copy:
@@ -800,6 +781,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isMaybeTanstackStart = isDefinitelyTanstackStart || mainType === "ai-prompt";
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
+  const isDefinitelyVite = isDefinitelyTanstackStart;
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -858,6 +840,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           - React: \`@hexclave/react\`
           - TanStack Start: \`@hexclave/tanstack-start\`
           - Other & vanilla JS: \`@hexclave/js\`
+            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\`
 
           You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`
@@ -983,7 +966,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
@@ -1002,7 +985,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? "# note: prefix the environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so" : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
@@ -1024,7 +1008,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? deindent`
+              # as above, prefix the project ID environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so
+              # do NOT prefix the secret server key environment variable with NEXT_PUBLIC_ or VITE_ as it is server-only
+            ` : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
@@ -1271,6 +1259,8 @@ export const aiSetupPrompt = deindent`
   This prompt explains how to set up Hexclave in your project. This is the authoritative source of truth on how to set up Hexclave, and you should follow these guidelines exactly.
 
   To use it, you can use the sections below to set up Hexclave in the project. For example, if you are setting up a Svelte project, you would follow the SDK setup instructions for a frontend JS project.
+
+  ${remindersPrompt}
 
   ${getSdkSetupPrompt("ai-prompt")}
 

@@ -2,7 +2,7 @@
 
 import { Switch, Typography } from "@/components/ui";
 import { DesignCard } from "@/components/design-components";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import { LockIcon } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";

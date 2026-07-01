@@ -2,6 +2,14 @@
 
 ---
 
+## 6/19/26
+
+- New clickmap heatmaps for route analytics — visualize where users click on any page.
+- Custom OIDC provider support (team plan+) with improved OAuth sign-up errors and Apple OAuth fixes.
+- Redesigned hosted components, new Emails tab on the User Detail page, and purchase page loading state.
+- CLI auth no longer requires a publishable key, plus stability fixes for ENOTEMPTY races and RDE source maps.
+- AI-aware config editing and new skill context for Ask Hexclave.
+
 ## 6/12/26
 
 ![Payments checkout page redesign](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-payments-checkout.png)

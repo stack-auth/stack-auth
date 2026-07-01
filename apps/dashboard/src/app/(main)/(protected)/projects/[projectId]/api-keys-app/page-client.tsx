@@ -7,7 +7,7 @@ import {
   type DesignEditableGridItem,
 } from "@/components/design-components";
 import { Switch } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { GearSix, KeyIcon, UsersIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -114,8 +114,8 @@ export default function PageClient() {
         />
 
         <DesignCard
-          title="API Key Settings"
-          subtitle="Configure which types of API keys are allowed in your project"
+          title="Client-Side API Key Creation Settings"
+          subtitle="Configure whether clients can create these types of API keys for themselves"
           icon={GearSix}
           glassmorphic
         >

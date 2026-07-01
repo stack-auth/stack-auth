@@ -2,14 +2,13 @@ import { execFileSync, spawn, type ChildProcess } from "child_process";
 import { Command } from "commander";
 import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "fs";
 import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
+import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifest, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { CliError } from "../lib/errors.js";
-import { cliVersion } from "../lib/own-package.js";
-import { maybeReexecToLatest } from "../lib/self-update.js";
+import { CliError, errorMessage } from "../lib/errors.js";
+import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
 
 type ChildCommand = {
   command: string,
@@ -18,35 +17,37 @@ type ChildCommand = {
 
 type DevOptions = {
   configFile?: string,
-  autoUpdate?: boolean,
 };
 
-type SessionResponse = {
-  session_id: string,
-  env: Record<string, string>,
-  project_id: string,
-  onboarding_outstanding: boolean,
+type ConfigSyncEventBase = {
+  config_file_path: string,
+  created_at_millis: number,
 };
+
+type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "success",
+} | {
+  status: "error",
+  error_message: string,
+});
 
 type HeartbeatResponse = {
   ok: true,
   browser_secret_confirmation_code?: string,
   browser_secret_confirmation_code_expires_at_millis?: number,
+  config_sync_events?: ConfigSyncEvent[],
 };
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
-const DEFAULT_DASHBOARD_PORT = 26700;
-const DASHBOARD_PORT_ENV_VAR = "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT";
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
 const DASHBOARD_STOP_TIMEOUT_MS = 10_000;
 const DASHBOARD_FORCE_STOP_TIMEOUT_MS = 2_000;
 const DASHBOARD_HEALTH_PATH = "/api/development-environment/health";
 const DEV_DASHBOARD_COMMAND_ENV_VAR = "HEXCLAVE_CLI_DEV_DASHBOARD_COMMAND";
 const DEV_DASHBOARD_DIST_DIR_ENV_VAR = "HEXCLAVE_DASHBOARD_NEXT_DIST_DIR";
-const BUNDLED_DASHBOARD_DIR_NAME = "dashboard";
-const BUNDLED_DASHBOARD_SERVER_PATH = join("apps", "dashboard", "server.js");
+const RDE_DASHBOARD_LOG_PATH_ENV_VAR = "HEXCLAVE_RDE_DASHBOARD_LOG_PATH";
 const DASHBOARD_RUNTIME_DIR_NAME = "rde-dashboard-runtime";
 const SENTINEL_PREFIX = "STACK_ENV_VAR_SENTINEL_";
 const USE_INLINE_ENV_VARS_SENTINEL = "STACK_ENV_VAR_SENTINEL_USE_INLINE_ENV_VARS";
@@ -61,7 +62,6 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   "NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL",
   "NEXT_PUBLIC_STACK_PROJECT_ID",
   "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
-  "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR",
   "NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT",
   "NEXT_PUBLIC_STACK_IS_PREVIEW",
   DASHBOARD_PORT_ENV_VAR,
@@ -72,16 +72,12 @@ type ProgressLogger = {
 };
 
 type DashboardSessionState = {
-  session: SessionResponse,
+  session: DashboardSessionResponse,
   dashboardReachableSinceMs: number,
 };
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
@@ -90,25 +86,6 @@ function splitDevCommandArgs(commandArgs: string[]): ChildCommand {
   }
   const command = commandArgs[0];
   return { command, args: commandArgs.slice(1) };
-}
-
-function dashboardPort(): number {
-  const rawPort = process.env[DASHBOARD_PORT_ENV_VAR];
-  if (rawPort == null || rawPort.length === 0) {
-    return DEFAULT_DASHBOARD_PORT;
-  }
-  if (!/^[0-9]+$/.test(rawPort)) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  const port = Number(rawPort);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new CliError(`${DASHBOARD_PORT_ENV_VAR} must be an integer between 1 and 65535.`);
-  }
-  return port;
-}
-
-function dashboardUrl(port = dashboardPort()): string {
-  return `http://127.0.0.1:${port}`;
 }
 
 export function devDashboardCommandFromEnv(env: NodeJS.ProcessEnv): string | undefined {
@@ -128,6 +105,19 @@ function logDev(message: string): void {
   console.warn(`${LOG_PREFIX}${message}`);
 }
 
+function stderrSupportsAnsiColor(): boolean {
+  return process.stderr.isTTY && process.env.NO_COLOR == null && process.env.TERM !== "dumb";
+}
+
+export function configErrorLogPrefix(supportsColor = stderrSupportsAnsiColor()): string {
+  const label = supportsColor ? "\x1b[41;37;1m[CONFIG ERROR]\x1b[0m" : "[CONFIG ERROR]";
+  return `${LOG_PREFIX}${label} `;
+}
+
+function logDevConfigError(message: string): void {
+  console.warn(`${configErrorLogPrefix()}${message}`);
+}
+
 function openUrlInBrowser(url: string): boolean {
   try {
     if (process.platform === "darwin") {
@@ -145,7 +135,7 @@ function openUrlInBrowser(url: string): boolean {
   }
 }
 
-function maybeOpenOnboardingPage(session: SessionResponse, port: number): void {
+function maybeOpenOnboardingPage(session: DashboardSessionResponse, port: number): void {
   if (!session.onboarding_outstanding) {
     return;
   }
@@ -187,20 +177,6 @@ function startProgressLog(message: string): ProgressLogger {
       logDev(`${message}... done!`);
     },
   };
-}
-
-function bundledDashboardRoot(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), BUNDLED_DASHBOARD_DIR_NAME);
-}
-
-function assertBundledDashboardExists(): void {
-  const serverPath = join(bundledDashboardRoot(), BUNDLED_DASHBOARD_SERVER_PATH);
-  if (!existsSync(serverPath)) {
-    throw new CliError([
-      "This stack-cli build does not include the bundled development-environment dashboard.",
-      "Build the CLI package with the dashboard standalone assets before running `hexclave dev`.",
-    ].join(" "));
-  }
 }
 
 function dashboardRuntimeRoot(port: number): string {
@@ -254,17 +230,19 @@ function dashboardRuntimeLockPath(port: number): string {
   return `${dashboardRuntimeRoot(port)}.lock`;
 }
 
-function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number): string {
-  assertBundledDashboardExists();
+function prepareDashboardRuntime(env: NodeJS.ProcessEnv, port: number, dashboardRoot: string): string {
+  if (!existsSync(join(dashboardRoot, DASHBOARD_SERVER_RELATIVE_PATH))) {
+    throw new CliError("The Hexclave development-environment dashboard is missing its server entrypoint.");
+  }
   const runtimeRoot = dashboardRuntimeRoot(port);
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   rmSync(runtimeRoot, { recursive: true, force: true });
-  cpSync(bundledDashboardRoot(), runtimeRoot, { recursive: true });
+  cpSync(dashboardRoot, runtimeRoot, { recursive: true });
   replaceDashboardRuntimeSentinels(runtimeRoot, env);
 
-  const runtimeServerPath = join(runtimeRoot, BUNDLED_DASHBOARD_SERVER_PATH);
+  const runtimeServerPath = join(runtimeRoot, DASHBOARD_SERVER_RELATIVE_PATH);
   if (!existsSync(runtimeServerPath)) {
-    throw new CliError("The bundled development-environment dashboard is missing its server entrypoint.");
+    throw new CliError("The Hexclave development-environment dashboard is missing its server entrypoint.");
   }
   return runtimeServerPath;
 }
@@ -316,9 +294,8 @@ function parseVersionCore(version: string): ParsedVersion | null {
 // Returns true only when `candidate` is strictly newer than `current`. Unknown
 // or unparseable versions return false so we never act on a version we can't
 // reason about (and never downgrade). Prerelease identifiers beyond the
-// "release beats same-core prerelease" rule are intentionally not ordered. Only
-// the dashboard restart check below needs this; the CLI re-exec just always runs
-// `@latest`. Exported for unit testing.
+// "release beats same-core prerelease" rule are intentionally not ordered. Used
+// by the dashboard restart check below. Exported for unit testing.
 export function isVersionNewer(candidate: string, current: string): boolean {
   const a = parseVersionCore(candidate);
   const b = parseVersionCore(current);
@@ -332,12 +309,12 @@ export function isVersionNewer(candidate: string, current: string): boolean {
   return !a.hasPrerelease && b.hasPrerelease;
 }
 
-// Restart the running dashboard only when ours is strictly newer; this is how a
-// re-exec'd `npx @latest` rolls out a fresh dashboard without a reinstall.
-// Equal/older/unknown versions (e.g. a dashboard recorded by a pre-feature CLI
-// with no version field) are reused as-is. Exported for unit testing.
-export function shouldRestartDashboard(currentVersion: string | undefined, runningVersion: string | undefined): boolean {
-  return currentVersion != null && runningVersion != null && isVersionNewer(currentVersion, runningVersion);
+// Restart the running dashboard only when the latest published release is
+// strictly newer than the one serving the port. Equal/older/unknown versions (a
+// pre-feature CLI's record, or an unreachable manifest) are reused as-is.
+// Exported for unit testing.
+export function shouldRestartDashboard(latestVersion: string | undefined, runningVersion: string | undefined): boolean {
+  return latestVersion != null && runningVersion != null && isVersionNewer(latestVersion, runningVersion);
 }
 
 // Whether `pid` refers to a live process. EPERM means it exists but is owned by
@@ -370,6 +347,7 @@ function startDashboardProcess(options: {
   dashboardEnv: NodeJS.ProcessEnv,
   logFd: number,
   port: number,
+  dashboardRoot?: string,
 }): ChildProcess {
   const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   if (devDashboardCommand != null) {
@@ -383,7 +361,10 @@ function startDashboardProcess(options: {
     });
   }
 
-  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port);
+  if (options.dashboardRoot == null) {
+    throw new CliError("Internal error: the Hexclave dashboard build was not resolved before starting.");
+  }
+  const dashboardServerPath = prepareDashboardRuntime(options.dashboardEnv, options.port, options.dashboardRoot);
   return spawn(process.execPath, [dashboardServerPath], {
     cwd: resolve(dirname(dashboardServerPath), "../.."),
     detached: true,
@@ -439,12 +420,33 @@ export async function killLocalDashboard(url: string, port: number): Promise<voi
 
 async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: string, port: number }): Promise<void> {
   const url = dashboardUrl(options.port);
+  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
+
+  // Look up the newest published release to decide whether to restart a running
+  // dashboard and which build to launch. Skipped for a custom dev command or a
+  // local-build override; a null manifest (offline) reuses the running dashboard
+  // or falls back to cache.
+  const dashboardOverride = dashboardDirOverride();
+  const skipReleaseLookup = devDashboardCommand != null || dashboardOverride != null;
+  const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
+  const latestVersion = manifest?.version;
+
   if (await isDashboardReachable(url, options.secret)) {
-    const currentVersion = cliVersion();
     const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
     const runningVersion = runningDashboard?.version;
-    if (shouldRestartDashboard(currentVersion, runningVersion)) {
-      logDev(`Existing Hexclave dashboard is ${runningVersion}; restarting with ${currentVersion}...`);
+    if (devDashboardCommand != null && runningVersion != null) {
+      // A custom dev command should take over a release/override dashboard left
+      // running from a prior run. A custom-command dashboard records no version,
+      // so `runningVersion != null` avoids needlessly restarting that one.
+      logDev("A custom Hexclave dashboard command is configured; restarting the running dashboard...");
+      await killLocalDashboard(url, options.port);
+    } else if (dashboardOverride != null && runningVersion !== "local") {
+      // A local-build override should win over a release dashboard left running
+      // from a prior run; the override always resolves to version "local".
+      logDev("A local Hexclave dashboard override is configured; restarting the running dashboard...");
+      await killLocalDashboard(url, options.port);
+    } else if (shouldRestartDashboard(latestVersion, runningVersion)) {
+      logDev(`A newer Hexclave dashboard (${latestVersion}) is available; restarting from ${runningVersion}...`);
       await killLocalDashboard(url, options.port);
     } else {
       logDev(`Using existing Hexclave dashboard on ${url}.`);
@@ -455,8 +457,11 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     }
   }
 
+  // Download (or reuse a cached copy of) the dashboard build to launch. Not
+  // needed when a custom dev dashboard command runs the dashboard itself.
+  const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest }) : null;
+
   const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
-  const devDashboardCommand = devDashboardCommandFromEnv(process.env);
   const dashboardEnv = {
     ...process.env,
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
@@ -472,10 +477,10 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
     NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL: url,
     NEXT_PUBLIC_STACK_PROJECT_ID: "internal",
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: DEFAULT_PUBLISHABLE_CLIENT_KEY,
-    NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR: "false",
     NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
     NEXT_PUBLIC_STACK_IS_PREVIEW: "false",
     [DASHBOARD_PORT_ENV_VAR]: String(options.port),
+    [RDE_DASHBOARD_LOG_PATH_ENV_VAR]: dashboardLogPath(options.port),
   };
   try {
     const logPath = dashboardLogPath(options.port);
@@ -512,7 +517,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
       try {
         const child = (() => {
           try {
-            return startDashboardProcess({ dashboardEnv, logFd, port: options.port });
+            return startDashboardProcess({ dashboardEnv, logFd, port: options.port, dashboardRoot: release?.root });
           } finally {
             closeSync(logFd);
           }
@@ -520,7 +525,7 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
         if (child.pid == null) {
           throw new CliError(`Failed to start the development environment dashboard process. Dashboard logs: ${logPath}`);
         }
-        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, cliVersion());
+        recordLocalDashboardProcess(options.port, options.secret, child.pid, logPath, release?.version);
         logDev(`Dashboard logs: ${logPath}`);
         child.unref();
       } finally {
@@ -548,69 +553,32 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   }
 }
 
-async function dashboardRequest(path: string, options: RequestInit, secret: string, port: number): Promise<Response> {
-  const url = `${dashboardUrl(port)}${path}`;
-  try {
-    return await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        ...options.headers,
-      },
-    });
-  } catch (error) {
-    throw new CliError(`Failed to reach local Hexclave dashboard at ${url}: ${errorMessage(error)}`);
-  }
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.values(value).every((entry) => typeof entry === "string")
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function responseErrorMessage(response: Response): Promise<string> {
-  const text = await response.text();
-  if (text.length === 0) return "empty response body";
-
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (isRecord(parsed)) {
-      const error = parsed.error;
-      if (typeof error === "string") return error;
-      if (isRecord(error) && typeof error.message === "string") return error.message;
-    }
-  } catch {
-    // Fall back to the raw response below.
+function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
+  if (
+    !isRecord(value) ||
+    !("config_file_path" in value) ||
+    typeof value.config_file_path !== "string" ||
+    !("status" in value) ||
+    !("created_at_millis" in value) ||
+    typeof value.created_at_millis !== "number"
+  ) {
+    return false;
   }
-
-  return text;
-}
-
-function isSessionResponse(value: unknown): value is SessionResponse {
+  if (value.status === "success") {
+    return true;
+  }
   return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "session_id" in value &&
-    typeof value.session_id === "string" &&
-    "project_id" in value &&
-    typeof value.project_id === "string" &&
-    "onboarding_outstanding" in value &&
-    typeof value.onboarding_outstanding === "boolean" &&
-    "env" in value &&
-    isStringRecord(value.env)
+    value.status === "error" &&
+    "error_message" in value &&
+    typeof value.error_message === "string"
   );
 }
 
-function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
+export function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -624,6 +592,10 @@ function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
     (
       !("browser_secret_confirmation_code_expires_at_millis" in value) ||
       typeof value.browser_secret_confirmation_code_expires_at_millis === "number"
+    ) &&
+    (
+      !("config_sync_events" in value) ||
+      (Array.isArray(value.config_sync_events) && value.config_sync_events.every(isConfigSyncEvent))
     )
   );
 }
@@ -637,6 +609,16 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
   logDev(expiresInSeconds == null
     ? `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code}`
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
+}
+
+function logConfigSyncEvents(response: HeartbeatResponse): void {
+  for (const event of response.config_sync_events ?? []) {
+    if (event.status === "success") {
+      logDev(`Config synced to development environment project: ${event.config_file_path}`);
+    } else {
+      logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
+    }
+  }
 }
 
 function pendingBrowserSecretConfirmationCodeFromState(port: number): HeartbeatResponse | null {
@@ -673,32 +655,6 @@ async function logPendingBrowserSecretConfirmationCodesUntilStopped(options: {
     lastLoggedConfirmationCode = maybeLogPendingBrowserSecretConfirmationCodeFromState(options.port, lastLoggedConfirmationCode);
     await wait(1_000);
   }
-}
-
-async function createRemoteDevelopmentEnvironmentSession(options: {
-  apiBaseUrl: string,
-  configFilePath: string,
-  port: number,
-  secret: string,
-}): Promise<SessionResponse> {
-  const response = await dashboardRequest("/api/remote-development-environment/sessions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      api_base_url: options.apiBaseUrl,
-      config_path: options.configFilePath,
-    }),
-  }, options.secret, options.port);
-  if (!response.ok) {
-    throw new CliError(`Failed to register development environment session (${response.status}): ${await responseErrorMessage(response)}`);
-  }
-  const body: unknown = await response.json();
-  if (!isSessionResponse(body)) {
-    throw new CliError("Local dashboard returned an invalid development environment session response.");
-  }
-  return body;
 }
 
 const APP_COMMAND_WRAPPER_PARENT_PID_ENV_VAR = "HEXCLAVE_DEV_APP_COMMAND_PARENT_PID";
@@ -822,7 +778,7 @@ async function restartDashboardForHeartbeat(options: {
   dashboardReachableSinceMs: number,
   port: number,
   secret: string,
-}): Promise<SessionResponse> {
+}): Promise<DashboardSessionResponse> {
   const dashboardUptimeMs = performance.now() - options.dashboardReachableSinceMs;
   if (dashboardUptimeMs < DASHBOARD_RESTART_MIN_UPTIME_MS) {
     throw new CliError(`Local Hexclave dashboard stopped before it had been running for ${DASHBOARD_RESTART_MIN_UPTIME_MS / 1000} seconds. Not restarting to avoid a restart loop.`);
@@ -924,6 +880,7 @@ async function heartbeatUntilStopped(sessionState: DashboardSessionState, option
       logBrowserSecretConfirmationCode(heartbeatBody);
       lastLoggedConfirmationCode = heartbeatBody.browser_secret_confirmation_code;
     }
+    logConfigSyncEvents(heartbeatBody);
   }
 }
 
@@ -948,20 +905,10 @@ export function registerDevCommand(program: Command) {
     .usage("--config-file <path> -- <command> [args...]")
     .description("Run a command with Hexclave development-environment credentials")
     .requiredOption("--config-file <path>", "Path to stack.config.ts")
-    .option("--no-auto-update", "Don't re-run the latest published CLI via npx before starting")
     .argument("<command...>", "Command and arguments to run after --")
     .action(async (commandArgs: string[], opts: DevOptions) => {
       if (opts.configFile == null) {
         throw new CliError("--config-file is required.");
-      }
-
-      // Before doing any work, re-exec through `npx <pkg>@latest` when a newer
-      // CLI is published so users get the latest dashboard without reinstalling.
-      // No-ops (and returns) when already latest, offline, in CI, or opted out.
-      if (opts.autoUpdate !== false) {
-        await maybeReexecToLatest({
-          forwardArgs: ["dev", "--config-file", opts.configFile, "--", ...commandArgs],
-        });
       }
 
       const childCommand = splitDevCommandArgs(commandArgs);

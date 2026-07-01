@@ -54,8 +54,8 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     steps:
       # First, checkout the current branch to get its migrations
@@ -255,8 +255,8 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     steps:
       # First, checkout the base branch to get its migrations

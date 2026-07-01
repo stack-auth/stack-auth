@@ -40,7 +40,7 @@ const TEST_FILE_DIR = dirname(fileURLToPath(import.meta.url));
 let tempDir: string | undefined;
 
 function createTempDir(): string {
-  tempDir ??= mkdtempSync(join(TEST_FILE_DIR, ".stack-rde-config-test-"));
+  tempDir ??= mkdtempSync(join(TEST_FILE_DIR, ".stack-rde-config-test.untracked.dir-"));
   return tempDir;
 }
 
@@ -211,7 +211,19 @@ describe("remote development environment config file", () => {
     const { readConfigFile } = await import("./config-file");
 
     await expect(readConfigFile(configPath)).rejects.toThrow(
-      `Failed to load config file ${configPath}. If your config imports a value (e.g. defineHexclaveConfig) from a framework package such as "@hexclave/next", import it from that package's lightweight "/config" entrypoint instead`
+      `Failed to load config file ${configPath}.`
+    );
+  });
+
+  it("throws a helpful error when the config file is syntactically invalid", async () => {
+    const configPath = writeTempConfig(`
+      export const config = {
+    `);
+
+    const { readConfigFile } = await import("./config-file");
+
+    await expect(readConfigFile(configPath)).rejects.toThrow(
+      `Failed to load config file ${configPath}.`
     );
   });
 

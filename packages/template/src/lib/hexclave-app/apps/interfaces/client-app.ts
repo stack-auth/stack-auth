@@ -22,11 +22,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
-   * Whether to show the Hexclave dev tool indicator in browser-like development environments.
+   * Whether to show the Hexclave dev tool indicator in browser-like environments.
    *
-   * Defaults to true.
+   * - `true`: always show
+   * - `false`: never show
+   * - `"auto"` (default): show based on NODE_ENV or origin heuristics
    */
-  devTool?: boolean,
+  devTool?: boolean | "auto",
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -129,10 +131,13 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       addRequestListener(listener: RequestListener): () => void,
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      getUrls(): Readonly<ResolvedHandlerUrls>,
       getRedirectMethod(): RedirectMethod,
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
+      getRedirectToHandlerUrl(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<string>,
       redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
+      awaitPendingAuthResolutions(): Promise<void>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

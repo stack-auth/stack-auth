@@ -2,7 +2,7 @@
 
 import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
 import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
 import { envVars } from "../generated/env";
@@ -245,7 +245,7 @@ function generateRandomEmail(): string {
   for (let i = 0; i < 8; i++) {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `dev-${id}@test.hexclave.com`;
+  return `dev-${id}@devtool-quick-sign-up.example.com`;
 }
 
 // ---------------------------------------------------------------------------
@@ -635,11 +635,6 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
 
   const actions = h('div', { className: 'sdt-ov-actions' });
   const toast = h('div', { className: 'sdt-ov-toast', style: { display: 'none' } });
-  const emailRow = h('div', { className: 'sdt-ov-email-input' });
-  const emailInput = h('input', { type: 'email', placeholder: 'Sign in as email\u2026' }) as HTMLInputElement;
-  const emailBtn = h('button', null);
-  setHtml(emailBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>');
-  emailRow.append(emailInput, emailBtn);
 
   function isBestEffortOverviewError(error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -701,15 +696,14 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
       });
       actions.append(signOutBtn, randomBtn);
     } else {
-      const quickBtn = h('button', { className: 'sdt-ov-btn sdt-ov-btn-primary sdt-ov-btn-wide' }, loading ? 'Working\u2026' : 'Quick Sign In');
+      const quickBtn = h('button', { className: 'sdt-ov-btn sdt-ov-btn-primary sdt-ov-btn-wide' }, loading ? 'Working\u2026' : 'Quick Sign Up');
       quickBtn.disabled = loading;
       quickBtn.addEventListener('click', () => {
         runAsynchronously(doQuickSignIn());
       });
       actions.appendChild(quickBtn);
     }
-    emailInput.placeholder = currentUser ? 'Switch to email\u2026' : 'Sign in as email\u2026';
-    actions.appendChild(emailRow);
+
   }
 
   async function doQuickSignIn() {
@@ -740,54 +734,6 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
     loading = false;
     await refreshUser();
   }
-
-  async function doSignInAs(targetEmail: string) {
-    if (!targetEmail.trim()) return;
-    if (!isLocalhost(window.location.href)) {
-      showToast('Quick sign-in is only available on localhost', 'error');
-      return;
-    }
-    loading = true;
-    rebuildActions();
-    const trimmed = targetEmail.trim();
-    try {
-      const signInResult = await app.signInWithCredential({ email: trimmed, password: trimmed, noRedirect: true });
-      if (signInResult.status === 'ok') {
-        showToast(`Signed in as ${trimmed}`, 'success');
-        emailInput.value = '';
-        loading = false;
-        await refreshUser();
-        return;
-      }
-      const signUpResult = await app.signUpWithCredential({ email: trimmed, password: trimmed, noRedirect: true } as any);
-      if (signUpResult.status === 'error') {
-        showToast(`Failed: ${signUpResult.error.message}`, 'error');
-        loading = false;
-        rebuildActions();
-        return;
-      }
-      const retryResult = await app.signInWithCredential({ email: trimmed, password: trimmed, noRedirect: true });
-      if (retryResult.status === 'error') {
-        showToast(`Sign in failed: ${retryResult.error.message}`, 'error');
-      } else {
-        showToast(`Signed in as ${trimmed}`, 'success');
-        emailInput.value = '';
-      }
-    } catch (e: any) {
-      showToast(e.message || 'Unknown error', 'error');
-    }
-    loading = false;
-    await refreshUser();
-  }
-
-  emailBtn.addEventListener('click', () => {
-    runAsynchronously(doSignInAs(emailInput.value));
-  });
-  emailInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      runAsynchronously(doSignInAs(emailInput.value));
-    }
-  });
 
   heroCard.append(actions, toast);
 
@@ -852,7 +798,7 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
   function buildChecklist() {
     checksCard.innerHTML = '';
     const currentUserCheck = hasPersistentTokenStore
-      ? { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign In\u201d above \u2192' }
+      ? { ok: !!currentUser, label: 'Sign in a test user', hint: 'Use \u201cQuick Sign Up\u201d above \u2192' }
       : { ok: true, label: 'Current-user tools unavailable', hint: null };
     const checks = [
       { ok: !!projectId && projectId !== 'default', label: 'Project configured', hint: null },
@@ -922,7 +868,7 @@ function createOverviewTab(app: StackClientApp<true>): TabResult {
         } else {
           avatar.textContent = initials;
         }
-        userName.textContent = currentUser.displayName || 'Anonymous';
+        userName.textContent = currentUser.displayName || '(No display name)';
         userEmail.textContent = currentUser.primaryEmail || 'No email';
         authIndicator.style.display = '';
       } else {
@@ -1902,7 +1848,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
 function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
-  const urls = app.urls;
+  const urls = app[hexclaveAppInternalsSymbol].getUrls();
   const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
@@ -1987,11 +1933,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     });
   }
 
-  function getCompactUrl(url: string): string {
-    const resolved = new URL(url, window.location.origin);
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-  }
-
   const sidebar = h('div', { className: 'sdt-pg-sidebar' });
   const mainArea = h('div', { className: 'sdt-pg-main' });
 
@@ -2042,7 +1983,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const header = h('div', { className: 'sdt-pg-header' });
     const headerTop = h('div', { className: 'sdt-pg-header-top' });
     headerTop.appendChild(h('h3', { className: 'sdt-pg-title' }, `${page.label} Page`));
-    headerTop.appendChild(h('a', { href: page.url, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-pg-title-url' }, getCompactUrl(page.url)));
     if (page.versionStatus === 'outdated') {
       headerTop.appendChild(h('span', { className: 'sdt-pg-badge sdt-pg-badge-outdated' }, 'Outdated'));
     }
@@ -2054,8 +1994,19 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
     setHtml(openBtn, 'Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>');
     openBtn.addEventListener('click', () => {
-      const resolved = new URL(page.url, window.location.origin);
-      window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+      const openedWindow = window.open('about:blank', '_blank');
+      if (openedWindow != null) {
+        openedWindow.opener = null;
+      }
+      runAsynchronouslyWithAlert(async () => {
+        const redirectUrl = await app[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl(page.key);
+        const resolved = new URL(redirectUrl, window.location.origin);
+        if (openedWindow != null) {
+          openedWindow.location.replace(resolved.toString());
+        } else {
+          window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+        }
+      });
     });
     codeRow.appendChild(openBtn);
     header.appendChild(codeRow);

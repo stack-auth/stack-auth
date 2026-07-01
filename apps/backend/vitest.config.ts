@@ -21,6 +21,6 @@ export default mergeConfig(
       }
     },
     envDir: __dirname,
-    envPrefix: 'STACK_',
+    envPrefix: ['HEXCLAVE_', 'STACK_'],
   })
 )

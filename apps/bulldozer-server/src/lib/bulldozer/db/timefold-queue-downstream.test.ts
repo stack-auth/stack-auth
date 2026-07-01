@@ -22,6 +22,7 @@ import {
   toQueryableSqlQuery,
 } from "./index";
 import { loadProcessQueueFunctionSql } from "./test-sql-loaders";
+import { resolveTestDatabaseConnectionString } from "./test-db-env";
 
 type SqlExpression<T> = { type: "expression", sql: string };
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
@@ -42,11 +43,7 @@ function predicate(sql: string): SqlPredicate {
 const TEST_DB_PREFIX = "stack_bulldozer_queue_downstream_test";
 
 function getTestDbUrls() {
-  const env = Reflect.get(import.meta, "env");
-  const connectionString = Reflect.get(env, "STACK_DATABASE_CONNECTION_STRING");
-  if (typeof connectionString !== "string" || connectionString.length === 0) {
-    throw new Error("Missing STACK_DATABASE_CONNECTION_STRING");
-  }
+  const connectionString = resolveTestDatabaseConnectionString();
   const base = connectionString.replace(/\/[^/]*(\?.*)?$/, "");
   const query = connectionString.split("?")[1] ?? "";
   const dbName = `${TEST_DB_PREFIX}_${Math.random().toString(16).slice(2, 12)}`;

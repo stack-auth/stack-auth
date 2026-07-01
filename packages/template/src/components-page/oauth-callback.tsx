@@ -8,49 +8,51 @@ import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
-import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
 import { useTranslation } from "../lib/translations";
+import { ErrorPage } from "./error-page";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const app = useStackApp();
   const called = useRef(false);
   const [showRedirectLink, setShowRedirectLink] = useState(false);
-  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  const [errorSearchParams, setErrorSearchParams] = useState<Record<string, string> | null>(null);
 
   useEffect(() => runAsynchronously(async () => {
     if (called.current) return;
     called.current = true;
-    const redirectToError = async (url: URL) => {
-      const urlString = url.toString();
-      if (app[hexclaveAppInternalsSymbol].getRedirectMethod() === "none") {
-        setRedirectUrl(urlString);
-        return;
-      }
-      await app[hexclaveAppInternalsSymbol].redirectToUrl(urlString, { replace: true });
-    };
     try {
+      // The startup handler in StackClientApp's constructor may have already consumed the
+      // one-time OAuth params (code + state cookie) via a microtask that fires before this
+      // macrotask-scheduled useEffect. Await its completion so we don't race: if it succeeds
+      // it will redirect and this page tears down; if it fails we fall through below.
+      await app[hexclaveAppInternalsSymbol].awaitPendingAuthResolutions();
       const hasRedirected = await app.callOAuthCallback();
       if (!hasRedirected) {
         await app.redirectToSignIn({ noRedirectBack: true });
       }
     } catch (e) {
       if (KnownError.isKnownError(e)) {
-        const errorUrl = new URL(app.urls.error, window.location.href);
-        errorUrl.searchParams.set("errorCode", e.errorCode);
-        errorUrl.searchParams.set("message", e.message);
-        errorUrl.searchParams.set("details", JSON.stringify(e.details ?? {}));
-        await redirectToError(errorUrl);
+        setErrorSearchParams({
+          errorCode: e.errorCode,
+          message: e.message,
+          details: JSON.stringify(e.details ?? {}),
+        });
         return;
       }
       captureError("<OAuthCallback />", e);
-      await redirectToError(new URL(app.urls.error, window.location.href));
+      setErrorSearchParams({});
     }
   }), [app]);
 
   useEffect(() => {
     setTimeout(() => setShowRedirectLink(true), 3000);
   }, []);
+
+  if (errorSearchParams != null) {
+    return <ErrorPage searchParams={errorSearchParams} fullPage={fullPage} />;
+  }
 
   return (
     <MaybeFullPage
@@ -66,11 +68,10 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         <div className="flex flex-col justify-center items-center gap-4">
           <Spinner size={20} />
         </div>
-        {showRedirectLink || redirectUrl != null ? <p>{t('If you are not redirected automatically, ')}<StyledLink
+        {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink
           className="whitespace-nowrap"
-          href={redirectUrl ?? "#"}
+          href="#"
           onClick={(e) => {
-            if (redirectUrl != null) return;
             e.preventDefault();
             runAsynchronously(app.redirectToHome());
           }}

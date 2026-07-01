@@ -9,6 +9,7 @@ import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
 import { InternalApiKey, InternalApiKeyCreateOptions, InternalApiKeyFirstView } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions } from "../../permissions";
+import type { PlanUsage } from "../../plan-usage";
 import { AdminProject } from "../../projects";
 import { _HexclaveAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
@@ -71,6 +72,7 @@ export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, Proje
 /** @deprecated Use `HexclaveAdminApp` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
 export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & AsyncStoreProperty<"project", [], AdminProject, false>
+  & AsyncStoreProperty<"planUsage", [], PlanUsage, false>
   & AsyncStoreProperty<"internalApiKeys", [], InternalApiKey[], true>
   & AsyncStoreProperty<"teamPermissionDefinitions", [], AdminTeamPermissionDefinition[], true>
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
