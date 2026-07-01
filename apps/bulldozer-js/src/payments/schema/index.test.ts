@@ -48,6 +48,67 @@ describe("payments schema", () => {
     });
   });
 
+  it("uses the invoice's actual total for the renewal amount, not the current product price", async () => {
+    // The product lists at 10.00, but the invoice was actually billed 7.50 (e.g. a coupon or
+    // proration). The renewal ledger must show what was charged (7.50), not a recomputation from
+    // the current product price. This is also what protects the ledger when a product version's
+    // price changes after the subscription was created.
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-coupon", subscription("sub-coupon", {
+      stripeSubscriptionId: "stripe-sub-coupon",
+      creationSource: "PURCHASE_PAGE",
+      createdAtMillis: 1_000,
+    }) as unknown as PiledriverObject);
+    snapshot = await set(snapshot, schema.subscriptionInvoices, "inv-coupon", {
+      id: "inv-coupon",
+      tenancyId: "t1",
+      stripeSubscriptionId: "stripe-sub-coupon",
+      stripeInvoiceId: "stripe-inv-coupon",
+      isSubscriptionCreationInvoice: false,
+      status: "paid",
+      amountTotal: 750,
+      hostedInvoiceUrl: null,
+      createdAtMillis: 2_000,
+    });
+
+    const events = await rowDatas(snapshot, schema.subscriptionRenewalEvents);
+    expect(events[0]).toMatchObject({ invoiceId: "inv-coupon", chargedAmount: { USD: "7.50" } });
+
+    const group = customerGroup("customer-sub-coupon");
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    const renewalTxn = txns.find(txn => txn.txnId === "sub-renewal:inv-coupon");
+    expect(renewalTxn?.entries).toMatchObject([
+      { type: "money-transfer", chargedAmount: { USD: "7.50" } },
+    ]);
+  });
+
+  it("falls back to the product price when the invoice has no persisted total", async () => {
+    // A null amountTotal means the charge is unknown (not $0), so we recompute from the product
+    // price (10.00 x quantity 1). A real $0 charge would keep amountTotal 0 and yield "0.00".
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.subscriptions, "sub-nototal", subscription("sub-nototal", {
+      stripeSubscriptionId: "stripe-sub-nototal",
+      creationSource: "PURCHASE_PAGE",
+      createdAtMillis: 1_000,
+    }) as unknown as PiledriverObject);
+    snapshot = await set(snapshot, schema.subscriptionInvoices, "inv-nototal", {
+      id: "inv-nototal",
+      tenancyId: "t1",
+      stripeSubscriptionId: "stripe-sub-nototal",
+      stripeInvoiceId: "stripe-inv-nototal",
+      isSubscriptionCreationInvoice: false,
+      status: "paid",
+      amountTotal: null,
+      hostedInvoiceUrl: null,
+      createdAtMillis: 2_000,
+    });
+
+    const events = await rowDatas(snapshot, schema.subscriptionRenewalEvents);
+    expect(events[0]).toMatchObject({ invoiceId: "inv-nototal", chargedAmount: { USD: "10.00" } });
+  });
+
   it("maps one-time purchases through events, transactions, owned products, and item quantities", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();

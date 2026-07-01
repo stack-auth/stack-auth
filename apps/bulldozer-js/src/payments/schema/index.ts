@@ -182,6 +182,19 @@ const chargedAmount = (product: ProductSnapshot, priceId: string | null, quantit
   }
   return result;
 };
+const USD_CURRENCY = SUPPORTED_CURRENCIES.find(c => c.code === "USD") ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
+// The charged amount for a subscription renewal is the invoice's actual total, not a
+// recomputation from the current product price — this is what preserves proration, coupons,
+// and the price locked in at renewal (a later product-version price change must not rewrite it).
+// `amountTotal` is in Stripe minor units. Stripe charges are USD-only across the codebase (the
+// refund path throws on non-USD; SubscriptionInvoice has no currency column), so we format it as
+// USD. We fall back to the product-price computation only when the total is genuinely unknown
+// (`null`): test-mode/API-granted subs have no Stripe invoice. A total of 0 (e.g. a 100%-off
+// coupon) is a real charge of $0 and must NOT fall back.
+const renewalChargedAmount = (invoice: SubscriptionInvoiceRow, sub: SubscriptionRow): Record<string, string> =>
+  invoice.amountTotal !== null
+    ? { USD: stripeUnitsToMoneyAmount(invoice.amountTotal, USD_CURRENCY) }
+    : chargedAmount(sub.product, sub.priceId, sub.quantity);
 // The concrete millis at which a stamped (subscription/one-time-purchase) grant expires, so the
 // ledger can rank grants by real expiry (soonest-first) instead of treating them all as permanent.
 // `when-repeated` grants drop at the sooner of their next reset or the purchase end; `when-purchase-
@@ -577,7 +590,7 @@ export function createPaymentsSchema() {
         customerId: sub.customerId,
         customerType: sub.customerType,
         invoiceId: invoice.id,
-        chargedAmount: chargedAmount(sub.product, sub.priceId, sub.quantity),
+        chargedAmount: renewalChargedAmount(invoice, sub),
         paymentProvider: paymentProvider(sub.creationSource),
         effectiveAtMillis: invoice.createdAtMillis,
         createdAtMillis: invoice.createdAtMillis,
