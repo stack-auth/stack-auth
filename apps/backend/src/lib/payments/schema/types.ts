@@ -60,6 +60,7 @@ export type ProductSnapshot = {
   customerType: CustomerType,
   stackable?: boolean | null,
   serverOnly?: boolean | null,
+  /** @deprecated Product-level freeTrial is no longer written. Free trials are configured per-price only. Kept for backward compat with existing stored snapshots. */
   freeTrial?: DayInterval | null,
   isAddOnTo?: false | Record<string, true> | null,
   prices: Record<string, Record<string, Json>>,

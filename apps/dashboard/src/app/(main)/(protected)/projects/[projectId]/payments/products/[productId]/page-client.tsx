@@ -41,7 +41,7 @@ import {
 } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { useUpdateConfig } from "@/components/config-update";
-import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
 import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
 import type { CustomerType } from "@/components/payments/customer-selector";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
@@ -272,7 +272,6 @@ type PendingProductChanges = {
   catalogId?: string | null,
   stackable?: boolean | null,
   serverOnly?: boolean | null,
-  freeTrial?: DayInterval | null,
   isAddOnTo?: Record<string, true> | null,
   prices?: Product['prices'],
   includedItems?: Product['includedItems'],
@@ -286,7 +285,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Dialog states
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
-  const [freeTrialPopoverOpen, setFreeTrialPopoverOpen] = useState(false);
   const [createProductLineDialogOpen, setCreateProductLineDialogOpen] = useState(false);
 
   // ===== LOCAL STATE FOR DEFERRED SAVE =====
@@ -301,7 +299,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   const localDisplayName = pendingChanges.displayName !== undefined ? pendingChanges.displayName : (product.displayName || '');
   const localStackable = pendingChanges.stackable !== undefined ? !!pendingChanges.stackable : !!product.stackable;
   const localServerOnly = pendingChanges.serverOnly !== undefined ? !!pendingChanges.serverOnly : !!product.serverOnly;
-  const localFreeTrial = pendingChanges.freeTrial !== undefined ? pendingChanges.freeTrial : (product.freeTrial || null);
   const localIsAddOnTo = pendingChanges.isAddOnTo !== undefined
     ? pendingChanges.isAddOnTo
     : (product.isAddOnTo !== false && typeof product.isAddOnTo === 'object' ? product.isAddOnTo : null);
@@ -317,7 +314,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     if (pendingChanges.displayName !== undefined) keys.add('displayName');
     if (pendingChanges.stackable !== undefined) keys.add('stackable');
     if (pendingChanges.serverOnly !== undefined) keys.add('serverOnly');
-    if (pendingChanges.freeTrial !== undefined) keys.add('freeTrial');
     if (pendingChanges.isAddOnTo !== undefined) keys.add('isAddOnTo');
     if (pendingChanges.prices !== undefined) keys.add('prices');
     if (pendingChanges.includedItems !== undefined) keys.add('includedItems');
@@ -357,9 +353,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     }
     if (pendingChanges.serverOnly !== undefined) {
       configUpdate[`payments.products.${productId}.serverOnly`] = pendingChanges.serverOnly;
-    }
-    if (pendingChanges.freeTrial !== undefined) {
-      configUpdate[`payments.products.${productId}.freeTrial`] = pendingChanges.freeTrial;
     }
     if (pendingChanges.isAddOnTo !== undefined) {
       configUpdate[`payments.products.${productId}.isAddOnTo`] = pendingChanges.isAddOnTo;
@@ -405,10 +398,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     return new Set(Object.keys(product.isAddOnTo));
   });
 
-  // Free trial popover state
-  const [freeTrialCount, setFreeTrialCount] = useState(() => product.freeTrial ? product.freeTrial[0] : 7);
-  const [freeTrialUnit, setFreeTrialUnit] = useState<DayInterval[1]>(() => product.freeTrial ? product.freeTrial[1] : 'day');
-
   // Computed: add-on parent products from local state
   const localAddOnParents = useMemo(() => {
     if (!localIsAddOnTo) return [];
@@ -431,12 +420,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
         displayName: p.displayName || id,
       }));
   }, [config.payments.products, productId, product.customerType, product.productLineId]);
-
-  const localFreeTrialDisplayText = useMemo(() => {
-    if (!localFreeTrial) return 'None';
-    const [count, unit] = localFreeTrial;
-    return `${count} ${count === 1 ? unit : unit + 's'}`;
-  }, [localFreeTrial]);
 
   // ===== CHANGE HANDLERS (update local state) =====
   const handleDisplayNameChange = (value: string) => {
@@ -533,30 +516,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     setAddOnDialogOpen(false);
   };
 
-  const handleFreeTrialSave = (count: number, unit: DayInterval[1]) => {
-    const newValue: DayInterval = [count, unit];
-    const originalValue = product.freeTrial || null;
-
-    if (originalValue && originalValue[0] === count && originalValue[1] === unit) {
-      const { freeTrial: _, ...rest } = pendingChanges;
-      setPendingChanges(rest);
-    } else {
-      setPendingChanges({ ...pendingChanges, freeTrial: newValue });
-    }
-    setFreeTrialPopoverOpen(false);
-  };
-
-  const handleRemoveFreeTrial = () => {
-    const originalValue = product.freeTrial || null;
-    if (originalValue === null) {
-      const { freeTrial: _, ...rest } = pendingChanges;
-      setPendingChanges(rest);
-    } else {
-      setPendingChanges({ ...pendingChanges, freeTrial: null });
-    }
-    setFreeTrialPopoverOpen(false);
-  };
-
   // ===== PRICES HANDLERS (for deferred save) =====
   const handlePricesChange = (newPrices: Product['prices']) => {
     // Clear the "needs at least one price" error as soon as the user adds one back.
@@ -644,72 +603,6 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
           ))}
         </span>
       ) : 'No',
-    },
-    {
-      type: 'custom',
-      itemKey: 'freeTrial',
-      icon: <ClockIcon size={16} />,
-      name: "Free Trial",
-      tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
-      children: (
-        <Popover open={freeTrialPopoverOpen} onOpenChange={setFreeTrialPopoverOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-                "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
-                "transition-colors duration-150 hover:transition-none"
-              )}
-            >
-              {localFreeTrialDisplayText}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64 p-3">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Input
-                  className="w-20"
-                  type="number"
-                  min={1}
-                  value={freeTrialCount}
-                  onChange={(e) => setFreeTrialCount(parseInt(e.target.value) || 1)}
-                />
-                <Select value={freeTrialUnit} onValueChange={(v) => setFreeTrialUnit(v as DayInterval[1])}>
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEFAULT_INTERVAL_UNITS.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}{freeTrialCount !== 1 ? 's' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleFreeTrialSave(freeTrialCount, freeTrialUnit)}
-                >
-                  Apply
-                </Button>
-                {localFreeTrial && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRemoveFreeTrial}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      ),
     },
     {
       type: 'boolean',

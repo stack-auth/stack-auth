@@ -567,6 +567,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-07-01: product-level freeTrial removed; free trials are now configured per-price only.
+  // Strip any saved product-level freeTrial overrides so they don't cause validation errors.
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.includes("prices"));
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -585,6 +592,34 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
     "sourceOfTruth.type": "postgres",
     "sourceOfTruth.connectionString": "postgres://user:password@host:5432/database",
   })).toEqual({});
+});
+
+import.meta.vitest?.test("migrateConfigOverride strips product-level freeTrial but keeps price-level freeTrial", ({ expect }) => {
+  // Product-level freeTrial (nested) should be removed
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"] } } },
+  })).toEqual({
+    payments: { products: { pro: {} } },
+  });
+
+  // Product-level freeTrial (dot-notation) should be removed
+  expect(migrateConfigOverride("branch", {
+    "payments.products.pro.freeTrial": [14, "day"],
+  })).toEqual({});
+
+  // Price-level freeTrial should be preserved
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+  });
+
+  // Mixed: product-level removed, price-level kept
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { freeTrial: [14, "day"] } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [14, "day"] } } } } },
+  });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
@@ -824,7 +859,6 @@ const organizationConfigDefaults = {
       displayName: key,
       productLineId: undefined,
       customerType: "user",
-      freeTrial: undefined,
       serverOnly: false,
       stackable: undefined,
       isAddOnTo: false,

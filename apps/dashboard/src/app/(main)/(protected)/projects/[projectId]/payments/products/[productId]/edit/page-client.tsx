@@ -23,7 +23,7 @@ import {
 import { SubpageHeader } from "@/components/design-components/subpage-header";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
-import { ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
+import { HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { useState } from "react";
@@ -115,7 +115,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   const [serverOnly, setServerOnly] = useState(existingProduct.serverOnly);
   const [prices, setPrices] = useState<Record<string, Price>>(existingPrices);
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(existingProduct.includedItems);
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(existingProduct.freeTrial);
 
   // Dialog states
   const [showProductLineDialog, setShowProductLineDialog] = useState(false);
@@ -158,7 +157,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
     prices,
     includedItems,
     serverOnly,
-    freeTrial,
   };
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
@@ -222,7 +220,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         prices,
         includedItems,
         serverOnly,
-        freeTrial,
       };
 
       const success = await updateConfig({
@@ -569,54 +566,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
                     </div>
                   </>
                 )}
-
-                {/* Free Trial */}
-                <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Offer a free trial period?</span>
-                <div className="py-2 flex items-center border-b border-border/20">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      id="free-trial"
-                      checked={!!freeTrial}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setFreeTrial([7, 'day']);
-                        } else {
-                          setFreeTrial(undefined);
-                        }
-                      }}
-                    />
-                    <ClockIcon className="h-4 w-4 text-foreground/50" />
-                    <span className="text-sm font-medium">Free trial</span>
-                  </label>
-                  {freeTrial && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={freeTrial[0]}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 1;
-                          setFreeTrial([val, freeTrial[1]]);
-                        }}
-                        className="h-7 w-16 text-sm rounded-md"
-                      />
-                      <Select
-                        value={freeTrial[1]}
-                        onValueChange={(value) => setFreeTrial([freeTrial[0], value as 'day' | 'week' | 'month' | 'year'])}
-                      >
-                        <SelectTrigger className="h-7 w-24 rounded-md text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="day">days</SelectItem>
-                          <SelectItem value="week">weeks</SelectItem>
-                          <SelectItem value="month">months</SelectItem>
-                          <SelectItem value="year">years</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
 
                 {/* Product Line */}
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>

@@ -89,7 +89,6 @@ export async function ensureProductIdOrInlineProduct(
       isAddOnTo: false,
       displayName: inlineProduct.display_name,
       customerType: inlineProduct.customer_type,
-      freeTrial: inlineProduct.free_trial,
       serverOnly: inlineProduct.server_only,
       stackable: false,
       prices: Object.fromEntries(Object.entries(inlineProduct.prices).map(([key, value]) => [key, {
