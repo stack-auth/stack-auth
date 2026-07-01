@@ -67,10 +67,13 @@ export default function PageClient() {
         const from_path = r.from_path;
         const to_path = r.to_path;
         const cnt = r.cnt;
-        if (typeof from_path !== "string" || typeof to_path !== "string" || typeof cnt !== "string") {
-          throw new Error("Unexpected navigation query result shape");
+        if (typeof from_path !== "string" || typeof to_path !== "string") {
+          throw new Error("Unexpected navigation query result shape: from_path/to_path must be strings");
         }
-        return { from_path, to_path, cnt } satisfies TransitionRow;
+        if (typeof cnt !== "string" && typeof cnt !== "number") {
+          throw new Error("Unexpected navigation query result shape: cnt must be string or number");
+        }
+        return { from_path, to_path, cnt: String(cnt) } satisfies TransitionRow;
       });
 
       // Normalize paths and aggregate
