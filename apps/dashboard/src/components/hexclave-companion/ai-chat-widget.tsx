@@ -449,7 +449,7 @@ function AIChatWidgetInner({
     backendBaseUrl,
     currentUser: currentUser ?? undefined,
     systemPrompt: "command-center-ask-ai",
-    tools: ["docs", "sql-query"],
+    tools: ["docs", "sql-query", "read-config"],
     quality: "smart",
     speed: "slow",
     projectId,
