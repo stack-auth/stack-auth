@@ -287,8 +287,8 @@ export function FunnelGraphCanvas({
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: `${containerSize.w / 2}px ${containerSize.h / 2}px`,
+          transform: `translate(${offsetX + transform.x}px, ${offsetY + transform.y}px) scale(${transform.scale})`,
+          transformOrigin: "0 0",
         }}
       >
         {nodes.map((node) => {
@@ -303,8 +303,8 @@ export function FunnelGraphCanvas({
                 isHovered && "ring-2 ring-blue-500/50 shadow-md border-blue-400/60",
               )}
               style={{
-                left: offsetX + node.x - CARD_WIDTH / 2,
-                top: offsetY + node.y - CARD_HEIGHT / 2,
+                left: node.x - CARD_WIDTH / 2,
+                top: node.y - CARD_HEIGHT / 2,
                 width: CARD_WIDTH,
                 height: CARD_HEIGHT,
               }}
