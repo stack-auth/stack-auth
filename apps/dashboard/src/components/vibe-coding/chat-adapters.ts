@@ -142,7 +142,7 @@ export function createDashboardChatAdapter(
   onRunEnd?: () => void,
 ): ChatModelAdapter {
   const tools = projectId
-    ? ["update-dashboard", "sql-query"]
+    ? ["update-dashboard", "sql-query", "read-config"]
     : ["update-dashboard"];
 
   return createUnifiedAiChatAdapter({
