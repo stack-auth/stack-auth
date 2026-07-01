@@ -20,7 +20,8 @@ const BASE64_TOKEN_REGEX = /^[A-Za-z0-9_-]{16,}[=]{0,2}$/;
 const OBJECTID_REGEX = /^[0-9a-f]{24}$/i;
 
 // Short numeric-heavy mixed IDs (e.g. "a1b2c3d4", "usr_abc123")
-const PREFIXED_ID_REGEX = /^[a-z]{1,10}_[a-z0-9]+$/i;
+// Require at least one digit in the suffix to avoid matching static words like "sign_in"
+const PREFIXED_ID_REGEX = /^[a-z]{1,10}_[a-z0-9]*\d[a-z0-9]*$/i;
 
 function isLikelyDynamicSegment(segment: string): boolean {
   if (segment.length === 0) return false;

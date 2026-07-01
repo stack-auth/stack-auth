@@ -101,6 +101,9 @@ export default function PageClient() {
         });
       }
 
+      // Yield to event loop so the loading spinner renders before the expensive computation
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
       // Compute force-directed layout
       const laidOutNodes = computeForceLayout(nodeArray, edges);
 

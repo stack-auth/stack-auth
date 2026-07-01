@@ -52,6 +52,7 @@ export function FunnelGraphCanvas({
   edges: GraphEdge[],
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -105,10 +106,18 @@ export function FunnelGraphCanvas({
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning) return;
-    const dx = e.clientX - panStart.current.x;
-    const dy = e.clientY - panStart.current.y;
-    setTransform((t) => ({ ...t, x: panStart.current.tx + dx, y: panStart.current.ty + dy }));
-  }, [isPanning]);
+    const dxPx = e.clientX - panStart.current.x;
+    const dyPx = e.clientY - panStart.current.y;
+    // Convert CSS pixel deltas to SVG user-unit space
+    const svg = svgRef.current;
+    const scaleX = svg != null && svg.clientWidth > 0 ? viewBox.width / svg.clientWidth : 1;
+    const scaleY = svg != null && svg.clientHeight > 0 ? viewBox.height / svg.clientHeight : 1;
+    setTransform((t) => ({
+      ...t,
+      x: panStart.current.tx + dxPx * scaleX,
+      y: panStart.current.ty + dyPx * scaleY,
+    }));
+  }, [isPanning, viewBox.width, viewBox.height]);
 
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -172,6 +181,7 @@ export function FunnelGraphCanvas({
       </div>
 
       <svg
+        ref={svgRef}
         className="w-full h-full"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         preserveAspectRatio="xMidYMid meet"
