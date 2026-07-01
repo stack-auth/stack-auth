@@ -1,3 +1,5 @@
+import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
+import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
@@ -169,9 +171,14 @@ const chargedAmount = (product: ProductSnapshot, priceId: string | null, quantit
   for (const [currency, amount] of Object.entries(price)) {
     if (currency === "interval" || currency === "serverOnly" || currency === "freeTrial") continue;
     if (typeof amount !== "string" && typeof amount !== "number") continue;
-    const numeric = Number(amount);
-    if (!Number.isFinite(numeric)) continue;
-    result[currency] = String(numeric * quantity);
+    const currencyConfig = SUPPORTED_CURRENCIES.find(c => c.code === currency);
+    if (currencyConfig === undefined) continue;
+    // Scale in integer minor units. Float math like `19.99 * 3` yields
+    // 59.97000000000001, which then fails moneyAmountSchema (too many decimals)
+    // and 500s the transactions API. Prices are already validated money strings,
+    // so the conversion is exact; a bad price or non-integer quantity throws.
+    const minorUnits = moneyAmountToStripeUnits(String(amount) as MoneyAmount, currencyConfig);
+    result[currency] = stripeUnitsToMoneyAmount(minorUnits * quantity, currencyConfig);
   }
   return result;
 };

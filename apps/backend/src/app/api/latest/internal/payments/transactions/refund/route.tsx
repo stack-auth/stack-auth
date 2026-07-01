@@ -13,7 +13,7 @@ import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prism
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type Stripe from "stripe";
@@ -38,25 +38,6 @@ export function buildStripeRefundParams(args: {
     ...(args.metadata ? { metadata: args.metadata } : {}),
     refund_application_fee: false,
   };
-}
-
-/**
- * Formats stripe units as a decimal money string with the currency's full
- * decimal places — this is the canonical shape for `moneyAmountToStripeUnits`
- * (which right-pads the fractional part to currency.decimals before
- * stripping the dot, so shorter inputs like "5" also round-trip correctly).
- * E.g. for USD: 5000 → "50.00", 1 → "0.01", 100 → "1.00".
- */
-function stripeUnitsToMoneyAmount(stripeUnits: number): string {
-  if (!Number.isFinite(stripeUnits) || Math.trunc(stripeUnits) !== stripeUnits) {
-    throw new HexclaveAssertionError("Stripe units must be an integer", { stripeUnits });
-  }
-  const absolute = Math.abs(stripeUnits);
-  const decimals = USD_CURRENCY.decimals;
-  const units = absolute.toString().padStart(decimals + 1, "0");
-  const integerPart = units.slice(0, -decimals) || "0";
-  const fractionalPart = units.slice(-decimals);
-  return `${integerPart}.${fractionalPart}`;
 }
 
 function readProductLineId(product: InferType<typeof productSchema>): string | null {
@@ -142,7 +123,7 @@ function buildMoneyTransferEntry(options: {
     customerType: options.customerType,
     customerId: options.customerId,
     chargedAmount: {
-      USD: stripeUnitsToMoneyAmount(options.refundAmountStripeUnits),
+      USD: stripeUnitsToMoneyAmount(options.refundAmountStripeUnits, USD_CURRENCY),
     },
   };
 }
@@ -617,7 +598,7 @@ async function handleSubscriptionRefund(options: {
   });
   const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
   if (options.amountStripeUnits > remainingStripeUnits) {
-    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits, USD_CURRENCY)}).`);
   }
   // Replay gate for endNow on subs. Require both the durable subscription
   // marker and the refund ledger entry before rejecting; if a prior attempt
@@ -891,7 +872,7 @@ async function handleOneTimePurchaseRefund(options: {
   });
   const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
   if (options.amountStripeUnits > remainingStripeUnits) {
-    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits, USD_CURRENCY)}).`);
   }
   if (options.endNow && prior.productRevoked) {
     throw new KnownErrors.SchemaError("This purchase's product has already been revoked.");

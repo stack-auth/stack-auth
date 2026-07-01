@@ -44,7 +44,7 @@ describe("payments schema", () => {
       invoiceId: "inv-renewal",
       paymentProvider: "stripe",
       effectiveAtMillis: 2_000,
-      chargedAmount: { USD: "10" },
+      chargedAmount: { USD: "10.00" },
     });
   });
 
@@ -68,14 +68,14 @@ describe("payments schema", () => {
     });
 
     const events = await rowDatas(snapshot, schema.oneTimePurchaseEvents);
-    expect(events[0]).toMatchObject({ purchaseId: "otp-1", chargedAmount: { USD: "20" }, itemGrants: [{ itemId: "coins", quantity: 200, expiresWhen: null }] });
+    expect(events[0]).toMatchObject({ purchaseId: "otp-1", chargedAmount: { USD: "20.00" }, itemGrants: [{ itemId: "coins", quantity: 200, expiresWhen: null }] });
 
     const group = customerGroup("u-otp");
     const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
     expect(txns.map(txn => txn.txnId)).toEqual(["otp:otp-1"]);
     expect(txns[0].entries).toMatchObject([
       { type: "product-grant", productId: "prod-coins", oneTimePurchaseId: "otp-1" },
-      { type: "money-transfer", chargedAmount: { USD: "20" } },
+      { type: "money-transfer", chargedAmount: { USD: "20.00" } },
       { type: "item-quantity-change", itemId: "coins", quantity: 200 },
     ]);
 
@@ -84,6 +84,39 @@ describe("payments schema", () => {
 
     const quantities = asRecord((await rowDatas(snapshot, schema.itemQuantities, group)).at(-1) ?? null);
     expect(asRecord(quantities.itemQuantities).coins).toBe(200);
+  });
+
+  it("computes charged amount in minor units so price x quantity has no float artifacts", async () => {
+    // Regression: `19.99 * 3` in float is 59.97000000000001, which then fails
+    // moneyAmountSchema (USD allows 2 decimals) and 500s the transactions API.
+    // The charged amount must be exact and canonically formatted ("59.97").
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await set(snapshot, schema.oneTimePurchases, "otp-float", {
+      id: "otp-float",
+      tenancyId: "t1",
+      customerId: "u-float",
+      customerType: "user",
+      productId: "prod-float",
+      priceId: "p1",
+      product: { ...product({ coins: { quantity: 1, expires: "never" } }), prices: { p1: { USD: "19.99" } } },
+      quantity: 3,
+      stripePaymentIntentId: "pi-float",
+      revokedAtMillis: null,
+      refundedAtMillis: null,
+      creationSource: "PURCHASE_PAGE",
+      createdAtMillis: 3_000,
+    });
+
+    const events = await rowDatas(snapshot, schema.oneTimePurchaseEvents);
+    expect(events[0]).toMatchObject({ purchaseId: "otp-float", chargedAmount: { USD: "59.97" } });
+
+    const txns = (await rowDatas(snapshot, schema.transactions, customerGroup("u-float"))) as unknown as TransactionRow[];
+    expect(txns[0].entries).toMatchObject([
+      { type: "product-grant", productId: "prod-float" },
+      { type: "money-transfer", chargedAmount: { USD: "59.97" } },
+      { type: "item-quantity-change", itemId: "coins", quantity: 3 },
+    ]);
   });
 
   it("keeps grant entry indices aligned for a free non-test-mode one-time purchase on repeat", async () => {
