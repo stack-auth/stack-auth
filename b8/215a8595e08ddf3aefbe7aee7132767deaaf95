@@ -1,0 +1,83 @@
+apps/backend/src/lib/clickhouse.tsx
+  s_5ef28b6e31bc80::t_cd6380d2f0e3bf 10-13,15-31
+  s_5ef28b6e31bc80::t_b36353f426a53f 14
+apps/backend/src/lib/spans.tsx
+  s_5ef28b6e31bc80::t_4bd62df3973bf9 2
+  s_5ef28b6e31bc80::t_f7c4b2e2a1e30c 170-184
+  s_5ef28b6e31bc80::t_1f2f3c7d6816c6 110-157,168-169,185-186
+  s_5ef28b6e31bc80::t_48ab9901b3390c 1
+  s_5ef28b6e31bc80::t_5158024dd14707 158-167
+  s_5ef28b6e31bc80::t_c1ba24d5c746f0 28-31
+packages/template/src/index.ts
+  s_5ef28b6e31bc80::t_09de07c547687b 9-12
+packages/shared/src/interface/server-interface.ts
+  s_5ef28b6e31bc80::t_fe423f28fa3db7 63-94
+  s_5ef28b6e31bc80::t_b21cfabda316ed 12
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5ef28b6e31bc80::t_9dad328bbb986c 261
+  s_5ef28b6e31bc80::t_cee78cf72bbbee 3998-4039
+  s_5ef28b6e31bc80::t_3cbcb37c0cc6b0 64
+apps/backend/src/lib/spans.test.ts
+  s_5ef28b6e31bc80::t_79c32d6fada890 106-223
+  s_5ef28b6e31bc80::t_38a65be34a190d 2
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5ef28b6e31bc80::t_54ec2bfd542652 508,513
+  s_5ef28b6e31bc80::t_522cfe5348a966 346,351
+  s_5ef28b6e31bc80::t_f5170708b45502 773-1284
+packages/shared/src/interface/client-interface.ts
+  s_5ef28b6e31bc80::t_3b8a44a1084e6e 133
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5ef28b6e31bc80::t_bb6a79c901d910 105
+  s_5ef28b6e31bc80::t_5f09b4b3baff29 132
+  s_5ef28b6e31bc80::t_1abdd673b2c937 92-93
+  s_5ef28b6e31bc80::t_a27b9854d9bd54 66-67,79-81,84-86,89-91,94,97-104,106-125,127-131,133
+  s_5ef28b6e31bc80::t_a52dba5e0d745c 1,4-5,12,17-22,24-26,30-32
+  s_5ef28b6e31bc80::t_9c5eeb2d57da1c 126
+  s_5ef28b6e31bc80::t_a6b65518a33c57 146-188,198,200,202,206-208,214-216,218-219,223,232-237,240-274,279
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5ef28b6e31bc80::t_7d6d46110bc512 39-40
+  s_5ef28b6e31bc80::t_f8dfbb138079c4 1703-1882,1884-1968,1970-1993
+  s_5ef28b6e31bc80::t_d4484119037401 1883
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5ef28b6e31bc80::t_346c0b30a47963 116-147
+  s_5ef28b6e31bc80::t_0e69e103af5f81 10
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5ef28b6e31bc80::t_12ef181c68f9c6 423-473,475-543,545-582,584-601,604-736
+  s_5ef28b6e31bc80::t_2c832c9d7959e2 474,544,583,602-603
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_5ef28b6e31bc80::t_0699afe2487c00 11
+  s_5ef28b6e31bc80::t_671c4846cbd983 41-54
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5ef28b6e31bc80::t_8484c00e557f04 1024
+  s_5ef28b6e31bc80::t_9b50699ae55594 427,440-525,531-566,568-628,633
+  s_5ef28b6e31bc80::t_d9879a7dd1577c 932-933,935-936,938,941-954,963,966-988,990-998,1001,1004,1006-1010
+  s_5ef28b6e31bc80::t_a2cf9f767bd1e5 999-1000,1002
+  s_5ef28b6e31bc80::t_f15cc5300547e3 107,110-116
+  s_5ef28b6e31bc80::t_2c142cfb5cf42c 131-133
+  s_5ef28b6e31bc80::t_14fa2084e98312 311-313,316-318
+  s_5ef28b6e31bc80::t_3d643b24e41171 567
+  s_5ef28b6e31bc80::t_ad570a67ac09ef 83
+  s_5ef28b6e31bc80::t_a8f31d6161d60e 135
+  s_5ef28b6e31bc80::t_849fcdc7c8701d 915
+  s_5ef28b6e31bc80::t_65451f029d1e96 336-351
+  s_5ef28b6e31bc80::t_599eb065d39c1d 526-530
+  s_5ef28b6e31bc80::t_4d7101378e97f4 400,406-426
+  s_5ef28b6e31bc80::t_cc8ccb2128cc89 13-82,84-106,108-109,117-130,134,136-212
+  s_5ef28b6e31bc80::t_67723d1f2bc123 428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "b8215a8595e08ddf3aefbe7aee7132767deaaf95",
+  "prompts": {},
+  "sessions": {
+    "s_5ef28b6e31bc80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b238aad0-909c-4ac5-8f7b-800597210478",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
