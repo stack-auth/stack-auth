@@ -1,0 +1,40 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.tsx
+  s_5ef28b6e31bc80::t_27fdaa240c49b4 153-155
+  s_5ef28b6e31bc80::t_2542634e92b9df 331-342
+  s_5ef28b6e31bc80::t_9c527dd0e2f5e0 183
+  s_5ef28b6e31bc80::t_9833369e73e551 210,212-214
+  s_5ef28b6e31bc80::t_8249341ec51118 3
+  s_5ef28b6e31bc80::t_15d80086093800 20,25,30
+  s_5ef28b6e31bc80::t_3e133a58b05933 359
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/span-tree.tsx
+  s_5ef28b6e31bc80::t_8d499dec463441 18
+  s_5ef28b6e31bc80::t_9c1079e65a5d33 103-110
+  s_5ef28b6e31bc80::t_d884ba18c40c06 1-17,19-102,111-198
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.ts
+  s_5ef28b6e31bc80::t_e21d3b3fb74399 45-75
+  s_5ef28b6e31bc80::t_d36b3c0495ec19 170-175
+  s_5ef28b6e31bc80::t_6c44bc9244762e 238
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/waterfall.tsx
+  s_5ef28b6e31bc80::t_ec86c20d51bc04 111-113,116
+  s_5ef28b6e31bc80::t_5465a38b104e84 6-17,42,46-55,58,65-66,75-86,88-110,114-115,117-121,126,144-147,159-163,168,173,177-189,198,200-207,233-245,248-252,270-277
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.test.ts
+  s_5ef28b6e31bc80::t_08e311979ac020 84-93
+  s_5ef28b6e31bc80::t_e0a8756ab93739 203-242,245
+  s_5ef28b6e31bc80::t_aa92fe83548bbe 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "e14124c53e609d9d052c0d2dd018535a34c30b45",
+  "prompts": {},
+  "sessions": {
+    "s_5ef28b6e31bc80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b238aad0-909c-4ac5-8f7b-800597210478",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
