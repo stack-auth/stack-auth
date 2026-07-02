@@ -2,6 +2,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import {
   adaptSchema,
@@ -851,7 +852,32 @@ async function fetchExternalDatabaseStatus(
     };
   }
 
-  const client = new Client({ connectionString: dbConfig.connectionString });
+  const clientOptionsResult = await Result.fromPromise(getSafeExternalPostgresClientOptions(dbConfig.connectionString));
+  if (clientOptionsResult.status === "error") {
+    return {
+      id: dbId,
+      type: dbConfig.type,
+      connection,
+      status: "error" as const,
+      error: formatError(clientOptionsResult.error),
+      metadata: [],
+      users_table: {
+        exists: false,
+        total_rows: null,
+        min_signed_up_at_millis: null,
+        max_signed_up_at_millis: null,
+      },
+      mapping_status: mappingStatuses.map((mapping) => ({
+        mapping_id: mapping.mapping_id,
+        internal_max_sequence_id: mapping.internal_max_sequence_id,
+        last_synced_sequence_id: null,
+        updated_at_millis: null,
+        backlog: null,
+      })),
+    };
+  }
+
+  const client = new Client(clientOptionsResult.data);
   const connectResult = await Result.fromPromise(client.connect());
   if (connectResult.status === "error") {
     return {
