@@ -19,7 +19,10 @@ function fetchViewerLocation(): Promise<ViewerLocation> {
   fetchPromise = (async () => {
     try {
       const res = await fetch("/api/viewer-location");
-      if (!res.ok) { fetchPromise = null; return US_CENTER; }
+      if (!res.ok) {
+        fetchPromise = null;
+        return US_CENTER;
+      }
       const data = await res.json();
       if (typeof data.lat === "number" && typeof data.lng === "number") {
         return { lat: data.lat, lng: data.lng };
