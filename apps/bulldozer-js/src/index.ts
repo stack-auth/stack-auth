@@ -10,13 +10,13 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getHeapStatistics } from "node:v8";
+import { isBulldozerRequestAuthorized } from "./auth.js";
 import { declareBulldozerDatabase, type BulldozerDatabase } from "./databases/bulldozer/index.js";
 import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implementations/in-memory.js";
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
-import { isBulldozerRequestAuthorized } from "./auth.js";
 import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
@@ -30,6 +30,7 @@ const USD_CURRENCY = SUPPORTED_CURRENCIES.find(currency => currency.code === "US
 const schema = createPaymentsSchema();
 const port = Number(process.env.BULLDOZER_JS_PORT ?? process.env.BULLDOZER_SERVER_PORT ?? `${process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81"}46`);
 const HEAP_GC_USAGE_THRESHOLD = 0.6;
+const HEAP_GC_TARGET_USAGE_THRESHOLD = 0.3;
 const HEAP_GC_MAX_PASSES = 5;
 const HEAP_GC_FINALIZATION_DELAY_MS = 20;
 const HEAP_GC_RETRY_COOLDOWN_MS = 60_000;
@@ -147,6 +148,7 @@ function delayNextHeapGcMaintenance(reason: string, label: string, usage: Return
     label,
     reason,
     threshold: HEAP_GC_USAGE_THRESHOLD,
+    targetThreshold: HEAP_GC_TARGET_USAGE_THRESHOLD,
     retryAfterMs: HEAP_GC_RETRY_COOLDOWN_MS,
     usage,
   });
@@ -191,7 +193,7 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
   }
 
   const startedAt = performance.now();
-  logHeapGcMaintenance("heap-gc-start", { label, threshold: HEAP_GC_USAGE_THRESHOLD, before });
+  logHeapGcMaintenance("heap-gc-start", { label, threshold: HEAP_GC_USAGE_THRESHOLD, targetThreshold: HEAP_GC_TARGET_USAGE_THRESHOLD, before });
 
   let previous = before;
   let completedPasses = 0;
@@ -204,10 +206,11 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
 
     const afterPass = currentHeapUsage();
     const passElapsedMs = performance.now() - passStartedAt;
-    const thresholdReached = afterPass.heapUsedRatio <= HEAP_GC_USAGE_THRESHOLD;
+    const targetThresholdReached = afterPass.heapUsedRatio <= HEAP_GC_TARGET_USAGE_THRESHOLD;
     logHeapGcMaintenance("heap-gc-pass", {
       label,
       pass,
+      targetThreshold: HEAP_GC_TARGET_USAGE_THRESHOLD,
       before: previous,
       after: afterPass,
       freedHeapMb: (previous.heapUsed - afterPass.heapUsed) / 1_000_000,
@@ -217,13 +220,14 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
     });
     previous = afterPass;
     completedPasses = pass;
-    if (thresholdReached) break;
+    if (targetThresholdReached) break;
   }
 
   const after = currentHeapUsage();
   logHeapGcMaintenance("heap-gc-finish", {
     label,
     threshold: HEAP_GC_USAGE_THRESHOLD,
+    targetThreshold: HEAP_GC_TARGET_USAGE_THRESHOLD,
     after,
     totalFreedHeapMb: (before.heapUsed - after.heapUsed) / 1_000_000,
     completedPasses,
@@ -231,12 +235,12 @@ async function runHeapGcMaintenanceIfNeeded(label: string) {
     elapsedMs: performance.now() - startedAt,
   });
 
-  if (after.heapUsedRatio > HEAP_GC_USAGE_THRESHOLD) {
+  if (after.heapUsedRatio > HEAP_GC_TARGET_USAGE_THRESHOLD) {
     captureError("bulldozer-js:heap-still-above-threshold-after-gc", new HexclaveAssertionError(
-      "Bulldozer JS heap remained above the GC threshold after explicit collection",
-      { label, threshold: HEAP_GC_USAGE_THRESHOLD, before, after },
+      "Bulldozer JS heap remained above the GC target threshold after explicit collection",
+      { label, threshold: HEAP_GC_USAGE_THRESHOLD, targetThreshold: HEAP_GC_TARGET_USAGE_THRESHOLD, before, after },
     ));
-    delayNextHeapGcMaintenance("still-above-threshold", label, after);
+    delayNextHeapGcMaintenance("still-above-target-threshold", label, after);
   } else {
     heapGcMaintenanceRetryAfter = 0;
   }
