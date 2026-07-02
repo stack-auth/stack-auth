@@ -28,7 +28,7 @@ function resolveReadConfigPath(): string {
   return HEXCLAVE_CONFIG_PATH;
 }
 
-type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_CLI_ANON_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL" | "STACK_EMULATOR_API_URL" | "STACK_EMULATOR_DASHBOARD_URL";
+type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_CLI_ANON_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL";
 
 function readConfigJson(): Record<string, string> {
   try {

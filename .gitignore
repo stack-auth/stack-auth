@@ -3,6 +3,7 @@
 node-compile-cache/
 .envrc
 
+*.heapsnapshot
 
 debug.log
 

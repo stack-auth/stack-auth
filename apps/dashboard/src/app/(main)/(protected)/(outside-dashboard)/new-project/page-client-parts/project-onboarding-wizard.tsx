@@ -4,6 +4,7 @@ import { DesignCard, DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { HostedAuthMethodPreview } from "@/components/hosted-auth-preview";
 import { useRouter } from "@/components/router";
 import { StripeWordmark } from "@/components/stripe-wordmark";
 import {
@@ -30,7 +31,7 @@ import {
   WarningCircleIcon,
   WebhooksLogoIcon,
 } from "@phosphor-icons/react";
-import { AuthPage, type AdminOwnedProject } from "@hexclave/next";
+import { type AdminOwnedProject } from "@hexclave/next";
 import { type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { type EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
@@ -53,7 +54,6 @@ import {
   getStepIndex,
   normalizeProjectOnboardingState,
   createProjectOnboardingState,
-  OAUTH_SIGN_IN_METHODS,
   type OnboardingConfigChoice,
   type OnboardingPaymentsCountry,
   type OnboardingProgressUpdate,
@@ -80,9 +80,8 @@ export function ProjectOnboardingWizard(props: {
 }) {
   const router = useRouter();
   const { project, status, onboardingState, setMode, saveOnboardingProgress, onComplete } = props;
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const isDevelopmentEnvironment = isRemoteDevelopmentEnvironment;
   const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const finishProjectOnboarding = onComplete;
@@ -94,13 +93,12 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry: "US",
       developmentEnvironment: isDevelopmentEnvironment,
-      isLocalEmulator,
     });
     if (onboardingState == null) {
       return defaultState;
     }
-    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment, isLocalEmulator });
-  }, [completeConfig, isDevelopmentEnvironment, isLocalEmulator, onboardingState, project]);
+    return normalizeProjectOnboardingState(onboardingState, { developmentEnvironment: isDevelopmentEnvironment });
+  }, [completeConfig, isDevelopmentEnvironment, onboardingState, project]);
   const initialOnboardingState = deriveCurrentOnboardingState(status);
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => new Set(initialOnboardingState.selected_apps));
@@ -252,7 +250,7 @@ export function ProjectOnboardingWizard(props: {
 
   const authPreviewProject = useMemo(() => {
     return {
-      id: project.id,
+      displayName: project.displayName,
       config: {
         signUpEnabled: true,
         credentialEnabled: signInMethods.has("credential"),
@@ -263,7 +261,7 @@ export function ProjectOnboardingWizard(props: {
           .map((providerId) => ({ id: providerId, type: "shared" as const })),
       },
     };
-  }, [project.id, signInMethods]);
+  }, [project.displayName, signInMethods]);
 
   const toggleSignInMethod = (method: SignInMethod, enabled: boolean) => {
     setSignInMethods((previous) => {
@@ -302,9 +300,8 @@ export function ProjectOnboardingWizard(props: {
       selectedEmailThemeId: selectedEmailThemeId ?? completeConfig.emails.selectedThemeId,
       selectedPaymentsCountry,
       developmentEnvironment: isDevelopmentEnvironment,
-      isLocalEmulator,
     });
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, isLocalEmulator, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedConfigChoice, selectedEmailThemeId, selectedPaymentsCountry, signInMethods]);
 
   const saveCurrentOnboardingProgress = useCallback(async (nextStatus: ProjectOnboardingStatus) => {
     await saveOnboardingProgress({
@@ -740,10 +737,6 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "auth_setup") {
-    const availableSignInMethods = isLocalEmulator
-      ? SIGN_IN_METHODS.filter((method) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === method.id))
-      : SIGN_IN_METHODS;
-
     return (
       <OnboardingPage
         stepKey="auth-setup"
@@ -800,14 +793,14 @@ export function ProjectOnboardingWizard(props: {
                   Sign-in methods
                 </Typography>
                 <div className="overflow-hidden rounded-xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-foreground/[0.04] dark:ring-white/[0.06]">
-                  {availableSignInMethods.map((method, index) => {
+                  {SIGN_IN_METHODS.map((method, index) => {
                     const checked = signInMethods.has(method.id);
                     return (
                       <label
                         key={method.id}
                         className={cn(
                           "flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 md:gap-4 md:px-4 md:py-3",
-                          index !== availableSignInMethods.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
+                          index !== SIGN_IN_METHODS.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
                         )}
                       >
                         <span className="text-sm">{method.label}</span>
@@ -832,9 +825,7 @@ export function ProjectOnboardingWizard(props: {
                 <div className="flex min-h-[180px] items-center justify-center px-4 py-3 sm:min-h-[220px] md:min-h-[260px] md:px-5 md:py-4 lg:min-h-[300px]">
                   <div className="pointer-events-none relative flex w-full items-center justify-center" inert>
                     <div className="absolute inset-0 z-10 bg-transparent" />
-                    <div className="auth-preview-host-theme flex w-full justify-center">
-                      <AuthPage type="sign-in" mockProject={authPreviewProject} />
-                    </div>
+                    <HostedAuthMethodPreview project={authPreviewProject} />
                   </div>
                 </div>
               </BrowserFrame>
@@ -908,7 +899,16 @@ export function ProjectOnboardingWizard(props: {
         onBack={handleBack}
         disabled={saving}
         actionsLayout="inline"
-        primaryAction={
+        primaryAction={selectedPaymentsCountry === "US" ? (
+          <DesignButton
+            className="rounded-full px-6"
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "connect"}
+            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+          >
+            Connect
+          </DesignButton>
+        ) : (
           <DesignButton
             className="rounded-full px-6"
             disabled={saving || paymentsSetupAction != null}
@@ -917,16 +917,16 @@ export function ProjectOnboardingWizard(props: {
           >
             Do Later
           </DesignButton>
-        }
+        )}
         secondaryAction={selectedPaymentsCountry === "US" ? (
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
             disabled={saving || paymentsSetupAction != null}
-            loading={paymentsSetupAction === "connect"}
-            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
-            Connect
+            Do Later
           </DesignButton>
         ) : undefined}
       >

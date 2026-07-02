@@ -95,8 +95,7 @@
     },
     "@hexclave/cli#build": {
       "dependsOn": [
-        "^build",
-        "@hexclave/dashboard#build:rde-standalone"
+        "^build"
       ],
       "outputs": [
         "dist/**"

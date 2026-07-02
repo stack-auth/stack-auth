@@ -1,12 +1,13 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
-import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -112,13 +113,23 @@ export const POST = createSmartRouteHandler({
             teamId: invitationData.team_id,
           },
         });
-        const maxDashboardAdmins = await getItemQuantityForCustomer({
-          prisma: tx,
-          tenancyId: auth.tenancy.id,
-          customerId: invitationData.team_id,
-          itemId: "dashboard_admins",
-          customerType: "team",
-        });
+        // The seat cap lives in bulldozer, but accepting a team invite must not
+        // hard-depend on it: if bulldozer is unreachable, report it and skip the
+        // check this once (treat the cap as unlimited) rather than blocking the
+        // invite. The cap is re-enforced on the next accept once bulldozer is back.
+        let maxDashboardAdmins: number;
+        try {
+          maxDashboardAdmins = await getItemQuantityForCustomer({
+            prisma: tx,
+            tenancyId: auth.tenancy.id,
+            customerId: invitationData.team_id,
+            itemId: "dashboard_admins",
+            customerType: "team",
+          });
+        } catch (error) {
+          captureError("team-invitations:accept:dashboard-admins-seat-check", error);
+          maxDashboardAdmins = UNLIMITED_ITEM_CAPACITY;
+        }
         if (currentMemberCount + 1 > maxDashboardAdmins) {
           throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", invitationData.team_id, -1);
         }

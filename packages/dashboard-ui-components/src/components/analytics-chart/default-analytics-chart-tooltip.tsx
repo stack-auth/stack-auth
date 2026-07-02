@@ -108,7 +108,7 @@ export function DefaultAnalyticsChartTooltip({ ctx }: DefaultAnalyticsChartToolt
   const { point, isPinned, primary, compare, delta, formatValue: fv, formatDate: fd, strings } = ctx;
   const anySegmented = (primary?.segmented ?? false) || (compare?.segmented ?? false);
   return (
-    <div className="rounded-xl border border-foreground/10 bg-background/95 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:shadow-[0_10px_28px_rgba(0,0,0,0.55)] min-w-[180px]">
+    <div className="rounded-xl border border-black/[0.08] bg-white/95 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/[0.06] backdrop-blur-xl dark:border-white/[0.08] dark:bg-background/95 dark:ring-white/[0.08] dark:shadow-[0_10px_28px_rgba(0,0,0,0.55)] min-w-[180px]">
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           {fd(point.ts)}

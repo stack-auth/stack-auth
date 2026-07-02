@@ -65,7 +65,6 @@ export default function PageClient() {
   const hexclaveAdminApp = useAdminApp();
   const project = hexclaveAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return (
     <AppEnabledGuard appId="emails">
@@ -85,7 +84,7 @@ export default function PageClient() {
         }
       >
         <div className="flex flex-col gap-5">
-          {isLocalEmulator && <EmulatorModeCard />}
+          <InbucketCard />
 
           {/* Email Server Card */}
           <EmailServerCard emailConfig={emailConfig} isDevelopmentEnvironment={project.isDevelopmentEnvironment} />
@@ -98,7 +97,7 @@ export default function PageClient() {
   );
 }
 
-function EmulatorModeCard() {
+function InbucketCard() {
   const inbucketWebUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL");
   const inbucketMonitorUrl = inbucketWebUrl == null
     ? null
@@ -109,9 +108,9 @@ function EmulatorModeCard() {
       <div className="p-5">
         <div className="flex items-start justify-between gap-5">
           <div className="flex-1 min-w-0">
-            <SectionHeader icon={HardDrive} title="Mock Emails" />
+            <SectionHeader icon={HardDrive} title="Inbucket Emails" />
             <Typography variant="secondary" className="text-sm mt-1">
-              View all emails sent through the emulator in Inbucket
+              View all emails sent through Inbucket
             </Typography>
           </div>
           <Button
