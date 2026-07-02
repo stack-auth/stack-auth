@@ -77,6 +77,7 @@ const bulldozerDb = declareBulldozerDatabase(
   { migrations: schema.migrations },
 );
 await traceSpan("bulldozer-js.applyRemainingMigrations", async () => await bulldozerDb.applyRemainingMigrations());
+(globalThis as any).bulldozerDb = bulldozerDb;
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
