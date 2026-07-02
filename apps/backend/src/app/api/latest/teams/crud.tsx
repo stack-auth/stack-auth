@@ -135,7 +135,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     if (freePlanSubscription != null) {
       // This is quite slow with current Bulldozer. Let's not block the team creation for this and run asynchronously.
       // TODO: Run this synchronously once we have bulldozerjs
-      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(prisma, freePlanSubscription));
+      runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(freePlanSubscription));
     }
 
     const result = teamPrismaToCrud(db);

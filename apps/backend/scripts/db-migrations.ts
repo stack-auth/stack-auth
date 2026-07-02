@@ -9,7 +9,7 @@ import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
 import { runBackfillInternalFreePlans } from "./backfill-internal-free-plans";
-import { runBulldozerPaymentsInit } from "./bulldozer-payments-init";
+import { parseBackfillResumeOptions, runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
 import { runRegenInternalSubscriptionsToLatest } from "./regen-internal-subscriptions-to-latest";
 
@@ -184,8 +184,14 @@ Commands:
   reset                            Drop all data and recreate the database, then apply migrations and seed
   generate-migration-file          Generate a new migration file using Prisma, then reset and migrate
   seed                             [Advanced] Run database seeding only
-  init                             Apply migrations and seed the database
+  init                             Apply migrations, then seed
   migrate                          Apply migrations
+  backfill-bulldozer-from-prisma   One-way backfill of the payment tables from Postgres into bulldozer-js.
+                                   In dev, run after restart-deps once the bulldozer-js server is running.
+                                   Idempotent; safe to re-run. Optional resume for very large tables:
+                                   --resume-table=<TableName> --resume-cursor=<tenancyId>,<id>
+                                   --continue-on-error skips rows bulldozer-js rejects and reports them
+                                   all at the end (default is fail-fast on the first bad row)
   backfill-internal-free-plans     Grant the free plan to internal-tenancy teams that have no plan. Run AFTER seed.
   regen-internal-subscriptions-to-latest
                                    Bring every active internal-tenancy subscription up to the latest version of its
@@ -209,7 +215,6 @@ const main = async () => {
       await dropSchema();
       await migrate(undefined, { interactive });
       await seed();
-      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'generate-migration-file': {
@@ -222,35 +227,42 @@ const main = async () => {
     }
     case 'seed': {
       await seed();
-      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'init': {
       await migrate(undefined, { interactive });
       await seed();
-      await runBulldozerPaymentsInit(globalPrismaClient);
+      // To populate bulldozer, run db:backfill-bulldozer-from-prisma after restart-deps.
       break;
     }
     case 'migrate': {
       await migrate(undefined, { interactive });
-      await runBulldozerPaymentsInit(globalPrismaClient);
+      break;
+    }
+    case 'backfill-bulldozer-from-prisma': {
+      // Standalone one-way backfill of the payment tables from Postgres into
+      // bulldozer-js. Idempotent, so a crash is recovered by re-running.
+      // Optional resume for very large tables:
+      //   --resume-table=<TableName> --resume-cursor=<tenancyId>,<id>
+      // Optional --continue-on-error: skip rows bulldozer-js rejects and throw
+      // with the full list at the end instead of aborting on the first one.
+      await runBulldozerPaymentsInit(parseBackfillResumeOptions(args));
       break;
     }
     case 'backfill-internal-free-plans': {
       // Explicit step — callers must guarantee the internal tenancy has been
       // seeded before invoking this (the backfill throws loudly otherwise).
-      // Bulldozer init runs first so the Subscription LFold the backfill
-      // reads from is populated.
-      await runBulldozerPaymentsInit(globalPrismaClient);
+      // Precondition: bulldozer-js is already consistent (via dual-writes, or
+      // a prior `backfill-bulldozer-from-prisma` on a fresh DB) — this reads
+      // the Subscription LFold via `ensureFreePlanForBillingTeam`.
       await runBackfillInternalFreePlans();
       break;
     }
     case 'regen-internal-subscriptions-to-latest': {
       // Explicit step — callers must guarantee the internal tenancy has been
-      // seeded. Bulldozer init runs first because the regen reads
-      // `sub.product` via the Subscription LFold; without init the per-sub
-      // equality check would compare against a stale view.
-      await runBulldozerPaymentsInit(globalPrismaClient);
+      // seeded. Precondition: bulldozer-js is already consistent (via
+      // dual-writes, or a prior `backfill-bulldozer-from-prisma` on a fresh
+      // DB) — the regen reads `sub.product` via the Subscription LFold.
       await runRegenInternalSubscriptionsToLatest();
       break;
     }
