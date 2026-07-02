@@ -244,8 +244,8 @@ const environmentSchemaFuzzerConfig = [{
       "some-external-db-id": [{
         type: ["postgres"] as const,
         connectionString: [
-          "postgres://user:password@host:port/database",
-          "some-connection-string",
+          "postgres://user:password@db.example.com:5432/database",
+          "postgresql://user:password@db.example.net/database",
         ],
       }],
     }],
