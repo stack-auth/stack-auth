@@ -62,7 +62,7 @@ export const DELETE = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      id: yupString().defined(),
+      id: yupString().uuid().defined(),
     }).defined(),
   }),
   response: yupObject({
