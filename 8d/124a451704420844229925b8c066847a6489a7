@@ -1,0 +1,92 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_9920d31b4c7d29 104-107
+  s_5b6ac9c07bf674::t_f07247348166e9 143
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5b6ac9c07bf674::t_76a09ae1f11af2 4
+  s_5b6ac9c07bf674::t_a2e6cae8145c00 143
+  s_5b6ac9c07bf674::t_d8d31b727d9064 138-140
+  s_5b6ac9c07bf674::t_84b7a385669902 141-142,144-146,158
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_256a4f817d1414 723-727,734,745
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_5b6ac9c07bf674::t_e82bb4aa111857 5,8,13
+  s_5b6ac9c07bf674::t_90c8775fbe1612 253-255,259,261-273,276-281
+  s_5b6ac9c07bf674::t_c9028e51b8990c 256-258,260,274-275
+apps/backend/scripts/clickhouse-migrations.ts
+  s_5b6ac9c07bf674::t_20beb758caca99 271
+  s_5b6ac9c07bf674::t_d032314b4cf046 297
+  s_5b6ac9c07bf674::t_1b76a7a8fe544e 36,43
+  s_5b6ac9c07bf674::t_416c9fe8731e39 64
+  s_5b6ac9c07bf674::t_5814daf7820e7e 260-261,263-270,272-296,298-342
+  s_5b6ac9c07bf674::t_2667a6de9963ad 255-256,258-259,262
+  s_5b6ac9c07bf674::t_d29292b2bd50ad 79
+  s_5b6ac9c07bf674::t_098eaa8bc0fab5 257
+apps/backend/src/lib/events.tsx
+  s_5b6ac9c07bf674::t_85699b321fecb1 17
+  s_5b6ac9c07bf674::t_ffb1ff90d20689 394-395,397-398
+  s_5b6ac9c07bf674::t_40bbcdf7a28dd2 396
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_5f5979c6e5fd21::t_b5b6cdbb4b39ae 44-51
+  s_5f5979c6e5fd21::t_071c3cc6da2b63 43
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_5b6ac9c07bf674::t_946001aab7e0fd 166
+  s_5b6ac9c07bf674::t_51d76a1a417ab2 195
+  s_5b6ac9c07bf674::t_ff6a9a73f36fb6 209,217-223
+  s_5b6ac9c07bf674::t_e767e681399aa9 167-194,196-208,210-216,224-225
+apps/backend/src/lib/spans.tsx
+  s_5b6ac9c07bf674::t_c67cb6c8efdbbe 146,148-151,159
+  s_5b6ac9c07bf674::t_0f6079ed15d9ac 40-42,52,54-56,59-60,63
+  s_5b6ac9c07bf674::t_92e5dad92a642f 50
+  s_5b6ac9c07bf674::t_c03b93fb907c31 152-155
+  s_5b6ac9c07bf674::t_87e9454bf22c1d 61
+  s_5b6ac9c07bf674::t_5b9ecc9afbf86f 104,106-107,120-121
+  s_5b6ac9c07bf674::t_fa1355d7576ef8 17-21,31
+  s_5b6ac9c07bf674::t_e22cc94ab58159 1-16,22-30,32-39,47-49,51,53,57-58,62,64-103,105,108-119,122-145,147,156-158,160
+  s_5b6ac9c07bf674::t_9d9a89efab1994 43-46
+apps/backend/src/lib/spans.test.ts
+  s_5b6ac9c07bf674::t_d2497e3fa91885 39-43
+  s_5b6ac9c07bf674::t_d97eecebd4649b 13,15,19
+  s_5b6ac9c07bf674::t_73f1c0b2574ecb 14,20,25-28,31-32
+  s_5b6ac9c07bf674::t_49ac159474450d 37,47-48,59-60,69,86-88,94-95
+  s_5b6ac9c07bf674::t_a8ab2ca5f9fc5f 1-6,8-12,16-18,21-24,29,34-36,38,44-46,49-58,61-68,70-85,90-93,96-104
+  s_5b6ac9c07bf674::t_c0e62807d46b10 89
+  s_5b6ac9c07bf674::t_ae9b0e822eba56 7
+  s_5b6ac9c07bf674::t_fa7939898039e5 30,33
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5b6ac9c07bf674::t_253aaa2bd0ef8a 623,634-635
+  s_5b6ac9c07bf674::t_d7768a20db6f23 596-622,624-633,636-640
+  s_5b6ac9c07bf674::t_8b87541a2fd1d6 595
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_5b6ac9c07bf674::t_560b0f32244f4c 1210
+  s_5b6ac9c07bf674::t_632a4974eca092 598
+  s_5b6ac9c07bf674::t_b67e8b7ba9c088 671-672
+  s_5b6ac9c07bf674::t_dcefc5f8f82ecd 717
+  s_5b6ac9c07bf674::t_51fecebc8ac535 669-670
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5b6ac9c07bf674::t_f1362369aa3659 176-179
+  s_5b6ac9c07bf674::t_a01b9307bca295 227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "8d124a451704420844229925b8c066847a6489a7",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_5f5979c6e5fd21": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4ba08984-b616-4d52-8851-cf51d71521c8",
+        "model": "composer-2.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
