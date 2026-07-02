@@ -1,7 +1,7 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import dns from "node:dns";
 import { describe, expect, it, vi } from "vitest";
-import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./ssrf-protection";
+import { assertSafeOAuthResolvedAddress, assertSafeOAuthUrlWithoutDns, isBlockedOAuthIpAddress, safeOAuthDnsLookup } from "./oauth";
 
 async function withProductionOAuthSsrfProtection<T>(callback: () => Promise<T>): Promise<T> {
   vi.stubEnv("NODE_ENV", "production");
@@ -41,7 +41,10 @@ describe("isBlockedOAuthIpAddress", () => {
 
   it("blocks IPv4-mapped IPv6 internal addresses", () => {
     expect(isBlockedOAuthIpAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isBlockedOAuthIpAddress("::ffff:7f00:1")).toBe(true);
+    expect(isBlockedOAuthIpAddress("0:0:0:0:0:ffff:7f00:1")).toBe(true);
     expect(isBlockedOAuthIpAddress("::ffff:169.254.169.254")).toBe(true);
+    expect(isBlockedOAuthIpAddress("::ffff:a9fe:a9fe")).toBe(true);
   });
 
   it("allows public IP addresses", () => {

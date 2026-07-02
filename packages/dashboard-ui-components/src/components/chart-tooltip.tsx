@@ -85,7 +85,7 @@ export const DesignChartTooltipContent = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "grid min-w-[8rem] items-start gap-1.5 rounded-xl bg-background/95 px-3.5 py-2.5 text-xs shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]",
+          "grid min-w-[8rem] items-start gap-1.5 rounded-xl bg-white/95 px-3.5 py-2.5 text-xs shadow-lg ring-1 ring-black/[0.08] backdrop-blur-xl dark:bg-background/95 dark:ring-white/[0.08]",
           className
         )}
         style={{ zIndex: 9999 }}

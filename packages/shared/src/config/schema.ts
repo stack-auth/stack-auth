@@ -332,20 +332,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
-  dbSync: yupObject({
-    externalDatabases: yupRecord(
-      userSpecifiedIdSchema("externalDatabaseId"),
-      yupObject({
-        type: yupString().oneOf(["postgres"]).defined(),
-        connectionString: yupString().when("type", {
-          is: "postgres",
-          then: (schema) => schema.defined(),
-          otherwise: (schema) => schema.optional(),
-        }),
-      }),
-    ),
-  }),
-
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -453,6 +439,20 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   payments: branchConfigSchema.getNested("payments").concat(yupObject({
     testMode: yupBoolean(),
   })),
+
+  dbSync: yupObject({
+    externalDatabases: yupRecord(
+      userSpecifiedIdSchema("externalDatabaseId"),
+      yupObject({
+        type: yupString().oneOf(["postgres"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
+    ),
+  }),
 
   analytics: environmentAnalyticsSchema,
   customDashboards: schemaFields.customDashboardsSchema,
@@ -579,6 +579,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   if (type === "environment") {
     res = flattenEnvironmentOAuthProviderCredentials(res);
   }
+
+  // BEGIN 2026-07-01: dbSync.externalDatabases contains environment-specific connection strings.
+  // It should never be rendered from branch config, which can be read by branch-scoped tools.
+  if (type === "branch") {
+    res = removeProperty(res, p => p[0] === "dbSync");
+  }
+  // END
 
   // return the result
   return res;
@@ -775,6 +782,20 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
     "sourceOfTruth.type": "postgres",
     "sourceOfTruth.connectionString": "postgres://user:password@host:5432/database",
   })).toEqual({});
+});
+
+import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
+  const dbSync = {
+    externalDatabases: {
+      main: {
+        type: "postgres",
+        connectionString: "postgres://user:password@host:5432/database",
+      },
+    },
+  };
+
+  expect(migrateConfigOverride("branch", { dbSync })).toEqual({});
+  expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
