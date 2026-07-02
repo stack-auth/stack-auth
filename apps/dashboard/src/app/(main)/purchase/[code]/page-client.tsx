@@ -9,6 +9,7 @@ import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
+import { useHostedBackUrl } from "@/lib/hosted-back-url";
 import { ArrowLeftIcon, XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -26,15 +27,13 @@ function isValidReturnUrl(url: string): boolean {
 
 function BackButton({ url }: { url: string }) {
   return (
-    <div className="absolute left-6 top-5 z-10">
-      <a
-        href={url}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
-      >
-        <ArrowLeftIcon className="h-4 w-4" />
-        Back
-      </a>
-    </div>
+    <a
+      href={url}
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:transition-none hover:text-foreground"
+    >
+      <ArrowLeftIcon className="h-4 w-4" />
+      Back
+    </a>
   );
 }
 
@@ -97,6 +96,7 @@ export default function PageClient({ code }: { code: string }) {
   const searchParams = useSearchParams();
   const rawReturnUrl = searchParams.get("return_url");
   const returnUrl = rawReturnUrl && isValidReturnUrl(rawReturnUrl) ? rawReturnUrl : null;
+  const backUrl = useHostedBackUrl(returnUrl);
 
   const quantityNumber = useMemo((): number => {
     const n = parseInt(quantityInput, 10);
@@ -227,8 +227,10 @@ export default function PageClient({ code }: { code: string }) {
   if (showInvalidPurchaseCode) {
     return (
       <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
-        {returnUrl && <BackButton url={returnUrl} />}
         <div className="w-full max-w-md text-center">
+          <div className="mb-4 text-left">
+            <BackButton url={backUrl} />
+          </div>
           <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
             <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
               <XCircleIcon className="size-6 text-destructive" weight="fill" />
@@ -249,11 +251,13 @@ export default function PageClient({ code }: { code: string }) {
 
   return (
     <div data-hexclave-purchase-page className="relative min-h-screen bg-white dark:bg-zinc-950">
-      {returnUrl && <BackButton url={returnUrl} />}
       <div className="relative flex min-h-screen w-full flex-col lg:flex-row">
         {/* Left Panel: Product & Pricing Selection */}
         <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">
-          <div className="mx-auto w-full max-w-md px-6 pb-12 pt-16 lg:pt-20">
+          <div className="mx-auto w-full max-w-md px-6 pb-12 pt-10 lg:pt-12">
+            <div className="mb-6">
+              <BackButton url={backUrl} />
+            </div>
             {loading ? (
               <div className="space-y-5">
                 <Skeleton className="size-12 rounded-full" />
