@@ -753,7 +753,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       html: row.renderedHtml ?? undefined,
       text: row.renderedText ?? undefined,
     };
-    const emailContent = context.emailConfig.type === "shared" && isCustomEmailForSharedServer(recipient, row.createdWith, row.emailProgrammaticCallTemplateId)
+    const emailContent = context.emailConfig.type === "shared" && isCustomEmailForSharedServer(recipient, row.createdWith, row.emailProgrammaticCallTemplateId, row.themeId)
       ? wrapSharedDevEmail(baseContent)
       : baseContent;
 
