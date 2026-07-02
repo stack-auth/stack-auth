@@ -34,7 +34,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 100;
 
 // Fixed processing order. Resume positions are interpreted against this list.
 export const BACKFILL_TABLES = [
@@ -68,6 +68,13 @@ type BackfillRunContext = {
 
 function log(message: string) {
   console.log(`[BulldozerBackfill] ${message}`);
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function lowerCustomerType(customerType: string): CustomerType {
@@ -193,6 +200,7 @@ async function backfillTable<T extends Cursor>(
   log(`[${label}] starting${cursor ? ` from cursor ${cursor.tenancyId},${cursor.id}` : ""}`);
 
   for (;;) {
+    const batchStartedAt = performance.now();
     const batch = await fetchBatch(cursor);
     if (batch.length === 0) break;
 
@@ -229,7 +237,8 @@ async function backfillTable<T extends Cursor>(
 
     cursor = next;
     batchNumber++;
-    log(`[${label}] batch=${batchNumber} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
+    const batchDurationMs = performance.now() - batchStartedAt;
+    log(`[${label}] batch=${batchNumber} duration=${formatDuration(batchDurationMs)} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
 
     // A short page means we've hit the end; skip the extra empty fetch.
     if (batch.length < BATCH_SIZE) break;
