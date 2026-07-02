@@ -908,8 +908,17 @@ export function ProjectOnboardingWizard(props: {
           >
             Connect
           </DesignButton>
-        ) : undefined}
-        secondaryAction={
+        ) : (
+          <DesignButton
+            className="rounded-full px-6"
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
+          >
+            Do Later
+          </DesignButton>
+        )}
+        secondaryAction={selectedPaymentsCountry === "US" ? (
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
@@ -919,7 +928,7 @@ export function ProjectOnboardingWizard(props: {
           >
             Do Later
           </DesignButton>
-        }
+        ) : undefined}
       >
         <Suspense fallback={<PaymentsSetupStepSkeleton />}>
           <PaymentsSetupAutoComplete
