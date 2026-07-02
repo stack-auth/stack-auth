@@ -101,6 +101,10 @@ function isInsideHexclaveUiNode(node: Node | null): boolean {
 export type EventTrackerDeps = {
   projectId: string,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
+  // Per-tab id shared with the SessionRecorder so analytics events and replay
+  // chunks from the same tab carry the same session_replay_segment_id. Falls
+  // back to a fresh uuid when constructed standalone (e.g. in tests).
+  sessionReplaySegmentId?: string,
 };
 
 type TrackedEvent = {
@@ -136,7 +140,7 @@ export class EventTracker {
 
   constructor(deps: EventTrackerDeps) {
     this._deps = deps;
-    this._sessionReplaySegmentId = generateUuid();
+    this._sessionReplaySegmentId = deps.sessionReplaySegmentId ?? generateUuid();
   }
 
   start() {

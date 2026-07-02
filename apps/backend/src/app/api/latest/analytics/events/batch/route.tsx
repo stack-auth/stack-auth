@@ -1,6 +1,7 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { buildEventSpanFields } from "@/lib/spans";
 import { getHexclaveServerApp } from "@/hexclave";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -134,6 +135,15 @@ export const POST = createSmartRouteHandler({
 
     const clickhouseClient = getClickhouseAdminClient();
 
+    // Point each event at its ancestor spans (root-first: refresh-token, replay,
+    // then the per-tab span when a replay exists). The per-tab id itself already
+    // lives in the session_replay_segment_id column — see lib/spans.tsx.
+    const eventSpanFields = buildEventSpanFields({
+      sessionReplayId: recentSession?.id ?? null,
+      sessionReplaySegmentId: body.session_replay_segment_id,
+      refreshTokenId,
+    });
+
     const rows = body.events.map((event) => ({
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
@@ -145,6 +155,7 @@ export const POST = createSmartRouteHandler({
       refresh_token_id: refreshTokenId,
       session_replay_id: recentSession?.id ?? null,
       session_replay_segment_id: body.session_replay_segment_id,
+      ...eventSpanFields,
     }));
 
     await clickhouseClient.insert({

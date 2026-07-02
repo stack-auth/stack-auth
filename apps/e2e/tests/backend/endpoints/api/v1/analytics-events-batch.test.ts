@@ -592,6 +592,52 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   `);
 });
 
+it("sets parent_span_ids on inserted events", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const now = Date.now();
+
+  await uploadEventBatch({
+    sessionReplaySegmentId,
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: [
+      {
+        event_type: "$page-view",
+        event_at_ms: now - 100,
+        data: { url: "https://example.com/spans", path: "/spans" },
+      },
+    ],
+  });
+
+  let queryRes;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await wait(500);
+    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        query: "SELECT parent_span_ids, session_replay_id FROM events WHERE session_replay_segment_id = {segId:String}",
+        params: { segId: sessionReplaySegmentId },
+      },
+    });
+    if (queryRes.status === 200 && queryRes.body?.result?.length === 1) {
+      break;
+    }
+  }
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  // No active session replay for this user, so the only ancestor span is the
+  // refresh-token span. The per-tab id itself lives in session_replay_segment_id.
+  expect(row.session_replay_id).toBeNull();
+  expect(row.parent_span_ids).toHaveLength(1);
+  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
+});
+
 // ============================================================================
 // Analytics event limit enforcement tests
 // ============================================================================

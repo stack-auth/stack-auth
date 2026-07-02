@@ -173,6 +173,10 @@ export function getOrRotateSession(options: { key: string, legacyKey?: string, n
 export type SessionRecorderDeps = {
   projectId: string,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
+  // Per-tab id shared with the EventTracker so replay chunks and analytics
+  // events from the same tab carry the same session_replay_segment_id. Falls
+  // back to a fresh uuid when constructed standalone (e.g. in tests).
+  sessionReplaySegmentId?: string,
 };
 
 export function isAnalyticsNotEnabledError(error: unknown): boolean {
@@ -220,7 +224,7 @@ export class SessionRecorder {
   constructor(deps: SessionRecorderDeps, replayOptions: AnalyticsReplayOptions) {
     this._deps = deps;
     this._replayOptions = replayOptions;
-    this._sessionReplaySegmentId = generateUuid();
+    this._sessionReplaySegmentId = deps.sessionReplaySegmentId ?? generateUuid();
     this._storageKey = makeStorageKey(deps.projectId);
     this._legacyStorageKey = makeLegacyStorageKey(deps.projectId);
   }

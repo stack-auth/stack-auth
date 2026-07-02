@@ -1,0 +1,160 @@
+import type { ClickHouseClient } from "./clickhouse";
+
+/**
+ * Spans are telemetry facts (time intervals) — the sibling of events. They are
+ * written DIRECTLY to ClickHouse (`analytics_internal.spans`), the same way
+ * events are, and never go through the ext-db-sync (that is a dimension
+ * replicator, not a telemetry pipe). See the plan/notes in
+ * `apps/backend/scripts/clickhouse-migrations.ts` for the table + `default.spans` view.
+ */
+
+// Typed-id prefixes. Applied ONLY to a span's own `id` and to the values inside
+// `parent_span_ids` — so a heterogeneous parent array is self-describing. They are
+// NEVER applied to scalar identity columns (project_id, user_id, session_replay_id, …),
+// which stay raw so existing customer SQL keeps working.
+export const SPAN_ID_PREFIXES = {
+  sessionReplay: "sri-",
+  // The per-tab id. The SDK mints exactly one `session_replay_segment_id` per
+  // browser tab, so despite the "segment" name it IS the per-tab id — there is
+  // only this one level (there is no separate "tab"). Named "segment" to stay
+  // consistent with the pre-existing `session_replay_segment_id` column + SDK field.
+  sessionReplaySegment: "srsi-",
+  refreshToken: "rti-",
+  user: "ui-",
+  team: "ti-",
+  project: "pi-",
+  branch: "bi-",
+} as const;
+
+export const SPAN_TYPES = {
+  sessionReplay: "$session-replay",
+  sessionReplaySegment: "$session-replay-segment",
+  refreshToken: "$refresh-token",
+} as const;
+
+export function toSpanId(prefix: string, rawId: string): string {
+  return `${prefix}${rawId}`;
+}
+
+/**
+ * The `parent_span_ids` an event insert stamps on each row — the full, deduped
+ * list of ancestor spans the server can name, root-first: refresh-token, then the
+ * session-replay span (via the server-resolved `session_replay_id`), then the
+ * per-tab `$session-replay-segment` span (only when a replay exists, since that span
+ * is written under a replay). Parent links are logical ancestry, not FK-guaranteed
+ * rows; the list always contains a higher-level ancestor even if the segment span was
+ * never written (recording off). The per-tab id is carried in `session_replay_segment_id`.
+ */
+export function buildEventSpanFields(opts: {
+  sessionReplayId?: string | null,
+  sessionReplaySegmentId?: string | null,
+  refreshTokenId?: string | null,
+}): { parent_span_ids: string[] } {
+  const parentSpanIds: string[] = [];
+  if (opts.refreshTokenId) {
+    parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId));
+  }
+  if (opts.sessionReplayId) {
+    parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.sessionReplayId));
+  }
+  if (opts.sessionReplayId && opts.sessionReplaySegmentId) {
+    parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, opts.sessionReplaySegmentId));
+  }
+  return { parent_span_ids: parentSpanIds };
+}
+
+/**
+ * One row of `analytics_internal.spans`. `created_at` is omitted (the table
+ * defaults it to now64(3) = ingested-at). `version` is a server-monotonic value
+ * per span id (write-time epoch ms): the ReplacingMergeTree keeps the highest
+ * version, so re-writing a span with a later `span_ended_at` advances its end.
+ */
+export type SpanInsertRow = {
+  id: string,
+  span_type: string,
+  span_started_at: Date,
+  span_ended_at: Date | null,
+  parent_span_ids: string[],
+  data: string,
+  project_id: string,
+  branch_id: string,
+  user_id: string | null,
+  team_id: string | null,
+  refresh_token_id: string | null,
+  session_replay_id: string | null,
+  session_replay_segment_id: string | null,
+  version: number,
+};
+
+export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await client.insert({
+    table: "analytics_internal.spans",
+    values: rows,
+    format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+      async_insert: 1,
+    },
+  });
+}
+
+/**
+ * Emits the two spans that describe a session replay from the replay batch route:
+ * the replay-level `$session-replay` span and the per-tab `$session-replay-segment`
+ * span. Re-written on every batch (with a fresh `version` and the latest bounds)
+ * so their `span_ended_at` advances as recording continues. The segment span uses
+ * the RECORDING's `sessionReplaySegmentId` — the per-tab id — as its identity.
+ */
+export async function insertSessionReplaySpans(
+  client: ClickHouseClient,
+  opts: {
+    projectId: string,
+    branchId: string,
+    replayId: string,
+    sessionReplaySegmentId: string,
+    projectUserId: string,
+    refreshTokenId: string,
+    replayStartedAt: Date,
+    replayLastEventAt: Date,
+    segmentStartedAt: Date,
+    segmentLastEventAt: Date,
+    version: number,
+  },
+): Promise<void> {
+  const base = {
+    data: "{}",
+    project_id: opts.projectId,
+    branch_id: opts.branchId,
+    user_id: opts.projectUserId,
+    team_id: null,
+    refresh_token_id: opts.refreshTokenId,
+    session_replay_id: opts.replayId,
+    version: opts.version,
+  } as const;
+
+  const replaySpan: SpanInsertRow = {
+    ...base,
+    id: toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
+    span_type: SPAN_TYPES.sessionReplay,
+    span_started_at: opts.replayStartedAt,
+    span_ended_at: opts.replayLastEventAt,
+    parent_span_ids: [toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId)],
+    session_replay_segment_id: null,
+  };
+
+  const segmentSpan: SpanInsertRow = {
+    ...base,
+    id: toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, opts.sessionReplaySegmentId),
+    span_type: SPAN_TYPES.sessionReplaySegment,
+    span_started_at: opts.segmentStartedAt,
+    span_ended_at: opts.segmentLastEventAt,
+    parent_span_ids: [
+      toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId),
+      toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
+    ],
+    session_replay_segment_id: opts.sessionReplaySegmentId,
+  };
+
+  await insertSpans(client, [replaySpan, segmentSpan]);
+}
