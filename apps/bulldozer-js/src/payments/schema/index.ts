@@ -249,6 +249,52 @@ const grantRefsToExpire = (grants: OutstandingGrant[], expiresWhen: "when-repeat
     .filter(grant => (expiresWhen === "both" ? grant.expiresWhen === "when-repeated" || grant.expiresWhen === "when-purchase-expires" : grant.expiresWhen === expiresWhen))
     .filter(grant => dueItemIds === undefined || dueItemIds.has(grant.itemId))
     .map(grant => ({ transactionId: grant.txnId, entryIndex: grant.entryIndex, itemId: grant.itemId, quantity: grant.quantity }));
+// The most recent repeat boundary this schedule has already granted, used as the floor when
+// fast-forwarding items that appear (or change interval) on a rewritten source row. Falls back to
+// `fallbackMillis` (purchase creation) when nothing has repeated yet.
+const processedThroughMillis = (schedule: RepeatSchedule, fallbackMillis: number): number => Math.max(
+  fallbackMillis,
+  ...Object.values(schedule).flatMap(entry => entry.interval !== null && entry.occurrencesElapsed > 0
+    ? [nthDayIntervalMillis(entry.anchorMillis, entry.interval, entry.occurrencesElapsed)]
+    : []),
+);
+// Advance a fresh schedule entry (anchored at purchase creation) past `floorMillis`. Every
+// already-granted boundary is <= floorMillis, so starting strictly after it means an item added
+// mid-life (a) doesn't replay grants for boundaries that predate it and (b) can't reuse an `igr:`
+// transaction id that was already emitted at one of those boundaries.
+const fastForwardScheduleEntry = (entry: RepeatSchedule[string], floorMillis: number): RepeatSchedule[string] => {
+  if (entry.interval === null || entry.nextRepeatMillis === null) return entry;
+  let occurrencesElapsed = entry.occurrencesElapsed;
+  let nextRepeatMillis = entry.nextRepeatMillis;
+  while (nextRepeatMillis <= floorMillis) {
+    occurrencesElapsed += 1;
+    nextRepeatMillis = nthDayIntervalMillis(entry.anchorMillis, entry.interval, occurrencesElapsed + 1);
+  }
+  return { ...entry, occurrencesElapsed, nextRepeatMillis };
+};
+const sameInterval = (a: DayInterval | null, b: DayInterval | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+// Fold a rewritten source row's schedule into the fold's existing one. Items whose interval is
+// unchanged keep their repeat progress (anchor/occurrences/next boundary) and adopt the new
+// quantity/expiry going forward; items that are new or changed interval start fresh, fast-forwarded
+// past everything already granted; items no longer repeating stop. Items that dropped out entirely
+// are kept as inert tombstones (nextRepeatMillis null) so their history still counts toward
+// `processedThroughMillis` — otherwise a removed-then-readded item could re-emit an already-used
+// `igr:` transaction timestamp.
+const mergeRepeatSchedule = (oldSchedule: RepeatSchedule, freshSchedule: RepeatSchedule, floorMillis: number): RepeatSchedule => {
+  const merged: RepeatSchedule = Object.fromEntries(
+    Object.entries(freshSchedule).map(([itemId, freshEntry]) => {
+      const oldEntry = itemId in oldSchedule ? oldSchedule[itemId] : undefined;
+      if (oldEntry !== undefined && oldEntry.nextRepeatMillis !== null && sameInterval(oldEntry.interval, freshEntry.interval)) {
+        return [itemId, { ...freshEntry, anchorMillis: oldEntry.anchorMillis, occurrencesElapsed: oldEntry.occurrencesElapsed, nextRepeatMillis: oldEntry.nextRepeatMillis }];
+      }
+      return [itemId, fastForwardScheduleEntry(freshEntry, floorMillis)];
+    }),
+  );
+  for (const [itemId, oldEntry] of Object.entries(oldSchedule)) {
+    if (!(itemId in merged) && oldEntry.occurrencesElapsed > 0) merged[itemId] = { ...oldEntry, nextRepeatMillis: null };
+  }
+  return merged;
+};
 
 function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
   const provider = paymentProvider(row.creationSource);
@@ -350,6 +396,34 @@ function subscriptionRepeatStep(state: SubscriptionFoldState, currentMillis: num
   };
 }
 
+// Fold a rewritten subscription row into the existing fold state (Stripe webhooks re-upsert the
+// row on every subscription/invoice event, so this runs often, usually with no meaningful change).
+// Emitted transactions are immutable facts: everything that references them survives untouched
+// (startTxnId, entry indices, outstandingGrants, repeatCount), while the fields that shape *future*
+// events adopt the new row. Repeat progress is merged so past grants are neither replayed nor
+// rederived against the new row data.
+function subscriptionUpdatedState(state: SubscriptionFoldState, row: SubscriptionRow): SubscriptionFoldState {
+  return {
+    ...state,
+    customerId: row.customerId,
+    customerType: row.customerType,
+    productId: row.productId,
+    product: row.product,
+    productLineId: productLineId(row.product),
+    priceId: row.priceId,
+    quantity: row.quantity,
+    paymentProvider: paymentProvider(row.creationSource),
+    endedAtMillis: row.endedAtMillis,
+    productRevokedAtMillis: row.productRevokedAtMillis,
+    chargedAmount: chargedAmount(row.product, row.priceId, row.quantity),
+    itemRepeatSchedule: mergeRepeatSchedule(
+      state.itemRepeatSchedule,
+      repeatSchedule(row.product, row.quantity, row.createdAtMillis),
+      processedThroughMillis(state.itemRepeatSchedule, row.createdAtMillis),
+    ),
+  };
+}
+
 function otpInitialState(row: OneTimePurchaseRow): OtpFoldState {
   const provider = paymentProvider(row.creationSource);
   const hasMoneyTransfer = provider !== "test_mode" && Object.keys(chargedAmount(row.product, row.priceId, row.quantity)).length > 0;
@@ -395,6 +469,21 @@ function otpRepeatStep(state: OtpFoldState, currentMillis: number): { state: Otp
       effectiveAtMillis: currentMillis,
       createdAtMillis: currentMillis,
     }),
+  };
+}
+
+// One-time-purchase counterpart of `subscriptionUpdatedState`: refs to emitted transactions
+// survive, future-facing fields (most importantly `revokedAtMillis`) adopt the new row, repeat
+// progress is merged. Mirrors otpInitialState's interval filter so non-repeating items stay out.
+function otpUpdatedState(state: OtpFoldState, row: OneTimePurchaseRow): OtpFoldState {
+  const freshSchedule = Object.fromEntries(Object.entries(repeatSchedule(row.product, row.quantity, row.createdAtMillis)).filter(([, schedule]) => schedule.interval !== null));
+  return {
+    ...state,
+    customerId: row.customerId,
+    customerType: row.customerType,
+    paymentProvider: paymentProvider(row.creationSource),
+    revokedAtMillis: row.revokedAtMillis,
+    itemRepeatSchedule: mergeRepeatSchedule(state.itemRepeatSchedule, freshSchedule, processedThroughMillis(state.itemRepeatSchedule, row.createdAtMillis)),
   };
 }
 
@@ -622,6 +711,22 @@ export function createPaymentsSchema() {
         const repeat = subscriptionRepeatStep(state, currentMillis);
         return { newState: toPiledriverObject(repeat.state), newRowData: toPiledriverObject([repeat.event]), nextTriggerTime: dateFromMillis(soonestNextMillis(repeat.state, repeat.state.endedAtMillis)) };
       },
+      // Stripe webhooks re-upsert the subscription row on every subscription/invoice event (incl.
+      // every renewal), so a row rewrite must fold into the existing state instead of resetting
+      // it — resetting deletes every emitted item-grant-repeat transaction until the next tick
+      // re-derives them (transiently wrong balances) and re-derives history against the *new* row
+      // (a quantity change would retroactively rewrite all past grants).
+      onSourceRowChanged: async (_state, row, previous) => {
+        const state = rowObject<SubscriptionFoldState>(_state);
+        // A quiet fold (no queued trigger) with an end date has already emitted subscription-end
+        // (via the timed end step or the immediate-end shortcut at creation). Re-arming it would
+        // append a duplicate end event, so the fold stays sealed regardless of the rewrite.
+        if (state.endedAtMillis !== null && previous.nextTriggerTime === null) {
+          return { newState: _state, nextTriggerTime: null };
+        }
+        const updated = subscriptionUpdatedState(state, rowObject<SubscriptionRow>(row.rowData));
+        return { newState: toPiledriverObject(updated), nextTriggerTime: dateFromMillis(soonestNextMillis(updated, updated.endedAtMillis)) };
+      },
     }), { input: "payments-subscriptions" }),
     table("payments-subscription-timefold-events", defineFlatMapTable(row => Array.isArray(row.rowData) ? row.rowData : []), { input: "payments-subscription-timefold" }),
     table("payments-subscription-start-events", defineFilterTable(row => isObject(row.rowData) && row.rowData.type === "subscription-start"), { input: "payments-subscription-timefold-events" }),
@@ -662,6 +767,17 @@ export function createPaymentsSchema() {
         const next = soonestNextMillis(repeat.state, null);
         const cappedNext = repeat.state.revokedAtMillis !== null && next !== null && next > repeat.state.revokedAtMillis ? null : next;
         return { newState: toPiledriverObject(repeat.state), newRowData: toPiledriverObject([repeat.event]), nextTriggerTime: dateFromMillis(cappedNext) };
+      },
+      // Same reasoning as the subscription timefold: purchase rows are re-upserted by webhooks
+      // (and revocation/refund updates), so fold the rewrite into the existing state instead of
+      // resetting emitted grants. No sealed-fold guard is needed — this fold emits no end event,
+      // and the revocation cap below keeps a revoked purchase dormant.
+      onSourceRowChanged: async (_state, row) => {
+        const state = rowObject<OtpFoldState>(_state);
+        const updated = otpUpdatedState(state, rowObject<OneTimePurchaseRow>(row.rowData));
+        const next = soonestNextMillis(updated, null);
+        const cappedNext = updated.revokedAtMillis !== null && next !== null && next > updated.revokedAtMillis ? null : next;
+        return { newState: toPiledriverObject(updated), nextTriggerTime: dateFromMillis(cappedNext) };
       },
     }), { input: "payments-one-time-purchases" }),
     table("payments-otp-timefold-events", defineFlatMapTable(row => Array.isArray(row.rowData) ? row.rowData : []), { input: "payments-otp-timefold" }),

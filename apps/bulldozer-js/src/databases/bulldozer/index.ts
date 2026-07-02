@@ -2225,8 +2225,16 @@ export function declareLeftFoldTable(options: {
  *
  * Each input row runs once immediately with `triggerTimeIfRepeated = null`. If the reducer
  * returns `nextTriggerTime`, database/snapshot `tick(now)` processes queued rows whose trigger
- * time is due. Timed reruns append output rows for that source row; source updates reset that
- * source row's emitted outputs and fold state.
+ * time is due. Timed reruns append output rows for that source row.
+ *
+ * Source-row updates come in two flavors:
+ * - Without `onSourceRowChanged`, an update resets that source row's emitted outputs and fold
+ *   state and re-runs the reducer from `initialState` — previously emitted outputs are deleted
+ *   and past trigger times replay (against the *new* row data) on subsequent ticks.
+ * - With `onSourceRowChanged`, an update keeps the row's emitted outputs, fold state, and timer
+ *   progress; the hook folds the new row data into the existing state and returns the next
+ *   trigger time. Use this when emitted outputs are append-only facts (e.g. a ledger) that a
+ *   source rewrite must not retract or rederive.
  */
 export function declareTimeFoldTable(options: {
   initialState: PiledriverObject,
@@ -2235,6 +2243,11 @@ export function declareTimeFoldTable(options: {
     row: { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject },
     triggerTimeIfRepeated: Date | null,
   ) => Promise<{ newState: PiledriverObject, newRowData: PiledriverObject, nextTriggerTime: Date | null }>,
+  onSourceRowChanged?: (
+    state: PiledriverObject,
+    row: { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject },
+    previous: { rowData: PiledriverObject, nextTriggerTime: Date | null },
+  ) => Promise<{ newState: PiledriverObject, nextTriggerTime: Date | null }>,
 }): BulldozerTableImplementation {
   type SourceRow = { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject };
   type RowState = SourceRow & {
@@ -2365,6 +2378,20 @@ export function declareTimeFoldTable(options: {
     state = await replaceOutputs(state, oldRow, newRow, outputChanges);
     return await addQueuedTrigger(state, newRow);
   };
+  const updateSourceRow = async (state: State, row: SourceRow, outputChanges: TableChanges, onSourceRowChanged: NonNullable<typeof options.onSourceRowChanged>) => {
+    const oldRow = await state.rows.get(row.rowIdentifier);
+    if (oldRow === undefined) return await setSourceRow(state, row, outputChanges);
+    state = await removeQueuedTrigger(state, oldRow);
+    const result = await onSourceRowChanged(oldRow.state, row, {
+      rowData: oldRow.rowData,
+      nextTriggerTime: oldRow.nextTriggerTimeMs === null ? null : new Date(oldRow.nextTriggerTimeMs),
+    });
+    const newRow: RowState = { ...row, state: result.newState, nextTriggerTimeMs: toTimestampMs(result.nextTriggerTime), emittedRows: oldRow.emittedRows };
+    state = { ...state, rows: await state.rows.set(row.rowIdentifier, newRow) };
+    // emittedRows are carried over verbatim (and modified rows never change group), so the
+    // materialized output rows are untouched and no output changes are emitted.
+    return await addQueuedTrigger(state, newRow);
+  };
   const deleteSourceRow = async (state: State, rowIdentifier: string, outputChanges: TableChanges) => {
     const oldRow = await state.rows.get(rowIdentifier);
     if (!oldRow) return state;
@@ -2418,6 +2445,10 @@ export function declareTimeFoldTable(options: {
       const outputChanges = emptyTableChanges();
       for (const { groupKey } of changes.input.addedGroups) outputChanges.addedGroups.push({ groupKey });
       for (const row of changedRowsFromTableChanges(changes.input)) {
+        if (row.old && row.new && options.onSourceRowChanged) {
+          state = await updateSourceRow(state, row.new, outputChanges, options.onSourceRowChanged);
+          continue;
+        }
         if (row.old) state = await deleteSourceRow(state, row.old.rowIdentifier, outputChanges);
         if (row.new) state = await setSourceRow(state, row.new, outputChanges);
       }

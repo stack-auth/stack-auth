@@ -255,6 +255,118 @@ describe("payments schema", () => {
     expect(asRecord(asRecord(owned.ownedProducts)["prod-repeat"]).quantity).toBe(0);
   });
 
+  it("preserves emitted repeat grants when the subscription row is rewritten", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
+    const secondRepeatMillis = Date.UTC(1970, 2, 1);
+    // expires: "never" makes the grants accumulate, which is exactly the shape that a re-derived
+    // history would corrupt (an upgrade would retroactively double every past month's grant).
+    const subRow = (overrides: Partial<Parameters<typeof subscription>[1]> = {}) => subscription("sub-rewrite", {
+      customerId: "u-rewrite",
+      productId: "prod-rewrite",
+      product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "never" } }),
+      currentPeriodEndMillis: Date.UTC(1971, 0, 1),
+      ...overrides,
+    }) as unknown as PiledriverObject;
+    snapshot = await set(snapshot, schema.subscriptions, "sub-rewrite", subRow());
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+
+    const group = customerGroup("u-rewrite");
+    const txnIds = async () => ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
+    expect(await txnIds()).toEqual([`igr:sub-rewrite:${firstRepeatMillis}`, "sub-start:sub-rewrite"]);
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(20);
+
+    // Renewal-style webhook resync: same product/quantity, only volatile fields move. The ledger
+    // must be untouched *immediately* after the write — the reset-on-update behavior deleted every
+    // item-grant-repeat transaction here and only restored them on the next tick.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-rewrite", subRow({ status: "past_due", currentPeriodStartMillis: firstRepeatMillis }));
+    expect(await txnIds()).toEqual([`igr:sub-rewrite:${firstRepeatMillis}`, "sub-start:sub-rewrite"]);
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(20);
+
+    // Quantity upgrade: history keeps the originally granted quantities; only future repeats scale.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-rewrite", subRow({ quantity: 2, currentPeriodStartMillis: firstRepeatMillis }));
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(20);
+    snapshot = await snapshot.tick(new Date(secondRepeatMillis));
+    expect(await balanceAt(snapshot, group, "credits", secondRepeatMillis)).toBe(40);
+    const secondGrant = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).find(txn => txn.txnId === `igr:sub-rewrite:${secondRepeatMillis}`);
+    expect(secondGrant?.entries).toMatchObject([{ type: "item-quantity-change", itemId: "credits", quantity: 20 }]);
+  });
+
+  it("preserves emitted one-time-purchase repeat grants when the purchase row is rewritten", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
+    const otpRow = (overrides: Record<string, PiledriverObject> = {}) => ({
+      id: "otp-rewrite",
+      tenancyId: "t1",
+      customerId: "u-otp-rewrite",
+      customerType: "user",
+      productId: "prod-otp",
+      priceId: null,
+      product: product({ credits: { quantity: 5, repeat: [1, "month"], expires: "never" } }),
+      quantity: 1,
+      stripePaymentIntentId: "pi-rewrite",
+      revokedAtMillis: null,
+      refundedAtMillis: null,
+      creationSource: "PURCHASE_PAGE",
+      createdAtMillis: 0,
+      ...overrides,
+    });
+    snapshot = await set(snapshot, schema.oneTimePurchases, "otp-rewrite", otpRow());
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+
+    const group = customerGroup("u-otp-rewrite");
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
+
+    // Revocation arrives as a rewrite of the purchase row: the already-granted repeat must
+    // survive the write, and future repeats stop at the revocation.
+    snapshot = await set(snapshot, schema.oneTimePurchases, "otp-rewrite", otpRow({ revokedAtMillis: Date.UTC(1970, 1, 10) }));
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
+    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 2, 1)));
+    const txnIds = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
+    expect(txnIds).toEqual([`igr:otp-rewrite:${firstRepeatMillis}`, "otp:otp-rewrite"]);
+  });
+
+  it("ends a subscription via a row rewrite and seals the fold against further rewrites", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
+    const subEndMillis = Date.UTC(1970, 1, 15);
+    const subRow = (overrides: Partial<Parameters<typeof subscription>[1]> = {}) => subscription("sub-seal", {
+      customerId: "u-seal",
+      productId: "prod-seal",
+      product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" } }),
+      currentPeriodEndMillis: Date.UTC(1970, 2, 1),
+      ...overrides,
+    }) as unknown as PiledriverObject;
+    snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow());
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+
+    // Cancellation arrives as a rewrite of the live row (that's how the Stripe sync works); the
+    // end event must fire off the *existing* fold state, expiring the actually-emitted grants.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis }));
+    snapshot = await snapshot.tick(new Date(subEndMillis));
+
+    const group = customerGroup("u-seal");
+    const txns = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[])
+      .sort((a, b) => a.effectiveAtMillis - b.effectiveAtMillis || stringCompare(a.txnId, b.txnId));
+    expect(txns.map(txn => txn.txnId)).toEqual(["sub-start:sub-seal", `igr:sub-seal:${firstRepeatMillis}`, "sub-end:sub-seal"]);
+    expect(txns[2].entries).toMatchObject([
+      { type: "active-subscription-end", subscriptionId: "sub-seal" },
+      { type: "product-revocation", adjustedTransactionId: "sub-start:sub-seal", quantity: 1 },
+      { type: "item-quantity-expire", adjustedTransactionId: `igr:sub-seal:${firstRepeatMillis}`, itemId: "credits", quantity: 10 },
+    ]);
+    expect(await balanceAt(snapshot, group, "credits", subEndMillis)).toBe(0);
+
+    // Once ended, further webhook rewrites must not re-arm the fold: no duplicate subscription-end,
+    // no resumed repeats past the end.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis, currentPeriodStartMillis: firstRepeatMillis }));
+    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 3, 1)));
+    const txnIdsAfter = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
+    expect(txnIdsAfter).toEqual([`igr:sub-seal:${firstRepeatMillis}`, "sub-end:sub-seal", "sub-start:sub-seal"]);
+  });
+
   it("treats a manual item quantity change whose expiry is at/before its grant as a no-op", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();
