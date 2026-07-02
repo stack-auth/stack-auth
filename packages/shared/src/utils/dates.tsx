@@ -194,6 +194,11 @@ export function subtractInterval(date: Date, interval: Interval): Date {
   return applyInterval(date, -1, interval);
 }
 
+// One-shot local-time interval arithmetic that OVERFLOWS (Jan 31 + 1 month -> Mar 3, via
+// Date#setMonth) rather than clamping. Use this for single-step period math where JS/Stripe overflow
+// semantics are what we want (e.g. computing a subscription's currentPeriodEnd). For recurring
+// grant/reset BOUNDARIES, use `nthDayIntervalMillis` / `getIntervalsElapsed` instead — they clamp to
+// month-end and compute in UTC from a fixed anchor, and mixing the two would drift.
 export function addInterval(date: Date, interval: Interval): Date {
   return applyInterval(date, 1, interval);
 }
@@ -208,26 +213,26 @@ function getMsPerDayIntervalUnit(unit: 'day' | 'week'): number {
 }
 
 
+// The number of full `repeat` intervals elapsed from `anchor` up to (and including) `to`, i.e. the
+// largest n >= 0 with the n-th boundary <= to. Boundaries are the SAME ones `nthDayIntervalMillis`
+// computes (anchor-relative, UTC, month-end clamped), so counting and boundary-computation never
+// disagree — a Jan 31 monthly anchor has elapsed one interval by Feb 28, matching the reset the
+// bulldozer item-repeat fold actually emits. (This is why it must NOT be built on `addInterval`,
+// which is local-time and overflows instead of clamping.)
 export function getIntervalsElapsed(anchor: Date, to: Date, repeat: DayInterval): number {
   const [amount, unit] = repeat;
-  if (to <= anchor) return 0;
+  const toMillis = to.getTime();
+  if (toMillis <= anchor.getTime()) return 0;
   if (unit === 'day' || unit === 'week') {
     const msPerUnit = getMsPerDayIntervalUnit(unit);
-    const diffMs = to.getTime() - anchor.getTime();
+    const diffMs = toMillis - anchor.getTime();
     return Math.floor(diffMs / (msPerUnit * amount));
   }
-  if (["month", "year"].includes(unit)) {
-    let count = 0;
-    let current = new Date(anchor);
-    for (; ;) {
-      const next = addInterval(new Date(current), [amount, unit]);
-      if (next > to) break;
-      current = next;
-      count += 1;
-    }
-    return count;
-  }
-  return 0;
+  // month/year: walk anchor-relative boundaries. The count is small in practice (bounded by the
+  // number of billing periods since the anchor), so a linear walk is fine.
+  let count = 0;
+  while (nthDayIntervalMillis(anchor.getTime(), repeat, count + 1) <= toMillis) count += 1;
+  return count;
 }
 
 import.meta.vitest?.test("getIntervalsElapsed", ({ expect }) => {
@@ -236,9 +241,11 @@ import.meta.vitest?.test("getIntervalsElapsed", ({ expect }) => {
   expect(getIntervalsElapsed(anchor, to, [1, 'week'])).toBe(2);
   expect(getIntervalsElapsed(anchor, to, [3, 'day'])).toBe(4);
 
+  // Jan 31 monthly anchor: the first boundary is clamped to Feb 28, which is <= Mar 1, so one
+  // interval has elapsed (anchor-relative clamped math, consistent with nthDayIntervalMillis).
   const mAnchor = new Date('2023-01-31T00:00:00.000Z');
   const mTo = new Date('2023-03-01T00:00:00.000Z');
-  expect(getIntervalsElapsed(mAnchor, mTo, [1, 'month'])).toBe(0);
+  expect(getIntervalsElapsed(mAnchor, mTo, [1, 'month'])).toBe(1);
 
   const yAnchor = new Date('2020-01-01T00:00:00.000Z');
   const yTo = new Date('2022-06-01T00:00:00.000Z');
@@ -257,6 +264,9 @@ import.meta.vitest?.test("getIntervalsElapsed", ({ expect }) => {
  * Everything is done in UTC (unlike `addInterval`, which uses local-time Date accessors) so the
  * result is deterministic regardless of the server's timezone — this is relied upon by bulldozer
  * folds, which must be reproducible across machines.
+ *
+ * `occurrence` 0 returns the anchor itself; `getIntervalsElapsed` counts these same boundaries, so
+ * the two are always consistent for a given DayInterval.
  */
 export function nthDayIntervalMillis(anchorMillis: number, interval: DayInterval, occurrence: number): number {
   const [count, unit] = interval;
