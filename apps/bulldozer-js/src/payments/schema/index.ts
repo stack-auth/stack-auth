@@ -517,9 +517,12 @@ const compareLedgerSortKeys = (a: PiledriverObject, b: PiledriverObject) => {
 // Builds one compaction sub-pipeline for a single sign of non-expiring changes. Compaction must
 // only ever merge changes of the *same* sign: a non-expiring deduction has to reach the ledger as a
 // deduction so it consumes the soonest-expiring grant. If we merged it with permanent grants
-// (opposite sign) it would silently net against them and never touch the expiring grant. The
-// `boundaries` input (one marker per item-quantity-expire) is shared across both signs so neither
-// merges across an expiry event in time.
+// (opposite sign) it would silently net against them and never touch the expiring grant. Beyond
+// that, it may only merge a *contiguous* run of same-sign changes: the `boundaries` input walls off
+// every event that changes the live-grant set (grant arrivals, opposite-sign changes, expiries), so
+// a merged change is never restamped across one. Without those walls, moving a change across a grant
+// arrival flips the ledger's debt-vs-consumption split and permanently loses/gains units. The caller
+// passes a per-sign boundary table (everything except this sign's own compactable arrivals).
 const compactionSubPipelineSteps = (suffix: string, signedAggregatesTable: string, boundariesTable: string): { steps: InitTableStep[], output: string } => {
   const inputTable = `payments-entries-compaction-input-${suffix}`;
   const sortedTable = `${inputTable}-sorted`;
@@ -533,8 +536,9 @@ const compactionSubPipelineSteps = (suffix: string, signedAggregatesTable: strin
       table(sortedTable, defineSortTable({ sortKeyExtractor: compactionSortKey, sortKeyComparator: compareCompactionSortKeys }), { input: inputTable }),
       table(rawTable, defineCompactTable({
         compactor: (left, right) => {
-          // A boundary (an expiry of this item) stops the merge; different items never merge (the
-          // sort groups by item, so this only happens at the edge between two items' windows).
+          // A boundary (an expiry of this item, or an arrival that isn't this sign's own compactable
+          // change) stops the merge; different items never merge (the sort groups by item, so this
+          // only happens at the edge between two items' windows).
           if (isCompactionBoundary(left) || isCompactionBoundary(right)) return [{ newRowData: left }, { newRowData: right }];
           if (compactionRowItemId(left) !== compactionRowItemId(right)) return [{ newRowData: left }, { newRowData: right }];
           return [{ newRowData: toPiledriverObject(mergeCompactionAggregates(asCompactionAggregate(left), asCompactionAggregate(right))) }];
@@ -555,8 +559,8 @@ const compactionSubPipelineSteps = (suffix: string, signedAggregatesTable: strin
 };
 
 export function createPaymentsSchema() {
-  const positiveCompaction = compactionSubPipelineSteps("positive", "payments-entries-item-quantity-change-compactable-positive-aggregates", "payments-entries-compaction-boundaries");
-  const negativeCompaction = compactionSubPipelineSteps("negative", "payments-entries-item-quantity-change-compactable-negative-aggregates", "payments-entries-compaction-boundaries");
+  const positiveCompaction = compactionSubPipelineSteps("positive", "payments-entries-item-quantity-change-compactable-positive-aggregates", "payments-entries-compaction-boundaries-positive");
+  const negativeCompaction = compactionSubPipelineSteps("negative", "payments-entries-item-quantity-change-compactable-negative-aggregates", "payments-entries-compaction-boundaries-negative");
   const migrations: Migration[] = [[
     table("payments-subscriptions", defineStoredTable()),
     table("payments-subscription-invoices", defineStoredTable()),
@@ -811,12 +815,14 @@ export function createPaymentsSchema() {
     table("payments-entries-item-quantity-change-compactable-positive-aggregates", defineMapTable(row => toPiledriverObject(compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(row.rowData)))), { input: "payments-entries-item-quantity-change-compactable-positive" }),
     table("payments-entries-item-quantity-change-compactable-negative-aggregates", defineMapTable(row => toPiledriverObject(compactableEntryToAggregate(rowObject<ItemQuantityChangeEntry>(row.rowData)))), { input: "payments-entries-item-quantity-change-compactable-negative" }),
     table("payments-entries-item-quantity-expire", defineFilterTable(row => rowObject<{ type: string }>(row.rowData).type === "item-quantity-expire"), { input: "payments-transaction-entries" }),
-    // Compaction boundaries mark, per item, the instants at which a grant of that item expires, so
-    // non-expiring changes on either side don't compact across them (which would move a change
-    // relative to the expiry and corrupt point-in-time balances). They come from two sources:
-    // subscription/one-time-purchase expiry markers, and manual absolute-expiry grants (whose expiry
-    // marker is synthesized later in the split, so we derive the boundary here from the grant's own
-    // absolute expiry time).
+    // Compaction boundaries mark, per item, the instants across which non-expiring changes of a
+    // given sign must NOT be merged, because merging (which restamps the merged change at the
+    // earliest member's time) would move it across an event that changes the live-grant set, and the
+    // ledger's debt-vs-consumption split depends on that set at each change's instant. They come from
+    // three sources: expiry markers (a grant of this item dropping), manual absolute-expiry grants
+    // (whose expiry marker is synthesized later in the split, so we derive the boundary here from the
+    // grant's own absolute expiry time), and — crucially — every change ARRIVAL that isn't of the
+    // pipeline's own compactable sign (see payments-entries-change-arrival-boundaries below).
     table("payments-entries-expire-marker-boundaries", defineMapTable(row => {
       const entry = rowObject<{ txnEffectiveAtMillis: number, txnId: string, index: number, itemId: string }>(row.rowData);
       return toPiledriverObject({
@@ -839,9 +845,46 @@ export function createPaymentsSchema() {
         itemId: entry.itemId,
       })];
     }), { input: "payments-entries-item-quantity-change-non-compactable" }),
-    table("payments-entries-compaction-boundaries", defineConcatTable(), {
+    // A boundary at every item-quantity-change ARRIVAL, tagged with its sign and whether it's
+    // compactable (`expiresWhen === null`, matching the compactable filter above). Each sign's
+    // pipeline then treats every arrival EXCEPT its own compactable changes as a wall, so it only
+    // ever merges a maximal run of same-sign non-expiring changes with nothing between them that
+    // touches the live-grant set (no grant arrival, no removal, no expiry).
+    table("payments-entries-change-arrival-boundaries", defineMapTable(row => {
+      const entry = rowObject<{ txnEffectiveAtMillis: number, txnId: string, index: number, itemId: string, quantity: number, expiresWhen?: number | string | null }>(row.rowData);
+      return toPiledriverObject({
+        type: "item-quantity-compaction-boundary",
+        txnEffectiveAtMillis: entry.txnEffectiveAtMillis,
+        txnId: entry.txnId,
+        index: entry.index,
+        itemId: entry.itemId,
+        sign: entry.quantity < 0 ? -1 : 1,
+        compactable: entry.expiresWhen === null,
+      });
+    }), { input: "payments-entries-item-quantity-change-all" }),
+    // For the positive pipeline, every arrival except positive-compactable grants is a wall (i.e.
+    // all removals plus expiring grant arrivals). The expiring-grant case matters even though it's
+    // the same sign: with pre-existing debt, merging two permanent grants across an expiring grant
+    // changes which grant absorbs the debt, and the expiring grant then leaks it at its expiry.
+    table("payments-entries-arrival-boundaries-for-positive", defineFilterTable(row => {
+      const boundary = rowObject<{ sign: number, compactable: boolean }>(row.rowData);
+      return !(boundary.sign > 0 && boundary.compactable);
+    }), { input: "payments-entries-change-arrival-boundaries" }),
+    // For the negative pipeline, every arrival except negative-compactable removals is a wall (i.e.
+    // all grant arrivals, permanent or expiring, plus any expiring removal).
+    table("payments-entries-arrival-boundaries-for-negative", defineFilterTable(row => {
+      const boundary = rowObject<{ sign: number, compactable: boolean }>(row.rowData);
+      return !(boundary.sign < 0 && boundary.compactable);
+    }), { input: "payments-entries-change-arrival-boundaries" }),
+    table("payments-entries-compaction-boundaries-positive", defineConcatTable(), {
       markers: "payments-entries-expire-marker-boundaries",
       absolute: "payments-entries-absolute-expiry-boundaries",
+      arrivals: "payments-entries-arrival-boundaries-for-positive",
+    }),
+    table("payments-entries-compaction-boundaries-negative", defineConcatTable(), {
+      markers: "payments-entries-expire-marker-boundaries",
+      absolute: "payments-entries-absolute-expiry-boundaries",
+      arrivals: "payments-entries-arrival-boundaries-for-negative",
     }),
     ...positiveCompaction.steps,
     ...negativeCompaction.steps,

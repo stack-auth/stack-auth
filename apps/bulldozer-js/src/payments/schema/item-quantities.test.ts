@@ -388,6 +388,77 @@ describe("item quantities: compaction", () => {
   });
 });
 
+describe("item quantities: compaction never merges across a grant arrival", () => {
+  // The sign-split compaction merges same-sign non-expiring changes and restamps the merged change
+  // at the earliest member's time. If it merged across a grant arrival (or any event that changes
+  // the live-grant set), it would move the change relative to that grant and flip the ledger's
+  // debt-vs-consumption split — permanently losing or gaining units. Grant arrivals must be walls.
+  it("does not merge two spends across a grant arrival, preserving the final balance", async () => {
+    /*
+     * t=1  -1  coins (spend; becomes debt — no grant yet)
+     * t=2  +10 coins (permanent top-up)
+     * t=3  +10 coins, expires at 50 (expiring grant)
+     * t=4  -10 coins (spend; rides the soonest-expiring grant = the expiring one, and settles when it
+     *                 expires, so the permanent grant keeps its balance)
+     *
+     * Net grants - removals = 20 - 11 = 9. If the two spends (-1 and -10) were merged back to t=1
+     * (before any grant), the combined -11 debt would zero the permanent grant and spill onto the
+     * expiring grant, which then leaks 9 at t=50 -> a wrong final balance of 0. With grant arrivals
+     * as boundaries they stay separate and the balance is correct throughout.
+     */
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("r0", "u", "coins", -1, 1, null));
+    snapshot = await setManualChange(snapshot, manualChange("gp", "u", "coins", 10, 2, null));
+    snapshot = await setManualChange(snapshot, manualChange("ge", "u", "coins", 10, 3, 50));
+    snapshot = await setManualChange(snapshot, manualChange("r1", "u", "coins", -10, 4, null));
+    const g = customerGroup("u");
+    // Point-in-time (each step is exact, not collapsed to the earliest spend's time):
+    expect(await balanceAt(snapshot, g, "coins", 2)).toBe(9); // -1 debt absorbed by +10 -> 9
+    expect(await balanceAt(snapshot, g, "coins", 3)).toBe(19); // expiring +10 -> 19
+    expect(await balanceAt(snapshot, g, "coins", 5)).toBe(9); // -10 rides the expiring grant -> 9
+    // Final / as-of-now, after the expiring grant is gone: the permanent grant retains 9.
+    expect(await balanceAt(snapshot, g, "coins", 51)).toBe(9);
+  });
+
+  it("keeps two spends separated by an expiring grant as distinct compacted entries", async () => {
+    /*
+     * t=1  -3 coins (spend)
+     * t=2  +5 coins, expires at 100 (expiring grant -> a boundary at its arrival)
+     * t=3  -4 coins (spend)
+     *
+     * The two spends must NOT merge into a single -7 entry, because the grant arrives between them.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("r1", "u", "coins", -3, 1, null));
+    snapshot = await setManualChange(snapshot, manualChange("ge", "u", "coins", 5, 2, 100));
+    snapshot = await setManualChange(snapshot, manualChange("r2", "u", "coins", -4, 3, null));
+    const compacted = (await rowsBySortKey(snapshot, schema.compactedItemQuantityChangeEntries, customerGroup("u"))).map(row => asRecord(row.rowData));
+    // The expiring grant is non-compactable (passes through separately), so only the two spends show
+    // up here — and they stay separate.
+    const quantities = compacted.map(row => Number(row.quantity)).sort((a, b) => a - b);
+    expect(quantities).toEqual([-4, -3]);
+  });
+
+  it("still merges a contiguous run of same-sign changes with nothing between them", async () => {
+    /*
+     * t=1  -3 coins
+     * t=2  -4 coins
+     *
+     * Nothing changes the live-grant set between the two spends, so they still compact into one -7
+     * entry (the perf win is preserved).
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("r1", "u", "coins", -3, 1, null));
+    snapshot = await setManualChange(snapshot, manualChange("r2", "u", "coins", -4, 2, null));
+    const compacted = (await rowsBySortKey(snapshot, schema.compactedItemQuantityChangeEntries, customerGroup("u"))).map(row => asRecord(row.rowData));
+    expect(compacted).toHaveLength(1);
+    expect(compacted[0]).toMatchObject({ type: "compacted-item-quantity-change", itemId: "coins", quantity: -7 });
+    expect(Number(compacted[0].txnEffectiveAtMillis)).toBe(1);
+  });
+});
+
 describe("item quantities: full-pipeline integration", () => {
   const setOtp = async (snapshot: Snapshot, id: string, customerId: string, productId: string, includedItems: Parameters<typeof product>[0], quantity: number, createdAtMillis: number) => {
     const schema = createPaymentsSchema();
