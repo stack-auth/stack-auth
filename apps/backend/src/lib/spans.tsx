@@ -65,9 +65,12 @@ export function buildEventSpanFields(opts: {
 
 /**
  * One row of `analytics_internal.spans`. `created_at` is omitted (the table
- * defaults it to now64(3) = ingested-at). `version` is a server-monotonic value
- * per span id (write-time epoch ms): the ReplacingMergeTree keeps the highest
- * version, so re-writing a span with a later `span_ended_at` advances its end.
+ * defaults it to now64(3) = ingested-at). `version` is the span's own end time as
+ * epoch ms (see `insertSessionReplaySpans`): the ReplacingMergeTree keeps the
+ * highest version, so the row carrying the LATEST `span_ended_at` wins regardless
+ * of insert order. Tying the version to the data (not wall-clock) means a stale or
+ * partial re-write with an earlier end can never overwrite a later one — the span
+ * end advances monotonically and never regresses under concurrent batches.
  */
 export type SpanInsertRow = {
   id: string,
@@ -102,9 +105,12 @@ export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[
 /**
  * Emits the two spans that describe a session replay from the replay batch route:
  * the replay-level `$session-replay` span and the per-tab `$session-replay-segment`
- * span. Re-written on every batch (with a fresh `version` and the latest bounds)
- * so their `span_ended_at` advances as recording continues. The segment span uses
- * the RECORDING's `sessionReplaySegmentId` — the per-tab id — as its identity.
+ * span. Re-written on every batch with the latest bounds so their `span_ended_at`
+ * advances as recording continues. Each span's `version` is its own `span_ended_at`
+ * (epoch ms), so the ReplacingMergeTree keeps the row with the latest end — the end
+ * never regresses even if batches insert out of order or a re-write raced on a
+ * partial view of the chunks (which self-heals on the next batch). The segment span
+ * uses the RECORDING's `sessionReplaySegmentId` — the per-tab id — as its identity.
  */
 export async function insertSessionReplaySpans(
   client: ClickHouseClient,
@@ -119,7 +125,6 @@ export async function insertSessionReplaySpans(
     replayLastEventAt: Date,
     segmentStartedAt: Date,
     segmentLastEventAt: Date,
-    version: number,
   },
 ): Promise<void> {
   const base = {
@@ -130,7 +135,6 @@ export async function insertSessionReplaySpans(
     team_id: null,
     refresh_token_id: opts.refreshTokenId,
     session_replay_id: opts.replayId,
-    version: opts.version,
   } as const;
 
   const replaySpan: SpanInsertRow = {
@@ -141,6 +145,7 @@ export async function insertSessionReplaySpans(
     span_ended_at: opts.replayLastEventAt,
     parent_span_ids: [toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId)],
     session_replay_segment_id: null,
+    version: opts.replayLastEventAt.getTime(),
   };
 
   const segmentSpan: SpanInsertRow = {
@@ -154,6 +159,7 @@ export async function insertSessionReplaySpans(
       toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
     ],
     session_replay_segment_id: opts.sessionReplaySegmentId,
+    version: opts.segmentLastEventAt.getTime(),
   };
 
   await insertSpans(client, [replaySpan, segmentSpan]);

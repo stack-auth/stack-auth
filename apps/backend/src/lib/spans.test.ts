@@ -58,7 +58,6 @@ describe("insertSessionReplaySpans", () => {
       replayLastEventAt,
       segmentStartedAt,
       segmentLastEventAt,
-      version: 123,
     });
 
     expect(client.insert).toHaveBeenCalledTimes(1);
@@ -78,7 +77,9 @@ describe("insertSessionReplaySpans", () => {
       refresh_token_id: "rt1",
       session_replay_id: "replay1",
       session_replay_segment_id: null,
-      version: 123,
+      // version is the span's own end (epoch ms) so the latest-end row wins in the
+      // ReplacingMergeTree regardless of insert order.
+      version: replayLastEventAt.getTime(),
     });
     expect(replaySpan.span_started_at).toBe(replayStartedAt);
     expect(replaySpan.span_ended_at).toBe(replayLastEventAt);
@@ -89,7 +90,7 @@ describe("insertSessionReplaySpans", () => {
       parent_span_ids: ["rti-rt1", "sri-replay1"],
       session_replay_id: "replay1",
       session_replay_segment_id: "seg1",
-      version: 123,
+      version: segmentLastEventAt.getTime(),
     });
     expect(segmentSpan.span_started_at).toBe(segmentStartedAt);
     expect(segmentSpan.span_ended_at).toBe(segmentLastEventAt);

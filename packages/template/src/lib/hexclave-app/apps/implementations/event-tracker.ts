@@ -122,7 +122,7 @@ export class EventTracker {
   private _events: TrackedEvent[] = [];
   private _approxBytes = 0;
   private _lastUrl: string | null = null;
-  private readonly _sessionReplaySegmentId: string;
+  private _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
 
   private _originalPushState: History["pushState"] | null = null;
@@ -179,6 +179,17 @@ export class EventTracker {
     this._events = [];
     this._approxBytes = 0;
     this._unclassifiedClicks.clear();
+  }
+
+  /**
+   * Replaces the per-tab id shared with the SessionRecorder. Called on sign-out
+   * (paired with clearBuffer) so a subsequent same-tab sign-in as a different user
+   * does not reuse the previous user's session_replay_segment_id — which would let
+   * the two users' analytics be correlated. The app rotates both trackers to the
+   * SAME new id so they stay in sync.
+   */
+  setSessionReplaySegmentId(id: string) {
+    this._sessionReplaySegmentId = id;
   }
 
   private _pushEvent(event: TrackedEvent) {
