@@ -4,6 +4,7 @@ import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
 const endpoints = [
+  "/api/latest/internal/automations/schedule",
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
 ];

@@ -24,6 +24,9 @@ export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
 const providerIdRegex = /^[a-z0-9_-]+$/;
+const paymentsItemQuotaAutomationSourceType = "payments-item-quota";
+const sendEmailAutomationActionType = "send-email";
+const marketingAutomationNotificationCategoryName = "Marketing";
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -141,6 +144,198 @@ const branchAuthSchema = yupObject({
     }),
   ),
   signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
+});
+
+const branchAutomationThresholdsSchema = yupObject({
+  nearRemainingRatio: yupNumber().moreThan(0).max(1).optional(),
+  nearRemainingQuantity: yupNumber().min(0).optional(),
+  overLimitQuantity: yupNumber().min(0).optional(),
+}).test(
+  'at-least-one-threshold',
+  'At least one quota threshold is required',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    if (!isObjectLike(value)) return true;
+    if (
+      value.nearRemainingRatio === undefined
+      && value.nearRemainingQuantity === undefined
+      && value.overLimitQuantity === undefined
+    ) {
+      return this.createError({
+        message: 'At least one quota threshold is required',
+        path: this.path,
+      });
+    }
+    return true;
+  },
+);
+
+const branchAutomationsSchema = yupObject({
+  rules: yupRecord(
+    userSpecifiedIdSchema("automationRuleId"),
+    yupObject({
+      displayName: yupString().optional(),
+      enabled: yupBoolean(),
+      source: yupObject({
+        type: yupString().oneOf([paymentsItemQuotaAutomationSourceType]).defined(),
+        itemId: userSpecifiedIdSchema("itemId"),
+        customerType: yupString().oneOf(["user"]),
+        thresholds: branchAutomationThresholdsSchema,
+      }),
+      action: yupObject({
+        type: yupString().oneOf([sendEmailAutomationActionType]).defined(),
+        templateId: yupString().uuid(),
+        themeId: yupString().uuid().nullable().optional(),
+        subject: yupString().optional(),
+        notificationCategoryName: yupString().oneOf([marketingAutomationNotificationCategoryName]).optional(),
+      }),
+      cooldown: yupObject({
+        days: yupNumber().integer().min(1),
+      }),
+    }),
+  ),
+});
+
+const validQuotaAutomationRule = {
+  automations: {
+    rules: {
+      lowCreditsUpgradeEmail: {
+        displayName: "Low credits upgrade email",
+        enabled: true,
+        source: {
+          type: paymentsItemQuotaAutomationSourceType,
+          itemId: "credits",
+          customerType: "user",
+          thresholds: {
+            nearRemainingRatio: 0.2,
+            nearRemainingQuantity: 10,
+            overLimitQuantity: 0,
+          },
+        },
+        action: {
+          type: sendEmailAutomationActionType,
+          templateId: "12345678-1234-4234-9234-123456789012",
+          themeId: null,
+          subject: "You're running low on credits",
+          notificationCategoryName: marketingAutomationNotificationCategoryName,
+        },
+        cooldown: {
+          days: 7,
+        },
+      },
+    },
+  },
+};
+
+import.meta.vitest?.test("branchAutomationsSchema accepts a valid payments item quota email rule", async ({ expect }) => {
+  await expect(branchConfigSchema.validate(validQuotaAutomationRule, { abortEarly: false })).resolves.toMatchObject(validQuotaAutomationRule);
+  await expect(assertNoConfigOverrideErrors(branchConfigSchema, validQuotaAutomationRule)).resolves.toBeUndefined();
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects unsupported source types", async ({ expect }) => {
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          source: {
+            type: "custom-usage",
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: automations.rules.source.type must be one of the following values: payments-item-quota]`);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects unsupported action types", async ({ expect }) => {
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          action: {
+            type: "webhook",
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: automations.rules.action.type must be one of the following values: send-email]`);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects unsupported source customer types", async ({ expect }) => {
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          source: {
+            type: paymentsItemQuotaAutomationSourceType,
+            customerType: "team",
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: automations.rules.source.customerType must be one of the following values: user]`);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects missing and invalid thresholds", async ({ expect }) => {
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          source: {
+            type: paymentsItemQuotaAutomationSourceType,
+            thresholds: {},
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: At least one quota threshold is required]`);
+
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          source: {
+            type: paymentsItemQuotaAutomationSourceType,
+            thresholds: {
+              nearRemainingRatio: 1.5,
+              nearRemainingQuantity: -1,
+              overLimitQuantity: -1,
+            },
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`
+    [ValidationError: 3 errors occurred]
+  `);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects invalid cooldowns", async ({ expect }) => {
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          cooldown: {
+            days: 0,
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: automations.rules.cooldown.days must be greater than or equal to 1]`);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects payments quota email automation config", async ({ expect }) => {
+  await expect(assertNoConfigOverrideErrors(branchConfigSchema, {
+    payments: {
+      quotaEmailAutomations: {},
+    },
+  })).rejects.toThrow(/payments contains unknown properties: quotaEmailAutomations/);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema rejects emails quota email automation config", async ({ expect }) => {
+  await expect(assertNoConfigOverrideErrors(branchConfigSchema, {
+    emails: {
+      quotaEmailAutomations: {},
+    },
+  })).rejects.toThrow(/emails contains unknown properties: quotaEmailAutomations/);
 });
 
 export const branchPaymentsSchema = yupObject({
@@ -318,6 +513,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   domains: branchDomain,
 
   auth: branchAuthSchema,
+
+  automations: branchAutomationsSchema,
 
   emails: yupObject({
     selectedThemeId: schemaFields.emailThemeSchema,
@@ -785,6 +982,33 @@ const organizationConfigDefaults = {
       },
     }),
     signUpRulesDefaultAction: 'allow',
+  },
+
+  automations: {
+    rules: (key: string) => ({
+      displayName: undefined,
+      enabled: false,
+      source: {
+        type: paymentsItemQuotaAutomationSourceType,
+        itemId: undefined,
+        customerType: "user",
+        thresholds: {
+          nearRemainingRatio: undefined,
+          nearRemainingQuantity: undefined,
+          overLimitQuantity: undefined,
+        },
+      },
+      action: {
+        type: sendEmailAutomationActionType,
+        templateId: undefined,
+        themeId: undefined,
+        subject: undefined,
+        notificationCategoryName: marketingAutomationNotificationCategoryName,
+      },
+      cooldown: {
+        days: undefined,
+      },
+    }),
   },
 
   emails: {

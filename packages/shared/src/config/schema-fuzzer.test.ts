@@ -6,6 +6,10 @@ import { nicify } from "../utils/strings";
 import { normalize, override } from "./format";
 import { BranchConfigNormalizedOverride, EnvironmentConfigNormalizedOverride, OrganizationConfigNormalizedOverride, ProjectConfigNormalizedOverride, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "./schema";
 
+const paymentsItemQuotaAutomationSourceType = "payments-item-quota";
+const sendEmailAutomationActionType = "send-email";
+const marketingAutomationNotificationCategoryName = "Marketing";
+
 type FuzzerConfig<T> = ReadonlyArray<T extends object ? ([T] extends [any[]] ? { readonly [K in keyof T]: FuzzerConfig<T[K]> } : Required<{
   [K in keyof T]: FuzzerConfig<T[K]>;
 }> & Record<string, FuzzerConfig<any>>) : T>;
@@ -60,6 +64,34 @@ const branchSchemaFuzzerConfig = [{
       }],
     }],
     signUpRulesDefaultAction: ["allow", "reject"],
+  }],
+  automations: [{
+    rules: [{
+      "some-rule-id": [{
+        displayName: ["Low credits upgrade email", "Usage limit email"],
+        enabled: [true, false],
+        source: [{
+          type: [paymentsItemQuotaAutomationSourceType],
+          itemId: ["some-item-id", "some-other-item-id"],
+          customerType: ["user"],
+          thresholds: [{
+            nearRemainingRatio: [0.2, 0.5, 1],
+            nearRemainingQuantity: [0, 10, 100],
+            overLimitQuantity: [0, 1],
+          }],
+        }],
+        action: [{
+          type: [sendEmailAutomationActionType],
+          templateId: ["12345678-1234-4234-9234-123456789012"],
+          themeId: [null, "12345678-1234-4234-9234-123456789012"],
+          subject: ["You're running low on credits", "Upgrade your plan"],
+          notificationCategoryName: [marketingAutomationNotificationCategoryName],
+        }],
+        cooldown: [{
+          days: [1, 7, 30],
+        }],
+      }],
+    }],
   }],
   dbSync: [{
     externalDatabases: [{

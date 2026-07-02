@@ -60,6 +60,12 @@ type AdminAppInternalsHooks = {
   useMetricsUserCounts: () => MetricsUserCounts,
 };
 
+type AdminAppInternalsRequestType = "client" | "server" | "admin";
+
+type AdminAppInternalsRequest = {
+  sendRequest: (path: string, requestOptions: RequestInit, requestType?: AdminAppInternalsRequestType) => Promise<Response>,
+};
+
 function getInternalsHookOrThrow<K extends keyof AdminAppInternalsHooks>(adminApp: object, hookName: K): AdminAppInternalsHooks[K] {
   const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
   if (typeof internals !== "object" || internals == null || !(hookName in internals)) {
@@ -94,4 +100,26 @@ export function useUserActivityOrThrow(adminApp: object, userId: string): UserAc
 
 export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
   return getInternalsHookOrThrow(adminApp, "useMetricsUserCounts")();
+}
+
+function getInternalsSendRequestOrThrow(adminApp: object): AdminAppInternalsRequest["sendRequest"] {
+  const internals = Reflect.get(adminApp, hexclaveAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("sendRequest" in internals)) {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: missing sendRequest");
+  }
+
+  const sendRequest = (internals as Record<string, unknown>).sendRequest;
+  if (typeof sendRequest !== "function") {
+    throw new HexclaveAssertionError("Admin app internals are unavailable: sendRequest is not callable");
+  }
+
+  return sendRequest as AdminAppInternalsRequest["sendRequest"];
+}
+
+export async function sendAdminInternalRequestOrThrow(
+  adminApp: object,
+  path: string,
+  requestOptions: RequestInit,
+): Promise<Response> {
+  return await getInternalsSendRequestOrThrow(adminApp)(path, requestOptions, "admin");
 }

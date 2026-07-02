@@ -218,6 +218,7 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Sent", href: "." },
       { displayName: "Drafts", href: "../email-drafts", getBreadcrumbItems: getEmailDraftBreadcrumbItems },
       { displayName: "Templates", href: "../email-templates", getBreadcrumbItems: getEmailTemplatesBreadcrumbItems },
+      { displayName: "Automations", href: "../email-automations" },
       { displayName: "Email Settings", href: "../email-settings" },
     ],
     screenshots: getScreenshots('emails', 8),

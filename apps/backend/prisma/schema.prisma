@@ -83,6 +83,7 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  automationRuleExecutionStates AutomationRuleExecutionState[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1141,6 +1142,31 @@ model UserNotificationPreference {
   @@unique([tenancyId, projectUserId, notificationCategoryId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
   @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
+}
+
+model AutomationRuleExecutionState {
+  tenancyId String @db.Uuid
+
+  ruleId     String
+  sourceType String
+  actionType String
+
+  subjectType String
+  subjectId   String
+
+  signalKey           String
+  lastTriggeredAt     DateTime
+  lastActionAt        DateTime?
+  lastEmailOutboxId   String?  @db.Uuid
+  lastSourceSnapshot  Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, ruleId, subjectType, subjectId, signalKey])
+  @@index([tenancyId, ruleId, lastTriggeredAt], name: "AutomationRuleExecutionState_tenancy_rule_triggered_idx")
 }
 
 model Conversation {
