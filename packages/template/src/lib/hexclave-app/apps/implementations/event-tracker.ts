@@ -5,6 +5,7 @@ import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/d
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
+import { getAmbientSpanRefs, runWithSpanContext } from "./span-context";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -47,12 +48,29 @@ export type ParentRef = string | SpanRef | Span;
 
 export type TrackOptions = {
   parentIds?: ParentRef[],
+  /**
+   * Drop ALL ambient parents (global spans + enclosing withSpan context); only
+   * explicit parentIds apply. This is the opt-out for ambient parenting.
+   */
+  root?: boolean,
+  /**
+   * Drop specific ambient parents ("I don't want THAT span as a parent").
+   * Filters the FINAL merged parent list — an excluded span stays excluded even
+   * when it re-enters via a kept child's frozen chain, which means "descendants
+   * of the excluded span" queries will not match this item (by design; that is
+   * the literal meaning of the option, not a dedupe bug).
+   */
+  excludeParentIds?: ParentRef[],
 };
 
 export type StartSpanOptions = {
   data?: Record<string, unknown>,
   parentIds?: ParentRef[],
   startedAtMs?: number,
+  /** See TrackOptions.root. */
+  root?: boolean,
+  /** See TrackOptions.excludeParentIds. */
+  excludeParentIds?: ParentRef[],
 };
 
 /**
@@ -152,10 +170,19 @@ export function getCustomTelemetryDataError(data: unknown): string | null {
 export function resolveParentIds(opts: {
   explicit?: ParentRef[],
   ambient?: SpanRef[],
+  /** Ignore ambient parents entirely; only explicit ones apply. */
+  root?: boolean,
+  /**
+   * Ids to drop from the FINAL merged list (each ParentRef contributes only its
+   * own id here, not its chain) — see TrackOptions.excludeParentIds.
+   */
+  exclude?: ParentRef[],
 }): { ids: string[] } | { error: string } {
   const chains: string[][] = [];
-  for (const ambient of opts.ambient ?? []) {
-    chains.push([...ambient.parentSpanIds, ambient.spanId]);
+  if (!opts.root) {
+    for (const ambient of opts.ambient ?? []) {
+      chains.push([...ambient.parentSpanIds, ambient.spanId]);
+    }
   }
   for (const parent of opts.explicit ?? []) {
     if (typeof parent === "string") {
@@ -165,6 +192,16 @@ export function resolveParentIds(opts: {
       chains.push([...ref.parentSpanIds, ref.spanId]);
     }
   }
+  const excludeIds = new Set<string>();
+  for (const excluded of opts.exclude ?? []) {
+    const id = typeof excluded === "string"
+      ? excluded
+      : "ref" in excluded && typeof excluded.ref === "function" ? excluded.ref().spanId : (excluded as SpanRef).spanId;
+    if (!UUID_RE.test(id)) {
+      return { error: `Invalid excluded parent span id ${JSON.stringify(id)}: excludeParentIds must be span uuids` };
+    }
+    excludeIds.add(id);
+  }
   const seen = new Set<string>();
   const merged: string[] = [];
   for (const chain of chains) {
@@ -172,7 +209,7 @@ export function resolveParentIds(opts: {
       if (!UUID_RE.test(id)) {
         return { error: `Invalid parent span id ${JSON.stringify(id)}: parent ids must be span uuids` };
       }
-      if (!seen.has(id)) {
+      if (!seen.has(id) && !excludeIds.has(id)) {
         seen.add(id);
         merged.push(id);
       }
@@ -183,6 +220,41 @@ export function resolveParentIds(opts: {
     return { ids: merged.slice(-MAX_PARENT_CHAIN) };
   }
   return { ids: merged };
+}
+
+/**
+ * Shared implementation of withSpan(): starts the span (parents come from the
+ * ENCLOSING context, not itself), runs `fn` with the span as an ambient parent
+ * for everything created inside, auto-ends on settle, and on throw records
+ * `data.error` and rethrows. Telemetry failures never fail `fn` — the end/
+ * setData promises are pre-caught and intentionally not awaited, so the
+ * caller's result is never blocked on an analytics ack.
+ */
+export async function withSpanImpl<T>(
+  startSpan: (spanType: string, options?: StartSpanOptions) => Span,
+  spanType: string,
+  optionsOrFn: StartSpanOptions | ((span: Span) => Promise<T> | T),
+  maybeFn?: (span: Span) => Promise<T> | T,
+): Promise<T> {
+  const options = typeof optionsOrFn === "function" ? undefined : optionsOrFn;
+  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  if (typeof fn !== "function") {
+    return await rejectedPreCaught("withSpan() requires a callback function");
+  }
+  const span = startSpan(spanType, options);
+  return await runWithSpanContext(span.ref(), async () => {
+    try {
+      const result = await fn(span);
+      span.end().catch(() => {});
+      return result;
+    } catch (error) {
+      // Order matters: the merge lands before the end row is enqueued, so the
+      // single deduped wire row carries both the error and the end time.
+      span.setData({ error: error instanceof Error ? error.message : String(error) }).catch(() => {});
+      span.end().catch(() => {});
+      throw error;
+    }
+  });
 }
 
 /**
@@ -305,6 +377,9 @@ export type EventTrackerDeps = {
   // chunks from the same tab carry the same session_replay_segment_id. Falls
   // back to a fresh uuid when constructed standalone (e.g. in tests).
   sessionReplaySegmentId?: string,
+  // Serverless keep-alive hook (AnalyticsOptions.waitUntil): every batch-send
+  // promise is passed to it so un-awaited sends survive runtime teardown.
+  registerBackgroundTask?: (promise: Promise<unknown>) => void,
 };
 
 type TrackedEvent = {
@@ -448,7 +523,12 @@ export class EventTracker {
     if (nameError) return rejectedPreCaught(nameError);
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
-    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
+    const resolved = resolveParentIds({
+      explicit: options?.parentIds,
+      ambient: this._ambientParentRefs(),
+      root: options?.root,
+      exclude: options?.excludeParentIds,
+    });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     if (this._disabled) return Promise.resolve();
 
@@ -487,7 +567,12 @@ export class EventTracker {
       console.error(`Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value`);
       return createInertSpan(spanType);
     }
-    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
+    const resolved = resolveParentIds({
+      explicit: options?.parentIds,
+      ambient: this._ambientParentRefs(),
+      root: options?.root,
+      exclude: options?.excludeParentIds,
+    });
     if ("error" in resolved) {
       console.error(`Hexclave analytics: ${resolved.error}`);
       return createInertSpan(spanType);
@@ -600,6 +685,8 @@ export class EventTracker {
     for (const span of this._globalSpans) {
       if (!span.isEnded) refs.push(span.ref());
     }
+    // Enclosing withSpan() frames, outermost first, after the globals.
+    refs.push(...getAmbientSpanRefs());
     return refs;
   }
 
@@ -1007,6 +1094,7 @@ export class EventTracker {
       this._inFlight.delete(tracked);
     });
     this._inFlight.add(tracked);
+    this._deps.registerBackgroundTask?.(tracked);
     await tracked;
   }
 

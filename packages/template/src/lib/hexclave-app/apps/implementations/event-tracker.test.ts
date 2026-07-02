@@ -3,7 +3,7 @@
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EventTracker } from "./event-tracker";
+import { EventTracker, withSpanImpl } from "./event-tracker";
 
 async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
@@ -732,6 +732,132 @@ describe("EventTracker", () => {
     } finally {
       tracker.stop();
     }
+  });
+
+  it("withSpan auto-ends the span and ambient-parents everything created inside", async () => {
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    let innerSpanId = "";
+    const result = await withSpanImpl(
+      (type, options) => tracker.startSpan(type, options),
+      "outer-flow",
+      async (outer) => {
+        expect(outer.isEnded).toBe(false);
+        const inner = tracker.startSpan("inner-step");   // ambient parent: outer
+        innerSpanId = inner.spanId;
+        tracker.trackCustomEvent("inner_event").catch(() => {});  // ambient parent: outer
+        inner.end().catch(() => {});
+        return 42;
+      },
+    );
+    expect(result).toBe(42);
+
+    await tracker.flush();
+    const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+      events: { event_type: string, parent_span_ids?: string[] }[],
+      spans?: { span_id: string, span_type: string, ended_at_ms: number | null, parent_span_ids: string[] }[],
+    };
+    const outerRow = payload.spans!.find((row) => row.span_type === "outer-flow")!;
+    expect(outerRow.ended_at_ms).not.toBeNull();   // auto-ended on settle
+    expect(outerRow.parent_span_ids).toEqual([]);  // its own parents come from the ENCLOSING context
+    const innerRow = payload.spans!.find((row) => row.span_id === innerSpanId)!;
+    expect(innerRow.parent_span_ids).toEqual([outerRow.span_id]);
+    const innerEvent = payload.events.find((event) => event.event_type === "inner_event")!;
+    expect(innerEvent.parent_span_ids).toEqual([outerRow.span_id]);
+
+    // The frame is gone after withSpan settles: no ambient parent here.
+    tracker.trackCustomEvent("after_frame").catch(() => {});
+    await tracker.flush();
+    const second = JSON.parse(sentBodies[1] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
+    expect(second.events.find((event) => event.event_type === "after_frame")!.parent_span_ids).toBeUndefined();
+  });
+
+  it("withSpan records data.error, ends the span, and rethrows on failure", async () => {
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    await expect(withSpanImpl(
+      (type, options) => tracker.startSpan(type, options),
+      "failing-flow",
+      async () => {
+        throw new Error("boom");
+      },
+    )).rejects.toThrow("boom");
+
+    await tracker.flush();
+    const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null, data: Record<string, unknown> }[] };
+    const row = payload.spans!.find((entry) => entry.span_type === "failing-flow")!;
+    expect(row.ended_at_ms).not.toBeNull();
+    expect(row.data).toEqual({ error: "boom" });
+  });
+
+  it("root drops all ambient parents and excludeParentIds filters the FINAL merged list", async () => {
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    await withSpanImpl(
+      (type, options) => tracker.startSpan(type, options),
+      "outer",
+      async (outer) => {
+        const detached = tracker.startSpan("detached", { root: true });
+        expect(detached.ref().parentSpanIds).toEqual([]);
+
+        const child = tracker.startSpan("child");   // chain: [outer]
+        // Excluding outer removes it from the final list even though it
+        // re-enters via child's frozen chain — deliberate final-list semantics:
+        // this row is a child of `child` but NOT a descendant of `outer`.
+        tracker.trackCustomEvent("evt", {}, { parentIds: [child], excludeParentIds: [outer] }).catch(() => {});
+        child.end().catch(() => {});
+        detached.end().catch(() => {});
+      },
+    );
+
+    await tracker.flush();
+    const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+      events: { event_type: string, parent_span_ids?: string[] }[],
+      spans?: { span_id: string, span_type: string, parent_span_ids: string[] }[],
+    };
+    const outerRow = payload.spans!.find((row) => row.span_type === "outer")!;
+    const childRow = payload.spans!.find((row) => row.span_type === "child")!;
+    expect(payload.spans!.find((row) => row.span_type === "detached")!.parent_span_ids).toEqual([]);
+    expect(childRow.parent_span_ids).toEqual([outerRow.span_id]);
+    expect(payload.events.find((event) => event.event_type === "evt")!.parent_span_ids).toEqual([childRow.span_id]);
+  });
+
+  it("passes every batch-send promise to registerBackgroundTask (waitUntil hook)", async () => {
+    const registered: Promise<unknown>[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async () => Result.ok(new Response()),
+      registerBackgroundTask: (promise) => registered.push(promise),
+    });
+
+    tracker.trackCustomEvent("first").catch(() => {});
+    await tracker.flush();
+    tracker.trackCustomEvent("second").catch(() => {});
+    await tracker.flush();
+
+    expect(registered).toHaveLength(2);
+    await expect(Promise.all(registered)).resolves.toBeDefined();
   });
 
   it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {

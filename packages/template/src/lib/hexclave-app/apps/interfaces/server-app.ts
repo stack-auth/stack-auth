@@ -52,6 +52,14 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      */
     startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span,
 
+    /**
+     * Server-side variant of `withSpan`: accepts `userId` in options; ambient
+     * parenting is AsyncLocalStorage-backed, so concurrent requests sharing one
+     * app instance never cross-parent.
+     */
+    withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
+    withSpan<T>(spanType: string, options: StartSpanOptions & { userId?: string }, fn: (span: Span) => Promise<T> | T): Promise<T>,
+
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): ProjectCurrentServerUser<ProjectId>,

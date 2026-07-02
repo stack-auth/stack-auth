@@ -61,7 +61,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, withSpanImpl, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -256,7 +256,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected readonly _urlOptions: HandlerUrlOptions;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
 
-  private readonly _analyticsOptions: AnalyticsOptions | undefined;
+  protected readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   protected _eventTracker: EventTracker | null = null;
 
@@ -743,6 +743,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
         sessionReplaySegmentId,
+        registerBackgroundTask: this._analyticsOptions?.waitUntil,
       });
       this._eventTracker.start();
     }
@@ -4035,6 +4036,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async flush(): Promise<void> {
     await this._eventTracker?.flush();
+  }
+
+  withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>;
+  withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>;
+  withSpan<T>(spanType: string, optionsOrFn: StartSpanOptions | ((span: Span) => Promise<T> | T), maybeFn?: (span: Span) => Promise<T> | T): Promise<T> {
+    // this.startSpan dispatches virtually, so the server app's userId-aware
+    // startSpan is used automatically when called on a StackServerApp.
+    return withSpanImpl((type, options) => this.startSpan(type, options), spanType, optionsOrFn, maybeFn);
   }
 
   async getAccessToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {

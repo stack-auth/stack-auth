@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it } from "vitest";
+import type { SpanRef } from "./event-tracker";
+import { __setAsyncContextModeForTesting, getAmbientSpanRefs, runWithSpanContext } from "./span-context";
+
+function ref(spanId: string, parentSpanIds: string[] = []): SpanRef {
+  return { spanId, parentSpanIds };
+}
+
+function ambientIds(): string[] {
+  return getAmbientSpanRefs().map((frame) => frame.spanId);
+}
+
+describe("span context (AsyncLocalStorage)", () => {
+  afterEach(() => {
+    __setAsyncContextModeForTesting("auto");
+  });
+
+  it("propagates nested frames across await boundaries, outermost first", async () => {
+    expect(getAmbientSpanRefs()).toEqual([]);
+    await runWithSpanContext(ref("a"), async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(ambientIds()).toEqual(["a"]);
+      await runWithSpanContext(ref("b"), async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        expect(ambientIds()).toEqual(["a", "b"]);
+      });
+      // Inner frame is gone once its withSpan settles.
+      expect(ambientIds()).toEqual(["a"]);
+    });
+    expect(getAmbientSpanRefs()).toEqual([]);
+  });
+
+  it("isolates interleaved parallel flows — no cross-parenting under ALS", async () => {
+    const seen: Record<string, string[]> = {};
+    await Promise.all([
+      runWithSpanContext(ref("flow1"), async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        seen.flow1 = ambientIds();
+      }),
+      runWithSpanContext(ref("flow2"), async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        seen.flow2 = ambientIds();
+      }),
+    ]);
+    expect(seen.flow1).toEqual(["flow1"]);
+    expect(seen.flow2).toEqual(["flow2"]);
+  });
+
+  it("frames carry their full SpanRef (chain included), not just the id", async () => {
+    await runWithSpanContext(ref("child", ["root-ancestor"]), async () => {
+      expect(getAmbientSpanRefs()).toEqual([{ spanId: "child", parentSpanIds: ["root-ancestor"] }]);
+    });
+  });
+});
+
+describe("span context (sync-stack fallback)", () => {
+  afterEach(() => {
+    __setAsyncContextModeForTesting("auto");
+  });
+
+  it("is correct for sequential nested flows and removes its own frame on settle", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    await runWithSpanContext(ref("a"), async () => {
+      expect(ambientIds()).toEqual(["a"]);
+      await runWithSpanContext(ref("b"), async () => {
+        expect(ambientIds()).toEqual(["a", "b"]);
+      });
+      expect(ambientIds()).toEqual(["a"]);
+    });
+    expect(getAmbientSpanRefs()).toEqual([]);
+  });
+
+  it("removes its own frame even when it is no longer on top (interleaving-safe cleanup)", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    // Start flow1 but leave it parked on an await, then run flow2 to completion
+    // while flow1's frame is still on the stack. flow2 must remove ITS frame
+    // (not flow1's) even though flow1's frame sits beneath it.
+    const first = runWithSpanContext(ref("flow1"), async () => {
+      await firstBlocked;
+      // Documented sync-stack limitation: no isolation guarantee here; the
+      // cleanup contract is what this test pins down.
+    });
+    await runWithSpanContext(ref("flow2"), async () => {
+      expect(ambientIds()).toEqual(["flow1", "flow2"]);
+    });
+    expect(ambientIds()).toEqual(["flow1"]);
+    releaseFirst();
+    await first;
+    expect(getAmbientSpanRefs()).toEqual([]);
+  });
+});

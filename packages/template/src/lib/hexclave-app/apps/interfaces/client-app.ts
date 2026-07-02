@@ -145,6 +145,19 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      */
     flush(): Promise<void>,
 
+    /**
+     * Runs `fn` inside a span: the span starts on entry, is an ambient parent
+     * for every trackEvent/startSpan/withSpan inside the callback, and ends
+     * automatically when `fn` settles. On throw, `data.error` is recorded and
+     * the error is rethrown — telemetry failures never affect `fn`'s result.
+     * Ambient parenting is exact across `await`s on server runtimes
+     * (AsyncLocalStorage); in browsers, parallel async flows can observe each
+     * other's ambient frames (documented sync-stack fallback). Opt out of
+     * ambient parents per item with `root: true` or `excludeParentIds`.
+     */
+    withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
+    withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,
+
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'convex' }): Promise<TokenPartialUser | null>,

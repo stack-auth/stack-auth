@@ -38,6 +38,7 @@ import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
+import { getAmbientSpanRefs } from "./span-context";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -1774,6 +1775,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     for (const span of this._serverGlobalSpans) {
       if (!span.isEnded) refs.push(span.ref());
     }
+    // Enclosing withSpan() frames (AsyncLocalStorage — isolated per request).
+    refs.push(...getAmbientSpanRefs());
     return refs;
   }
 
@@ -1785,7 +1788,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
       return rejectedPreCaught(`Invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
-    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._serverAmbientParentRefs() });
+    const resolved = resolveParentIds({
+      explicit: options?.parentIds,
+      ambient: this._serverAmbientParentRefs(),
+      root: options?.root,
+      exclude: options?.excludeParentIds,
+    });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
 
     let settler!: TelemetrySettler;
@@ -1826,7 +1834,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       console.error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
       return createInertSpan(spanType);
     }
-    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._serverAmbientParentRefs() });
+    const resolved = resolveParentIds({
+      explicit: options?.parentIds,
+      ambient: this._serverAmbientParentRefs(),
+      root: options?.root,
+      exclude: options?.excludeParentIds,
+    });
     if ("error" in resolved) {
       console.error(`Hexclave analytics: ${resolved.error}`);
       return createInertSpan(spanType);
@@ -1965,6 +1978,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._serverTelemetryInFlight.delete(tracked);
     });
     this._serverTelemetryInFlight.add(tracked);
+    // Serverless keep-alive (AnalyticsOptions.waitUntil): un-awaited sends must
+    // survive runtime teardown.
+    this._analyticsOptions?.waitUntil?.(tracked);
   }
 }
 

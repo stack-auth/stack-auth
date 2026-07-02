@@ -45,6 +45,15 @@ export type AnalyticsOptions = {
    * set `enabled: false` to opt out.
    */
   replays?: AnalyticsReplayOptions,
+  /**
+   * Serverless keep-alive hook: every analytics batch-send promise is passed to
+   * it, so un-awaited trackEvent/startSpan sends survive runtime teardown
+   * without awaiting each call. Wire it to your platform's primitive, e.g.
+   * `waitUntil: (p) => ctx.waitUntil(p)` on Cloudflare Workers or
+   * `import { waitUntil } from "@vercel/functions"` on Vercel.
+   * Not serializable — dropped when the app is serialized (toClientJson).
+   */
+  waitUntil?: (promise: Promise<unknown>) => void,
 };
 
 export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {
@@ -61,6 +70,12 @@ export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | und
  * the actual runtime value is JSON-safe.
  */
 export function analyticsOptionsToJson(options: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
+  // waitUntil is a function and cannot cross a JSON boundary; the serialized
+  // app runs in a different environment with its own lifecycle anyway.
+  if (options?.waitUntil) {
+    const { waitUntil, ...rest } = options;
+    options = rest;
+  }
   if (!options?.replays?.blockClass) return options;
   const { blockClass, ...rest } = options.replays;
   if (!(blockClass instanceof RegExp)) return options;
