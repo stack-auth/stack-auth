@@ -394,6 +394,114 @@ describe("create, patch, and get email theme", () => {
   });
 });
 
+describe("delete email theme", () => {
+  it("should return 401 when invalid access type is provided", async ({ expect }) => {
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "DELETE",
+        accessType: "client",
+      }
+    );
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe("INSUFFICIENT_ACCESS_TYPE");
+  });
+
+  it("should return 404 when deleting a non-existent theme", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${invalidThemeId}`,
+      {
+        method: "DELETE",
+        accessType: "admin",
+      }
+    );
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 404,
+        "body": "No theme found with given id",
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("should return 400 when deleting the currently active theme", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+    // A freshly-created project's active theme is the default (validThemeId).
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "DELETE",
+        accessType: "admin",
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchInlineSnapshot(`"Cannot delete the currently active email theme. Please select a different theme first."`);
+  });
+
+  it("should create a theme, delete it, then 404 on get and drop it from the list", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    // Create a disposable (non-active) theme.
+    const createResponse = await niceBackendFetch(
+      `/api/latest/internal/email-themes`,
+      {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          display_name: "Disposable Theme",
+        },
+      }
+    );
+    expect(createResponse.status).toBe(200);
+    const themeId = createResponse.body.id as string;
+
+    // Delete it.
+    const deleteResponse = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${themeId}`,
+      {
+        method: "DELETE",
+        accessType: "admin",
+      }
+    );
+    expect(deleteResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {},
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+
+    // Getting it now returns 404.
+    const getResponse = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${themeId}`,
+      {
+        method: "GET",
+        accessType: "admin",
+      }
+    );
+    expect(getResponse.status).toBe(404);
+
+    // ...and it no longer appears in the list.
+    const listResponse = await niceBackendFetch(
+      `/api/latest/internal/email-themes`,
+      {
+        method: "GET",
+        accessType: "admin",
+      }
+    );
+    expect(listResponse.status).toBe(200);
+    const themeIds = (listResponse.body.themes as { id: string }[]).map((t) => t.id);
+    expect(themeIds).not.toContain(themeId);
+  });
+});
+
 describe("invalid JSX inputs", () => {
   it("should reject theme that throws an error when rendered", async ({ expect }) => {
     await Project.createAndSwitch({
