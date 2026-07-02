@@ -1,3 +1,5 @@
+"use client";
+
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState } from "react";
