@@ -108,43 +108,74 @@ export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces:
     };
 
     const root = buildNode(rootSpan, 0);
-
-    let spanCount = 0;
-    let eventCount = 0;
-    let startMs = Infinity;
-    let latestMs = -Infinity;
-    let hasOpenSpan = false;
-    let maxEndMs: number | null = null;
-    const stack: TraceNode[] = [root];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      if (node == null) break;
-      spanCount++;
-      startMs = Math.min(startMs, node.span.startMs);
-      latestMs = Math.max(latestMs, node.span.startMs);
-      if (node.span.endMs == null) {
-        hasOpenSpan = true;
-      } else {
-        maxEndMs = maxEndMs == null ? node.span.endMs : Math.max(maxEndMs, node.span.endMs);
-        latestMs = Math.max(latestMs, node.span.endMs);
-      }
-      eventCount += node.events.length;
-      for (const event of node.events) latestMs = Math.max(latestMs, event.atMs);
-      stack.push(...node.children);
-    }
-
-    return {
-      root,
-      spanCount,
-      eventCount,
-      startMs,
-      endMs: hasOpenSpan ? null : maxEndMs,
-      latestMs,
-    } satisfies Trace;
+    return { root, ...computeTraceAggregates(root) } satisfies Trace;
   });
 
   traces.sort((a, b) => b.startMs - a.startMs);
   return { traces, unattachedEvents };
+}
+
+function computeTraceAggregates(root: TraceNode): Omit<Trace, "root"> {
+  let spanCount = 0;
+  let eventCount = 0;
+  let startMs = Infinity;
+  let latestMs = -Infinity;
+  let hasOpenSpan = false;
+  let maxEndMs: number | null = null;
+  const stack: TraceNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node == null) break;
+    spanCount++;
+    startMs = Math.min(startMs, node.span.startMs);
+    latestMs = Math.max(latestMs, node.span.startMs);
+    if (node.span.endMs == null) {
+      hasOpenSpan = true;
+    } else {
+      maxEndMs = maxEndMs == null ? node.span.endMs : Math.max(maxEndMs, node.span.endMs);
+      latestMs = Math.max(latestMs, node.span.endMs);
+    }
+    eventCount += node.events.length;
+    for (const event of node.events) latestMs = Math.max(latestMs, event.atMs);
+    stack.push(...node.children);
+  }
+  return {
+    spanCount,
+    eventCount,
+    startMs,
+    endMs: hasOpenSpan ? null : maxEndMs,
+    latestMs,
+  };
+}
+
+/** Path from the trace root to the span (both inclusive), or null if absent. */
+export function traceNodePath(root: TraceNode, spanId: string): TraceNode[] | null {
+  if (root.span.id === spanId) return [root];
+  for (const child of root.children) {
+    const childPath = traceNodePath(child, spanId);
+    if (childPath != null) return [root, ...childPath];
+  }
+  return null;
+}
+
+/**
+ * View a span inside a trace as its own trace: the subtree is re-based to
+ * depth 0 and the aggregates (duration, counts, open state) are recomputed
+ * over the subtree only, so the waterfall re-scales to the focused span.
+ * Returns the ancestor path alongside for breadcrumb rendering.
+ */
+export function rerootTrace(trace: Trace, spanId: string): { trace: Trace, path: TraceNode[] } | null {
+  const path = traceNodePath(trace.root, spanId);
+  if (path == null) return null;
+  const target = path[path.length - 1];
+  const rebase = (node: TraceNode, depth: number): TraceNode => ({
+    span: node.span,
+    depth,
+    events: node.events,
+    children: node.children.map((child) => rebase(child, depth + 1)),
+  });
+  const root = rebase(target, 0);
+  return { trace: { root, ...computeTraceAggregates(root) }, path };
 }
 
 /**

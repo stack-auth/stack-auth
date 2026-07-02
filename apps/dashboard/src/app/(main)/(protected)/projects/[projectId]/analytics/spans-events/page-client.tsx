@@ -21,11 +21,12 @@ import {
   buildTraces,
   formatDuration,
   isSystemSpanType,
+  rerootTrace,
   type EventInput,
   type SpanInput,
   type Trace,
 } from "./trace-utils";
-import { TraceWaterfall, spanColorClass } from "./waterfall";
+import { TraceWaterfall, spanColorClass, type TraceBreadcrumb } from "./waterfall";
 
 const SPANS_QUERY = `
 SELECT id, span_type, span_started_at, span_ended_at, parent_span_ids, data,
@@ -222,6 +223,23 @@ export default function PageClient() {
     [filteredTraces, selectedRootId],
   );
 
+  // Focus mode: view any span inside the selected trace as its own trace,
+  // re-scaled to the subtree. A stale/foreign id falls back to the full trace.
+  const [focusedSpanId, setFocusedSpanId] = useState<string | null>(null);
+  const displayedTrace = useMemo<{ trace: Trace, breadcrumb: TraceBreadcrumb[] } | null>(() => {
+    if (selectedTrace == null) return null;
+    if (focusedSpanId != null && focusedSpanId !== selectedTrace.root.span.id) {
+      const rerooted = rerootTrace(selectedTrace, focusedSpanId);
+      if (rerooted != null) {
+        return {
+          trace: rerooted.trace,
+          breadcrumb: rerooted.path.slice(0, -1).map((node) => ({ spanId: node.span.id, spanType: node.span.spanType })),
+        };
+      }
+    }
+    return { trace: selectedTrace, breadcrumb: [] };
+  }, [selectedTrace, focusedSpanId]);
+
   const eventTypeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const event of scopedEvents) {
@@ -324,7 +342,10 @@ export default function PageClient() {
                         "w-full text-left px-3 py-2 border-b border-border/30 hover:bg-muted/30 transition-colors hover:transition-none",
                         isSelected && "bg-muted/50 hover:bg-muted/50",
                       )}
-                      onClick={() => setSelectedRootId(trace.root.span.id)}
+                      onClick={() => {
+                        setSelectedRootId(trace.root.span.id);
+                        setFocusedSpanId(null);
+                      }}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className={cn("h-2 w-2 rounded-[3px] shrink-0", spanColorClass(trace.root.span.spanType))} />
@@ -352,12 +373,14 @@ export default function PageClient() {
                   <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               )}
-              {!loading && error == null && selectedTrace == null && (
+              {!loading && error == null && displayedTrace == null && (
                 <EmptyState title="Select a trace to see its waterfall." />
               )}
-              {!loading && error == null && selectedTrace != null && (
+              {!loading && error == null && displayedTrace != null && (
                 <TraceWaterfall
-                  trace={selectedTrace}
+                  trace={displayedTrace.trace}
+                  breadcrumb={displayedTrace.breadcrumb}
+                  onFocusSpan={(spanId) => setFocusedSpanId(spanId)}
                   onSelectSpan={(span) => openDetail(span.raw)}
                   onSelectEvent={(event) => openDetail(event.raw)}
                 />

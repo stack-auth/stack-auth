@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, flattenTrace, formatDuration, isSystemSpanType, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, flattenTrace, formatDuration, isSystemSpanType, rerootTrace, traceNodePath, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -137,6 +137,56 @@ describe("flattenTrace", () => {
       "child-late",
     ]);
     expect(rows.map((r) => (r.kind === "span" ? r.node.depth : r.depth))).toEqual([0, 1, 1, 1]);
+  });
+});
+
+describe("rerootTrace", () => {
+  // Mirrors the real system hierarchy: $refresh-token (year-long) with a
+  // short $session-replay inside — focusing must re-scale to the subtree.
+  const spans = [
+    span("rti-1", { spanType: "$refresh-token", startMs: 0, endMs: 365 * 86_400_000 }),
+    span("sri-1", { spanType: "$session-replay", startMs: 10_000, endMs: 70_000, parentSpanIds: ["rti-1"] }),
+    span("srsi-1", { spanType: "$session-replay-segment", startMs: 12_000, endMs: 50_000, parentSpanIds: ["rti-1", "sri-1"] }),
+  ];
+  const events = [event("clicked", { atMs: 20_000, parentSpanIds: ["rti-1", "sri-1", "srsi-1"] })];
+
+  it("re-bases the focused span to depth 0 and recomputes aggregates over the subtree only", () => {
+    const { traces } = buildTraces(spans, events);
+    const rerooted = rerootTrace(traces[0], "sri-1");
+    expect(rerooted).not.toBeNull();
+    const { trace, path } = rerooted!;
+    expect(trace.root.span.id).toBe("sri-1");
+    expect(trace.root.depth).toBe(0);
+    expect(trace.root.children[0].depth).toBe(1);
+    expect(trace.spanCount).toBe(2);
+    expect(trace.eventCount).toBe(1);
+    expect(trace.startMs).toBe(10_000);
+    expect(trace.endMs).toBe(70_000);
+    expect(path.map((node) => node.span.id)).toEqual(["rti-1", "sri-1"]);
+  });
+
+  it("returns null for a span id not in the trace", () => {
+    const { traces } = buildTraces(spans, events);
+    expect(rerootTrace(traces[0], "cs-not-here")).toBeNull();
+  });
+
+  it("does not mutate the original trace", () => {
+    const { traces } = buildTraces(spans, events);
+    rerootTrace(traces[0], "srsi-1");
+    expect(traces[0].root.depth).toBe(0);
+    expect(traces[0].root.children[0].children[0].depth).toBe(2);
+    expect(traces[0].spanCount).toBe(3);
+  });
+});
+
+describe("traceNodePath", () => {
+  it("returns root-first inclusive path and null when absent", () => {
+    const { traces } = buildTraces(
+      [span("a"), span("b", { parentSpanIds: ["a"] })],
+      [],
+    );
+    expect(traceNodePath(traces[0].root, "b")!.map((n) => n.span.id)).toEqual(["a", "b"]);
+    expect(traceNodePath(traces[0].root, "zzz")).toBeNull();
   });
 });
 

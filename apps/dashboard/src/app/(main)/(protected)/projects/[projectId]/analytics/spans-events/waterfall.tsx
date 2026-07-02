@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { CaretRightIcon, CornersOutIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { flattenTrace, formatDuration, isSystemSpanType, type EventInput, type SpanInput, type Trace } from "./trace-utils";
 
@@ -29,12 +30,19 @@ export function spanColorClass(spanType: string): string {
 const NAME_COLUMN = "minmax(200px, 260px)";
 const DURATION_COLUMN = "76px";
 
+export type TraceBreadcrumb = { spanId: string, spanType: string };
+
 export function TraceWaterfall({
   trace,
+  breadcrumb,
+  onFocusSpan,
   onSelectSpan,
   onSelectEvent,
 }: {
   trace: Trace,
+  /** Ancestors of the current view root (trace root first); empty when unfocused. */
+  breadcrumb: TraceBreadcrumb[],
+  onFocusSpan: (spanId: string) => void,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
 }) {
@@ -53,7 +61,19 @@ export function TraceWaterfall({
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {/* Trace header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 shrink-0">
+      <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border/50 shrink-0 min-w-0">
+        {breadcrumb.map((crumb) => (
+          <span key={crumb.spanId} className="flex items-center gap-1.5 min-w-0 shrink">
+            <button
+              className="font-mono text-xs text-muted-foreground hover:text-foreground truncate transition-colors hover:transition-none"
+              onClick={() => onFocusSpan(crumb.spanId)}
+              title={`Focus ${crumb.spanType}`}
+            >
+              {crumb.spanType}
+            </button>
+            <CaretRightIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+          </span>
+        ))}
         <span className="font-mono text-sm font-semibold truncate">{trace.root.span.spanType}</span>
         {trace.endMs == null ? (
           <Badge variant="secondary" className="text-[10px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400">open</Badge>
@@ -91,13 +111,14 @@ export function TraceWaterfall({
           if (row.kind === "span") {
             const { span } = row.node;
             const open = span.endMs == null;
+            const isViewRoot = row.node.depth === 0;
             const leftPct = toPct(span.startMs);
             const rightPct = open ? 100 : toPct(span.endMs ?? scaleEnd);
             const widthPct = Math.max(rightPct - leftPct, 0.5);
             return (
-              <button
+              <div
                 key={`span-${span.id}-${index}`}
-                className="w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
+                className="group w-full grid gap-3 px-4 items-center h-8 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
                 style={{ gridTemplateColumns }}
                 onClick={() => onSelectSpan(span)}
               >
@@ -106,6 +127,18 @@ export function TraceWaterfall({
                   <span className={cn("font-mono text-[11px] truncate", isSystemSpanType(span.spanType) ? "text-muted-foreground" : "font-medium")}>
                     {span.spanType}
                   </span>
+                  {!isViewRoot && (
+                    <button
+                      className="opacity-0 group-hover:opacity-100 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.08] transition-opacity"
+                      title="Focus this span"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFocusSpan(span.id);
+                      }}
+                    >
+                      <CornersOutIcon className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
                 <div className="relative h-4">
                   {[25, 50, 75].map((pct) => (
@@ -123,13 +156,13 @@ export function TraceWaterfall({
                 <span className="font-mono text-[11px] text-muted-foreground text-right">
                   {open ? "open" : formatDuration((span.endMs ?? scaleEnd) - span.startMs)}
                 </span>
-              </button>
+              </div>
             );
           } else {
             const { event } = row;
             const leftPct = toPct(event.atMs);
             return (
-              <button
+              <div
                 key={`event-${index}`}
                 className="w-full grid gap-3 px-4 items-center h-7 border-b border-border/20 hover:bg-muted/30 transition-colors hover:transition-none text-left cursor-pointer"
                 style={{ gridTemplateColumns }}
@@ -151,7 +184,7 @@ export function TraceWaterfall({
                 <span className="font-mono text-[11px] text-muted-foreground/70 text-right">
                   +{formatDuration(event.atMs - scaleStart)}
                 </span>
-              </button>
+              </div>
             );
           }
         })}
