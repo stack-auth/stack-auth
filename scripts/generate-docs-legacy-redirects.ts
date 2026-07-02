@@ -120,9 +120,11 @@ type OpenApiSpec = {
 };
 
 function addRedirect(redirects: Map<string, string>, source: string, destination: string) {
-  if (source === destination) {
-    return;
-  }
+  // Note: don't skip when source === destination. Every redirect here crosses domains
+  // (docs.stack-auth.com -> docs.hexclave.com), so even an identical relative path still
+  // needs an explicit rule -- otherwise it silently falls through to the "/:path*" -> "/"
+  // catch-all and lands on the homepage instead of the correct page (e.g. this happened to
+  // "/api/overview", which is spelled identically in both docs).
   redirects.set(source, destination);
 }
 
@@ -294,6 +296,9 @@ function buildLegacyPathRedirects(repoRoot: string): Redirect[] {
   addRedirect(redirects, "/docs/rest-api/overview", "/api/overview");
   addRedirect(redirects, "/docs/api", "/api/overview");
   addRedirect(redirects, "/docs/api/overview", "/api/overview");
+  // Spelled identically on both docs sites, but still needs an explicit rule since this is a
+  // cross-domain redirect -- without it, this path falls through to the "/:path*" -> "/" catch-all.
+  addRedirect(redirects, "/api/overview", "/api/overview");
 
   addRedirect(redirects, "/getting-started/setup", "/guides/getting-started/setup");
   addRedirect(redirects, "/rest-api/overview", "/api/overview");

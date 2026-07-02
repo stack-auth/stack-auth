@@ -691,6 +691,31 @@
       "permanent": true
     },
     {
+      "source": "/api/overview",
+      "destination": "https://docs.hexclave.com/api/overview",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query",
+      "destination": "https://docs.hexclave.com/api/server/analytics/run-analytics-query",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/post",
+      "destination": "https://docs.hexclave.com/api/server/analytics/run-analytics-query",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/timing",
+      "destination": "https://docs.hexclave.com/api/server/analytics/get-analytics-query-timing",
+      "permanent": true
+    },
+    {
+      "source": "/api/server/analytics/analytics/query/timing/post",
+      "destination": "https://docs.hexclave.com/api/server/analytics/get-analytics-query-timing",
+      "permanent": true
+    },
+    {
       "source": "/api/server/anonymous/auth/anonymous/sign-up",
       "destination": "https://docs.hexclave.com/api/server/anonymous/sign-up-anonymously",
       "permanent": true
