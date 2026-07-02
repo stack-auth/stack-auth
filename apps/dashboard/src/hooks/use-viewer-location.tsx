@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 type ViewerLocation = { lat: number, lng: number };
 
 // US geographic center fallback
-const US_CENTER: ViewerLocation = { lat: 39.5, lng: -98.35 };
+export const US_CENTER: ViewerLocation = { lat: 39.5, lng: -98.35 };
 
 // Cache the result so we only fetch once per page load, even if multiple
 // components mount/unmount the hook.
@@ -19,14 +19,17 @@ function fetchViewerLocation(): Promise<ViewerLocation> {
   fetchPromise = (async () => {
     try {
       const res = await fetch("/api/viewer-location");
-      if (!res.ok) return US_CENTER;
+      if (!res.ok) { fetchPromise = null; return US_CENTER; }
       const data = await res.json();
       if (typeof data.lat === "number" && typeof data.lng === "number") {
         return { lat: data.lat, lng: data.lng };
       }
     } catch (e) {
       captureError("viewer-location-fetch", e instanceof Error ? e : new Error(String(e)));
+      fetchPromise = null;
     }
+    // Header data was missing or malformed; allow retry on next mount.
+    fetchPromise = null;
     return US_CENTER;
   })();
   return fetchPromise;
@@ -45,7 +48,11 @@ export function useViewerLocation(): ViewerLocation {
     let cancelled = false;
     runAsynchronously(async () => {
       const loc = await fetchViewerLocation();
-      cachedLocation = loc;
+      // Only cache a successful (non-fallback) result so transient
+      // failures can be retried on next mount.
+      if (loc !== US_CENTER) {
+        cachedLocation = loc;
+      }
       if (!cancelled) setLocation(loc);
     });
     return () => {

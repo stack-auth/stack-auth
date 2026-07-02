@@ -1,3 +1,4 @@
+import { US_CENTER } from '@/hooks/use-viewer-location';
 import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
@@ -1156,7 +1157,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         controls.enableZoom = interactive;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
-                        current.pointOfView({ lat: initialPointOfView?.lat ?? 39.5, lng: initialPointOfView?.lng ?? -98.35 }, 0);
+                        current.pointOfView({ lat: initialPointOfView?.lat ?? US_CENTER.lat, lng: initialPointOfView?.lng ?? US_CENTER.lng }, 0);
 
                         // Fix z-fighting: Enable proper depth testing
                         const renderer = current.renderer();
