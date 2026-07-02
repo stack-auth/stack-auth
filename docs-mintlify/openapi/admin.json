@@ -189,6 +189,172 @@
         }
       }
     },
+    "/analytics/query": {
+      "post": {
+        "summary": "Run analytics query",
+        "description": "Runs a read-only ClickHouse SQL query against the current project's analytics dataset.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "include_all_branches": {
+                    "type": "boolean",
+                    "example": false,
+                    "description": "Reserved for future branch-wide analytics queries. Must be false.",
+                    "default": false
+                  },
+                  "query": {
+                    "type": "string",
+                    "example": "SELECT count() AS event_count FROM events",
+                    "description": "A read-only ClickHouse SQL query."
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "example": {
+                      "event_type": "$page-view"
+                    },
+                    "description": "ClickHouse query parameters referenced by the query.",
+                    "default": {}
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "example": 10000,
+                    "description": "Maximum query execution time in milliseconds. The effective timeout is also capped by the project's plan.",
+                    "default": 10000
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "example": {
+                  "include_all_branches": false,
+                  "query": "SELECT count() AS event_count FROM events",
+                  "params": {
+                    "event_type": "$page-view"
+                  },
+                  "timeout_ms": 10000
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Analytics"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/analytics/query",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "example": [
+                        {
+                          "event_count": 42
+                        }
+                      ],
+                      "description": "Query result rows as plain JSON objects."
+                    },
+                    "query_id": {
+                      "type": "string",
+                      "example": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001",
+                      "description": "The ClickHouse query ID. Use it to fetch query timing stats."
+                    }
+                  },
+                  "required": [
+                    "result",
+                    "query_id"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/query/timing": {
+      "post": {
+        "summary": "Get analytics query timing",
+        "description": "Returns CPU and wall-clock timing stats for a previously run analytics query.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query_id": {
+                    "type": "string",
+                    "example": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001",
+                    "description": "The query_id returned from POST /analytics/query."
+                  }
+                },
+                "required": [
+                  "query_id"
+                ],
+                "example": {
+                  "query_id": "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Analytics"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/analytics/query/timing",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "cpu_time": {
+                          "type": "number",
+                          "example": 12,
+                          "description": "ClickHouse CPU time in milliseconds."
+                        },
+                        "wall_clock_time": {
+                          "type": "number",
+                          "example": 18,
+                          "description": "ClickHouse wall-clock time in milliseconds."
+                        }
+                      },
+                      "required": [
+                        "cpu_time",
+                        "wall_clock_time"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "stats"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/anonymous/sign-up": {
       "post": {
         "summary": "Sign up anonymously",
@@ -2974,7 +3140,7 @@
     "/emails/send-email": {
       "post": {
         "summary": "Send email",
-        "description": "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
+        "description": "Send an email to a list of users (user_ids), all users (all_users), or arbitrary email addresses (emails). The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
         "parameters": [],
         "tags": [
           "Emails"
@@ -2995,11 +3161,12 @@
                         "properties": {
                           "user_id": {
                             "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
                           }
                         },
-                        "required": [
-                          "user_id"
-                        ]
+                        "required": []
                       }
                     }
                   },

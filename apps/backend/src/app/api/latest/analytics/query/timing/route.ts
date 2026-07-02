@@ -4,14 +4,18 @@ import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 export const POST = createSmartRouteHandler({
-  metadata: { hidden: true },
+  metadata: {
+    summary: "Get analytics query timing",
+    description: "Returns CPU and wall-clock timing stats for a previously run analytics query.",
+    tags: ["Analytics"],
+  },
   request: yupObject({
     auth: yupObject({
       type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     body: yupObject({
-      query_id: yupString().defined().nonEmpty(),
+      query_id: yupString().defined().nonEmpty().meta({ openapiField: { description: "The query_id returned from POST /analytics/query.", exampleValue: "00000000-0000-0000-0000-000000000000:main:00000000-0000-0000-0000-000000000001" } }),
     }).defined(),
   }),
   response: yupObject({
@@ -19,8 +23,8 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       stats: yupObject({
-        cpu_time: yupNumber().defined(),
-        wall_clock_time: yupNumber().defined(),
+        cpu_time: yupNumber().defined().meta({ openapiField: { description: "ClickHouse CPU time in milliseconds.", exampleValue: 12 } }),
+        wall_clock_time: yupNumber().defined().meta({ openapiField: { description: "ClickHouse wall-clock time in milliseconds.", exampleValue: 18 } }),
       }).defined(),
     }).defined(),
   }),
