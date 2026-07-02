@@ -244,3 +244,82 @@ import.meta.vitest?.test("getIntervalsElapsed", ({ expect }) => {
   const yTo = new Date('2022-06-01T00:00:00.000Z');
   expect(getIntervalsElapsed(yAnchor, yTo, [1, 'year'])).toBe(2);
 });
+
+/**
+ * The UTC millis of the `occurrence`-th (1-based) repeat of `interval` after `anchorMillis`.
+ *
+ * Each boundary is computed from the *original* anchor (never by stepping off the previous, possibly
+ * clamped, boundary) so the anchor's day-of-month is preserved across resets: a Jan 31 anchor yields
+ * Feb 28, Mar 31, Apr 30, ... (matching Stripe's billing-cycle behavior) rather than drifting to
+ * Feb 28, Mar 28, ... . Month/year overflow (e.g. Jan 31 -> Feb) is clamped to the target month's
+ * last day. Day/week are exact multiples (no calendar involved, so no drift possible).
+ *
+ * Everything is done in UTC (unlike `addInterval`, which uses local-time Date accessors) so the
+ * result is deterministic regardless of the server's timezone — this is relied upon by bulldozer
+ * folds, which must be reproducible across machines.
+ */
+export function nthDayIntervalMillis(anchorMillis: number, interval: DayInterval, occurrence: number): number {
+  const [count, unit] = interval;
+  const totalUnits = count * occurrence;
+  if (unit === 'day' || unit === 'week') {
+    return anchorMillis + totalUnits * getMsPerDayIntervalUnit(unit);
+  }
+  const anchor = new Date(anchorMillis);
+  const monthsToAdd = unit === 'year' ? totalUnits * 12 : totalUnits;
+  const absoluteMonth = anchor.getUTCFullYear() * 12 + anchor.getUTCMonth() + monthsToAdd;
+  const targetYear = Math.floor(absoluteMonth / 12);
+  const targetMonth = absoluteMonth - targetYear * 12;
+  // Day 0 of the following month is the last day of the target month, so this gives its length.
+  const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const clampedDay = Math.min(anchor.getUTCDate(), daysInTargetMonth);
+  return Date.UTC(
+    targetYear,
+    targetMonth,
+    clampedDay,
+    anchor.getUTCHours(),
+    anchor.getUTCMinutes(),
+    anchor.getUTCSeconds(),
+    anchor.getUTCMilliseconds(),
+  );
+}
+
+import.meta.vitest?.test("nthDayIntervalMillis", ({ expect }) => {
+  const at = (iso: string) => new Date(iso).getTime();
+  const iso = (millis: number) => new Date(millis).toISOString();
+
+  // day / week are exact multiples (no drift), and honor the count.
+  const dayAnchor = at('2025-01-01T08:30:00.000Z');
+  expect(iso(nthDayIntervalMillis(dayAnchor, [1, 'day'], 1))).toBe('2025-01-02T08:30:00.000Z');
+  expect(iso(nthDayIntervalMillis(dayAnchor, [3, 'day'], 4))).toBe('2025-01-13T08:30:00.000Z');
+  expect(iso(nthDayIntervalMillis(dayAnchor, [2, 'week'], 3))).toBe('2025-02-12T08:30:00.000Z'); // 6 weeks = 42 days after Jan 1
+
+  // Jan 31 monthly: clamp in short months, restore to the anchor day in long ones.
+  const jan31 = at('2025-01-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(jan31, [1, 'month'], 1))).toBe('2025-02-28T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(jan31, [1, 'month'], 2))).toBe('2025-03-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(jan31, [1, 'month'], 3))).toBe('2025-04-30T00:00:00.000Z');
+
+  // Anchor-day preservation: a Feb 28 anchor stays on day 28 (never jumps to Mar 31), unlike the
+  // Jan 31 anchor above which restores to Mar 31. This is the evidence we compute from the anchor.
+  const feb28 = at('2025-02-28T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(feb28, [1, 'month'], 1))).toBe('2025-03-28T00:00:00.000Z');
+
+  // Leap-year Feb: Feb 29 anchor clamps to Feb 28 in a non-leap year and restores in the next leap year.
+  const feb29 = at('2024-02-29T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(feb29, [1, 'year'], 1))).toBe('2025-02-28T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(feb29, [1, 'year'], 4))).toBe('2028-02-29T00:00:00.000Z');
+  // Jan 31 monthly landing in a leap February clamps to Feb 29, not Feb 28.
+  const jan31Leap = at('2024-01-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(jan31Leap, [1, 'month'], 1))).toBe('2024-02-29T00:00:00.000Z');
+
+  // End-of-December rollover: absolute-month math carries the year.
+  const dec31 = at('2025-12-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(dec31, [1, 'month'], 1))).toBe('2026-01-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(dec31, [1, 'month'], 2))).toBe('2026-02-28T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(dec31, [1, 'month'], 3))).toBe('2026-03-31T00:00:00.000Z');
+  expect(iso(nthDayIntervalMillis(dec31, [1, 'year'], 1))).toBe('2026-12-31T00:00:00.000Z');
+
+  // Time-of-day is preserved through month clamping.
+  const withTime = at('2025-01-31T13:45:59.123Z');
+  expect(iso(nthDayIntervalMillis(withTime, [1, 'month'], 1))).toBe('2025-02-28T13:45:59.123Z');
+});

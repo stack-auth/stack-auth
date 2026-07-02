@@ -1,7 +1,7 @@
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { describe, expect, it } from "vitest";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
-import { createPaymentsSchema, mergeCompactionAggregates, repeatIntervalMs, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
+import { createPaymentsSchema, mergeCompactionAggregates, normalizedRepeatInterval, type ItemCompactionAggregate, type ItemQuantityChangeEntry } from "./index.js";
 import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowDatas, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
 import type { CustomerType, TransactionRow } from "./types.js";
 
@@ -206,32 +206,39 @@ describe("payments schema", () => {
       { type: "item-quantity-change", itemId: "credits", quantity: 10 },
     ]);
 
-    snapshot = await snapshot.tick(new Date(MONTH_MS));
+    // With calendar-anchored repeats, the first monthly boundary off the epoch anchor is
+    // 1970-02-01 (31 days), not the 30-day MONTH_MS approximation.
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
 
     expect(await balanceAt(snapshot, group, "credits", 0)).toBe(10);
-    expect(await balanceAt(snapshot, group, "credits", MONTH_MS)).toBe(10);
+    expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
   });
 
   it("handles subscription start, repeat replacement, and end expiry", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();
+    // First monthly boundary off the epoch anchor is 1970-02-01; end the subscription mid-Feb so
+    // exactly one repeat fires before the end (before the second boundary at 1970-03-01).
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
+    const subEndMillis = Date.UTC(1970, 1, 15);
     snapshot = await set(snapshot, schema.subscriptions, "sub-repeat", subscription("sub-repeat", {
       customerId: "u-repeat",
       productId: "prod-repeat",
       product: product({
         credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" },
       }),
-      currentPeriodEndMillis: 2 * MONTH_MS,
-      endedAtMillis: 2 * MONTH_MS,
+      currentPeriodEndMillis: subEndMillis,
+      endedAtMillis: subEndMillis,
     }) as unknown as PiledriverObject);
 
-    snapshot = await snapshot.tick(new Date(MONTH_MS));
-    snapshot = await snapshot.tick(new Date(2 * MONTH_MS));
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = await snapshot.tick(new Date(subEndMillis));
 
     const group = customerGroup("u-repeat");
     const txns = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[])
       .sort((a, b) => a.effectiveAtMillis - b.effectiveAtMillis || stringCompare(a.txnId, b.txnId));
-    expect(txns.map(txn => txn.txnId)).toEqual(["sub-start:sub-repeat", `igr:sub-repeat:${MONTH_MS}`, "sub-end:sub-repeat"]);
+    expect(txns.map(txn => txn.txnId)).toEqual(["sub-start:sub-repeat", `igr:sub-repeat:${firstRepeatMillis}`, "sub-end:sub-repeat"]);
     expect(txns[1].entries).toMatchObject([
       { type: "item-quantity-expire", adjustedTransactionId: "sub-start:sub-repeat", itemId: "credits", quantity: 10 },
       { type: "item-quantity-change", itemId: "credits", quantity: 10, expiresWhen: "when-repeated" },
@@ -239,7 +246,7 @@ describe("payments schema", () => {
     expect(txns[2].entries).toMatchObject([
       { type: "active-subscription-end", subscriptionId: "sub-repeat" },
       { type: "product-revocation", adjustedTransactionId: "sub-start:sub-repeat", quantity: 1 },
-      { type: "item-quantity-expire", adjustedTransactionId: `igr:sub-repeat:${MONTH_MS}`, itemId: "credits", quantity: 10 },
+      { type: "item-quantity-expire", adjustedTransactionId: `igr:sub-repeat:${firstRepeatMillis}`, itemId: "credits", quantity: 10 },
     ]);
 
     const quantities = (await rowsBySortKey(snapshot, schema.itemQuantities, group)).map(row => asRecord(row.rowData));
@@ -498,18 +505,19 @@ describe("transactions-by-tenancy date index", () => {
     // A subscription with a repeating, expiring item produces sub-start + igr repeat txns
     // in the customer's group; a refund for the source lands in the same group. The
     // index.ts refund reads depend on all of these living together.
+    const firstRepeatMillis = Date.UTC(1970, 1, 1);
     snapshot = await set(snapshot, schema.subscriptions, "sub-grant", subscription("sub-grant", {
       customerId: "u-grant",
       productId: "prod-grant",
       product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" } }),
       currentPeriodEndMillis: 2 * MONTH_MS,
     }) as unknown as PiledriverObject);
-    snapshot = await snapshot.tick(new Date(MONTH_MS));
+    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
     snapshot = await setRefund(snapshot, { txnId: "refund:sub-start:sub-grant:uuid1", customerId: "u-grant", createdAtMillis: 5_000 });
 
     const txnIds = ((await rowDatas(snapshot, schema.transactions, customerGroup("u-grant"))) as unknown as TransactionRow[])
       .map(txn => txn.txnId).sort(stringCompare);
-    expect(txnIds).toEqual([`igr:sub-grant:${MONTH_MS}`, "refund:sub-start:sub-grant:uuid1", "sub-start:sub-grant"]);
+    expect(txnIds).toEqual([`igr:sub-grant:${firstRepeatMillis}`, "refund:sub-start:sub-grant:uuid1", "sub-start:sub-grant"]);
   });
 });
 
@@ -557,27 +565,25 @@ describe("mergeCompactionAggregates", () => {
   });
 });
 
-describe("repeatIntervalMs", () => {
-  const DAY_MS = 86_400_000;
-
-  it("converts a positive interval to milliseconds", () => {
-    expect(repeatIntervalMs([1, "day"])).toBe(DAY_MS);
-    expect(repeatIntervalMs([2, "week"])).toBe(2 * 7 * DAY_MS);
-    expect(repeatIntervalMs([1, "month"])).toBe(30 * DAY_MS);
-    expect(repeatIntervalMs([1, "year"])).toBe(365 * DAY_MS);
+describe("normalizedRepeatInterval", () => {
+  it("returns a positive interval unchanged (calendar math lives in nthDayIntervalMillis)", () => {
+    expect(normalizedRepeatInterval([1, "day"])).toEqual([1, "day"]);
+    expect(normalizedRepeatInterval([2, "week"])).toEqual([2, "week"]);
+    expect(normalizedRepeatInterval([1, "month"])).toEqual([1, "month"]);
+    expect(normalizedRepeatInterval([1, "year"])).toEqual([1, "year"]);
   });
 
   it("treats a zero/negative/non-finite count as no-repeat (null)", () => {
     // A zero (or negative) repeat interval would produce a next-repeat time that
     // never advances, wedging the tick loop forever — so it must mean "no repeat".
-    expect(repeatIntervalMs([0, "day"])).toBeNull();
-    expect(repeatIntervalMs([-1, "month"])).toBeNull();
-    expect(repeatIntervalMs([Number.NaN, "day"])).toBeNull();
+    expect(normalizedRepeatInterval([0, "day"])).toBeNull();
+    expect(normalizedRepeatInterval([-1, "month"])).toBeNull();
+    expect(normalizedRepeatInterval([Number.NaN, "day"])).toBeNull();
   });
 
   it("treats 'never'/null/undefined as no-repeat (null)", () => {
-    expect(repeatIntervalMs("never")).toBeNull();
-    expect(repeatIntervalMs(null)).toBeNull();
-    expect(repeatIntervalMs(undefined)).toBeNull();
+    expect(normalizedRepeatInterval("never")).toBeNull();
+    expect(normalizedRepeatInterval(null)).toBeNull();
+    expect(normalizedRepeatInterval(undefined)).toBeNull();
   });
 });

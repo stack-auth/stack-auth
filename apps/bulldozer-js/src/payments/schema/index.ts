@@ -1,5 +1,6 @@
 import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import { nthDayIntervalMillis } from "@hexclave/shared/dist/utils/dates";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import {
@@ -39,7 +40,7 @@ type InitTableStep = Extract<Migration[number], { type: "initTable" }>;
 type Row = { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject };
 type ItemGrant = { itemId: string, quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null, expiresAtMillis: number | null };
 type OutstandingGrant = { txnId: string, entryIndex: number, itemId: string, quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null };
-type RepeatSchedule = Record<string, { quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null, repeatIntervalMs: number | null, nextRepeatMillis: number | null }>;
+type RepeatSchedule = Record<string, { quantity: number, expiresWhen: "when-purchase-expires" | "when-repeated" | null, interval: DayInterval | null, anchorMillis: number, occurrencesElapsed: number, nextRepeatMillis: number | null }>;
 type SubscriptionFoldState = {
   subscriptionId: string,
   tenancyId: string,
@@ -104,11 +105,6 @@ type ItemCompactionBoundary = {
   itemId: string,
 };
 
-const DAY_MS = 86_400_000;
-const WEEK_MS = 7 * DAY_MS;
-const MONTH_MS = 30 * DAY_MS;
-const YEAR_MS = 365 * DAY_MS;
-
 const compareNumbers = (a: PiledriverObject, b: PiledriverObject) => Number(a) - Number(b);
 const compareJson = (a: PiledriverObject, b: PiledriverObject) => stringCompare(JSON.stringify(a), JSON.stringify(b));
 const table = (tableId: string, tableImplementation: InitTableStep["table"], inputTables: Record<string, string> = {}, debugMetadata?: InitTableStep["debugMetadata"]): InitTableStep => ({
@@ -137,29 +133,16 @@ const compareTransactionRecencyKeys = (a: PiledriverObject, b: PiledriverObject)
 };
 const isObject = (value: PiledriverObject): value is Record<string, PiledriverObject> => typeof value === "object" && value !== null && !Array.isArray(value);
 const paymentProvider = (creationSource: string): PaymentProvider => creationSource === "TEST_MODE" ? "test_mode" : "stripe";
-export const repeatIntervalMs = (interval: DayInterval | "never" | null | undefined): number | null => {
+export const normalizedRepeatInterval = (interval: DayInterval | "never" | null | undefined): DayInterval | null => {
   if (!Array.isArray(interval)) return null;
-  const [count, unit] = interval;
+  const [count] = interval;
   // A zero/negative (or non-finite) repeat count means "doesn't repeat". Without
   // this, count<=0 yields a next-repeat time that never advances, which the
   // timefold rejects ("nextTriggerTime must move forward") — and that throw lands
   // in the once-per-second tick loop, retrying forever. Treat it as no-repeat
   // instead. (count>0 is also false for NaN, so this covers garbage values too.)
   if (!(count > 0)) return null;
-  switch (unit) {
-    case "day": {
-      return count * DAY_MS;
-    }
-    case "week": {
-      return count * WEEK_MS;
-    }
-    case "month": {
-      return count * MONTH_MS;
-    }
-    case "year": {
-      return count * YEAR_MS;
-    }
-  }
+  return interval;
 };
 const normalizedExpiresWhen = (item: IncludedItemConfig): "when-purchase-expires" | "when-repeated" | null =>
   item.expires === "when-purchase-expires" || item.expires === "when-repeated" ? item.expires : null;
@@ -213,22 +196,24 @@ const grantExpiryMillis = (
 };
 const itemGrants = (product: ProductSnapshot, quantity: number, anchorMillis: number, endMillis: number | null): ItemGrant[] => Object.entries(product.includedItems).map(([itemId, item]) => {
   const expiresWhen = normalizedExpiresWhen(item);
-  const intervalMs = repeatIntervalMs(item.repeat);
+  const interval = normalizedRepeatInterval(item.repeat);
   return {
     itemId,
     quantity: item.quantity * quantity,
     expiresWhen,
-    expiresAtMillis: grantExpiryMillis(expiresWhen, intervalMs === null ? null : anchorMillis + intervalMs, endMillis),
+    expiresAtMillis: grantExpiryMillis(expiresWhen, interval === null ? null : nthDayIntervalMillis(anchorMillis, interval, 1), endMillis),
   };
 });
 const repeatSchedule = (product: ProductSnapshot, quantity: number, anchorMillis: number): RepeatSchedule => Object.fromEntries(
   Object.entries(product.includedItems).map(([itemId, item]) => {
-    const intervalMs = repeatIntervalMs(item.repeat);
+    const interval = normalizedRepeatInterval(item.repeat);
     return [itemId, {
       quantity: item.quantity * quantity,
       expiresWhen: normalizedExpiresWhen(item),
-      repeatIntervalMs: intervalMs,
-      nextRepeatMillis: intervalMs === null ? null : anchorMillis + intervalMs,
+      interval,
+      anchorMillis,
+      occurrencesElapsed: 0,
+      nextRepeatMillis: interval === null ? null : nthDayIntervalMillis(anchorMillis, interval, 1),
     }];
   }),
 );
@@ -248,6 +233,17 @@ const soonestNextMillis = (state: { itemRepeatSchedule: RepeatSchedule }, endMil
 const dateFromMillis = (millis: number | null): Date | null => millis === null ? null : new Date(millis);
 const dueItemEntries = (state: { itemRepeatSchedule: RepeatSchedule }, currentMillis: number) =>
   Object.entries(state.itemRepeatSchedule).filter(([, schedule]) => schedule.nextRepeatMillis !== null && schedule.nextRepeatMillis <= currentMillis);
+// Advance each due item's schedule by one reset. We recompute the next boundary from the original
+// anchor via nthDayIntervalMillis(anchor, interval, occurrencesElapsed + 1) rather than adding a
+// fixed interval, so calendar boundaries never drift and month-end clamping preserves the anchor
+// day-of-month. Only one reset is applied per tick even if the tick is far in the future; the
+// timefold reschedules and catches up one boundary at a time (matching the prior behavior).
+const advanceRepeatSchedule = (schedule: RepeatSchedule, currentMillis: number): RepeatSchedule =>
+  Object.fromEntries(Object.entries(schedule).map(([itemId, entry]) => {
+    if (!(entry.nextRepeatMillis !== null && entry.nextRepeatMillis <= currentMillis && entry.interval !== null)) return [itemId, entry];
+    const occurrencesElapsed = entry.occurrencesElapsed + 1;
+    return [itemId, { ...entry, occurrencesElapsed, nextRepeatMillis: nthDayIntervalMillis(entry.anchorMillis, entry.interval, occurrencesElapsed + 1) }];
+  }));
 const grantRefsToExpire = (grants: OutstandingGrant[], expiresWhen: "when-repeated" | "when-purchase-expires" | "both", dueItemIds?: Set<string>) =>
   grants
     .filter(grant => (expiresWhen === "both" ? grant.expiresWhen === "when-repeated" || grant.expiresWhen === "when-purchase-expires" : grant.expiresWhen === expiresWhen))
@@ -329,12 +325,7 @@ function subscriptionRepeatStep(state: SubscriptionFoldState, currentMillis: num
   const dueItems = dueItemEntries(state, currentMillis);
   const dueIds = new Set(dueItems.map(([itemId]) => itemId));
   const previousGrantsToExpire = grantRefsToExpire(state.outstandingGrants, "when-repeated", dueIds);
-  const nextSchedule = Object.fromEntries(Object.entries(state.itemRepeatSchedule).map(([itemId, schedule]) => [
-    itemId,
-    schedule.nextRepeatMillis !== null && schedule.nextRepeatMillis <= currentMillis && schedule.repeatIntervalMs !== null
-      ? { ...schedule, nextRepeatMillis: schedule.nextRepeatMillis + schedule.repeatIntervalMs }
-      : schedule,
-  ]));
+  const nextSchedule = advanceRepeatSchedule(state.itemRepeatSchedule, currentMillis);
   const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen, expiresAtMillis: grantExpiryMillis(schedule.expiresWhen, nextSchedule[itemId].nextRepeatMillis, state.endedAtMillis) }));
   const txnId = `igr:${state.subscriptionId}:${currentMillis}`;
   const nextOutstanding = [
@@ -370,7 +361,7 @@ function otpInitialState(row: OneTimePurchaseRow): OtpFoldState {
     customerType: row.customerType,
     paymentProvider: provider,
     revokedAtMillis: row.revokedAtMillis,
-    itemRepeatSchedule: Object.fromEntries(Object.entries(repeatSchedule(row.product, row.quantity, row.createdAtMillis)).filter(([, schedule]) => schedule.repeatIntervalMs !== null)),
+    itemRepeatSchedule: Object.fromEntries(Object.entries(repeatSchedule(row.product, row.quantity, row.createdAtMillis)).filter(([, schedule]) => schedule.interval !== null)),
     // Must match entry order in payments-txn-one-time-purchase: [0] product-grant,
     // [1] money-transfer (only if charged), then item changes.
     outstandingGrants: outstandingGrants(row.product, row.quantity, txnId, hasMoneyTransfer ? 2 : 1),
@@ -382,12 +373,7 @@ function otpRepeatStep(state: OtpFoldState, currentMillis: number): { state: Otp
   const dueItems = dueItemEntries(state, currentMillis);
   const dueIds = new Set(dueItems.map(([itemId]) => itemId));
   const previousGrantsToExpire = grantRefsToExpire(state.outstandingGrants, "when-repeated", dueIds);
-  const nextSchedule = Object.fromEntries(Object.entries(state.itemRepeatSchedule).map(([itemId, schedule]) => [
-    itemId,
-    schedule.nextRepeatMillis !== null && schedule.nextRepeatMillis <= currentMillis && schedule.repeatIntervalMs !== null
-      ? { ...schedule, nextRepeatMillis: schedule.nextRepeatMillis + schedule.repeatIntervalMs }
-      : schedule,
-  ]));
+  const nextSchedule = advanceRepeatSchedule(state.itemRepeatSchedule, currentMillis);
   const itemRepeatGrants = dueItems.map(([itemId, schedule]) => ({ itemId, quantity: schedule.quantity, expiresWhen: schedule.expiresWhen, expiresAtMillis: grantExpiryMillis(schedule.expiresWhen, nextSchedule[itemId].nextRepeatMillis, state.revokedAtMillis) }));
   const txnId = `igr:${state.purchaseId}:${currentMillis}`;
   const nextOutstanding = [

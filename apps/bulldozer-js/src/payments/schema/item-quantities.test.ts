@@ -660,8 +660,11 @@ describe("item quantities: full-pipeline integration", () => {
     snapshot = await setManualChange(snapshot, manualChange("spend", "u-reset", "emails", -30, 2000, null));
     const g = customerGroup("u-reset");
     expect(await balanceAt(snapshot, g, "emails", 5000)).toBe(170); // 100 + 100 - 30 before the reset
-    snapshot = await snapshot.tick(new Date(MONTH_MS));
-    expect(await balanceAt(snapshot, g, "emails", MONTH_MS)).toBe(200);
+    // The first monthly reset off the epoch anchor is 1970-02-01 (calendar-anchored, not 30 days),
+    // still well before the manual grant's 3-month absolute expiry, so the reset ranks soonest.
+    const firstResetMillis = Date.UTC(1970, 1, 1);
+    snapshot = await snapshot.tick(new Date(firstResetMillis));
+    expect(await balanceAt(snapshot, g, "emails", firstResetMillis)).toBe(200);
   });
 });
 
