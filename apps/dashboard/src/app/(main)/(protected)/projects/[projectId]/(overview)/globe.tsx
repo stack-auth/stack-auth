@@ -755,19 +755,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
 
   const [globeReady, setGlobeReady] = useState(false);
 
-  // Smoothly animate the globe to the viewer's IP-based location when it
-  // arrives after the initial render (the hook may resolve asynchronously).
-  const hasAnimatedToViewerLocation = useRef(false);
-  useEffect(() => {
-    if (!globeReady || hasAnimatedToViewerLocation.current || initialPointOfView == null) return;
-    hasAnimatedToViewerLocation.current = true;
-    const current = globeRef.current;
-    if (current) {
-      current.pointOfView({ lat: initialPointOfView.lat, lng: initialPointOfView.lng }, 800);
-      resumeRender();
-    }
-  }, [globeReady, initialPointOfView]);
-
   // --- Satellites: cute 3D objects orbiting the globe. Positions are driven
   // directly in Three.js (not through react-globe.gl's `objectsData`) to avoid
   // the per-frame React re-renders that would otherwise cause, and the avatar
