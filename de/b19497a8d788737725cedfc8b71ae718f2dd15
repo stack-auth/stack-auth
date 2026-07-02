@@ -1,0 +1,32 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.ts
+  s_5ef28b6e31bc80::t_969c1d616cc682 1-110,136-140,142-174,178-180,184-185,189-190
+  s_5ef28b6e31bc80::t_f286d141563a0c 175-177,181-183,186-188
+  s_5ef28b6e31bc80::t_b27840c12844e1 111-135,141
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/waterfall.tsx
+  s_5ef28b6e31bc80::t_7f36c3491fde57 1-161
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page.tsx
+  s_5ef28b6e31bc80::t_9c4a32ee390fec 1-9
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_5ef28b6e31bc80::t_d52296eae0df1f 391
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.tsx
+  s_5ef28b6e31bc80::t_c997047dc83b1e 1-218,222-440
+  s_5ef28b6e31bc80::t_5f475fab904c55 219-221
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.test.ts
+  s_5ef28b6e31bc80::t_1d4fdd578bdb83 1-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "deb19497a8d788737725cedfc8b71ae718f2dd15",
+  "prompts": {},
+  "sessions": {
+    "s_5ef28b6e31bc80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b238aad0-909c-4ac5-8f7b-800597210478",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
