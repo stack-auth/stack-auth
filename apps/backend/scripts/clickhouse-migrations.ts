@@ -33,12 +33,14 @@ export async function runClickhouseMigrations() {
     client.command({ query: REFRESH_TOKENS_TABLE_BASE_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
+    client.command({ query: SPANS_TABLE_BASE_SQL }),
   ]);
 
   await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
 
   // Alter events table (must come before views that reference new columns)
   await client.command({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
+  await client.command({ query: EVENTS_ADD_SPAN_COLUMNS_SQL });
 
   // Clickmap materialized view depends on the events table existing; create after the ALTER above
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
@@ -59,6 +61,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: NOTIFICATION_PREFERENCES_VIEW_SQL }),
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
+    client.command({ query: SPANS_VIEW_SQL }),
   ]);
 
   // Data migrations (mutations)
@@ -73,6 +76,7 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
+    "spans",
   ];
   await Promise.all(tables.map(table =>
     client.command({
@@ -246,6 +250,94 @@ UPDATE refresh_token_id = data.refresh_token_id::Nullable(String)
 WHERE event_type = '$token-refresh'
   AND refresh_token_id IS NULL
   AND data.refresh_token_id::Nullable(String) IS NOT NULL;
+`;
+
+// Span-graph column on events (additive, backwards compatible — default.events is
+// SELECT * so it surfaces automatically). parent_span_ids holds the deduped, root-first
+// list of ancestor span ids as PREFIXED ids (e.g. [rti-<rt>, sri-<replay>, srsi-<segment>]),
+// NOT raw uuids. The per-tab id is already carried in the legacy `session_replay_segment_id`
+// column, so no separate tab-id column is added.
+const EVENTS_ADD_SPAN_COLUMNS_SQL = `
+ALTER TABLE analytics_internal.events
+  ADD COLUMN IF NOT EXISTS parent_span_ids Array(String) DEFAULT [];
+`;
+
+// Spans: telemetry siblings of events, written DIRECTLY to ClickHouse (never through
+// ext-db-sync). Interval facts whose end advances over time, so ReplacingMergeTree(version)
+// keeps the highest-version row per id (writers re-insert the full row with a bumped
+// version + latest span_ended_at). `default.spans` reads FINAL, which collapses versions
+// correctly even in the rare case a long-lived span straddles two monthly partitions.
+// Scalar identity columns stay raw (String/UUID-as-String); prefixes live only on `id`
+// and `parent_span_ids`. Session-replay/segment spans are written from the replay batch route;
+// $refresh-token spans are derived in the view from the synced refresh_tokens dimension.
+const SPANS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.spans (
+    id                        String,
+    span_type                 LowCardinality(String),
+    span_started_at           DateTime64(3, 'UTC'),
+    span_ended_at             Nullable(DateTime64(3, 'UTC')),
+    parent_span_ids           Array(String) DEFAULT [],
+    data                      String DEFAULT '{}',
+    project_id                String,
+    branch_id                 String,
+    user_id                   Nullable(String),
+    team_id                   Nullable(String),
+    refresh_token_id          Nullable(String),
+    session_replay_id         Nullable(String),
+    session_replay_segment_id Nullable(String),
+    created_at                DateTime64(3, 'UTC') DEFAULT now64(3),
+    version                   UInt64
+)
+ENGINE ReplacingMergeTree(version)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+// Customer-facing spans surface. UNION ALL of: (1) the physical spans table
+// ($session-replay + $session-replay-segment + any future custom spans), and (2) the
+// $refresh-token spans derived from the already-synced refresh_tokens dimension (no
+// separate write). Every branch casts to one identical column set. SECURITY DEFINER +
+// the default.spans row policy give the same per-project isolation as default.events.
+const SPANS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.spans
+SQL SECURITY DEFINER
+AS
+SELECT
+  id,
+  span_type,
+  span_started_at,
+  span_ended_at,
+  parent_span_ids,
+  data,
+  project_id,
+  branch_id,
+  user_id,
+  team_id,
+  refresh_token_id,
+  session_replay_id,
+  session_replay_segment_id,
+  created_at
+FROM analytics_internal.spans FINAL
+
+UNION ALL
+
+SELECT
+  concat('rti-', toString(id)) AS id,
+  CAST('$refresh-token', 'LowCardinality(String)') AS span_type,
+  created_at AS span_started_at,
+  expires_at AS span_ended_at,
+  CAST([], 'Array(String)') AS parent_span_ids,
+  CAST('{}', 'String') AS data,
+  project_id,
+  branch_id,
+  CAST(toString(user_id), 'Nullable(String)') AS user_id,
+  CAST(NULL, 'Nullable(String)') AS team_id,
+  CAST(toString(id), 'Nullable(String)') AS refresh_token_id,
+  CAST(NULL, 'Nullable(String)') AS session_replay_id,
+  CAST(NULL, 'Nullable(String)') AS session_replay_segment_id,
+  sync_created_at AS created_at
+FROM analytics_internal.refresh_tokens FINAL
+WHERE sync_is_deleted = 0;
 `;
 
 const CONTACT_CHANNELS_TABLE_BASE_SQL = `

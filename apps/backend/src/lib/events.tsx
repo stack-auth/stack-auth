@@ -14,6 +14,7 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
+import { buildEventSpanFields } from "./spans";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
 export const endUserIpInfoSchema = yupObject({
@@ -390,6 +391,11 @@ export async function logEvent<T extends EventType[]>(
           refresh_token_id: resolvedRefreshTokenId ?? null,
           session_replay_id: options.sessionReplayId ?? null,
           session_replay_segment_id: options.sessionReplaySegmentId ?? null,
+          ...buildEventSpanFields({
+            sessionReplayId: options.sessionReplayId ?? null,
+            sessionReplaySegmentId: options.sessionReplaySegmentId ?? null,
+            refreshTokenId: resolvedRefreshTokenId ?? null,
+          }),
         }],
         format: "JSONEachRow",
         clickhouse_settings: {

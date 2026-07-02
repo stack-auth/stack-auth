@@ -163,6 +163,66 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
   expect(second.body?.session_replay_id).toBe(recordingId);
 });
 
+it("emits $session-replay and $session-replay-segment spans queryable via the spans surface", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const sessionReplaySegmentId = randomUUID();
+
+  const uploadRes = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    sessionReplaySegmentId,
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [
+      { timestamp: now + 100, type: 2 },
+      { timestamp: now + 200, type: 3 },
+    ],
+  });
+  expect(uploadRes.status).toBe(200);
+  const replayId = uploadRes.body?.session_replay_id as string;
+
+  let queryRes;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await wait(500);
+    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        query: "SELECT span_type, id, parent_span_ids, session_replay_id, session_replay_segment_id FROM spans WHERE session_replay_id = {replayId:String} ORDER BY span_type",
+        params: { replayId },
+      },
+    });
+    if (queryRes.status === 200 && queryRes.body?.result?.length === 2) {
+      break;
+    }
+  }
+
+  expect(queryRes?.status).toBe(200);
+  const rows = (queryRes?.body as any).result;
+  expect(rows).toHaveLength(2);
+
+  const replaySpan = rows.find((r: any) => r.span_type === "$session-replay");
+  const segmentSpan = rows.find((r: any) => r.span_type === "$session-replay-segment");
+
+  // Replay-level span: id is prefixed, parented to the refresh-token span, no segment.
+  expect(replaySpan.id).toBe(`sri-${replayId}`);
+  expect(replaySpan.parent_span_ids).toHaveLength(1);
+  expect(replaySpan.parent_span_ids[0]).toMatch(/^rti-/);
+  expect(replaySpan.session_replay_segment_id).toBeNull();
+
+  // Segment span (per tab): ancestor list is root-first [refresh-token, replay];
+  // its identity is the recording's per-tab session_replay_segment_id.
+  expect(segmentSpan.id).toBe(`srsi-${sessionReplaySegmentId}`);
+  expect(segmentSpan.parent_span_ids).toHaveLength(2);
+  expect(segmentSpan.parent_span_ids[0]).toMatch(/^rti-/);
+  expect(segmentSpan.parent_span_ids[1]).toBe(`sri-${replayId}`);
+  expect(segmentSpan.session_replay_segment_id).toBe(sessionReplaySegmentId);
+});
+
 it("accepts a gzipped binary body (compressed large-payload encoding)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });

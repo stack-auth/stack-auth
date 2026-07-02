@@ -595,6 +595,7 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.notification_preferences TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.project_permissions TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.refresh_tokens TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.spans TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_member_profiles TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_permissions TO limited_user" },
@@ -667,6 +668,10 @@ it("can see only some tables", async ({ expect }) => {
           },
           {
             "database": "default",
+            "name": "spans",
+          },
+          {
+            "database": "default",
             "name": "team_invitations",
           },
           {
@@ -709,6 +714,7 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
           { "name": "notification_preferences" },
           { "name": "project_permissions" },
           { "name": "refresh_tokens" },
+          { "name": "spans" },
           { "name": "team_invitations" },
           { "name": "team_member_profiles" },
           { "name": "team_permissions" },
@@ -1201,6 +1207,7 @@ it("shows grants", async ({ expect }) => {
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.notification_preferences TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.project_permissions TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.refresh_tokens TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.spans TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_member_profiles TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_permissions TO limited_user" },

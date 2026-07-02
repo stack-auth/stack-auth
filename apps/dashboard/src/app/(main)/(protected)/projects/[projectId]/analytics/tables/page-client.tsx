@@ -41,6 +41,15 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
     },
   ],
   [
+    "spans",
+    {
+      displayName: "Spans",
+      baseQuery: "SELECT * FROM default.spans",
+      defaultOrderBy: "span_started_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
     "users",
     {
       displayName: "Users",

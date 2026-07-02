@@ -720,12 +720,18 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const analyticsEnabled = this._analyticsOptions?.enabled !== false;
 
     const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
+    // One per-tab id shared by the SessionRecorder and EventTracker, so replay
+    // chunks and analytics events from the same tab report the same
+    // session_replay_segment_id (they used to each mint their own, which made
+    // event rows impossible to correlate to a replay tab).
+    const sessionReplaySegmentId = generateUuid();
     if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && sessionReplayOptions.enabled) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
+        sessionReplaySegmentId,
       }, sessionReplayOptions);
       this._sessionRecorder.start();
     }
@@ -736,6 +742,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
+        sessionReplaySegmentId,
       });
       this._eventTracker.start();
     }
