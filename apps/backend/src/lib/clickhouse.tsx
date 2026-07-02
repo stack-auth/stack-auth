@@ -7,6 +7,28 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 // dependency on the @clickhouse/client package.
 export type { ClickHouseClient } from "@clickhouse/client";
 
+// Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
+// representable in JS strings but rejected by ClickHouse's JSON parser.
+// The client-side event tracker can produce these when .substring() truncates
+// text in the middle of a surrogate pair (e.g. emoji characters).
+// eslint-disable-next-line no-control-regex
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+export function stripLoneSurrogates(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(LONE_SURROGATE_RE, "�");
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripLoneSurrogates);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, stripLoneSurrogates(v)])
+    );
+  }
+  return value;
+}
+
 function getAdminAuth() {
   return {
     username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe"),

@@ -36,6 +36,8 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { generateUuid } from "./session-replay";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -1698,4 +1700,294 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw error;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Custom telemetry (server-key sends)
+  //
+  // The browser tracker (EventTracker) only exists in browser-like environments;
+  // on the server there is no session to derive identity from, so trackEvent/
+  // startSpan take an explicit `userId` and authenticate with the secret server
+  // key. Items coalesce per (userId) in a buffer flushed on the next microtask —
+  // a synchronous loop of N trackEvent calls costs one POST, not N — while every
+  // call still gets its own settled-on-ack promise. `await` (or flush()) is the
+  // delivery guarantee: there is no page-lifetime flush cadence on the server.
+  //
+  // NOTE: setGlobalSpan is app-instance-level state. Under concurrent requests
+  // (one shared app instance) a global span set in one request becomes a parent
+  // in all of them — prefer explicit parentIds (or span.trackEvent) on servers.
+  // ---------------------------------------------------------------------------
+
+  private readonly _serverTelemetryBuffers = new Map<string | null, ServerTelemetryBuffer>();
+  private readonly _serverGlobalSpans = new Set<Span>();
+  private readonly _serverTelemetryInFlight = new Set<Promise<void>>();
+
+  override trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string }): Promise<void> {
+    if (this._eventTracker) {
+      // Browser-like environment: identity comes from the session; an explicit
+      // userId would silently mis-attribute, so refuse it loudly.
+      if (options?.userId !== undefined) {
+        return rejectedPreCaught("userId is only supported for server-key telemetry; in the browser, events are attributed to the signed-in user");
+      }
+      return this._eventTracker.trackCustomEvent(eventType, data, options);
+    }
+    return this._trackServerEvent(eventType, data, options, options?.userId ?? null);
+  }
+
+  override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
+    if (this._eventTracker) {
+      if (options?.userId !== undefined) {
+        console.error("Hexclave analytics: userId is only supported for server-key telemetry; in the browser, spans are attributed to the signed-in user");
+        return createInertSpan(spanType);
+      }
+      return this._eventTracker.startSpan(spanType, options);
+    }
+    return this._startServerSpan(spanType, options, options?.userId ?? null);
+  }
+
+  override setGlobalSpan(span: Span): void {
+    if (this._eventTracker) {
+      this._eventTracker.setGlobalSpan(span);
+      return;
+    }
+    if (span.isEnded) {
+      console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
+      return;
+    }
+    this._serverGlobalSpans.add(span);
+  }
+
+  override unsetGlobalSpan(span: Span): void {
+    this._eventTracker?.unsetGlobalSpan(span);
+    this._serverGlobalSpans.delete(span);
+  }
+
+  override async flush(): Promise<void> {
+    await super.flush();
+    for (const key of [...this._serverTelemetryBuffers.keys()]) {
+      this._flushServerTelemetry(key);
+    }
+    await Promise.allSettled([...this._serverTelemetryInFlight]);
+  }
+
+  private _serverAmbientParentRefs(): SpanRef[] {
+    const refs: SpanRef[] = [];
+    for (const span of this._serverGlobalSpans) {
+      if (!span.isEnded) refs.push(span.ref());
+    }
+    return refs;
+  }
+
+  private _trackServerEvent(eventType: string, data: Record<string, unknown> | undefined, options: TrackOptions | undefined, userId: string | null): Promise<void> {
+    const nameError = getCustomTelemetryNameError("event", eventType);
+    if (nameError) return rejectedPreCaught(nameError);
+    const dataError = getCustomTelemetryDataError(data);
+    if (dataError) return rejectedPreCaught(dataError);
+    if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
+      return rejectedPreCaught(`Invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
+    }
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._serverAmbientParentRefs() });
+    if ("error" in resolved) return rejectedPreCaught(resolved.error);
+
+    let settler!: TelemetrySettler;
+    const promise = new Promise<void>((resolve, reject) => {
+      settler = { resolve, reject };
+    });
+    promise.catch(() => {});
+    const buffer = this._getServerTelemetryBuffer(userId);
+    buffer.events.push({
+      event: {
+        event_type: eventType,
+        event_at_ms: Date.now(),
+        data: { ...data ?? {} },
+        ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
+      },
+      settler,
+    });
+    this._afterServerTelemetryEnqueue(userId, buffer);
+    return promise;
+  }
+
+  private _startServerSpan(spanType: string, options: StartSpanOptions | undefined, userId: string | null): Span {
+    const nameError = getCustomTelemetryNameError("span", spanType);
+    if (nameError) {
+      console.error(`Hexclave analytics: ${nameError}`);
+      return createInertSpan(spanType);
+    }
+    const dataError = getCustomTelemetryDataError(options?.data);
+    if (dataError) {
+      console.error(`Hexclave analytics: ${dataError}`);
+      return createInertSpan(spanType);
+    }
+    if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
+      console.error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
+      return createInertSpan(spanType);
+    }
+    if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
+      console.error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
+      return createInertSpan(spanType);
+    }
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._serverAmbientParentRefs() });
+    if ("error" in resolved) {
+      console.error(`Hexclave analytics: ${resolved.error}`);
+      return createInertSpan(spanType);
+    }
+
+    const spanId = generateUuid();
+    const parentSpanIds = resolved.ids;
+    const startedAtMs = options?.startedAtMs ?? Date.now();
+    let accumulatedData: Record<string, unknown> = { ...options?.data ?? {} };
+    let lastVersion = 0;
+    let ended = false;
+    let endPromise: Promise<void> | null = null;
+
+    const nextVersion = () => (lastVersion = Math.max(Date.now(), lastVersion + 1));
+    const enqueue = (endedAtMs: number | null): Promise<void> => this._enqueueServerSpanUpdate(userId, {
+      span_id: spanId,
+      span_type: spanType,
+      started_at_ms: startedAtMs,
+      ended_at_ms: endedAtMs,
+      parent_span_ids: parentSpanIds,
+      data: { ...accumulatedData },
+      updated_at_ms: nextVersion(),
+    });
+
+    const span: Span = {
+      spanId,
+      spanType,
+      get isEnded() {
+        return ended;
+      },
+      setData: (data: Record<string, unknown>) => {
+        if (ended) return rejectedPreCaught(`setData() called on already-ended span "${spanType}"`);
+        const merged = { ...accumulatedData, ...data };
+        const mergedError = getCustomTelemetryDataError(merged);
+        if (mergedError) return rejectedPreCaught(mergedError);
+        accumulatedData = merged;
+        return enqueue(null);
+      },
+      end: (endOptions?: { endedAtMs?: number }) => {
+        if (endPromise) return endPromise;
+        ended = true;
+        this._serverGlobalSpans.delete(span);
+        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        endPromise = enqueue(endedAtMs);
+        return endPromise;
+      },
+      trackEvent: (eventType: string, data?: Record<string, unknown>, trackOptions?: TrackOptions) =>
+        this._trackServerEvent(eventType, data, { ...trackOptions, parentIds: [span, ...trackOptions?.parentIds ?? []] }, userId),
+      startSpan: (childType: string, childOptions?: StartSpanOptions) =>
+        this._startServerSpan(childType, { ...childOptions, parentIds: [span, ...childOptions?.parentIds ?? []] }, userId),
+      ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
+    };
+
+    enqueue(null).catch(() => {});
+    return span;
+  }
+
+  private _enqueueServerSpanUpdate(userId: string | null, row: SpanUpdateRow): Promise<void> {
+    let settler!: TelemetrySettler;
+    const promise = new Promise<void>((resolve, reject) => {
+      settler = { resolve, reject };
+    });
+    promise.catch(() => {});
+    const buffer = this._getServerTelemetryBuffer(userId);
+    const previous = buffer.spans.get(row.span_id);
+    // Latest row per span id wins within a batch; superseded rows' settlers ride
+    // along so every returned promise settles with the batch that ships.
+    buffer.spans.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
+    this._afterServerTelemetryEnqueue(userId, buffer);
+    return promise;
+  }
+
+  private _getServerTelemetryBuffer(userId: string | null): ServerTelemetryBuffer {
+    let buffer = this._serverTelemetryBuffers.get(userId);
+    if (!buffer) {
+      buffer = { events: [], spans: new Map(), scheduled: false };
+      this._serverTelemetryBuffers.set(userId, buffer);
+    }
+    return buffer;
+  }
+
+  private _afterServerTelemetryEnqueue(userId: string | null, buffer: ServerTelemetryBuffer): void {
+    // Stay well under the server's 500-items-per-batch cap: ship immediately once
+    // the coalesced batch is large, otherwise wait for the microtask boundary.
+    if (buffer.events.length + buffer.spans.size >= SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH) {
+      this._flushServerTelemetry(userId);
+      return;
+    }
+    if (buffer.scheduled) return;
+    buffer.scheduled = true;
+    queueMicrotask(() => this._flushServerTelemetry(userId));
+  }
+
+  private _flushServerTelemetry(userId: string | null): void {
+    const buffer = this._serverTelemetryBuffers.get(userId);
+    if (!buffer) return;
+    this._serverTelemetryBuffers.delete(userId);
+    const events = buffer.events;
+    const spanEntries = [...buffer.spans.values()];
+    if (events.length === 0 && spanEntries.length === 0) return;
+
+    const settlers: TelemetrySettler[] = events.map((entry) => entry.settler);
+    for (const entry of spanEntries) {
+      settlers.push(...entry.settlers);
+    }
+
+    const payload = {
+      batch_id: generateUuid(),
+      sent_at_ms: Date.now(),
+      ...userId !== null ? { user_id: userId } : {},
+      ...events.length > 0 ? { events: events.map((entry) => entry.event) } : {},
+      ...spanEntries.length > 0 ? { spans: spanEntries.map((entry) => entry.row) } : {},
+    };
+
+    const send = (async () => {
+      try {
+        const res = await this._interface.sendAnalyticsEventBatchAsServer(JSON.stringify(payload));
+        if (res.status === "error") {
+          for (const settler of settlers) settler.reject(res.error);
+          console.warn("Hexclave analytics: server telemetry send failed:", res.error);
+          return;
+        }
+        if (!res.data.ok) {
+          const text = await res.data.text();
+          for (const settler of settlers) settler.reject(new Error(`Hexclave analytics: server telemetry send failed: ${res.data.status} ${text}`));
+          console.warn("Hexclave analytics: server telemetry send failed:", res.data.status, text);
+          return;
+        }
+        for (const settler of settlers) settler.resolve();
+      } catch (error) {
+        for (const settler of settlers) settler.reject(error);
+        console.warn("Hexclave analytics: server telemetry send failed:", error);
+      }
+    })();
+    const tracked: Promise<void> = send.finally(() => {
+      this._serverTelemetryInFlight.delete(tracked);
+    });
+    this._serverTelemetryInFlight.add(tracked);
+  }
 }
+
+const SERVER_TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Below the route's 500-items cap with headroom, so a coalesced batch can never
+// be rejected for size.
+const SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH = 400;
+
+type TelemetrySettler = {
+  resolve: () => void,
+  reject: (error: unknown) => void,
+};
+
+type ServerTelemetryBuffer = {
+  events: {
+    event: {
+      event_type: string,
+      event_at_ms: number,
+      data: Record<string, unknown>,
+      parent_span_ids?: string[],
+    },
+    settler: TelemetrySettler,
+  }[],
+  spans: Map<string, { row: SpanUpdateRow, settlers: TelemetrySettler[] }>,
+  scheduled: boolean,
+};

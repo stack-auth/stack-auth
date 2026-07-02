@@ -130,7 +130,7 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   };
 }
 
-async function encodeGzipJsonBody(
+export async function encodeGzipJsonBody(
   jsonBody: string,
   options: { keepalive: boolean },
 ): Promise<{ body: BodyInit, contentType: string }> {

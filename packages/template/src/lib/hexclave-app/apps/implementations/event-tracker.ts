@@ -10,6 +10,206 @@ const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
 
+// ---------------------------------------------------------------------------
+// Custom telemetry (public trackEvent/startSpan API)
+// ---------------------------------------------------------------------------
+
+// Custom (user-defined) event/span type names: must not start with `$` (reserved
+// for system types), start with a letter, and stay within 64 chars. Keep in sync
+// with the server-side validation in apps/backend's analytics events batch route.
+const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
+// Serialized size cap per event/span data payload; mirrors the server cap so a
+// locally-accepted item can never poison a whole batch with a server-side 400.
+const MAX_ITEM_DATA_BYTES = 16_000;
+// Maximum length of the merged custom parent chain per item; mirrors the server.
+const MAX_PARENT_CHAIN = 10;
+// Mirrors the server's UUID_RE — raw parent ids that fail this locally would
+// 400 the entire batch server-side, so they must never enter the buffer.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Serializable form of a span's identity + full custom ancestor chain. Survives
+ * JSON boundaries (page props, headers), so a span started on one tier can be
+ * continued as a parent on another with full ancestry — unlike a bare uuid
+ * string, which contributes only itself.
+ */
+export type SpanRef = {
+  spanId: string,
+  parentSpanIds: string[],
+};
+
+/**
+ * Anything accepted as a parent: a raw span uuid (contributes only itself — its
+ * ancestors are unknowable), a serialized SpanRef, or a live Span handle (both
+ * contribute their full ancestor chain plus themselves).
+ */
+export type ParentRef = string | SpanRef | Span;
+
+export type TrackOptions = {
+  parentIds?: ParentRef[],
+};
+
+export type StartSpanOptions = {
+  data?: Record<string, unknown>,
+  parentIds?: ParentRef[],
+  startedAtMs?: number,
+};
+
+/**
+ * A custom span: a time interval written to analytics as an open interval on
+ * start and re-written (versioned upsert) on setData/end. A span that is never
+ * ended — e.g. the tab closed — stays visible as an open interval by design.
+ *
+ * Returned promises resolve when the batch containing the update is acknowledged
+ * and reject on definitive send failure; they are pre-caught internally, so
+ * ignoring them never causes unhandled-rejection noise. No method throws.
+ */
+export type Span = {
+  readonly spanId: string,
+  readonly spanType: string,
+  readonly isEnded: boolean,
+  /** Shallow-merges into the span's data and re-writes the span. */
+  setData(data: Record<string, unknown>): Promise<void>,
+  /** Idempotent; repeated calls return the first call's promise. */
+  end(options?: { endedAtMs?: number }): Promise<void>,
+  /** Tracks an event with this span (and its full ancestor chain) as a parent. */
+  trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
+  /** Starts a child span of this span. */
+  startSpan(spanType: string, options?: StartSpanOptions): Span,
+  /** Serializable identity + full custom ancestor chain (see SpanRef). */
+  ref(): SpanRef,
+};
+
+export type SpanUpdateRow = {
+  span_id: string,
+  span_type: string,
+  started_at_ms: number,
+  ended_at_ms: number | null,
+  parent_span_ids: string[],
+  data: Record<string, unknown>,
+  updated_at_ms: number,
+};
+
+type Settler = {
+  resolve: () => void,
+  reject: (error: unknown) => void,
+};
+
+// Subscribing an internal no-op handler means an ignored rejection never counts
+// as "unhandled" (the runtime only reports rejected promises with zero
+// subscribers), while callers who do await still observe it through their own
+// handler. This is what makes fire-and-forget usage safe.
+function preCaught<T>(promise: Promise<T>): Promise<T> {
+  promise.catch(() => {});
+  return promise;
+}
+
+export function rejectedPreCaught(message: string): Promise<never> {
+  console.error(`Hexclave analytics: ${message}`);
+  return preCaught(Promise.reject(new Error(message)));
+}
+
+let warnedTelemetryUnavailable = false;
+export function warnTelemetryUnavailableOnce(): void {
+  if (warnedTelemetryUnavailable) return;
+  warnedTelemetryUnavailable = true;
+  console.warn("Hexclave analytics: trackEvent/startSpan called where analytics is unavailable (non-browser environment, no persistent token store, or analytics disabled); telemetry is dropped");
+}
+
+export function getCustomTelemetryNameError(kind: "event" | "span", name: unknown): string | null {
+  if (typeof name !== "string" || !CUSTOM_TELEMETRY_NAME_RE.test(name)) {
+    return `Invalid custom ${kind} type ${JSON.stringify(name)}: must start with a letter, contain only letters, digits, "_", ".", ":" or "-", and be at most 64 characters ("$"-prefixed names are reserved for system telemetry)`;
+  }
+  return null;
+}
+
+export function getCustomTelemetryDataError(data: unknown): string | null {
+  if (data === undefined) return null;
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return "Telemetry data must be a plain JSON-serializable object";
+  }
+  // JSON.stringify's lib type is `string` but it returns undefined at runtime
+  // for some inputs — keep the check honest with an explicit widened type.
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(data) as string | undefined;
+  } catch {
+    return "Telemetry data must be JSON-serializable (no circular references or BigInt values)";
+  }
+  if (serialized === undefined || serialized.length > MAX_ITEM_DATA_BYTES) {
+    return `Telemetry data must serialize to at most ${MAX_ITEM_DATA_BYTES} bytes`;
+  }
+  return null;
+}
+
+/**
+ * Merges ambient parents (e.g. global spans) and explicit ParentRefs into one
+ * root-first, deduped id chain. Each Span/SpanRef contributes its full frozen
+ * ancestor chain plus itself; a raw string uuid contributes only itself.
+ * Root-first order is preserved because every contributor is itself root-first
+ * and first-occurrence dedupe keeps the earliest (root-most) position.
+ */
+export function resolveParentIds(opts: {
+  explicit?: ParentRef[],
+  ambient?: SpanRef[],
+}): { ids: string[] } | { error: string } {
+  const chains: string[][] = [];
+  for (const ambient of opts.ambient ?? []) {
+    chains.push([...ambient.parentSpanIds, ambient.spanId]);
+  }
+  for (const parent of opts.explicit ?? []) {
+    if (typeof parent === "string") {
+      chains.push([parent]);
+    } else {
+      const ref = "ref" in parent && typeof parent.ref === "function" ? parent.ref() : parent as SpanRef;
+      chains.push([...ref.parentSpanIds, ref.spanId]);
+    }
+  }
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const chain of chains) {
+    for (const id of chain) {
+      if (!UUID_RE.test(id)) {
+        return { error: `Invalid parent span id ${JSON.stringify(id)}: parent ids must be span uuids` };
+      }
+      if (!seen.has(id)) {
+        seen.add(id);
+        merged.push(id);
+      }
+    }
+  }
+  if (merged.length > MAX_PARENT_CHAIN) {
+    console.warn(`Hexclave analytics: parent chain exceeds ${MAX_PARENT_CHAIN} spans; keeping the ${MAX_PARENT_CHAIN} nearest ancestors`);
+    return { ids: merged.slice(-MAX_PARENT_CHAIN) };
+  }
+  return { ids: merged };
+}
+
+/**
+ * A Span that records nothing. Returned wherever analytics cannot run (SSR,
+ * analytics disabled, tracker torn down) so isomorphic user code never needs to
+ * branch: every method succeeds immediately.
+ */
+export function createInertSpan(spanType: string): Span {
+  let ended = false;
+  const span: Span = {
+    spanId: generateUuid(),
+    spanType,
+    get isEnded() {
+      return ended;
+    },
+    setData: () => Promise.resolve(),
+    end: () => {
+      ended = true;
+      return Promise.resolve();
+    },
+    trackEvent: () => Promise.resolve(),
+    startSpan: (childType: string) => createInertSpan(childType),
+    ref: () => ({ spanId: span.spanId, parentSpanIds: [] }),
+  };
+  return span;
+}
+
 function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
   if (value == null || typeof value !== "object") {
     return false;
@@ -108,9 +308,14 @@ export type EventTrackerDeps = {
 };
 
 type TrackedEvent = {
-  event_type: "$page-view" | "$click",
+  // System types ($page-view, $click) from the auto-capture paths, or a custom
+  // name (validated against CUSTOM_TELEMETRY_NAME_RE) from trackEvent().
+  event_type: string,
   event_at_ms: number,
   data: Record<string, unknown>,
+  // Custom ancestor chain, root-first, raw span uuids. Omitted for system
+  // events; the server composes system ancestry on top for every event.
+  parent_span_ids?: string[],
 };
 
 export class EventTracker {
@@ -127,6 +332,22 @@ export class EventTracker {
 
   private _originalPushState: History["pushState"] | null = null;
   private _originalReplaceState: History["replaceState"] | null = null;
+
+  // Custom-span updates awaiting the next flush, latest row per span id (a span
+  // touched N times within one flush window costs one wire row). Settlers from
+  // superseded rows are carried over so every returned promise still settles
+  // with the batch that actually carries the span's latest state.
+  private _spanUpdates = new Map<string, { row: SpanUpdateRow, settlers: Settler[] }>();
+  // Settlers for buffered custom events (system events are fire-and-forget).
+  private _eventSettlers = new Map<TrackedEvent, Settler>();
+  // Spans registered via setGlobalSpan — ambient parents for all subsequent
+  // custom events and spans until unset (end() auto-unsets).
+  private _globalSpans = new Set<Span>();
+  // Live (un-ended) span handles' inert switches; flipped on clearBuffer so a
+  // span started before sign-out can never be re-written under the next user.
+  private _liveSpanControls = new Set<{ markInert: () => void }>();
+  // Batch sends currently on the wire; flush() awaits these.
+  private _inFlight = new Set<Promise<void>>();
 
   private _deadClickTimer: ReturnType<typeof setInterval> | null = null;
   private _deadClickMutationObserver: MutationObserver | null = null;
@@ -176,9 +397,33 @@ export class EventTracker {
   }
 
   clearBuffer() {
+    this._settleAllPending("analytics buffer cleared");
     this._events = [];
     this._approxBytes = 0;
     this._unclassifiedClicks.clear();
+  }
+
+  // Rejects every pending custom-event/span promise (pre-caught, so silent for
+  // fire-and-forget callers), drops buffered span rows, and inert-ifies all live
+  // span handles. Called on sign-out (paired with the segment-id rotation): a
+  // span started under user A must never be re-written under user B's session.
+  private _settleAllPending(reason: string) {
+    const error = new Error(`Hexclave analytics: ${reason}`);
+    for (const settler of this._eventSettlers.values()) {
+      settler.reject(error);
+    }
+    this._eventSettlers.clear();
+    for (const entry of this._spanUpdates.values()) {
+      for (const settler of entry.settlers) {
+        settler.reject(error);
+      }
+    }
+    this._spanUpdates.clear();
+    for (const control of this._liveSpanControls) {
+      control.markInert();
+    }
+    this._liveSpanControls.clear();
+    this._globalSpans.clear();
   }
 
   /**
@@ -192,13 +437,200 @@ export class EventTracker {
     this._sessionReplaySegmentId = id;
   }
 
+  /**
+   * Buffers a custom analytics event. The returned promise resolves when the
+   * batch carrying the event is acknowledged and rejects on definitive send
+   * failure; it is pre-caught, so ignoring it is safe. Never throws — invalid
+   * input yields a rejected promise plus a console error.
+   */
+  trackCustomEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {
+    const nameError = getCustomTelemetryNameError("event", eventType);
+    if (nameError) return rejectedPreCaught(nameError);
+    const dataError = getCustomTelemetryDataError(data);
+    if (dataError) return rejectedPreCaught(dataError);
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
+    if ("error" in resolved) return rejectedPreCaught(resolved.error);
+    if (this._disabled) return Promise.resolve();
+
+    const event: TrackedEvent = {
+      event_type: eventType,
+      event_at_ms: Date.now(),
+      data: { ...data ?? {} },
+      ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
+    };
+    let settler!: Settler;
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
+      settler = { resolve, reject };
+    }));
+    this._eventSettlers.set(event, settler);
+    this._pushEvent(event);
+    return promise;
+  }
+
+  /**
+   * Starts a custom span: the open interval is written on the next flush and
+   * re-written (versioned upsert) on setData/end. Never throws — invalid input
+   * yields an inert span plus a console error, so caller code always proceeds.
+   */
+  startSpan(spanType: string, options?: StartSpanOptions): Span {
+    const nameError = getCustomTelemetryNameError("span", spanType);
+    if (nameError) {
+      console.error(`Hexclave analytics: ${nameError}`);
+      return createInertSpan(spanType);
+    }
+    const dataError = getCustomTelemetryDataError(options?.data);
+    if (dataError) {
+      console.error(`Hexclave analytics: ${dataError}`);
+      return createInertSpan(spanType);
+    }
+    if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
+      console.error(`Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value`);
+      return createInertSpan(spanType);
+    }
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
+    if ("error" in resolved) {
+      console.error(`Hexclave analytics: ${resolved.error}`);
+      return createInertSpan(spanType);
+    }
+    if (this._disabled) return createInertSpan(spanType);
+
+    const spanId = generateUuid();
+    // The custom ancestor chain is frozen at creation: parents are identity, not
+    // state, so later setGlobalSpan calls or parent mutations never re-parent an
+    // existing span (and every re-write of this span carries the same chain).
+    const parentSpanIds = resolved.ids;
+    const startedAtMs = options?.startedAtMs ?? Date.now();
+    let accumulatedData: Record<string, unknown> = { ...options?.data ?? {} };
+    let lastVersion = 0;
+    let ended = false;
+    let inert = false;
+    let endPromise: Promise<void> | null = null;
+
+    // Per-span monotonic version: the row carrying the latest update always wins
+    // in the ReplacingMergeTree, even when batches arrive out of order (keepalive
+    // sends are single-attempt and can race a normal flush).
+    const nextVersion = () => (lastVersion = Math.max(Date.now(), lastVersion + 1));
+    const enqueue = (endedAtMs: number | null): Promise<void> => {
+      if (inert || this._disabled) return Promise.resolve();
+      return this._enqueueSpanUpdate({
+        span_id: spanId,
+        span_type: spanType,
+        started_at_ms: startedAtMs,
+        ended_at_ms: endedAtMs,
+        parent_span_ids: parentSpanIds,
+        data: { ...accumulatedData },
+        updated_at_ms: nextVersion(),
+      });
+    };
+
+    const control = {
+      markInert: () => {
+        inert = true;
+      },
+    };
+    this._liveSpanControls.add(control);
+
+    const span: Span = {
+      spanId,
+      spanType,
+      get isEnded() {
+        return ended;
+      },
+      setData: (data: Record<string, unknown>) => {
+        if (ended) return rejectedPreCaught(`setData() called on already-ended span "${spanType}"`);
+        const merged = { ...accumulatedData, ...data };
+        const mergedError = getCustomTelemetryDataError(merged);
+        if (mergedError) return rejectedPreCaught(mergedError);
+        accumulatedData = merged;
+        return enqueue(null);
+      },
+      end: (endOptions?: { endedAtMs?: number }) => {
+        if (endPromise) return endPromise;
+        ended = true;
+        this._globalSpans.delete(span);
+        this._liveSpanControls.delete(control);
+        // Clamp so a caller-supplied end can never invert the interval — the
+        // server rejects ended < started, and one bad item would 400 the batch.
+        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        endPromise = enqueue(endedAtMs);
+        return endPromise;
+      },
+      trackEvent: (eventType: string, data?: Record<string, unknown>, trackOptions?: TrackOptions) =>
+        this.trackCustomEvent(eventType, data, { ...trackOptions, parentIds: [span, ...trackOptions?.parentIds ?? []] }),
+      startSpan: (childType: string, childOptions?: StartSpanOptions) =>
+        this.startSpan(childType, { ...childOptions, parentIds: [span, ...childOptions?.parentIds ?? []] }),
+      ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
+    };
+
+    // Write the open interval right away: a span the user never ends (e.g. the
+    // tab closes) still shows up, as an open interval, from its first flush on.
+    enqueue(null).catch(() => {});
+    return span;
+  }
+
+  /**
+   * Registers a span as an ambient parent for all subsequently created custom
+   * events and spans (additive with explicit parentIds). Ending the span
+   * automatically unregisters it.
+   */
+  setGlobalSpan(span: Span): void {
+    if (span.isEnded) {
+      console.warn("Hexclave analytics: setGlobalSpan() called with an already-ended span; ignoring");
+      return;
+    }
+    this._globalSpans.add(span);
+  }
+
+  unsetGlobalSpan(span: Span): void {
+    this._globalSpans.delete(span);
+  }
+
+  /**
+   * Sends everything buffered right now and settles all in-flight sends. This is
+   * the "send now" escape hatch — awaiting trackEvent alone waits for the
+   * regular flush cadence.
+   */
+  async flush(): Promise<void> {
+    await this._flush({ keepalive: false });
+    await Promise.allSettled([...this._inFlight]);
+  }
+
+  private _ambientParentRefs(): SpanRef[] {
+    const refs: SpanRef[] = [];
+    for (const span of this._globalSpans) {
+      if (!span.isEnded) refs.push(span.ref());
+    }
+    return refs;
+  }
+
+  private _enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
+    let settler!: Settler;
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
+      settler = { resolve, reject };
+    }));
+    const previous = this._spanUpdates.get(row.span_id);
+    if (previous) {
+      this._approxBytes -= JSON.stringify(previous.row).length;
+    }
+    // Latest row per span id wins within a batch, but superseded rows' settlers
+    // ride along so their promises still settle with the batch that ships.
+    this._spanUpdates.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
+    this._approxBytes += JSON.stringify(row).length;
+    this._maybeTriggerSizeFlush();
+    return promise;
+  }
+
+  private _maybeTriggerSizeFlush() {
+    if (this._events.length + this._spanUpdates.size >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
+      runAsynchronously(() => this._flush({ keepalive: false }));
+    }
+  }
+
   private _pushEvent(event: TrackedEvent) {
     if (this._disabled) return;
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
-    if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-      runAsynchronously(() => this._flush({ keepalive: false }));
-    }
+    this._maybeTriggerSizeFlush();
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
@@ -480,6 +912,7 @@ export class EventTracker {
     document.removeEventListener("click", this._onClickCapture, { capture: true });
     this._teardownDeadClickDetection();
 
+    this._settleAllPending("analytics tracker stopped");
     this._events = [];
     this._approxBytes = 0;
   }
@@ -496,11 +929,28 @@ export class EventTracker {
 
     // Clicks still awaiting classification stay buffered so the sweep can
     // mark them dead in place; classification finishes well within one flush
-    // interval, so they ride the next flush at the latest.
+    // interval, so they ride the next flush at the latest. Span rows are never
+    // held back — the holdback exists only for dead-click classification.
     const events = this._events.filter((event) => !this._unclassifiedClicks.has(event));
-    if (events.length === 0) return;
+    const spanEntries = [...this._spanUpdates.values()];
+    if (events.length === 0 && spanEntries.length === 0) return;
     this._events = this._events.filter((event) => this._unclassifiedClicks.has(event));
+    this._spanUpdates.clear();
     this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
+
+    // Snapshot the settlers of everything this batch carries: they settle with
+    // this send's outcome. Items buffered after this point ride the next flush.
+    const settlers: Settler[] = [];
+    for (const event of events) {
+      const settler = this._eventSettlers.get(event);
+      if (settler) {
+        settlers.push(settler);
+        this._eventSettlers.delete(event);
+      }
+    }
+    for (const entry of spanEntries) {
+      settlers.push(...entry.settlers);
+    }
 
     const nowMs = Date.now();
 
@@ -510,30 +960,54 @@ export class EventTracker {
       batch_id: batchId,
       sent_at_ms: nowMs,
       events,
+      ...spanEntries.length > 0 ? { spans: spanEntries.map((entry) => entry.row) } : {},
     };
 
-    const res = await this._deps.sendBatch(
-      JSON.stringify(payload),
-      { keepalive: options.keepalive },
-    );
+    const send = (async () => {
+      try {
+        const res = await this._deps.sendBatch(
+          JSON.stringify(payload),
+          { keepalive: options.keepalive },
+        );
 
-    if (res.status === "error") {
-      if (isAnalyticsNotEnabledError(res.error)) {
-        this._disable();
-        return;
-      }
-      // Ad blockers commonly block analytics endpoints, causing network
-      // errors. These are expected and should not pollute the console.
-      if (isAdBlockerNetworkError(res.error)) {
-        return;
-      }
-      console.warn("EventTracker flush failed:", res.error);
-      return;
-    }
+        if (res.status === "error") {
+          // All rejections are pre-caught at promise creation, so failures are
+          // silent for fire-and-forget callers and observable for awaiting ones.
+          for (const settler of settlers) settler.reject(res.error);
+          if (isAnalyticsNotEnabledError(res.error)) {
+            this._disable();
+            return;
+          }
+          // Ad blockers commonly block analytics endpoints, causing network
+          // errors. These are expected and should not pollute the console.
+          if (isAdBlockerNetworkError(res.error)) {
+            return;
+          }
+          console.warn("EventTracker flush failed:", res.error);
+          return;
+        }
 
-    if (!res.data.ok) {
-      console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
-    }
+        if (!res.data.ok) {
+          const text = await res.data.text();
+          for (const settler of settlers) settler.reject(new Error(`EventTracker flush failed: ${res.data.status} ${text}`));
+          console.warn("EventTracker flush failed:", res.data.status, text);
+          return;
+        }
+
+        for (const settler of settlers) settler.resolve();
+      } catch (error) {
+        // _flush must never reject (public flush() and fire-and-forget callers
+        // don't expect telemetry failures to throw); the settlers carry it.
+        for (const settler of settlers) settler.reject(error);
+        console.warn("EventTracker flush failed:", error);
+      }
+    })();
+
+    const tracked: Promise<void> = send.finally(() => {
+      this._inFlight.delete(tracked);
+    });
+    this._inFlight.add(tracked);
+    await tracked;
   }
 
   private _disable() {
@@ -547,7 +1021,7 @@ export class EventTracker {
 
   private _tick() {
     if (this._cancelled) return;
-    if (this._events.length > 0) {
+    if (this._events.length > 0 || this._spanUpdates.size > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }

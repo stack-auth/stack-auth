@@ -9,6 +9,7 @@ import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import {
   ClientInterfaceOptions,
+  encodeGzipJsonBody,
   HexclaveClientInterface
 } from "./client-interface";
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
@@ -57,6 +58,38 @@ export class HexclaveServerInterface extends HexclaveClientInterface {
       session,
       requestType,
     );
+  }
+
+  /**
+   * Server-auth variant of the analytics batch upload (see
+   * `sendAnalyticsEventBatch` on the client interface): authenticates with the
+   * secret server key instead of a user session, against the analytics base URL.
+   * Single attempt, like the client path — analytics is fire-and-forget and the
+   * caller's returned promise carries the outcome.
+   */
+  async sendAnalyticsEventBatchAsServer(body: string): Promise<Result<Response, Error>> {
+    try {
+      const encoded = await encodeGzipJsonBody(body, { keepalive: false });
+      const response = await this.sendClientRequest(
+        "/analytics/events/batch",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": encoded.contentType,
+            // Hexclave rebrand: emit x-hexclave-* request header; the backend proxy dual-accepts both names.
+            "x-hexclave-secret-server-key": "secretServerKey" in this.options ? this.options.secretServerKey : "",
+          },
+          body: encoded.body,
+        },
+        null,
+        "server",
+        this.getAnalyticsApiUrl(),
+        { maxAttempts: 1, skipDiagnostics: true },
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
   }
 
   override async getCustomerBilling(

@@ -61,7 +61,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { EventTracker } from "./event-tracker";
+import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -258,7 +258,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
-  private _eventTracker: EventTracker | null = null;
+  protected _eventTracker: EventTracker | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -3993,6 +3993,48 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (user) {
       await user.signOut({ redirectUrl: options?.redirectUrl });
     }
+  }
+
+  // Custom telemetry (see the StackClientApp interface for user-facing docs).
+  // The tracker only exists in browser-like environments with analytics enabled
+  // and a persistent token store; everywhere else these are validated no-ops so
+  // isomorphic code never needs to branch (and misuse still surfaces loudly).
+
+  trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {
+    if (this._eventTracker) {
+      return this._eventTracker.trackCustomEvent(eventType, data, options);
+    }
+    const nameError = getCustomTelemetryNameError("event", eventType);
+    if (nameError) return rejectedPreCaught(nameError);
+    const dataError = getCustomTelemetryDataError(data);
+    if (dataError) return rejectedPreCaught(dataError);
+    warnTelemetryUnavailableOnce();
+    return Promise.resolve();
+  }
+
+  startSpan(spanType: string, options?: StartSpanOptions): Span {
+    if (this._eventTracker) {
+      return this._eventTracker.startSpan(spanType, options);
+    }
+    const nameError = getCustomTelemetryNameError("span", spanType);
+    if (nameError) {
+      console.error(`Hexclave analytics: ${nameError}`);
+    } else {
+      warnTelemetryUnavailableOnce();
+    }
+    return createInertSpan(spanType);
+  }
+
+  setGlobalSpan(span: Span): void {
+    this._eventTracker?.setGlobalSpan(span);
+  }
+
+  unsetGlobalSpan(span: Span): void {
+    this._eventTracker?.unsetGlobalSpan(span);
+  }
+
+  async flush(): Promise<void> {
+    await this._eventTracker?.flush();
   }
 
   async getAccessToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {

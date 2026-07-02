@@ -343,12 +343,12 @@ it("rejects empty events array", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - body.events field must have at least 1 items
+              - A batch must contain at least one event or span
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - body.events field must have at least 1 items
+            - A batch must contain at least one event or span
         \`,
       },
       "headers": Headers {
@@ -505,12 +505,12 @@ it("rejects invalid event_type", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - body.events[0].event_type must be one of the following values: $page-view, $click
+              - event_type must be one of $page-view, $click or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - body.events[0].event_type must be one of the following values: $page-view, $click
+            - event_type must be one of $page-view, $click or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
         \`,
       },
       "headers": Headers {
@@ -769,4 +769,516 @@ it("team plan starts with correct analytics event allocation", async ({ expect }
 
   const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(quantity).toBe(PLAN_LIMITS.team.analyticsEvents);
+});
+
+// ============================================================================
+// Custom events & custom spans
+// ============================================================================
+
+async function setupAnalyticsProject() {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+}
+
+async function uploadTelemetryBatch(
+  body: {
+    session_replay_segment_id?: string,
+    batch_id?: string,
+    sent_at_ms?: number,
+    user_id?: string,
+    events?: unknown[],
+    spans?: unknown[],
+  },
+  options?: { accessType?: "client" | "server" },
+) {
+  return await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: options?.accessType ?? "client",
+    body: {
+      batch_id: randomUUID(),
+      sent_at_ms: Date.now(),
+      ...body,
+    },
+  });
+}
+
+function makeCustomSpan(overrides?: Record<string, unknown>) {
+  const now = Date.now();
+  return {
+    span_id: randomUUID(),
+    span_type: "checkout-flow",
+    started_at_ms: now - 1000,
+    ended_at_ms: null,
+    parent_span_ids: [],
+    data: {},
+    updated_at_ms: now,
+    ...overrides,
+  };
+}
+
+// Retry query because both the events insert (async_insert) and the spans
+// insert (written off the response path via waitUntil) land with a delay.
+async function queryAnalyticsUntil(
+  body: { query: string, params?: Record<string, string> },
+  isDone: (res: { status: number, body: any }) => boolean,
+  attempts = 20,
+) {
+  let queryRes;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await wait(500);
+    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body,
+    });
+    if (queryRes.status === 200 && isDone(queryRes)) {
+      break;
+    }
+  }
+  return queryRes;
+}
+
+it("accepts custom events and stamps system ancestry on them", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const now = Date.now();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    events: [{ event_type: "checkout_completed", event_at_ms: now - 100, data: { cart_size: 3 } }],
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT event_type, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  expect(row.event_type).toBe("checkout_completed");
+  // No active session replay, so the only system ancestor is the refresh-token span.
+  expect(row.parent_span_ids).toHaveLength(1);
+  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
+});
+
+it("appends the client-supplied custom parent chain after system ancestry on events", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const parentSpanId = randomUUID();
+  const now = Date.now();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    events: [{
+      event_type: "checkout_step",
+      event_at_ms: now - 100,
+      data: { step: 1 },
+      parent_span_ids: [parentSpanId],
+    }],
+  });
+  expect(res.status).toBe(200);
+  expect(res.body.inserted).toBe(1);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  // Root-first: system ancestry (refresh-token) first, then the cs-prefixed custom chain.
+  expect(row.parent_span_ids).toHaveLength(2);
+  expect(row.parent_span_ids[0]).toMatch(/^rti-/);
+  expect(row.parent_span_ids[1]).toBe(`cs-${parentSpanId}`);
+});
+
+it("rejects unknown $-prefixed event types", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "$custom-fake", event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("event_type must be one of");
+});
+
+it("rejects custom event types that do not start with a letter", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "1bad", event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("event_type must be one of");
+});
+
+it("rejects custom event types longer than 64 characters", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "a".repeat(65), event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("event_type must be one of");
+});
+
+it("rejects custom event data that is not a plain object", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: [1, 2, 3] }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+});
+
+it("rejects custom event data larger than the serialized size cap", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: { pad: "x".repeat(16_001) } }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+});
+
+it("rejects $-prefixed span types", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ span_type: "$reserved" })],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("Invalid span_type");
+});
+
+it("rejects spans that end before they start", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ started_at_ms: now, ended_at_ms: now - 1000 })],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("ended_at_ms must be greater than or equal to started_at_ms");
+});
+
+it("rejects a batch with neither events nor spans", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("A batch must contain at least one event or span");
+});
+
+it("rejects user_id with client auth", async ({ expect }) => {
+  await setupAnalyticsProject();
+  const { userId } = await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    user_id: userId,
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body).toBe("user_id must not be set with client auth; it is derived from the session");
+});
+
+it("rejects client-auth batches without session_replay_segment_id", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: {} }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body).toBe("session_replay_segment_id is required for analytics batches with client auth");
+});
+
+it("accepts a spans-only batch and lands it on the spans surface", async ({ expect }) => {
+  await setupAnalyticsProject();
+  const { userId } = await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const spanId = randomUUID();
+  const now = Date.now();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [{
+      span_id: spanId,
+      span_type: "checkout-flow",
+      started_at_ms: now - 1000,
+      ended_at_ms: null,
+      parent_span_ids: [],
+      data: {},
+      updated_at_ms: now,
+    }],
+  });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_type, span_ended_at, parent_span_ids, user_id, session_replay_segment_id FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const rows = (queryRes?.body as any).result;
+  expect(rows).toHaveLength(1);
+  expect(rows[0].id).toBe(`cs-${spanId}`);
+  expect(rows[0].span_type).toBe("checkout-flow");
+  // The span is still open.
+  expect(rows[0].span_ended_at).toBeNull();
+  // No active session replay, so the only system ancestor is the refresh-token span.
+  expect(rows[0].parent_span_ids).toHaveLength(1);
+  expect(rows[0].parent_span_ids[0]).toMatch(/^rti-/);
+  expect(rows[0].user_id).toBe(userId);
+  expect(rows[0].session_replay_segment_id).toBe(sessionReplaySegmentId);
+});
+
+it("collapses open→closed span re-writes to the ended row", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const spanId = randomUUID();
+  const now = Date.now();
+  const startedAtMs = now - 10_000;
+  const endedAtMs = now - 2000;
+  const openUpdatedAtMs = now - 9000;
+  const closedUpdatedAtMs = now - 1000;
+
+  const openRes = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs })],
+  });
+  expect(openRes.status).toBe(200);
+
+  const openQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1);
+  expect(openQueryRes?.status).toBe(200);
+  expect((openQueryRes?.body as any).result[0].span_ended_at).toBeNull();
+
+  const closedRes = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
+  });
+  expect(closedRes.status).toBe(200);
+
+  // The view reads FINAL, so the two versions collapse to the ended row.
+  const closedQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1 && r.body.result[0].span_ended_at != null);
+  expect(closedQueryRes?.status).toBe(200);
+  const rows = (closedQueryRes?.body as any).result;
+  expect(rows).toHaveLength(1);
+  expect(rows[0].span_ended_at).not.toBeNull();
+});
+
+it("keeps the ended row when an open re-write arrives with an older version (out-of-order)", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const spanId = randomUUID();
+  const sentinelSpanId = randomUUID();
+  const now = Date.now();
+  const startedAtMs = now - 10_000;
+  const endedAtMs = now - 2000;
+  const openUpdatedAtMs = now - 9000;
+  const closedUpdatedAtMs = now - 1000;
+
+  // The END row arrives first, carrying the LATER version…
+  const closedRes = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: endedAtMs, updated_at_ms: closedUpdatedAtMs })],
+  });
+  expect(closedRes.status).toBe(200);
+
+  const closedQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1);
+  expect(closedQueryRes?.status).toBe(200);
+  expect((closedQueryRes?.body as any).result[0].span_ended_at).not.toBeNull();
+
+  // …then a stale OPEN row with the EARLIER version arrives. The sentinel span
+  // rides in the same batch (same ClickHouse insert), so once it is visible the
+  // stale open row has landed too.
+  const staleOpenRes = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [
+      makeCustomSpan({ span_id: spanId, started_at_ms: startedAtMs, ended_at_ms: null, updated_at_ms: openUpdatedAtMs }),
+      makeCustomSpan({ span_id: sentinelSpanId }),
+    ],
+  });
+  expect(staleOpenRes.status).toBe(200);
+
+  const sentinelQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${sentinelSpanId}` },
+  }, (r) => r.body?.result?.length === 1);
+  expect(sentinelQueryRes?.status).toBe(200);
+
+  // The ended row still wins: version (updated_at_ms) decides, not insert order.
+  const finalQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1);
+  expect(finalQueryRes?.status).toBe(200);
+  const rows = (finalQueryRes?.body as any).result;
+  expect(rows).toHaveLength(1);
+  expect(rows[0].span_ended_at).not.toBeNull();
+});
+
+it("accepts server-key batches with explicit user_id and no system ancestry", async ({ expect }) => {
+  await setupAnalyticsProject();
+  const { userId } = await Auth.Otp.signIn();
+  // Server-key request: no user access token, no refresh token.
+  backendContext.set({ userAuth: null });
+
+  const eventType = `sk-${randomUUID()}`;
+  const res = await uploadTelemetryBatch({
+    user_id: userId,
+    events: [{ event_type: eventType, event_at_ms: Date.now(), data: { source: "server" } }],
+  }, { accessType: "server" });
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT user_id, parent_span_ids FROM events WHERE event_type = {eventType:String}",
+    params: { eventType },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  expect(row.user_id).toBe(userId);
+  // No session on server auth, so there is no system ancestry at all.
+  expect(row.parent_span_ids).toEqual([]);
+});
+
+it("rejects server-key batches with an unknown user_id", async ({ expect }) => {
+  await setupAnalyticsProject();
+  backendContext.set({ userAuth: null });
+
+  const res = await uploadTelemetryBatch({
+    user_id: randomUUID(),
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: {} }],
+  }, { accessType: "server" });
+
+  expect(res.status).toBe(400);
+  expect(res.body).toBe("user_id does not correspond to a user on this project/branch");
+});
+
+it("accepts server-key spans without refresh-token ancestry", async ({ expect }) => {
+  await setupAnalyticsProject();
+  const { userId } = await Auth.Otp.signIn();
+  backendContext.set({ userAuth: null });
+
+  const spanId = randomUUID();
+  const res = await uploadTelemetryBatch({
+    user_id: userId,
+    spans: [makeCustomSpan({ span_id: spanId })],
+  }, { accessType: "server" });
+  expect(res.status).toBe(200);
+  expect(res.body.inserted).toBe(1);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_type, parent_span_ids, user_id FROM spans WHERE id = {id:String}",
+    params: { id: `cs-${spanId}` },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const rows = (queryRes?.body as any).result;
+  expect(rows).toHaveLength(1);
+  expect(rows[0].span_type).toBe("checkout-flow");
+  expect(rows[0].user_id).toBe(userId);
+  // No refresh token on server auth → no rti- (or any system) ancestor.
+  expect(rows[0].parent_span_ids).toEqual([]);
+});
+
+it("accepts a gzipped binary body containing custom events and spans", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const payload = {
+    session_replay_segment_id: randomUUID(),
+    batch_id: randomUUID(),
+    sent_at_ms: now,
+    events: [{ event_type: "checkout_completed", event_at_ms: now - 100, data: { cart_size: 3 } }],
+    spans: [makeCustomSpan()],
+  };
+  const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf-8"));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: compressed,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 2 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });

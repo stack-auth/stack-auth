@@ -7,6 +7,7 @@ import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsL
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _HexclaveClientAppImpl } from "../implementations";
+import type { Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
 import { AnalyticsOptions } from "../implementations/session-replay";
 
 /** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
@@ -111,6 +112,38 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
 
     cancelSubscription(options: { productId: string, subscriptionId?: string } | { productId: string, subscriptionId?: string, teamId: string }): Promise<void>,
+
+    /**
+     * Tracks a custom analytics event. Buffered and sent in batches. The
+     * returned promise resolves when the batch carrying the event is
+     * acknowledged (up to one flush interval later — call `flush()` to send
+     * immediately) and is safe to ignore. Never throws; invalid input yields a
+     * rejected (pre-caught) promise. No-ops outside the browser or when
+     * analytics is disabled.
+     */
+    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
+
+    /**
+     * Starts a custom span (a time interval). The span is written immediately
+     * as an open interval and re-written when data changes or it ends — a span
+     * that is never ended (e.g. the tab closed) stays visible as an open
+     * interval. Never throws; returns an inert no-op span outside the browser,
+     * when analytics is disabled, or on invalid input.
+     */
+    startSpan(spanType: string, options?: StartSpanOptions): Span,
+
+    /**
+     * Registers a span as an ambient parent for all subsequently tracked
+     * custom events and spans (additive with explicit `parentIds`). Ending the
+     * span automatically unregisters it.
+     */
+    setGlobalSpan(span: Span): void,
+    unsetGlobalSpan(span: Span): void,
+
+    /**
+     * Sends all buffered analytics immediately and settles in-flight sends.
+     */
+    flush(): Promise<void>,
 
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,

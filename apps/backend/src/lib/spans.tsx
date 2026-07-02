@@ -1,4 +1,5 @@
-import type { ClickHouseClient } from "./clickhouse";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 
 /**
  * Spans are telemetry facts (time intervals) — the sibling of events. They are
@@ -24,6 +25,10 @@ export const SPAN_ID_PREFIXES = {
   team: "ti-",
   project: "pi-",
   branch: "bi-",
+  // User-defined spans created via the SDK's startSpan(). Applied server-side to
+  // the client-generated raw uuid and to every id inside a client-supplied parent
+  // chain — clients only ever transmit raw custom uuids, never prefixed ids.
+  custom: "cs-",
 } as const;
 
 export const SPAN_TYPES = {
@@ -99,6 +104,83 @@ export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[
       date_time_input_format: "best_effort",
       async_insert: 1,
     },
+  });
+}
+
+/**
+ * One custom span as it arrives on the wire from the SDK (inside the analytics
+ * events batch). Ids are raw uuids; `parent_span_ids` is the client's CUSTOM
+ * ancestor chain only (root-first) — system ancestry is composed server-side.
+ */
+export type CustomSpanWireItem = {
+  span_id: string,
+  span_type: string,
+  started_at_ms: number,
+  ended_at_ms: number | null,
+  parent_span_ids: string[],
+  data: unknown,
+  updated_at_ms: number,
+};
+
+// How far into the future a client-supplied `updated_at_ms` may run before we
+// clamp it. A skewed clock only corrupts ordering among that user's own span
+// re-writes; the clamp just bounds how long a bogus future version could mask
+// legitimate later updates.
+const CUSTOM_SPAN_VERSION_MAX_FUTURE_MS = 5 * 60 * 1000;
+
+/**
+ * Builds `analytics_internal.spans` rows for SDK-created custom spans. Each
+ * row's `parent_span_ids` is the server-known system ancestry (same gating as
+ * event rows — see `buildEventSpanFields`) followed by the client's custom
+ * chain, every custom id prefixed `cs-`. The version is the client's
+ * `updated_at_ms` — per-span monotonic by SDK construction, so the row carrying
+ * the latest update wins in the ReplacingMergeTree regardless of insert order
+ * (an end row can never be shadowed by a late-arriving open row). The replay
+ * spans' end-time-as-version scheme is unusable here: two data re-writes while
+ * the span is still open would collide at the same version.
+ */
+export function buildCustomSpanRows(opts: {
+  spans: CustomSpanWireItem[],
+  projectId: string,
+  branchId: string,
+  userId: string | null,
+  refreshTokenId: string | null,
+  sessionReplayId: string | null,
+  sessionReplaySegmentId: string | null,
+  serverNowMs: number,
+}): SpanInsertRow[] {
+  const systemAncestry = buildEventSpanFields({
+    sessionReplayId: opts.sessionReplayId,
+    sessionReplaySegmentId: opts.sessionReplaySegmentId,
+    refreshTokenId: opts.refreshTokenId,
+  }).parent_span_ids;
+
+  return opts.spans.map((span) => {
+    // The route schema is the primary gate; this backstop keeps the invariant
+    // even for future callers: `$…` span types are reserved for system spans
+    // and must never be writable through the custom-span path.
+    if (span.span_type.startsWith("$")) {
+      throw new HexclaveAssertionError(`Custom span types must not start with "$". Received: ${JSON.stringify(span.span_type)}`);
+    }
+    return {
+      id: toSpanId(SPAN_ID_PREFIXES.custom, span.span_id),
+      span_type: span.span_type,
+      span_started_at: new Date(span.started_at_ms),
+      span_ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
+      parent_span_ids: [
+        ...systemAncestry,
+        ...span.parent_span_ids.map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
+      ],
+      data: JSON.stringify(stripLoneSurrogates(span.data)),
+      project_id: opts.projectId,
+      branch_id: opts.branchId,
+      user_id: opts.userId,
+      team_id: null,
+      refresh_token_id: opts.refreshTokenId,
+      session_replay_id: opts.sessionReplayId,
+      session_replay_segment_id: opts.sessionReplaySegmentId,
+      version: Math.min(Math.max(span.updated_at_ms, 1), opts.serverNowMs + CUSTOM_SPAN_VERSION_MAX_FUTURE_MS),
+    };
   });
 }
 

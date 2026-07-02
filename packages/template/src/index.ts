@@ -6,6 +6,10 @@ export { getConvexProvidersConfig } from "./integrations/convex";
 export type { HexclaveConfig, StackConfig } from "@hexclave/shared/config";
 export { defineHexclaveConfig, defineStackConfig } from "@hexclave/shared/config";
 
+// Custom telemetry (trackEvent/startSpan) — platform-neutral: the methods exist
+// on every SDK surface (non-browser environments no-op with inert spans).
+export type { ParentRef, Span, SpanRef, StartSpanOptions, TrackOptions } from "./lib/hexclave-app/apps/implementations/event-tracker";
+
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/hexclave-app/apps/implementations/session-replay";
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original

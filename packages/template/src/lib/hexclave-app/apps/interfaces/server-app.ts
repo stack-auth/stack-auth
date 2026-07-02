@@ -8,6 +8,7 @@ import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _HexclaveServerAppImpl } from "../implementations";
+import type { Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
@@ -36,6 +37,20 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       ({ productId: string } | { product: InlineProduct }) &
       { returnUrl?: string }
     )): Promise<string>,
+
+    /**
+     * Server-side variant of `trackEvent`: attribution is explicit via `userId`
+     * (there is no session to derive it from). Items coalesce per userId and
+     * send on the next microtask; `await` the promise (or call `flush()`) as the
+     * delivery guarantee — the server has no page-lifetime flush cadence.
+     */
+    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string }): Promise<void>,
+
+    /**
+     * Server-side variant of `startSpan`: attribution is explicit via `userId`.
+     * Child spans and span-attached events inherit the span's userId.
+     */
+    startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span,
 
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,
