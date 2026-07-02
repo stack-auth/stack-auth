@@ -6,6 +6,7 @@ import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
@@ -254,30 +255,32 @@ export const POST = createSmartRouteHandler({
     // directly to ClickHouse (the same way events are). Purely additive to the
     // Postgres/S3 replay storage above — a $session-replay span for the whole
     // replay and a $session-replay-segment span for this recording segment (per
-    // tab), re-written on every non-deduped batch so their end advances. Never fail
-    // the upload if ClickHouse is unavailable.
-    try {
-      const segmentBounds = await prisma.sessionReplayChunk.aggregate({
-        where: { tenancyId, sessionReplayId: replayId, sessionReplaySegmentId },
-        _min: { firstEventAt: true },
-        _max: { lastEventAt: true },
-      });
-      await insertSessionReplaySpans(getClickhouseAdminClient(), {
-        projectId,
-        branchId,
-        replayId,
-        sessionReplaySegmentId,
-        projectUserId,
-        refreshTokenId,
-        replayStartedAt: new Date(newStartedAtMs),
-        replayLastEventAt: new Date(newLastEventAtMs),
-        segmentStartedAt: segmentBounds._min.firstEventAt ?? new Date(firstMs),
-        segmentLastEventAt: segmentBounds._max.lastEventAt ?? new Date(lastMs),
-        version: Date.now(),
-      });
-    } catch (error) {
-      captureError("session-replay-spans-insert", error);
-    }
+    // tab), re-written on every non-deduped batch so their end advances. Runs off
+    // the response path (waitUntil) so a slow/unavailable ClickHouse — whose client
+    // has a 10-minute request timeout — never delays or fails the replay upload.
+    runAsynchronouslyAndWaitUntil(async () => {
+      try {
+        const segmentBounds = await prisma.sessionReplayChunk.aggregate({
+          where: { tenancyId, sessionReplayId: replayId, sessionReplaySegmentId },
+          _min: { firstEventAt: true },
+          _max: { lastEventAt: true },
+        });
+        await insertSessionReplaySpans(getClickhouseAdminClient(), {
+          projectId,
+          branchId,
+          replayId,
+          sessionReplaySegmentId,
+          projectUserId,
+          refreshTokenId,
+          replayStartedAt: new Date(newStartedAtMs),
+          replayLastEventAt: new Date(newLastEventAtMs),
+          segmentStartedAt: segmentBounds._min.firstEventAt ?? new Date(firstMs),
+          segmentLastEventAt: segmentBounds._max.lastEventAt ?? new Date(lastMs),
+        });
+      } catch (error) {
+        captureError("session-replay-spans-insert", error);
+      }
+    });
 
     return {
       statusCode: 200,

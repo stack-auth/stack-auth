@@ -214,7 +214,7 @@ export class SessionRecorder {
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
   private _flushInProgress = false;
-  private readonly _sessionReplaySegmentId: string;
+  private _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   // Hexclave rebrand: legacy key used for dual-read fallback only.
   private readonly _legacyStorageKey: string;
@@ -259,6 +259,17 @@ export class SessionRecorder {
     this._events = [];
     this._eventSizes = [];
     this._approxBytes = 0;
+  }
+
+  /**
+   * Replaces the per-tab id shared with the EventTracker. Called on sign-out
+   * (paired with clearBuffer) so a subsequent same-tab sign-in as a different user
+   * does not reuse the previous user's session_replay_segment_id — which would let
+   * the two users' replays and events be correlated. The app rotates both trackers
+   * to the SAME new id so they stay in sync.
+   */
+  setSessionReplaySegmentId(id: string) {
+    this._sessionReplaySegmentId = id;
   }
 
   private _persistActivity(nowMs: number): StoredSession {

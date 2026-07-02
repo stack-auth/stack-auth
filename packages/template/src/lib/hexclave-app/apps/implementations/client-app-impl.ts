@@ -3951,6 +3951,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // Clear analytics buffers before sign-out to prevent cross-user event leakage
     this._eventTracker?.clearBuffer();
     this._sessionRecorder?.clearBuffer();
+    // Then rotate the per-tab id (one fresh id, set on both trackers so they stay
+    // in sync). Without this, a same-tab sign-in as a different user would inherit
+    // the previous user's session_replay_segment_id and let their telemetry be
+    // correlated in analytics.
+    const rotatedSessionReplaySegmentId = generateUuid();
+    this._eventTracker?.setSessionReplaySegmentId(rotatedSessionReplaySegmentId);
+    this._sessionRecorder?.setSessionReplaySegmentId(rotatedSessionReplaySegmentId);
 
     await storeLock.withWriteLock(async () => {
       await this._interface.signOut(session);

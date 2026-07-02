@@ -460,6 +460,9 @@ model SessionReplayChunk {
 
   @@unique([tenancyId, sessionReplayId, batchId])
   @@index([tenancyId, sessionReplayId, createdAt])
+  // Narrows the per-batch span-bounds aggregate (min firstEventAt / max lastEventAt)
+  // to a single tab's segment instead of scanning the whole replay's chunks.
+  @@index([tenancyId, sessionReplayId, sessionReplaySegmentId], map: "SessionReplayChunk_tenancyId_sessionReplayId_segment_idx")
   @@map("SessionReplayChunk")
 }
 
