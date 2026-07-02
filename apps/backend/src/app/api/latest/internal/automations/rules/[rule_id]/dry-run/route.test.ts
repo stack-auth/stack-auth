@@ -6,7 +6,9 @@ import { createPrismaAutomationRuleExecutionStateReader } from "@/lib/automation
 const ruleId = "low-api-credits";
 const now = new Date("2026-07-01T00:00:00.000Z");
 
-function createTenancy() {
+function createTenancy(options: {
+  enabled?: boolean,
+} = {}) {
   return {
     id: "tenancy-1",
     project: {
@@ -16,7 +18,7 @@ function createTenancy() {
       automations: {
         rules: {
           [ruleId]: {
-            enabled: true,
+            enabled: options.enabled ?? true,
             source: {
               type: "payments-item-quota",
               itemId: "api_credits",
@@ -117,6 +119,47 @@ function createFakePrisma(options: {
 }
 
 describe("automation dry-run route helpers", () => {
+  it("allows disabled rules to be previewed without writing automation state or email outbox rows", async () => {
+    const fakePrisma = createFakePrisma();
+    const sourceAdapter = createSourceAdapter();
+    const actionAdapter = createActionAdapter();
+
+    await expect(evaluateAutomationRuleDryRunForRoute({
+      tenancy: createTenancy({ enabled: false }),
+      ruleId,
+      prisma: fakePrisma,
+      sourceAdapter,
+      actionAdapter,
+      recipientStatusReader: async () => new Map([["user-1", {
+        userExists: true,
+        hasPrimaryEmail: true,
+      }]]),
+      executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
+      now,
+    })).resolves.toMatchObject({
+      rule_id: ruleId,
+      mode: "dry-run",
+      eligible_count: 1,
+      suppressed_count: 0,
+      decisions: [{
+        recipient: {
+          user_exists: true,
+          has_primary_email: true,
+        },
+        cooldown: {
+          blocked: false,
+        },
+      }],
+    });
+
+    expect(sourceAdapter.evaluate).toHaveBeenCalledOnce();
+    expect(actionAdapter.buildPlan).toHaveBeenCalledOnce();
+    expect(fakePrisma.automationRuleExecutionState.create).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.update).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.updateMany).not.toHaveBeenCalled();
+    expect(fakePrisma.emailOutbox.createMany).not.toHaveBeenCalled();
+  });
+
   it("returns the dry-run API response without writing automation state or email outbox rows", async () => {
     const fakePrisma = createFakePrisma();
     const sourceAdapter = createSourceAdapter();

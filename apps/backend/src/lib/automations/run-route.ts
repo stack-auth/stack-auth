@@ -1,3 +1,4 @@
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { AutomationJson, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { AutomationActionPlan, AutomationEvaluationResult, AutomationSourceAdapter, AutomationActionAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 
@@ -75,6 +76,9 @@ export async function runAutomationRuleForRoute(options: {
   emailSender: AutomationEmailSender,
 }): Promise<AutomationRunResult> {
   const rule = getSupportedAutomationRule(options.tenancy, options.ruleId);
+  if (!rule.enabled) {
+    throw new StatusError(StatusError.Conflict, `Automation rule "${options.ruleId}" is disabled and cannot be manually sent.`);
+  }
   const evaluation = await evaluateAutomationRule({
     tenancy: options.tenancy,
     ruleId: options.ruleId,

@@ -14,7 +14,9 @@ import {
 const ruleId = "low-api-credits";
 const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
 
-function createTenancy() {
+function createTenancy(options: {
+  enabled?: boolean,
+} = {}) {
   return {
     id: "tenancy-1",
     project: {
@@ -24,7 +26,7 @@ function createTenancy() {
       automations: {
         rules: {
           [ruleId]: {
-            enabled: true,
+            enabled: options.enabled ?? true,
             source: {
               type: "payments-item-quota",
               itemId: "api_credits",
@@ -188,6 +190,7 @@ async function runWithFakes(options: {
   now?: Date,
   limit?: number,
   cursor?: string | null,
+  ruleEnabled?: boolean,
 } = {}) {
   const sourceAdapter = createSourceAdapter(options.decisionFactory);
   const actionAdapter = createActionAdapter();
@@ -200,7 +203,7 @@ async function runWithFakes(options: {
   }
 
   const result = await runAutomationRuleForRoute({
-    tenancy: createTenancy(),
+    tenancy: createTenancy(options.ruleEnabled === undefined ? {} : { enabled: options.ruleEnabled }),
     ruleId,
     limit: options.limit,
     cursor: options.cursor,
@@ -222,6 +225,30 @@ async function runWithFakes(options: {
 }
 
 describe("automation real-send route helpers", () => {
+  it("refuses disabled rules before evaluating, claiming state, or sending email", async () => {
+    const sourceAdapter = createSourceAdapter();
+    const actionAdapter = createActionAdapter();
+    const emailSender = vi.fn(async () => {});
+    const { stateStore } = createInMemoryStateStore();
+
+    await expect(runAutomationRuleForRoute({
+      tenancy: createTenancy({ enabled: false }),
+      ruleId,
+      scheduledAt,
+      now: new Date("2026-07-01T12:00:00.000Z"),
+      sourceAdapter,
+      actionAdapter,
+      stateStore,
+      emailSender,
+    })).rejects.toThrowErrorMatchingInlineSnapshot(`[StatusError: Automation rule "low-api-credits" is disabled and cannot be manually sent.]`);
+
+    expect(sourceAdapter.evaluate).not.toHaveBeenCalled();
+    expect(actionAdapter.buildPlan).not.toHaveBeenCalled();
+    expect(stateStore.claimExecution).not.toHaveBeenCalled();
+    expect(stateStore.markActionCompleted).not.toHaveBeenCalled();
+    expect(emailSender).not.toHaveBeenCalled();
+  });
+
   it("claims state, enqueues email, and marks action completed", async () => {
     const { result, emailSender, states } = await runWithFakes();
 
