@@ -1,0 +1,53 @@
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.ts
+  s_5ef28b6e31bc80::t_d5665fb5b9731a 1-99
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.test.ts
+  s_5ef28b6e31bc80::t_270429a46174a0 1-95
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5ef28b6e31bc80::t_a386068a97f128 48-56
+  s_5ef28b6e31bc80::t_e04283e08837ed 73-78
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_5ef28b6e31bc80::t_cdffb7fa87a386 55-62
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5ef28b6e31bc80::t_9a9ffb3ffc05e3 148-160
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5ef28b6e31bc80::t_cdb7745c7dbf69 6
+  s_5ef28b6e31bc80::t_59eac9f5963908 737-862
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5ef28b6e31bc80::t_c6278c78c4a57a 570-575
+  s_5ef28b6e31bc80::t_69861a5e7b2a6e 380-382
+  s_5ef28b6e31bc80::t_e91e9134101185 526-531
+  s_5ef28b6e31bc80::t_377ad35bdc6d2c 8
+  s_5ef28b6e31bc80::t_507f9afa203ac7 1097
+  s_5ef28b6e31bc80::t_910ffeb4bf7b6c 173-179,182-185,195-204,212
+  s_5ef28b6e31bc80::t_71215b6c47311c 51-63,70-73
+  s_5ef28b6e31bc80::t_9d82194f731e65 226-259
+  s_5ef28b6e31bc80::t_8f9040aafa1484 688-689
+  s_5ef28b6e31bc80::t_ad364d50246a03 225
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5ef28b6e31bc80::t_1b160e1e47501c 41
+  s_5ef28b6e31bc80::t_575c7236c74b07 1837-1842
+  s_5ef28b6e31bc80::t_b0b5fa4f55aede 1981-1983
+  s_5ef28b6e31bc80::t_1ec12ccdbd8b5b 1791-1796
+  s_5ef28b6e31bc80::t_b8cc8eefba8887 1778-1779
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5ef28b6e31bc80::t_78217c88415318 259
+  s_5ef28b6e31bc80::t_e998b6e5108a1b 4041-4048
+  s_5ef28b6e31bc80::t_011448d1c79c9f 64
+  s_5ef28b6e31bc80::t_47ab37afe2c85f 746
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "d1f93b8fda2560645aa7666a4ae5f995862b8990",
+  "prompts": {},
+  "sessions": {
+    "s_5ef28b6e31bc80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b238aad0-909c-4ac5-8f7b-800597210478",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
