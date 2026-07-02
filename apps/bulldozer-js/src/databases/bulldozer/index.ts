@@ -2233,8 +2233,10 @@ export function declareLeftFoldTable(options: {
  *   and past trigger times replay (against the *new* row data) on subsequent ticks.
  * - With `onSourceRowChanged`, an update keeps the row's emitted outputs, fold state, and timer
  *   progress; the hook folds the new row data into the existing state and returns the next
- *   trigger time. Use this when emitted outputs are append-only facts (e.g. a ledger) that a
- *   source rewrite must not retract or rederive.
+ *   trigger time, optionally appending one emitted output row (`appendRowData`) in the same
+ *   write — for events the update itself implies (e.g. an immediate end) that same-transaction
+ *   readers must see without waiting for a tick. Use this when emitted outputs are append-only
+ *   facts (e.g. a ledger) that a source rewrite must not retract or rederive.
  */
 export function declareTimeFoldTable(options: {
   initialState: PiledriverObject,
@@ -2247,7 +2249,7 @@ export function declareTimeFoldTable(options: {
     state: PiledriverObject,
     row: { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject },
     previous: { rowData: PiledriverObject, nextTriggerTime: Date | null },
-  ) => Promise<{ newState: PiledriverObject, nextTriggerTime: Date | null }>,
+  ) => Promise<{ newState: PiledriverObject, nextTriggerTime: Date | null, appendRowData?: PiledriverObject }>,
 }): BulldozerTableImplementation {
   type SourceRow = { groupKey: PiledriverObject, rowIdentifier: string, rowSortKey: PiledriverObject, rowData: PiledriverObject };
   type RowState = SourceRow & {
@@ -2386,10 +2388,13 @@ export function declareTimeFoldTable(options: {
       rowData: oldRow.rowData,
       nextTriggerTime: oldRow.nextTriggerTimeMs === null ? null : new Date(oldRow.nextTriggerTimeMs),
     });
-    const newRow: RowState = { ...row, state: result.newState, nextTriggerTimeMs: toTimestampMs(result.nextTriggerTime), emittedRows: oldRow.emittedRows };
+    const emittedRows = result.appendRowData === undefined ? oldRow.emittedRows : [...oldRow.emittedRows, result.appendRowData];
+    const newRow: RowState = { ...row, state: result.newState, nextTriggerTimeMs: toTimestampMs(result.nextTriggerTime), emittedRows };
     state = { ...state, rows: await state.rows.set(row.rowIdentifier, newRow) };
-    // emittedRows are carried over verbatim (and modified rows never change group), so the
-    // materialized output rows are untouched and no output changes are emitted.
+    // Prior emittedRows are carried over verbatim (and modified rows never change group), so the
+    // only possible output change is the appended row; without one, the materialized output rows
+    // are untouched and no output changes are emitted.
+    if (result.appendRowData !== undefined) state = await replaceOutputs(state, oldRow, newRow, outputChanges);
     return await addQueuedTrigger(state, newRow);
   };
   const deleteSourceRow = async (state: State, rowIdentifier: string, outputChanges: TableChanges) => {
