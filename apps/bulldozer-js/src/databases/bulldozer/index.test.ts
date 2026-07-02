@@ -432,6 +432,60 @@ describe("Bulldozer", () => {
     expect(await rows(snapshot, "time")).toEqual([]);
   });
 
+  it("keeps emitted outputs and fold state across source updates with onSourceRowChanged", async () => {
+    const firstTrigger = Date.UTC(2026, 0, 1, 0, 0, 1);
+    const secondTrigger = Date.UTC(2026, 0, 1, 0, 0, 2);
+    const changedCalls: Array<{ state: PiledriverObject, rowData: PiledriverObject, oldRowData: PiledriverObject, previousTrigger: number | null }> = [];
+    const fold = declareTimeFoldTable({
+      initialState: 0,
+      reducer: async (state, row, trigger) => {
+        const count = Number(state) + 1;
+        return {
+          newState: count,
+          newRowData: `${row.rowData}:${trigger ? count : "initial"}`,
+          nextTriggerTime: trigger ? null : new Date(firstTrigger),
+        };
+      },
+      onSourceRowChanged: async (state, row, previous) => {
+        changedCalls.push({ state, rowData: row.rowData, oldRowData: previous.rowData, previousTrigger: previous.nextTriggerTime?.getTime() ?? null });
+        return { newState: Number(state) + 100, nextTriggerTime: new Date(secondTrigger) };
+      },
+    });
+    let snapshot = await initializedSnapshot([[
+      { type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} },
+      { type: "initTable", tableId: "time", table: fold, inputTables: { input: "store" } },
+    ]]);
+
+    snapshot = await set(snapshot, "store", "a", "A");
+    snapshot = await snapshot.tick(new Date(firstTrigger));
+    expect(await rows(snapshot, "time")).toEqual([
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
+    ]);
+
+    // The update keeps all previously emitted outputs verbatim (no deletions, no re-derivation)
+    // and hands the fold state + old row to the hook instead of re-running from initialState.
+    snapshot = await set(snapshot, "store", "a", "B");
+    expect(await rows(snapshot, "time")).toEqual([
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
+    ]);
+    expect(changedCalls).toEqual([{ state: 2, rowData: "B", oldRowData: "A", previousTrigger: null }]);
+
+    // The hook's returned state and trigger drive subsequent timed steps: the next tick appends
+    // (using the carried-over state) instead of replaying history.
+    snapshot = await snapshot.tick(new Date(secondTrigger));
+    expect(await rows(snapshot, "time")).toEqual([
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 2]), rowSortKey: null, rowData: "B:103" },
+    ]);
+
+    // Deleting the source row still removes everything.
+    snapshot = await set(snapshot, "store", "a", undefined);
+    expect(await rows(snapshot, "time")).toEqual([]);
+  });
+
   it("ticks all tickable tables from the snapshot object", async () => {
     const trigger = Date.UTC(2026, 0, 1, 0, 0, 1);
     const db = newDb([[
