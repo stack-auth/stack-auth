@@ -120,7 +120,7 @@ export const POST = createSmartRouteHandler({
       });
       return change;
     });
-    await bulldozerWriteItemQuantityChange(prisma, change);
+    await bulldozerWriteItemQuantityChange(change);
 
     return {
       statusCode: 200,

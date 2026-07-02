@@ -7,7 +7,6 @@ import type { MoneyAmount } from "../utils/currency-constants";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
-import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -1163,25 +1162,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       },
       null,
     );
-    return await response.json();
-  }
-
-  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
-    const response = await this.sendAdminRequest(
-      "/internal/analytics/query",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          query: options.query,
-          params: options.params ?? {},
-          timeout_ms: options.timeout_ms ?? 1000,
-          include_all_branches: options.include_all_branches ?? false,
-        }),
-      },
-      null,
-    );
-
     return await response.json();
   }
 

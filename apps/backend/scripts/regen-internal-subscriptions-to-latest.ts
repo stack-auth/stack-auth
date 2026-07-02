@@ -332,7 +332,15 @@ export async function regenSingleSubscription(args: {
     // into this branch again. The outer per-sub catch additionally
     // captures the failure to Sentry so the intermittent issue is
     // visible while it's happening.
-    await bulldozerWriteSubscription(internalPrisma, updated);
+    //
+    // TODO(bulldozer-dual-write): this script hand-rolls a per-sub Prisma
+    // update + single-row dual-write and predates both the batch backfill
+    // path and the current single-arg `bulldozerWrite*` helpers (they no
+    // longer take a Prisma client — the write goes straight to bulldozer-js).
+    // When internal-sub regen is next revisited, rewrite it to route through
+    // the shared backfill/dual-write abstraction instead of duplicating the
+    // conversion + POST here. For now we just call the current single-arg form.
+    await bulldozerWriteSubscription(updated);
     counters.dbWrites++;
     log(`Regenerated DB snapshot + bulldozer for sub=${sub.id} productId=${sub.productId} productVersionId=${newVersionId}`);
   }

@@ -147,7 +147,7 @@ export const DELETE = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
       });
-      await bulldozerWriteSubscription(prisma, updatedSub);
+      await bulldozerWriteSubscription(updatedSub);
     }
 
     // Regrant the free plan if a Hexclave billing team just lost their

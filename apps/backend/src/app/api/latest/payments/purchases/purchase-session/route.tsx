@@ -188,7 +188,7 @@ export const POST = createSmartRouteHandler({
             endedAt: new Date(),
           },
         });
-        await bulldozerWriteSubscription(prisma, updatedConflicting);
+        await bulldozerWriteSubscription(updatedConflicting);
       }
     }
     // One-time payment path after conflicts handled
