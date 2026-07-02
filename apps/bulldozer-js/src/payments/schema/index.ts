@@ -589,6 +589,22 @@ const compareLedgerSortKeys = (a: PiledriverObject, b: PiledriverObject) => {
     || stringCompare(left.id, right.id);
 };
 
+// Exclusive upper bound (for `range.lt`) that selects every item-quantities ledger row effective at
+// or before `asOfMillis` in a reverse seek. txnEffectiveAtMillis is the primary sort component and is
+// always a whole millisecond (Date.now(), Stripe/created timestamps, and reset boundaries are all
+// integer ms), so "txn <= asOfMillis" is exactly "txn < asOfMillis + 1" — no row can land in the open
+// interval (asOfMillis, asOfMillis + 1), which is why the secondary components can be left at their
+// minimum. Reverse-scanning with this bound and limit 1 seeks straight to the current-state row via
+// the sorted index (O(log n)), instead of skipping every future-dated row (e.g. grants with a
+// far-future expiry, which each materialize a future-dated expire marker).
+export const itemQuantitiesLedgerUpperBoundAsOf = (asOfMillis: number): PiledriverObject => toPiledriverObject({
+  txnEffectiveAtMillis: asOfMillis + 1,
+  kind: 0,
+  expiresAtMillis: 0,
+  sign: 0,
+  id: "",
+});
+
 // Builds one compaction sub-pipeline for a single sign of non-expiring changes. Compaction must
 // only ever merge changes of the *same* sign: a non-expiring deduction has to reach the ledger as a
 // deduction so it consumes the soonest-expiring grant. If we merged it with permanent grants

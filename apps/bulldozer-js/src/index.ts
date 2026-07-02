@@ -19,7 +19,7 @@ import { declarePiledriverDatabase, type PiledriverObject } from "./databases/pi
 import { isBulldozerRequestAuthorized } from "./auth.js";
 import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
-import { createPaymentsSchema } from "./payments/schema/index.js";
+import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
 import { initSentry } from "./sentry.js";
 
@@ -394,17 +394,21 @@ async function latestRowData<T>(options: { tableId: string, tenancyId: string, c
   return rows[0].rowData as unknown as T;
 }
 
-// The latest fold row whose txnEffectiveAtMillis <= asOfMillis (i.e. the state "as of now"), or null
-// if none has taken effect yet. Some folds (notably item-quantities) materialize future-dated rows —
-// e.g. a manual grant with a future absolute expiry eagerly emits the grant AND its expire marker at
-// the future expiry time. Reading the absolute final row would report the fully-expired balance, so
-// we must cut off at the present. The fold preserves its input's ledgerSortKey (primary key
-// txnEffectiveAtMillis), so iterating in reverse only skips the handful of future-dated rows before
-// reaching the current state. Mirrors the `balanceAt` test helper.
-async function latestRowDataAsOf<T>(options: { tableId: string, tenancyId: string, customerType: CustomerType, customerId: string }, asOfMillis: number): Promise<T | null> {
+// The latest item-quantities fold row whose txnEffectiveAtMillis <= asOfMillis (i.e. the state "as of
+// now"), or null if none has taken effect yet. The fold materializes future-dated rows — e.g. a
+// manual grant with a future absolute expiry eagerly emits the grant AND its expire marker at the
+// future expiry time — so the absolute final row would report the fully-expired balance; we must cut
+// off at the present. Rows are ordered by ledgerSortKey (primary key txnEffectiveAtMillis), so a
+// reverse seek bounded at asOfMillis lands directly on the current-state row (O(log n) via the
+// index), rather than linearly skipping every future-dated row. Mirrors the `balanceAt` test helper.
+async function latestItemQuantitiesRowAsOf<T>(options: { tableId: string, tenancyId: string, customerType: CustomerType, customerId: string }, asOfMillis: number): Promise<T | null> {
   const { snapshot } = await bulldozerDb.getSnapshot();
-  for await (const row of snapshot.listRowsInGroup({ tableId: options.tableId, groupKey: customerGroupKey(options), range: { reverse: true } })) {
-    if ((row.rowData as { txnEffectiveAtMillis: number }).txnEffectiveAtMillis <= asOfMillis) return row.rowData as unknown as T;
+  const range = { reverse: true, lt: itemQuantitiesLedgerUpperBoundAsOf(asOfMillis), limit: 1 };
+  for await (const row of snapshot.listRowsInGroup({ tableId: options.tableId, groupKey: customerGroupKey(options), range })) {
+    const txnEffectiveAtMillis = (row.rowData as { txnEffectiveAtMillis: number }).txnEffectiveAtMillis;
+    // The bound guarantees this; assert loudly rather than silently returning a future-dated balance.
+    if (txnEffectiveAtMillis > asOfMillis) throw new HexclaveAssertionError(`latestItemQuantitiesRowAsOf returned a row effective after the cutoff`, { txnEffectiveAtMillis, asOfMillis, tableId: options.tableId });
+    return row.rowData as unknown as T;
   }
   return null;
 }
@@ -499,7 +503,7 @@ async function getOwnedProductsForCustomer(options: { tenancyId: string, custome
 async function getItemQuantitiesForCustomer(options: { tenancyId: string, customerType: CustomerType, customerId: string }) {
   // Read the balance as of now, not the fold's final row: a manual grant with a future expiry
   // materializes a future-dated expire marker, and the final row would already show it as expired.
-  const row = await latestRowDataAsOf<{ itemQuantities: Record<string, number> }>({ ...options, tableId: schema.itemQuantities }, Date.now());
+  const row = await latestItemQuantitiesRowAsOf<{ itemQuantities: Record<string, number> }>({ ...options, tableId: schema.itemQuantities }, Date.now());
   return row?.itemQuantities ?? {};
 }
 

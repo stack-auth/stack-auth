@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PiledriverObject } from "../../databases/piledriver/index.js";
-import { createPaymentsSchema } from "./index.js";
-import { asRecord, balanceAt, customerGroup, initializedSnapshot, MONTH_MS, product, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
+import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./index.js";
+import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH_MS, product, rowsBySortKey, set, subscription, type Snapshot } from "./schema-test-helpers.js";
 
 // Item-quantities parity suite: restores the ledger coverage from the retired bulldozer-server
 // payments tests, driven through the real payments schema.
@@ -704,6 +704,41 @@ describe("item quantities: row invariants", () => {
 
     // But as of now (before the expiry) the grant is still live.
     expect(await balanceAt(snapshot, g, "coins", 2000)).toBe(10);
+  });
+
+  it("seeks the 'as of now' row directly with a bounded reverse range, skipping future-dated rows", async () => {
+    /*
+     * t=1000  +10 coins, expires at 9000  (materializes a future-dated expire row at 9000)
+     * t=2000  +5 gems,   expires at 8000  (materializes another future-dated expire row at 8000)
+     *
+     * The server reads the balance "as of now" with range { reverse, lt: upperBound(now), limit: 1 },
+     * so the FIRST row returned must be the latest row effective <= now (t=2000, coins 10 + gems 5),
+     * never one of the future-dated expire rows at 8000/9000. This mirrors latestItemQuantitiesRowAsOf.
+     */
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    snapshot = await setManualChange(snapshot, manualChange("g-coins", "u", "coins", 10, 1000, 9000));
+    snapshot = await setManualChange(snapshot, manualChange("g-gems", "u", "gems", 5, 2000, 8000));
+    const g = customerGroup("u");
+
+    const seekAsOf = async (asOfMillis: number) => {
+      const range = { reverse: true, lt: itemQuantitiesLedgerUpperBoundAsOf(asOfMillis), limit: 1 };
+      const found = await collect(snapshot.listRowsInGroup({ tableId: schema.itemQuantities, groupKey: g, range }));
+      return found.length === 0 ? null : asRecord(found[0].rowData);
+    };
+
+    const asOf5000 = await seekAsOf(5000);
+    expect(Number(asOf5000?.txnEffectiveAtMillis)).toBe(2000);
+    expect(Number(asRecord(asOf5000!.itemQuantities).coins ?? 0)).toBe(10);
+    expect(Number(asRecord(asOf5000!.itemQuantities).gems ?? 0)).toBe(5);
+
+    // Inclusive lower edge: exactly at the first grant's effective time it is already live.
+    const asOf1000 = await seekAsOf(1000);
+    expect(Number(asOf1000?.txnEffectiveAtMillis)).toBe(1000);
+    expect(Number(asRecord(asOf1000!.itemQuantities).coins ?? 0)).toBe(10);
+
+    // Before anything takes effect there is no row.
+    expect(await seekAsOf(999)).toBeNull();
   });
 
   it("stamps every emitted row with the owning customer", async () => {
