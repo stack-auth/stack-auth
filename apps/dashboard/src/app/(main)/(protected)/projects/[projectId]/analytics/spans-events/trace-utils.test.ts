@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, flattenTrace, formatDuration, isSystemSpanType, rerootTrace, traceNodePath, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, flattenTrace, formatDuration, isSystemSpanType, panViewWindow, rerootTrace, subtreeMatches, traceNodePath, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -79,6 +79,16 @@ describe("buildTraces", () => {
     const { traces } = buildTraces(spans, events);
     expect(traces[0].endMs).toBeNull();
     expect(traces[0].latestMs).toBe(9500);
+  });
+
+  it("widens startMs to include events that precede their span's start", () => {
+    // Events and replay chunks batch independently, so an attached event can
+    // predate the span row's own started_at.
+    const { traces } = buildTraces(
+      [span("root", { startMs: 5000, endMs: 9000 })],
+      [event("early", { atMs: 3000, parentSpanIds: ["root"] })],
+    );
+    expect(traces[0].startMs).toBe(3000);
   });
 
   it("returns events with no fetched ancestor as unattached", () => {
@@ -190,8 +200,49 @@ describe("traceNodePath", () => {
   });
 });
 
+describe("zoomViewWindow / panViewWindow", () => {
+  it("zooms in around the anchor point and keeps it fixed", () => {
+    const zoomed = zoomViewWindow({ start: 0, end: 1 }, 0.5, 0.5);
+    expect(zoomed.start).toBeCloseTo(0.25);
+    expect(zoomed.end).toBeCloseTo(0.75);
+    // Anchor at 0.5 of the view maps to the same absolute position after zoom.
+    const anchorAbsBefore = 0 + 0.5 * 1;
+    const anchorAbsAfter = zoomed.start + 0.5 * (zoomed.end - zoomed.start);
+    expect(anchorAbsAfter).toBeCloseTo(anchorAbsBefore);
+  });
+
+  it("clamps zoom-out to the full timeline and zoom position to [0, 1]", () => {
+    expect(zoomViewWindow({ start: 0.25, end: 0.75 }, 0.5, 10)).toEqual({ start: 0, end: 1 });
+    const nearEdge = zoomViewWindow({ start: 0, end: 1 }, 0, 0.5);
+    expect(nearEdge.start).toBe(0);
+    expect(nearEdge.end).toBeCloseTo(0.5);
+  });
+
+  it("pans by a fraction of the view width and clamps at the edges", () => {
+    const panned = panViewWindow({ start: 0.2, end: 0.4 }, 0.5);
+    expect(panned.start).toBeCloseTo(0.3);
+    expect(panned.end).toBeCloseTo(0.5);
+    expect(panViewWindow({ start: 0.8, end: 1 }, 5)).toEqual({ start: 0.8, end: 1 });
+    expect(panViewWindow({ start: 0, end: 0.2 }, -5)).toEqual({ start: 0, end: 0.2 });
+  });
+});
+
+describe("subtreeMatches", () => {
+  it("matches span types, event types, and descendants", () => {
+    const { traces } = buildTraces(
+      [span("a", { spanType: "checkout" }), span("b", { spanType: "payment", parentSpanIds: ["a"] })],
+      [event("card_declined", { parentSpanIds: ["a", "b"] })],
+    );
+    expect(subtreeMatches(traces[0].root, "payment")).toBe(true);
+    expect(subtreeMatches(traces[0].root, "card_")).toBe(true);
+    expect(subtreeMatches(traces[0].root, "refund")).toBe(false);
+    expect(subtreeMatches(traces[0].root.children[0], "checkout")).toBe(false);
+  });
+});
+
 describe("formatDuration", () => {
   it("formats across magnitudes", () => {
+    expect(formatDuration(0)).toBe("0s");
     expect(formatDuration(0.5)).toBe("<1ms");
     expect(formatDuration(42)).toBe("42ms");
     expect(formatDuration(2500)).toBe("2.5s");

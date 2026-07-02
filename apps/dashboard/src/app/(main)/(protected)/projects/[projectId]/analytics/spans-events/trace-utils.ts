@@ -42,6 +42,37 @@ export function isSystemSpanType(spanType: string): boolean {
   return spanType.startsWith("$");
 }
 
+/** True if the span, any of its events, or any descendant matches the needle (lowercase). */
+export function subtreeMatches(node: TraceNode, needle: string): boolean {
+  if (node.span.spanType.toLowerCase().includes(needle)) return true;
+  if (node.events.some((event) => event.eventType.toLowerCase().includes(needle))) return true;
+  return node.children.some((child) => subtreeMatches(child, needle));
+}
+
+/**
+ * Waterfall zoom viewport as fractions of the full trace timeline
+ * (0 = trace start, 1 = trace end). {start: 0, end: 1} means unzoomed.
+ */
+export type ViewWindow = { start: number, end: number };
+
+const MIN_VIEW_SPAN = 1e-8;
+
+/** Zoom by `factor` (<1 zooms in) keeping the point at `anchorFrac` of the current view fixed. */
+export function zoomViewWindow(view: ViewWindow, anchorFrac: number, factor: number): ViewWindow {
+  const span = view.end - view.start;
+  const newSpan = Math.min(Math.max(span * factor, MIN_VIEW_SPAN), 1);
+  const anchorAbs = view.start + anchorFrac * span;
+  const start = Math.min(Math.max(anchorAbs - anchorFrac * newSpan, 0), 1 - newSpan);
+  return { start, end: start + newSpan };
+}
+
+/** Shift the view by `deltaFrac` of its own width, clamped to the timeline. */
+export function panViewWindow(view: ViewWindow, deltaFrac: number): ViewWindow {
+  const span = view.end - view.start;
+  const start = Math.min(Math.max(view.start + deltaFrac * span, 0), 1 - span);
+  return { start, end: start + span };
+}
+
 /**
  * The parent a row renders under is its nearest ANCESTOR THAT WAS FETCHED, not
  * its literal last parent id — intermediate spans can fall outside the queried
@@ -136,7 +167,12 @@ function computeTraceAggregates(root: TraceNode): Omit<Trace, "root"> {
       latestMs = Math.max(latestMs, node.span.endMs);
     }
     eventCount += node.events.length;
-    for (const event of node.events) latestMs = Math.max(latestMs, event.atMs);
+    for (const event of node.events) {
+      // Events can precede their span's own start (events and replay chunks
+      // are batched independently) — widen the window so they stay on-scale.
+      startMs = Math.min(startMs, event.atMs);
+      latestMs = Math.max(latestMs, event.atMs);
+    }
     stack.push(...node.children);
   }
   return {
@@ -199,6 +235,7 @@ export function flattenTrace(trace: Trace): WaterfallRow[] {
 
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms === 0) return "0s";
   if (ms < 1) return "<1ms";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;

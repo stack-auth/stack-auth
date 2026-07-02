@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, Input, Typography } from "@/components/ui";
+import { Button, Input, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowClockwiseIcon, SpinnerGapIcon } from "@phosphor-icons/react";
@@ -17,16 +17,17 @@ import {
   parseClickHouseDate,
   type RowData,
 } from "../shared";
+import { SpanTreeList } from "./span-tree";
 import {
   buildTraces,
-  formatDuration,
   isSystemSpanType,
   rerootTrace,
+  subtreeMatches,
   type EventInput,
   type SpanInput,
   type Trace,
 } from "./trace-utils";
-import { TraceWaterfall, spanColorClass, type TraceBreadcrumb } from "./waterfall";
+import { TraceWaterfall, type TraceBreadcrumb } from "./waterfall";
 
 const SPANS_QUERY = `
 SELECT id, span_type, span_started_at, span_ended_at, parent_span_ids, data,
@@ -102,15 +103,6 @@ function parseEventRow(row: Record<string, unknown>): EventInput | null {
   };
 }
 
-function traceMatchesSearch(trace: Trace, needle: string): boolean {
-  const walk = (node: Trace["root"]): boolean => {
-    if (node.span.spanType.toLowerCase().includes(needle)) return true;
-    if (node.events.some((event) => event.eventType.toLowerCase().includes(needle))) return true;
-    return node.children.some(walk);
-  };
-  return walk(trace.root);
-}
-
 function Segmented<T extends string | number>({ value, onChange, options }: {
   value: T,
   onChange: (value: T) => void,
@@ -158,6 +150,9 @@ export default function PageClient() {
 
   const [spans, setSpans] = useState<SpanInput[]>([]);
   const [events, setEvents] = useState<EventInput[]>([]);
+  // "Now" reference for the waterfall/list: fixed at load time so intervals
+  // reaching into the future (e.g. $refresh-token expiry) render as ongoing.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -185,6 +180,7 @@ export default function PageClient() {
       if (seq !== requestSeqRef.current) return;
       setSpans(spansResponse.result.map(parseSpanRow).filter((span): span is SpanInput => span != null));
       setEvents(eventsResponse.result.map(parseEventRow).filter((event): event is EventInput => event != null));
+      setNowMs(Date.now());
     } catch (e) {
       if (seq !== requestSeqRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
@@ -211,11 +207,11 @@ export default function PageClient() {
 
   const { traces } = useMemo(() => buildTraces(scopedSpans, scopedEvents), [scopedSpans, scopedEvents]);
 
+  const searchNeedle = search.trim().toLowerCase();
   const filteredTraces = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (needle === "") return traces;
-    return traces.filter((trace) => traceMatchesSearch(trace, needle));
-  }, [traces, search]);
+    if (searchNeedle === "") return traces;
+    return traces.filter((trace) => subtreeMatches(trace.root, searchNeedle));
+  }, [traces, searchNeedle]);
 
   const selectedTrace = useMemo<Trace | null>(
     () => filteredTraces.find((trace) => trace.root.span.id === selectedRootId)
@@ -332,37 +328,18 @@ export default function PageClient() {
                     )}
                   </EmptyState>
                 )}
-                {!loading && error == null && filteredTraces.map((trace) => {
-                  const isSelected = selectedTrace != null && trace.root.span.id === selectedTrace.root.span.id;
-                  const open = trace.endMs == null;
-                  return (
-                    <button
-                      key={trace.root.span.id}
-                      className={cn(
-                        "w-full text-left px-3 py-2 border-b border-border/30 hover:bg-muted/30 transition-colors hover:transition-none",
-                        isSelected && "bg-muted/50 hover:bg-muted/50",
-                      )}
-                      onClick={() => {
-                        setSelectedRootId(trace.root.span.id);
-                        setFocusedSpanId(null);
-                      }}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className={cn("h-2 w-2 rounded-[3px] shrink-0", spanColorClass(trace.root.span.spanType))} />
-                        <span className="font-mono text-xs font-semibold truncate">{trace.root.span.spanType}</span>
-                        {open ? (
-                          <Badge variant="secondary" className="ml-auto text-[10px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400 shrink-0">open</Badge>
-                        ) : (
-                          <span className="ml-auto font-mono text-[11px] text-muted-foreground shrink-0">{formatDuration((trace.endMs ?? trace.latestMs) - trace.startMs)}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                        <span className="truncate">{new Date(trace.startMs).toLocaleString()}</span>
-                        <span className="ml-auto shrink-0">{trace.spanCount}s · {trace.eventCount}e</span>
-                      </div>
-                    </button>
-                  );
-                })}
+                {!loading && error == null && filteredTraces.length > 0 && (
+                  <SpanTreeList
+                    traces={filteredTraces}
+                    nowMs={nowMs}
+                    needle={searchNeedle}
+                    activeSpanId={displayedTrace?.trace.root.span.id ?? null}
+                    onSelectSpan={(rootId, spanId) => {
+                      setSelectedRootId(rootId);
+                      setFocusedSpanId(spanId === rootId ? null : spanId);
+                    }}
+                  />
+                )}
               </div>
             </div>
 
@@ -379,6 +356,7 @@ export default function PageClient() {
               {!loading && error == null && displayedTrace != null && (
                 <TraceWaterfall
                   trace={displayedTrace.trace}
+                  nowMs={nowMs}
                   breadcrumb={displayedTrace.breadcrumb}
                   onFocusSpan={(spanId) => setFocusedSpanId(spanId)}
                   onSelectSpan={(span) => openDetail(span.raw)}
