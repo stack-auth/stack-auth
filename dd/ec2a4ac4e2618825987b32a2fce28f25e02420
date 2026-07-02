@@ -1,0 +1,37 @@
+apps/backend/prisma/migrations/20260701000000_add_session_replay_chunk_segment_index/migration.sql
+  s_5b6ac9c07bf674::t_66b79f6b71b1f7 1-5
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_5b6ac9c07bf674::t_6d217aa5949634 9
+  s_5b6ac9c07bf674::t_d8c2b8a9408b63 258-283
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_4c11df470c989b 125
+  s_5b6ac9c07bf674::t_5b222067b4f871 184-194
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5b6ac9c07bf674::t_86cb558e4ffe41 217
+  s_5b6ac9c07bf674::t_63f8c0bb0ef8bc 264-274
+apps/backend/prisma/schema.prisma
+  s_5b6ac9c07bf674::t_176bb2ba31e0c8 463-465
+apps/backend/src/lib/spans.test.ts
+  s_5b6ac9c07bf674::t_4a3c0b0e00d06c 80-82,93
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_8b97044d517f99 3954-3960
+apps/backend/src/lib/spans.tsx
+  s_5b6ac9c07bf674::t_6a86e4fa818f31 68-73
+  s_5b6ac9c07bf674::t_6ff3cc90c98e90 108-113,148,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "ddec2a4ac4e2618825987b32a2fce28f25e02420",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
