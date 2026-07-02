@@ -367,6 +367,43 @@ describe("payments schema", () => {
     expect(txnIdsAfter).toEqual([`igr:sub-seal:${firstRepeatMillis}`, "sub-end:sub-seal", "sub-start:sub-seal"]);
   });
 
+  it("emits the end synchronously when a rewrite ends a no-repeat subscription (plan switch)", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    // Plan-switch shape: no included items (so no repeat schedule), replaced mid-period by
+    // rewriting the row with endedAtMillis = "now". The switch endpoint reads owned products in
+    // the same request, so the revocation must land in the same write — not on the next tick.
+    const subEndMillis = Date.UTC(1970, 0, 10);
+    const subRow = (overrides: Partial<Parameters<typeof subscription>[1]> = {}) => subscription("sub-switch", {
+      customerId: "u-switch",
+      productId: "prod-basic",
+      product: product(),
+      currentPeriodEndMillis: Date.UTC(1970, 1, 1),
+      ...overrides,
+    }) as unknown as PiledriverObject;
+    snapshot = await set(snapshot, schema.subscriptions, "sub-switch", subRow());
+
+    const group = customerGroup("u-switch");
+    const ownedQuantity = async () => {
+      const owned = asRecord((await rowsBySortKey(snapshot, schema.ownedProducts, group)).at(-1)?.rowData ?? null);
+      return Number(asRecord(asRecord(owned.ownedProducts)["prod-basic"]).quantity);
+    };
+    expect(await ownedQuantity()).toBe(1);
+
+    // End the subscription via rewrite; no tick in between.
+    snapshot = await set(snapshot, schema.subscriptions, "sub-switch", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis }));
+    const txns = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[])
+      .sort((a, b) => a.effectiveAtMillis - b.effectiveAtMillis || stringCompare(a.txnId, b.txnId));
+    expect(txns.map(txn => txn.txnId)).toEqual(["sub-start:sub-switch", "sub-end:sub-switch"]);
+    expect(await ownedQuantity()).toBe(0);
+
+    // The fold is sealed: later rewrites and ticks add nothing (no duplicate end).
+    snapshot = await set(snapshot, schema.subscriptions, "sub-switch", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis, currentPeriodStartMillis: subEndMillis }));
+    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 2, 1)));
+    const txnIdsAfter = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
+    expect(txnIdsAfter).toEqual(["sub-end:sub-switch", "sub-start:sub-switch"]);
+  });
+
   it("treats a manual item quantity change whose expiry is at/before its grant as a no-op", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();

@@ -735,12 +735,22 @@ export function createPaymentsSchema() {
       onSourceRowChanged: async (_state, row, previous) => {
         const state = rowObject<SubscriptionFoldState>(_state);
         // A quiet fold (no queued trigger) with an end date has already emitted subscription-end
-        // (via the timed end step or the immediate-end shortcut at creation). Re-arming it would
-        // append a duplicate end event, so the fold stays sealed regardless of the rewrite.
+        // (via the timed end step or the immediate-end shortcut). Re-arming it would append a
+        // duplicate end event, so the fold stays sealed regardless of the rewrite.
         if (state.endedAtMillis !== null && previous.nextTriggerTime === null) {
           return { newState: _state, nextTriggerTime: null };
         }
-        const updated = subscriptionUpdatedState(state, rowObject<SubscriptionRow>(row.rowData));
+        const sub = rowObject<SubscriptionRow>(row.rowData);
+        const updated = subscriptionUpdatedState(state, sub);
+        // Mirror the initial reducer's immediate-end shortcut for ends introduced by a rewrite:
+        // plan switching ends the replaced subscription by rewriting its row and expects the
+        // revocation to be visible in the same write (e.g. the switch endpoint's one-time-purchase
+        // guard reads owned products right after) — waiting for the next tick would leave the old
+        // product transiently granted.
+        const hasRepeat = Object.values(updated.itemRepeatSchedule).some(schedule => schedule.nextRepeatMillis !== null);
+        if (updated.endedAtMillis !== null && !hasRepeat && updated.endedAtMillis < sub.currentPeriodEndMillis) {
+          return { newState: toPiledriverObject(updated), nextTriggerTime: null, appendRowData: toPiledriverObject([subscriptionEndEvent(updated)]) };
+        }
         return { newState: toPiledriverObject(updated), nextTriggerTime: dateFromMillis(soonestNextMillis(updated, updated.endedAtMillis)) };
       },
     }), { input: "payments-subscriptions" }),

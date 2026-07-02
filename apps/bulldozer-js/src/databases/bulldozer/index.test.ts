@@ -448,6 +448,9 @@ describe("Bulldozer", () => {
       },
       onSourceRowChanged: async (state, row, previous) => {
         changedCalls.push({ state, rowData: row.rowData, oldRowData: previous.rowData, previousTrigger: previous.nextTriggerTime?.getTime() ?? null });
+        if (row.rowData === "C") {
+          return { newState: Number(state) + 1000, nextTriggerTime: null, appendRowData: `${row.rowData}:changed` };
+        }
         return { newState: Number(state) + 100, nextTriggerTime: new Date(secondTrigger) };
       },
     });
@@ -479,6 +482,20 @@ describe("Bulldozer", () => {
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 2]), rowSortKey: null, rowData: "B:103" },
+    ]);
+
+    // The hook can append one output row synchronously in the same write (appendRowData),
+    // while everything previously emitted still survives verbatim.
+    snapshot = await set(snapshot, "store", "a", "C");
+    expect(await rows(snapshot, "time")).toEqual([
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 2]), rowSortKey: null, rowData: "B:103" },
+      { groupKey: null, rowIdentifier: JSON.stringify(["a", 3]), rowSortKey: null, rowData: "C:changed" },
+    ]);
+    expect(changedCalls).toEqual([
+      { state: 2, rowData: "B", oldRowData: "A", previousTrigger: null },
+      { state: 103, rowData: "C", oldRowData: "B", previousTrigger: null },
     ]);
 
     // Deleting the source row still removes everything.
