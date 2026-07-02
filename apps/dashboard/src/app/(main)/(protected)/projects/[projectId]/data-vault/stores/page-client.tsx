@@ -6,7 +6,7 @@ import {
   DesignListItemRow,
 } from "@/components/design-components";
 import { ActionDialog, Label, toast } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";

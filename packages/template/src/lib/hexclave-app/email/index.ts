@@ -241,7 +241,10 @@ type SendEmailOptionsBase = {
 export type SendEmailOptions = SendEmailOptionsBase
   & XOR<[
     { userIds: string[] },
-    { allUsers: true }
+    { allUsers: true },
+    // Send to arbitrary email addresses that don't have to belong to a user. These recipients have no associated user
+    // object and cannot unsubscribe, so this should only be used for transactional emails.
+    { emails: string[] }
   ]>
   & XOR<[
     { html: string },

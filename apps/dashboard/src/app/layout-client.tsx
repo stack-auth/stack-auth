@@ -94,7 +94,7 @@ async function refreshDevEnvironmentHealth() {
     }
     setSnapshotIfCurrent({
       status: "unhealthy",
-      restartCommand: "stack dev --config-file <path-to-stack.config.ts> -- <your app command>",
+      restartCommand: "hexclave dev --config-file <path-to-hexclave.config.ts> -- <your app command>",
     });
   }
 }
@@ -155,9 +155,8 @@ function DevEnvironmentStoppedScreen(props: { restartCommand: string }) {
 }
 
 function DevEnvironmentHealthGate(props: { children: React.ReactNode, disabled?: boolean }) {
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const shouldCheckHealth = props.disabled !== true && (isLocalEmulator || isRemoteDevelopmentEnvironment);
+  const shouldCheckHealth = props.disabled !== true && isRemoteDevelopmentEnvironment;
   const health = useSyncExternalStore(
     shouldCheckHealth ? subscribeDevEnvironmentHealth : subscribeHealthyDevEnvironment,
     shouldCheckHealth ? getDevEnvironmentHealthSnapshot : getHealthyDevEnvironmentSnapshot,

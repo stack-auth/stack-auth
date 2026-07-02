@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DesignButton } from "../button";
 import { DesignDialog } from "../dialog";
@@ -55,7 +55,7 @@ export function DataGridExportDialog<TRow>({
     [exportOptions?.fields, columns],
   );
   const [format, setFormat] = useState<DataGridExportFormat>("csv");
-  const [scope, setScope] = useState<DataGridExportScope>("all");
+  const [scope, setScope] = useState<DataGridExportScope>(exportOptions?.defaultScope ?? "all");
   const [fields, setFields] = useState<readonly DataGridExportField<TRow>[]>(resolvedFields);
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress>(idleExportProgress);
@@ -66,6 +66,22 @@ export function DataGridExportDialog<TRow>({
       setFields(resolvedFields);
     }
   }, [isExporting, resolvedFields]);
+
+  // Reset the scope to its default each time the dialog opens. The dialog stays
+  // mounted between opens, so without this the scope would retain whatever the
+  // user last picked instead of honoring `defaultScope` on every open. We track
+  // the previous `open` value with a ref so the reset only fires on a genuine
+  // closed->open transition -- not on every render that flips other state (e.g.
+  // `isExporting` going false after a failed/empty export would otherwise wipe
+  // the user's current selection while the dialog is still open).
+  const defaultScope = exportOptions?.defaultScope ?? "all";
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setScope(defaultScope);
+    }
+    wasOpenRef.current = open;
+  }, [open, defaultScope]);
 
   const entityName = exportOptions?.entityName ?? "row";
   const entityNamePlural = exportOptions?.entityNamePlural ?? "rows";

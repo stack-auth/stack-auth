@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import path from "path";
 
-const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/v1/integrations/ai-proxy";
+const DEFAULT_PROXY_URL = "https://api.hexclave.com/api/latest/integrations/ai-proxy";
 const ANTHROPIC_PROXY_BASE_URL: string = process.env.STACK_CLAUDE_PROXY_URL ?? DEFAULT_PROXY_URL;
 
 export type ClaudeAgentToolName = "Read" | "Write" | "Edit" | "MultiEdit" | "NotebookEdit" | "Bash" | "Glob" | "Grep";
@@ -34,6 +34,89 @@ export type RunClaudeAgentOptions = {
 export type RunClaudeAgentResult = {
   resultText: string,
 };
+
+export const CONFIG_AGENT_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"] as const;
+export const CONFIG_AGENT_REPO_TOOLS = [...CONFIG_AGENT_FILE_TOOLS, "Bash"] as const;
+
+type ConfigAgentPromptTarget =
+  | {
+    mode: "complete",
+    completeConfig: Record<string, unknown>,
+  }
+  | {
+    mode: "partial",
+    changes: Array<{ path: string, value: unknown }>,
+  };
+
+export type ConfigAgentPromptScope =
+  | {
+    mode: "known-file",
+    configFileName: string,
+  }
+  | {
+    mode: "repo",
+  };
+
+function buildConfigAgentPrompt(options: {
+  scope: ConfigAgentPromptScope,
+  target: ConfigAgentPromptTarget,
+  commandPolicy: string,
+}): string {
+  const targetSection = options.target.mode === "complete"
+    ? `The exported config must end up deep-equal to this JSON value:\n\n${JSON.stringify(options.target.completeConfig, null, 2)}`
+    : `Apply EXACTLY these config changes. Paths use dot notation, so \`a.b.c\` refers to \`config.a.b.c\`:\n\n${options.target.changes.map(({ path, value }) => `- ${JSON.stringify(path)}: set to ${JSON.stringify(value)}`).join("\n")}`;
+  const scopeSection = options.scope.mode === "known-file"
+    ? `Config file: ${JSON.stringify(options.scope.configFileName)} in the current working directory.`
+    : "Current working directory: the repository root. Find the Hexclave / Stack Auth config file. It is usually a `*.config.ts` file exporting `config`, often wrapped in `defineHexclaveConfig(...)` or a similar helper.";
+
+  return `You are updating a Hexclave / Stack Auth configuration file.
+
+${scopeSection}
+
+${targetSection}
+
+Rules:
+- Keep the file valid: it must still export \`config\`.
+- Preserve the existing authoring style where possible: imports, comments, helper wrappers, file header comments, and formatting.
+- If the config currently exports the placeholder string "show-onboarding" or is otherwise a stub, replace it with a real typed config object.
+- If a config value is conventionally sourced from an imported external file, you may keep that indirection as long as the evaluated config matches the requested value.
+- Do not touch unrelated files or application code.
+- ${options.commandPolicy}
+- Make the edits, then stop.`;
+}
+
+export function buildCompleteConfigAgentPrompt(options: {
+  scope: ConfigAgentPromptScope,
+  completeConfig: Record<string, unknown>,
+  commandPolicy: string,
+}): string {
+  return buildConfigAgentPrompt({
+    scope: options.scope,
+    target: {
+      mode: "complete",
+      completeConfig: options.completeConfig,
+    },
+    commandPolicy: options.commandPolicy,
+  });
+}
+
+export function buildPartialConfigAgentPrompt(options: {
+  configFileName: string,
+  changes: Array<{ path: string, value: unknown }>,
+  commandPolicy: string,
+}): string {
+  return buildConfigAgentPrompt({
+    scope: {
+      mode: "known-file",
+      configFileName: options.configFileName,
+    },
+    target: {
+      mode: "partial",
+      changes: options.changes,
+    },
+    commandPolicy: options.commandPolicy,
+  });
+}
 
 export class ClaudeAgentTimeoutError extends Error {
   constructor(timeoutMs?: number) {
@@ -70,7 +153,7 @@ export async function runHeadlessClaudeAgent(options: RunClaudeAgentOptions): Pr
     for await (const message of query({
       prompt: options.prompt,
       options: {
-        model: "nvidia/nemotron-3-super-120b-a12b:nitro",
+        model: "anthropic/claude-haiku-4.5",
         ...(options.strictIsolation === true ? {
           settingSources: [],
           strictMcpConfig: true,

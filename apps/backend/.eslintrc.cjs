@@ -3,7 +3,7 @@ const publicVars = require("../../configs/eslint/extra-rules.js");
 
 module.exports = {
   extends: ["../../configs/eslint/defaults.js", "../../configs/eslint/next.js"],
-  ignorePatterns: ["/*", "!/src", "!/scripts", "!/prisma"],
+  ignorePatterns: ["/*", "!/src", "!/scripts", "!/prisma", "/scripts/spike-*.mts"],
   rules: {
     "no-restricted-syntax": [
       ...defaults.rules["no-restricted-syntax"],

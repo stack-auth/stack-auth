@@ -1,118 +1,81 @@
 /**
- * Initializes the payments Bulldozer schema tables and ingresses existing
- * Prisma data into the stored tables.
+ * One-way backfill of the four payment tables from Postgres into bulldozer-js.
  *
- * - Init: each table's init() is NOT idempotent (no ON CONFLICT); we guard
- *   with isInitialized() checks per-table to skip already-initialized tables.
- * - Ingress: converts Prisma rows to bulldozer stored table rows. Skipped
- *   if data already exists (checked via a sentinel row count).
+ * It pages each table out of Postgres (via the read replica) and POSTs each
+ * page into bulldozer-js through the batch ingress routes, which apply the whole
+ * page in one snapshot write + one downstream cascade (far cheaper than one
+ * cascade per row). There is no read-back / compare / fingerprint: bulldozer-js
+ * stores each row under its `id` and the write is idempotent, so overwriting
+ * unconditionally is correct and the whole script is safe to re-run (it just
+ * re-converges).
  *
- * Call from db-migrations.ts after Postgres migrations have been applied.
+ * Resume: there is no persistent checkpoint (it wouldn't survive an ephemeral
+ * cloud instance, and isn't needed for correctness — a crash is recovered by
+ * just re-running). Progress is logged per batch with the end cursor; for a very
+ * large table you can skip ahead with --resume-table / --resume-cursor sourced
+ * from those logs. Because the cursor only advances after every row in a batch
+ * is confirmed written, the last logged cursor is always at-or-before the true
+ * high-water mark, so resuming there can only re-do safe work, never skip.
  */
 
-import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
-import type { SqlStatement, TableId } from "@/lib/bulldozer/db/utilities";
 import {
-  itemQuantityChangeToStoredRow,
-  oneTimePurchaseToStoredRow,
-  subscriptionInvoiceToStoredRow,
-  subscriptionToStoredRow,
+  bulldozerWriteItemQuantityChanges,
+  bulldozerWriteManualTransactions,
+  bulldozerWriteOneTimePurchases,
+  bulldozerWriteSubscriptionInvoices,
+  bulldozerWriteSubscriptions,
 } from "@/lib/payments/bulldozer-dual-write";
-import { createPaymentsSchema } from "@/lib/payments/schema/index";
-import type { ManualTransactionRow } from "@/lib/payments/schema/types";
-import type { PrismaClientTransaction } from "@/prisma-client";
+import type { CustomerType, ManualTransactionRow } from "@/lib/payments/schema/types";
+import {
+  ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX,
+  SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX,
+} from "@/lib/payments/transaction-entry-indexes";
+import { globalPrismaClient } from "@/prisma-client";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 
-const schema = createPaymentsSchema();
+const BATCH_SIZE = 500;
 
-const BATCH_SIZE = 100;
+// Fixed processing order. Resume positions are interpreted against this list.
+export const BACKFILL_TABLES = [
+  "Subscription",
+  "SubscriptionInvoice",
+  "OneTimePurchase",
+  "ItemQuantityChange",
+] as const;
+export type BackfillTableName = (typeof BACKFILL_TABLES)[number];
 
-type LogMetaValue = string | number | boolean | null | undefined;
+type Cursor = { tenancyId: string, id: string };
 
-function formatLogMeta(meta: Record<string, LogMetaValue>): string {
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(meta)) {
-    if (value === undefined) {
-      continue;
-    }
-    parts.push(`${key}=${String(value)}`);
+export type BackfillResumeOptions = {
+  resumeTable?: BackfillTableName,
+  resumeCursor?: Cursor,
+  // When true, a row that bulldozer-js rejects is recorded and skipped instead
+  // of aborting the run; the whole run still throws loudly at the end with the
+  // full list. Lets a single poison row not block a large migration, without
+  // silently dropping it. Default (false) is fail-fast on the first bad row.
+  continueOnError?: boolean,
+};
+
+/** A row bulldozer-js refused, captured under --continue-on-error. */
+type BackfillFailure = { table: BackfillTableName, tenancyId: string, id: string, message: string };
+
+/** Per-run state threaded into each table's pagination loop. */
+type BackfillRunContext = {
+  continueOnError: boolean,
+  recordFailure: (failure: BackfillFailure) => void,
+};
+
+function log(message: string) {
+  console.log(`[BulldozerBackfill] ${message}`);
+}
+
+function lowerCustomerType(customerType: string): CustomerType {
+  const lowered = customerType.toLowerCase();
+  if (lowered === "user" || lowered === "team" || lowered === "custom") {
+    return lowered;
   }
-  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
-}
-
-function logIngressStep(tableName: string, step: string, meta: Record<string, LogMetaValue> = {}) {
-  console.log(`[Bulldozer][Ingress][${tableName}] ${step}${formatLogMeta(meta)}`);
-}
-
-function logRowIngressStep(tableName: string, rowId: string, step: string, meta: Record<string, LogMetaValue> = {}) {
-  console.log(`[Bulldozer][Ingress][${tableName}][row=${rowId}] ${step}${formatLogMeta(meta)}`);
-}
-
-async function initTables(prisma: PrismaClientTransaction, ctx: BulldozerExecutionContext) {
-  let initialized = 0;
-  for (const table of schema._allTables) {
-    const [{ isInit }] = await prisma.$queryRaw`
-      SELECT ${Prisma.raw(table.isInitialized(ctx).sql)} AS "isInit"
-    ` as [{ isInit: boolean }];
-    if (isInit) {
-      initialized++;
-      continue;
-    }
-    const sql = toExecutableSqlTransaction(ctx, table.init(ctx));
-    await prisma.$executeRaw`${Prisma.raw(sql)}`;
-  }
-  if (initialized > 0) {
-    console.log(`[Bulldozer] ${initialized}/${schema._allTables.length} tables already initialized, skipped those ones.`);
-  }
-}
-
-/**
- * Returns the set of row IDs already in a bulldozer stored table.
- * Used to skip re-ingressing rows that are already present.
- */
-async function getExistingRowIds(prisma: PrismaClientTransaction, tableId: TableId): Promise<Set<string>> {
-  if (typeof tableId !== "string") {
-    throw new Error(`paginatedIngress only supports external stored tables with string tableId, got: ${JSON.stringify(tableId)}`);
-  }
-  const rows = await prisma.$queryRaw`
-    SELECT ("keyPath"[cardinality("keyPath")] #>> '{}') AS "rowId"
-    FROM "BulldozerStorageEngine"
-    WHERE "keyPathParent" = (
-      SELECT "keyPath" FROM "BulldozerStorageEngine"
-      WHERE "keyPath" = ARRAY[
-        to_jsonb('table'::text),
-        to_jsonb(${'external:' + tableId}::text),
-        to_jsonb('storage'::text),
-        to_jsonb('rows'::text)
-      ]::jsonb[]
-    )
-  ` as Array<{ rowId: string }>;
-  return new Set(rows.map(r => r.rowId));
-}
-
-async function getExistingRefundTxnIds(prisma: PrismaClientTransaction): Promise<Set<string>> {
-  const rows = await prisma.$queryRaw<Array<{ txnId: string }>>`
-    SELECT ("value"->'rowData'->>'txnId') AS "txnId"
-    FROM "BulldozerStorageEngine"
-    WHERE "keyPathParent" = (
-      SELECT "keyPath" FROM "BulldozerStorageEngine"
-      WHERE "keyPath" = ARRAY[
-        to_jsonb('table'::text),
-        to_jsonb(${'external:payments-manual-transactions'}::text),
-        to_jsonb('storage'::text),
-        to_jsonb('rows'::text)
-      ]::jsonb[]
-    )
-      AND "value"->'rowData'->>'type' = 'refund'
-  `;
-  return new Set(rows.map((r) => r.txnId));
-}
-
-function readCustomerType(value: unknown): "user" | "team" | "custom" {
-  if (value === "USER") return "user";
-  if (value === "TEAM") return "team";
-  if (value === "CUSTOM") return "custom";
-  throw new Error(`Unexpected customerType while backfilling refund manual transactions: ${JSON.stringify(value)}`);
+  throw new Error(`Invalid customer type while backfilling bulldozer: ${customerType}`);
 }
 
 function readProductLineId(product: unknown): string | null {
@@ -123,48 +86,48 @@ function readProductLineId(product: unknown): string | null {
   return typeof productLineId === "string" ? productLineId : null;
 }
 
-type RefundedSourceRow = {
-  id: string,
-  tenancyId: string,
-  customerId: string,
-  customerType: "USER" | "TEAM" | "CUSTOM",
-  productId: string | null,
-  product: unknown,
-  quantity: number,
-  creationSource: string,
-  refundedAt: Date | null,
-};
-
-function assertRefundedSourceRow(row: any, tableName: "Subscription" | "OneTimePurchase"): asserts row is RefundedSourceRow {
-  if (
-    typeof row.id !== "string" ||
-    typeof row.tenancyId !== "string" ||
-    typeof row.customerId !== "string" ||
-    (row.customerType !== "USER" && row.customerType !== "TEAM" && row.customerType !== "CUSTOM") ||
-    !(typeof row.productId === "string" || row.productId === null) ||
-    typeof row.quantity !== "number" ||
-    typeof row.creationSource !== "string" ||
-    !(row.refundedAt instanceof Date || row.refundedAt === null)
-  ) {
-    throw new Error(`Unexpected ${tableName} row shape while backfilling refund manual transactions`);
-  }
-}
-
+/**
+ * Legacy refund synthesis. Rows with a `refundedAt` predate the manual-
+ * transaction refund ledger (the current refund route no longer sets
+ * `refundedAt`), so bulldozer has no refund row for them. We mint a stable
+ * one: a `refund` manual transaction carrying a single product-revocation
+ * entry pointing at the source purchase's product grant.
+ *
+ * The id is deterministic (`<rowId>:refund`) so re-running upserts the same row
+ * rather than duplicating it. The adjustedEntryIndex uses the current bulldozer
+ * entry-index constants (0), NOT the old bulldozer-server value (1) — the entry
+ * layout changed in the rework, and these are the indexes the live refund route
+ * writes against today.
+ */
 function buildBackfilledRefundManualTransaction(options: {
-  row: RefundedSourceRow,
+  row: {
+    id: string,
+    tenancyId: string,
+    customerId: string,
+    customerType: string,
+    productId: string | null,
+    product: unknown,
+    quantity: number,
+    creationSource: string,
+    refundedAt: Date | null,
+  },
   sourceKind: "subscription" | "one-time-purchase",
-  adjustedTransactionId: string,
-  adjustedEntryIndex: number,
-}): { rowId: string, rowData: ManualTransactionRow } {
-  if (!options.row.refundedAt) {
-    throw new Error("buildBackfilledRefundManualTransaction called for non-refunded row");
-  }
-  const refundedAtMillis = options.row.refundedAt.getTime();
-  const customerType = readCustomerType(options.row.customerType);
+}): { txnId: string, rowData: ManualTransactionRow } {
+  const refundedAt = options.row.refundedAt
+    ?? throwErr("buildBackfilledRefundManualTransaction called for a row without refundedAt");
+  const refundedAtMillis = refundedAt.getTime();
+  const customerType = lowerCustomerType(options.row.customerType);
+  const adjustedTransactionId = options.sourceKind === "subscription"
+    ? `sub-start:${options.row.id}`
+    : `otp:${options.row.id}`;
+  const adjustedEntryIndex = options.sourceKind === "subscription"
+    ? SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX
+    : ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX;
+  const txnId = `${options.row.id}:refund`;
   return {
-    rowId: `refund:${options.sourceKind}:${options.row.id}`,
+    txnId,
     rowData: {
-      txnId: `${options.row.id}:refund`,
+      txnId,
       tenancyId: options.row.tenancyId,
       effectiveAtMillis: refundedAtMillis,
       type: "refund",
@@ -172,8 +135,8 @@ function buildBackfilledRefundManualTransaction(options: {
         type: "product-revocation",
         customerType,
         customerId: options.row.customerId,
-        adjustedTransactionId: options.adjustedTransactionId,
-        adjustedEntryIndex: options.adjustedEntryIndex,
+        adjustedTransactionId,
+        adjustedEntryIndex,
         quantity: options.row.quantity,
         productId: options.row.productId,
         productLineId: readProductLineId(options.row.product),
@@ -186,224 +149,448 @@ function buildBackfilledRefundManualTransaction(options: {
   };
 }
 
-type RefundManualIngressState = {
-  existingRowIds: Set<string>,
-  existingTxnIds: Set<string>,
-  ingressed: number,
-  skipped: number,
+/**
+ * One table the backfill knows how to process: its name (for resume/logging)
+ * and a `run` that pages it from a given start cursor. `makeTable` captures the
+ * per-table Prisma row type `T` in the closure, so the orchestrator can hold a
+ * homogeneous `BackfillTable[]` despite each Prisma delegate being typed
+ * differently.
+ */
+type BackfillTable = {
+  name: BackfillTableName,
+  run: (startCursor: Cursor | null, ctx: BackfillRunContext) => Promise<void>,
 };
 
-async function createRefundManualIngressState(prisma: PrismaClientTransaction): Promise<RefundManualIngressState> {
-  const state = {
-    existingRowIds: await getExistingRowIds(prisma, schema.manualTransactions.tableId),
-    existingTxnIds: await getExistingRefundTxnIds(prisma),
-    ingressed: 0,
-    skipped: 0,
-  };
-  logIngressStep("ManualTransactions(refund)", "loaded existing refund ingress state", {
-    existingRowIds: state.existingRowIds.size,
-    existingTxnIds: state.existingTxnIds.size,
-  });
-  return state;
-}
-
-async function writeBackfilledRefundManualTransaction(
-  prisma: PrismaClientTransaction,
-  ctx: BulldozerExecutionContext,
-  transaction: { rowId: string, rowData: ManualTransactionRow },
-  state: RefundManualIngressState,
-) {
-  const rowAlreadyExists = state.existingRowIds.has(transaction.rowId);
-  const txnAlreadyExists = state.existingTxnIds.has(transaction.rowData.txnId);
-  if (rowAlreadyExists || txnAlreadyExists) {
-    state.skipped++;
-    return;
-  }
-
-  const rowDataJson = JSON.stringify(transaction.rowData).replaceAll("'", "''");
-  const sql = toExecutableSqlTransaction(
-    ctx,
-    schema.manualTransactions.setRow(ctx, transaction.rowId, { type: "expression", sql: `'${rowDataJson}'::jsonb` }),
-  );
-  await prisma.$executeRaw`${Prisma.raw(sql)}`;
-
-  state.existingRowIds.add(transaction.rowId);
-  state.existingTxnIds.add(transaction.rowData.txnId);
-  state.ingressed++;
+function makeTable<T extends Cursor>(
+  name: BackfillTableName,
+  fetchBatch: (cursor: Cursor | null) => Promise<T[]>,
+  writeBatch: (rows: T[]) => Promise<void>,
+): BackfillTable {
+  return { name, run: (startCursor, ctx) => backfillTable(name, startCursor, fetchBatch, writeBatch, ctx) };
 }
 
 /**
- * Cursor-based paginated ingress. Fetches rows from `tableName` in batches
- * using the composite PK (tenancyId, id) for cursor ordering (matches the
- * `@@id([tenancyId, id])` index on all four tables), skips rows already
- * present in Bulldozer, and calls `storedTable.setRow()` for each new row.
+ * Pages a single table and writes every row through the batch ingress path.
+ * Confirm-then-advance: the cursor (and the progress log) only moves after the
+ * whole page's write is awaited, so a mid-run failure leaves the last logged
+ * cursor pointing at the previous batch's end — never past an unconfirmed row.
+ *
+ * Under --continue-on-error a failed page is retried one row at a time so a
+ * single poison row can be isolated and skipped without losing the rest of the
+ * page; writes are idempotent, so re-posting the good rows is harmless.
  */
-async function paginatedIngress(
-  prisma: PrismaClientTransaction,
-  ctx: BulldozerExecutionContext,
-  tableName: string,
-  storedTable: { tableId: TableId, setRow(ctx: BulldozerExecutionContext, id: string, data: { type: "expression", sql: string }): SqlStatement[] },
-  toRowData: (row: any) => Record<string, unknown>,
-  options: {
-    afterEachRow?: (row: any) => Promise<void>,
-  } = {},
-) {
-  logIngressStep(tableName, "starting paginated ingress", {
-    batchSize: BATCH_SIZE,
-  });
-  const existingIds = await getExistingRowIds(prisma, storedTable.tableId);
-  logIngressStep(tableName, "loaded existing row IDs", {
-    existingCount: existingIds.size,
-  });
-
-  let ingressed = 0;
-  let skipped = 0;
-  let processed = 0;
+async function backfillTable<T extends Cursor>(
+  label: BackfillTableName,
+  startCursor: Cursor | null,
+  fetchBatch: (cursor: Cursor | null) => Promise<T[]>,
+  writeBatch: (rows: T[]) => Promise<void>,
+  ctx: BackfillRunContext,
+): Promise<void> {
+  let cursor = startCursor;
   let batchNumber = 0;
-  let cursorTenancyId: string | null = null;
-  let cursorId: string | null = null;
+  let total = 0;
+  let failed = 0;
+  log(`[${label}] starting${cursor ? ` from cursor ${cursor.tenancyId},${cursor.id}` : ""}`);
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- cursor-based pagination loop
-  while (true) {
-    batchNumber++;
-    // any[] because Prisma $queryRaw returns unknown and we destructure dynamically
-    const batch: any[] = cursorTenancyId != null
-      ? await prisma.$queryRawUnsafe(
-        `SELECT * FROM "${tableName}" WHERE ("tenancyId", "id") > ($1::uuid, $2::uuid) ORDER BY "tenancyId", "id" LIMIT ${BATCH_SIZE}`,
-        cursorTenancyId,
-        cursorId,
-      )
-      : await prisma.$queryRawUnsafe(
-        `SELECT * FROM "${tableName}" ORDER BY "tenancyId", "id" LIMIT ${BATCH_SIZE}`,
-      );
+  for (;;) {
+    const batch = await fetchBatch(cursor);
+    if (batch.length === 0) break;
 
-    if (batch.length === 0) {
-      break;
-    }
-
-    const lastRow = batch[batch.length - 1];
-    cursorTenancyId = lastRow.tenancyId;
-    cursorId = lastRow.id;
-
-    for (let batchRowIndex = 0; batchRowIndex < batch.length; batchRowIndex++) {
-      const row = batch[batchRowIndex];
-      const rowId = typeof row.id === "string" ? row.id : String(row.id);
-      processed++;
-      const rowStartMs = performance.now();
-      let rowStatus: "ingressed" | "skipped" | "failed" = "failed";
-      let rowError: string | undefined = undefined;
-      logRowIngressStep(tableName, rowId, "start processing row", {
-        batchNumber,
-        batchRowIndex,
-        processedCount: processed,
-      });
-
-      try {
-        const rowAlreadyExists = existingIds.has(row.id);
-
-        if (rowAlreadyExists) {
-          skipped++;
-          rowStatus = "skipped";
-        } else {
-          const rowDataObject = toRowData(row);
-          const rowData = JSON.stringify(rowDataObject).replaceAll("'", "''");
-          const sql = toExecutableSqlTransaction(
-            ctx,
-            storedTable.setRow(ctx, row.id, { type: "expression", sql: `'${rowData}'::jsonb` }),
-          );
-          await prisma.$executeRaw`${Prisma.raw(sql)}`;
-          ingressed++;
-          rowStatus = "ingressed";
+    try {
+      await writeBatch(batch);
+    } catch (error) {
+      // Default is fail-fast. Under --continue-on-error we re-send the page row
+      // by row to find the poison row(s): the good rows go through the normal
+      // (idempotent) write and the bad ones are recorded + logged loudly, then
+      // re-thrown as a set at the end of the run — never silently swallowed.
+      if (!ctx.continueOnError) throw error;
+      for (const row of batch) {
+        try {
+          await writeBatch([row]);
+        } catch (rowError) {
+          const message = rowError instanceof Error ? rowError.message : String(rowError);
+          ctx.recordFailure({ table: label, tenancyId: row.tenancyId, id: row.id, message });
+          failed++;
+          log(`[${label}] SKIPPED row ${row.tenancyId},${row.id} after error: ${message}`);
         }
-
-        if (options.afterEachRow) {
-          await options.afterEachRow(row);
-        }
-      } catch (error) {
-        rowStatus = "failed";
-        rowError = error instanceof Error ? error.message : String(error);
-        throw error;
-      } finally {
-        const elapsedMs = Number((performance.now() - rowStartMs).toFixed(2));
-        logRowIngressStep(tableName, rowId, "end processing row", {
-          status: rowStatus,
-          elapsedMs,
-          batchNumber,
-          batchRowIndex,
-          processedCount: processed,
-          ingressedCount: ingressed,
-          skippedCount: skipped,
-          error: rowError,
-        });
       }
-
     }
+    total += batch.length;
+
+    const last = batch[batch.length - 1];
+    const next: Cursor = { tenancyId: last.tenancyId, id: last.id };
+    // Keyset pagination must strictly advance (each page's last row is > cursor).
+    // If it ever didn't — e.g. a non-unique sort key slipped in — we'd re-read
+    // the same page forever, so fail loud instead of spinning. This guard is
+    // what makes the unbounded loop above safe.
+    if (cursor !== null && next.tenancyId === cursor.tenancyId && next.id === cursor.id) {
+      throw new Error(`[${label}] backfill cursor failed to advance at ${next.tenancyId},${next.id}`);
+    }
+
+    cursor = next;
+    batchNumber++;
+    log(`[${label}] batch=${batchNumber} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
+
+    // A short page means we've hit the end; skip the extra empty fetch.
+    if (batch.length < BATCH_SIZE) break;
   }
 
-  logIngressStep(tableName, "paginated ingress complete", {
-    processedCount: processed,
-    ingressedCount: ingressed,
-    skippedCount: skipped,
+  log(`[${label}] done total=${total}${failed > 0 ? ` failed=${failed}` : ""}`);
+}
+
+function keysetArgs(cursor: Cursor | null) {
+  return {
+    orderBy: [{ tenancyId: "asc" as const }, { id: "asc" as const }],
+    take: BATCH_SIZE,
+    ...(cursor
+      ? { cursor: { tenancyId_id: { tenancyId: cursor.tenancyId, id: cursor.id } }, skip: 1 }
+      : {}),
+  };
+}
+
+/** Tables before `resumeTable` are treated as already done; the rest run. */
+function shouldRunTable(table: BackfillTableName, resumeTable: BackfillTableName | undefined): boolean {
+  if (resumeTable === undefined) return true;
+  return BACKFILL_TABLES.indexOf(table) >= BACKFILL_TABLES.indexOf(resumeTable);
+}
+
+/** The start cursor for a table: the resume cursor only applies to the resume table. */
+function startCursorFor(table: BackfillTableName, options: BackfillResumeOptions): Cursor | null {
+  return table === options.resumeTable ? options.resumeCursor ?? null : null;
+}
+
+/**
+ * Parses the optional resume flags from a raw argv list:
+ *   --resume-table=<TableName>  --resume-cursor=<tenancyId>,<id>
+ * Lives here (not in the CLI entrypoint) so it's testable without importing the
+ * db-migrations entrypoint, which runs `main()` on import.
+ */
+export function parseBackfillResumeOptions(args: string[]): BackfillResumeOptions {
+  const prefix = (name: string) => `--${name}=`;
+  const readArg = (name: string) =>
+    args.find((arg) => arg.startsWith(prefix(name)))?.slice(prefix(name).length);
+
+  const continueOnError = args.includes("--continue-on-error");
+
+  const resumeTableArg = readArg("resume-table");
+  const resumeCursorArg = readArg("resume-cursor");
+  if (resumeTableArg === undefined && resumeCursorArg === undefined) {
+    return { continueOnError };
+  }
+  if (resumeTableArg === undefined) {
+    throw new Error("--resume-cursor requires --resume-table");
+  }
+  const resumeTable = BACKFILL_TABLES.find((table) => table === resumeTableArg);
+  if (resumeTable === undefined) {
+    throw new Error(`--resume-table must be one of: ${BACKFILL_TABLES.join(", ")}`);
+  }
+  if (resumeCursorArg === undefined) {
+    return { resumeTable, continueOnError };
+  }
+  const commaIndex = resumeCursorArg.indexOf(",");
+  const tenancyId = commaIndex === -1 ? "" : resumeCursorArg.slice(0, commaIndex);
+  const id = commaIndex === -1 ? "" : resumeCursorArg.slice(commaIndex + 1);
+  if (tenancyId.length === 0 || id.length === 0) {
+    throw new Error("--resume-cursor must be in the form <tenancyId>,<id>");
+  }
+  return { resumeTable, resumeCursor: { tenancyId, id }, continueOnError };
+}
+
+const MAX_FAILURE_PREVIEW = 50;
+
+/** Renders the collected --continue-on-error failures into one loud message. */
+function formatBackfillFailures(failures: BackfillFailure[]): string {
+  const preview = failures
+    .slice(0, MAX_FAILURE_PREVIEW)
+    .map((f) => `  ${f.table} ${f.tenancyId},${f.id}: ${f.message}`)
+    .join("\n");
+  const overflow = failures.length > MAX_FAILURE_PREVIEW
+    ? `\n  ...and ${failures.length - MAX_FAILURE_PREVIEW} more`
+    : "";
+  return `Backfill finished with ${failures.length} un-ingestable row(s) (--continue-on-error). `
+    + `Fix these rows and re-run (writes are idempotent):\n${preview}${overflow}`;
+}
+
+export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = {}) {
+  const replica = globalPrismaClient.$replica();
+  log("Backfilling bulldozer-js from Prisma...");
+
+  const tables: BackfillTable[] = [
+    makeTable(
+      "Subscription",
+      (cursor) => replica.subscription.findMany(keysetArgs(cursor)),
+      async (subs) => {
+        await bulldozerWriteSubscriptions(subs);
+        // Synthesize refund transactions for the refunded rows in this page and
+        // send them as their own batch (idempotent, keyed by `<id>:refund`).
+        const refunds = subs
+          .filter((sub) => sub.refundedAt != null)
+          .map((sub) => buildBackfilledRefundManualTransaction({ row: sub, sourceKind: "subscription" }).rowData);
+        await bulldozerWriteManualTransactions(refunds);
+      },
+    ),
+    makeTable(
+      "SubscriptionInvoice",
+      (cursor) => replica.subscriptionInvoice.findMany(keysetArgs(cursor)),
+      (invoices) => bulldozerWriteSubscriptionInvoices(invoices),
+    ),
+    makeTable(
+      "OneTimePurchase",
+      (cursor) => replica.oneTimePurchase.findMany(keysetArgs(cursor)),
+      async (purchases) => {
+        await bulldozerWriteOneTimePurchases(purchases);
+        const refunds = purchases
+          .filter((purchase) => purchase.refundedAt != null)
+          .map((purchase) => buildBackfilledRefundManualTransaction({ row: purchase, sourceKind: "one-time-purchase" }).rowData);
+        await bulldozerWriteManualTransactions(refunds);
+      },
+    ),
+    makeTable(
+      "ItemQuantityChange",
+      (cursor) => replica.itemQuantityChange.findMany(keysetArgs(cursor)),
+      (changes) => bulldozerWriteItemQuantityChanges(changes),
+    ),
+  ];
+
+  // Resume positions are interpreted against BACKFILL_TABLES, so the descriptor
+  // list above must stay in the same order. Fail loud if they drift.
+  if (tables.length !== BACKFILL_TABLES.length || tables.some((t, i) => t.name !== BACKFILL_TABLES[i])) {
+    throw new Error("backfill table descriptors are out of sync with BACKFILL_TABLES");
+  }
+
+  const failures: BackfillFailure[] = [];
+  const ctx: BackfillRunContext = {
+    continueOnError: options.continueOnError ?? false,
+    recordFailure: (failure) => failures.push(failure),
+  };
+
+  for (const table of tables) {
+    if (!shouldRunTable(table.name, options.resumeTable)) continue;
+    await table.run(startCursorFor(table.name, options), ctx);
+  }
+
+  // Under --continue-on-error we deferred bad rows to here; surface them loudly
+  // so the run is never quietly "complete" with data missing. Re-running after
+  // fixing the offending rows re-converges (writes are idempotent).
+  if (failures.length > 0) {
+    throw new Error(formatBackfillFailures(failures));
+  }
+
+  // Stored->derived cascades run synchronously inside each POST, but timefold
+  // repeats/expiries only materialize on bulldozer-js's 1s tick loop. Wait one
+  // tick interval (plus slack) so a consumer script that runs shortly after
+  // sees materialized entitlements. This is a deliberate, slightly-racy choice;
+  // a deterministic tick-to-now endpoint would be the upgrade if it ever bites.
+  await wait(1500);
+
+  log("Backfill complete.");
+}
+
+import.meta.vitest?.describe("parseBackfillResumeOptions", (test) => {
+  test("returns continueOnError=false when no flags are passed", ({ expect }) => {
+    expect(parseBackfillResumeOptions([])).toEqual({ continueOnError: false });
+    expect(parseBackfillResumeOptions(["backfill-bulldozer-from-prisma"])).toEqual({ continueOnError: false });
   });
-  console.log(`[Bulldozer] Ingressed ${ingressed} ${tableName} rows (${skipped} already present).`);
-}
 
-export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) {
-  const ctx = createBulldozerExecutionContext();
-  console.log("[Bulldozer] Initializing payments schema tables...");
-  await initTables(prisma, ctx);
-  console.log(`[Bulldozer] Initialized ${schema._allTables.length} payments tables.`);
+  test("rejects --resume-cursor without --resume-table", ({ expect }) => {
+    expect(() => parseBackfillResumeOptions(["--resume-cursor=t1,i1"]))
+      .toThrow("--resume-cursor requires --resume-table");
+  });
 
-  console.log("[Bulldozer] Syncing Prisma data into bulldozer stored tables...");
-  const refundManualIngressState = await createRefundManualIngressState(prisma);
+  test("rejects an unknown --resume-table", ({ expect }) => {
+    expect(() => parseBackfillResumeOptions(["--resume-table=Bogus"]))
+      .toThrow("--resume-table must be one of");
+  });
 
-  await paginatedIngress(
-    prisma,
-    ctx,
-    "Subscription",
-    schema.subscriptions,
-    subscriptionToStoredRow,
-    {
-      afterEachRow: async (row) => {
-        assertRefundedSourceRow(row, "Subscription");
-        if (row.refundedAt == null) {
-          return;
-        }
-        const refundManualTransaction = buildBackfilledRefundManualTransaction({
-          row,
-          sourceKind: "subscription",
-          adjustedTransactionId: `sub-start:${row.id}`,
-          adjustedEntryIndex: 1,
-        });
-        await writeBackfilledRefundManualTransaction(prisma, ctx, refundManualTransaction, refundManualIngressState);
-      },
+  test("accepts --resume-table on its own (restart that table from the top)", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--resume-table=OneTimePurchase"]))
+      .toEqual({ resumeTable: "OneTimePurchase", continueOnError: false });
+  });
+
+  test("parses --resume-table with a --resume-cursor", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--resume-table=Subscription", "--resume-cursor=ten-1,sub-9"]))
+      .toEqual({ resumeTable: "Subscription", resumeCursor: { tenancyId: "ten-1", id: "sub-9" }, continueOnError: false });
+  });
+
+  test("rejects a --resume-cursor without a comma separator", ({ expect }) => {
+    expect(() => parseBackfillResumeOptions(["--resume-table=Subscription", "--resume-cursor=nocommahere"]))
+      .toThrow("--resume-cursor must be in the form <tenancyId>,<id>");
+  });
+
+  test("parses --continue-on-error on its own", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--continue-on-error"])).toEqual({ continueOnError: true });
+  });
+
+  test("parses --continue-on-error alongside resume flags", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--resume-table=OneTimePurchase", "--continue-on-error"]))
+      .toEqual({ resumeTable: "OneTimePurchase", continueOnError: true });
+  });
+
+});
+
+import.meta.vitest?.describe("formatBackfillFailures", (test) => {
+  test("summarizes a single failure", ({ expect }) => {
+    const message = formatBackfillFailures([
+      { table: "Subscription", tenancyId: "ten-1", id: "sub-1", message: "boom" },
+    ]);
+    expect(message).toContain("1 un-ingestable row(s)");
+    expect(message).toContain("Subscription ten-1,sub-1: boom");
+  });
+
+  test("truncates the preview and reports the overflow count", ({ expect }) => {
+    const failures = Array.from({ length: MAX_FAILURE_PREVIEW + 5 }, (_, i) => ({
+      table: "Subscription" as const,
+      tenancyId: "ten",
+      id: `sub-${i}`,
+      message: "boom",
+    }));
+    const message = formatBackfillFailures(failures);
+    expect(message).toContain(`${MAX_FAILURE_PREVIEW + 5} un-ingestable row(s)`);
+    expect(message).toContain("...and 5 more");
+    expect(message).not.toContain(`sub-${MAX_FAILURE_PREVIEW + 4}`);
+  });
+});
+
+import.meta.vitest?.describe("backfillTable continue-on-error", (test) => {
+  const rows = [
+    { tenancyId: "t", id: "a" },
+    { tenancyId: "t", id: "bad" },
+    { tenancyId: "t", id: "c" },
+  ];
+  // Serves the batch once, then an empty page. (The short-page break means the
+  // second fetch is never actually reached, but this keeps the fake honest.)
+  const fetchOnce = () => {
+    let served = false;
+    return async () => {
+      if (served) return [];
+      served = true;
+      return rows;
+    };
+  };
+  // A batch write that fails the whole page if any row is "bad" (mirrors the
+  // engine rejecting a batch containing a poison row). It only records the good
+  // rows when the page has no poison row, so the per-row isolation retry is what
+  // gets the good rows in once the bad one is split out.
+  const failOnBadBatch = (written: string[]) => async (rows: Cursor[]) => {
+    if (rows.some((row) => row.id === "bad")) throw new Error("nope");
+    for (const row of rows) written.push(row.id);
+  };
+
+  test("records the failing row and writes the rest when continueOnError is true", async ({ expect }) => {
+    const written: string[] = [];
+    const failures: BackfillFailure[] = [];
+    await backfillTable("Subscription", null, fetchOnce(), failOnBadBatch(written), {
+      continueOnError: true,
+      recordFailure: (f) => failures.push(f),
+    });
+    expect(written).toEqual(["a", "c"]);
+    expect(failures).toEqual([{ table: "Subscription", tenancyId: "t", id: "bad", message: "nope" }]);
+  });
+
+  test("aborts on the first failure when continueOnError is false", async ({ expect }) => {
+    const written: string[] = [];
+    const failures: BackfillFailure[] = [];
+    await expect(
+      backfillTable("Subscription", null, fetchOnce(), failOnBadBatch(written), {
+        continueOnError: false,
+        recordFailure: (f) => failures.push(f),
+      }),
+    ).rejects.toThrow("nope");
+    // The batch fails atomically before recording any row, so nothing is written.
+    expect(written).toEqual([]);
+    expect(failures).toEqual([]);
+  });
+});
+
+import.meta.vitest?.describe("shouldRunTable / startCursorFor", (test) => {
+  test("runs every table when no resume table is set", ({ expect }) => {
+    for (const table of BACKFILL_TABLES) {
+      expect(shouldRunTable(table, undefined)).toBe(true);
     }
-  );
-  await paginatedIngress(prisma, ctx, "SubscriptionInvoice", schema.subscriptionInvoices, subscriptionInvoiceToStoredRow);
-  await paginatedIngress(
-    prisma,
-    ctx,
-    "OneTimePurchase",
-    schema.oneTimePurchases,
-    oneTimePurchaseToStoredRow,
-    {
-      afterEachRow: async (row) => {
-        assertRefundedSourceRow(row, "OneTimePurchase");
-        if (row.refundedAt == null) {
-          return;
-        }
-        const refundManualTransaction = buildBackfilledRefundManualTransaction({
-          row,
-          sourceKind: "one-time-purchase",
-          adjustedTransactionId: `otp:${row.id}`,
-          adjustedEntryIndex: 0,
-        });
-        await writeBackfilledRefundManualTransaction(prisma, ctx, refundManualTransaction, refundManualIngressState);
-      },
-    }
-  );
-  await paginatedIngress(prisma, ctx, "ItemQuantityChange", schema.manualItemQuantityChanges, itemQuantityChangeToStoredRow);
-  console.log(`[Bulldozer] Ingressed ${refundManualIngressState.ingressed} refund manual transactions (${refundManualIngressState.skipped} already present).`);
+  });
 
-  console.log("[Bulldozer] Payments data ingress complete.");
-}
+  test("skips tables before the resume table and runs the rest", ({ expect }) => {
+    expect(shouldRunTable("Subscription", "OneTimePurchase")).toBe(false);
+    expect(shouldRunTable("SubscriptionInvoice", "OneTimePurchase")).toBe(false);
+    expect(shouldRunTable("OneTimePurchase", "OneTimePurchase")).toBe(true);
+    expect(shouldRunTable("ItemQuantityChange", "OneTimePurchase")).toBe(true);
+  });
+
+  test("applies the resume cursor only to the resume table", ({ expect }) => {
+    const options = { resumeTable: "OneTimePurchase" as const, resumeCursor: { tenancyId: "t", id: "p" } };
+    expect(startCursorFor("OneTimePurchase", options)).toEqual({ tenancyId: "t", id: "p" });
+    expect(startCursorFor("ItemQuantityChange", options)).toBe(null);
+  });
+
+  test("starts from the top when the resume table has no cursor", ({ expect }) => {
+    expect(startCursorFor("Subscription", { resumeTable: "Subscription" })).toBe(null);
+  });
+});
+
+import.meta.vitest?.describe("buildBackfilledRefundManualTransaction", (test) => {
+  const refundedAt = new Date("2024-01-02T03:04:05.000Z");
+  const baseRow = {
+    id: "row-1",
+    tenancyId: "ten-1",
+    customerId: "cust-1",
+    customerType: "TEAM",
+    productId: "prod-1",
+    product: { productLineId: "free" },
+    quantity: 3,
+    creationSource: "PURCHASE_PAGE",
+    refundedAt,
+  };
+
+  test("synthesizes a stable, idempotent refund txn for a subscription", ({ expect }) => {
+    const { txnId, rowData } = buildBackfilledRefundManualTransaction({ row: baseRow, sourceKind: "subscription" });
+    expect(txnId).toBe("row-1:refund");
+    expect(rowData.txnId).toBe("row-1:refund");
+    expect(rowData.type).toBe("refund");
+    expect(rowData.tenancyId).toBe("ten-1");
+    expect(rowData.customerType).toBe("team");
+    expect(rowData.effectiveAtMillis).toBe(refundedAt.getTime());
+    expect(rowData.createdAtMillis).toBe(refundedAt.getTime());
+    expect(rowData.paymentProvider).toBe("stripe");
+    expect(rowData.entries).toEqual([{
+      type: "product-revocation",
+      customerType: "team",
+      customerId: "cust-1",
+      adjustedTransactionId: "sub-start:row-1",
+      adjustedEntryIndex: SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX,
+      quantity: 3,
+      productId: "prod-1",
+      productLineId: "free",
+    }]);
+  });
+
+  test("uses the otp source txn id for one-time purchases", ({ expect }) => {
+    const { rowData } = buildBackfilledRefundManualTransaction({ row: baseRow, sourceKind: "one-time-purchase" });
+    expect(rowData.entries[0]).toMatchObject({
+      adjustedTransactionId: "otp:row-1",
+      adjustedEntryIndex: ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX,
+    });
+  });
+
+  test("marks test-mode rows with the test_mode payment provider", ({ expect }) => {
+    const { rowData } = buildBackfilledRefundManualTransaction({
+      row: { ...baseRow, creationSource: "TEST_MODE" },
+      sourceKind: "subscription",
+    });
+    expect(rowData.paymentProvider).toBe("test_mode");
+  });
+
+  test("falls back to a null productLineId when the product has none", ({ expect }) => {
+    const { rowData } = buildBackfilledRefundManualTransaction({
+      row: { ...baseRow, product: {} },
+      sourceKind: "subscription",
+    });
+    expect(rowData.entries[0]).toMatchObject({ productLineId: null });
+  });
+
+  test("throws if called for a row without refundedAt", ({ expect }) => {
+    expect(() => buildBackfilledRefundManualTransaction({
+      row: { ...baseRow, refundedAt: null },
+      sourceKind: "subscription",
+    })).toThrow("without refundedAt");
+  });
+});

@@ -3,6 +3,9 @@ import { ServerUser } from "@hexclave/next";
 import { KnownErrors } from "@hexclave/shared";
 import { countryCodeSchema, emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@hexclave/shared/dist/schema-fields";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography } from "@/components/ui";
+import { DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
+import { WarningCircleIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
 import { CountryCodeField } from "./country-code-select";
@@ -24,6 +27,7 @@ export function UserDialog(props: {
 })) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const [errorDialog, setErrorDialog] = useState<{ title: string; description: string } | null>(null);
 
   let defaultValues;
   if (props.type === 'edit') {
@@ -127,135 +131,159 @@ export function UserDialog(props: {
       }
     } catch (error) {
       if (KnownErrors.UserWithEmailAlreadyExists.isInstance(error)) {
-        alert("Email already exists. Please choose a different email address.");
-        return 'prevent-close';
+        setErrorDialog({
+          title: "Email already exists",
+          description: "Please choose a different email address.",
+        });
+        return 'prevent-close-and-prevent-reset';
       }
       if (KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)) {
-        alert("Email already used for authentication. This email is already used for sign-in by another account. Please choose a different email address.");
-        return 'prevent-close';
+        setErrorDialog({
+          title: "Email already used for authentication",
+          description: "This email is already used for sign-in by another account. Please choose a different email address.",
+        });
+        return 'prevent-close-and-prevent-reset';
       }
       throw error;
     }
   }
 
-  return <FormDialog
-    open={props.open}
-    onOpenChange={props.onOpenChange}
-    trigger={props.trigger}
-    title={props.type === 'edit' ? "Edit User" : "Create User"}
-    formSchema={formSchema}
-    defaultValues={defaultValues}
-    okButton={{ label: props.type === 'edit' ? "Save" : "Create" }}
-    render={(form) => (
-      <>
-        {props.type === 'edit' ? <Typography variant='secondary'>ID: {props.user.id}</Typography> : null}
+  return <>
+    <DesignDialog
+      open={errorDialog !== null}
+      onOpenChange={(open: boolean) => { if (!open) setErrorDialog(null); }}
+      size="sm"
+      icon={WarningCircleIcon}
+      title={errorDialog?.title ?? ""}
+      description={errorDialog?.description ?? ""}
+      footer={
+        <DesignDialogClose asChild>
+          <DesignButton variant="secondary" size="sm">OK</DesignButton>
+        </DesignDialogClose>
+      }
+    />
+    <FormDialog
+      open={props.open}
+      onOpenChange={(open: boolean) => {
+        if (!open) setErrorDialog(null);
+        props.onOpenChange?.(open);
+      }}
+      trigger={props.trigger}
+      title={props.type === 'edit' ? "Edit User" : "Create User"}
+      formSchema={formSchema}
+      defaultValues={defaultValues}
+      okButton={{ label: props.type === 'edit' ? "Save" : "Create" }}
+      render={(form) => (
+        <>
+          {props.type === 'edit' ? <Typography variant='secondary'>ID: {props.user.id}</Typography> : null}
 
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
-            <InputField control={form.control} label="Primary email" name="primaryEmail" required />
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <InputField control={form.control} label="Primary email" name="primaryEmail" required />
+            </div>
+            <div className="mb-2">
+              <SwitchField control={form.control} label="Verified" name="primaryEmailVerified" />
+            </div>
           </div>
-          <div className="mb-2">
-            <SwitchField control={form.control} label="Verified" name="primaryEmailVerified" />
-          </div>
-        </div>
 
-        <InputField control={form.control} label="Display name" name="displayName" />
+          <InputField control={form.control} label="Display name" name="displayName" />
 
-        <DateField control={form.control} label="Signed Up At" name="signedUpAt" />
+          <DateField control={form.control} label="Signed Up At" name="signedUpAt" />
 
-        {project.config.magicLinkEnabled && <SwitchField control={form.control} label="OTP/magic link sign-in" name="otpAuthEnabled" />}
-        {project.config.credentialEnabled && <SwitchField control={form.control} label="Password sign-in" name="passwordEnabled" />}
-        {form.watch("passwordEnabled") && (
-          props.type === 'edit' && !form.watch("password") && !form.watch("updatePassword") ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => form.setValue('updatePassword', true)}
-            >
-              Update Password
-            </Button>
-          ) : (
-            <InputField
-              control={form.control}
-              label={props.type === 'edit' ? "New password" : "Password"}
-              name="password"
-              type="password"
-              autoComplete="off"
-            />
-          )
-        )}
-        {!form.watch("primaryEmailVerified") && form.watch("otpAuthEnabled") && <Typography variant="secondary">Primary email must be verified if OTP/magic link sign-in is enabled</Typography>}
+          {project.config.magicLinkEnabled && <SwitchField control={form.control} label="OTP/magic link sign-in" name="otpAuthEnabled" />}
+          {project.config.credentialEnabled && <SwitchField control={form.control} label="Password sign-in" name="passwordEnabled" />}
+          {form.watch("passwordEnabled") && (
+            props.type === 'edit' && !form.watch("password") && !form.watch("updatePassword") ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => form.setValue('updatePassword', true)}
+              >
+                Update Password
+              </Button>
+            ) : (
+              <InputField
+                control={form.control}
+                label={props.type === 'edit' ? "New password" : "Password"}
+                name="password"
+                type="password"
+                autoComplete="off"
+              />
+            )
+          )}
+          {!form.watch("primaryEmailVerified") && form.watch("otpAuthEnabled") && <Typography variant="secondary">Primary email must be verified if OTP/magic link sign-in is enabled</Typography>}
 
-        {props.type === "create" && (
+          {props.type === "create" && (
+            <Accordion type="single" collapsible>
+              <AccordionItem value="item-risk-and-geo">
+                <AccordionTrigger>Risk and Geo</AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  <CountryCodeField control={form.control} label="Country code" name="countryCode" placeholder="Select country code..." />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <InputField control={form.control} label="Risk score: bot" name="botRiskScore" placeholder="0-100" />
+                    <InputField control={form.control} label="Risk score: free trial abuse" name="freeTrialAbuseRiskScore" placeholder="0-100" />
+                  </div>
+                  <Typography variant="secondary">
+                    Optional admin-only values for imports or custom anti-abuse systems. Leave blank to use the defaults.
+                  </Typography>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
+
           <Accordion type="single" collapsible>
-            <AccordionItem value="item-risk-and-geo">
-              <AccordionTrigger>Risk and Geo</AccordionTrigger>
+            <AccordionItem value="item-1">
+              <AccordionTrigger>Metadata</AccordionTrigger>
               <AccordionContent className="space-y-4">
-                <CountryCodeField control={form.control} label="Country code" name="countryCode" placeholder="Select country code..." />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <InputField control={form.control} label="Risk score: bot" name="botRiskScore" placeholder="0-100" />
-                  <InputField control={form.control} label="Risk score: free trial abuse" name="freeTrialAbuseRiskScore" placeholder="0-100" />
-                </div>
-                <Typography variant="secondary">
-                  Optional admin-only values for imports or custom anti-abuse systems. Leave blank to use the defaults.
-                </Typography>
+                <TextAreaField
+                  rows={3}
+                  control={form.control}
+                  label="Client metadata"
+                  name="clientMetadata"
+                  placeholder="null"
+                  monospace
+                  helperText={
+                    <>
+                      Custom JSON clients can read and update; avoid sensitive data.{" "}
+                      <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                    </>
+                  }
+                />
+                <TextAreaField
+                  rows={3}
+                  control={form.control}
+                  label="Client read only metadata"
+                  name="clientReadOnlyMetadata"
+                  placeholder="null"
+                  monospace
+                  helperText={
+                    <>
+                      Custom JSON clients can read but only your backend can change.{" "}
+                      <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                    </>
+                  }
+                />
+                <TextAreaField
+                  rows={3}
+                  control={form.control}
+                  label="Server metadata"
+                  name="serverMetadata"
+                  placeholder="null"
+                  monospace
+                  helperText={
+                    <>
+                      Custom JSON reserved for server-side logic and never exposed to clients.{" "}
+                      <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
+                    </>
+                  }
+                />
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-        )}
-
-        <Accordion type="single" collapsible>
-          <AccordionItem value="item-1">
-            <AccordionTrigger>Metadata</AccordionTrigger>
-            <AccordionContent className="space-y-4">
-              <TextAreaField
-                rows={3}
-                control={form.control}
-                label="Client metadata"
-                name="clientMetadata"
-                placeholder="null"
-                monospace
-                helperText={
-                  <>
-                    Custom JSON clients can read and update; avoid sensitive data.{" "}
-                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
-                  </>
-                }
-              />
-              <TextAreaField
-                rows={3}
-                control={form.control}
-                label="Client read only metadata"
-                name="clientReadOnlyMetadata"
-                placeholder="null"
-                monospace
-                helperText={
-                  <>
-                    Custom JSON clients can read but only your backend can change.{" "}
-                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
-                  </>
-                }
-              />
-              <TextAreaField
-                rows={3}
-                control={form.control}
-                label="Server metadata"
-                name="serverMetadata"
-                placeholder="null"
-                monospace
-                helperText={
-                  <>
-                    Custom JSON reserved for server-side logic and never exposed to clients.{" "}
-                    <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
-                  </>
-                }
-              />
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </>
-    )}
-    onSubmit={handleSubmit}
-    cancelButton
-  />;
+        </>
+      )}
+      onSubmit={handleSubmit}
+      cancelButton
+    />
+  </>;
 }

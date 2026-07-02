@@ -1,1 +1,1 @@
-export { signUpRiskEngine, preprocessProxyBody, checkSmtpEgressPolicy } from "./implementation.generated";
+export { signUpRiskEngine, preprocessProxyBody } from "./implementation.generated";

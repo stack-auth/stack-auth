@@ -6,7 +6,7 @@ import { useRouter } from "@/components/router";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { AppId, getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";

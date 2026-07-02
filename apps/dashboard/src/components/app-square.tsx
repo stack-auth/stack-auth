@@ -3,7 +3,7 @@ import { useRouter } from "@/components/router";
 import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getDocumentationHref } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { ALL_APPS, AppId, getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@hexclave/shared/dist/apps/apps-ui";

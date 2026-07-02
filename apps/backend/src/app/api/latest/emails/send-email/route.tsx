@@ -1,17 +1,20 @@
 import { getEmailDraft, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
-import { sendEmailToMany } from "@/lib/emails";
+import { EmailOutboxRecipient, sendEmailToMany } from "@/lib/emails";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
-import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, emailSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupRecord, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
 
 const bodyBase = yupObject({
   user_ids: yupArray(yupString().defined()).optional(),
   all_users: yupBoolean().oneOf([true]).optional(),
+  emails: yupArray(emailSchema.defined()).optional().meta({
+    openapiField: { description: "Send the email to arbitrary email addresses that don't have to belong to a user. Recipients have no associated user object and cannot unsubscribe, so this should only be used for transactional emails." }
+  }),
   subject: yupString().optional(),
   notification_category_name: yupString().optional(),
   theme_id: templateThemeIdSchema.nullable().meta({
@@ -28,7 +31,7 @@ const bodyBase = yupObject({
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Send email",
-    description: "Send an email to a list of users. The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
+    description: "Send an email to a list of users (user_ids), all users (all_users), or arbitrary email addresses (emails). The content field should contain either {html} for HTML emails, {template_id, variables} for template-based emails, or {draft_id} for a draft email.",
     tags: ["Emails"],
   },
   request: yupObject({
@@ -55,7 +58,8 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       results: yupArray(yupObject({
-        user_id: yupString().defined(),
+        user_id: yupString().optional(),
+        email: yupString().optional(),
       })).defined(),
     }).defined(),
   }),
@@ -63,8 +67,9 @@ export const POST = createSmartRouteHandler({
     if (!getEnvVariable("STACK_FREESTYLE_API_KEY")) {
       throw new StatusError(500, "STACK_FREESTYLE_API_KEY is not set");
     }
-    if ((body.user_ids && body.all_users) || (!body.user_ids && !body.all_users)) {
-      throw new KnownErrors.SchemaError("Exactly one of user_ids or all_users must be provided");
+    const providedRecipientSelectors = [body.user_ids, body.all_users, body.emails].filter(selector => selector !== undefined);
+    if (providedRecipientSelectors.length !== 1) {
+      throw new KnownErrors.SchemaError("Exactly one of user_ids, all_users, or emails must be provided");
     }
 
     // We have this check in the email queue step as well, but to give the user a better error message already in the send-email endpoint we already do it here
@@ -125,33 +130,46 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.SchemaError("Either template_id, html, or draft_id must be provided");
     }
 
-    const requestedUserIds = body.all_users ? (await prisma.projectUser.findMany({
-      where: {
-        tenancyId: auth.tenancy.id,
-      },
-      select: {
-        projectUserId: true,
-      },
-    })).map(user => user.projectUserId) : body.user_ids ?? throwErr("user_ids must be provided if all_users is false");
+    let recipients: EmailOutboxRecipient[];
+    let results: { user_id?: string, email?: string }[];
 
-    // Sanity check that the user IDs are valid so the user gets an error here instead of only once the email is rendered.
-    if (!body.all_users && body.user_ids) {
-      const uniqueUserIds = [...new Set(body.user_ids)];
-      const users = await prisma.projectUser.findMany({
+    if (body.emails) {
+      // Send to arbitrary email addresses that don't have to belong to a user. These have no associated user object,
+      // so they can't unsubscribe and there's nothing to sanity-check against the project's users.
+      recipients = body.emails.map(email => ({ type: "custom-emails", emails: [email] }));
+      results = body.emails.map(email => ({ email }));
+    } else {
+      const requestedUserIds = body.all_users ? (await prisma.projectUser.findMany({
         where: {
           tenancyId: auth.tenancy.id,
-          projectUserId: { in: uniqueUserIds },
         },
         select: {
           projectUserId: true,
         },
-      });
-      if (users.length !== uniqueUserIds.length) {
-        const foundUserIds = new Set(users.map(u => u.projectUserId));
-        const missingUserId = uniqueUserIds.find(id => !foundUserIds.has(id));
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        throw new KnownErrors.UserIdDoesNotExist(missingUserId!);
+      })).map(user => user.projectUserId) : body.user_ids ?? throwErr("user_ids must be provided if all_users is false");
+
+      // Sanity check that the user IDs are valid so the user gets an error here instead of only once the email is rendered.
+      if (!body.all_users && body.user_ids) {
+        const uniqueUserIds = [...new Set(body.user_ids)];
+        const users = await prisma.projectUser.findMany({
+          where: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: { in: uniqueUserIds },
+          },
+          select: {
+            projectUserId: true,
+          },
+        });
+        if (users.length !== uniqueUserIds.length) {
+          const foundUserIds = new Set(users.map(u => u.projectUserId));
+          const missingUserId = uniqueUserIds.find(id => !foundUserIds.has(id));
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          throw new KnownErrors.UserIdDoesNotExist(missingUserId!);
+        }
       }
+
+      recipients = requestedUserIds.map(userId => ({ type: "user-primary-email", userId }));
+      results = requestedUserIds.map(userId => ({ user_id: userId }));
     }
 
     const scheduledAt = body.scheduled_at_millis ? new Date(body.scheduled_at_millis) : new Date();
@@ -159,7 +177,7 @@ export const POST = createSmartRouteHandler({
     await sendEmailToMany({
       createdWith: createdWith,
       tenancy: auth.tenancy,
-      recipients: requestedUserIds.map(userId => ({ type: "user-primary-email", userId })),
+      recipients: recipients,
       tsxSource: tsxSource,
       extraVariables: variables,
       themeId: selectedThemeId === null ? null : (selectedThemeId === undefined ? auth.tenancy.config.emails.selectedThemeId : selectedThemeId),
@@ -187,7 +205,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: 'json',
       body: {
-        results: requestedUserIds.map(userId => ({ user_id: userId })),
+        results: results,
       },
     };
   },

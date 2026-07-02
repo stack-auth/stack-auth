@@ -1004,6 +1004,17 @@ export function closeRemoteDevelopmentEnvironmentSession(sessionId: string): voi
   });
 }
 
+export function getRemoteDevelopmentEnvironmentProjectConfigPaths(): Map<string, string> {
+  assertRemoteDevelopmentEnvironmentEnabled();
+  const state = readRemoteDevelopmentEnvironmentState();
+  const result = new Map<string, string>();
+  for (const [configFilePath, project] of Object.entries(state.projectsByConfigPath)) {
+    if (project == null) continue;
+    result.set(project.projectId, configFilePath);
+  }
+  return result;
+}
+
 export function getRemoteDevelopmentEnvironmentHealth(): {
   healthy: boolean,
   configFilePath?: string,

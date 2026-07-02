@@ -1,11 +1,8 @@
 import { createConversation } from "@/lib/conversations";
 import { sendSupportFeedbackEmail } from "@/lib/internal-feedback-emails";
-import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { adaptSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * Unified feedback endpoint used by both the dashboard and the dev tool.
@@ -13,10 +10,6 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
  * Auth is optional: when the user is signed in (dashboard), user info is
  * included in the email. When unauthenticated (dev tool), feedback is sent
  * without user context.
- *
- * In the local emulator, feedback is forwarded to production Hexclave (same
- * pattern as the AI query endpoint). Set STACK_FEEDBACK_MODE=FORWARD_TO_PRODUCTION
- * in .env.development to enable this.
  */
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -45,24 +38,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
-    // Forward to production in local emulator (same pattern as AI query endpoint)
-    const feedbackMode = getEnvVariable("STACK_FEEDBACK_MODE", "email");
-    if (feedbackMode === "FORWARD_TO_PRODUCTION" && isLocalEmulatorEnabled()) {
-      const prodResponse = await fetch("https://api.hexclave.com/api/latest/internal/feedback", {
-        method: "POST",
-        headers: { "content-type": "application/json", "accept-encoding": "identity" },
-        body: JSON.stringify(body),
-      });
-      if (!prodResponse.ok) {
-        throw new StatusError(prodResponse.status, "Failed to forward feedback to production");
-      }
-      return {
-        statusCode: 200,
-        bodyType: "json" as const,
-        body: { success: true as const },
-      };
-    }
-
     // Use the authenticated tenancy if available, otherwise fall back to the
     // internal project tenancy (for unauthenticated dev tool submissions).
     const tenancy = auth?.tenancy ?? await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
