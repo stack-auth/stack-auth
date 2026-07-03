@@ -4075,10 +4075,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * ancestors, mirroring resolveParentIds). `extraParents` adds explicit
    * per-request parents on top. Null when there is nothing to propagate.
    */
-  protected _getSpanPropagationContext(extraParents?: ParentRef[]): SpanPropagationContext | null {
+  protected _getSpanPropagationContext(extraParents?: ParentRef[], root?: boolean): SpanPropagationContext | null {
     const tracker = this._eventTracker;
     if (!tracker) return null;
-    const customParentSpanIds = flattenParentRefsToIds(tracker.getAmbientParentRefs(), extraParents);
+    // root drops the ambient custom parents (same meaning as TrackOptions.root) —
+    // the precise-control path for interleaved async flows, where the browser's
+    // shared sync stack could otherwise mix in another flow's frames. The session
+    // attribution (segment id) is identity, not parenting, so it always rides.
+    const customParentSpanIds = flattenParentRefsToIds(root ? [] : tracker.getAmbientParentRefs(), extraParents);
     const segmentId = tracker.getSessionReplaySegmentId();
     if (!segmentId && customParentSpanIds.length === 0) return null;
     return {
@@ -4088,8 +4092,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     };
   }
 
-  getSpanPropagationHeaders(options?: { parentIds?: ParentRef[] }): Record<string, string> {
-    const context = this._getSpanPropagationContext(options?.parentIds);
+  getSpanPropagationHeaders(options?: { parentIds?: ParentRef[], root?: boolean }): Record<string, string> {
+    const context = this._getSpanPropagationContext(options?.parentIds, options?.root);
     if (!context) return {};
     return { [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(context) };
   }

@@ -167,8 +167,14 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * event tracked right now would get: the per-tab replay segment, global spans,
      * and enclosing `withSpan()` frames — plus any explicit `parentIds`. Returns
      * `{}` when there is nothing to propagate (analytics off, non-browser).
+     *
+     * Setting this header on a `fetch` also overrides the automatic one, and
+     * `root: true` drops the ambient parents (only explicit `parentIds` apply) —
+     * together the precise-control path when overlapping async flows could mix
+     * ambient frames (the documented browser sync-stack fallback):
+     * `fetch(url, { headers: app.getSpanPropagationHeaders({ parentIds: [span], root: true }) })`.
      */
-    getSpanPropagationHeaders(options?: { parentIds?: ParentRef[] }): Record<string, string>,
+    getSpanPropagationHeaders(options?: { parentIds?: ParentRef[], root?: boolean }): Record<string, string>,
 
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,

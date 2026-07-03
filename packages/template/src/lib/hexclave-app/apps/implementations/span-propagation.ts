@@ -248,8 +248,13 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
               ? init.headers
               : (isRequest ? (input as Request).headers : undefined);
             const headers = new Headers(base);
-            headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader(context));
-            return callFetch(input, { ...init, headers });
+            // An explicitly-set header (getSpanPropagationHeaders) always wins
+            // over the ambient context — it is the caller's precise intent, e.g.
+            // pinning one request to one span under interleaved async flows.
+            if (!headers.has(SPAN_CONTEXT_HEADER)) {
+              headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader(context));
+              return callFetch(input, { ...init, headers });
+            }
           }
         }
       }

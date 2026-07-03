@@ -242,6 +242,24 @@ describe("installFetchSpanPropagation", () => {
     expect(sentHeader()).toBeNull();
   });
 
+  it("never overwrites an explicitly-set span-context header (init.headers)", async () => {
+    install({ projectId: "p", sessionReplaySegmentId: SEG });
+    const explicit = encodeSpanContextHeader({ projectId: "p", customParentSpanIds: [CUSTOM_A] });
+    await (globalThis as { fetch: typeof fetch }).fetch("/x", { headers: { [SPAN_CONTEXT_HEADER]: explicit } });
+    // Passed through untouched: the wrapper must not clobber the caller's precise intent.
+    expect(new Headers(calls[0].init?.headers).get(SPAN_CONTEXT_HEADER)).toBe(explicit);
+  });
+
+  it("never overwrites an explicitly-set span-context header (Request headers)", async () => {
+    install({ projectId: "p", sessionReplaySegmentId: SEG });
+    const explicit = encodeSpanContextHeader({ projectId: "p", customParentSpanIds: [CUSTOM_B] });
+    const req = new Request("https://app.example.com/x", { headers: { [SPAN_CONTEXT_HEADER]: explicit } });
+    await (globalThis as { fetch: typeof fetch }).fetch(req);
+    // No init constructed — the Request (with its own header) passes through as-is.
+    expect(calls[0].init?.headers).toBeUndefined();
+    expect((calls[0].input as Request).headers.get(SPAN_CONTEXT_HEADER)).toBe(explicit);
+  });
+
   it("is idempotent and uninstalls cleanly", async () => {
     install({ projectId: "p", sessionReplaySegmentId: SEG });
     const second = installFetchSpanPropagation({ getContext: () => null, getSelfOrigin: () => SELF, getAllowedOrigins: () => [] });
