@@ -37,7 +37,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -1874,7 +1874,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (endPromise) return endPromise;
         ended = true;
         this._serverGlobalSpans.delete(span);
-        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },

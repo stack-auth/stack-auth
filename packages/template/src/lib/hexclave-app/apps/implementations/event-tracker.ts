@@ -4,6 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;
@@ -14,15 +15,6 @@ const MAX_APPROX_BYTES_PER_BATCH = 64_000;
 // Custom telemetry (public trackEvent/startSpan API)
 // ---------------------------------------------------------------------------
 
-// Custom (user-defined) event/span type names: must not start with `$` (reserved
-// for system types), start with a letter, and stay within 64 chars. Keep in sync
-// with the server-side validation in apps/backend's analytics events batch route.
-const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
-// Serialized size cap per event/span data payload; mirrors the server cap so a
-// locally-accepted item can never poison a whole batch with a server-side 400.
-const MAX_ITEM_DATA_BYTES = 16_000;
-// Maximum length of the merged custom parent chain per item; mirrors the server.
-const MAX_PARENT_CHAIN = 10;
 // Mirrors the server's UUID_RE — raw parent ids that fail this locally would
 // 400 the entire batch server-side, so they must never enter the buffer.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -128,18 +120,26 @@ export function getCustomTelemetryDataError(data: unknown): string | null {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     return "Telemetry data must be a plain JSON-serializable object";
   }
-  // JSON.stringify's lib type is `string` but it returns undefined at runtime
-  // for some inputs — keep the check honest with an explicit widened type.
   let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(data) as string | undefined;
+    const stringified = JSON.stringify(data);
+    serialized = typeof stringified === "string" ? stringified : undefined;
   } catch {
     return "Telemetry data must be JSON-serializable (no circular references or BigInt values)";
   }
-  if (serialized === undefined || serialized.length > MAX_ITEM_DATA_BYTES) {
-    return `Telemetry data must serialize to at most ${MAX_ITEM_DATA_BYTES} bytes`;
+  if (serialized === undefined || new TextEncoder().encode(serialized).length > CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES) {
+    return `Telemetry data must serialize to at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} bytes`;
   }
   return null;
+}
+
+export function resolveEndedAtMs(startedAtMs: number, endedAtMs: number | undefined): number {
+  const rawEndedAtMs = endedAtMs ?? Date.now();
+  if (!Number.isFinite(rawEndedAtMs)) {
+    console.error("Hexclave analytics: endedAtMs must be a finite epoch-milliseconds value; using the current time instead");
+    return Math.max(startedAtMs, Date.now());
+  }
+  return Math.max(startedAtMs, Math.round(rawEndedAtMs));
 }
 
 /**
@@ -178,9 +178,9 @@ export function resolveParentIds(opts: {
       }
     }
   }
-  if (merged.length > MAX_PARENT_CHAIN) {
-    console.warn(`Hexclave analytics: parent chain exceeds ${MAX_PARENT_CHAIN} spans; keeping the ${MAX_PARENT_CHAIN} nearest ancestors`);
-    return { ids: merged.slice(-MAX_PARENT_CHAIN) };
+  if (merged.length > CUSTOM_TELEMETRY_MAX_PARENT_CHAIN) {
+    console.warn(`Hexclave analytics: parent chain exceeds ${CUSTOM_TELEMETRY_MAX_PARENT_CHAIN} spans; keeping the ${CUSTOM_TELEMETRY_MAX_PARENT_CHAIN} nearest ancestors`);
+    return { ids: merged.slice(-CUSTOM_TELEMETRY_MAX_PARENT_CHAIN) };
   }
   return { ids: merged };
 }
@@ -551,7 +551,7 @@ export class EventTracker {
         this._liveSpanControls.delete(control);
         // Clamp so a caller-supplied end can never invert the interval — the
         // server rejects ended < started, and one bad item would 400 the batch.
-        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },
