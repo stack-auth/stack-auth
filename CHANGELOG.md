@@ -2,6 +2,14 @@
 
 ---
 
+## 7/3/26
+
+- New navigation funnel graph, sign-up rule triggers card, and platform analytics leaderboard on the dashboard.
+- Unified payments customers table with idempotent Stripe webhooks and improved checkout error handling.
+- Faster project onboarding via a preview pool, redesigned setup page, and new Usage settings page.
+- CLI fetches RDE dashboard from GitHub Releases; local emulator removed in favor of remote development environments.
+- Session replay gzip compression, custom emails on shared server, and TypeScript 6.0 upgrade.
+
 ## 6/19/26
 
 - New clickmap heatmaps for route analytics — visualize where users click on any page.
