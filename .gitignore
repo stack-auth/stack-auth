@@ -147,3 +147,4 @@ packages/tanstack-start/*
 
 # claude code
 .claude/scheduled_tasks.lock
+.gstack/

@@ -1,18 +1,18 @@
 "use client";
 
-import { Button, Input, Typography } from "@/components/ui";
+import { Button, Input, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { ArrowClockwiseIcon, SpinnerGapIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ChartLineIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
+import { StickyPageHeader } from "../../sticky-page-header";
 import { useAdminApp } from "../../use-admin-app";
 import {
   AnalyticsEventLimitBanner,
   ErrorDisplay,
   RowDetailDialog,
-  VirtualizedFlatTable,
   isDateValue,
   parseClickHouseDate,
   type RowData,
@@ -30,14 +30,32 @@ import {
 import { TraceWaterfall, type TraceBreadcrumb } from "./waterfall";
 
 const SPANS_QUERY = `
-SELECT id, span_type, span_started_at, span_ended_at, parent_span_ids, data,
-       user_id, refresh_token_id, session_replay_id, session_replay_segment_id
-FROM default.spans
-WHERE span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-ORDER BY span_started_at DESC
+SELECT
+  s.id,
+  s.span_type,
+  s.span_started_at,
+  s.span_ended_at,
+  s.parent_span_ids,
+  s.data,
+  s.user_id,
+  s.refresh_token_id,
+  s.session_replay_id,
+  s.session_replay_segment_id,
+  u.display_name AS user_display_name,
+  u.primary_email AS user_primary_email,
+  u.profile_image_url AS user_profile_image_url
+FROM default.spans AS s
+LEFT ANY JOIN default.users AS u
+  ON s.project_id = u.project_id
+  AND s.branch_id = u.branch_id
+  AND s.user_id = toString(u.id)
+WHERE s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+ORDER BY s.span_started_at DESC
 LIMIT 3000
 `;
 
+// Events are not browsable on this page, but they still render as markers
+// inside their parent span's waterfall row, so we fetch them for correlation.
 const EVENTS_QUERY = `
 SELECT event_type, event_at, data, user_id, parent_span_ids,
        refresh_token_id, session_replay_id, session_replay_segment_id
@@ -53,8 +71,6 @@ const TIME_RANGES = [
   { label: "7d", hours: 168 },
   { label: "30d", hours: 720 },
 ] as const;
-
-const EVENT_TABLE_COLUMNS = ["event_type", "event_at", "user_id", "parent_span_ids", "data"];
 
 const CARD_CLASSES = "rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl dark:border-white/[0.06] dark:bg-zinc-900/90";
 
@@ -117,7 +133,7 @@ function Segmented<T extends string | number>({ value, onChange, options }: {
           className={cn(
             "px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:transition-none",
             value === option.value
-              ? "bg-background shadow-sm text-foreground"
+              ? "bg-white text-foreground shadow-sm ring-1 ring-black/[0.04] dark:bg-zinc-950 dark:ring-white/[0.06]"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -130,10 +146,24 @@ function Segmented<T extends string | number>({ value, onChange, options }: {
 
 function EmptyState({ title, children }: { title: string, children?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 p-6 py-16 text-center">
       <Typography variant="secondary" className="text-sm font-medium">{title}</Typography>
       {children}
     </div>
+  );
+}
+
+function HeaderCountStat({ icon, value, label }: { icon: React.ReactNode, value: number, label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground">
+          {icon}
+          <span className="font-mono text-[11px] tabular-nums">{value}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -141,10 +171,8 @@ export default function PageClient() {
   const adminApp = useAdminApp();
 
   const [hours, setHours] = useState<number>(24);
-  const [tab, setTab] = useState<"traces" | "events">("traces");
-  const [scope, setScope] = useState<"custom" | "all">("custom");
+  const [scope, setScope] = useState<"custom" | "all">("all");
   const [search, setSearch] = useState("");
-  const [eventTypeFilter, setEventTypeFilter] = useState<string | null>(null);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
 
@@ -236,83 +264,78 @@ export default function PageClient() {
     return { trace: selectedTrace, breadcrumb: [] };
   }, [selectedTrace, focusedSpanId]);
 
-  const eventTypeCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const event of scopedEvents) {
-      counts.set(event.eventType, (counts.get(event.eventType) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [scopedEvents]);
-
-  const tableEvents = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return scopedEvents.filter((event) =>
-      (eventTypeFilter == null || event.eventType === eventTypeFilter)
-      && (needle === "" || event.eventType.toLowerCase().includes(needle)),
-    );
-  }, [scopedEvents, eventTypeFilter, search]);
-
   const openDetail = useCallback((raw: Record<string, unknown>) => {
     setDetailRow(raw);
   }, []);
 
   return (
     <AppEnabledGuard appId="analytics">
-      <PageLayout
-        title="Spans & Events"
-        description="Custom spans and events from the SDK, correlated into traces."
-        fillWidth
-        containedHeight
-        actions={
-          <div className="flex items-center gap-2">
-            <Segmented value={hours} onChange={setHours} options={TIME_RANGES.map((range) => ({ label: range.label, value: range.hours }))} />
-            <Button
-              className="gap-1.5"
-              variant="secondary"
-              disabled={loading}
-              onClick={() => runAsynchronouslyWithAlert(loadData)}
-            >
-              <ArrowClockwiseIcon className="h-4 w-4" />
-              Refresh
-            </Button>
+      <PageLayout fillWidth>
+        {/* StickyPageHeader's sentinel uses -mb-[17px]; compensate so this dense page keeps matching top/side gutters. */}
+        <div
+          className="flex flex-col pt-[17px] [--header-sticky-top:4.25rem] dark:[--header-sticky-top:5.75rem]"
+        >
+          <StickyPageHeader
+            title="Traces"
+            sticky
+            layoutGroupId="traces-sticky-header"
+            actions={
+              <TooltipProvider>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Segmented
+                    value={scope}
+                    onChange={(value) => setScope(value)}
+                    options={[{ label: "All", value: "all" as const }, { label: "Custom", value: "custom" as const }]}
+                  />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Filter by span or event type…"
+                    className="h-8 w-56 text-xs"
+                  />
+                  <div className="flex items-center gap-1 whitespace-nowrap text-xs">
+                    <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={filteredTraces.length} label={`${filteredTraces.length.toLocaleString()} ${filteredTraces.length === 1 ? "trace" : "traces"}`} />
+                    <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={scopedSpans.length} label={`${scopedSpans.length.toLocaleString()} ${scopedSpans.length === 1 ? "span" : "spans"}`} />
+                    <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={scopedEvents.length} label={`${scopedEvents.length.toLocaleString()} ${scopedEvents.length === 1 ? "event" : "events"}`} />
+                  </div>
+                  <Segmented value={hours} onChange={setHours} options={TIME_RANGES.map((range) => ({ label: range.label, value: range.hours }))} />
+                  <Button
+                    className="h-8 gap-1.5 px-3 text-xs"
+                    variant="secondary"
+                    disabled={loading}
+                    onClick={() => runAsynchronouslyWithAlert(loadData)}
+                  >
+                    <ArrowClockwiseIcon className="h-4 w-4" />
+                    Refresh
+                  </Button>
+                </div>
+              </TooltipProvider>
+            }
+          />
+
+          <div className="mt-2 empty:hidden">
+            <AnalyticsEventLimitBanner />
           </div>
-        }
-      >
-        <AnalyticsEventLimitBanner />
 
-        {/* Tab + filter bar */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Segmented
-            value={tab}
-            onChange={(value) => setTab(value)}
-            options={[{ label: "Traces", value: "traces" as const }, { label: "Events", value: "events" as const }]}
-          />
-          <Segmented
-            value={scope}
-            onChange={(value) => setScope(value)}
-            options={[{ label: "Custom", value: "custom" as const }, { label: "All (incl. system)", value: "all" as const }]}
-          />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "traces" ? "Filter by span or event type…" : "Filter by event type…"}
-            className="h-8 w-56 text-xs"
-          />
-          <span className="text-xs text-muted-foreground ml-auto">
-            {filteredTraces.length} {filteredTraces.length === 1 ? "trace" : "traces"} · {scopedSpans.length} {scopedSpans.length === 1 ? "span" : "spans"} · {scopedEvents.length} {scopedEvents.length === 1 ? "event" : "events"}
-          </span>
-        </div>
-
-        {tab === "traces" ? (
-          <div className="flex-1 min-h-0 flex gap-4">
-            {/* Trace list */}
-            <div className={cn(CARD_CLASSES, "w-80 shrink-0 flex flex-col min-h-0 overflow-hidden")}>
-              <div className="px-3 py-2 border-b border-border/50 shrink-0">
+          <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start">
+            {/* Trace list: on desktop it scrolls with the waterfall until it
+                reaches the page's sticky top edge, then scrolls internally if
+                taller than the viewport. On narrow screens it stacks above
+                the waterfall with a capped height. */}
+            <div
+              className={cn(
+                CARD_CLASSES,
+                "flex w-full flex-col overflow-hidden max-h-[45dvh]",
+                "lg:sticky lg:top-[var(--header-sticky-top)] lg:w-80 lg:shrink-0",
+                "lg:max-h-[calc(100dvh-var(--header-sticky-top)-0.75rem)]",
+              )}
+            >
+              <div className="px-4 py-3 border-b border-border/50 shrink-0">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Traces</span>
               </div>
-              <div className="flex-1 min-h-0 overflow-auto">
+              <div className="min-h-0 overflow-y-auto">
                 {loading && (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center justify-center py-16">
                     <SpinnerGapIcon className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
                 )}
@@ -343,15 +366,18 @@ export default function PageClient() {
               </div>
             </div>
 
-            {/* Waterfall */}
-            <div className={cn(CARD_CLASSES, "flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden")}>
+            {/* Waterfall: grows with its rows so the page scrolls; deep rows
+                slide up behind the floating header pill, like the overview. */}
+            <div className={cn(CARD_CLASSES, "flex-1 min-w-0 flex flex-col min-h-[420px] overflow-hidden")}>
               {loading && (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex flex-1 items-center justify-center py-24">
                   <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               )}
               {!loading && error == null && displayedTrace == null && (
-                <EmptyState title="Select a trace to see its waterfall." />
+                <div className="flex flex-1 items-center justify-center">
+                  <EmptyState title="Select a trace to see its waterfall." />
+                </div>
               )}
               {!loading && error == null && displayedTrace != null && (
                 <TraceWaterfall
@@ -364,68 +390,13 @@ export default function PageClient() {
                 />
               )}
               {!loading && error != null && (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex flex-1 items-center justify-center py-24">
                   <ErrorDisplay error={error} onRetry={loadData} />
                 </div>
               )}
             </div>
           </div>
-        ) : (
-          <div className={cn(CARD_CLASSES, "flex-1 min-h-0 flex flex-col overflow-hidden")}>
-            {/* Event type breakdown chips */}
-            {eventTypeCounts.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border/50 shrink-0">
-                {eventTypeCounts.slice(0, 12).map(([eventType, count]) => (
-                  <button
-                    key={eventType}
-                    onClick={() => setEventTypeFilter(eventTypeFilter === eventType ? null : eventType)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-mono transition-colors hover:transition-none",
-                      eventTypeFilter === eventType
-                        ? "border-foreground/30 bg-foreground/[0.08] text-foreground"
-                        : "border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/40",
-                    )}
-                  >
-                    <span>{eventType}</span>
-                    <span className="font-semibold">{count}</span>
-                  </button>
-                ))}
-                {eventTypeFilter != null && (
-                  <button
-                    onClick={() => setEventTypeFilter(null)}
-                    className="px-2 py-0.5 rounded-full text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
-            {loading && (
-              <div className="flex items-center justify-center h-full">
-                <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {!loading && error != null && (
-              <div className="flex items-center justify-center h-full">
-                <ErrorDisplay error={error} onRetry={loadData} />
-              </div>
-            )}
-            {!loading && error == null && tableEvents.length === 0 && (
-              <EmptyState title="No events in this time range.">
-                <pre className="text-left font-mono text-[11px] text-muted-foreground bg-muted/30 rounded-lg p-3 overflow-auto max-w-full">
-                  {`await app.trackEvent("signup_completed",\n  { plan: "pro" });`}
-                </pre>
-              </EmptyState>
-            )}
-            {!loading && error == null && tableEvents.length > 0 && (
-              <VirtualizedFlatTable
-                columns={EVENT_TABLE_COLUMNS}
-                rows={tableEvents.map((event) => event.raw)}
-                onRowClick={(row) => openDetail(row)}
-              />
-            )}
-          </div>
-        )}
+        </div>
 
         <RowDetailDialog
           row={detailRow}

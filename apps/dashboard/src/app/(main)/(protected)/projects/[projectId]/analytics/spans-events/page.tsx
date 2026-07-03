@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Spans & Events",
+  title: "Traces",
 };
 
 export default function Page() {
