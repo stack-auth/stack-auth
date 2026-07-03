@@ -1,0 +1,35 @@
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_33f2afdacc8adb::t_89ef9696105f6c 64,4011-4012,4024-4033,4035-4040
+packages/shared/src/utils/telemetry.tsx
+  s_33f2afdacc8adb::t_366b12c835ea89 7-14
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_33f2afdacc8adb::t_441c6689fe3a3d 40,1877
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_33f2afdacc8adb::t_939333817b5c44 974-987,1078,1255,1294
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_33f2afdacc8adb::t_96c5a230eef1f1 7
+  s_33f2afdacc8adb::t_eedcec479e96ea 125-126,130-131,136-144,181-183,554
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_33f2afdacc8adb::t_152b161256f25a 544,546
+  s_33f2afdacc8adb::t_c62896516e5226 471,529-543,545,547-554
+  s_33f2afdacc8adb::t_19fa64049ac884 555-557
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_33f2afdacc8adb::t_48c8de303fce0e 14,28-35,102,105,119,122,262-271,282
+  s_33f2afdacc8adb::t_7da8b4d934d39f 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7c194681f00ef16888e8e41007ff4b05c80e659d",
+  "prompts": {},
+  "sessions": {
+    "s_33f2afdacc8adb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ccb9e114-91f6-4069-b791-6f97eb2192de",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
