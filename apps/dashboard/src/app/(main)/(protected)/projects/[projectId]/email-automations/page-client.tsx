@@ -9,7 +9,7 @@ import {
   DesignDialogClose,
   DesignEmptyState,
   DesignInput,
-  DesignListItemRow,
+  DesignMenu,
   DesignPillToggle,
   DesignSelectorDropdown,
 } from "@/components/design-components";
@@ -32,7 +32,6 @@ import {
   PaperPlaneTiltIcon,
   PencilSimpleIcon,
   PlayIcon,
-  PlusIcon,
   TrashIcon,
   WarningCircleIcon,
   XCircleIcon,
@@ -270,9 +269,9 @@ function createDraft(mode: DialogMode, existingRuleIds: string[], itemOptions: S
     displayName: "Usage upgrade email",
     enabled: true,
     itemId: itemOptions[0]?.value ?? "",
-    nearRemainingRatio: "0.2",
+    nearRemainingRatio: "",
     nearRemainingQuantity: "",
-    overLimitQuantity: "0",
+    overLimitQuantity: "",
     templateId: templateOptions[0]?.value ?? "",
     themeId: themeOptions[0]?.value ?? THEME_DEFAULT_VALUE,
     subject: "",
@@ -361,12 +360,19 @@ export function getMissingPrerequisites(itemOptions: SelectorOption[], templateO
 
 function formatThresholds(rule: UsageEmailAutomationRule) {
   const thresholds = rule.source.thresholds;
-  const parts = [
-    thresholds.nearRemainingRatio === undefined ? undefined : `remaining <= ${Math.round(thresholds.nearRemainingRatio * 100)}%`,
-    thresholds.nearRemainingQuantity === undefined ? undefined : `remaining <= ${thresholds.nearRemainingQuantity}`,
-    thresholds.overLimitQuantity === undefined ? undefined : `over cutoff <= ${thresholds.overLimitQuantity}`,
+  const limitsParts = [
+    thresholds.nearRemainingRatio === undefined ? undefined : `${Math.round(thresholds.nearRemainingRatio * 100)}%`,
+    thresholds.nearRemainingQuantity === undefined ? undefined : `${thresholds.nearRemainingQuantity}`,
   ].filter((part) => part !== undefined);
-  return parts.join(" or ");
+
+  const parts: string[] = [];
+  if (limitsParts.length > 0) {
+    parts.push(`Limits: ${limitsParts.join(" or ")}`);
+  }
+  if (thresholds.overLimitQuantity !== undefined) {
+    parts.push(`Cutoff: ${thresholds.overLimitQuantity}`);
+  }
+  return parts.join(", ");
 }
 
 function formatItem(itemOptions: SelectorOption[], itemId: string) {
@@ -503,65 +509,103 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="emails">
       <PageLayout
-        title="Usage Emails"
-        description="Send upgrade emails when user-level Payments item quotas are near or over their limits."
+        title="Automations"
+        description="Automatically notify your customers when their product limits or credits are running low."
         actions={(
           <DesignButton size="sm" onClick={() => setEditorMode({ type: "create" })}>
-            <PlusIcon className="h-4 w-4" />
-            New usage email
+            New Email Rule
           </DesignButton>
         )}
       >
         <div className="space-y-4">
           <DesignAlert
             variant="info"
-            title="Payments item quota source"
-            description="V1 reads Hexclave Payments item balances for user customers and stores configuration under automations.rules."
+            title="Trigger Source Setup"
+            description="This automation relies on your hexclave payments products and user quotas to monitor limits. Make sure you have configured your product offerings in the Payments section to enable these triggers."
           />
 
           <DesignCard
-            title="Automations"
-            subtitle="Each rule evaluates one user-scoped Payments item and plans one Marketing email action."
+            title="Email Rules"
+            subtitle="Define when and how emails are automatically triggered based on your users' remaining limits and credits."
             icon={LightningIcon}
             glassmorphic
           >
             {rules.length === 0 ? (
               <DesignEmptyState
                 icon={EnvelopeSimpleIcon}
-                title="No usage emails yet"
-                description="Create a rule to preview which users are near or over a Payments item quota."
+                title="No email rules defined yet"
+                description="Create an email rule to automatically notify users when they are close to running out of credits or limits."
               >
                 <DesignButton size="sm" onClick={() => setEditorMode({ type: "create" })}>
-                  <PlusIcon className="h-4 w-4" />
-                  New usage email
+                  New Email Rule
                 </DesignButton>
               </DesignEmptyState>
             ) : (
               <div className="space-y-3">
                 {rules.map((entry) => (
-                  <DesignListItemRow
+                  <div
                     key={entry.ruleId}
-                    icon={EnvelopeSimpleIcon}
-                    title={entry.rule.displayName ?? entry.ruleId}
-                    subtitle={`${entry.rule.enabled ? "Enabled" : "Disabled"} · ${formatItem(itemOptions, entry.rule.source.itemId)} · ${formatThresholds(entry.rule)} · ${entry.rule.cooldown.days} day cooldown`}
-                    buttons={[
-                      {
-                        id: "dry-run",
-                        label: "Dry run",
-                        icon: <PlayIcon className="h-4 w-4" />,
-                        onClick: () => setDryRunEntry(entry),
-                      },
-                      {
-                        id: "send",
-                        label: "Send",
-                        icon: <PaperPlaneTiltIcon className="h-4 w-4" />,
-                        onClick: () => setSendEntry(entry),
-                      },
-                      {
-                        id: "more",
-                        label: "More",
-                        display: "icon",
-                        onClick: [
+                    className={cn(
+                      "w-full group relative flex flex-col lg:flex-row lg:items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none text-left gap-4",
+                      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
+                      "shadow-sm hover:shadow-md"
+                    )}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+                    <div className="relative flex items-center gap-4">
+                      <div className="p-2.5 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] ring-1 ring-black/[0.1] dark:ring-white/[0.06] transition-colors duration-150 group-hover:bg-black/[0.12] dark:group-hover:bg-white/[0.08] group-hover:transition-none">
+                        <EnvelopeSimpleIcon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-semibold text-foreground">{entry.rule.displayName ?? entry.ruleId}</span>
+                        <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5">
+                          {entry.rule.enabled ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Enabled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Disabled
+                            </span>
+                          )}
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>{formatItem(itemOptions, entry.rule.source.itemId)}</span>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>{formatThresholds(entry.rule)}</span>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>{entry.rule.cooldown.days}-Day Cooldown</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="relative flex flex-wrap items-center gap-1.5 lg:ml-auto justify-end shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <DesignButton
+                        size="sm"
+                        onClick={() => setDryRunEntry(entry)}
+                        className="gap-1 h-7 px-2.5 text-[11px] rounded-lg font-medium"
+                      >
+                        <PlayIcon className="h-3 w-3 shrink-0" />
+                        Preview
+                      </DesignButton>
+                      <DesignButton
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setSendEntry(entry)}
+                        className="gap-1 h-7 px-2.5 text-[11px] rounded-lg font-medium"
+                      >
+                        <PaperPlaneTiltIcon className="h-3 w-3 shrink-0" />
+                        Send Now
+                      </DesignButton>
+                      <DesignMenu
+                        variant="actions"
+                        trigger="icon"
+                        align="end"
+                        withIcons
+                        triggerClassName="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
+                        contentClassName="min-w-[120px]"
+                        items={[
                           {
                             id: "edit",
                             label: "Edit",
@@ -575,10 +619,10 @@ export default function PageClient() {
                             itemVariant: "destructive",
                             onClick: () => setDeleteEntry(entry),
                           },
-                        ],
-                      },
-                    ]}
-                  />
+                        ]}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -699,201 +743,246 @@ function RuleEditorDialog(props: {
     <DesignDialog
       open
       onOpenChange={props.onOpenChange}
-      size="2xl"
+      size="3xl"
       icon={EnvelopeSimpleIcon}
-      title={isEditing ? "Edit usage email" : "New usage email"}
-      description="Configure one Payments item quota trigger and one email action."
+      title={isEditing ? "Edit Email Rule" : "New Email Rule"}
+      description="Set up a trigger condition and specify the email notification to send."
       footer={(
         <>
           <DesignDialogClose asChild>
             <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
           </DesignDialogClose>
           <DesignButton size="sm" onClick={save} disabled={hasMissingPrerequisites}>
-            {isEditing ? "Save changes" : "Create rule"}
+            {isEditing ? "Save Changes" : "Create Rule"}
           </DesignButton>
         </>
       )}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         {error !== null ? (
           <DesignAlert variant="error" description={error} />
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Rule ID" helper="Stored at automations.rules.{ruleId}.">
-            <DesignInput
-              value={draft.ruleId}
-              disabled={isEditing}
-              onChange={(event) => setDraftField("ruleId", sanitizeUserSpecifiedId(event.target.value))}
-              size="md"
-              className="font-mono text-sm"
-            />
-          </Field>
-          <Field label="Display name">
-            <DesignInput
-              value={draft.displayName}
-              onChange={(event) => setDraftField("displayName", event.target.value)}
-              size="md"
-            />
-          </Field>
+        {props.itemOptions.length === 0 ? (
+          <DesignAlert
+            variant="warning"
+            title="User Payments item required"
+            description={(
+              <>
+                Usage Emails require a Payments item with <span className="font-mono">customerType=user</span>. Configure one in{" "}
+                <StyledLink href={props.paymentsItemsHref}>
+                  Payments products
+                </StyledLink>
+                , then return here to create this rule.
+              </>
+            )}
+          />
+        ) : null}
+
+        {props.templateOptions.length === 0 ? (
+          <DesignAlert
+            variant="warning"
+            title="Email template required"
+            description="Usage Emails require an email template before a send-email action can be saved."
+          />
+        ) : null}
+
+        {/* SECTION 0: General Identity Block */}
+        <div className="grid gap-4 sm:grid-cols-12 items-end bg-foreground/[0.01] dark:bg-white/[0.01] border border-foreground/[0.05] rounded-2xl p-4">
+          <div className="sm:col-span-4">
+            <Field label="Rule ID">
+              <DesignInput
+                value={draft.ruleId}
+                disabled={isEditing}
+                onChange={(event) => setDraftField("ruleId", sanitizeUserSpecifiedId(event.target.value))}
+                size="md"
+                className="font-mono text-xs h-9"
+              />
+            </Field>
+          </div>
+          <div className="sm:col-span-5">
+            <Field label="Display Name">
+              <DesignInput
+                value={draft.displayName}
+                onChange={(event) => setDraftField("displayName", event.target.value)}
+                size="md"
+                className="h-9"
+              />
+            </Field>
+          </div>
+          <div className="sm:col-span-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Rule Status</span>
+              <DesignPillToggle
+                options={[
+                  { id: "enabled", label: "Enabled" },
+                  { id: "disabled", label: "Disabled" },
+                ]}
+                selected={draft.enabled ? "enabled" : "disabled"}
+                onSelect={(id) => setDraftField("enabled", id === "enabled")}
+                size="sm"
+                className="w-full h-9"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-foreground/[0.08] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <Typography className="text-sm font-semibold">Trigger</Typography>
-              <Typography type="label" className="text-xs text-muted-foreground">Payments item quota for user customers</Typography>
+        {/* SECTION 1: Stepper Flow */}
+        <div className="relative pl-9 sm:pl-11 space-y-8 before:absolute before:left-[14px] before:top-2.5 before:bottom-6 before:w-0.5 before:bg-foreground/[0.08] dark:before:bg-white/[0.08]">
+
+          {/* STEP 1: MONITOR TRIGGER SOURCE */}
+          <div className="relative space-y-3">
+            <div className="absolute left-[-35px] top-0 flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 ring-4 ring-background z-10 shadow-sm">
+              <LightningIcon className="h-4 w-4" />
             </div>
-            <DesignBadge label="payments-item-quota" color="blue" size="sm" />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Item">
-              <DesignSelectorDropdown
-                value={draft.itemId}
-                onValueChange={(value) => setDraftField("itemId", value)}
-                options={props.itemOptions}
-                placeholder="Select item"
-                disabled={props.itemOptions.length === 0}
-                size="md"
-              />
-              {props.itemOptions.length === 0 ? (
-                <div className="mt-3">
-                  <DesignAlert
-                    variant="warning"
-                    title="User Payments item required"
-                    description={(
-                      <>
-                        Usage Emails require a Payments item with <span className="font-mono">customerType=user</span>. Configure one in{" "}
-                        <StyledLink href={props.paymentsItemsHref}>
-                          Payments products
-                        </StyledLink>
-                        , then return here to create this rule.
-                      </>
-                    )}
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2 h-7">
+                <Typography className="text-sm font-semibold text-foreground">1. Trigger Source</Typography>
+                <DesignBadge label="Payments Users Only" color="blue" size="sm" />
+              </div>
+              <Typography type="label" className="text-xs text-muted-foreground block">
+                Select the Payments item you want to monitor for account limits.
+              </Typography>
+            </div>
+
+            <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Item to Monitor">
+                  <DesignSelectorDropdown
+                    value={draft.itemId}
+                    onValueChange={(value) => setDraftField("itemId", value)}
+                    options={props.itemOptions}
+                    placeholder="Select item"
+                    disabled={props.itemOptions.length === 0}
+                    size="md"
                   />
-                </div>
-              ) : null}
-            </Field>
-            <Field label="Customer type">
-              <DesignInput value="user" disabled size="md" />
-            </Field>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-foreground/[0.08] p-4">
-          <Typography className="mb-3 text-sm font-semibold">Thresholds</Typography>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Remaining ratio" helper="Decimal from 0 to 1.">
-              <DesignInput
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                max="1"
-                value={draft.nearRemainingRatio}
-                onChange={(event) => setDraftField("nearRemainingRatio", event.target.value)}
-                size="md"
-              />
-            </Field>
-            <Field label="Remaining quantity">
-              <DesignInput
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={draft.nearRemainingQuantity}
-                onChange={(event) => setDraftField("nearRemainingQuantity", event.target.value)}
-                size="md"
-              />
-            </Field>
-            <Field label="Over-limit quantity">
-              <DesignInput
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={draft.overLimitQuantity}
-                onChange={(event) => setDraftField("overLimitQuantity", event.target.value)}
-                size="md"
-              />
-            </Field>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-foreground/[0.08] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <Typography className="text-sm font-semibold">Action</Typography>
-              <Typography type="label" className="text-xs text-muted-foreground">Send one Marketing email through the existing email pipeline</Typography>
-            </div>
-            <DesignBadge label="send-email" color="green" size="sm" />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Template">
-              <DesignSelectorDropdown
-                value={draft.templateId}
-                onValueChange={(value) => setDraftField("templateId", value)}
-                options={props.templateOptions}
-                placeholder="Select template"
-                disabled={props.templateOptions.length === 0}
-                size="md"
-              />
-              {props.templateOptions.length === 0 ? (
-                <div className="mt-3">
-                  <DesignAlert
-                    variant="warning"
-                    title="Email template required"
-                    description="Usage Emails require an email template before a send-email action can be saved."
+                </Field>
+                <Field label="Cooldown Period" helper="Days">
+                  <DesignInput
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    step="1"
+                    value={draft.cooldownDays}
+                    onChange={(event) => setDraftField("cooldownDays", event.target.value)}
+                    size="md"
+                    placeholder="e.g. 7"
                   />
-                </div>
-              ) : null}
-            </Field>
-            <Field label="Theme">
-              <DesignSelectorDropdown
-                value={draft.themeId}
-                onValueChange={(value) => setDraftField("themeId", value)}
-                options={props.themeOptions}
-                size="md"
-              />
-            </Field>
-            <Field label="Subject override" helper="Optional. Leave blank to use the template subject.">
-              <DesignInput
-                value={draft.subject}
-                onChange={(event) => setDraftField("subject", event.target.value)}
-                size="md"
-              />
-            </Field>
-            <Field label="Notification category">
-              <DesignInput value="Marketing" disabled size="md" />
-            </Field>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Cooldown days">
-            <DesignInput
-              type="number"
-              inputMode="numeric"
-              min="1"
-              step="1"
-              value={draft.cooldownDays}
-              onChange={(event) => setDraftField("cooldownDays", event.target.value)}
-              size="md"
-            />
-          </Field>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] px-4 py-3">
-            <div>
-              <Typography className="text-sm font-medium">Enabled</Typography>
-              <Typography type="label" className="text-xs text-muted-foreground">Disabled rules can be saved and dry-run later.</Typography>
+                </Field>
+              </div>
             </div>
-            <DesignPillToggle
-              options={[
-                { id: "enabled", label: "Enabled" },
-                { id: "disabled", label: "Disabled" },
-              ]}
-              selected={draft.enabled ? "enabled" : "disabled"}
-              onSelect={(id) => setDraftField("enabled", id === "enabled")}
-              size="sm"
-            />
           </div>
+
+          {/* STEP 2: THRESHOLD CONDITIONS */}
+          <div className="relative space-y-3">
+            <div className="absolute left-[-35px] top-0 flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 ring-4 ring-background z-10 shadow-sm">
+              <WarningCircleIcon className="h-4 w-4" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2 h-7">
+                <Typography className="text-sm font-semibold text-foreground">2. Define Thresholds</Typography>
+              </div>
+              <Typography type="label" className="text-xs text-muted-foreground block">
+                Specify the conditions under which notifications are fired. Leave a field blank to ignore it.
+              </Typography>
+            </div>
+
+            <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Remaining Ratio">
+                  <DesignInput
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={draft.nearRemainingRatio}
+                    onChange={(event) => setDraftField("nearRemainingRatio", event.target.value)}
+                    size="md"
+                    placeholder="Between 0.0 and 1.0"
+                  />
+                </Field>
+                <Field label="Remaining Quantity">
+                  <DesignInput
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    value={draft.nearRemainingQuantity}
+                    onChange={(event) => setDraftField("nearRemainingQuantity", event.target.value)}
+                    size="md"
+                    placeholder="e.g. 10"
+                  />
+                </Field>
+                <Field label="Over-Limit Quantity">
+                  <DesignInput
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    value={draft.overLimitQuantity}
+                    onChange={(event) => setDraftField("overLimitQuantity", event.target.value)}
+                    size="md"
+                    placeholder="e.g. 0"
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 3: CONFIGURE ACTION */}
+          <div className="relative space-y-3">
+            <div className="absolute left-[-35px] top-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 ring-4 ring-background z-10 shadow-sm">
+              <EnvelopeSimpleIcon className="h-4 w-4" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2 h-7">
+                <Typography className="text-sm font-semibold text-foreground">3. Email Notification Action</Typography>
+              </div>
+              <Typography type="label" className="text-xs text-muted-foreground block">
+                Design the custom email notification sent automatically to qualifying accounts.
+              </Typography>
+            </div>
+
+            <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Email Template">
+                  <DesignSelectorDropdown
+                    value={draft.templateId}
+                    onValueChange={(value) => setDraftField("templateId", value)}
+                    options={props.templateOptions}
+                    placeholder="Select template"
+                    disabled={props.templateOptions.length === 0}
+                    size="md"
+                  />
+                </Field>
+                <Field label="Theme">
+                  <DesignSelectorDropdown
+                    value={draft.themeId}
+                    onValueChange={(value) => setDraftField("themeId", value)}
+                    options={props.themeOptions}
+                    size="md"
+                  />
+                </Field>
+                <Field label="Subject Override" helper="Optional">
+                  <DesignInput
+                    value={draft.subject}
+                    onChange={(event) => setDraftField("subject", event.target.value)}
+                    size="md"
+                    placeholder="e.g. Action Required: Your quota is low"
+                  />
+                </Field>
+                <Field label="Notification Category">
+                  <div className="flex items-center justify-between rounded-xl bg-foreground/[0.02] dark:bg-white/[0.01] border border-foreground/[0.06] px-3.5 h-9">
+                    <span className="text-xs text-muted-foreground">Category</span>
+                    <DesignBadge label="Marketing" color="green" size="sm" />
+                  </div>
+                </Field>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </DesignDialog>
@@ -956,10 +1045,10 @@ function RunPreviewDialog(props: {
 }) {
   const [result, setResult] = useState<AutomationRouteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const title = props.mode === "dry-run" ? "Dry run usage email" : "Send usage email";
+  const title = props.mode === "dry-run" ? "Email Rule Preview" : "Send Email Rule";
   const description = props.mode === "dry-run"
-    ? "Preview eligible users without writing execution state or enqueueing email."
-    : "Run the rule now and enqueue eligible emails through EmailOutbox.";
+    ? "Preview which users currently qualify for this rule without sending any emails or updating their cooldown tracking."
+    : "Trigger this email rule immediately. This will send real notification emails to qualifying users and update their cooldown tracking.";
 
   const execute = async () => {
     setError(null);
@@ -985,7 +1074,7 @@ function RunPreviewDialog(props: {
             <DesignButton variant="secondary" size="sm">Close</DesignButton>
           </DesignDialogClose>
           <DesignButton size="sm" onClick={execute}>
-            {props.mode === "dry-run" ? "Run preview" : "Send now"}
+            {props.mode === "dry-run" ? "Run Preview" : "Send Now"}
           </DesignButton>
         </>
       )}
@@ -994,8 +1083,8 @@ function RunPreviewDialog(props: {
         {props.mode === "run" ? (
           <DesignAlert
             variant="warning"
-            title="Manual send"
-            description="This will enqueue real emails for eligible users and update cooldown state."
+            title="Confirm Manual Trigger"
+            description="This action will queue real emails for all eligible users and set their cooldown periods. Please confirm before proceeding."
           />
         ) : null}
         {error !== null ? (
@@ -1004,8 +1093,8 @@ function RunPreviewDialog(props: {
         {result === null ? (
           <DesignEmptyState
             icon={props.mode === "dry-run" ? PlayIcon : PaperPlaneTiltIcon}
-            title="Ready"
-            description={`Click ${props.mode === "dry-run" ? "Run preview" : "Send now"} to evaluate up to ${DEFAULT_LIMIT} users.`}
+            title="Ready to Evaluate"
+            description={`Click ${props.mode === "dry-run" ? "Run Preview" : "Send Now"} to evaluate up to ${DEFAULT_LIMIT} users based on current quotas.`}
           />
         ) : (
           <AutomationResult result={result} />
@@ -1128,12 +1217,16 @@ function Metric(props: { label: string, value: number }) {
 function Field(props: { label: string, helper?: string, children: React.ReactNode }) {
   const id = `usage-email-field-${props.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
-    <div className="grid gap-2">
-      <Label htmlFor={id} className="text-sm font-medium">{props.label}</Label>
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id} className="text-sm font-medium">
+        {props.label}
+        {props.helper !== undefined ? (
+          <span className="ml-1 text-xs font-normal text-muted-foreground">
+            ({props.helper})
+          </span>
+        ) : null}
+      </Label>
       <div className={cn("[&_input]:w-full [&_button]:w-full")}>{props.children}</div>
-      {props.helper !== undefined ? (
-        <Typography type="label" className="text-xs text-muted-foreground">{props.helper}</Typography>
-      ) : null}
     </div>
   );
 }
