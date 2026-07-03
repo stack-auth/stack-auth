@@ -23,7 +23,7 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, RequestLike } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
@@ -36,9 +36,11 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs } from "./span-context";
+import { decodeSpanContextHeader, readSpanContextHeader } from "./span-propagation";
+import { getServerRequestContext, runWithServerRequestContext, type ServerRequestSpanContext } from "./server-request-context";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -1718,20 +1720,99 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   // in all of them — prefer explicit parentIds (or span.trackEvent) on servers.
   // ---------------------------------------------------------------------------
 
-  private readonly _serverTelemetryBuffers = new Map<string | null, ServerTelemetryBuffer>();
+  private readonly _serverTelemetryBuffers = new Map<string, ServerTelemetryBuffer>();
   private readonly _serverGlobalSpans = new Set<Span>();
   private readonly _serverTelemetryInFlight = new Set<Promise<void>>();
 
-  override trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string }): Promise<void> {
+  override trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string, request?: RequestLike }): Promise<void> {
     if (this._eventTracker) {
       // Browser-like environment: identity comes from the session; an explicit
-      // userId would silently mis-attribute, so refuse it loudly.
+      // userId would silently mis-attribute, so refuse it loudly. `request` is a
+      // server-only concern (the browser auto-attaches it to outgoing fetches),
+      // so it is simply ignored here.
       if (options?.userId !== undefined) {
         return rejectedPreCaught("userId is only supported for server-key telemetry; in the browser, events are attributed to the signed-in user");
       }
       return this._eventTracker.trackCustomEvent(eventType, data, options);
     }
+    // `{ request }`: resolve the caller's session + client-propagated span context
+    // (async) and run the send with that context ambient, so the event parents
+    // under the client session ($refresh-token/$session-replay/$session-replay-segment).
+    if (options?.request) {
+      const { request, ...rest } = options;
+      return (async () => {
+        const context = await this._resolveServerRequestContext(request, options.userId ?? null);
+        await runWithServerRequestContext(context, () => this._trackServerEvent(eventType, data, rest, context.userId));
+      })();
+    }
     return this._trackServerEvent(eventType, data, options, options?.userId ?? null);
+  }
+
+  override withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>;
+  override withSpan<T>(spanType: string, options: StartSpanOptions & { userId?: string, request?: RequestLike }, fn: (span: Span) => Promise<T> | T): Promise<T>;
+  override withSpan<T>(
+    spanType: string,
+    optionsOrFn: (StartSpanOptions & { userId?: string, request?: RequestLike }) | ((span: Span) => Promise<T> | T),
+    maybeFn?: (span: Span) => Promise<T> | T,
+  ): Promise<T> {
+    const options = typeof optionsOrFn === "function" ? undefined : optionsOrFn;
+    const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+    // No request (or browser): the inherited withSpan handles global/enclosing
+    // ambient parenting and forwards userId to the server startSpan at runtime.
+    if (!options?.request || this._eventTracker) {
+      return super.withSpan(spanType, optionsOrFn as any, maybeFn as any);
+    }
+    const { request, ...rest } = options;
+    return (async () => {
+      const context = await this._resolveServerRequestContext(request, options.userId ?? null);
+      return await runWithServerRequestContext(context, () =>
+        withSpanImpl((type, opts) => this._startServerSpan(type, opts, context.userId), spanType, rest, fn));
+    })();
+  }
+
+  /**
+   * Resolves an incoming request into the ambient span context for a `{ request }`
+   * server span: the caller's user + refresh token from the session (server-trusted)
+   * and the client-propagated replay/segment/custom-parent ids from the
+   * `x-hexclave-span-context` header (untrusted labels — dropped if they name a
+   * different project). Best-effort: an unauthenticated or unparseable request just
+   * yields an empty context so the span still records.
+   */
+  private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
+    let userId: string | null = explicitUserId;
+    let refreshTokenId: string | null = null;
+    try {
+      const session = await this._getSession(request);
+      const tokens = await session.fetchNewTokens();
+      if (tokens?.refreshToken != null) {
+        refreshTokenId = tokens.accessToken.payload.refresh_token_id;
+        if (userId == null) userId = tokens.accessToken.payload.sub;
+      }
+    } catch {
+      // Best-effort; no session context.
+    }
+    const decoded = decodeSpanContextHeader(readSpanContextHeader(request.headers));
+    const sameProject = decoded !== null && decoded.projectId === this.projectId ? decoded : null;
+    return {
+      userId,
+      refreshTokenId,
+      sessionReplayId: sameProject?.sessionReplayId ?? null,
+      sessionReplaySegmentId: sameProject?.sessionReplaySegmentId ?? null,
+      customParentSpanIds: sameProject?.customParentSpanIds ?? [],
+    };
+  }
+
+  /**
+   * The batch context an item is buffered/attributed under: the ambient request
+   * context when inside a `{ request }` scope, else just the explicit userId. A
+   * later explicit userId always wins over the request-derived one.
+   */
+  private _currentServerBatchContext(explicitUserId: string | null): ServerRequestSpanContext {
+    const ambient = getServerRequestContext();
+    if (ambient) {
+      return { ...ambient, userId: explicitUserId ?? ambient.userId };
+    }
+    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, customParentSpanIds: [] };
   }
 
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
@@ -1764,8 +1845,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   override async flush(): Promise<void> {
     await super.flush();
-    for (const key of [...this._serverTelemetryBuffers.keys()]) {
-      this._flushServerTelemetry(key);
+    for (const buffer of [...this._serverTelemetryBuffers.values()]) {
+      this._flushServerTelemetry(buffer.context);
     }
     await Promise.allSettled([...this._serverTelemetryInFlight]);
   }
@@ -1780,6 +1861,21 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return refs;
   }
 
+  /**
+   * `_serverAmbientParentRefs` plus the client-propagated custom parents (raw
+   * uuids from the request's span-context header) as leaf frames, so they take
+   * part in parent resolution and are dropped together by `root: true`. The system
+   * ancestry (`rti-`/`sri-`/`srsi-`) is NOT here — it is composed server-side from
+   * the batch context's scalar ids, so it survives `root` (attribution to the
+   * session is always kept).
+   */
+  private _ambientParentRefsWith(batchContext: ServerRequestSpanContext): SpanRef[] {
+    return [
+      ...this._serverAmbientParentRefs(),
+      ...batchContext.customParentSpanIds.map((spanId) => ({ spanId, parentSpanIds: [] as string[] })),
+    ];
+  }
+
   private _trackServerEvent(eventType: string, data: Record<string, unknown> | undefined, options: TrackOptions | undefined, userId: string | null): Promise<void> {
     const nameError = getCustomTelemetryNameError("event", eventType);
     if (nameError) return rejectedPreCaught(nameError);
@@ -1788,9 +1884,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
       return rejectedPreCaught(`Invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
+    const batchContext = this._currentServerBatchContext(userId);
     const resolved = resolveParentIds({
       explicit: options?.parentIds,
-      ambient: this._serverAmbientParentRefs(),
+      ambient: this._ambientParentRefsWith(batchContext),
       root: options?.root,
       exclude: options?.excludeParentIds,
     });
@@ -1801,7 +1898,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       settler = { resolve, reject };
     });
     promise.catch(() => {});
-    const buffer = this._getServerTelemetryBuffer(userId);
+    const buffer = this._getServerTelemetryBuffer(batchContext);
     buffer.events.push({
       event: {
         event_type: eventType,
@@ -1811,7 +1908,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       settler,
     });
-    this._afterServerTelemetryEnqueue(userId, buffer);
+    this._afterServerTelemetryEnqueue(batchContext, buffer);
     return promise;
   }
 
@@ -1834,9 +1931,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       console.error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
       return createInertSpan(spanType);
     }
+    const batchContext = this._currentServerBatchContext(userId);
     const resolved = resolveParentIds({
       explicit: options?.parentIds,
-      ambient: this._serverAmbientParentRefs(),
+      ambient: this._ambientParentRefsWith(batchContext),
       root: options?.root,
       exclude: options?.excludeParentIds,
     });
@@ -1854,7 +1952,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     let endPromise: Promise<void> | null = null;
 
     const nextVersion = () => (lastVersion = Math.max(Date.now(), lastVersion + 1));
-    const enqueue = (endedAtMs: number | null): Promise<void> => this._enqueueServerSpanUpdate(userId, {
+    const enqueue = (endedAtMs: number | null): Promise<void> => this._enqueueServerSpanUpdate(batchContext, {
       span_id: spanId,
       span_type: spanType,
       started_at_ms: startedAtMs,
@@ -1897,46 +1995,51 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return span;
   }
 
-  private _enqueueServerSpanUpdate(userId: string | null, row: SpanUpdateRow): Promise<void> {
+  private _enqueueServerSpanUpdate(context: ServerRequestSpanContext, row: SpanUpdateRow): Promise<void> {
     let settler!: TelemetrySettler;
     const promise = new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     });
     promise.catch(() => {});
-    const buffer = this._getServerTelemetryBuffer(userId);
+    const buffer = this._getServerTelemetryBuffer(context);
     const previous = buffer.spans.get(row.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
     // along so every returned promise settles with the batch that ships.
     buffer.spans.set(row.span_id, { row, settlers: [...previous?.settlers ?? [], settler] });
-    this._afterServerTelemetryEnqueue(userId, buffer);
+    this._afterServerTelemetryEnqueue(context, buffer);
     return promise;
   }
 
-  private _getServerTelemetryBuffer(userId: string | null): ServerTelemetryBuffer {
-    let buffer = this._serverTelemetryBuffers.get(userId);
+  private _getServerTelemetryBuffer(context: ServerRequestSpanContext): ServerTelemetryBuffer {
+    // Coalesce by the full batch context, not just userId: telemetry from two
+    // requests (even the same user) that carry different client-session context
+    // must ship as separate batches so each row gets the right ancestry.
+    const key = serializeServerBatchKey(context);
+    let buffer = this._serverTelemetryBuffers.get(key);
     if (!buffer) {
-      buffer = { events: [], spans: new Map(), scheduled: false };
-      this._serverTelemetryBuffers.set(userId, buffer);
+      buffer = { events: [], spans: new Map(), scheduled: false, context };
+      this._serverTelemetryBuffers.set(key, buffer);
     }
     return buffer;
   }
 
-  private _afterServerTelemetryEnqueue(userId: string | null, buffer: ServerTelemetryBuffer): void {
+  private _afterServerTelemetryEnqueue(context: ServerRequestSpanContext, buffer: ServerTelemetryBuffer): void {
     // Stay well under the server's 500-items-per-batch cap: ship immediately once
     // the coalesced batch is large, otherwise wait for the microtask boundary.
     if (buffer.events.length + buffer.spans.size >= SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH) {
-      this._flushServerTelemetry(userId);
+      this._flushServerTelemetry(context);
       return;
     }
     if (buffer.scheduled) return;
     buffer.scheduled = true;
-    queueMicrotask(() => this._flushServerTelemetry(userId));
+    queueMicrotask(() => this._flushServerTelemetry(context));
   }
 
-  private _flushServerTelemetry(userId: string | null): void {
-    const buffer = this._serverTelemetryBuffers.get(userId);
+  private _flushServerTelemetry(context: ServerRequestSpanContext): void {
+    const key = serializeServerBatchKey(context);
+    const buffer = this._serverTelemetryBuffers.get(key);
     if (!buffer) return;
-    this._serverTelemetryBuffers.delete(userId);
+    this._serverTelemetryBuffers.delete(key);
     const events = buffer.events;
     const spanEntries = [...buffer.spans.values()];
     if (events.length === 0 && spanEntries.length === 0) return;
@@ -1946,10 +2049,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       settlers.push(...entry.settlers);
     }
 
+    const ctx = buffer.context;
     const payload = {
       batch_id: generateUuid(),
       sent_at_ms: Date.now(),
-      ...userId !== null ? { user_id: userId } : {},
+      ...ctx.userId !== null ? { user_id: ctx.userId } : {},
+      // Resolved request context (server auth): the backend composes the
+      // $refresh-token/$session-replay/$session-replay-segment ancestry from these.
+      ...ctx.refreshTokenId !== null ? { refresh_token_id: ctx.refreshTokenId } : {},
+      ...ctx.sessionReplayId !== null ? { session_replay_id: ctx.sessionReplayId } : {},
+      ...ctx.sessionReplaySegmentId !== null ? { session_replay_segment_id: ctx.sessionReplaySegmentId } : {},
       ...events.length > 0 ? { events: events.map((entry) => entry.event) } : {},
       ...spanEntries.length > 0 ? { spans: spanEntries.map((entry) => entry.row) } : {},
     };
@@ -1985,6 +2094,15 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 }
 
 const SERVER_TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Buffer coalescing key. customParentSpanIds are intentionally excluded — they are
+ * per-item parents (they ride on each row's parent_span_ids), not part of the batch
+ * identity, so items sharing user/refresh/replay/segment still batch together.
+ */
+function serializeServerBatchKey(context: ServerRequestSpanContext): string {
+  return JSON.stringify([context.userId, context.refreshTokenId, context.sessionReplayId, context.sessionReplaySegmentId]);
+}
 // Below the route's 500-items cap with headroom, so a coalesced batch can never
 // be rejected for size.
 const SERVER_TELEMETRY_MAX_ITEMS_PER_BATCH = 400;
@@ -2006,4 +2124,7 @@ type ServerTelemetryBuffer = {
   }[],
   spans: Map<string, { row: SpanUpdateRow, settlers: TelemetrySettler[] }>,
   scheduled: boolean,
+  // The batch context every item in this buffer shares; becomes the payload's
+  // user_id / refresh_token_id / session_replay_id / session_replay_segment_id.
+  context: ServerRequestSpanContext,
 };

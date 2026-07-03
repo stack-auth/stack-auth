@@ -512,6 +512,11 @@ export class EventTracker {
     this._sessionReplaySegmentId = id;
   }
 
+  /** The current per-tab id (reflects sign-out rotation) — used by cross-tier span propagation. */
+  getSessionReplaySegmentId(): string {
+    return this._sessionReplaySegmentId;
+  }
+
   /**
    * Buffers a custom analytics event. The returned promise resolves when the
    * batch carrying the event is acknowledged and rejects on definitive send

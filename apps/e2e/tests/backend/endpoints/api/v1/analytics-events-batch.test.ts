@@ -786,6 +786,8 @@ async function uploadTelemetryBatch(
     batch_id?: string,
     sent_at_ms?: number,
     user_id?: string,
+    refresh_token_id?: string,
+    session_replay_id?: string,
     events?: unknown[],
     spans?: unknown[],
   },
@@ -867,6 +869,66 @@ it("accepts custom events and stamps system ancestry on them", async ({ expect }
   // No active session replay, so the only system ancestor is the refresh-token span.
   expect(row.parent_span_ids).toHaveLength(1);
   expect(row.parent_span_ids[0]).toMatch(/^rti-/);
+});
+
+it("server-auth telemetry parents under the forwarded client-session context", async ({ expect }) => {
+  // A server span opened with withSpan({ request }) forwards the caller's resolved
+  // context (refresh token from the session, replay/segment from the propagation
+  // header) as scalars; the backend composes the full $refresh-token/$session-replay/
+  // $session-replay-segment ancestry and stamps the scalar columns, exactly like a
+  // browser event — even though the batch is sent with the secret server key.
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const me = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
+  const userId = me.body.id as string;
+
+  const refreshTokenId = randomUUID();
+  const sessionReplayId = randomUUID();
+  const sessionReplaySegmentId = randomUUID();
+  const customParent = randomUUID();
+  const now = Date.now();
+
+  const res = await uploadTelemetryBatch({
+    user_id: userId,
+    refresh_token_id: refreshTokenId,
+    session_replay_id: sessionReplayId,
+    session_replay_segment_id: sessionReplaySegmentId,
+    events: [{ event_type: "server_action", event_at_ms: now - 100, data: { ok: true }, parent_span_ids: [customParent] }],
+  }, { accessType: "server" });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ inserted: 1 });
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT event_type, parent_span_ids, refresh_token_id, session_replay_id, session_replay_segment_id, user_id FROM events WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  expect(row.event_type).toBe("server_action");
+  // Root-first system ancestry composed server-side, then the custom parent (cs-).
+  expect(row.parent_span_ids).toEqual([
+    `rti-${refreshTokenId}`,
+    `sri-${sessionReplayId}`,
+    `srsi-${sessionReplaySegmentId}`,
+    `cs-${customParent}`,
+  ]);
+  // Scalar columns are stamped too (not just parent_span_ids), so replay filtering works.
+  expect(row.refresh_token_id).toBe(refreshTokenId);
+  expect(row.session_replay_id).toBe(sessionReplayId);
+  expect(row.session_replay_segment_id).toBe(sessionReplaySegmentId);
+  expect(row.user_id).toBe(userId);
+});
+
+it("rejects the forwarded server context under client auth", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    refresh_token_id: randomUUID(),
+    events: [{ event_type: "$page-view", event_at_ms: Date.now(), data: {} }],
+  }, { accessType: "client" });
+  expect(res.status).toBe(400);
 });
 
 it("appends the client-supplied custom parent chain after system ancestry on events", async ({ expect }) => {

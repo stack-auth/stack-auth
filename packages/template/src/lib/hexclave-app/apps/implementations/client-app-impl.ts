@@ -62,6 +62,8 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, withSpanImpl, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { getAmbientSpanRefs } from "./span-context";
+import { installFetchSpanPropagation } from "./span-propagation";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -746,6 +748,35 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         registerBackgroundTask: this._analyticsOptions?.waitUntil,
       });
       this._eventTracker.start();
+    }
+
+    // Cross-tier span propagation: attach the span-context header to same-origin
+    // outgoing fetches so a server `withSpan({ request })` parents under this tab's
+    // client session. Gated on a live event tracker (the current per-tab id source,
+    // which reflects sign-out rotation). Same-origin only unless extra exact origins
+    // are allowlisted. Idempotent — installFetchSpanPropagation no-ops if already on.
+    if (
+      analyticsEnabled
+      && isBrowserLike()
+      && this._eventTracker
+      && this._analyticsOptions?.spanPropagation?.enabled !== false
+    ) {
+      const eventTracker = this._eventTracker;
+      const allowedOrigins = this._analyticsOptions?.spanPropagation?.targets ?? [];
+      installFetchSpanPropagation({
+        getContext: () => {
+          const segmentId = eventTracker.getSessionReplaySegmentId();
+          const customParentSpanIds = getAmbientSpanRefs().map((frame) => frame.spanId);
+          if (!segmentId && customParentSpanIds.length === 0) return null;
+          return {
+            projectId: this.projectId,
+            ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
+            ...customParentSpanIds.length > 0 ? { customParentSpanIds } : {},
+          };
+        },
+        getSelfOrigin: () => (typeof window !== "undefined" ? window.location.origin : null),
+        getAllowedOrigins: () => allowedOrigins,
+      });
     }
 
     if (

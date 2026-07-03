@@ -1,7 +1,7 @@
 import { KnownErrors } from "@hexclave/shared";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
-import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
+import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions, RequestLike } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
@@ -43,12 +43,21 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * (there is no session to derive it from). Items coalesce per userId and
      * send on the next microtask; `await` the promise (or call `flush()`) as the
      * delivery guarantee — the server has no page-lifetime flush cadence.
+     *
+     * Pass `request` (the incoming Request) to auto-attribute to the caller AND
+     * parent the event under their client session — the `$refresh-token` /
+     * `$session-replay` / `$session-replay-segment` chain — resolved from the
+     * session + the `x-hexclave-span-context` header the browser SDK attaches
+     * automatically. With `request`, `userId` is derived from the session unless
+     * explicitly overridden.
      */
-    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string }): Promise<void>,
+    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions & { userId?: string, request?: RequestLike }): Promise<void>,
 
     /**
      * Server-side variant of `startSpan`: attribution is explicit via `userId`.
-     * Child spans and span-attached events inherit the span's userId.
+     * Child spans and span-attached events inherit the span's userId. To link a
+     * span to the caller's client session, use `withSpan(type, { request }, fn)` —
+     * `startSpan` is synchronous and cannot resolve a request.
      */
     startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span,
 
@@ -56,9 +65,14 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * Server-side variant of `withSpan`: accepts `userId` in options; ambient
      * parenting is AsyncLocalStorage-backed, so concurrent requests sharing one
      * app instance never cross-parent.
+     *
+     * Pass `request` to auto-parent the span (and everything created inside the
+     * callback) under the caller's client session, resolved from the session + the
+     * `x-hexclave-span-context` header. This is the primitive the framework
+     * adapters build on — with an adapter you never pass `request` yourself.
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
-    withSpan<T>(spanType: string, options: StartSpanOptions & { userId?: string }, fn: (span: Span) => Promise<T> | T): Promise<T>,
+    withSpan<T>(spanType: string, options: StartSpanOptions & { userId?: string, request?: RequestLike }, fn: (span: Span) => Promise<T> | T): Promise<T>,
 
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,

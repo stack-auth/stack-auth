@@ -1,0 +1,235 @@
+import { decodeBase64Url, encodeBase64Url } from "@hexclave/shared/dist/utils/bytes";
+
+/**
+ * Cross-tier span propagation.
+ *
+ * When a browser calls the customer's OWN backend, we want a server span (opened
+ * via `serverApp.withSpan(type, { request }, ...)`) to automatically parent under
+ * the caller's client session — the `$session-replay-segment` / `$session-replay`
+ * / `$refresh-token` chain — with zero glue in the customer's code.
+ *
+ * The browser attaches ONE header, `x-hexclave-span-context`, to same-origin
+ * outgoing requests. The server reads it, resolves the caller's refresh token from
+ * the request session (the ONE trusted parent), and forwards the raw ids to the
+ * ingestion route, which composes the system-prefixed parents (`rti-`/`sri-`/`srsi-`)
+ * exactly like it does for browser events.
+ *
+ * Trust model: the header is CLIENT-CONTROLLED, so `sessionReplayId` /
+ * `sessionReplaySegmentId` / custom parents are untrusted labels — fine for
+ * best-effort telemetry, never for authz/billing/security. Only the refresh token
+ * (server-derived), userId, project, and branch are trusted. Invalid/oversized/
+ * unknown-version headers are ignored, never surfaced as an error.
+ */
+
+/** The single header carrying the client's ambient span context. */
+export const SPAN_CONTEXT_HEADER = "x-hexclave-span-context";
+
+/** Wire format is `${VERSION}.${base64url(json)}` so we can evolve the payload. */
+const SPAN_CONTEXT_VERSION = "v1";
+
+/**
+ * Cap on the custom parent chain carried in the header. Mirrors `MAX_PARENT_CHAIN`
+ * in event-tracker.ts and the backend analytics-events route.
+ */
+const MAX_CUSTOM_PARENT_SPAN_IDS = 10;
+
+/** Reject absurd header values before we spend work decoding them. */
+const MAX_HEADER_LENGTH = 4096;
+
+/** Mirrors the backend UUID_RE; the raw ids in the header must be span uuids. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * The client's ambient span context, carried across the wire as raw ids (no
+ * `rti-`/`sri-`/`srsi-`/`cs-` prefixes — those are applied server-side). `projectId`
+ * lets the receiver ignore a header that belongs to a different Hexclave project.
+ */
+export type SpanPropagationContext = {
+  projectId: string,
+  sessionReplayId?: string,
+  sessionReplaySegmentId?: string,
+  customParentSpanIds?: string[],
+};
+
+/** Header bag shape shared by browser `Headers` and node request-like objects. */
+type RequestLikeHeaders = { get: (name: string) => string | null } | Record<string, string | null>;
+
+/** Reads the span-context header from a request's headers (case-insensitive). */
+export function readSpanContextHeader(headers: RequestLikeHeaders): string | null {
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    return (headers as { get: (name: string) => string | null }).get(SPAN_CONTEXT_HEADER);
+  }
+  const lower = SPAN_CONTEXT_HEADER.toLowerCase();
+  for (const [name, value] of Object.entries(headers as Record<string, string | null>)) {
+    if (name.toLowerCase() === lower) return value;
+  }
+  return null;
+}
+
+/** Serializes a context into the `x-hexclave-span-context` header value. */
+export function encodeSpanContextHeader(context: SpanPropagationContext): string {
+  const payload: Record<string, unknown> = { projectId: context.projectId };
+  if (context.sessionReplayId) payload.sessionReplayId = context.sessionReplayId;
+  if (context.sessionReplaySegmentId) payload.sessionReplaySegmentId = context.sessionReplaySegmentId;
+  if (context.customParentSpanIds && context.customParentSpanIds.length > 0) {
+    payload.customParentSpanIds = context.customParentSpanIds.slice(0, MAX_CUSTOM_PARENT_SPAN_IDS);
+  }
+  const json = JSON.stringify(payload);
+  return `${SPAN_CONTEXT_VERSION}.${encodeBase64Url(new TextEncoder().encode(json))}`;
+}
+
+/**
+ * Parses a header value back into a context. Returns null for anything missing,
+ * oversized, wrong-version, non-decodable, or structurally invalid — a bad header
+ * must never throw into the request path. Individual fields are dropped (not
+ * fatal) when they fail uuid validation, so a partially-corrupt header still
+ * yields whatever ids are well-formed.
+ */
+export function decodeSpanContextHeader(headerValue: string | null | undefined): SpanPropagationContext | null {
+  if (typeof headerValue !== "string" || headerValue.length === 0 || headerValue.length > MAX_HEADER_LENGTH) {
+    return null;
+  }
+  const dot = headerValue.indexOf(".");
+  if (dot === -1) return null;
+  if (headerValue.slice(0, dot) !== SPAN_CONTEXT_VERSION) return null;
+
+  let parsed: unknown;
+  try {
+    const json = new TextDecoder().decode(decodeBase64Url(headerValue.slice(dot + 1)));
+    parsed = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj.projectId !== "string" || obj.projectId.length === 0) return null;
+
+  const context: SpanPropagationContext = { projectId: obj.projectId };
+  if (typeof obj.sessionReplayId === "string" && UUID_RE.test(obj.sessionReplayId)) {
+    context.sessionReplayId = obj.sessionReplayId;
+  }
+  if (typeof obj.sessionReplaySegmentId === "string" && UUID_RE.test(obj.sessionReplaySegmentId)) {
+    context.sessionReplaySegmentId = obj.sessionReplaySegmentId;
+  }
+  if (Array.isArray(obj.customParentSpanIds)) {
+    const ids = obj.customParentSpanIds
+      .filter((id): id is string => typeof id === "string" && UUID_RE.test(id))
+      .slice(0, MAX_CUSTOM_PARENT_SPAN_IDS);
+    if (ids.length > 0) context.customParentSpanIds = ids;
+  }
+  return context;
+}
+
+/**
+ * Whether the span-context header may ride along to `targetUrl`. Default policy is
+ * SAME-ORIGIN ONLY: attaching a custom header cross-origin both leaks the context
+ * to third parties and forces a CORS preflight that the third party won't allow,
+ * breaking the customer's request. `allowedOrigins` opts specific extra origins in
+ * (e.g. a split `api.example.com`), matched by exact origin. Non-http(s) targets
+ * and unparseable urls are always excluded.
+ */
+export function shouldPropagateSpanContext(opts: {
+  targetUrl: string | URL,
+  selfOrigin: string | null,
+  allowedOrigins?: readonly string[],
+}): boolean {
+  let target: URL;
+  try {
+    target = typeof opts.targetUrl === "string"
+      ? new URL(opts.targetUrl, opts.selfOrigin ?? undefined)
+      : opts.targetUrl;
+  } catch {
+    return false;
+  }
+  if (target.protocol !== "http:" && target.protocol !== "https:") return false;
+  if (opts.selfOrigin !== null && target.origin === opts.selfOrigin) return true;
+  return opts.allowedOrigins?.includes(target.origin) ?? false;
+}
+
+/** Marker on globalThis so the fetch wrapper installs at most once (HMR / multiple app instances). */
+const FETCH_WRAP_MARKER = "__hexclaveSpanPropagationFetch";
+
+function requestInputUrl(input: unknown): string | null {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  if (typeof input === "object" && input !== null && typeof (input as { url?: unknown }).url === "string") {
+    return (input as { url: string }).url; // Request
+  }
+  return null;
+}
+
+function requestInputMode(input: unknown, init: RequestInit | undefined): string | undefined {
+  if (init?.mode) return init.mode;
+  if (typeof input === "object" && input !== null && typeof (input as { mode?: unknown }).mode === "string") {
+    return (input as { mode: string }).mode;
+  }
+  return undefined;
+}
+
+export type FetchSpanPropagationOptions = {
+  /** The current ambient client context, or null when there is nothing to link. */
+  getContext: () => SpanPropagationContext | null,
+  /** The page's own origin (e.g. `window.location.origin`), or null if unknown. */
+  getSelfOrigin: () => string | null,
+  /** Extra exact origins allowed to receive the header (split frontend/api domains). */
+  getAllowedOrigins: () => readonly string[],
+};
+
+/**
+ * Installs a global `fetch` wrapper that attaches `x-hexclave-span-context` to
+ * same-origin (or allowlisted) outgoing requests. Idempotent (a global marker
+ * guards against HMR / multiple app instances), chains through the existing fetch
+ * so it composes with other wrappers (Sentry/OTel), and never lets propagation
+ * throw into the caller's request. Header merging preserves native fetch header
+ * semantics exactly, then adds ours. Returns an uninstaller, or null if fetch is
+ * unavailable or already wrapped.
+ */
+export function installFetchSpanPropagation(options: FetchSpanPropagationOptions): (() => void) | null {
+  const g = globalThis as typeof globalThis & Record<string, unknown>;
+  if (typeof g.fetch !== "function" || g[FETCH_WRAP_MARKER]) return null;
+
+  // Keep the exact original reference to restore on uninstall, but call it bound —
+  // an unbound `fetch` throws "Illegal invocation" in browsers.
+  const originalFetch = g.fetch as typeof fetch;
+  const callFetch = originalFetch.bind(globalThis) as typeof fetch;
+
+  const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    try {
+      // no-cors strips non-safelisted headers anyway — skip to avoid surprises.
+      if (requestInputMode(input, init) !== "no-cors") {
+        const url = requestInputUrl(input);
+        if (url !== null && shouldPropagateSpanContext({
+          targetUrl: url,
+          selfOrigin: options.getSelfOrigin(),
+          allowedOrigins: options.getAllowedOrigins(),
+        })) {
+          const context = options.getContext();
+          if (context) {
+            // Reproduce native header precedence: init.headers wins over a Request's
+            // own headers; a bare Request keeps its headers. Then add ours on top,
+            // without mutating the caller's objects.
+            const isRequest = typeof Request !== "undefined" && input instanceof Request;
+            const base: HeadersInit | undefined = init?.headers !== undefined
+              ? init.headers
+              : (isRequest ? (input as Request).headers : undefined);
+            const headers = new Headers(base);
+            headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader(context));
+            return callFetch(input, { ...init, headers });
+          }
+        }
+      }
+    } catch {
+      // Any failure in propagation falls through to the untouched request.
+    }
+    return callFetch(input as RequestInfo | URL, init);
+  }) as typeof fetch;
+
+  g.fetch = wrapped;
+  g[FETCH_WRAP_MARKER] = true;
+
+  return () => {
+    if (g.fetch === wrapped) g.fetch = originalFetch;
+    delete g[FETCH_WRAP_MARKER];
+  };
+}

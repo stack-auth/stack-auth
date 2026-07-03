@@ -54,6 +54,22 @@ export type AnalyticsOptions = {
    * Not serializable — dropped when the app is serialized (toClientJson).
    */
   waitUntil?: (promise: Promise<unknown>) => void,
+  /**
+   * Cross-tier span propagation. When on, the browser attaches an
+   * `x-hexclave-span-context` header to SAME-ORIGIN outgoing `fetch` requests, so a
+   * server span opened with `serverApp.withSpan(type, { request })` parents under
+   * this tab's client session. Enabled by default whenever analytics is enabled.
+   */
+  spanPropagation?: {
+    /** Set false to stop auto-attaching the header to outgoing fetch. @default true */
+    enabled?: boolean,
+    /**
+     * Extra exact origins (besides same-origin) allowed to receive the header —
+     * for a split frontend/api domain, e.g. `["https://api.example.com"]`. The
+     * receiving server must also list the header in `Access-Control-Allow-Headers`.
+     */
+    targets?: string[],
+  },
 };
 
 export function getSessionReplayOptions(analyticsOptions: AnalyticsOptions | undefined): AnalyticsReplayOptions {

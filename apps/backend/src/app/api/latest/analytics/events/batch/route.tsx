@@ -84,6 +84,13 @@ export const POST = createSmartRouteHandler({
       // Server/admin auth only (enforced in the handler): attributes the batch
       // to a user when there is no session access token to derive one from.
       user_id: yupString().optional().matches(UUID_RE, "Invalid user_id"),
+      // Server/admin auth only: the caller's resolved request context, forwarded
+      // by the server SDK's withSpan({ request }) so a backend span parents under
+      // the client session ($refresh-token/$session-replay/$session-replay-segment).
+      // Trusted here because server auth is the customer's secret key; rejected
+      // under client auth, where the same values come from the session itself.
+      refresh_token_id: yupString().optional().matches(UUID_RE, "Invalid refresh_token_id"),
+      session_replay_id: yupString().optional().matches(UUID_RE, "Invalid session_replay_id"),
       events: yupArray(
         yupObject({
           event_type: yupString().defined().test(
@@ -162,8 +169,8 @@ export const POST = createSmartRouteHandler({
       if (!auth.refreshTokenId) {
         throw new StatusError(StatusError.BadRequest, "A refresh token is required for analytics events");
       }
-      if (body.user_id != null) {
-        throw new StatusError(StatusError.BadRequest, "user_id must not be set with client auth; it is derived from the session");
+      if (body.user_id != null || body.refresh_token_id != null || body.session_replay_id != null) {
+        throw new StatusError(StatusError.BadRequest, "user_id / refresh_token_id / session_replay_id must not be set with client auth; they are derived from the session");
       }
       if (body.session_replay_segment_id == null) {
         throw new StatusError(StatusError.BadRequest, "session_replay_segment_id is required for analytics batches with client auth");
@@ -185,7 +192,10 @@ export const POST = createSmartRouteHandler({
         }
       }
       userId = body.user_id ?? auth.user?.id ?? null;
-      refreshTokenId = auth.refreshTokenId ?? null;
+      // The server SDK forwards the caller's refresh token (resolved from the
+      // request session) so the backend can compose the $refresh-token/$session-replay
+      // ancestry; fall back to the request's own auth for admin/session sends.
+      refreshTokenId = body.refresh_token_id ?? auth.refreshTokenId ?? null;
     }
 
     const projectId = auth.tenancy.project.id;
@@ -203,8 +213,13 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const recentSession = refreshTokenId == null ? null : await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
-    const sessionReplayId = recentSession?.id ?? null;
+    // Prefer an explicitly forwarded replay id (server SDK — exact join); otherwise
+    // derive the caller's current rolling replay from their refresh token.
+    let sessionReplayId = body.session_replay_id ?? null;
+    if (sessionReplayId == null && refreshTokenId != null) {
+      const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
+      sessionReplayId = recentSession?.id ?? null;
+    }
     const sessionReplaySegmentId = body.session_replay_segment_id ?? null;
 
     const clickhouseClient = getClickhouseAdminClient();
