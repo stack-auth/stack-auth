@@ -96,18 +96,40 @@ Explicit `parentIds` are additive on top of the ambient ones.
 
 ### Exact vs. best-effort ambient parenting
 
-On the server, ambient parenting is backed by `AsyncLocalStorage`, so it is exact across `await`s and under any concurrency. Browsers have no equivalent primitive, so the SDK defaults to **exact mode**: inside a `withSpan` callback, app-level calls (`hexclaveClientApp.trackEvent(...)`) see the span as an ambient parent only until the callback's first `await`. Calls made through the **span handle** are exact everywhere, always:
+For ambient parenting to work, the SDK has to answer one question every time you call `hexclaveClientApp.trackEvent(...)`: **which `withSpan` callback is this call currently inside of?** (This section is only about such *app-level* calls — calls on the app object. Calls on a span handle, like `span.trackEvent(...)`, name their parent explicitly, so nothing needs to be inferred.)
+
+**On the server**, the runtime answers the question for you: `AsyncLocalStorage` tracks each async flow, so the SDK always knows which callback the current code belongs to — before an `await`, after an `await`, with any number of concurrent requests. Server ambient parenting is therefore always exact, and everything below is a browser-only concern.
+
+**In the browser**, no such primitive exists. The SDK can only see the synchronous call stack, so it can only be *certain* while your callback runs synchronously — from the moment it starts until its first `await`. JavaScript is single-threaded, so in that window nothing else can run in between, and any tracking call provably belongs to your callback.
+
+The first `await` breaks that certainty: your callback pauses, and the browser is free to run anything else in the meantime — including another `withSpan` callback started by a different click, timer, or background job. When your code resumes and calls `hexclaveClientApp.trackEvent(...)`, all the SDK can see is "some code is running, and one or more spans are still open." It cannot tell which of them — if any — the call belongs to.
+
+`analytics.ambientParenting` is the policy for that ambiguous after-`await` window:
+
+- **`"exact"` (the default)**: never guess. After the first `await`, app-level calls stop seeing the span as an ambient parent. You can get a *missing* link, but never a *wrong* one. (A missing parent is visible and fixable; a wrong parent silently corrupts traces.)
+- **`"best-effort"`**: keep treating the still-running callback's span as the parent until it settles. If only one flow is active at a time, this is always correct and `withSpan` links across `await`s with zero glue. If two flows overlap, an event from one can get attached to the other flow's span.
+
+The difference in one example:
 
 ```tsx
 await hexclaveClientApp.withSpan("checkout", async (span) => {
-  hexclaveClientApp.trackEvent("step-1");  // linked (before the first await)
-  await fetch("/api/pay");
-  hexclaveClientApp.trackEvent("step-2");  // NOT linked in exact mode
-  span.trackEvent("step-3");               // linked — handle calls are always exact
+  hexclaveClientApp.trackEvent("step-1");  // linked in BOTH modes: runs before the first
+                                           // await, provably inside "checkout"
+
+  await fetch("/api/pay");                 // callback pauses — anything may run here
+
+  hexclaveClientApp.trackEvent("step-2");  // "exact": no ambient parent (can't be proven)
+                                           // "best-effort": linked to "checkout" — or to a
+                                           // DIFFERENT flow's span if two were open at once
+
+  span.trackEvent("step-3");               // linked in BOTH modes: the handle names its
+                                           // parent explicitly, nothing to infer
 });
 ```
 
-If you prefer zero-glue linking across `await`s in the browser and accept that concurrent flows may occasionally cross-parent, opt into best-effort mode:
+Note `step-3`: **the span handle sidesteps the whole problem.** `span.trackEvent`, `span.startSpan`, `span.withSpan`, and `span.run` carry their parent with them instead of inferring it from context, so they are exact in every environment, in both modes, under any concurrency. If you use the handle after `await`s, you never need to think about modes at all.
+
+If you'd rather keep writing plain `hexclaveClientApp.trackEvent(...)` after `await`s — and your app doesn't run overlapping flows, or the occasional cross-link is acceptable — opt into best-effort mode:
 
 ```tsx
 import { HexclaveClientApp } from "@hexclave/js";
@@ -117,10 +139,6 @@ export const hexclaveClientApp = new HexclaveClientApp({
   analytics: { ambientParenting: "best-effort" },
 });
 ```
-
-<Info>
-In exact mode a parent is only attached when it provably belongs to the current flow — a wrong parent is worse than a missing one. When in doubt, use the span handle (`span.trackEvent`, `span.withSpan`, `span.run`): it is exact in both modes and in every environment.
-</Info>
 
 ### Explicit control
 
