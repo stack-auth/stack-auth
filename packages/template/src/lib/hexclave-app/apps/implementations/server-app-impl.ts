@@ -38,8 +38,8 @@ import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
-import { getAmbientSpanRefs } from "./span-context";
-import { decodeSpanContextHeader, readSpanContextHeader } from "./span-propagation";
+import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
+import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
 import { getServerRequestContext, runWithServerRequestContext, type ServerRequestSpanContext } from "./server-request-context";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -1856,8 +1856,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     for (const span of this._serverGlobalSpans) {
       if (!span.isEnded) refs.push(span.ref());
     }
-    // Enclosing withSpan() frames (AsyncLocalStorage — isolated per request).
-    refs.push(...getAmbientSpanRefs());
+    // Enclosing withSpan() frames — AsyncLocalStorage on servers, isolated per
+    // request. If ALS is somehow unavailable, fail closed: suspended sync-stack
+    // frames are only readable under the opt-in "best-effort" policy (the
+    // provably-same-flow prologue-open frames always count).
+    refs.push(...getAmbientSpanRefs({ includeSuspendedSyncFrames: this._analyticsOptions?.ambientParenting === "best-effort" }));
     return refs;
   }
 
@@ -1992,6 +1995,37 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         this._trackServerEvent(eventType, data, { ...trackOptions, parentIds: [span, ...trackOptions?.parentIds ?? []] }, userId),
       startSpan: (childType: string, childOptions?: StartSpanOptions) =>
         this._startServerSpan(childType, { ...childOptions, parentIds: [span, ...childOptions?.parentIds ?? []] }, userId),
+      withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
+        withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
+      run: <T,>(fn: () => T) => runWithSpanFrame(span.ref(), fn),
+      // Pinned to exactly this span's frozen chain; carries the caller's segment
+      // identity when this span was resolved from a request. Raw ids — the
+      // receiving backend applies the prefixes.
+      getPropagationHeaders: () => ({
+        [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
+          projectId: this.projectId,
+          ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
+          customParentSpanIds: [...parentSpanIds, spanId],
+        }),
+      }),
+      // Server→server fetch: no CORS and the call itself is explicit intent, so
+      // the origin policy is bypassed; an explicitly-set header still wins and
+      // no-cors requests are still skipped.
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        try {
+          const initWithHeader = buildFetchInitWithSpanContext({
+            input,
+            init,
+            headerValue: span.getPropagationHeaders()[SPAN_CONTEXT_HEADER],
+            selfOrigin: null,
+            allowedOrigins: [],
+            bypassOriginPolicy: true,
+          });
+          return globalThis.fetch(input, initWithHeader ?? init);
+        } catch {
+          return globalThis.fetch(input, init);
+        }
+      },
       ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
     };
 

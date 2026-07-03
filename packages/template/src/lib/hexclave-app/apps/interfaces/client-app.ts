@@ -147,13 +147,20 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     /**
      * Runs `fn` inside a span: the span starts on entry, is an ambient parent
-     * for every trackEvent/startSpan/withSpan inside the callback, and ends
-     * automatically when `fn` settles. On throw, `data.error` is recorded and
-     * the error is rethrown — telemetry failures never affect `fn`'s result.
-     * Ambient parenting is exact across `await`s on server runtimes
-     * (AsyncLocalStorage); in browsers, parallel async flows can observe each
-     * other's ambient frames (documented sync-stack fallback). Opt out of
-     * ambient parents per item with `root: true` or `excludeParentIds`.
+     * for everything created inside the callback, and ends automatically when
+     * `fn` settles. On throw, `data.error` is recorded and the error is
+     * rethrown — telemetry failures never affect `fn`'s result.
+     *
+     * Ambient extent follows `analytics.ambientParenting`. Under the default
+     * (`"exact"`), ambient parenting covers the callback's full async extent on
+     * runtimes with an exact async-context primitive (servers/edge today,
+     * browsers once TC39 AsyncContext ships) and the callback's synchronous
+     * window in browsers; after an `await` in a browser, parent via the handle
+     * you already have — `span.trackEvent` / `span.withSpan` / `span.fetch` /
+     * `span.run` — which is exact everywhere. `"best-effort"` keeps frames
+     * ambient across browser `await`s (zero-glue), accepting that concurrently
+     * interleaved flows can observe each other's frames. Opt out of ambient
+     * parents per item with `root: true` or `excludeParentIds`.
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
     withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,

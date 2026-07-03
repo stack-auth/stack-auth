@@ -5,7 +5,9 @@ import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/d
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
-import { getAmbientSpanRefs, runWithSpanContext } from "./span-context";
+import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+// Runtime-safe: span-propagation only imports TYPES from this module.
+import { buildFetchInitWithSpanContext, encodeSpanContextHeader, SPAN_CONTEXT_HEADER, type SpanPropagationContext } from "./span-propagation";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -94,6 +96,36 @@ export type Span = {
   trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
   /** Starts a child span of this span. */
   startSpan(spanType: string, options?: StartSpanOptions): Span,
+  /**
+   * Runs `fn` inside a child span of this span (auto-ends, records errors —
+   * same contract as the app-level withSpan). The HANDLE-based nesting path:
+   * parentage comes from this span, not ambient context, so it is exact in
+   * every environment and under any concurrency.
+   */
+  withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
+  withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,
+  /**
+   * Re-enters this span as an ambient parent for `fn` — the manual-rebind
+   * primitive for post-await code, timers, and third-party callbacks. Under an
+   * exact async-context primitive (server today, browsers once AsyncContext
+   * ships) the context covers `fn`'s full async extent; on the browser fallback
+   * it is exact for `fn`'s synchronous window.
+   */
+  run<T>(fn: () => T): T,
+  /**
+   * The cross-tier propagation headers pinned to exactly this span (and its
+   * frozen ancestor chain) — for transports the SDK cannot instrument (XHR,
+   * sendBeacon, WebSocket handshakes). Setting this header on a fetch also
+   * overrides the automatic ambient one.
+   */
+  getPropagationHeaders(): Record<string, string>,
+  /**
+   * `fetch` with the propagation header pinned to exactly this span, so the
+   * backend span opened by `withSpan({ request })` nests under it — immune to
+   * ambient-context ambiguity. Follows the same same-origin/allowlist policy as
+   * the automatic wrapper and never overwrites an explicitly-set header.
+   */
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>,
   /** Serializable identity + full custom ancestor chain (see SpanRef). */
   ref(): SpanRef,
 };
@@ -277,6 +309,12 @@ export function createInertSpan(spanType: string): Span {
     },
     trackEvent: () => Promise.resolve(),
     startSpan: (childType: string) => createInertSpan(childType),
+    withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
+      withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
+    run: <T,>(fn: () => T) => fn(),
+    getPropagationHeaders: () => ({}),
+    // Still the caller's REAL request — only the telemetry is inert.
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
     ref: () => ({ spanId: span.spanId, parentSpanIds: [] }),
   };
   return span;
@@ -380,6 +418,17 @@ export type EventTrackerDeps = {
   // Serverless keep-alive hook (AnalyticsOptions.waitUntil): every batch-send
   // promise is passed to it so un-awaited sends survive runtime teardown.
   registerBackgroundTask?: (promise: Promise<unknown>) => void,
+  // Flow-scoped ambient-parenting policy (AnalyticsOptions.ambientParenting).
+  // "exact" (default): withSpan frames are ambient only when provably from the
+  // current flow — an exact async-context primitive (ALS/AsyncContext), or the
+  // synchronous prologue window on the browser fallback. "best-effort": also
+  // frames whose callback has suspended (zero-glue across awaits; concurrently
+  // interleaved flows may observe each other's frames). Global spans and the
+  // handle methods (span.trackEvent/withSpan/fetch/…) are unaffected by this.
+  ambientParenting?: "exact" | "best-effort",
+  // Origin policy for span.fetch / propagation headers (same-origin default +
+  // exact-origin allowlist). Provided by the app from analytics.spanPropagation.
+  getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[] },
 };
 
 type TrackedEvent = {
@@ -649,6 +698,11 @@ export class EventTracker {
         this.trackCustomEvent(eventType, data, { ...trackOptions, parentIds: [span, ...trackOptions?.parentIds ?? []] }),
       startSpan: (childType: string, childOptions?: StartSpanOptions) =>
         this.startSpan(childType, { ...childOptions, parentIds: [span, ...childOptions?.parentIds ?? []] }),
+      withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
+        withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
+      run: <T,>(fn: () => T) => runWithSpanFrame(span.ref(), fn),
+      getPropagationHeaders: () => ({ [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(this._spanPropagationContext(span)) }),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => this._spanFetch(span, input, init),
       ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
     };
 
@@ -656,6 +710,38 @@ export class EventTracker {
     // tab closes) still shows up, as an open interval, from its first flush on.
     enqueue(null).catch(() => {});
     return span;
+  }
+
+  /** The cross-tier context pinned to exactly `span`: its frozen chain (which
+   * already includes the globals/ambient captured at creation) + the per-tab
+   * segment identity. Raw ids — the backend applies the prefixes. */
+  private _spanPropagationContext(span: Span): SpanPropagationContext {
+    const ref = span.ref();
+    return {
+      projectId: this._deps.projectId,
+      sessionReplaySegmentId: this._sessionReplaySegmentId,
+      customParentSpanIds: [...ref.parentSpanIds, ref.spanId],
+    };
+  }
+
+  private _spanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    try {
+      const policy = this._deps.getPropagationPolicy?.() ?? {
+        selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
+        allowedOrigins: [],
+      };
+      const initWithHeader = buildFetchInitWithSpanContext({
+        input,
+        init,
+        headerValue: encodeSpanContextHeader(this._spanPropagationContext(span)),
+        selfOrigin: policy.selfOrigin,
+        allowedOrigins: policy.allowedOrigins,
+      });
+      return globalThis.fetch(input, initWithHeader ?? init);
+    } catch {
+      // Propagation must never break the caller's actual request.
+      return globalThis.fetch(input, init);
+    }
   }
 
   /**
@@ -690,8 +776,11 @@ export class EventTracker {
     for (const span of this._globalSpans) {
       if (!span.isEnded) refs.push(span.ref());
     }
-    // Enclosing withSpan() frames, outermost first, after the globals.
-    refs.push(...getAmbientSpanRefs());
+    // Enclosing withSpan() frames, outermost first, after the globals. Exact
+    // primitive (ALS/AsyncContext) → the per-flow store, always. Sync-stack
+    // fallback → prologue-open frames are provably same-flow and always count;
+    // suspended frames only under the opt-in "best-effort" policy.
+    refs.push(...getAmbientSpanRefs({ includeSuspendedSyncFrames: this._deps.ambientParenting === "best-effort" }));
     return refs;
   }
 

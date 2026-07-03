@@ -4,6 +4,8 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventTracker, withSpanImpl } from "./event-tracker";
+import { __setAsyncContextModeForTesting } from "./span-context";
+import { decodeSpanContextHeader } from "./span-propagation";
 
 async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
@@ -889,6 +891,151 @@ describe("EventTracker", () => {
     } finally {
       tracker.stop();
       warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("EventTracker ambient modes + span handle kit", () => {
+  const SEG = "11111111-1111-4111-8111-111111111111";
+
+  function makeTracker(sentBodies: string[], extraDeps?: Partial<import("./event-tracker").EventTrackerDeps>) {
+    return new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+      sessionReplaySegmentId: SEG,
+      ...extraDeps,
+    });
+  }
+
+  afterEach(() => {
+    __setAsyncContextModeForTesting("auto");
+    vi.useRealTimers();
+  });
+
+  it("ambientParenting 'exact' drops suspended sync frames; 'best-effort' keeps them", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    vi.useFakeTimers();
+
+    const run = async (mode: "exact" | "best-effort" | undefined) => {
+      const sentBodies: string[] = [];
+      const tracker = makeTracker(sentBodies, mode ? { ambientParenting: mode } : {});
+      try {
+        tracker.start();
+        let spanId!: string;
+        await withSpanImpl((type, opts) => tracker.startSpan(type, opts), "flow", async (span) => {
+          spanId = span.spanId;
+          // Synchronous prologue: provably this flow — ambient in BOTH modes.
+          tracker.trackCustomEvent("in_prologue").catch(() => {});
+          await Promise.resolve();
+          // Post-await on the browser fallback: only best-effort keeps the frame.
+          tracker.trackCustomEvent("post_await").catch(() => {});
+        });
+        await advancePastFlush();
+        const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
+        return {
+          spanId,
+          prologue: payload.events.find((event) => event.event_type === "in_prologue")?.parent_span_ids,
+          postAwait: payload.events.find((event) => event.event_type === "post_await")?.parent_span_ids,
+        };
+      } finally {
+        tracker.stop();
+      }
+    };
+
+    const exact = await run(undefined); // default IS exact
+    expect(exact.prologue).toEqual([exact.spanId]);
+    expect(exact.postAwait).toBeUndefined();
+
+    const best = await run("best-effort");
+    expect(best.prologue).toEqual([best.spanId]);
+    expect(best.postAwait).toEqual([best.spanId]);
+  });
+
+  it("span.withSpan nests exactly under the handle and auto-ends the child", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const parent = tracker.startSpan("outer");
+      await parent.withSpan("inner", async (child) => {
+        expect(child.spanType).toBe("inner");
+        child.trackEvent("evt").catch(() => {});
+      });
+      await advancePastFlush();
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as {
+        events: { event_type: string, parent_span_ids?: string[] }[],
+        spans: { span_id: string, span_type: string, parent_span_ids: string[], ended_at_ms: number | null }[],
+      };
+      const inner = payload.spans.find((row) => row.span_type === "inner")!;
+      expect(inner.parent_span_ids).toEqual([parent.spanId]);
+      expect(inner.ended_at_ms).not.toBeNull();
+      const evt = payload.events.find((event) => event.event_type === "evt")!;
+      expect(evt.parent_span_ids).toEqual([parent.spanId, inner.span_id]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("span.run re-binds the span for a callback's window", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const span = tracker.startSpan("flow");
+      // e.g. a third-party callback, far from any withSpan prologue:
+      span.run(() => {
+        tracker.trackCustomEvent("from_callback").catch(() => {});
+      });
+      await advancePastFlush();
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
+      const evt = payload.events.find((event) => event.event_type === "from_callback")!;
+      expect(evt.parent_span_ids).toEqual([span.spanId]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("span.getPropagationHeaders pins the header to the span's frozen chain + segment identity", () => {
+    const tracker = makeTracker([]);
+    const parent = tracker.startSpan("outer");
+    const child = parent.startSpan("inner");
+    const decoded = decodeSpanContextHeader(child.getPropagationHeaders()["x-hexclave-span-context"]);
+    expect(decoded).toEqual({
+      projectId: "internal",
+      sessionReplaySegmentId: SEG,
+      customParentSpanIds: [parent.spanId, child.spanId],
+    });
+  });
+
+  it("span.fetch attaches the pinned header same-origin, skips cross-origin, never clobbers explicit", async () => {
+    const calls: { input: unknown, init: RequestInit | undefined }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response();
+    }) as typeof fetch;
+    try {
+      const tracker = makeTracker([]);
+      const span = tracker.startSpan("flow");
+
+      await span.fetch("/api/x");
+      const attached = new Headers(calls[0].init?.headers).get("x-hexclave-span-context");
+      expect(decodeSpanContextHeader(attached)?.customParentSpanIds).toEqual([span.spanId]);
+
+      await span.fetch("https://third-party.example/x");
+      expect(calls[1].init).toBeUndefined();
+
+      const explicit = "v1.explicit-wins";
+      await span.fetch("/api/y", { headers: { "x-hexclave-span-context": explicit } });
+      expect(new Headers(calls[2].init?.headers).get("x-hexclave-span-context")).toBe(explicit);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

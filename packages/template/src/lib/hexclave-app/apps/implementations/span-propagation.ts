@@ -201,6 +201,40 @@ function requestInputMode(input: unknown, init: RequestInit | undefined): string
   return undefined;
 }
 
+/**
+ * Builds the RequestInit for attaching a span-context header to one fetch call,
+ * or returns null when the header must NOT be attached: `no-cors` mode (custom
+ * headers are stripped there anyway), a target outside the origin policy
+ * (unless `bypassOriginPolicy` — server-side explicit span.fetch, where CORS
+ * does not exist and the call itself is the intent), or a header the caller
+ * already set explicitly (their precise intent always wins). Reproduces native
+ * header precedence — init.headers over a Request's own headers — and never
+ * mutates the caller's objects. Shared by the auto fetch wrapper and span.fetch.
+ */
+export function buildFetchInitWithSpanContext(opts: {
+  input: unknown,
+  init: RequestInit | undefined,
+  headerValue: string,
+  selfOrigin: string | null,
+  allowedOrigins: readonly string[],
+  bypassOriginPolicy?: boolean,
+}): RequestInit | null {
+  if (requestInputMode(opts.input, opts.init) === "no-cors") return null;
+  if (!opts.bypassOriginPolicy) {
+    const url = requestInputUrl(opts.input);
+    if (url === null) return null;
+    if (!shouldPropagateSpanContext({ targetUrl: url, selfOrigin: opts.selfOrigin, allowedOrigins: opts.allowedOrigins })) return null;
+  }
+  const isRequest = typeof Request !== "undefined" && opts.input instanceof Request;
+  const base: HeadersInit | undefined = opts.init?.headers !== undefined
+    ? opts.init.headers
+    : (isRequest ? (opts.input as Request).headers : undefined);
+  const headers = new Headers(base);
+  if (headers.has(SPAN_CONTEXT_HEADER)) return null;
+  headers.set(SPAN_CONTEXT_HEADER, opts.headerValue);
+  return { ...opts.init, headers };
+}
+
 export type FetchSpanPropagationOptions = {
   /** The current ambient client context, or null when there is nothing to link. */
   getContext: () => SpanPropagationContext | null,
@@ -230,32 +264,17 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
 
   const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     try {
-      // no-cors strips non-safelisted headers anyway — skip to avoid surprises.
-      if (requestInputMode(input, init) !== "no-cors") {
-        const url = requestInputUrl(input);
-        if (url !== null && shouldPropagateSpanContext({
-          targetUrl: url,
+      const context = options.getContext();
+      if (context) {
+        const initWithHeader = buildFetchInitWithSpanContext({
+          input,
+          init,
+          headerValue: encodeSpanContextHeader(context),
           selfOrigin: options.getSelfOrigin(),
           allowedOrigins: options.getAllowedOrigins(),
-        })) {
-          const context = options.getContext();
-          if (context) {
-            // Reproduce native header precedence: init.headers wins over a Request's
-            // own headers; a bare Request keeps its headers. Then add ours on top,
-            // without mutating the caller's objects.
-            const isRequest = typeof Request !== "undefined" && input instanceof Request;
-            const base: HeadersInit | undefined = init?.headers !== undefined
-              ? init.headers
-              : (isRequest ? (input as Request).headers : undefined);
-            const headers = new Headers(base);
-            // An explicitly-set header (getSpanPropagationHeaders) always wins
-            // over the ambient context — it is the caller's precise intent, e.g.
-            // pinning one request to one span under interleaved async flows.
-            if (!headers.has(SPAN_CONTEXT_HEADER)) {
-              headers.set(SPAN_CONTEXT_HEADER, encodeSpanContextHeader(context));
-              return callFetch(input, { ...init, headers });
-            }
-          }
+        });
+        if (initWithHeader) {
+          return callFetch(input, initWithHeader);
         }
       }
     } catch {

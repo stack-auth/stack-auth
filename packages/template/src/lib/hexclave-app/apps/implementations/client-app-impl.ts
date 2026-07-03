@@ -745,6 +745,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         },
         sessionReplaySegmentId,
         registerBackgroundTask: this._analyticsOptions?.waitUntil,
+        ambientParenting: this._analyticsOptions?.ambientParenting,
+        getPropagationPolicy: () => ({
+          selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
+          allowedOrigins: this._analyticsOptions?.spanPropagation?.targets ?? [],
+        }),
       });
       this._eventTracker.start();
     }

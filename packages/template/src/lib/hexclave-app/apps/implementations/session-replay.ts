@@ -55,6 +55,24 @@ export type AnalyticsOptions = {
    */
   waitUntil?: (promise: Promise<unknown>) => void,
   /**
+   * Flow-scoped ambient-parenting policy for `withSpan()` frames.
+   *
+   * - `"exact"` (default): a frame is an ambient parent only when it provably
+   *   belongs to the current flow — via an exact async-context primitive
+   *   (AsyncLocalStorage on servers/edge today; TC39 AsyncContext in browsers
+   *   once it ships), or during the callback's synchronous window in browsers.
+   *   Never wrong; after an `await` in a browser, use the span handle
+   *   (`span.trackEvent` / `span.withSpan` / `span.fetch` / `span.run`).
+   * - `"best-effort"`: frames additionally stay ambient across `await`s in
+   *   browsers (zero-glue), at the documented cost that concurrently
+   *   interleaved flows can observe each other's frames and telemetry may pick
+   *   up an extra, wrong custom parent.
+   *
+   * Global spans (`setGlobalSpan`) and the handle methods are exact in both
+   * modes; server runtimes are exact in both modes.
+   */
+  ambientParenting?: "exact" | "best-effort",
+  /**
    * Cross-tier span propagation. When on, the browser attaches an
    * `x-hexclave-span-context` header to SAME-ORIGIN outgoing `fetch` requests, so a
    * server span opened with `serverApp.withSpan(type, { request })` parents under
