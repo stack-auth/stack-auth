@@ -896,6 +896,24 @@ describe("session-replay-machine", () => {
       });
       expect(hasEffect(effects, "sync_mini_tabs")).toBe(true);
     });
+
+    it("resyncs mini tabs after a seek even within the first sync interval of page age", () => {
+      const state = twoTabReadyState({
+        playbackMode: "playing",
+        lastMiniTabSyncWallMs: 0,
+      });
+      const afterSeek = dispatch(state, {
+        type: "SEEK",
+        globalOffsetMs: 2000,
+        nowMs: 100,
+      });
+      const { effects } = dispatch(afterSeek.state, {
+        type: "TICK",
+        nowMs: 300,
+        activeReplayerLocalTimeMs: 1000,
+      });
+      expect(hasEffect(effects, "sync_mini_tabs")).toBe(true);
+    });
   });
 
   describe("areStatesRenderEquivalent", () => {

@@ -960,8 +960,10 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           suppressAutoFollowUntilWallMs: action.nowMs + 400,
           prematureFinishRetryLocalMs: null,
           playingWithoutProgressSinceMs: null,
-          // Reset the throttle so the next TICK re-syncs mini tabs to the new position
-          lastMiniTabSyncWallMs: 0,
+          // Reset the throttle so the next TICK re-syncs mini tabs to the new
+          // position regardless of page age (0 would still throttle during the
+          // first MINI_TAB_SYNC_INTERVAL_MS after page load).
+          lastMiniTabSyncWallMs: action.nowMs - MINI_TAB_SYNC_INTERVAL_MS,
           playerError: null,
         },
         effects,
