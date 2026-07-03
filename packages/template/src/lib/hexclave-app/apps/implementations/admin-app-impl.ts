@@ -351,7 +351,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       periodStart: new Date(data.period_start_millis),
       periodEnd: new Date(data.period_end_millis),
       nextPlanId: data.next_plan_id,
-      arePlanLimitsEnforced: data.are_plan_limits_enforced,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- getPlanUsage() returns raw JSON without yup validation, so this field can be undefined at runtime if the backend hasn't deployed the field yet
+      arePlanLimitsEnforced: data.are_plan_limits_enforced ?? true,
       rows: data.rows.map((row) => ({
         itemId: row.item_id,
         displayName: row.display_name,
