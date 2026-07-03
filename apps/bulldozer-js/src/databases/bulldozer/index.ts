@@ -2368,7 +2368,11 @@ export function declareLeftJoinTable(options: {
       const addRight = async (row: InputRow) => {
         const right: StoredRow = { ...row, joinKey: await options.rightJoinKeyExtractor(row) };
         const lefts = await leftMatches(right.joinKey);
-        if (!(await state.rightByJoinKey.getAll(right.joinKey)).length) for (const left of lefts) await deleteOutput(left, null);
+        // hasAny (O(depth)) instead of getAll().length: many rows can share one join key (e.g.
+        // a null-ish key on most rows), and materializing all of them per inserted row makes
+        // bulk ingestion O(n^2). The check is only needed when there are matching lefts whose
+        // left-with-null output row must be retracted.
+        if (lefts.length > 0 && !(await state.rightByJoinKey.hasAny(right.joinKey))) for (const left of lefts) await deleteOutput(left, null);
         state = { ...state, rightRows: await state.rightRows.set(right.rowIdentifier, right), rightByJoinKey: await state.rightByJoinKey.add(right.joinKey, right.rowIdentifier, right.rowIdentifier) };
         for (const left of lefts) await addOutput(left, right);
       };
@@ -2378,7 +2382,7 @@ export function declareLeftJoinTable(options: {
         const lefts = await leftMatches(right.joinKey);
         for (const left of lefts) await deleteOutput(left, right);
         state = { ...state, rightRows: await state.rightRows.delete(right.rowIdentifier), rightByJoinKey: await state.rightByJoinKey.delete(right.joinKey, right.rowIdentifier) };
-        if (!(await state.rightByJoinKey.getAll(right.joinKey)).length) for (const left of lefts) await addOutput(left, null);
+        if (lefts.length > 0 && !(await state.rightByJoinKey.hasAny(right.joinKey))) for (const left of lefts) await addOutput(left, null);
       };
 
       for (const row of changedRowsFromTableChanges(changes.left)) {
