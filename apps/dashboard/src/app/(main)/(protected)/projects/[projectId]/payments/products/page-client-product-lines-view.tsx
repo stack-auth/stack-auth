@@ -578,10 +578,6 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     prompt += `- **Product ID**: \`${id}\`\n`;
     prompt += `- **Display Name**: ${product.displayName || 'Untitled Product'}\n`;
     prompt += `- **Customer Type**: ${product.customerType}\n`;
-    if (product.freeTrial) {
-      const [count, unit] = product.freeTrial;
-      prompt += `- **Free Trial**: ${count} ${count === 1 ? unit : unit + 's'}\n`;
-    }
     prompt += `- **Server Only**: ${product.serverOnly ? 'Yes' : 'No'}\n`;
     prompt += `- **Stackable**: ${product.stackable ? 'Yes' : 'No'}\n`;
     if (product.isAddOnTo && typeof product.isAddOnTo === 'object') {
@@ -670,9 +666,6 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     }
     if (product.isAddOnTo && typeof product.isAddOnTo === 'object') {
       prompt += `- This is an add-on product. Customers must already have one of the base products to purchase this.\n`;
-    }
-    if (product.freeTrial) {
-      prompt += `- This product includes a free trial period. Customers will not be charged until the trial ends.\n`;
     }
     if (itemsList.length > 0) {
       prompt += `- When a customer purchases this product, they will automatically receive the included items listed above.\n`;
@@ -1248,7 +1241,6 @@ function ProductLineView({ groupedProducts, groups, existingItems, onSaveProduct
       prices: {},
       includedItems: {},
       serverOnly: false,
-      freeTrial: undefined,
     };
 
     setDrafts((prev) => [...prev, { key: candidate, productLineId: undefined, product: newProduct }]);

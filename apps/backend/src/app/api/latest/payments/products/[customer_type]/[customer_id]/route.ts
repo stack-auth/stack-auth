@@ -1,10 +1,10 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, inlineProductSchemaWithLegacyProductLevelFreeTrial, isActiveSubscription, isAddOnProduct, normalizeInlineProductLegacyProductLevelFreeTrial, productToInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { customerProductsListResponseSchema } from "@hexclave/shared/dist/interface/crud/products";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { typedEntries, typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -179,7 +179,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       product_id: yupString().optional(),
-      product_inline: inlineProductSchema.optional(),
+      product_inline: inlineProductSchemaWithLegacyProductLevelFreeTrial.optional(),
       quantity: yupNumber().integer().min(1).default(1),
     }).defined(),
   }),
@@ -200,11 +200,12 @@ export const POST = createSmartRouteHandler({
       customerType: params.customer_type,
       customerId: params.customer_id,
     });
+    const productInline = normalizeInlineProductLegacyProductLevelFreeTrial(body.product_inline);
     const product = await ensureProductIdOrInlineProduct(
       tenancy,
       auth.type,
       body.product_id,
-      body.product_inline,
+      productInline,
     );
 
     if (params.customer_type !== product.customerType) {

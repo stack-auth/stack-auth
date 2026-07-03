@@ -568,13 +568,9 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2026-07-01: product-level freeTrial removed; free trials are now configured per-price only.
-  // Strip any saved product-level freeTrial overrides so they don't cause validation errors.
+  // Move saved product-level freeTrial overrides onto prices before stripping them so existing trials keep working.
   if (isBranchOrHigher) {
-    // p.slice(3, -2) checks for "prices" only in positions where it structurally indicates a price sub-object
-    // (i.e., followed by at least a price-ID segment before the trailing "freeTrial"). This correctly handles
-    // dotted product IDs containing "prices" as a segment (e.g., "pro.prices") — those land at p.length-2
-    // which is excluded by the slice, so the product-level freeTrial is still removed.
-    res = removeProperty(res, p => p.length >= 4 && p[0] === "payments" && p[1] === "products" && p[p.length - 1] === "freeTrial" && !p.slice(3, -2).includes("prices"));
+    res = migrateProductLevelFreeTrialsToPrices(res);
   }
   // END
 
@@ -604,37 +600,149 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
   })).toEqual({});
 });
 
-import.meta.vitest?.test("migrateConfigOverride strips product-level freeTrial but keeps price-level freeTrial", ({ expect }) => {
-  // Product-level freeTrial (nested) should be removed
+import.meta.vitest?.test("migrateConfigOverride moves product-level freeTrial to prices", ({ expect }) => {
+  // Nested config: product-level freeTrial is copied to every price, then removed from the product.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { USD: "10" }, annual: { USD: "100" } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { USD: "10", freeTrial: [7, "day"] }, annual: { USD: "100", freeTrial: [7, "day"] } } } } },
+  });
+
+  // Dot-notation config: preserve the dot-notation style while adding price-level freeTrial overrides.
+  expect(migrateConfigOverride("branch", {
+    "payments.products.pro.freeTrial": [14, "day"],
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.annual": { USD: "100" },
+  })).toEqual({
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.annual": { USD: "100" },
+    "payments.products.pro.prices.monthly.freeTrial": [14, "day"],
+    "payments.products.pro.prices.annual.freeTrial": [14, "day"],
+  });
+
+  // Price-level freeTrial is already the new source of truth and should be preserved.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+  });
+
+  // Existing price-specific trials win over the old product-level default.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { freeTrial: [14, "day"] }, annual: { USD: "100" } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { freeTrial: [14, "day"] }, annual: { USD: "100", freeTrial: [7, "day"] } } } } },
+  });
+
+  // Product-level freeTrial with no prices is simply removed because there is nowhere safe to preserve it.
   expect(migrateConfigOverride("branch", {
     payments: { products: { pro: { freeTrial: [7, "day"] } } },
   })).toEqual({
     payments: { products: { pro: {} } },
   });
 
-  // Product-level freeTrial (dot-notation) should be removed
+  // Mixed config: a flat product-level freeTrial can still be applied to nested prices in the same override.
   expect(migrateConfigOverride("branch", {
-    "payments.products.pro.freeTrial": [14, "day"],
-  })).toEqual({});
-
-  // Price-level freeTrial should be preserved
-  expect(migrateConfigOverride("branch", {
-    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+    "payments.products.pro.freeTrial": [7, "day"],
+    payments: { products: { pro: { prices: { monthly: { USD: "10" } } } } },
   })).toEqual({
-    payments: { products: { pro: { prices: { monthly: { freeTrial: [7, "day"] } } } } },
+    payments: { products: { pro: { prices: { monthly: { USD: "10" } } } } },
+    "payments.products.pro.prices.monthly.freeTrial": [7, "day"],
   });
 
-  // Mixed: product-level removed, price-level kept
+  // Dotted product IDs and product IDs containing "prices" should be treated as product IDs, not structural paths.
   expect(migrateConfigOverride("branch", {
-    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { freeTrial: [14, "day"] } } } } },
+    payments: { products: {
+      "pro.plan": { freeTrial: [7, "day"], prices: { monthly: { USD: "10" } } },
+      "pro.prices": { freeTrial: [14, "day"], prices: { monthly: { USD: "20" } } },
+    } },
   })).toEqual({
-    payments: { products: { pro: { prices: { monthly: { freeTrial: [14, "day"] } } } } },
+    payments: { products: {
+      "pro.plan": { prices: { monthly: { USD: "10", freeTrial: [7, "day"] } } },
+      "pro.prices": { prices: { monthly: { USD: "20", freeTrial: [14, "day"] } } },
+    } },
   });
 
-  // Dotted product ID containing "prices" as a segment — product-level freeTrial should still be removed
+  // Flat dotted product IDs containing "prices" use the second "prices" segment as the structural price map.
   expect(migrateConfigOverride("branch", {
     "payments.products.pro.prices.freeTrial": [7, "day"],
-  })).toEqual({});
+    "payments.products.pro.prices.prices.monthly.USD": "10",
+  })).toEqual({
+    "payments.products.pro.prices.prices.monthly.USD": "10",
+    "payments.products.pro.prices.prices.monthly.freeTrial": [7, "day"],
+  });
+
+  // Dotted price IDs should still get the migrated freeTrial and keep their ID intact.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { "monthly.v2": { USD: "10" } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { "monthly.v2": { USD: "10", freeTrial: [7, "day"] } } } } },
+  });
+
+  // Flat dotted price IDs should be preserved when inferring where to place the migrated freeTrial.
+  expect(migrateConfigOverride("branch", {
+    "payments.products.pro.freeTrial": [7, "day"],
+    "payments.products.pro.prices.monthly.v2.USD": "10",
+  })).toEqual({
+    "payments.products.pro.prices.monthly.v2.USD": "10",
+    "payments.products.pro.prices.monthly.v2.freeTrial": [7, "day"],
+  });
+
+  // Mixed config: a nested product-level freeTrial can still be applied to dot-notation prices.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"] } } },
+    "payments.products.pro.prices.monthly.USD": "10",
+  })).toEqual({
+    payments: { products: { pro: {} } },
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.monthly.freeTrial": [7, "day"],
+  });
+
+  // Existing dot-notation price-specific trials still win when the old product-level trial is nested.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"] } } },
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.monthly.freeTrial": [14, "day"],
+  })).toEqual({
+    payments: { products: { pro: {} } },
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.monthly.freeTrial": [14, "day"],
+  });
+
+  // Price-specific trials also win when the price object is nested but the override is dot-notation.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { USD: "10" } } } } },
+    "payments.products.pro.prices.monthly.freeTrial": [14, "day"],
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { USD: "10" } } } } },
+    "payments.products.pro.prices.monthly.freeTrial": [14, "day"],
+  });
+
+  // Mixed config with dotted price IDs should copy the nested product trial to the inferred flat price path.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"] } } },
+    "payments.products.pro.prices.monthly.v2.USD": "10",
+  })).toEqual({
+    payments: { products: { pro: {} } },
+    "payments.products.pro.prices.monthly.v2.USD": "10",
+    "payments.products.pro.prices.monthly.v2.freeTrial": [7, "day"],
+  });
+
+  // Explicit undefined means "no price-specific trial", so the product-level trial should still copy over it.
+  expect(migrateConfigOverride("branch", {
+    payments: { products: { pro: { freeTrial: [7, "day"], prices: { monthly: { USD: "10", freeTrial: undefined } } } } },
+  })).toEqual({
+    payments: { products: { pro: { prices: { monthly: { USD: "10", freeTrial: [7, "day"] } } } } },
+  });
+
+  expect(migrateConfigOverride("branch", {
+    "payments.products.pro.freeTrial": [7, "day"],
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.monthly.freeTrial": undefined,
+  })).toEqual({
+    "payments.products.pro.prices.monthly.USD": "10",
+    "payments.products.pro.prices.monthly.freeTrial": [7, "day"],
+  });
 });
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
@@ -650,8 +758,130 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSy
   expect(migrateConfigOverride("branch", { dbSync })).toEqual({});
   expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
 });
-function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
+function removeProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean): any {
   return mapProperty(obj, pathCond, () => undefined);
+}
+
+function isProductLevelFreeTrialPath(path: string[]): boolean {
+  // p.slice(3, -2) checks for "prices" only in positions where it structurally indicates a price sub-object
+  // (i.e., followed by at least a price-ID segment before the trailing "freeTrial"). This correctly handles
+  // dotted product IDs containing "prices" as a segment (e.g., "pro.prices") — those land at p.length-2
+  // which is excluded by the slice, so the product-level freeTrial is still considered product-level.
+  return path.length >= 4 && path[0] === "payments" && path[1] === "products" && path[path.length - 1] === "freeTrial" && !path.slice(3, -2).includes("prices");
+}
+
+function isConfigObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function migrateProductLevelFreeTrialsToPrices(obj: Record<string, any>): any {
+  const productLevelFreeTrials = new Map<string, any>();
+  collectProductLevelFreeTrials(obj, [], productLevelFreeTrials);
+
+  const pricePathsWithDefinedFreeTrial = new Set<string>();
+  for (const productPath of productLevelFreeTrials.keys()) {
+    const priceInfo = collectPriceInfoForProduct(obj, productPath);
+    for (const pricePath of priceInfo.pricePathsWithFreeTrial) {
+      pricePathsWithDefinedFreeTrial.add(pricePath);
+    }
+  }
+
+  const res = migrateNestedProductLevelFreeTrialsToPrices(obj, [], pricePathsWithDefinedFreeTrial);
+
+  for (const [productPath, freeTrial] of productLevelFreeTrials) {
+    const priceInfo = collectPriceInfoForProduct(res, productPath);
+    for (const pricePath of priceInfo.pricePaths) {
+      if (!priceInfo.pricePathsWithFreeTrial.has(pricePath)) {
+        set(res, `${pricePath}.freeTrial`, freeTrial);
+      }
+    }
+  }
+
+  return removeProperty(res, isProductLevelFreeTrialPath);
+}
+
+function migrateNestedProductLevelFreeTrialsToPrices(obj: any, basePath: string[], pricePathsWithDefinedFreeTrial: Set<string>): any {
+  if (!isConfigObject(obj)) return obj;
+
+  const res: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const path = [...basePath, ...key.split(".")];
+    res[key] = migrateNestedProductLevelFreeTrialsToPrices(value, path, pricePathsWithDefinedFreeTrial);
+  }
+
+  if (has(res, "freeTrial") && isProductLevelFreeTrialPath([...basePath, "freeTrial"])) {
+    const freeTrial = getOrUndefined(res, "freeTrial");
+    const prices = res.prices;
+    if (freeTrial !== undefined && isConfigObject(prices)) {
+      for (const [priceId, price] of Object.entries(prices)) {
+        const pricePath = [...basePath, "prices", ...priceId.split(".")].join(".");
+        if (isConfigObject(price) && getOrUndefined(price, "freeTrial") === undefined && !pricePathsWithDefinedFreeTrial.has(pricePath)) {
+          prices[priceId] = { ...price, freeTrial };
+        }
+      }
+    }
+    Reflect.deleteProperty(res, "freeTrial");
+  }
+
+  return res;
+}
+
+function collectProductLevelFreeTrials(obj: any, basePath: string[], result: Map<string, any>) {
+  if (!isConfigObject(obj)) return;
+
+  for (const [key, value] of Object.entries(obj)) {
+    const path = [...basePath, ...key.split(".")];
+    if (isProductLevelFreeTrialPath(path) && value !== undefined) {
+      result.set(path.slice(0, -1).join("."), value);
+    }
+    collectProductLevelFreeTrials(value, path, result);
+  }
+}
+
+const priceFieldNames = new Set([
+  ...SUPPORTED_CURRENCIES.map(currency => currency.code),
+  "interval",
+  "serverOnly",
+  "freeTrial",
+]);
+
+function collectPriceInfoForProduct(obj: any, productPath: string) {
+  const productPathParts = productPath.split(".");
+  const pricePaths = new Set<string>();
+  const pricePathsWithFreeTrial = new Set<string>();
+
+  const collect = (value: any, basePath: string[]) => {
+    if (!isConfigObject(value)) return;
+
+    for (const [key, child] of Object.entries(value)) {
+      const path = [...basePath, ...key.split(".")];
+      const remaining = path.slice(productPathParts.length);
+      const isUnderProductPrices = path.slice(0, productPathParts.length).join(".") === productPath && remaining[0] === "prices";
+
+      if (isUnderProductPrices && remaining.length >= 2) {
+        if (isConfigObject(child)) {
+          pricePaths.add(path.join("."));
+          if (getOrUndefined(child, "freeTrial") !== undefined) {
+            pricePathsWithFreeTrial.add(path.join("."));
+          }
+        } else {
+          const fieldName = remaining[remaining.length - 1];
+          if (priceFieldNames.has(fieldName)) {
+            const pricePath = path.slice(0, -1).join(".");
+            pricePaths.add(pricePath);
+            if (fieldName === "freeTrial" && child !== undefined) {
+              pricePathsWithFreeTrial.add(pricePath);
+            }
+          }
+        }
+      }
+
+      collect(child, path);
+    }
+  };
+
+  collect(obj, []);
+  return { pricePaths, pricePathsWithFreeTrial };
 }
 
 function mapProperty(obj: Record<string, any>, pathCond: (path: string[]) => boolean, mapper: (value: any) => any): any {

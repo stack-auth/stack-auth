@@ -6,7 +6,7 @@ import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
-import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@hexclave/shared/dist/schema-fields";
+import { dayIntervalSchema, inlineProductSchema, productSchema, productSchemaWithMetadata, yupObject } from "@hexclave/shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@hexclave/shared/dist/utils/currency-constants";
 import { addInterval } from "@hexclave/shared/dist/utils/dates";
 import { captureError, HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -21,6 +21,12 @@ import { Tenancy } from "./tenancies";
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
+type InlineProduct = yup.InferType<typeof inlineProductSchema>;
+
+export const inlineProductSchemaWithLegacyProductLevelFreeTrial = inlineProductSchema.concat(yupObject({
+  free_trial: dayIntervalSchema.optional().meta({ openapiField: { hidden: true } }),
+}));
+type InlineProductWithLegacyProductLevelFreeTrial = yup.InferType<typeof inlineProductSchemaWithLegacyProductLevelFreeTrial>;
 type SelectedPrice = Product["prices"][string];
 
 export async function ensureClientCanAccessCustomer(options: {
@@ -108,6 +114,62 @@ export async function ensureProductIdOrInlineProduct(
     };
   }
 }
+
+export function normalizeInlineProductLegacyProductLevelFreeTrial(
+  inlineProduct: InlineProductWithLegacyProductLevelFreeTrial | undefined,
+): InlineProduct | undefined {
+  if (inlineProduct === undefined) return undefined;
+
+  const { free_trial: legacyFreeTrial, ...inlineProductWithoutLegacyFreeTrial } = inlineProduct;
+  if (legacyFreeTrial === undefined) return inlineProductWithoutLegacyFreeTrial;
+
+  return {
+    ...inlineProductWithoutLegacyFreeTrial,
+    prices: typedFromEntries(typedEntries(inlineProductWithoutLegacyFreeTrial.prices).map(([priceId, price]) => [
+      priceId,
+      price.free_trial === undefined ? { ...price, free_trial: legacyFreeTrial } : price,
+    ])),
+  };
+}
+
+import.meta.vitest?.test("normalizeInlineProductLegacyProductLevelFreeTrial migrates legacy product-level trials to prices", ({ expect }) => {
+  const inlineProduct = {
+    display_name: "Pro",
+    customer_type: "user",
+    free_trial: [7, "day"],
+    server_only: true,
+    stackable: false,
+    prices: {
+      monthly: { USD: "10" },
+      annual: { USD: "100", free_trial: [14, "day"] },
+    },
+    included_items: {},
+  } satisfies InlineProductWithLegacyProductLevelFreeTrial;
+
+  expect(normalizeInlineProductLegacyProductLevelFreeTrial(inlineProduct)).toEqual({
+    display_name: "Pro",
+    customer_type: "user",
+    server_only: true,
+    stackable: false,
+    prices: {
+      monthly: { USD: "10", free_trial: [7, "day"] },
+      annual: { USD: "100", free_trial: [14, "day"] },
+    },
+    included_items: {},
+  });
+  expect(inlineProduct).toEqual({
+    display_name: "Pro",
+    customer_type: "user",
+    free_trial: [7, "day"],
+    server_only: true,
+    stackable: false,
+    prices: {
+      monthly: { USD: "10" },
+      annual: { USD: "100", free_trial: [14, "day"] },
+    },
+    included_items: {},
+  });
+});
 
 // ── Legacy functions deleted ──
 // computeLedgerBalanceAtNow, addWhenRepeatedItemWindowTransactions,
@@ -616,4 +678,3 @@ export async function grantProductToCustomer(options: {
 
   return { type: "subscription", subscriptionId: subscription.id };
 }
-

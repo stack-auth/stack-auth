@@ -1,6 +1,7 @@
 import { POST as latestHandler } from "@/app/api/latest/payments/purchases/create-purchase-url/route";
+import { inlineProductSchemaWithLegacyProductLevelFreeTrial } from "@/lib/payments";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { ensureObjectSchema, inlineProductSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { ensureObjectSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { normalizePurchaseBody } from "../offers-compat";
 
 const latestInit = latestHandler.initArgs[0];
@@ -13,7 +14,7 @@ export const POST = createSmartRouteHandler({
   request: requestSchema.concat(yupObject({
     body: requestBodySchema.concat(yupObject({
       offer_id: yupString().optional(),
-      offer_inline: inlineProductSchema.optional(),
+      offer_inline: inlineProductSchemaWithLegacyProductLevelFreeTrial.optional(),
     })),
   })),
   handler: async (_req, fullReq) => {

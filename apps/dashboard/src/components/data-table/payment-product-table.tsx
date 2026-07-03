@@ -53,14 +53,6 @@ const columns: DataGridColumnDef<PaymentProduct>[] = [
     ),
   },
   {
-    id: "freeTrial",
-    header: "Free Trial",
-    accessor: (row) => row.freeTrial?.join(" ") ?? "",
-    width: 140,
-    type: "string",
-    sortable: false,
-  },
-  {
     id: "stackable",
     header: "Stackable",
     accessor: "stackable",
