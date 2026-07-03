@@ -1,0 +1,38 @@
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_068cfa5c0fdf50 4081
+  s_5b6ac9c07bf674::t_9312e0bc7dcfd1 765
+  s_5b6ac9c07bf674::t_b2ff117f38c3ad 4069-4080,4082-4096
+  s_5b6ac9c07bf674::t_7b7ad4f30d6640 64-65
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_59d2e839abd055 698-707
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.test.ts
+  s_5b6ac9c07bf674::t_0d4f0ba9023bfa 97-126
+  s_5b6ac9c07bf674::t_9c8cbe886762b1 2,7
+  s_5b6ac9c07bf674::t_7e1633617abf4f 45-47,51
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5b6ac9c07bf674::t_88a8d9430b8eaa 161-172
+  s_5b6ac9c07bf674::t_6c24b483d4c9c7 10
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.ts
+  s_5b6ac9c07bf674::t_cbff5386611fd2 2
+  s_5b6ac9c07bf674::t_64be32f743d249 107-109
+  s_5b6ac9c07bf674::t_e860f8c1c15b9f 55-85
+  s_5b6ac9c07bf674::t_d8899bc7bdb76e 152
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5b6ac9c07bf674::t_5b4bf25659851b 1865-1874,1879
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9ed1fc353f777efe2a495ec141d79e1988884916",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
