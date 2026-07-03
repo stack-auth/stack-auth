@@ -887,15 +887,59 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     options: { replicated: boolean },
   ) => {
     return await traceSpan({ description: "bulldozer-js.bulldozer.withSnapshot", attributes: { "bulldozer.replicated": options.replicated } }, async () => {
+      const startedAt = performance.now();
+      let writeLockWaitMs = 0;
+      let getSnapshotMs = 0;
+      let updateSnapshotMs = 0;
+      let toPiledriverObjectMs = 0;
+      let setRootMs = 0;
+      let waitUntilAvailableMs = 0;
+      let waitUntilReplicatedMs = 0;
+      let mutationDebugInfo: BulldozerSnapshotMutationDebugInfo | undefined;
+      const writeLockWaitStartedAt = performance.now();
       const result = await withWriteLock(async () => {
+        writeLockWaitMs = performance.now() - writeLockWaitStartedAt;
+        const getSnapshotStartedAt = performance.now();
         const { snapshot } = await getSnapshot();
+        getSnapshotMs = performance.now() - getSnapshotStartedAt;
+        const updateSnapshotStartedAt = performance.now();
         const updateResult = await updateSnapshot(snapshot);
+        updateSnapshotMs = performance.now() - updateSnapshotStartedAt;
+        mutationDebugInfo = updateResult instanceof BulldozerDatabaseSnapshot ? undefined : updateResult.debugInfo;
         const newSnapshot = updateResult instanceof BulldozerDatabaseSnapshot ? updateResult : updateResult.newSnapshot;
-        const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
+        const toPiledriverObjectStartedAt = performance.now();
+        const newSnapshotPiledriverObject = newSnapshot.toPiledriverObject();
+        toPiledriverObjectMs = performance.now() - toPiledriverObjectStartedAt;
+        const setRootStartedAt = performance.now();
+        const { seq } = await setRoot({ snapshot: newSnapshotPiledriverObject });
+        setRootMs = performance.now() - setRootStartedAt;
+        const waitUntilAvailableStartedAt = performance.now();
         await piledriverDatabase.waitUntilAvailable(seq);
+        waitUntilAvailableMs = performance.now() - waitUntilAvailableStartedAt;
         return { snapshot: newSnapshot, seq };
       });
-      if (options.replicated) await piledriverDatabase.waitUntilReplicated(result.seq);
+      if (options.replicated) {
+        const waitUntilReplicatedStartedAt = performance.now();
+        await piledriverDatabase.waitUntilReplicated(result.seq);
+        waitUntilReplicatedMs = performance.now() - waitUntilReplicatedStartedAt;
+      }
+      console.debug("bulldozer-js withSnapshot timing", inspect({
+        replicated: options.replicated,
+        elapsedMs: performance.now() - startedAt,
+        writeLockWaitMs,
+        getSnapshotMs,
+        updateSnapshotMs,
+        toPiledriverObjectMs,
+        setRootMs,
+        waitUntilAvailableMs,
+        waitUntilReplicatedMs,
+        mutation: mutationDebugInfo === undefined ? undefined : {
+          operation: mutationDebugInfo.operation,
+          sourceTableId: mutationDebugInfo.sourceTableId,
+          rowsSetOrDeleted: mutationDebugInfo.rowsSetOrDeleted,
+          durationMs: mutationDebugInfo.durationMs,
+        },
+      }, { depth: null, maxArrayLength: null }));
       return result;
     });
   };
