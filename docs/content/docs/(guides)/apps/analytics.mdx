@@ -4,17 +4,15 @@ description: Explore events, session replays, and SQL queries in your project's 
 icon: ChartLine
 ---
 
-The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, explore span traces on a waterfall timeline, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
 
 ## Overview
 
-Analytics is organized into five areas in the dashboard:
+Analytics is organized into three areas in the dashboard:
 
 - **Tables**: Browse event rows with sorting, search, and incremental loading
-- **Traces**: Inspect span trees — sessions, tabs, and your custom spans — on a zoomable waterfall timeline
-- **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
-- **Clickmaps**: Visualize where users click on your pages
 - **Queries**: Run and save reusable ClickHouse SQL queries
+- **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
 
 ## How Analytics Works
 
@@ -25,10 +23,8 @@ flowchart LR
     A[User activity in your app] --> B[Stack event ingestion]
     B --> C[ClickHouse data]
     C --> D[Tables view]
-    C --> E[Traces waterfall]
+    C --> E[SQL query runner]
     C --> F[Session replay UI]
-    C --> G[Clickmaps]
-    C --> H[SQL query runner]
 `} />
 
 ### What Gets Tracked
@@ -37,8 +33,6 @@ Stack collects both client-side and server-side analytics events:
 
 - **Client-side events**: browser interaction events like `$page-view` and `$click`
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
-- **Session spans**: every sign-in session and replay recording is recorded as a span, with a span per recorded browser tab underneath — forming a tree your telemetry attaches to
-- **Custom events and spans**: anything you record with `trackEvent` and `startSpan`/`withSpan` — see [Custom Events & Spans](../concepts/custom-events-and-spans)
 
 ## Enabling the Analytics App
 
@@ -59,7 +53,7 @@ To use analytics in your project:
 
 After setup, Stack automatically captures client-side `$page-view` and `$click` events.
 
-Replay recording is on by default as part of analytics capture; set `analytics.replays.enabled: false` in your client app config to opt out.
+If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
 
 ## Tables
 
@@ -72,25 +66,12 @@ The **Tables** screen is the fastest way to inspect recent analytics records.
 
 Use this view when you need to quickly answer "what just happened?" without writing SQL.
 
-## Traces
-
-The **Traces** screen renders your span trees — sign-in sessions, replay recordings, browser tabs, and your own [custom events and spans](../concepts/custom-events-and-spans) — as a waterfall timeline.
-
-- Trace list with per-user avatars, durations, and span/event counts; click any span to focus it as its own waterfall
-- Waterfall timeline with events as markers inside their parent spans
-- Drag on the timeline to zoom to a range, `Cmd/Ctrl + scroll` to zoom at the cursor, horizontal scroll to pan (while zoomed), `Option/Alt + caret` to collapse a whole subtree
-- Open spans (not yet ended) render with a fading edge and an `open` badge; spans whose end lies in the future — like a session lasting until its token expires — show elapsed time as of the last load
-- Scope toggle (**All** vs **Custom**) to hide system telemetry, plus type search and time ranges of 1 hour to 30 days
-- Loads the 3,000 most recent spans and 3,000 most recent events in the selected window; use the Refresh button to reload
-
-Use Traces to understand how an operation unfolded — which spans overlapped, what events fired inside them, and how frontend activity connects to [backend spans](../concepts/cross-tier-tracing).
-
 ## Queries
 
 The **Queries** screen is a ClickHouse SQL workspace for deeper analysis.
 
 - Run read-only SQL queries with a timeout budget
-- Query the users, events, and spans tables
+- Query the users and analytics tables
 - Save reusable queries into folders
 - Re-run saved queries with one click
 - Edit and overwrite saved query definitions
@@ -107,9 +88,9 @@ The **Replays** screen helps you move from "an event happened" to "what the user
 
 Use replays when metrics alone are not enough to explain user behavior.
 
-### Configuring Replay Recording in the SDK
+### Enabling Replay Recording in the SDK
 
-Session replay recording is enabled by default whenever analytics is enabled. You can opt out or tune masking when creating your client app:
+Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
 
 ```ts
 import { StackClientApp } from "@stackframe/stack";
@@ -120,7 +101,6 @@ export const stackClientApp = new StackClientApp({
   tokenStore: "nextjs-cookie",
   analytics: {
     replays: {
-      // Set to false to opt out of replay recording. Defaults to true.
       enabled: true,
       // Optional. Defaults to true.
       maskAllInputs: true,
@@ -134,8 +114,6 @@ export const stackClientApp = new StackClientApp({
 ## Best Practices
 
 1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
-2. **Use Traces to see cause and effect**: when you need to know how an operation unfolded — what ran, for how long, and what fired inside it — the waterfall beats scanning rows.
-3. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
-4. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
-5. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
-6. **Instrument the flows you care about**: a few well-named [custom spans](../concepts/custom-events-and-spans) around checkout, onboarding, or imports make Traces and SQL dramatically more useful than raw page views alone.
+2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
+3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
+4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.

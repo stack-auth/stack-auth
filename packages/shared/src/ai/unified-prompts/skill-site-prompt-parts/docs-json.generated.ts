@@ -120,7 +120,16 @@ const docsJson = {
               },
               "guides/apps/emails/overview",
               "guides/apps/payments/overview",
-              "guides/apps/analytics/overview",
+              {
+                "group": "Analytics",
+                "icon": "/images/app-icons/analytics.svg",
+                "pages": [
+                  "guides/apps/analytics/overview",
+                  "guides/apps/analytics/custom-events-and-spans",
+                  "guides/apps/analytics/cross-tier-tracing",
+                  "guides/apps/analytics/framework-adapters"
+                ]
+              },
               {
                 "group": "Teams",
                 "icon": "/images/app-icons/teams.svg",
