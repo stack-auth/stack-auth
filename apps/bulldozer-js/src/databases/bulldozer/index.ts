@@ -23,12 +23,23 @@ async function fromAsync<T>(iterable: AsyncIterable<T>): Promise<T[]> {
  * piledriverObjectEquals) is needed on top of a compareGroupKeys ordering: two group keys map
  * to the same string iff they are piledriverObjectEquals-equal. Object keys are sorted so that
  * key insertion order does not matter.
+ *
+ * Memoized by object identity: this function is called from B-tree comparators (twice per key
+ * comparison, O(log n) comparisons per tree operation), and CPU profiling showed it at ~5% of
+ * process CPU during backfills. Piledriver objects are immutable, so caching by identity is
+ * safe; the WeakMap lets group key objects be collected normally.
  */
+const canonicalGroupKeyStringCache = new WeakMap<object, string>();
 function canonicalGroupKeyString(groupKey: PiledriverObject): string {
   if (groupKey !== null && typeof groupKey === "object") {
+    const cached = canonicalGroupKeyStringCache.get(groupKey);
+    if (cached !== undefined) return cached;
     if (isPiledriverHeapObjectSymbol in groupKey) throw new Error("Group keys must not contain heap objects");
-    if (Array.isArray(groupKey)) return "[" + groupKey.map(canonicalGroupKeyString).join(",") + "]";
-    return "{" + Object.entries(groupKey).sort(([a], [b]) => compareStrings(a, b)).map(([k, v]) => JSON.stringify(k) + ":" + canonicalGroupKeyString(v)).join(",") + "}";
+    const result = Array.isArray(groupKey)
+      ? "[" + groupKey.map(canonicalGroupKeyString).join(",") + "]"
+      : "{" + Object.entries(groupKey).sort(([a], [b]) => compareStrings(a, b)).map(([k, v]) => JSON.stringify(k) + ":" + canonicalGroupKeyString(v)).join(",") + "}";
+    canonicalGroupKeyStringCache.set(groupKey, result);
+    return result;
   }
   return JSON.stringify(groupKey);
 }

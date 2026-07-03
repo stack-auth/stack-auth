@@ -28,3 +28,18 @@ export async function traceSpan<T>(optionsOrDescription: string | { description:
     return await fn(span);
   });
 }
+
+const hotPathTracingEnabled = getEnvVariable("HEXCLAVE_BULLDOZER_HOT_PATH_TRACING", "") === "true";
+const noopTraceSpan: TraceSpan = { setAttribute: () => {} };
+
+/**
+ * Like traceSpan, but for operations that run at very high frequency (per KV put, per seq, per
+ * heap object, ...). CPU profiling showed span creation alone was >20% of process CPU during
+ * backfills (plus a large share of GC), so these spans are disabled unless
+ * HEXCLAVE_BULLDOZER_HOT_PATH_TRACING=true is set. Coarse operations (setRootObject, snapshot
+ * mutations, HTTP handlers) keep using traceSpan unconditionally.
+ */
+export async function traceSpanHot<T>(optionsOrDescription: string | { description: string, attributes?: Record<string, TraceAttributeValue> }, fn: (span: TraceSpan) => Promise<T>): Promise<T> {
+  if (!hotPathTracingEnabled) return await fn(noopTraceSpan);
+  return await traceSpan(optionsOrDescription, fn);
+}

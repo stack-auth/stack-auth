@@ -1,7 +1,7 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import * as lmdb from "lmdb";
-import { traceSpan } from "../../../otel.js";
+import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
@@ -179,7 +179,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const availability = traceSpan({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
       activityStats.waitUntilAvailableResolveTotalMs += performance.now() - insertedAt;
       activityStats.waitUntilAvailableResolves++;
       seqToAvailability.delete(seqId);
@@ -189,7 +189,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const rememberDurability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const durability = traceSpan({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(async () => await root.flushed).then(() => {
+    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(async () => await root.flushed).then(() => {
       activityStats.waitUntilDurableResolveTotalMs += performance.now() - insertedAt;
       activityStats.waitUntilDurableResolves++;
       seqToDurability.delete(seqId);
@@ -199,7 +199,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const rememberCombinedAvailability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const availability = traceSpan({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
       activityStats.combinedSeqAvailabilityResolveTotalMs += performance.now() - insertedAt;
       activityStats.combinedSeqAvailabilityResolves++;
       combinedSeqToAvailability.delete(seqId);
@@ -209,7 +209,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const rememberCombinedDurability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const durability = traceSpan({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
       activityStats.combinedSeqDurabilityResolveTotalMs += performance.now() - insertedAt;
       activityStats.combinedSeqDurabilityResolves++;
       combinedSeqToDurability.delete(seqId);
@@ -225,7 +225,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const commit = (requiresSeq: DatabaseSeq, action: (version: number) => Promise<void>) => {
     const version = nextVersion();
     const seqId = nextSeqId();
-    const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.commit", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+    const promise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.commit", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
       const requiredSeqWaitStartedAt = performance.now();
       await waitUntilAvailable(requiresSeq);
       activityStats.requiredSeqWaits++;
@@ -307,7 +307,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.get", attributes }, async () => {
           validateKey(key);
           if (simulateReadMissDelayMs > 0) await wait(simulateReadMissDelayMs);
           const [buffer] = await db.getMany([bufferFromArrayBuffer(key)]);
@@ -318,7 +318,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         });
       },
       async setAll(entries, setOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           for (const { key, value } of entries) {
             validateKey(key);
             validateValue("value", value);
@@ -334,7 +334,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         });
       },
       async deleteAll(keys) {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           for (const key of keys) validateKey(key);
           if (keys.length === 0) return { seq: initialSeq };
           return {
@@ -345,13 +345,13 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         });
       },
       async insertAll(values, insertOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
           for (const value of values) validateValue("value", value);
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           const version = nextVersion();
           const seqId = nextSeqId();
           const keys = values.map((_, index) => dumpKeyForVersion(version, index));
-          const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll.commit", attributes }, async () => {
+          const promise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.insertAll.commit", attributes }, async () => {
             const requiredSeqWaitStartedAt = performance.now();
             await waitUntilAvailable(insertOptions?.requiresSeq ?? initialSeq);
             activityStats.requiredSeqWaits++;
@@ -381,7 +381,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         });
       },
       async compareAndSet(key, compare, value, casOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.compareAndSet", attributes }, async () => {
           validateKey(key);
           validateValue("compare", compare);
           validateValue("value", value);
@@ -397,7 +397,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         });
       },
       async debugEntries() {
-        return await traceSpan({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugEntries", attributes }, async () => await (db.getRange() as lmdb.RangeIterable<{ key: Uint8Array, value: Buffer }>).map(({ key, value }) => {
           const keyBuffer = Buffer.from(key);
           const valueBuffer = Buffer.from(value);
           return {
@@ -440,13 +440,13 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       return declareLmdbLowLevelKvStoreOrDump("store", storeId);
     },
     async waitUntilAvailable(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilAvailable(seq));
+      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilAvailable(seq));
     },
     async waitUntilDurable(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilDurable(seq));
+      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilDurable(seq));
     },
     async waitUntilReplicated(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.lmdb.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
         await this.waitUntilAvailable(seq);
         await this.waitUntilDurable(seq);
       });
@@ -460,7 +460,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       return toSeq(seqId);
     },
     async debugSnapshot() {
-      return await traceSpan({ description: "bulldozer-js.low-level.lmdb.debugSnapshot", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugSnapshot", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
         const stores: Record<string, LowLevelDatabaseDebugEntry[]> = {};
         const dumps: Record<string, LowLevelDatabaseDebugEntry[]> = {};
         for (const [storeId, entries] of debugEntriesByStoreId.entries()) {

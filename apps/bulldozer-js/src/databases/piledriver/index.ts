@@ -1,6 +1,6 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { traceSpan } from "../../otel.js";
+import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 
@@ -9,6 +9,9 @@ export type PiledriverHeapObject = {
   get(): Promise<PiledriverObject>,
   [isPiledriverHeapObjectSymbol]: true,
 };
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 const heapObjectsMapNullSentinel = { __heapObjectsMapNullSentinel: true };
 const heapObjectsByObject = new WeakMap<PiledriverObject & object, PiledriverHeapObject>();
@@ -67,15 +70,11 @@ export type PiledriverDatabaseOptions = {
   disableHeapReadCache?: boolean,
 };
 
-// Tracks the chain of objects currently being serialized, so cycles fail fast with a clear
-// error instead of hanging (a heap cycle would deadlock on its own memoized promise, and a
-// plain object cycle would recurse forever). Sibling/DAG sharing is fine: only true ancestors
-// are in the path.
-type SerializationPath = {
-  objects: Set<object>,
-  heapObjects: Set<PiledriverHeapObject>,
-};
-const emptySerializationPath = (): SerializationPath => ({ objects: new Set(), heapObjects: new Set() });
+// Tracks the chain of *heap objects* currently being serialized, so heap cycles fail fast with
+// a clear error instead of deadlocking on their own memoized promise. Sibling/DAG sharing is
+// fine: only true ancestors are in the path. Plain-object cycles are detected separately with a
+// push/pop set during the synchronous payload walk.
+type HeapSerializationPath = ReadonlySet<PiledriverHeapObject>;
 type PendingHeapInsert = {
   buffer: ArrayBuffer,
   requiresSeq: DatabaseSeq,
@@ -246,13 +245,12 @@ function serializationBranchKey(path: readonly string[]): string {
   return path[0] ?? "<root>";
 }
 
-function serializationBranchStats(stats: PiledriverSerializationTimingStats | undefined, path: readonly string[]) {
+function serializationBranchStatsByKey(stats: PiledriverSerializationTimingStats | undefined, branchKey: string) {
   if (stats === undefined) return undefined;
-  const key = serializationBranchKey(path);
-  let result = stats.branchStats.get(key);
+  let result = stats.branchStats.get(branchKey);
   if (result === undefined) {
     result = emptyPiledriverSerializationBranchStats();
-    stats.branchStats.set(key, result);
+    stats.branchStats.set(branchKey, result);
   }
   return result;
 }
@@ -297,7 +295,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         stats.heapInsertAllTotalMs += heapInsertAllMs * entryCount / batch.length;
       }
       for (let i = 0; i < batch.length; i++) {
-        batch[i].resolve({ key: inserted.keys[i], seq: lowLevelDb.combineSeqs(batch[i].requiresSeq, inserted.seq) });
+        // Most heap payloads (e.g. leaf row data) have no heap children, so requiresSeq is the
+        // singleton initial seq — skip the combined-seq allocation entirely for those.
+        batch[i].resolve({ key: inserted.keys[i], seq: batch[i].requiresSeq === lowLevelDb.initialSeq ? inserted.seq : lowLevelDb.combineSeqs(batch[i].requiresSeq, inserted.seq) });
       }
     } catch (error) {
       for (const entry of batch) entry.reject(error);
@@ -316,16 +316,27 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     });
   };
 
-  const getHeapKeyAndSeq = async (heapObj: PiledriverHeapObject, path: SerializationPath = emptySerializationPath(), serializationTimingStats?: PiledriverSerializationTimingStats, logicalPath: readonly string[] = []): Promise<{ key: ArrayBuffer, seq: DatabaseSeq }> => {
+  // Deduplicates and drops initial seqs before delegating to the low-level combineSeqs. This is
+  // important for performance: each low-level combined seq allocates promises/map entries, so we
+  // only want to create one when there are actually ≥2 distinct non-initial seqs to combine.
+  // (Identity comparison against initialSeq is safe because initialSeq is a singleton object.)
+  const combineSeqsDeduped = (seqs: Iterable<DatabaseSeq>): DatabaseSeq => {
+    const unique = [...new Set(seqs)].filter(seq => seq !== lowLevelDb.initialSeq);
+    if (unique.length === 0) return lowLevelDb.initialSeq;
+    if (unique.length === 1) return unique[0];
+    return lowLevelDb.combineSeqs(...unique);
+  };
+
+  const getHeapKeyAndSeq = async (heapObj: PiledriverHeapObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, branchKey: string | undefined): Promise<{ key: ArrayBuffer, seq: DatabaseSeq }> => {
     // Must be checked before the memo lookup: awaiting the memoized promise of an ancestor
     // that is still being serialized would deadlock.
-    if (path.heapObjects.has(heapObj)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+    if (heapPath.has(heapObj)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
 
     const existing = heapKeysAndSeqByHeapObjects.get(heapObj);
     if (existing) {
       if (serializationTimingStats !== undefined) {
         serializationTimingStats.heapObjectCacheHits++;
-        const branch = serializationBranchStats(serializationTimingStats, logicalPath);
+        const branch = branchKey === undefined ? undefined : serializationBranchStatsByKey(serializationTimingStats, branchKey);
         if (branch !== undefined) branch.heapObjectCacheHits++;
       }
       const cacheHitAwaitStartedAt = performance.now();
@@ -337,32 +348,29 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     }
     if (serializationTimingStats !== undefined) {
       serializationTimingStats.heapObjectCacheMisses++;
-      const branch = serializationBranchStats(serializationTimingStats, logicalPath);
+      const branch = branchKey === undefined ? undefined : serializationBranchStatsByKey(serializationTimingStats, branchKey);
       if (branch !== undefined) branch.heapObjectCacheMisses++;
     }
 
     const promise = (async () => {
-      // A heap object starts a fresh plain-object path; plain object cycles can't span heap
-      // boundaries without also forming a heap cycle, which is tracked separately.
-      const childPath: SerializationPath = { objects: new Set(), heapObjects: new Set(path.heapObjects).add(heapObj) };
-      return await traceSpan("bulldozer-js.piledriver.heap.serializeAndInsert", async () => {
+      const childHeapPath = new Set(heapPath).add(heapObj);
+      return await traceSpanHot("bulldozer-js.piledriver.heap.serializeAndInsert", async () => {
         const heapObjectGetStartedAt = performance.now();
         const heapObject = await heapObj.get();
-        let shape: string | undefined;
         if (serializationTimingStats !== undefined) {
-          shape = classifyHeapObjectPayload(heapObject);
+          const shape = classifyHeapObjectPayload(heapObject);
           const inlineNodeCount = totalInlineNodes(countPiledriverInlineNodes(heapObject));
           incrementMapCount(serializationTimingStats.heapObjectCacheMissesByShape, shape);
           addMapCount(serializationTimingStats.heapObjectCacheMissInlineNodeCountsByShape, shape, inlineNodeCount);
-          const branch = serializationBranchStats(serializationTimingStats, logicalPath);
+          const branch = branchKey === undefined ? undefined : serializationBranchStatsByKey(serializationTimingStats, branchKey);
           if (branch !== undefined) {
             incrementMapCount(branch.heapObjectCacheMissesByShape, shape);
             addMapCount(branch.heapObjectCacheMissInlineNodeCountsByShape, shape, inlineNodeCount);
           }
+          serializationTimingStats.heapObjectGetTotalMs += performance.now() - heapObjectGetStartedAt;
         }
-        if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectGetTotalMs += performance.now() - heapObjectGetStartedAt;
         const heapObjectSerializeStartedAt = performance.now();
-        const serialized = await serializePiledriverObject(heapObject, childPath, serializationTimingStats, logicalPath);
+        const serialized = await serializePiledriverObject(heapObject, childHeapPath, serializationTimingStats, branchKey);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectSerializeTotalMs += performance.now() - heapObjectSerializeStartedAt;
         const heapObjectInsertStartedAt = performance.now();
         const result = await insertHeapObjectBatched(serialized.buffer, serialized.seq, serializationTimingStats);
@@ -404,7 +412,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     let loadPromise: Promise<PiledriverObject> | undefined;
     const heapObj: PiledriverHeapObject = {
       async get() {
-        loadPromise ??= traceSpan({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
+        loadPromise ??= traceSpanHot({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
           const { buffer, seq: heapSeq } = await heapDump.get(key);
           if (buffer === null) throw new Error(`Assertion error: Heap object with base64 key "${keyBase64}" not found`);
           const deserialized = await deserializePiledriverObject(buffer, heapSeq);
@@ -426,148 +434,202 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     return { object: heapObj, seq };
   };
 
-  const serializePiledriverObjectToJsonableObject = async (obj: PiledriverObject, path: SerializationPath, serializationTimingStats?: PiledriverSerializationTimingStats, logicalPath: readonly string[] = []): Promise<{ jsonableObject: unknown, seq: DatabaseSeq }> => {
-    switch (typeof obj) {
-      case "number": {
-        if (serializationTimingStats !== undefined) {
-          serializationTimingStats.primitiveNodes++;
-          const branch = serializationBranchStats(serializationTimingStats, logicalPath);
-          if (branch !== undefined) branch.primitiveNodes++;
-        }
-        if (!Number.isFinite(obj)) return { jsonableObject: [obj.toString()], seq: lowLevelDb.initialSeq };
-        if (Object.is(obj, -0)) return { jsonableObject: ["-0"], seq: lowLevelDb.initialSeq };
-        // intentionally fall through to the primitive case below
-      }
-      case "string":
-      case "boolean": {
-        if (serializationTimingStats !== undefined && typeof obj !== "number") {
-          serializationTimingStats.primitiveNodes++;
-          const branch = serializationBranchStats(serializationTimingStats, logicalPath);
-          if (branch !== undefined) branch.primitiveNodes++;
-        }
-        return { jsonableObject: obj, seq: lowLevelDb.initialSeq };
-      }
-      case "object": {
-        if (obj === null) {
-          if (serializationTimingStats !== undefined) {
-            serializationTimingStats.primitiveNodes++;
-            const branch = serializationBranchStats(serializationTimingStats, logicalPath);
+  // A heap reference discovered during the synchronous payload walk. The jsonable slot is
+  // created immediately (as ["heap-reference", null]) and patched with the base64 key once the
+  // referenced heap object has been resolved/inserted.
+  type PendingHeapReferenceSlot = {
+    slot: [string, string | null],
+    heapObj: PiledriverHeapObject,
+    branchKey: string | undefined,
+  };
+
+  // Serializes a Piledriver object in two phases:
+  //  1. A fully SYNCHRONOUS walk that builds the jsonable structure, detects plain-object
+  //     cycles (push/pop set — safe because nothing interleaves during a sync walk), counts
+  //     stats, and records one slot per heap reference.
+  //  2. Resolution of the (deduplicated) referenced heap objects in parallel, then patching
+  //     their base64 keys into the recorded slots.
+  // This replaces a previous fully-async recursive serializer that allocated promises for every
+  // node and called lowLevelDb.combineSeqs once per array/object node (each combined seq
+  // allocates a UUID, tracking promises, and map entries). Profiling showed that overhead — not
+  // LMDB — dominated CPU during backfills, so seqs are now combined exactly once per heap
+  // object/root, and only heap references involve async work at all.
+  const serializePiledriverObject = async (obj: PiledriverObject, heapPath: HeapSerializationPath, serializationTimingStats: PiledriverSerializationTimingStats | undefined, inheritedBranchKey?: string): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
+    const stats = serializationTimingStats;
+    const pendingSlots: PendingHeapReferenceSlot[] = [];
+    const objectPath = new Set<object>();
+    // Branch keys only depend on the first 3 path segments (see serializationBranchKey), so we
+    // stop tracking the key path once the branch is determined. Nested heap objects inherit the
+    // branch key of their reference site, which is equivalent to the old logicalPath threading
+    // because heap references only occur at depth >= 3 in the root snapshot.
+    const keyPath: string[] = [];
+
+    const build = (node: PiledriverObject, branch: PiledriverSerializationBranchStats | undefined, branchKey: string | undefined, branchDetermined: boolean): unknown => {
+      switch (typeof node) {
+        case "number": {
+          if (stats !== undefined) {
+            stats.primitiveNodes++;
             if (branch !== undefined) branch.primitiveNodes++;
           }
-          return { jsonableObject: obj, seq: lowLevelDb.initialSeq };
-        } else if (Array.isArray(obj)) {
-          if (serializationTimingStats !== undefined) {
-            serializationTimingStats.arrayNodes++;
-            serializationTimingStats.arrayItems += obj.length;
-            const branch = serializationBranchStats(serializationTimingStats, logicalPath);
-            if (branch !== undefined) branch.arrayNodes++;
+          if (!Number.isFinite(node)) return [node.toString()];
+          if (Object.is(node, -0)) return ["-0"];
+          return node;
+        }
+        case "string":
+        case "boolean": {
+          if (stats !== undefined) {
+            stats.primitiveNodes++;
+            if (branch !== undefined) branch.primitiveNodes++;
           }
-          if (path.objects.has(obj)) throw new Error("Piledriver objects must not contain cycles");
-          const childPath: SerializationPath = { ...path, objects: new Set(path.objects).add(obj) };
-          const itemsSerializeResults = await Promise.all(obj.map(async o => await serializePiledriverObjectToJsonableObject(o, childPath, serializationTimingStats, logicalPath)));
-          return {
-            jsonableObject: ["array", itemsSerializeResults.map(r => r.jsonableObject)],
-            seq: lowLevelDb.combineSeqs(...itemsSerializeResults.map(r => r.seq)),
-          };
-        } else if (isPiledriverHeapObjectSymbol in obj) {
-          if (serializationTimingStats !== undefined) {
-            serializationTimingStats.heapReferenceNodes++;
-            const branch = serializationBranchStats(serializationTimingStats, logicalPath);
-            if (branch !== undefined) branch.heapReferenceNodes++;
-          }
-          const heapKeyAndSeq = await getHeapKeyAndSeq(obj, path, serializationTimingStats, logicalPath);
-          return {
-            jsonableObject: ["heap-reference", encodeBase64(new Uint8Array(heapKeyAndSeq.key))],
-            seq: heapKeyAndSeq.seq,
-          };
-        } else {
-          // "normal" object
-          // TODO: assert this is a POJO
-
-          if (path.objects.has(obj)) throw new Error("Piledriver objects must not contain cycles");
-          const childPath: SerializationPath = { ...path, objects: new Set(path.objects).add(obj) };
-          const entries = Object.entries(obj);
-          if (serializationTimingStats !== undefined) {
-            serializationTimingStats.objectNodes++;
-            serializationTimingStats.objectEntries += entries.length;
-            const branch = serializationBranchStats(serializationTimingStats, logicalPath);
-            if (branch !== undefined) {
-              branch.objectNodes++;
-              branch.objectEntries += entries.length;
+          return node;
+        }
+        case "object": {
+          if (node === null) {
+            if (stats !== undefined) {
+              stats.primitiveNodes++;
+              if (branch !== undefined) branch.primitiveNodes++;
             }
+            return node;
+          } else if (Array.isArray(node)) {
+            if (stats !== undefined) {
+              stats.arrayNodes++;
+              stats.arrayItems += node.length;
+              if (branch !== undefined) branch.arrayNodes++;
+            }
+            if (objectPath.has(node)) throw new Error("Piledriver objects must not contain cycles");
+            objectPath.add(node);
+            const items = node.map(item => build(item, branch, branchKey, branchDetermined));
+            objectPath.delete(node);
+            return ["array", items];
+          } else if (isPiledriverHeapObjectSymbol in node) {
+            if (stats !== undefined) {
+              stats.heapReferenceNodes++;
+              if (branch !== undefined) branch.heapReferenceNodes++;
+            }
+            // Fail fast on heap cycles at walk time (resolution would deadlock on the ancestor's
+            // own memoized promise otherwise).
+            if (heapPath.has(node)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
+            const slot: [string, string | null] = ["heap-reference", null];
+            pendingSlots.push({ slot, heapObj: node, branchKey });
+            return slot;
+          } else {
+            // "normal" object
+            // TODO: assert this is a POJO
+
+            if (objectPath.has(node)) throw new Error("Piledriver objects must not contain cycles");
+            objectPath.add(node);
+            const entries = Object.entries(node);
+            if (stats !== undefined) {
+              stats.objectNodes++;
+              stats.objectEntries += entries.length;
+              if (branch !== undefined) {
+                branch.objectNodes++;
+                branch.objectEntries += entries.length;
+              }
+            }
+            const result: Record<string, unknown> = {};
+            for (const [k, v] of entries) {
+              let childBranch = branch;
+              let childBranchKey = branchKey;
+              let childBranchDetermined = branchDetermined;
+              if (!branchDetermined) {
+                keyPath.push(k);
+                childBranchKey = serializationBranchKey(keyPath);
+                childBranch = stats === undefined ? undefined : serializationBranchStatsByKey(stats, childBranchKey);
+                childBranchDetermined = keyPath.length >= 3;
+              }
+              result[k] = build(v, childBranch, childBranchKey, childBranchDetermined);
+              if (!branchDetermined) keyPath.pop();
+            }
+            objectPath.delete(node);
+            return result;
           }
-          const entriesSerializeResults = await Promise.all(entries.map(async ([k, v]) => [k, await serializePiledriverObjectToJsonableObject(v, childPath, serializationTimingStats, [...logicalPath, k])] as const));
-          return {
-            jsonableObject: Object.fromEntries(entriesSerializeResults.map(([k, v]) => [k, v.jsonableObject] as const)),
-            seq: lowLevelDb.combineSeqs(...entriesSerializeResults.map(([_, v]) => v.seq)),
-          };
+        }
+        default: {
+          throw new Error("Assertion error: Unknown type of Piledriver object " + typeof node);
         }
       }
-      default: {
-        throw new Error("Assertion error: Unknown type of Piledriver object " + typeof obj);
-      }
-    }
-  };
-
-  const serializePiledriverObject = async (obj: PiledriverObject, path: SerializationPath = emptySerializationPath(), serializationTimingStats?: PiledriverSerializationTimingStats, logicalPath: readonly string[] = []): Promise<{ buffer: ArrayBuffer, seq: DatabaseSeq }> => {
-    const toJsonableStartedAt = performance.now();
-    const toJsonableResponse = await serializePiledriverObjectToJsonableObject(obj, path, serializationTimingStats, logicalPath);
-    if (serializationTimingStats !== undefined) serializationTimingStats.serializeToJsonableTotalMs += performance.now() - toJsonableStartedAt;
-    const jsonStringifyStartedAt = performance.now();
-    const json = JSON.stringify(toJsonableResponse.jsonableObject);
-    if (serializationTimingStats !== undefined) serializationTimingStats.jsonStringifyTotalMs += performance.now() - jsonStringifyStartedAt;
-    const textEncodeStartedAt = performance.now();
-    const buffer = new TextEncoder().encode(json).buffer;
-    if (serializationTimingStats !== undefined) serializationTimingStats.textEncodeTotalMs += performance.now() - textEncodeStartedAt;
-    return {
-      buffer,
-      seq: toJsonableResponse.seq,
     };
+
+    const toJsonableStartedAt = performance.now();
+    const inheritedBranch = inheritedBranchKey === undefined ? undefined : serializationBranchStatsByKey(stats, inheritedBranchKey);
+    const jsonableObject = build(obj, inheritedBranch, inheritedBranchKey, inheritedBranchKey !== undefined);
+    if (stats !== undefined) stats.serializeToJsonableTotalMs += performance.now() - toJsonableStartedAt;
+
+    let seq = lowLevelDb.initialSeq;
+    if (pendingSlots.length > 0) {
+      // Resolve each distinct heap object once, even if it is referenced from multiple slots.
+      const slotsByHeapObj = new Map<PiledriverHeapObject, PendingHeapReferenceSlot[]>();
+      for (const pendingSlot of pendingSlots) {
+        const existing = slotsByHeapObj.get(pendingSlot.heapObj);
+        if (existing === undefined) slotsByHeapObj.set(pendingSlot.heapObj, [pendingSlot]);
+        else existing.push(pendingSlot);
+      }
+      const resolvedSeqs = await Promise.all([...slotsByHeapObj.entries()].map(async ([heapObj, slots]) => {
+        const heapKeyAndSeq = await getHeapKeyAndSeq(heapObj, heapPath, stats, slots[0].branchKey);
+        const keyBase64 = encodeBase64(new Uint8Array(heapKeyAndSeq.key));
+        for (const { slot } of slots) slot[1] = keyBase64;
+        return heapKeyAndSeq.seq;
+      }));
+      seq = combineSeqsDeduped(resolvedSeqs);
+    }
+
+    const jsonStringifyStartedAt = performance.now();
+    const json = JSON.stringify(jsonableObject);
+    if (stats !== undefined) stats.jsonStringifyTotalMs += performance.now() - jsonStringifyStartedAt;
+    const textEncodeStartedAt = performance.now();
+    const buffer = textEncoder.encode(json).buffer;
+    if (stats !== undefined) stats.textEncodeTotalMs += performance.now() - textEncodeStartedAt;
+    return { buffer, seq };
   };
 
-  const deserializePiledriverObjectFromJsonableObject = async (jsonableObject: unknown, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
+  // Fully synchronous (getHeapObjectByKey is sync; heap payloads are only fetched lazily on
+  // .get()). Seqs are collected into one array and combined once per buffer instead of once per
+  // node — see serializePiledriverObject for why this matters.
+  const deserializePiledriverObjectFromJsonableObject = (jsonableObject: unknown, enclosingSeq: DatabaseSeq, seqs: DatabaseSeq[]): PiledriverObject => {
     switch (typeof jsonableObject) {
       case "string":
       case "number":
       case "boolean": {
-        return { object: jsonableObject, seq: lowLevelDb.initialSeq };
+        return jsonableObject;
       }
       case "object": {
         if (jsonableObject === null) {
-          return { object: jsonableObject, seq: lowLevelDb.initialSeq };
+          return jsonableObject;
         } else if (Array.isArray(jsonableObject)) {
           switch (jsonableObject[0]) {
             case "array": {
-              const itemsDeserializeResults = await Promise.all(jsonableObject[1].map(async (o: any) => await deserializePiledriverObjectFromJsonableObject(o, enclosingSeq)));
-              return { object: itemsDeserializeResults.map(r => r.object), seq: lowLevelDb.combineSeqs(...itemsDeserializeResults.map(r => r.seq)) };
+              // any: JSON.parse output is structurally validated by the surrounding switch; a malformed
+              // payload would throw in the recursive call rather than silently passing through.
+              return jsonableObject[1].map((o: any) => deserializePiledriverObjectFromJsonableObject(o, enclosingSeq, seqs));
             }
             case "heap-reference": {
               const heapObjAndSeq = getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer, enclosingSeq);
-              return { object: heapObjAndSeq.object, seq: heapObjAndSeq.seq };
+              seqs.push(heapObjAndSeq.seq);
+              return heapObjAndSeq.object;
             }
             case "NaN": {
-              return { object: NaN, seq: lowLevelDb.initialSeq };
+              return NaN;
             }
             case "Infinity": {
-              return { object: Infinity, seq: lowLevelDb.initialSeq };
+              return Infinity;
             }
             case "-Infinity": {
-              return { object: -Infinity, seq: lowLevelDb.initialSeq };
+              return -Infinity;
             }
             case "-0": {
-              return { object: -0, seq: lowLevelDb.initialSeq };
+              return -0;
             }
             default: {
               throw new Error("Assertion error: Serialized Piledriver JSONable object array has unknown type " + jsonableObject[0]);
             }
           }
         } else {
-          const entries = Object.entries(jsonableObject);
-          const entriesDeserializeResults = await Promise.all(entries.map(async ([k, v]) => [k, await deserializePiledriverObjectFromJsonableObject(v, enclosingSeq)] as const));
-          return {
-            object: Object.fromEntries(entriesDeserializeResults.map(([k, v]) => [k, v.object] as const)),
-            seq: lowLevelDb.combineSeqs(...entriesDeserializeResults.map(([_, v]) => v.seq)),
-          };
+          const result: Record<string, PiledriverObject> = {};
+          for (const [k, v] of Object.entries(jsonableObject)) {
+            result[k] = deserializePiledriverObjectFromJsonableObject(v, enclosingSeq, seqs);
+          }
+          return result;
         }
       }
       default: {
@@ -577,7 +639,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   };
 
   const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
-    return await deserializePiledriverObjectFromJsonableObject(JSON.parse(new TextDecoder().decode(buffer)), enclosingSeq);
+    const seqs: DatabaseSeq[] = [];
+    const object = deserializePiledriverObjectFromJsonableObject(JSON.parse(textDecoder.decode(buffer)), enclosingSeq, seqs);
+    return { object, seq: combineSeqsDeduped(seqs) };
   };
 
   const parseDebugEntryValue = (valueUtf8: string | null) => {
@@ -618,7 +682,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const startedAt = performance.now();
         const serializeStartedAt = performance.now();
         const serializeCpuStartedAt = process.cpuUsage();
-        const { buffer, seq } = await serializePiledriverObject(value, emptySerializationPath(), timingStats);
+        const { buffer, seq } = await serializePiledriverObject(value, new Set(), timingStats);
         const serializeCpuUsage = process.cpuUsage(serializeCpuStartedAt);
         const serializePiledriverObjectMs = performance.now() - serializeStartedAt;
         const serializeCpuMs = (serializeCpuUsage.user + serializeCpuUsage.system) / 1000;
