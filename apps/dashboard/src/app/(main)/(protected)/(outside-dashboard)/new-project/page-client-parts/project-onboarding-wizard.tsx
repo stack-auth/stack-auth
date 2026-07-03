@@ -899,7 +899,16 @@ export function ProjectOnboardingWizard(props: {
         onBack={handleBack}
         disabled={saving}
         actionsLayout="inline"
-        primaryAction={
+        primaryAction={selectedPaymentsCountry === "US" ? (
+          <DesignButton
+            className="rounded-full px-6"
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "connect"}
+            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+          >
+            Connect
+          </DesignButton>
+        ) : (
           <DesignButton
             className="rounded-full px-6"
             disabled={saving || paymentsSetupAction != null}
@@ -908,16 +917,16 @@ export function ProjectOnboardingWizard(props: {
           >
             Do Later
           </DesignButton>
-        }
+        )}
         secondaryAction={selectedPaymentsCountry === "US" ? (
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
             disabled={saving || paymentsSetupAction != null}
-            loading={paymentsSetupAction === "connect"}
-            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
-            Connect
+            Do Later
           </DesignButton>
         ) : undefined}
       >
