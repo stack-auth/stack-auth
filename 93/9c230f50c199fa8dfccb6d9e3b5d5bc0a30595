@@ -1,0 +1,44 @@
+packages/template/src/integrations/convex.ts
+  s_5b6ac9c07bf674::t_22795a0ef736d3 2,4
+  s_5b6ac9c07bf674::t_33eb839c48fab1 27-87
+packages/template/src/integrations/adapters.test.ts
+  s_5b6ac9c07bf674::t_a944c60bf386ef 1-201
+packages/template/src/integrations/trpc.ts
+  s_5b6ac9c07bf674::t_6615c3d9782860 1-100
+packages/template/src/integrations/adapter-core.ts
+  s_5b6ac9c07bf674::t_e8f50a60f77f27 1-98
+packages/template/package-template.json
+  s_5b6ac9c07bf674::t_c1999743a58195 70-105
+packages/template/src/integrations/orpc.ts
+  s_5b6ac9c07bf674::t_c96ad34e46cade 1-99
+packages/template/src/integrations/elysia.ts
+  s_5b6ac9c07bf674::t_2f88c8f066336b 1-79
+packages/template/tsdown.config.ts
+  s_5b6ac9c07bf674::t_ff340dcf0670c2 4,7-9
+packages/js/package.json
+  s_5b6ac9c07bf674::t_d6659812d9c579 45-80
+packages/next/package.json
+  s_5b6ac9c07bf674::t_3ef84a5009a0b7 45-80
+packages/react/package.json
+  s_5b6ac9c07bf674::t_385e24d0e7b4ef 45-80
+packages/tanstack-start/package.json
+  s_5b6ac9c07bf674::t_d8974a6e3a5e95 56-91
+packages/template/package.json
+  s_5b6ac9c07bf674::t_3015cfdf1aa747 57-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "939c230f50c199fa8dfccb6d9e3b5d5bc0a30595",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
