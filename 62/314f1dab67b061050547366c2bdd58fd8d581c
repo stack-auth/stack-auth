@@ -1,0 +1,26 @@
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.test.ts
+  s_5b6ac9c07bf674::t_8ddf23dce28a31 245-262
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.ts
+  s_5b6ac9c07bf674::t_1fef14c6218c4a 251-257
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_8d30e1ee587305 4078,4081-4085
+  s_5b6ac9c07bf674::t_6e63942660ce79 4095-4096
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5b6ac9c07bf674::t_e96ced3710c458 170-175,177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "62314f1dab67b061050547366c2bdd58fd8d581c",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
