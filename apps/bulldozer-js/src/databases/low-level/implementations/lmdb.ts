@@ -53,7 +53,16 @@ function validateValue(name: string, value: ArrayBuffer) {
 
 type LmdbActivityStats = {
   puts: number,
+  putBytes: number,
+  putAwaitTotalMs: number,
   transactions: number,
+  transactionTotalMs: number,
+  transactionQueueWaitTotalMs: number,
+  transactionActionTotalMs: number,
+  metaPutTotalMs: number,
+  transactionCommitTailTotalMs: number,
+  requiredSeqWaits: number,
+  requiredSeqWaitTotalMs: number,
   waitUntilAvailableResolves: number,
   waitUntilDurableResolves: number,
   waitUntilAvailableResolveTotalMs: number,
@@ -67,7 +76,16 @@ type LmdbActivityStats = {
 function emptyActivityStats(): LmdbActivityStats {
   return {
     puts: 0,
+    putBytes: 0,
+    putAwaitTotalMs: 0,
     transactions: 0,
+    transactionTotalMs: 0,
+    transactionQueueWaitTotalMs: 0,
+    transactionActionTotalMs: 0,
+    metaPutTotalMs: 0,
+    transactionCommitTailTotalMs: 0,
+    requiredSeqWaits: 0,
+    requiredSeqWaitTotalMs: 0,
     waitUntilAvailableResolves: 0,
     waitUntilDurableResolves: 0,
     waitUntilAvailableResolveTotalMs: 0,
@@ -112,7 +130,16 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       dbId,
       elapsedMs,
       putsPerSecond: activityStats.puts / elapsedSeconds,
+      averagePutBytes: activityStats.puts === 0 ? 0 : activityStats.putBytes / activityStats.puts,
+      averagePutAwaitMs: activityStats.puts === 0 ? 0 : activityStats.putAwaitTotalMs / activityStats.puts,
       transactionsPerSecond: activityStats.transactions / elapsedSeconds,
+      averageTransactionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionTotalMs / activityStats.transactions,
+      averageTransactionQueueWaitMs: activityStats.transactions === 0 ? 0 : activityStats.transactionQueueWaitTotalMs / activityStats.transactions,
+      averageTransactionActionMs: activityStats.transactions === 0 ? 0 : activityStats.transactionActionTotalMs / activityStats.transactions,
+      averageMetaPutMs: activityStats.transactions === 0 ? 0 : activityStats.metaPutTotalMs / activityStats.transactions,
+      averageTransactionCommitTailMs: activityStats.transactions === 0 ? 0 : activityStats.transactionCommitTailTotalMs / activityStats.transactions,
+      requiredSeqWaitsPerSecond: activityStats.requiredSeqWaits / elapsedSeconds,
+      averageRequiredSeqWaitMs: activityStats.requiredSeqWaits === 0 ? 0 : activityStats.requiredSeqWaitTotalMs / activityStats.requiredSeqWaits,
       waitUntilAvailableResolvesPerSecond: activityStats.waitUntilAvailableResolves / elapsedSeconds,
       waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
       averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
@@ -198,13 +225,32 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const commit = (requiresSeq: DatabaseSeq, action: (version: number) => Promise<void>) => {
     const version = nextVersion();
     const seqId = nextSeqId();
-    const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.commit", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await waitUntilAvailable(requiresSeq).then(async () => await root.transaction(() => {
-      activityStats.transactions++;
-      return (async () => {
-        await action(version);
-        await meta.put("seq", version);
-      })();
-    })));
+    const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.commit", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      const requiredSeqWaitStartedAt = performance.now();
+      await waitUntilAvailable(requiresSeq);
+      activityStats.requiredSeqWaits++;
+      activityStats.requiredSeqWaitTotalMs += performance.now() - requiredSeqWaitStartedAt;
+      const transactionStartedAt = performance.now();
+      let transactionCallbackFinishedAt: number | null = null;
+      return await root.transaction(() => {
+        activityStats.transactionQueueWaitTotalMs += performance.now() - transactionStartedAt;
+        activityStats.transactions++;
+        return (async () => {
+          const actionStartedAt = performance.now();
+          await action(version);
+          activityStats.transactionActionTotalMs += performance.now() - actionStartedAt;
+          const metaPutStartedAt = performance.now();
+          await meta.put("seq", version);
+          activityStats.metaPutTotalMs += performance.now() - metaPutStartedAt;
+        })().finally(() => {
+          transactionCallbackFinishedAt = performance.now();
+        });
+      }).finally(() => {
+        const transactionFinishedAt = performance.now();
+        activityStats.transactionTotalMs += transactionFinishedAt - transactionStartedAt;
+        if (transactionCallbackFinishedAt !== null) activityStats.transactionCommitTailTotalMs += transactionFinishedAt - transactionCallbackFinishedAt;
+      });
+    });
     return trackCommit(seqId, promise);
   };
   const commitIfVersion = async (db: BinaryDatabase, key: Buffer, version: number, action: (version: number) => Promise<void>) => {
@@ -231,7 +277,13 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
   const putWithVersion = async (db: BinaryDatabase, key: Buffer, value: Buffer, version: number) => {
     activityStats.puts++;
-    await db.put(key, value, version);
+    activityStats.putBytes += value.byteLength;
+    const startedAt = performance.now();
+    try {
+      await db.put(key, value, version);
+    } finally {
+      activityStats.putAwaitTotalMs += performance.now() - startedAt;
+    }
   };
   const waitUntilAvailable = async (seq: DatabaseSeq) => {
     await getAvailabilityPromise(getSeqId(seq));
@@ -299,15 +351,32 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
           const version = nextVersion();
           const seqId = nextSeqId();
           const keys = values.map((_, index) => dumpKeyForVersion(version, index));
-          const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll.commit", attributes }, async () => await waitUntilAvailable(insertOptions?.requiresSeq ?? initialSeq).then(async () => await root.transaction(() => {
-            activityStats.transactions++;
-            return (async () => {
-              for (let i = 0; i < values.length; i++) {
-                await putWithVersion(db, bufferFromArrayBuffer(keys[i]), bufferFromArrayBuffer(values[i]), version);
-              }
-              await meta.put("seq", version);
-            })();
-          })));
+          const promise = traceSpan({ description: "bulldozer-js.low-level.lmdb.insertAll.commit", attributes }, async () => {
+            const requiredSeqWaitStartedAt = performance.now();
+            await waitUntilAvailable(insertOptions?.requiresSeq ?? initialSeq);
+            activityStats.requiredSeqWaits++;
+            activityStats.requiredSeqWaitTotalMs += performance.now() - requiredSeqWaitStartedAt;
+            const transactionStartedAt = performance.now();
+            let transactionCallbackFinishedAt: number | null = null;
+            return await root.transaction(() => {
+              activityStats.transactionQueueWaitTotalMs += performance.now() - transactionStartedAt;
+              activityStats.transactions++;
+              return (async () => {
+                const actionStartedAt = performance.now();
+                await Promise.all(values.map(async (value, index) => await putWithVersion(db, bufferFromArrayBuffer(keys[index]), bufferFromArrayBuffer(value), version)));
+                activityStats.transactionActionTotalMs += performance.now() - actionStartedAt;
+                const metaPutStartedAt = performance.now();
+                await meta.put("seq", version);
+                activityStats.metaPutTotalMs += performance.now() - metaPutStartedAt;
+              })().finally(() => {
+                transactionCallbackFinishedAt = performance.now();
+              });
+            }).finally(() => {
+              const transactionFinishedAt = performance.now();
+              activityStats.transactionTotalMs += transactionFinishedAt - transactionStartedAt;
+              if (transactionCallbackFinishedAt !== null) activityStats.transactionCommitTailTotalMs += transactionFinishedAt - transactionCallbackFinishedAt;
+            });
+          });
           return { keys, seq: trackCommit(seqId, promise) };
         });
       },
@@ -384,6 +453,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     },
     combineSeqs(...seqs) {
       if (seqs.length === 0) return initialSeq;
+      if (seqs.length === 1) return seqs[0];
       const seqId = nextSeqId();
       rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
       rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
