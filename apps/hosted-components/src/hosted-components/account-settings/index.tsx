@@ -41,8 +41,9 @@ function useExternalBackUrl(): string | null {
   const referrer = useSyncExternalStore(subscribeToReferrer, getReferrerSnapshot, () => "");
   return useMemo(() => {
     if (!referrer || !URL.canParse(referrer)) return null;
-    const referrerOrigin = new URL(referrer).origin;
-    if (referrerOrigin === window.location.origin) return null;
+    const parsed = new URL(referrer);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.origin === window.location.origin) return null;
     return referrer;
   }, [referrer]);
 }
