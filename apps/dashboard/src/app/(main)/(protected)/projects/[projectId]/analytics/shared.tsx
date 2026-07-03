@@ -329,6 +329,7 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
 export function AnalyticsEventLimitBanner() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const planUsage = adminApp.usePlanUsage();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
@@ -337,7 +338,7 @@ export function AnalyticsEventLimitBanner() {
     [teams, project.ownerTeamId],
   );
 
-  if (ownerTeam == null) {
+  if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
     return null;
   }
 
@@ -351,6 +352,7 @@ export function AnalyticsEventLimitBanner() {
 export function SessionReplayLimitBanner() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const planUsage = adminApp.usePlanUsage();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
@@ -359,7 +361,7 @@ export function SessionReplayLimitBanner() {
     [teams, project.ownerTeamId],
   );
 
-  if (ownerTeam == null) {
+  if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
     return null;
   }
 

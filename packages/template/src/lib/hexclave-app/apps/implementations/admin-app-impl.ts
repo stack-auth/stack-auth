@@ -351,6 +351,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       periodStart: new Date(data.period_start_millis),
       periodEnd: new Date(data.period_end_millis),
       nextPlanId: data.next_plan_id,
+      arePlanLimitsEnforced: data.are_plan_limits_enforced,
       rows: data.rows.map((row) => ({
         itemId: row.item_id,
         displayName: row.display_name,

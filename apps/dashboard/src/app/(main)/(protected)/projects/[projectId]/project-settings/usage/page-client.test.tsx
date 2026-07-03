@@ -15,6 +15,7 @@ function createPlanUsageState() {
     periodStart: new Date(Date.UTC(2026, 5, 1)),
     periodEnd: new Date(Date.UTC(2026, 6, 1)),
     nextPlanId: "team",
+    arePlanLimitsEnforced: true,
     rows: [
       {
         itemId: "dashboard_admins",

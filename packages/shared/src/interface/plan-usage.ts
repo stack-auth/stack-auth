@@ -26,6 +26,7 @@ export const planUsageResponseSchema = yupObject({
   period_start_millis: yupNumber().integer().defined(),
   period_end_millis: yupNumber().integer().defined(),
   next_plan_id: yupString().oneOf(UPGRADE_PLAN_IDS).nullable().defined(),
+  are_plan_limits_enforced: yupBoolean().defined(),
   rows: yupArray(planUsageRowSchema).defined(),
 }).defined();
 

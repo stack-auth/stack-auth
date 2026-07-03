@@ -20,7 +20,7 @@ import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
-import { inviteUser, listInvitations, revokeInvitation } from "./actions";
+import { getArePlanLimitsEnforced, inviteUser, listInvitations, revokeInvitation } from "./actions";
 import Footer from "./footer";
 import PreviewProjectRedirect from "./preview-project-redirect";
 
@@ -513,14 +513,16 @@ type TeamAddUserDialogData = {
   userCount: number,
   seatLimit: number,
   hasPaidPlan: boolean,
+  arePlanLimitsEnforced: boolean,
 };
 
 async function loadTeamAddUserDialogData(team: Team): Promise<TeamAddUserDialogData> {
-  const [invitations, users, admins, products] = await Promise.all([
+  const [invitations, users, admins, products, arePlanLimitsEnforced] = await Promise.all([
     listInvitations(team.id),
     team.listUsers(),
     team.getItem("dashboard_admins"),
     team.listProducts(),
+    getArePlanLimitsEnforced(),
   ]);
 
   return {
@@ -528,6 +530,7 @@ async function loadTeamAddUserDialogData(team: Team): Promise<TeamAddUserDialogD
     userCount: users.length,
     seatLimit: admins.quantity,
     hasPaidPlan: isPaidPlan(products),
+    arePlanLimitsEnforced,
   };
 }
 
@@ -597,7 +600,7 @@ function TeamAddUserDialog(props: { team: Team }) {
   }, [props.team]);
 
   const activeSeats = dialogData == null ? null : dialogData.userCount + dialogData.invitations.length;
-  const atCapacity = dialogData != null && activeSeats != null && activeSeats >= dialogData.seatLimit;
+  const atCapacity = dialogData != null && dialogData.arePlanLimitsEnforced && activeSeats != null && activeSeats >= dialogData.seatLimit;
 
   const handleInvite = async () => {
     if (dialogData == null || atCapacity) {
