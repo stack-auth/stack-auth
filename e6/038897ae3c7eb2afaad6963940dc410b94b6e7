@@ -1,0 +1,53 @@
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5b6ac9c07bf674::t_81b696281acff9 41-42
+  s_5b6ac9c07bf674::t_27acd301d4699e 1998-2028
+  s_5b6ac9c07bf674::t_76d0cf6ddae764 1859-1863
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_e8adb69cdc8781 421-431
+  s_5b6ac9c07bf674::t_7d3bc4c66874f1 312-317
+  s_5b6ac9c07bf674::t_6f9e508b939441 99-128
+  s_5b6ac9c07bf674::t_eb370a1b4ea0eb 701-705,715-745
+  s_5b6ac9c07bf674::t_b4a01cd20096ee 8-10
+  s_5b6ac9c07bf674::t_c542e4560c179d 779-783
+  s_5b6ac9c07bf674::t_136f0ef327af71 746
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.ts
+  s_5b6ac9c07bf674::t_5d28521e869f4b 101-106,109,114-115,117-121,123,126-148,150-163,175,179
+  s_5b6ac9c07bf674::t_e249071c9e0922 88-97
+  s_5b6ac9c07bf674::t_895e1e037d11fe 31-42,51-52,61-62,71-78,80,83-84
+  s_5b6ac9c07bf674::t_f4e118ca323f40 85-87
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.ts
+  s_5b6ac9c07bf674::t_19d10e5ae7a4a0 204-237
+  s_5b6ac9c07bf674::t_34f7e2e3d9faaf 267-272,275-277
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_ec50d6ebbdf27a 748-752
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5b6ac9c07bf674::t_5b4e4a4a413275 58-74
+  s_5b6ac9c07bf674::t_8c77d6c3a92fdc 57
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5b6ac9c07bf674::t_082c35b51a0001 150-163
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.test.ts
+  s_5b6ac9c07bf674::t_242031f0c2781d 96-173
+  s_5b6ac9c07bf674::t_d9b0b2336be834 3
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5b6ac9c07bf674::t_c8d166fa3ea760 962
+  s_5b6ac9c07bf674::t_0780f738fcf5d1 989
+  s_5b6ac9c07bf674::t_9802ff81d3ca9b 926
+  s_5b6ac9c07bf674::t_8a2d3c038f55fa 897-925,927-961,963-988,990-1041
+  s_5b6ac9c07bf674::t_f5e64bd84ef944 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e6038897ae3c7eb2afaad6963940dc410b94b6e7",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
