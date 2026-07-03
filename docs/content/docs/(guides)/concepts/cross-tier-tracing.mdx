@@ -1,0 +1,129 @@
+---
+title: Cross-Tier Tracing
+description: Backend spans automatically link to the client session that caused them — no glue code
+icon: Network
+---
+
+When your frontend calls your backend, Stack Auth can automatically parent the backend's telemetry under the caller's client session — the same `$refresh-token` → `$session-replay` → `$session-replay-segment` tree your client-side [events and spans](./custom-events-and-spans) attach to. One trace then spans both tiers: the button click, the API call, the database work behind it.
+
+## How It Works
+
+<Mermaid chart={`
+sequenceDiagram
+    participant B as Browser (Stack SDK)
+    participant S as Your backend (StackServerApp)
+    participant C as Stack Auth ingestion
+    B->>S: fetch("/api/checkout") + x-hexclave-span-context header (automatic)
+    S->>S: withSpan("checkout-api", { request }, fn)
+    S->>C: telemetry batch with resolved session context
+    C->>C: composes the span tree
+`} />
+
+Two halves, both automatic once set up:
+
+1. **Client**: with analytics enabled, the SDK wraps `fetch` and attaches a single header — `x-hexclave-span-context` — to requests going to your own origin. It carries the current tab's segment id plus any ambient custom spans (enclosing `withSpan` callbacks and global spans).
+2. **Server**: passing the incoming request to `withSpan`/`trackEvent` (or using a [framework adapter](./framework-adapters), which does it for you) resolves the caller's sign-in session from the request and reads the header, so everything recorded inside nests under the caller's session and any client spans that were open when the request was made.
+
+## The Client Side
+
+Nothing to do beyond having analytics enabled with a persistent token store (like `"cookie"` or `"nextjs-cookie"`, the usual setups) — the header is attached automatically to same-origin requests. If your API lives on another origin, allowlist it explicitly:
+
+```tsx
+new StackClientApp({
+  // ...
+  analytics: {
+    spanPropagation: {
+      targets: ["https://api.example.com"],  // exact origins, matched scheme+host+port
+      // enabled: false,                     // turn the automatic header off entirely
+    },
+  },
+});
+```
+
+<Info>
+Cross-origin targets receive the header only if their CORS config allows it: add `x-hexclave-span-context` to the server's `Access-Control-Allow-Headers`.
+</Info>
+
+Details worth knowing:
+
+- Requests with `mode: "no-cors"` are skipped (browsers strip custom headers there anyway).
+- If you set the `x-hexclave-span-context` header yourself, the SDK never overwrites it — your intent wins.
+- The wrapper chains through the existing `fetch`, so it composes with other wrappers (Sentry, OpenTelemetry); if anything about propagation fails, the request goes out untouched.
+
+### Other transports
+
+For XHR, `sendBeacon`, WebSocket handshakes, or manually-built requests, get the header yourself:
+
+```tsx
+const headers = stackClientApp.getSpanPropagationHeaders();
+// { "x-hexclave-span-context": "v1...." } — or {} when there is nothing to propagate
+
+// pin to a specific span instead of the ambient context:
+const pinned = span.getPropagationHeaders();
+```
+
+`getSpanPropagationHeaders({ root: true })` drops the ambient custom spans but still carries the tab segment id — session attribution is identity, not parenting. `span.fetch(url)` is a convenience that performs a `fetch` with the header pinned to that span, following the same origin policy.
+
+## The Server Side
+
+Pass the incoming request to `withSpan` (or `trackEvent`):
+
+```tsx
+import { stackServerApp } from "@/stack/server";
+
+export async function POST(request: Request) {
+  return await stackServerApp.withSpan("checkout-api", { request }, async (span) => {
+    // this span — and everything created inside the callback —
+    // is parented under the caller's client session
+    await span.trackEvent("payment-authorized", { amount: 129.99 });
+    return Response.json({ ok: true });
+  });
+}
+```
+
+With `request`, the SDK resolves:
+
+- **From the session** (trusted): the caller's sign-in session (`$refresh-token` parent) and user id, read from the request's auth tokens. `userId` is derived automatically unless you override it.
+- **From the header** (labels): the tab segment id and any client-side custom parent spans. A header naming a different project is ignored wholesale.
+
+Anything accepted as `RequestLike` works: a fetch `Request`, Next.js `NextRequest`, or any object whose `headers` either exposes a `get(name)` method or is a plain record of string values. (Node's raw `req.headers` types values as `string | string[]`, so pass a small wrapper rather than the raw `req` — or use a [framework adapter](./framework-adapters).) Unauthenticated requests are fine — the span still records, just without session parents.
+
+`startSpan` is synchronous and cannot resolve a request — use `withSpan(type, { request }, fn)` for request-linked spans.
+
+<Info>
+If you use tRPC, oRPC, Elysia, or Convex, skip the manual `{ request }` entirely — the [framework adapters](./framework-adapters) resolve the caller and wrap your procedures in request-linked spans automatically.
+</Info>
+
+## Multi-Hop Propagation
+
+To continue a trace across your own services, propagate from a server span:
+
+```tsx
+await stackServerApp.withSpan("orchestrate", { request }, async (span) => {
+  // server→server fetch with the span context attached:
+  await span.fetch("https://internal.example.com/work");
+
+  // or for any other transport:
+  const headers = span.getPropagationHeaders();
+});
+```
+
+On the server, `span.fetch` bypasses the origin allowlist (there is no CORS between your own services, and calling it is explicit intent). The downstream service links up the same way — `withSpan(type, { request }, fn)`.
+
+## Trust Model
+
+<Info type="warning">
+The propagation header is client-controlled. The sign-in session and user id are resolved server-side from auth tokens and are trustworthy; the segment id and custom parent ids are best-effort labels. Use them for telemetry and debugging — never for authorization, billing, or security decisions.
+</Info>
+
+Malformed, oversized, or unknown-version headers are silently ignored — propagation never causes a request to fail.
+
+## Options Reference
+
+Client-side, on the `analytics` constructor option:
+
+| Option | Default | What it does |
+|---|---|---|
+| `spanPropagation.enabled` | `true` | Auto-attach the header to outgoing `fetch` calls |
+| `spanPropagation.targets` | `[]` | Extra origins (besides same-origin) that receive the header; exact matches |
+| `ambientParenting` | `"exact"` | Which client spans count as ambient parents — see [Custom Events & Spans](./custom-events-and-spans#exact-vs-best-effort-ambient-parenting) |

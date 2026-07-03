@@ -1,0 +1,157 @@
+---
+title: Framework Adapters
+description: One-line tRPC, oRPC, Elysia, and Convex integration — auth and session-linked telemetry together
+icon: Plug
+---
+
+The framework adapters wire Stack Auth into your backend framework in one place. Each adapter does two things with every incoming call: it resolves the authenticated caller (available as `user` on your context) and wraps the handler in a span that is automatically linked to the caller's client session via [cross-tier tracing](./cross-tier-tracing) — you never pass a request object yourself. (Convex is the one exception on the tracing half: its spans are user-attributed only, see below.)
+
+All adapters ship as subpath exports of every Stack Auth SDK package — import from `@stackframe/js/trpc`, `@stackframe/js/orpc`, `@stackframe/js/elysia`, or `@stackframe/js/convex` (the same subpaths exist on the React, Next.js, and TanStack Start packages). They have zero runtime dependency on the frameworks they adapt: you hand them your own framework instances.
+
+## Common Options
+
+Every adapter accepts the same telemetry knob wherever it creates spans:
+
+```ts
+telemetry?: boolean | { spanType?: string, data?: Record<string, unknown> }
+```
+
+- `true` (the default) uses the adapter's span type; `false` disables the span but still resolves the user and enforces `required`.
+- The object form overrides the span type or merges extra fields into the span's data.
+
+Span types are deliberately low-cardinality — the variable parts go in the span's data:
+
+| Adapter | Span type | Data |
+|---|---|---|
+| tRPC | `trpc.procedure` | `path`, `type` |
+| oRPC | `orpc.procedure` | `path` |
+| Elysia | `elysia.route` | `path`, `method` |
+| Convex | `convex.function` | `kind`, `name` |
+
+Adapters marked `required: true` reject unauthenticated calls before your handler runs, and the `user` your handler sees is then non-null.
+
+## tRPC
+
+Targets tRPC v11. The factory takes your `t` instance from `initTRPC` — the adapter never imports `@trpc/server`:
+
+```ts title="server/trpc.ts"
+import { initTRPC } from "@trpc/server";
+import { createHexclaveTRPC, type HexclaveTRPCContext } from "@stackframe/js/trpc";
+import { stackServerApp } from "./stack";
+
+const t = initTRPC.context<HexclaveTRPCContext>().create();
+const hexclave = createHexclaveTRPC(t, stackServerApp);
+
+export const createContext = hexclave.createContext; // pass to your tRPC adapter
+export const router = t.router;
+export const publicProcedure = t.procedure.use(hexclave.middleware());
+export const protectedProcedure = t.procedure.use(hexclave.middleware({ required: true }));
+```
+
+Procedures then have `ctx.user` (the caller, or `null` on public procedures) and run inside a `trpc.procedure` span linked to the caller's session:
+
+```ts
+export const appRouter = router({
+  createOrder: protectedProcedure.mutation(async ({ ctx, input }) => {
+    // ctx.user is non-null here
+  }),
+});
+```
+
+Middleware options: `required` (reject unauthenticated calls), `telemetry`, `unauthorized` (error factory), and `getRequest` (custom request extraction if you don't use `createContext`). Without a custom `unauthorized`, rejections throw an error shaped exactly like a `TRPCError` with code `UNAUTHORIZED`, which tRPC's error handling accepts as-is.
+
+User resolution is memoized per request — `createContext` itself does no auth work; the middleware resolves the user once per request, for every procedure it wraps, so `ctx.user` is ready in your handler.
+
+<Info>
+Wire up `createContext` (or pass `getRequest`). Without it the middleware has no request to authenticate against, so every call quietly resolves `ctx.user` as `null` — and `required: true` rejects everything.
+</Info>
+
+## oRPC
+
+The factory returns a middleware for `.use(...)` plus a handler wrapper. The wrapper is required for request linking: oRPC middlewares can't see the raw `Request`, so `wrapFetchHandler` feeds it in through the initial context:
+
+```ts title="server/orpc.ts"
+import { os, ORPCError } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/fetch";
+import { createHexclaveORPC, type HexclaveORPCContext } from "@stackframe/js/orpc";
+import { router } from "./router"; // your router, built from the bases below
+import { stackServerApp } from "./stack";
+
+const hexclave = createHexclaveORPC(stackServerApp, {
+  unauthorized: () => new ORPCError("UNAUTHORIZED"),
+});
+
+export const publicBase = os.$context<HexclaveORPCContext>().use(hexclave.middleware());
+export const protectedBase = publicBase.use(hexclave.middleware({ required: true }));
+
+const handler = new RPCHandler(router);
+export const handle = hexclave.wrapFetchHandler(handler, { prefix: "/rpc" });
+```
+
+Procedures receive `context.user` and `context.hexclave`, and run inside an `orpc.procedure` span. `wrapFetchHandler` is not optional decoration: oRPC middlewares never see the raw `Request`, so without the wrapper every call quietly resolves as unauthenticated.
+
+<Info type="warning">
+`required: true` needs your `unauthorized` factory. oRPC's `ORPCError` is constructor-branded, so the adapter deliberately does not fake one — build the error from your own `@orpc/server` import. Creating a required middleware without a factory throws immediately at setup time, not per request.
+</Info>
+
+## Elysia
+
+Elysia has no around-middleware, so the adapter is three composable pieces: a `.resolve()` callback for the user, a `beforeHandle` guard, and a handler wrapper that puts your route inside the span:
+
+```ts title="server/app.ts"
+import { Elysia } from "elysia";
+import { createHexclaveElysia } from "@stackframe/js/elysia";
+import { stackServerApp } from "./stack";
+
+const hexclave = createHexclaveElysia(stackServerApp);
+
+new Elysia()
+  .resolve(hexclave.resolveUser)  // adds `user` and `hexclave` to every route's context
+  .get("/me", ({ user }) => user, { beforeHandle: hexclave.requireUser })
+  .post("/checkout", hexclave.handler(async ({ user }) => {
+    // runs inside an `elysia.route` span linked to the caller's session
+  }), { beforeHandle: hexclave.requireUser });
+```
+
+- `resolveUser` resolves the caller once per request and exposes `user` (or `null`).
+- `requireUser` short-circuits unauthenticated calls with a `401` and a JSON error body. It reads the `user` that `resolveUser` provides, so it only works on apps (or plugins) where `.resolve(hexclave.resolveUser)` ran — without it, every call gets a `401`.
+- `handler(fn, { telemetry? })` wraps the route in the span; use it on routes you want traced. The span works even without `resolveUser`, since the request is taken from Elysia's context.
+
+## Convex
+
+Convex is the special case: clients talk to Convex over WebSockets and functions receive no request object, so spans are attributed to the **user only** — they don't (yet) nest under the caller's browser tab.
+
+First wire up auth (see the [Convex integration guide](../others/convex) for the full setup):
+
+```ts title="convex/auth.config.ts"
+import { getConvexProvidersConfig } from "@stackframe/js/convex";
+
+export default {
+  providers: getConvexProvidersConfig({ projectId: process.env.STACK_PROJECT_ID! }),
+};
+```
+
+Then wrap your function handlers:
+
+```ts title="convex/items.ts"
+import { query } from "./_generated/server";
+import { hexclaveConvexFunction } from "@stackframe/js/convex";
+import { stackServerApp } from "./stack";
+
+export const listItems = query({
+  handler: hexclaveConvexFunction(stackServerApp, async ({ ctx, args, user }) => {
+    // user: the authenticated caller (non-null with { required: true })
+  }, { required: true, kind: "query", name: "listItems" }),
+});
+```
+
+The wrapped handler receives `{ ctx, args, user }` as a single object. Options: `required`, `kind` (`"query" | "mutation" | "action"`, recorded in the span data), `name` (likewise), `telemetry`, and `unauthorized`.
+
+## Which Piece Does What
+
+| | Resolves `user` | Rejects unauthenticated | Request-linked span |
+|---|---|---|---|
+| tRPC | `middleware()` | `middleware({ required: true })` | `middleware()` + `createContext` |
+| oRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `wrapFetchHandler` |
+| Elysia | `resolveUser` | `requireUser` guard | `handler(fn)` |
+| Convex | `hexclaveConvexFunction` | `{ required: true }` | user-attributed only (no request over WebSockets) |
