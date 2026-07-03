@@ -34,7 +34,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 50;
 
 // Fixed processing order. Resume positions are interpreted against this list.
 export const BACKFILL_TABLES = [
