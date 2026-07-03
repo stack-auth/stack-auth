@@ -1,0 +1,81 @@
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_2614b592e78341::t_fba5e5f6460f54 391
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sticky-page-header.tsx
+  s_2614b592e78341::t_f695d559d01c7e 183
+  s_2614b592e78341::t_cc5bf4ca574346 159-162
+  s_2614b592e78341::t_84daf940898395 1-158,163-182,184-240
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_2614b592e78341::t_5c9248c4fccfaa 45
+  s_2614b592e78341::t_611ab7a291f29d 1250
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.tsx
+  s_2614b592e78341::t_f5cd6384ac510a 278-282,313,316
+  s_29d4020d7a8900::t_97fda51879ebb1 174
+  s_29d4020d7a8900::t_7a0af341665153 156-169
+  s_26d0c0c2dad840::t_905f129676edf0 321-324,329-330
+  s_29d4020d7a8900::t_d076aada972724 33-53,136
+  s_2614b592e78341::t_df0ead162aa758 320,328
+  s_2614b592e78341::t_d05a6037dd9a0e 57-58,149,273,275,277,317,325-327,331-332,336,338,373,378-380,393,399
+  s_29d4020d7a8900::t_f382cb1f41f1a1 276
+  s_29d4020d7a8900::t_5a6645702b27d4 283-312
+  s_29d4020d7a8900::t_b9c5edcf93e3f9 3,6
+  s_2614b592e78341::t_7c1439ef55eea7 10
+  s_26d0c0c2dad840::t_6823826f0d2e1e 333
+  s_2614b592e78341::t_ca75bb70892f5f 369-371
+  s_29d4020d7a8900::t_3e4071a0ea5137 274
+  s_2614b592e78341::t_38624d5945cf0c 318-319
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/waterfall.tsx
+  s_2614b592e78341::t_49b94e751999e8 348
+  s_29d4020d7a8900::t_770ed245bab98c 5,275
+  s_29d4020d7a8900::t_6f2037371717ad 3,15,17,47-83,94-119,137-138,141,147,190-237,241,359-360,442
+  s_2614b592e78341::t_31ca815589cafc 242,244-245
+  s_29d4020d7a8900::t_0b3058a5853021 246-274,276-286,288-301,305-322,327,329-347,349-358,361-376,379-390,395-406,408-414,416-435,437-440
+  s_2614b592e78341::t_43920540485fe9 415
+  s_2614b592e78341::t_f3004fa566a689 243
+  s_2614b592e78341::t_eaf4509aaf7e19 324,328
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page.tsx
+  s_2614b592e78341::t_65bf4e1e4deb06 4
+apps/dashboard/src/components/ui/tooltip.tsx
+  s_29d4020d7a8900::t_734d95dac43d86 28-38
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/span-tree.tsx
+  s_29d4020d7a8900::t_56f9efc5e8c1b3 61-70,111,117-118,121,124,127,138,141,143,145-146,156,168,170
+  s_29d4020d7a8900::t_1ff0f68703acf4 45-48,140,142
+  s_29d4020d7a8900::t_241e2ebf94c146 3,40-44,110
+  s_29d4020d7a8900::t_983a27a51f54b3 49-55,57
+  s_29d4020d7a8900::t_d5986aee95c69c 109
+  s_29d4020d7a8900::t_f6a2fb1c880432 36-39,71-80,96-97,105,129,132,144,212,214,217-225
+  s_29d4020d7a8900::t_626845797b6fa3 56,58-60
+.gitignore
+  s_2614b592e78341::t_ab8e4252f3b065 150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "18c40b03d11bc0fbe59bece815a2cfb021fdcd2f",
+  "prompts": {},
+  "sessions": {
+    "s_2614b592e78341": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "caae6c0f-4146-4f16-acd6-8817f2eeaa64",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_26d0c0c2dad840": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2905-8c6d-7b61-a66a-7999551b11a4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_29d4020d7a8900": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2525-2551-71e3-ac31-24bb4c916956",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
