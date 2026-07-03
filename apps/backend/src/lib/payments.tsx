@@ -570,7 +570,7 @@ export async function grantProductToCustomer(options: {
           endedAt: now,
         },
       });
-      await bulldozerWriteSubscription(prisma, updatedConflicting);
+      await bulldozerWriteSubscription(updatedConflicting);
     }
   }
 
@@ -592,7 +592,7 @@ export async function grantProductToCustomer(options: {
       },
     });
     // dual write - prisma and bulldozer
-    await bulldozerWriteOneTimePurchase(prisma, purchase);
+    await bulldozerWriteOneTimePurchase(purchase);
     return { type: "one_time", purchaseId: purchase.id };
   }
 
@@ -613,7 +613,7 @@ export async function grantProductToCustomer(options: {
     },
   });
   // dual write - prisma and bulldozer
-  await bulldozerWriteSubscription(prisma, subscription);
+  await bulldozerWriteSubscription(subscription);
 
   return { type: "subscription", subscriptionId: subscription.id };
 }

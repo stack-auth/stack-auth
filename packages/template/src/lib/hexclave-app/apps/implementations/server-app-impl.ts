@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -1650,6 +1651,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await this._interface.activateEmailCapacityBoost();
     // Refresh the cache so UI updates immediately
     await this._emailDeliveryInfoCache.refresh([]);
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {

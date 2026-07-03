@@ -302,6 +302,10 @@ export class SessionRecorder {
     this._events = [];
     this._eventSizes = [];
     this._approxBytes = 0;
+    // The setter can rotate this id while an async multi-batch flush is in
+    // flight (for example during sign-out). Keep every event captured above on
+    // the segment it belonged to when the flush started.
+    const sessionReplaySegmentId = this._sessionReplaySegmentId;
 
     // Non-keepalive flushes gzip before sending, so a single event up to the
     // server's decompressed budget can be sent alone. Keepalive flushes
@@ -342,7 +346,7 @@ export class SessionRecorder {
         const batchId = generateUuid();
         const payload = {
           browser_session_id: stored.session_id,
-          session_replay_segment_id: this._sessionReplaySegmentId,
+          session_replay_segment_id: sessionReplaySegmentId,
           batch_id: batchId,
           started_at_ms: stored.created_at_ms,
           sent_at_ms: nowMs,

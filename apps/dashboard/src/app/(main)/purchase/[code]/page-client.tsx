@@ -32,6 +32,41 @@ type ProductData = {
 const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 const baseUrl = new URL("/api/v1", apiUrl).toString();
 const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;
+const GENERIC_PURCHASE_FAILURE_MESSAGE = "We couldn't complete the purchase. Please try again.";
+const GENERIC_TEST_MODE_PURCHASE_FAILURE_MESSAGE = "We couldn't complete the test purchase. Please try again.";
+
+async function readResponseJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (text.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function getResponseCode(responseBody: unknown) {
+  if (typeof responseBody === "object" && responseBody !== null && "code" in responseBody && typeof responseBody.code === "string") {
+    return responseBody.code;
+  }
+  return null;
+}
+
+function getPurchaseFailureMessage(responseBody: unknown, fallbackMessage: string) {
+  if (getResponseCode(responseBody) !== null && typeof responseBody === "object" && responseBody !== null && "error" in responseBody && typeof responseBody.error === "string") {
+    return responseBody.error;
+  }
+  return fallbackMessage;
+}
+
+function getClientSecret(responseBody: unknown) {
+  if (typeof responseBody === "object" && responseBody !== null && "client_secret" in responseBody && typeof responseBody.client_secret === "string") {
+    return responseBody.client_secret;
+  }
+  return null;
+}
 
 export default function PageClient({ code }: { code: string }) {
   const [data, setData] = useState<ProductData | null>(null);
@@ -126,16 +161,17 @@ export default function PageClient({ code }: { code: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_code: code, price_id: selectedPriceId, quantity: quantityNumber }),
     });
-    const result = await response.json();
+    const result = await readResponseJson(response);
 
     if (!response.ok) {
-      throw new Error(result?.error?.message ?? "Failed to setup subscription");
+      throw new Error(getPurchaseFailureMessage(result, GENERIC_PURCHASE_FAILURE_MESSAGE));
     }
 
-    if (!result.client_secret && !isFreeSelected) {
-      throw new Error("Failed to setup subscription");
+    const clientSecret = getClientSecret(result);
+    if (!clientSecret && !isFreeSelected) {
+      throw new Error(GENERIC_PURCHASE_FAILURE_MESSAGE);
     }
-    return result.client_secret;
+    return clientSecret;
   };
 
   const handleBypass = useCallback(async () => {
@@ -152,7 +188,8 @@ export default function PageClient({ code }: { code: string }) {
       }),
     });
     if (!response.ok) {
-      throw new Error("Failed to bypass with test mode");
+      const result = await readResponseJson(response);
+      throw new Error(getPurchaseFailureMessage(result, GENERIC_TEST_MODE_PURCHASE_FAILURE_MESSAGE));
     }
     const url = new URL(`/purchase/return`, window.location.origin);
     url.searchParams.set("bypass", "1");
