@@ -1,0 +1,50 @@
+docs/content/docs/(guides)/concepts/custom-events-and-spans.mdx
+  s_5b6ac9c07bf674::t_f2d0e19eddb75a 92
+  s_5b6ac9c07bf674::t_0ba3d02c07e8fd 61
+  s_5b6ac9c07bf674::t_cc1b7368b0e423 49
+  s_5b6ac9c07bf674::t_98ef910610fdd3 1-48,50-60,62-91,93-215,217-224,226-239
+  s_5b6ac9c07bf674::t_a1a49354dcb9aa 216,225
+docs/content/docs/(guides)/concepts/cross-tier-tracing.mdx
+  s_5b6ac9c07bf674::t_55482cca793971 89
+  s_5b6ac9c07bf674::t_b24e124fe65af1 29
+  s_5b6ac9c07bf674::t_8dad90f6e3f29a 1-28,30-88,90-129
+docs/content/docs/(guides)/apps/analytics.mdx
+  s_5b6ac9c07bf674::t_f5751bc34072a0 11,16-17
+  s_5b6ac9c07bf674::t_6ba9cbef28b4f1 62
+  s_5b6ac9c07bf674::t_a59573197e163d 110,112,123
+  s_5b6ac9c07bf674::t_3ce443a836fbf9 14
+  s_5b6ac9c07bf674::t_a2865e1a83bf1f 41
+  s_5b6ac9c07bf674::t_79c9e829af020e 81-82
+  s_5b6ac9c07bf674::t_ea2ffdd321ccec 7
+  s_5b6ac9c07bf674::t_d152f8c3c2c6e6 30-31
+  s_5b6ac9c07bf674::t_9e1554f2bccf76 75-80,83-87,93
+  s_5b6ac9c07bf674::t_f7fc43e83463db 28
+  s_5b6ac9c07bf674::t_1b59e99b38aaea 40
+  s_5b6ac9c07bf674::t_621f47e7ad7a9e 137-141
+docs/content/docs/(guides)/meta.json
+  s_5b6ac9c07bf674::t_2af6b3aca6bf5a 28-30
+docs/content/docs/(guides)/concepts/framework-adapters.mdx
+  s_5b6ac9c07bf674::t_134d0c2415935e 117-118
+  s_5b6ac9c07bf674::t_a4359c5bb27024 154-157
+  s_5b6ac9c07bf674::t_8d47111299ac17 77
+  s_5b6ac9c07bf674::t_350d1936aee363 7
+  s_5b6ac9c07bf674::t_5e2918d8387dab 91
+  s_5b6ac9c07bf674::t_48eea0a981648a 63-67
+  s_5b6ac9c07bf674::t_85f96e8cb08a13 1-6,8-62,68-76,78-90,92-116,119-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a25f68b6e205a5e1099a2e5eccde8881b8c4084f",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
