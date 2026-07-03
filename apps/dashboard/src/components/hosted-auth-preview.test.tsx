@@ -40,7 +40,7 @@ describe("HostedAuthMethodPreview", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Email & Password" }));
 
-    expect(screen.getByLabelText("Password")).toBeDefined();
+    screen.getByLabelText("Password");
     expect(screen.getByRole("tab", { name: "Email & Password" }).getAttribute("data-state")).toBe("active");
   });
 });

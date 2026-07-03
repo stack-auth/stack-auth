@@ -148,7 +148,8 @@ describe("OnboardingPage", () => {
     );
 
     const backButtonClassName = screen.getByRole("button", { name: "Go back to previous step" }).getAttribute("class") ?? "";
-    const progressRailClassName = screen.getByRole("button", { name: "Apps" }).parentElement?.parentElement?.getAttribute("class") ?? "";
+    const progressRail = screen.getByRole("button", { name: "Apps" }).closest(".w-\\[150px\\]");
+    const progressRailClassName = progressRail?.getAttribute("class") ?? "";
 
     expect(backButtonClassName).toContain("inline-flex");
     expect(backButtonClassName).toContain("absolute");

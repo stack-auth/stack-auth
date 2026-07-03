@@ -95,11 +95,39 @@ function HostedPreviewTabsList({ className, children, ...props }: HTMLAttributes
     return () => observer.disconnect();
   }, [measure]);
 
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (container == null) {
+      return;
+    }
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const currentIndex = tabs.findIndex((tab) => tab === document.activeElement);
+    if (currentIndex === -1) {
+      return;
+    }
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = tabs.length - 1;
+    }
+    if (nextIndex != null) {
+      event.preventDefault();
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
+    }
+  }, []);
+
   return (
     <div
       ref={containerRef}
       role="tablist"
       className={cn("stack-scope relative inline-flex h-9 items-center justify-center rounded-lg border border-black/[0.08] bg-zinc-100/70 p-1 text-muted-foreground dark:border-white/[0.10] dark:bg-zinc-900/45", className)}
+      onKeyDown={handleKeyDown}
       {...props}
     >
       {indicatorStyle != null && (
