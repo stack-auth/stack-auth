@@ -1,0 +1,31 @@
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_5b6ac9c07bf674::t_66c7921ca46944 1-119
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_5b6ac9c07bf674::t_00ba2b5642cf02 7,11,14,16-17,21,23,27,31-32
+  s_5b6ac9c07bf674::t_082a1fb861562b 143-147
+  s_5b6ac9c07bf674::t_2e6497bbe11442 101,103,113
+  s_5b6ac9c07bf674::t_8849b5d7d9092a 53
+  s_5b6ac9c07bf674::t_64b4550f21441f 66-78,84
+docs-mintlify/guides/apps/analytics/framework-adapters.mdx
+  s_5b6ac9c07bf674::t_f7e0c071482a64 1-156
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_5b6ac9c07bf674::t_e04f54dd66369b 1-233
+docs-mintlify/docs.json
+  s_5b6ac9c07bf674::t_d01400a5ad3e74 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e2ec3a7ccbf0a22d65647c37ae603d530d32826a",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
