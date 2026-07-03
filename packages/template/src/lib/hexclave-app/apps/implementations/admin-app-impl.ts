@@ -905,6 +905,13 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
         allow_negative: true,
       }
     );
+    const [customerType, customerId] = "userId" in options
+      ? ["user", options.userId] as const
+      : "teamId" in options
+        ? ["team", options.teamId] as const
+        : ["custom", options.customCustomerId] as const;
+    await this._refreshItemCache(customerType, customerId, options.itemId);
+    await this._transactionsCache.invalidateWhere(() => true);
   }
 
   async refundTransaction(options: {
