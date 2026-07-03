@@ -76,8 +76,9 @@ const bulldozerDb = declareBulldozerDatabase(
   }),
   { migrations: schema.migrations },
 );
-await traceSpan("bulldozer-js.applyRemainingMigrations", async () => await bulldozerDb.applyRemainingMigrations());
 (globalThis as any).bulldozerDb = bulldozerDb;
+console.log(`Stored bulldozerDb in globalThis for pid ${process.pid}. Run \`kill -USR1 ${process.pid} && node inspect 127.0.0.1:9229\` and then \`exec("globalThis.bulldozerDb")\` to inspect it.`);
+await traceSpan("bulldozer-js.applyRemainingMigrations", async () => await bulldozerDb.applyRemainingMigrations());
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {

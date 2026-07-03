@@ -243,6 +243,23 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   };
 
   return {
+    getDebugInfo() {
+      return {
+        backend: "instant-availability",
+        constructorArguments: { wrapped, options },
+        wrapped,
+        dbId,
+        maxPendingSeqRecords,
+        initialSeq,
+        seqRecords,
+        createdSeqRecords,
+        underlyingAvailableSeqRecords,
+        pendingSeqRecords,
+        currentWriteGateOperation,
+        pendingSeqRecordsChanged,
+        cacheMaps,
+      };
+    },
     declareKvStore(id) {
       return declareStoreOrDump(wrapped.declareKvStore(id) as LowLevelKvStore & LowLevelKvDump);
     },

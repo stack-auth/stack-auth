@@ -127,8 +127,15 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     return result;
   };
 
-
   return {
+    getDebugInfo() {
+      return {
+        backend: "in-memory",
+        constructorArguments: { dbId },
+        inMemoryLowLevelKvStores,
+        debugEntriesByStoreId,
+      };
+    },
     declareKvDump(dumpId) {
       return declareInMemoryLowLevelKvStoreOrDump("dump", JSON.stringify([dbId, dumpId]));
     },

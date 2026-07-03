@@ -243,6 +243,21 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   };
 
   return {
+    getDebugInfo() {
+      return {
+        backend: "lmdb",
+        constructorArguments: options,
+        dbId,
+        simulateReadMissDelayMs,
+        root,
+        meta,
+        currentVersion,
+        debugEntriesByStoreId,
+        seqToAvailability,
+        seqToDurability,
+        initialSeq,
+      };
+    },
     declareKvDump(dumpId) {
       return declareLmdbLowLevelKvStoreOrDump("dump", dumpId);
     },
