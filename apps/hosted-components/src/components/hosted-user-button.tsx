@@ -79,7 +79,7 @@ function HostedUserButtonInner() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="stack-scope w-64 rounded-xl border border-black/[0.08] bg-popover/95 p-1.5 shadow-lg backdrop-blur-md dark:border-white/[0.08]"
+        className="stack-scope w-64 rounded-xl border border-black/[0.08] bg-white/95 p-1.5 shadow-lg ring-1 ring-black/[0.06] backdrop-blur-md dark:border-white/[0.08] dark:bg-popover/95 dark:ring-white/[0.08]"
       >
         <DropdownMenuLabel className="px-3 py-2.5">
           <div className="flex items-center gap-2.5">

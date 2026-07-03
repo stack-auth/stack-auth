@@ -56,12 +56,12 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     return { tenancy, prisma };
   }
 
-  async function processBulldozerQueue() {
-    // Drain Bulldozer's queue so downstream views (item quantities etc.)
-    // catch up. Production has pg_cron doing this every second; in
-    // tests we trigger it by hand.
-    await globalPrismaClient.$executeRaw`SELECT public.bulldozer_timefold_process_queue()`;
-  }
+  // TODO(bulldozer-js): this suite used to hand-drain the old SQL bulldozer
+  // timefold queue via public.bulldozer_timefold_process_queue(). That function
+  // and its tables were removed when the SQL bulldozer engine was retired, so
+  // the drain calls were stripped out. bulldozer-js materializes downstream
+  // views via its own in-process tick loop, so these tests may be timing-flaky
+  // until the script/test is properly reworked to await that convergence.
 
   /** Seeds a Subscription in both Prisma and Bulldozer, like a real grant would. */
   async function seedSubscription(args: {
@@ -96,8 +96,7 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
         endedAt,
       },
     });
-    await bulldozerWriteSubscription(globalPrismaClient, sub);
-    await processBulldozerQueue();
+    await bulldozerWriteSubscription(sub);
     return { id: sub.id };
   }
 
@@ -524,7 +523,6 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     // Sanity: the stale sub's quantity for the removed item should be
     // zero (or equal to what the stale snapshot says). We mostly just
     // care that it's NOT what the latest config says.
-    await processBulldozerQueue();
     const beforeQty = await getItemQuantityForCustomer({
       prisma: globalPrismaClient,
       tenancyId: tenancy.id,
@@ -541,9 +539,6 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     });
     expect(result.mutated).toBe(1);
     expect(result.dbWrites).toBe(1);
-
-    // Drain the queue so item-quantities catches up.
-    await processBulldozerQueue();
 
     const afterQty = await getItemQuantityForCustomer({
       prisma: globalPrismaClient,

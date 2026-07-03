@@ -1329,7 +1329,7 @@ export function AnalyticsChart({
         const days = hi - lo + 1;
         return (
           <div
-            className="pointer-events-none absolute -top-1 z-30 -translate-x-1/2 -translate-y-full rounded-lg border border-blue-500/30 bg-background/95 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur-xl dark:border-blue-400/30"
+            className="pointer-events-none absolute -top-1 z-30 -translate-x-1/2 -translate-y-full rounded-lg border border-blue-500/30 bg-white/95 px-3 py-1.5 text-[11px] shadow-lg backdrop-blur-xl dark:border-blue-400/30 dark:bg-background/95"
             style={{ left: indexToCss((lo + hi) / 2) }}
           >
             <div className="flex items-center gap-2">
@@ -1380,7 +1380,7 @@ export function AnalyticsChart({
         const draft = annotationDraft;
         return (
           <div className="absolute top-2 z-30" style={anchorStyle}>
-            <div className="flex items-center gap-1 rounded-full border border-foreground/10 bg-background/95 py-1 pl-2 pr-1 shadow-[0_10px_28px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:shadow-[0_10px_28px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center gap-1 rounded-full border border-black/[0.08] bg-white/95 py-1 pl-2 pr-1 shadow-[0_10px_28px_rgba(15,23,42,0.18)] ring-1 ring-black/[0.06] backdrop-blur-xl dark:border-white/[0.08] dark:bg-background/95 dark:ring-white/[0.08] dark:shadow-[0_10px_28px_rgba(0,0,0,0.55)]">
               {draft == null ? (
                 <>
                   <span className="flex items-center gap-1.5 whitespace-nowrap px-1 font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -1582,4 +1582,3 @@ export function AnalyticsChart({
     </div>
   );
 }
-
