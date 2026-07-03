@@ -1,0 +1,19 @@
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_5b6ac9c07bf674::t_fb8e4fdf7a2bc9 99-112,116-126,130-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c652e4e57e1f6e1f07f792c3b9c25f0554f832fc",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
