@@ -1,8 +1,8 @@
 "use client";
 
-import { BrandIcons, Button, Input, Label, Separator, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
+import { BrandIcons, Button, Input, Label, Separator, Typography, cn } from "@/components/ui";
 import { KeyIcon } from "@phosphor-icons/react";
-import type { ReactElement, ReactNode } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactElement, type ReactNode } from "react";
 
 type HostedPreviewOAuthProvider = {
   id: string,
@@ -25,6 +25,137 @@ const authTabsListClassName = "mb-4 h-10 w-full rounded-lg border border-black/[
 const authTabsTriggerClassName = "h-8 flex-1 rounded-md py-0 text-sm font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground/90 data-[state=active]:font-semibold data-[state=active]:text-foreground";
 const authFooterClassName = "mt-6 border-t border-black/[0.06] pt-5 text-center text-sm dark:border-white/[0.10]";
 const authFooterLinkClassName = "font-medium text-foreground/90 underline-offset-4 transition-colors hover:text-foreground hover:underline";
+const authInputClassName = "h-9 rounded-lg border-black/[0.08] bg-white/45 px-3 py-1 text-sm shadow-none ring-0 placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring dark:border-white/[0.15] dark:bg-zinc-900/50";
+
+type HostedPreviewTabsContextValue = {
+  value: string,
+  setValue: (value: string) => void,
+};
+
+const HostedPreviewTabsContext = React.createContext<HostedPreviewTabsContextValue | null>(null);
+
+function useHostedPreviewTabsContext() {
+  const context = React.useContext(HostedPreviewTabsContext);
+  if (context == null) {
+    throw new Error("Hosted preview tabs components must be rendered inside HostedPreviewTabs");
+  }
+  return context;
+}
+
+function HostedPreviewTabs(props: HTMLAttributes<HTMLDivElement> & {
+  defaultValue: string,
+}) {
+  const [value, setValue] = useState(props.defaultValue);
+  const contextValue = useMemo<HostedPreviewTabsContextValue>(() => ({
+    value,
+    setValue,
+  }), [value]);
+
+  return (
+    <HostedPreviewTabsContext.Provider value={contextValue}>
+      <div {...props} />
+    </HostedPreviewTabsContext.Provider>
+  );
+}
+
+function HostedPreviewTabsList({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
+  const tabs = useHostedPreviewTabsContext();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number, top: number, width: number, height: number } | null>(null);
+
+  const measure = useCallback(() => {
+    const container = containerRef.current;
+    if (container == null) {
+      return;
+    }
+    const activeTab = container.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+    if (activeTab == null) {
+      setIndicatorStyle(null);
+      return;
+    }
+    setIndicatorStyle({
+      left: activeTab.offsetLeft,
+      top: activeTab.offsetTop,
+      width: activeTab.offsetWidth,
+      height: activeTab.offsetHeight,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, tabs.value]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (container == null || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  return (
+    <div
+      ref={containerRef}
+      role="tablist"
+      className={cn("stack-scope relative inline-flex h-9 items-center justify-center rounded-lg border border-black/[0.08] bg-zinc-100/70 p-1 text-muted-foreground dark:border-white/[0.10] dark:bg-zinc-900/45", className)}
+      {...props}
+    >
+      {indicatorStyle != null && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute rounded-md border border-black/[0.08] bg-white/80 shadow-sm transition-[left,top,width,height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] dark:border-white/[0.10] dark:bg-zinc-800/80 dark:ring-1 dark:ring-white/[0.06]"
+          style={indicatorStyle}
+        />
+      )}
+      {children}
+    </div>
+  );
+}
+
+function HostedPreviewTabsTrigger({ className, value, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  value: string,
+}) {
+  const tabs = useHostedPreviewTabsContext();
+  const active = tabs.value === value;
+
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-state={active ? "active" : "inactive"}
+      className={cn(
+        "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-colors duration-300 hover:text-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:font-semibold data-[state=active]:text-foreground",
+        className,
+      )}
+      onClick={(event) => {
+        tabs.setValue(value);
+        onClick?.(event);
+      }}
+      {...props}
+    />
+  );
+}
+
+function HostedPreviewTabsContent({ className, value, ...props }: HTMLAttributes<HTMLDivElement> & {
+  value: string,
+}) {
+  const tabs = useHostedPreviewTabsContext();
+  if (tabs.value !== value) {
+    return null;
+  }
+
+  return (
+    <div
+      role="tabpanel"
+      data-state="active"
+      className={cn("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", className)}
+      {...props}
+    />
+  );
+}
 
 const providerButtonClassNames = new Map<string, string>([
   ["google", "bg-white text-black hover:bg-zinc-50 border border-border shadow-sm"],
@@ -145,8 +276,8 @@ function OAuthPreviewButton(props: {
   const style = getProviderStyle(props.provider);
   return (
     <Button
+      type="button"
       variant="plain"
-      tabIndex={-1}
       className={cn("stack-scope relative h-10 w-full overflow-visible rounded-xl font-medium transition-all duration-150", getProviderButtonClassName(props.provider))}
     >
       <div className="flex w-full items-center gap-3">
@@ -177,8 +308,8 @@ function PasskeyPreviewButton(props: {
 }) {
   return (
     <Button
+      type="button"
       variant="plain"
-      tabIndex={-1}
       className="stack-scope h-10 rounded-xl border border-transparent bg-primary font-medium text-primary-foreground shadow-sm transition-all duration-150 hover:bg-primary/90"
     >
       <div className="flex w-full items-center gap-4">
@@ -193,16 +324,15 @@ function PasskeyPreviewButton(props: {
 
 function HostedMagicLinkPreviewForm() {
   return (
-    <form className="stack-scope flex flex-col items-stretch" noValidate>
+    <form className="stack-scope flex flex-col items-stretch" noValidate onSubmit={(event) => event.preventDefault()}>
       <Label htmlFor="hosted-preview-email" className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</Label>
       <Input
         id="hosted-preview-email"
         type="email"
         autoComplete="email"
-        className="h-10 rounded-xl border-border bg-background"
-        tabIndex={-1}
+        className={authInputClassName}
       />
-      <Button type="button" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow" tabIndex={-1}>
+      <Button type="button" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow">
         Send email
       </Button>
     </form>
@@ -213,20 +343,19 @@ function HostedCredentialPreviewForm(props: {
   type: HostedAuthType,
 }) {
   return (
-    <form className="stack-scope flex flex-col items-stretch" noValidate>
+    <form className="stack-scope flex flex-col items-stretch" noValidate onSubmit={(event) => event.preventDefault()}>
       <Label htmlFor="hosted-preview-email-password-email" className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</Label>
       <Input
         id="hosted-preview-email-password-email"
         type="email"
         autoComplete="email"
-        className="h-10 rounded-xl border-border bg-background"
-        tabIndex={-1}
+        className={authInputClassName}
       />
 
       <div className="mb-1.5 mt-4 flex items-center justify-between">
         <Label htmlFor="hosted-preview-email-password-password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
         {props.type === "sign-in" && (
-          <a href="#" className="text-xs text-muted-foreground hover:text-foreground" tabIndex={-1}>
+          <a href="#" className="text-xs text-muted-foreground hover:text-foreground" onClick={(event) => event.preventDefault()}>
             Forgot password?
           </a>
         )}
@@ -235,11 +364,10 @@ function HostedCredentialPreviewForm(props: {
         id="hosted-preview-email-password-password"
         type="password"
         autoComplete={props.type === "sign-in" ? "current-password" : "new-password"}
-        className="h-10 rounded-xl border-border bg-background"
-        tabIndex={-1}
+        className={authInputClassName}
       />
 
-      <Button type="button" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow" tabIndex={-1}>
+      <Button type="button" className="mt-6 h-10 rounded-xl font-semibold shadow-sm hover:shadow">
         {props.type === "sign-in" ? "Sign In" : "Sign Up"}
       </Button>
     </form>
@@ -291,20 +419,20 @@ export function HostedAuthMethodPreview(props: {
       {enableSeparator && <SeparatorWithText text="Or continue with" />}
 
       {props.project.config.credentialEnabled && props.project.config.magicLinkEnabled ? (
-        <Tabs defaultValue={props.firstTab || "magic-link"} className="w-full">
-          <TabsList className={cn(authTabsListClassName, {
+        <HostedPreviewTabs defaultValue={props.firstTab || "magic-link"} className="w-full">
+          <HostedPreviewTabsList className={cn(authTabsListClassName, {
             "flex-row-reverse": props.firstTab === "password",
           })}>
-            <TabsTrigger value="magic-link" className={authTabsTriggerClassName} tabIndex={-1}>Email</TabsTrigger>
-            <TabsTrigger value="password" className={authTabsTriggerClassName} tabIndex={-1}>Email & Password</TabsTrigger>
-          </TabsList>
-          <TabsContent value="magic-link" className="focus-visible:outline-none focus-visible:ring-0">
+            <HostedPreviewTabsTrigger value="magic-link" className={authTabsTriggerClassName}>Email</HostedPreviewTabsTrigger>
+            <HostedPreviewTabsTrigger value="password" className={authTabsTriggerClassName}>Email & Password</HostedPreviewTabsTrigger>
+          </HostedPreviewTabsList>
+          <HostedPreviewTabsContent value="magic-link" className="focus-visible:outline-none focus-visible:ring-0">
             <HostedMagicLinkPreviewForm />
-          </TabsContent>
-          <TabsContent value="password" className="focus-visible:outline-none focus-visible:ring-0">
+          </HostedPreviewTabsContent>
+          <HostedPreviewTabsContent value="password" className="focus-visible:outline-none focus-visible:ring-0">
             <HostedCredentialPreviewForm type={type} />
-          </TabsContent>
-        </Tabs>
+          </HostedPreviewTabsContent>
+        </HostedPreviewTabs>
       ) : props.project.config.credentialEnabled ? (
         <HostedCredentialPreviewForm type={type} />
       ) : props.project.config.magicLinkEnabled ? (
@@ -318,14 +446,14 @@ export function HostedAuthMethodPreview(props: {
           {type === "sign-in" ? (
             <p className="text-muted-foreground">
               Don&apos;t have an account?{" "}
-              <a href="#" className={authFooterLinkClassName} tabIndex={-1}>
+              <a href="#" className={authFooterLinkClassName} onClick={(event) => event.preventDefault()}>
                 Sign up
               </a>
             </p>
           ) : (
             <p className="text-muted-foreground">
               Already have an account?{" "}
-              <a href="#" className={authFooterLinkClassName} tabIndex={-1}>
+              <a href="#" className={authFooterLinkClassName} onClick={(event) => event.preventDefault()}>
                 Sign in
               </a>
             </p>
