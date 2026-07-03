@@ -114,6 +114,33 @@ describe("OnboardingPage", () => {
     expect(className).toContain("hover:transition-none");
     expect(currentStepButton.getAttribute("aria-current")).toBe("step");
   });
+
+  it("keeps the progress dots centered on a wider rail with the back arrow offset", () => {
+    render(
+      <OnboardingPage
+        stepKey="apps-selection"
+        title="Select apps"
+        steps={[
+          { id: "config_choice", label: "Config" },
+          { id: "apps_selection", label: "Apps" },
+        ]}
+        currentStep="apps_selection"
+        onBack={vi.fn()}
+        primaryAction={<button type="button">Continue</button>}
+      >
+        <div>Step body</div>
+      </OnboardingPage>,
+    );
+
+    const backButtonClassName = screen.getByRole("button", { name: "Go back to previous step" }).getAttribute("class") ?? "";
+    const progressRailClassName = screen.getByRole("button", { name: "Apps" }).parentElement?.parentElement?.getAttribute("class") ?? "";
+
+    expect(backButtonClassName).toContain("inline-flex");
+    expect(backButtonClassName).toContain("absolute");
+    expect(backButtonClassName).toContain("left-0");
+    expect(progressRailClassName).toContain("w-[150px]");
+    expect(progressRailClassName).toContain("justify-center");
+  });
 });
 
 describe("OnboardingAppCard", () => {
