@@ -1,4 +1,5 @@
 import { isShallowEqual } from "@hexclave/shared/dist/utils/arrays";
+import { inspect } from "node:util";
 import { traceSpan } from "../../otel.js";
 import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
@@ -74,9 +75,155 @@ type TableChanges = {
   }[],
 };
 type GroupChanges = Omit<TableChanges, "addedGroups" | "deletedGroups">;
+export type TableChangesDebugInfo = {
+  addedRows: number,
+  modifiedRows: number,
+  deletedRows: number,
+  addedGroups: number,
+  deletedGroups: number,
+  rowChanges: number,
+  groupChanges: number,
+};
+export type BulldozerTableMutationDebugInfo = {
+  tableId: string,
+  phase: "source" | "downstream",
+  durationMs: number,
+  inputChangeCountsByInputTable: Record<string, TableChangesDebugInfo>,
+  outputChangeCounts: TableChangesDebugInfo,
+};
+export type BulldozerAffectedTableDebugInfo = {
+  tableId: string,
+  operationCount: number,
+  sourceOperationCount: number,
+  emitInputChangesOperationCount: number,
+  totalDurationMs: number,
+  sourceDurationMs: number,
+  emitInputChangesDurationMs: number,
+  inputChangeCountsByInputTable: Record<string, TableChangesDebugInfo>,
+  totalInputChangeCounts: TableChangesDebugInfo,
+  outputChangeCounts: TableChangesDebugInfo,
+};
+export type BulldozerSnapshotMutationDebugInfo = {
+  operation: "setOrDeleteRow" | "setOrDeleteRows" | "tick" | "applyTableMutation",
+  sourceTableId?: string,
+  rowsSetOrDeleted: number,
+  durationMs: number,
+  tableOperations: BulldozerTableMutationDebugInfo[],
+  affectedTableIds: string[],
+  affectedTables: Record<string, BulldozerAffectedTableDebugInfo>,
+  totalOutputChangeCounts: TableChangesDebugInfo,
+};
+export type BulldozerSnapshotMutationResult = {
+  newSnapshot: BulldozerDatabaseSnapshot,
+  debugInfo: BulldozerSnapshotMutationDebugInfo,
+};
 
 function appendAll<T>(target: T[], values: Iterable<T>) {
   for (const value of values) target.push(value);
+}
+
+function tableChangesDebugInfo(changes: TableChanges): TableChangesDebugInfo {
+  return {
+    addedRows: changes.addedRows.length,
+    modifiedRows: changes.modifiedRows.length,
+    deletedRows: changes.deletedRows.length,
+    addedGroups: changes.addedGroups.length,
+    deletedGroups: changes.deletedGroups.length,
+    rowChanges: changes.addedRows.length + changes.modifiedRows.length + changes.deletedRows.length,
+    groupChanges: changes.addedGroups.length + changes.deletedGroups.length,
+  };
+}
+
+function emptyTableChangesDebugInfo(): TableChangesDebugInfo {
+  return {
+    addedRows: 0,
+    modifiedRows: 0,
+    deletedRows: 0,
+    addedGroups: 0,
+    deletedGroups: 0,
+    rowChanges: 0,
+    groupChanges: 0,
+  };
+}
+
+function mergeTableChangesDebugInfo(target: TableChangesDebugInfo, value: TableChangesDebugInfo) {
+  target.addedRows += value.addedRows;
+  target.modifiedRows += value.modifiedRows;
+  target.deletedRows += value.deletedRows;
+  target.addedGroups += value.addedGroups;
+  target.deletedGroups += value.deletedGroups;
+  target.rowChanges += value.rowChanges;
+  target.groupChanges += value.groupChanges;
+}
+
+function inputChangeCountsByInputTable(changes: Record<string, TableChanges>): Record<string, TableChangesDebugInfo> {
+  return Object.fromEntries(Object.entries(changes).map(([inputTableKey, tableChanges]) => [inputTableKey, tableChangesDebugInfo(tableChanges)]));
+}
+
+function emptyAffectedTableDebugInfo(tableId: string): BulldozerAffectedTableDebugInfo {
+  return {
+    tableId,
+    operationCount: 0,
+    sourceOperationCount: 0,
+    emitInputChangesOperationCount: 0,
+    totalDurationMs: 0,
+    sourceDurationMs: 0,
+    emitInputChangesDurationMs: 0,
+    inputChangeCountsByInputTable: {},
+    totalInputChangeCounts: emptyTableChangesDebugInfo(),
+    outputChangeCounts: emptyTableChangesDebugInfo(),
+  };
+}
+
+function mergeInputChangeCounts(
+  target: Record<string, TableChangesDebugInfo>,
+  totalTarget: TableChangesDebugInfo,
+  value: Record<string, TableChangesDebugInfo>,
+) {
+  for (const [inputTableKey, counts] of Object.entries(value)) {
+    target[inputTableKey] ??= emptyTableChangesDebugInfo();
+    mergeTableChangesDebugInfo(target[inputTableKey], counts);
+    mergeTableChangesDebugInfo(totalTarget, counts);
+  }
+}
+
+function affectedTablesDebugInfo(tableOperations: BulldozerTableMutationDebugInfo[]): Record<string, BulldozerAffectedTableDebugInfo> {
+  const result = new Map<string, BulldozerAffectedTableDebugInfo>();
+  for (const operation of tableOperations) {
+    let table = result.get(operation.tableId);
+    if (table === undefined) {
+      table = emptyAffectedTableDebugInfo(operation.tableId);
+      result.set(operation.tableId, table);
+    }
+
+    table.operationCount++;
+    table.totalDurationMs += operation.durationMs;
+    if (operation.phase === "source") {
+      table.sourceOperationCount++;
+      table.sourceDurationMs += operation.durationMs;
+    } else {
+      table.emitInputChangesOperationCount++;
+      table.emitInputChangesDurationMs += operation.durationMs;
+    }
+    mergeInputChangeCounts(table.inputChangeCountsByInputTable, table.totalInputChangeCounts, operation.inputChangeCountsByInputTable);
+    mergeTableChangesDebugInfo(table.outputChangeCounts, operation.outputChangeCounts);
+  }
+  return Object.fromEntries(result);
+}
+
+function logSnapshotMutationDebugInfo(value: {
+  operation: BulldozerSnapshotMutationDebugInfo["operation"],
+  tableId: string | null,
+  rowsSetOrDeleted: number,
+  debugInfo: BulldozerSnapshotMutationDebugInfo,
+}) {
+  if (value.rowsSetOrDeleted <= 0) return;
+  console.debug("bulldozer-js snapshot mutation", inspect(value, {
+    depth: null,
+    colors: false,
+    maxArrayLength: null,
+    breakLength: 160,
+  }));
 }
 
 function validateTableChanges(changes: TableChanges, context: string) {
@@ -381,17 +528,28 @@ class BulldozerDatabaseSnapshot {
     tableId: string,
     rowIdentifier: string,
     newRowData: PiledriverObject | undefined,
-  }): Promise<BulldozerDatabaseSnapshot> {
+  }): Promise<BulldozerSnapshotMutationResult> {
     if (!(options.tableId in this.tablesState.tables)) throw new Error(`Table ${options.tableId} does not exist`);
     const setOrDeleteRow = this.tablesState.tables[options.tableId].table.setOrDeleteRow;
     if (!setOrDeleteRow) throw new Error("Table is not mutable");
 
-    return await this._applyTableMutation(options.tableId, ({ serializedTable, inputTables }) => setOrDeleteRow({
-      serializedTable,
-      inputTables,
-      rowIdentifier: options.rowIdentifier,
-      newRowData: options.newRowData,
-    }));
+    const result = await this._applyTableMutation({
+      operation: "setOrDeleteRow",
+      tableId: options.tableId,
+      mutate: ({ serializedTable, inputTables }) => setOrDeleteRow({
+        serializedTable,
+        inputTables,
+        rowIdentifier: options.rowIdentifier,
+        newRowData: options.newRowData,
+      }),
+    });
+    logSnapshotMutationDebugInfo({
+      operation: "setOrDeleteRow",
+      tableId: options.tableId,
+      rowsSetOrDeleted: result.debugInfo.rowsSetOrDeleted,
+      debugInfo: result.debugInfo,
+    });
+    return result;
   }
 
   /**
@@ -414,11 +572,30 @@ class BulldozerDatabaseSnapshot {
   async setOrDeleteRows(options: {
     tableId: string,
     rows: { rowIdentifier: string, newRowData: PiledriverObject | undefined }[],
-  }): Promise<BulldozerDatabaseSnapshot> {
+  }): Promise<BulldozerSnapshotMutationResult> {
     if (!(options.tableId in this.tablesState.tables)) throw new Error(`Table ${options.tableId} does not exist`);
     const setOrDeleteRow = this.tablesState.tables[options.tableId].table.setOrDeleteRow;
     if (!setOrDeleteRow) throw new Error("Table is not mutable");
-    if (options.rows.length === 0) return this;
+    if (options.rows.length === 0) {
+      const debugInfo: BulldozerSnapshotMutationDebugInfo = {
+        operation: "setOrDeleteRows",
+        sourceTableId: options.tableId,
+        rowsSetOrDeleted: 0,
+        durationMs: 0,
+        tableOperations: [],
+        affectedTableIds: [],
+        affectedTables: {},
+        totalOutputChangeCounts: emptyTableChangesDebugInfo(),
+      };
+      const result = { newSnapshot: this, debugInfo };
+      logSnapshotMutationDebugInfo({
+        operation: "setOrDeleteRows",
+        tableId: options.tableId,
+        rowsSetOrDeleted: 0,
+        debugInfo,
+      });
+      return result;
+    }
 
     const seenIdentifiers = new Set<string>();
     for (const row of options.rows) {
@@ -426,93 +603,174 @@ class BulldozerDatabaseSnapshot {
       seenIdentifiers.add(row.rowIdentifier);
     }
 
-    return await this._applyTableMutation(options.tableId, async ({ serializedTable, inputTables }) => {
-      let currentSerializedTable = serializedTable;
-      const combined: TableChanges = { addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] };
-      for (const row of options.rows) {
-        const result = await setOrDeleteRow({
-          serializedTable: currentSerializedTable,
-          inputTables,
-          rowIdentifier: row.rowIdentifier,
-          newRowData: row.newRowData,
-        });
-        currentSerializedTable = result.newSerializedTable;
-        mergeTableChanges(combined, result.outputChanges);
-      }
-      normalizeGroupLifecycle(combined);
-      return { newSerializedTable: currentSerializedTable, outputChanges: combined };
+    const result = await this._applyTableMutation({
+      operation: "setOrDeleteRows",
+      tableId: options.tableId,
+      mutate: async ({ serializedTable, inputTables }) => {
+        let currentSerializedTable = serializedTable;
+        const combined: TableChanges = { addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] };
+        for (const row of options.rows) {
+          const result = await setOrDeleteRow({
+            serializedTable: currentSerializedTable,
+            inputTables,
+            rowIdentifier: row.rowIdentifier,
+            newRowData: row.newRowData,
+          });
+          currentSerializedTable = result.newSerializedTable;
+          mergeTableChanges(combined, result.outputChanges);
+        }
+        normalizeGroupLifecycle(combined);
+        return { newSerializedTable: currentSerializedTable, outputChanges: combined };
+      },
     });
+    logSnapshotMutationDebugInfo({
+      operation: "setOrDeleteRows",
+      tableId: options.tableId,
+      rowsSetOrDeleted: result.debugInfo.rowsSetOrDeleted,
+      debugInfo: result.debugInfo,
+    });
+    return result;
   }
 
-  async tick(now: Date): Promise<BulldozerDatabaseSnapshot> {
+  async tick(now: Date): Promise<BulldozerSnapshotMutationResult> {
+    const startedAt = performance.now();
     let snapshot: BulldozerDatabaseSnapshot = this;
+    const tableOperations: BulldozerTableMutationDebugInfo[] = [];
+    const affectedTableIds = new Set<string>();
+    const totalOutputChangeCounts = emptyTableChangesDebugInfo();
+    let rowsSetOrDeleted = 0;
     for (const [tableId, tableState] of Object.entries(this.tablesState.tables)) {
       const tick = tableState.table.tick;
       if (!tick) continue;
-      snapshot = await snapshot._applyTableMutation(tableId, ({ serializedTable, inputTables }) => tick({ serializedTable, inputTables, now }));
+      const result = await snapshot._applyTableMutation({
+        operation: "tick",
+        tableId,
+        mutate: ({ serializedTable, inputTables }) => tick({ serializedTable, inputTables, now }),
+      });
+      snapshot = result.newSnapshot;
+      tableOperations.push(...result.debugInfo.tableOperations);
+      for (const affectedTableId of result.debugInfo.affectedTableIds) affectedTableIds.add(affectedTableId);
+      mergeTableChangesDebugInfo(totalOutputChangeCounts, result.debugInfo.totalOutputChangeCounts);
+      rowsSetOrDeleted += result.debugInfo.rowsSetOrDeleted;
     }
-    return snapshot;
+    const debugInfo: BulldozerSnapshotMutationDebugInfo = {
+      operation: "tick",
+      rowsSetOrDeleted,
+      durationMs: performance.now() - startedAt,
+      tableOperations,
+      affectedTableIds: [...affectedTableIds],
+      affectedTables: affectedTablesDebugInfo(tableOperations),
+      totalOutputChangeCounts,
+    };
+    logSnapshotMutationDebugInfo({
+      operation: "tick",
+      tableId: null,
+      rowsSetOrDeleted,
+      debugInfo,
+    });
+    return { newSnapshot: snapshot, debugInfo };
   }
 
-  private async _applyTableMutation(
+  private async _applyTableMutation(options: {
+    operation: BulldozerSnapshotMutationDebugInfo["operation"],
     tableId: string,
     mutate: (options: {
       serializedTable: PiledriverObject,
       inputTables: Record<string, BulldozerTableImplementationInputTable>,
     }) => Promise<{ newSerializedTable: PiledriverObject, outputChanges: TableChanges }>,
-  ): Promise<BulldozerDatabaseSnapshot> {
-    return await traceSpan({ description: "bulldozer-js.bulldozer.applyTableMutation", attributes: { "bulldozer.table_id": tableId } }, async () => {
+  }): Promise<BulldozerSnapshotMutationResult> {
+    const startedAt = performance.now();
+    return await traceSpan({ description: "bulldozer-js.bulldozer.applyTableMutation", attributes: { "bulldozer.table_id": options.tableId } }, async () => {
       const tablesState = this.tablesState;
       const serializedTables = { ...this.serialized.serializedTables };
       const pending = new Map<string, Record<string, TableChanges>>();
       const remainingInputs = new Map<string, number>();
+      const tableOperations: BulldozerTableMutationDebugInfo[] = [];
+      const affectedTableIds = new Set<string>();
+      const totalOutputChangeCounts = emptyTableChangesDebugInfo();
       const inputTables = (id: string) => createInputTables(tablesState.tables, inputId => serializedTables[inputId], id);
 
       const emptyChanges = (): TableChanges => ({ addedRows: [], modifiedRows: [], deletedRows: [], addedGroups: [], deletedGroups: [] });
       const hasChanges = (changes: TableChanges) => changes.addedRows.length || changes.modifiedRows.length || changes.deletedRows.length || changes.addedGroups.length || changes.deletedGroups.length;
       const addPending = (tableId: string, inputTableKey: string, changes: TableChanges) => {
         if (!hasChanges(changes)) return;
-      pending.set(tableId, { ...pending.get(tableId), [inputTableKey]: changes });
+        pending.set(tableId, { ...pending.get(tableId), [inputTableKey]: changes });
       };
 
-      for (const queue = [tableId], seen = new Set<string>([tableId]); queue.length;) {
+      for (const queue = [options.tableId], seen = new Set<string>([options.tableId]); queue.length;) {
         for (const outputTable of tablesState.tables[queue.shift()!].outputTables) {
-        remainingInputs.set(outputTable.tableId, (remainingInputs.get(outputTable.tableId) ?? 0) + 1);
-        if (!seen.has(outputTable.tableId)) {
-          seen.add(outputTable.tableId);
+          remainingInputs.set(outputTable.tableId, (remainingInputs.get(outputTable.tableId) ?? 0) + 1);
+          if (!seen.has(outputTable.tableId)) {
+            seen.add(outputTable.tableId);
+            queue.push(outputTable.tableId);
+          }
+        }
+      }
+
+      const sourceStartedAt = performance.now();
+      const first = await traceSpan({ description: "bulldozer-js.bulldozer.mutateSourceTable", attributes: { "bulldozer.table_id": options.tableId } }, async () => await options.mutate({ serializedTable: serializedTables[options.tableId], inputTables: inputTables(options.tableId) }));
+      validateTableChanges(first.outputChanges, `Table ${options.tableId} output`);
+      const sourceOutputChangeCounts = tableChangesDebugInfo(first.outputChanges);
+      tableOperations.push({
+        tableId: options.tableId,
+        phase: "source",
+        durationMs: performance.now() - sourceStartedAt,
+        inputChangeCountsByInputTable: {},
+        outputChangeCounts: sourceOutputChangeCounts,
+      });
+      affectedTableIds.add(options.tableId);
+      mergeTableChangesDebugInfo(totalOutputChangeCounts, sourceOutputChangeCounts);
+      serializedTables[options.tableId] = first.newSerializedTable;
+      for (const outputTable of tablesState.tables[options.tableId].outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, first.outputChanges);
+
+      for (const queue = tablesState.tables[options.tableId].outputTables.map(outputTable => outputTable.tableId); queue.length;) {
+        const downstreamTableId = queue.shift()!;
+        const left = (remainingInputs.get(downstreamTableId) ?? 1) - 1;
+        remainingInputs.set(downstreamTableId, left);
+        if (left > 0) continue;
+        const table = tablesState.tables[downstreamTableId];
+        const changes = pending.get(downstreamTableId);
+        if (changes) {
+          const normalizedChanges = Object.fromEntries(Object.keys(table.inputTableIds).map(inputTableKey => [inputTableKey, changes[inputTableKey] ?? emptyChanges()]));
+          const downstreamStartedAt = performance.now();
+          const result = await traceSpan({ description: "bulldozer-js.bulldozer.emitInputChanges", attributes: { "bulldozer.table_id": downstreamTableId } }, async () => await table.table.emitInputChanges({
+            serializedTable: serializedTables[downstreamTableId],
+            inputTables: inputTables(downstreamTableId),
+            changes: normalizedChanges,
+          }));
+          validateTableChanges(result.outputChanges, `Table ${downstreamTableId} output`);
+          const outputChangeCounts = tableChangesDebugInfo(result.outputChanges);
+          tableOperations.push({
+            tableId: downstreamTableId,
+            phase: "downstream",
+            durationMs: performance.now() - downstreamStartedAt,
+            inputChangeCountsByInputTable: inputChangeCountsByInputTable(normalizedChanges),
+            outputChangeCounts,
+          });
+          affectedTableIds.add(downstreamTableId);
+          mergeTableChangesDebugInfo(totalOutputChangeCounts, outputChangeCounts);
+          serializedTables[downstreamTableId] = result.newSerializedTable;
+          for (const outputTable of table.outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, result.outputChanges);
+        }
+        for (const outputTable of table.outputTables) {
           queue.push(outputTable.tableId);
         }
-        }
       }
 
-      const first = await traceSpan({ description: "bulldozer-js.bulldozer.mutateSourceTable", attributes: { "bulldozer.table_id": tableId } }, async () => await mutate({ serializedTable: serializedTables[tableId], inputTables: inputTables(tableId) }));
-    validateTableChanges(first.outputChanges, `Table ${tableId} output`);
-    serializedTables[tableId] = first.newSerializedTable;
-    for (const outputTable of tablesState.tables[tableId].outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, first.outputChanges);
-
-    for (const queue = tablesState.tables[tableId].outputTables.map(outputTable => outputTable.tableId); queue.length;) {
-      const downstreamTableId = queue.shift()!;
-      const left = (remainingInputs.get(downstreamTableId) ?? 1) - 1;
-      remainingInputs.set(downstreamTableId, left);
-      if (left > 0) continue;
-      const table = tablesState.tables[downstreamTableId];
-      const changes = pending.get(downstreamTableId);
-      if (changes) {
-        const result = await traceSpan({ description: "bulldozer-js.bulldozer.emitInputChanges", attributes: { "bulldozer.table_id": downstreamTableId } }, async () => await table.table.emitInputChanges({
-          serializedTable: serializedTables[downstreamTableId],
-          inputTables: inputTables(downstreamTableId),
-          changes: Object.fromEntries(Object.keys(table.inputTableIds).map(inputTableKey => [inputTableKey, changes[inputTableKey] ?? emptyChanges()])),
-        }));
-        validateTableChanges(result.outputChanges, `Table ${downstreamTableId} output`);
-        serializedTables[downstreamTableId] = result.newSerializedTable;
-        for (const outputTable of table.outputTables) addPending(outputTable.tableId, outputTable.inputTableKey, result.outputChanges);
-      }
-      for (const outputTable of table.outputTables) {
-        queue.push(outputTable.tableId);
-      }
-    }
-
-    return new BulldozerDatabaseSnapshot({ ...this.serialized, serializedTables, uniqueSnapshotIdentifier: crypto.randomUUID() }, this.tablesState);
+      const debugInfo: BulldozerSnapshotMutationDebugInfo = {
+        operation: options.operation,
+        sourceTableId: options.tableId,
+        rowsSetOrDeleted: totalOutputChangeCounts.rowChanges,
+        durationMs: performance.now() - startedAt,
+        tableOperations,
+        affectedTableIds: [...affectedTableIds],
+        affectedTables: affectedTablesDebugInfo(tableOperations),
+        totalOutputChangeCounts,
+      };
+      return {
+        newSnapshot: new BulldozerDatabaseSnapshot({ ...this.serialized, serializedTables, uniqueSnapshotIdentifier: crypto.randomUUID() }, this.tablesState),
+        debugInfo,
+      };
     });
   }
 }
@@ -584,8 +842,8 @@ export type BulldozerDatabase = {
   debugPiledriverSnapshot?(): Promise<PiledriverDatabaseDebugSnapshot>,
   debugLowLevelSnapshot?(): Promise<LowLevelDatabaseDebugSnapshot>,
   getSnapshot(): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
-  withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
-  withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
+  withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
+  withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
 };
 
@@ -625,13 +883,14 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     };
   });
   const withSnapshot = async (
-    updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot>,
+    updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>,
     options: { replicated: boolean },
   ) => {
     return await traceSpan({ description: "bulldozer-js.bulldozer.withSnapshot", attributes: { "bulldozer.replicated": options.replicated } }, async () => {
       const result = await withWriteLock(async () => {
         const { snapshot } = await getSnapshot();
-        const newSnapshot = await updateSnapshot(snapshot);
+        const updateResult = await updateSnapshot(snapshot);
+        const newSnapshot = updateResult instanceof BulldozerDatabaseSnapshot ? updateResult : updateResult.newSnapshot;
         const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
         await piledriverDatabase.waitUntilAvailable(seq);
         return { snapshot: newSnapshot, seq };

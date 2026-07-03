@@ -42,7 +42,7 @@ export const rowsBySortKey = async (snapshot: Snapshot, tableId: string, groupKe
   await collect(snapshot.listRowsInGroup({ tableId, groupKey, range: {} }));
 
 export const set = async (snapshot: Snapshot, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
-  await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData });
+  (await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData })).newSnapshot;
 
 export const customerGroup = (customerId: string, customerType: CustomerType = "user"): PiledriverObject => ({ tenancyId: "t1", customerType, customerId });
 

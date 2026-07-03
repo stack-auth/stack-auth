@@ -215,6 +215,7 @@ async function backfillTable<T extends Cursor>(
     const batch = await fetchBatch(cursor);
     const fetchMs = performance.now() - fetchStartedAt;
     if (batch.length === 0) break;
+    const fetchDoneAt = performance.now();
 
     // Time only the bulldozer write (the HTTP batch request[s]), isolated from
     // the Prisma read above. Under --continue-on-error the per-row retry writes
@@ -242,6 +243,7 @@ async function backfillTable<T extends Cursor>(
     const reqMs = performance.now() - reqStartedAt;
     totalReqMs += reqMs;
     total += batch.length;
+    const writeDoneAt = performance.now();
 
     const last = batch[batch.length - 1];
     const next: Cursor = { tenancyId: last.tenancyId, id: last.id };
@@ -255,8 +257,8 @@ async function backfillTable<T extends Cursor>(
 
     cursor = next;
     batchNumber++;
-    // req = bulldozer request time (the number to watch), fetch = Prisma read.
-    log(`[${label}] batch=${batchNumber} req=${formatDuration(reqMs)} fetch=${formatDuration(fetchMs)} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
+    const allDoneAt = performance.now();
+    log(`[${label}] batch=${batchNumber} duration=(r:${formatDuration(fetchMs)} w:${formatDuration(writeDoneAt - fetchDoneAt)} t:${formatDuration(allDoneAt - fetchStartedAt)} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
 
     // A short page means we've hit the end; skip the extra empty fetch.
     if (batch.length < ctx.batchSize) break;
