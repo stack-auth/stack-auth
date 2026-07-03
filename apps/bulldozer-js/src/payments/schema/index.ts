@@ -668,7 +668,7 @@ export function createPaymentsSchema() {
         const subscription = rowObject<SubscriptionRow>(row.rowData);
         return { tenancyId: subscription.tenancyId, stripeSubscriptionId: subscription.stripeSubscriptionId };
       },
-      joinKeyComparator: compareJson,
+      joinKeyComparator: (a: any, b: any) => stringCompare(a.tenancyId, b.tenancyId) || stringCompare(a.stripeSubscriptionId ?? "", b.stripeSubscriptionId ?? "") || (a.stripeSubscriptionId === b.stripeSubscriptionId ? 0 : a.stripeSubscriptionId === null ? -1 : 1),
       joiner: async (left, right) => ({ leftRowData: left.rowData, rightRowData: right?.rowData ?? null }),
     }), { left: "payments-subscription-invoices", right: "payments-subscriptions" }),
     table("payments-renewal-invoice-rows", defineFilterTable(row => {
