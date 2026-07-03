@@ -109,7 +109,7 @@ The first `await` breaks that certainty: your callback pauses, and the browser i
 - **`"exact"` (the default)**: never guess. After the first `await`, app-level calls stop seeing the span as an ambient parent. You can get a *missing* link, but never a *wrong* one. (A missing parent is visible and fixable; a wrong parent silently corrupts traces.)
 - **`"best-effort"`**: keep treating the still-running callback's span as the parent until it settles. If only one flow is active at a time, this is always correct and `withSpan` links across `await`s with zero glue. If two flows overlap, an event from one can get attached to the other flow's span.
 
-The difference in one example:
+The difference in one example. Say a signed-in user has replay recording on, so their session chain is `rti-a1…` (sign-in session) → `sri-b2…` (replay) → `srsi-c3…` (this tab), and `withSpan("checkout")` mints span id `9f…`:
 
 ```tsx
 await hexclaveClientApp.withSpan("checkout", async (span) => {
@@ -127,7 +127,26 @@ await hexclaveClientApp.withSpan("checkout", async (span) => {
 });
 ```
 
-Note `step-3`: **the span handle sidesteps the whole problem.** `span.trackEvent`, `span.startSpan`, `span.withSpan`, and `span.run` carry their parent with them instead of inferring it from context, so they are exact in every environment, in both modes, under any concurrency. If you use the handle after `await`s, you never need to think about modes at all.
+The `checkout` span's own row in the `spans` table is identical in both modes:
+
+| `id` | `span_type` | `parent_span_ids` |
+|---|---|---|
+| `cs-9f…` | `checkout` | `[rti-a1…, sri-b2…, srsi-c3…]` |
+
+The three events land in the `events` table like this — the **only** difference between the modes is whether `step-2` carries `cs-9f…`:
+
+| `event_type` | `parent_span_ids` in `"exact"` | `parent_span_ids` in `"best-effort"` |
+|---|---|---|
+| `step-1` | `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…]` | `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…]` |
+| `step-2` | `[rti-a1…, sri-b2…, srsi-c3…]` | `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…]` |
+| `step-3` | `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…]` | `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…]` |
+
+Two things to read off that table:
+
+- **Exact mode never orphans an event.** `step-2` still carries the full session ancestry — those parents come from the session's identity, not from inference — so it still appears under this user's tab in Traces and in session-scoped SQL. It is only missing from the `checkout` span's subtree: a visible gap in the waterfall, fixable by switching that one call to `span.trackEvent`.
+- **Best-effort's failure mode is an extra *wrong* parent, not a missing one.** If a second flow — say `withSpan("sync-inbox")` with span id `7c…` — happened to be paused at its own `await` at that same moment, best-effort would record `step-2` with `[rti-a1…, sri-b2…, srsi-c3…, cs-9f…, cs-7c…]`: attached to *both* flows, one of which it was never part of. In exact mode the row is unchanged. That's the trade in one sentence: exact fails visibly (a gap), best-effort fails silently (a lie in the tree).
+
+And note `step-3`: **the span handle sidesteps the whole problem.** `span.trackEvent`, `span.startSpan`, `span.withSpan`, and `span.run` carry their parent with them instead of inferring it from context, so they are exact in every environment, in both modes, under any concurrency. If you use the handle after `await`s, you never need to think about modes at all.
 
 If you'd rather keep writing plain `hexclaveClientApp.trackEvent(...)` after `await`s — and your app doesn't run overlapping flows, or the occasional cross-link is acceptable — opt into best-effort mode:
 
