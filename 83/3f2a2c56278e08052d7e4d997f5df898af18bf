@@ -1,0 +1,29 @@
+docs/content/docs/(guides)/apps/analytics.mdx
+  s_d03391b4fa8dbb::t_279e0e43ac3ff2 7,11,15,26,56,74,91,93,117-119
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/docs-json.generated.ts
+  s_5b6ac9c07bf674::t_b82ddfd1239a8b 123-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "833f2a2c56278e08052d7e4d997f5df898af18bf",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "unknown"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d03391b4fa8dbb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "073ed466-d490-4e7f-bbda-889c956ec59a",
+        "model": "composer-2.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
