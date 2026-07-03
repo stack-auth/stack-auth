@@ -287,6 +287,20 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   };
 
   return {
+    getDebugInfo() {
+      return {
+        backend: "piledriver",
+        constructorArguments: { lowLevelDb, options },
+        lowLevelDb,
+        rootStore,
+        heapDump,
+        heapObjectsByObject,
+        heapObjectsByHeapKeyBase64,
+        heapObjectsByHeapKeyFinalizer,
+        heapKeysAndSeqByHeapObjects,
+        heapReadCacheDisabled: options.disableHeapReadCache === true,
+      };
+    },
     async getRootObject(key): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> {
       return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
         const { buffer, seq: rootSeq } = await rootStore.get(key);
