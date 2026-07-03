@@ -35,6 +35,11 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
 const DEFAULT_BATCH_SIZE = 50;
+type PrismaReplica = ReturnType<typeof globalPrismaClient.$replica>;
+type SubscriptionBackfillRow = Parameters<typeof bulldozerWriteSubscriptions>[0][number];
+type SubscriptionInvoiceBackfillRow = Parameters<typeof bulldozerWriteSubscriptionInvoices>[0][number];
+type OneTimePurchaseBackfillRow = Parameters<typeof bulldozerWriteOneTimePurchases>[0][number];
+type ItemQuantityChangeBackfillRow = Parameters<typeof bulldozerWriteItemQuantityChanges>[0][number];
 
 // Fixed processing order. Resume positions are interpreted against this list.
 export const BACKFILL_TABLES = [
@@ -269,14 +274,172 @@ async function backfillTable<T extends Cursor>(
   log(`[${label}] done total=${total}${failed > 0 ? ` failed=${failed}` : ""} elapsed=${formatDuration(tableElapsedMs)} bulldozerReqTotal=${formatDuration(totalReqMs)} avgReq/batch=${formatDuration(avgReqMs)}`);
 }
 
-function keysetArgs(cursor: Cursor | null, batchSize: number) {
-  return {
-    orderBy: [{ tenancyId: "asc" as const }, { id: "asc" as const }],
-    take: batchSize,
-    ...(cursor
-      ? { cursor: { tenancyId_id: { tenancyId: cursor.tenancyId, id: cursor.id } }, skip: 1 }
-      : {}),
-  };
+async function fetchSubscriptionBatch(replica: PrismaReplica, cursor: Cursor | null, batchSize: number): Promise<SubscriptionBackfillRow[]> {
+  return cursor === null
+    ? await replica.$queryRaw<SubscriptionBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "productId",
+        "priceId",
+        "product",
+        "quantity",
+        "stripeSubscriptionId",
+        "status",
+        "currentPeriodEnd",
+        "currentPeriodStart",
+        "cancelAtPeriodEnd",
+        "canceledAt",
+        "endedAt",
+        "refundedAt",
+        "productRevokedAt",
+        "creationSource",
+        "createdAt"
+      FROM "Subscription"
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `
+    : await replica.$queryRaw<SubscriptionBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "productId",
+        "priceId",
+        "product",
+        "quantity",
+        "stripeSubscriptionId",
+        "status",
+        "currentPeriodEnd",
+        "currentPeriodStart",
+        "cancelAtPeriodEnd",
+        "canceledAt",
+        "endedAt",
+        "refundedAt",
+        "productRevokedAt",
+        "creationSource",
+        "createdAt"
+      FROM "Subscription"
+      WHERE ("tenancyId", "id") > (${cursor.tenancyId}::uuid, ${cursor.id}::uuid)
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `;
+}
+
+async function fetchSubscriptionInvoiceBatch(replica: PrismaReplica, cursor: Cursor | null, batchSize: number): Promise<SubscriptionInvoiceBackfillRow[]> {
+  return cursor === null
+    ? await replica.$queryRaw<SubscriptionInvoiceBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "stripeSubscriptionId",
+        "stripeInvoiceId",
+        "isSubscriptionCreationInvoice",
+        "status",
+        "amountTotal",
+        "hostedInvoiceUrl",
+        "createdAt"
+      FROM "SubscriptionInvoice"
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `
+    : await replica.$queryRaw<SubscriptionInvoiceBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "stripeSubscriptionId",
+        "stripeInvoiceId",
+        "isSubscriptionCreationInvoice",
+        "status",
+        "amountTotal",
+        "hostedInvoiceUrl",
+        "createdAt"
+      FROM "SubscriptionInvoice"
+      WHERE ("tenancyId", "id") > (${cursor.tenancyId}::uuid, ${cursor.id}::uuid)
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `;
+}
+
+async function fetchOneTimePurchaseBatch(replica: PrismaReplica, cursor: Cursor | null, batchSize: number): Promise<OneTimePurchaseBackfillRow[]> {
+  return cursor === null
+    ? await replica.$queryRaw<OneTimePurchaseBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "productId",
+        "priceId",
+        "product",
+        "quantity",
+        "stripePaymentIntentId",
+        "revokedAt",
+        "refundedAt",
+        "creationSource",
+        "createdAt"
+      FROM "OneTimePurchase"
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `
+    : await replica.$queryRaw<OneTimePurchaseBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "productId",
+        "priceId",
+        "product",
+        "quantity",
+        "stripePaymentIntentId",
+        "revokedAt",
+        "refundedAt",
+        "creationSource",
+        "createdAt"
+      FROM "OneTimePurchase"
+      WHERE ("tenancyId", "id") > (${cursor.tenancyId}::uuid, ${cursor.id}::uuid)
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `;
+}
+
+async function fetchItemQuantityChangeBatch(replica: PrismaReplica, cursor: Cursor | null, batchSize: number): Promise<ItemQuantityChangeBackfillRow[]> {
+  return cursor === null
+    ? await replica.$queryRaw<ItemQuantityChangeBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "itemId",
+        "quantity",
+        "description",
+        "expiresAt",
+        "createdAt"
+      FROM "ItemQuantityChange"
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `
+    : await replica.$queryRaw<ItemQuantityChangeBackfillRow[]>`
+      SELECT
+        "id",
+        "tenancyId",
+        "customerId",
+        "customerType",
+        "itemId",
+        "quantity",
+        "description",
+        "expiresAt",
+        "createdAt"
+      FROM "ItemQuantityChange"
+      WHERE ("tenancyId", "id") > (${cursor.tenancyId}::uuid, ${cursor.id}::uuid)
+      ORDER BY "tenancyId" ASC, "id" ASC
+      LIMIT ${batchSize}
+    `;
 }
 
 /** Tables before `resumeTable` are treated as already done; the rest run. */
@@ -363,7 +526,7 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
   const tables: BackfillTable[] = [
     makeTable(
       "Subscription",
-      (cursor) => replica.subscription.findMany(keysetArgs(cursor, batchSize)),
+      (cursor) => fetchSubscriptionBatch(replica, cursor, batchSize),
       async (subs) => {
         await bulldozerWriteSubscriptions(subs);
         // Synthesize refund transactions for the refunded rows in this page and
@@ -376,12 +539,12 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
     ),
     makeTable(
       "SubscriptionInvoice",
-      (cursor) => replica.subscriptionInvoice.findMany(keysetArgs(cursor, batchSize)),
+      (cursor) => fetchSubscriptionInvoiceBatch(replica, cursor, batchSize),
       (invoices) => bulldozerWriteSubscriptionInvoices(invoices),
     ),
     makeTable(
       "OneTimePurchase",
-      (cursor) => replica.oneTimePurchase.findMany(keysetArgs(cursor, batchSize)),
+      (cursor) => fetchOneTimePurchaseBatch(replica, cursor, batchSize),
       async (purchases) => {
         await bulldozerWriteOneTimePurchases(purchases);
         const refunds = purchases
@@ -392,7 +555,7 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
     ),
     makeTable(
       "ItemQuantityChange",
-      (cursor) => replica.itemQuantityChange.findMany(keysetArgs(cursor, batchSize)),
+      (cursor) => fetchItemQuantityChangeBatch(replica, cursor, batchSize),
       (changes) => bulldozerWriteItemQuantityChanges(changes),
     ),
   ];
