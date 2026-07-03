@@ -1,0 +1,63 @@
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.test.ts
+  s_5b6ac9c07bf674::t_9790a5c862e993 120-121
+  s_5b6ac9c07bf674::t_9f1476b7012e95 1,6
+  s_5b6ac9c07bf674::t_58ee0999d487ec 128-219
+  s_5b6ac9c07bf674::t_3a174124cb7801 2-5,7-119,122-127
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5b6ac9c07bf674::t_54329129eb9e35 65-66
+  s_5b6ac9c07bf674::t_80fd219e452ca4 753-781
+packages/template/src/lib/hexclave-app/apps/implementations/server-request-context.ts
+  s_5b6ac9c07bf674::t_88a0ae99f68333 1-74
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5b6ac9c07bf674::t_87a16c205ef773 515-519
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.ts
+  s_5b6ac9c07bf674::t_40c19a2d4d2c20 192-195
+  s_5b6ac9c07bf674::t_0038295d82cc35 54-68
+  s_5b6ac9c07bf674::t_455d0fc97ac64a 218,225
+  s_5b6ac9c07bf674::t_a47ca7195f074a 1-53,69-148
+  s_5b6ac9c07bf674::t_abd77ad95988db 149-191,196-217,219-224,226-235
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5b6ac9c07bf674::t_ef526775266548 216-222
+  s_5b6ac9c07bf674::t_388b147c15d5f6 87-93
+  s_5b6ac9c07bf674::t_90a4b10e706dfb 172-173,195-198
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5b6ac9c07bf674::t_4b64abe36ef4af 1727,1730-1732,1738-1747,1751-1788,1790-1815
+  s_5b6ac9c07bf674::t_fe1dc7e13c7a6b 1816,1864-1878
+  s_5b6ac9c07bf674::t_13a07324e64a69 1998,2004,2009,2013-2018,2020-2021,2026,2030,2035,2038-2040,2042,2052,2056-2061
+  s_5b6ac9c07bf674::t_d1ae7b3d5b2cef 39
+  s_5b6ac9c07bf674::t_6101024f914ba7 26
+  s_5b6ac9c07bf674::t_cbdcb63eacf873 1887,1890,1901,1911
+  s_5b6ac9c07bf674::t_a6fc5c24edca3a 1789
+  s_5b6ac9c07bf674::t_c7869e2b28e45a 1934,1937
+  s_5b6ac9c07bf674::t_e4b4d11499cd08 1848-1849
+  s_5b6ac9c07bf674::t_cb175593a2e42b 1723
+  s_5b6ac9c07bf674::t_f5cc45464f494f 2097-2105
+  s_5b6ac9c07bf674::t_438521b59d8c54 1955
+  s_5b6ac9c07bf674::t_5a69a70a2a05b5 42-43
+  s_5b6ac9c07bf674::t_27c3cb15343c42 2127-2129
+  s_5b6ac9c07bf674::t_c0e723833b0a2f 1817
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5b6ac9c07bf674::t_9651a61db3e9f3 874-933
+  s_5b6ac9c07bf674::t_d4348e6577cead 789-790
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5b6ac9c07bf674::t_a9a1abaa8094a8 57-72
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_5b6ac9c07bf674::t_813b17f5ae7997 4
+  s_5b6ac9c07bf674::t_be04364be26dc8 46-52,54,58-60,68-72,75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "f4c2ee45757476e7531e94f8cac62dbd0446144e",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
