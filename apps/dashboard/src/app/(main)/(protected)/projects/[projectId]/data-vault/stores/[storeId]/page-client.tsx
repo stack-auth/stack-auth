@@ -10,7 +10,7 @@ import {
   type DesignEditableGridItem,
 } from "@/components/design-components";
 import { ActionDialog, Label, toast } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { ArrowLeftIcon, CopyIcon, DatabaseIcon, HashIcon, TagIcon, TrashIcon } from "@phosphor-icons/react";
 import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { useMemo, useState } from "react";

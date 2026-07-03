@@ -41,6 +41,9 @@ export class TwitchProvider extends OAuthBaseProvider {
       displayName: userInfo.display_name,
       email: userInfo.email,
       profileImageUrl: userInfo.profile_image_url,
+      // Twitch documents this Helix field as "the user's verified email address"
+      // when the token has `user:read:email`.
+      // https://dev.twitch.tv/docs/api/reference/#get-users
       emailVerified: true,
     });
   }

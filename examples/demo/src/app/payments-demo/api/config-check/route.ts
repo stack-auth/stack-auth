@@ -1,5 +1,4 @@
 import { branchConfigSchema, getConfigOverrideErrors } from "@hexclave/shared/dist/config/schema";
-import { ITEM_IDS, PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { NextResponse } from "next/server";
 import { hexclaveServerApp } from "src/hexclave";
 
@@ -28,9 +27,9 @@ export async function GET() {
     expected: {
       freePrice: "0.00",
       freeInterval: [1, "month"],
-      freeEmailsPerMonth: PLAN_LIMITS.free.emailsPerMonth,
-      emailItemId: ITEM_IDS.emailsPerMonth,
-      emailsPerMonthRepeat: [1, "month"],
+      apiCallsItemId: "api_calls",
+      seatsItemId: "seats",
+      teamProSeats: 25,
     },
   });
 }

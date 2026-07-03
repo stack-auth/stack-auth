@@ -3,7 +3,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, type AppId } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { getParentAppId } from "@hexclave/shared/dist/apps/apps-config";

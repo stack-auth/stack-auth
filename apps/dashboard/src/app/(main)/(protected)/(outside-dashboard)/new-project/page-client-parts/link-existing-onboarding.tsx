@@ -143,7 +143,7 @@ function readPersistedLinkExistingState(projectId: string): PersistedLinkExistin
       selectedGithubAccountId: typeof selectedGithubAccountIdField === "string" ? selectedGithubAccountIdField : null,
       selectedRepositoryFullName: getObjectString(parsed, "selectedRepositoryFullName") ?? "",
       selectedBranch: getObjectString(parsed, "selectedBranch") ?? "",
-      configPathInput: getObjectString(parsed, "configPathInput") ?? "stack.config.ts",
+      configPathInput: getObjectString(parsed, "configPathInput") ?? "hexclave.config.ts",
       packageRunner,
     };
   } catch {
@@ -483,7 +483,7 @@ export function LinkExistingOnboarding(props: Props) {
   const [loadingConfigPathSuggestions, setLoadingConfigPathSuggestions] = useState(false);
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("chore(stack-auth): add Hexclave config sync workflow");
-  const [commitDescription, setCommitDescription] = useState("Add a GitHub Actions workflow that pushes stack.config to Hexclave whenever it changes.");
+  const [commitDescription, setCommitDescription] = useState("Add a GitHub Actions workflow that pushes hexclave.config to Hexclave whenever it changes.");
   const [isSettingUpGithubWorkflow, setIsSettingUpGithubWorkflow] = useState(false);
   const [isCheckingSource, setIsCheckingSource] = useState(false);
   const [isAwaitingLocalPush, setIsAwaitingLocalPush] = useState(false);
@@ -500,7 +500,7 @@ export function LinkExistingOnboarding(props: Props) {
   const githubLogsAutoPollingKeyRef = useRef<string | null>(null);
   const repositoriesLoadedAccountRef = useRef<string | null>(null);
   const loadRepositoriesRunIdRef = useRef(0);
-  const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "stack.config.ts");
+  const [configPathInput, setConfigPathInput] = useState<string>(persistedState?.configPathInput ?? "hexclave.config.ts");
   const [packageRunner, setPackageRunner] = useState<PackageRunner>(persistedState?.packageRunner ?? "npx");
   const [repoSearchQuery, setRepoSearchQuery] = useState("");
   const [repoSearchResults, setRepoSearchResults] = useState<GithubRepository[]>([]);
@@ -786,6 +786,7 @@ export function LinkExistingOnboarding(props: Props) {
               cause: error,
             });
           }
+
           appendLog("Config push detected. You can continue.");
           return;
         }
@@ -1364,7 +1365,7 @@ export function LinkExistingOnboarding(props: Props) {
   }, [branchSearchQuery, githubFetch, selectedRepository, step]);
 
   let title = "Link an existing config";
-  let subtitle = "Connect GitHub automation or push your local stack.config file.";
+  let subtitle = "Connect GitHub automation or push your local hexclave.config file.";
   let content: React.ReactNode;
   let primaryAction: React.ReactNode;
   let secondaryAction: React.ReactNode | undefined;
@@ -1405,7 +1406,7 @@ export function LinkExistingOnboarding(props: Props) {
           <div className="space-y-1.5">
             <Typography className="text-base font-semibold">Connect with GitHub</Typography>
             <Typography variant="secondary" className="text-sm leading-relaxed">
-              Configure an automated workflow for stack.config pushes.
+              Configure an automated workflow for hexclave.config pushes.
             </Typography>
           </div>
         </button>
@@ -1701,7 +1702,7 @@ export function LinkExistingOnboarding(props: Props) {
           <DesignAlert
             variant="warning"
             title="Repository tree was truncated"
-            description="GitHub returned a partial file list. Suggestions may miss stack.config files—type the path manually or retry after reducing repo size."
+            description="GitHub returned a partial file list. Suggestions may miss hexclave.config files—type the path manually or retry after reducing repo size."
             glassmorphic
           />
         )}
@@ -1722,7 +1723,7 @@ export function LinkExistingOnboarding(props: Props) {
               <DesignInput
                 value={configPathInput}
                 onChange={(event) => setConfigPathInputWithPersistence(event.target.value)}
-                placeholder="stack.config.ts"
+                placeholder="hexclave.config.ts"
               />
               {configPathSuggestions.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -1744,7 +1745,7 @@ export function LinkExistingOnboarding(props: Props) {
                 </div>
               )}
               <Typography variant="secondary" className="text-xs leading-relaxed">
-                The path to your stack.config.ts file. If you don&apos;t have one yet,{" "}
+                The path to your hexclave.config.ts file. If you don&apos;t have one yet,{" "}
                 <button
                   type="button"
                   onClick={props.onBack}

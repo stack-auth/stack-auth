@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "fs";
-import path from "path";
-import { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent } from "./hexclave-config-file";
-export { hexclaveConfigFileExportsConfig, parseHexclaveConfigFileContent, renderConfigFileContent, tryParseHexclaveConfigFileContent };
+import { isValidConfig, normalize } from "./config/format";
+
+const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
 
 /**
  * Packages that export the `HexclaveConfig` type, in priority order.
@@ -37,31 +36,29 @@ export function detectConfigImportPackage(dependencies: string[]): string | unde
 }
 
 /**
- * Walks up from `dir` to find the nearest `package.json` and returns the
- * best SDK package to use for the `HexclaveConfig` type import.
+ * Renders a config object into the source text of a `stack.config.ts` file.
  */
-export function detectImportPackageFromDir(dir: string): string | undefined {
-  let current = dir;
-  while (true) {
-    const pkgPath = path.join(current, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        const deps = [
-          ...Object.keys(pkg.dependencies ?? {}),
-          ...Object.keys(pkg.devDependencies ?? {}),
-        ];
-        return detectConfigImportPackage(deps);
-      } catch {
-        return undefined;
-      }
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
+export function renderConfigFileContent(config: unknown, importPackage?: string): string {
+  if (!isValidConfig(config)) {
+    throw new Error("Invalid config: expected a plain object.");
   }
-  return undefined;
+
+  const droppedKeys: string[] = [];
+  const normalizedConfig = normalize(config, {
+    onDotIntoNonObject: "ignore",
+    onDotIntoNull: "empty-object",
+    droppedKeys,
+  });
+  if (droppedKeys.length > 0) {
+    throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
+  }
+  const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
+  const importSpecifier = pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
+  const importLine = `import type { HexclaveConfig } from "${importSpecifier}";`;
+  return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
+
+// --- inline vitest tests ---
 
 import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({ expect }) => {
   expect(renderConfigFileContent({
@@ -77,55 +74,6 @@ import.meta.vitest?.test("renderConfigFileContent normalizes config exports", ({
     }
   }
 };`);
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent parses static config exports", ({ expect }) => {
-  expect(parseHexclaveConfigFileContent(`
-    import type { StackConfig } from "@hexclave/js";
-    export const config: StackConfig = {
-      auth: { allowSignUp: true },
-      payments: { testMode: false },
-    };
-  `, "stack.config.ts")).toMatchInlineSnapshot(`
-    {
-      "auth": {
-        "allowSignUp": true,
-      },
-      "payments": {
-        "testMode": false,
-      },
-    }
-  `);
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent parses show-onboarding", ({ expect }) => {
-  expect(parseHexclaveConfigFileContent('export const config = "show-onboarding";', "stack.config.ts")).toBe("show-onboarding");
-});
-
-import.meta.vitest?.test("parseHexclaveConfigFileContent rejects dynamic config exports", ({ expect }) => {
-  expect(() => parseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toThrow(/Unsupported config expression/);
-});
-
-import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns the config for static exports", ({ expect }) => {
-  expect(tryParseHexclaveConfigFileContent("export const config = { auth: { allowSignUp: true } };", "stack.config.ts")).toEqual({
-    auth: { allowSignUp: true },
-  });
-});
-
-import.meta.vitest?.test("tryParseHexclaveConfigFileContent returns null for non-static exports", ({ expect }) => {
-  // Wrapped in a helper call (e.g. defineStackConfig) -> not a plain literal.
-  expect(tryParseHexclaveConfigFileContent("export const config = makeConfig();", "stack.config.ts")).toBeNull();
-  // References an imported value -> has structure to preserve.
-  expect(tryParseHexclaveConfigFileContent('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBeNull();
-  // Syntax error.
-  expect(tryParseHexclaveConfigFileContent("export const config = {", "stack.config.ts")).toBeNull();
-});
-
-import.meta.vitest?.test("hexclaveConfigFileExportsConfig detects a config export", ({ expect }) => {
-  expect(hexclaveConfigFileExportsConfig("export const config = { a: 1 };", "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig('import x from "./x.txt" with { type: "text" };\nexport const config = { a: x };', "stack.config.ts")).toBe(true);
-  expect(hexclaveConfigFileExportsConfig("export const notConfig = { a: 1 };", "stack.config.ts")).toBe(false);
-  expect(hexclaveConfigFileExportsConfig("export const config = {", "stack.config.ts")).toBe(false);
 });
 
 import.meta.vitest?.test("renderConfigFileContent rejects conflicting dotted keys", ({ expect }) => {
@@ -152,8 +100,6 @@ import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ 
 });
 
 import.meta.vitest?.test("renderConfigFileContent keeps legacy @stackframe packages on their root entrypoint", ({ expect }) => {
-  // The lightweight `/config` subpath only exists on Hexclave-branded packages;
-  // already-published @stackframe/* releases predate it.
   const content = renderConfigFileContent({}, "@stackframe/next");
   expect(content).toContain('import type { HexclaveConfig } from "@stackframe/next";');
 });
@@ -163,9 +109,7 @@ import.meta.vitest?.test("detectConfigImportPackage picks first matching package
   expect(detectConfigImportPackage(["@hexclave/react", "@hexclave/js"])).toBe("@hexclave/react");
   expect(detectConfigImportPackage(["@hexclave/js"])).toBe("@hexclave/js");
   expect(detectConfigImportPackage(["@hexclave/tanstack-start"])).toBe("@hexclave/tanstack-start");
-  // Hexclave names take priority over legacy stackframe names when both appear.
   expect(detectConfigImportPackage(["@stackframe/stack", "@hexclave/next"])).toBe("@hexclave/next");
-  // Legacy fallback still works for projects pinned to the last @stackframe/* release.
   expect(detectConfigImportPackage(["@stackframe/stack"])).toBe("@stackframe/stack");
   expect(detectConfigImportPackage(["@stackframe/template"])).toBe("@stackframe/template");
   expect(detectConfigImportPackage(["lodash", "express"])).toBeUndefined();

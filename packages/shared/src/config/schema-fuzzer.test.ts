@@ -282,6 +282,17 @@ const environmentSchemaFuzzerConfig = [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
   }],
+  dbSync: [{
+    externalDatabases: [{
+      "some-external-db-id": [{
+        type: ["postgres"] as const,
+        connectionString: [
+          "postgres://user:password@db.example.com:5432/database",
+          "postgresql://user:password@db.example.net/database",
+        ],
+      }],
+    }],
+  }],
   analytics: [{
     queryFolders: [{
       "some-folder-id": [{

@@ -826,7 +826,7 @@ export function ComposedAnalyticsChart({
       <ComposedChart
         id={id}
         data={taggedDatapoints}
-        margin={{ top: 10, right: 4, left: 4, bottom: 0 }}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
         onMouseMove={(state) => {
           updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex);
           setHoveredX(getActiveCoordinateX(state));
@@ -976,7 +976,7 @@ export function ComposedAnalyticsChart({
           yAxisId="visitors"
           tickLine={false}
           axisLine={false}
-          width={compact ? 28 : 36}
+          width={compact ? 35 : 50}
           tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 9 : 10 }}
           ticks={visitorTicks}
           domain={[0, visitorsMax]}
@@ -2434,7 +2434,7 @@ export function VisitorsHoverChart({
     >
       <ComposedChart
         data={chartData}
-        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
         onMouseMove={(state) => updateHoveredIndexFromChartState(state, chartData.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
@@ -2525,7 +2525,7 @@ export function VisitorsHoverChart({
           tickMargin={4}
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
           allowDecimals={false}
-          width={28}
+          width={compact ? 35 : 50}
         />
       </ComposedChart>
     </ChartContainer>
@@ -2650,7 +2650,7 @@ export function RevenueHoverChart({
     >
       <ComposedChart
         data={chartData}
-        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
         onMouseMove={(state) => updateHoveredIndexFromChartState(state, chartData.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
@@ -2770,7 +2770,7 @@ export function RevenueHoverChart({
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
           ticks={ticksCents}
           tickFormatter={(v: number) => formatUsdCompact(v)}
-          width={36}
+          width={compact ? 35 : 50}
         />
       </ComposedChart>
     </ChartContainer>

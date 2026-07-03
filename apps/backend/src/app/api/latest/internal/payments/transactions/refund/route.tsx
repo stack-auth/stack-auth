@@ -1,13 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
-import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
-import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
+import { fetchBulldozerServerJson } from "@/lib/bulldozer-server-client";
 import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
-import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/schema/phase-1/transactions";
-import { paymentsSchema } from "@/lib/payments/schema/singleton";
+import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/transaction-entry-indexes";
 import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
 import { getStripeForAccount } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
@@ -15,7 +13,7 @@ import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prism
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { moneyAmountToStripeUnits } from "@hexclave/shared/dist/utils/currencies";
+import { moneyAmountToStripeUnits, stripeUnitsToMoneyAmount } from "@hexclave/shared/dist/utils/currencies";
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type Stripe from "stripe";
@@ -40,25 +38,6 @@ export function buildStripeRefundParams(args: {
     ...(args.metadata ? { metadata: args.metadata } : {}),
     refund_application_fee: false,
   };
-}
-
-/**
- * Formats stripe units as a decimal money string with the currency's full
- * decimal places — this is the canonical shape for `moneyAmountToStripeUnits`
- * (which right-pads the fractional part to currency.decimals before
- * stripping the dot, so shorter inputs like "5" also round-trip correctly).
- * E.g. for USD: 5000 → "50.00", 1 → "0.01", 100 → "1.00".
- */
-function stripeUnitsToMoneyAmount(stripeUnits: number): string {
-  if (!Number.isFinite(stripeUnits) || Math.trunc(stripeUnits) !== stripeUnits) {
-    throw new HexclaveAssertionError("Stripe units must be an integer", { stripeUnits });
-  }
-  const absolute = Math.abs(stripeUnits);
-  const decimals = USD_CURRENCY.decimals;
-  const units = absolute.toString().padStart(decimals + 1, "0");
-  const integerPart = units.slice(0, -decimals) || "0";
-  const fractionalPart = units.slice(-decimals);
-  return `${integerPart}.${fractionalPart}`;
 }
 
 function readProductLineId(product: InferType<typeof productSchema>): string | null {
@@ -144,7 +123,7 @@ function buildMoneyTransferEntry(options: {
     customerType: options.customerType,
     customerId: options.customerId,
     chargedAmount: {
-      USD: stripeUnitsToMoneyAmount(options.refundAmountStripeUnits),
+      USD: stripeUnitsToMoneyAmount(options.refundAmountStripeUnits, USD_CURRENCY),
     },
   };
 }
@@ -185,57 +164,15 @@ async function readPriorRefundSummary(options: {
   customerId: string,
   sourceTxnId: string,
 }): Promise<PriorRefundSummary> {
-  const executionContext = createBulldozerExecutionContext();
-  const baseSql = toQueryableSqlQuery(paymentsSchema.transactions.listRowsInGroup(executionContext, {
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
-  const sql = `
-    SELECT "__rows"."rowdata" AS "rowData"
-    FROM (${baseSql}) AS "__rows"
-    WHERE "__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}
-      AND "__rows"."rowdata"->>'type' = 'refund'
-      AND "__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}
-      AND "__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}
-      -- LIKE pattern is safe today because source txnIds are
-      -- 'sub-start:<uuid>' / 'sub-renewal:<id>' / 'otp:<id>' — none of
-      -- which contain LIKE metacharacters (percent / underscore / backslash).
-      -- If a future source format introduces those, escape them before
-      -- interpolation.
-      AND ("__rows"."rowdata"->>'txnId') LIKE ${quoteSqlStringLiteral(`${REFUND_TXN_PREFIX}${options.sourceTxnId}:%`).sql}
-  `;
-  const rows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
-  let refundedStripeUnits = 0;
-  let productRevoked = false;
-  for (const row of rows) {
-    const rowData = row.rowData;
-    if (typeof rowData !== "object" || rowData === null) continue;
-    const entries = Reflect.get(rowData, "entries");
-    if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      if (typeof entry !== "object" || entry === null) continue;
-      const type = Reflect.get(entry, "type");
-      if (type === "product-revocation") {
-        const adjustedTxnId = Reflect.get(entry, "adjustedTransactionId");
-        if (adjustedTxnId === options.sourceTxnId) {
-          productRevoked = true;
-        }
-      } else if (type === "money-transfer") {
-        const chargedAmount = Reflect.get(entry, "chargedAmount");
-        if (typeof chargedAmount !== "object" || chargedAmount === null) continue;
-        const usd = Reflect.get(chargedAmount, "USD");
-        if (typeof usd !== "string") continue;
-        // Refund money-transfer entries store positive amounts (the refund
-        // row's `type: "refund"` carries the sign); guard against legacy data
-        // that may have a leading minus.
-        const absolute = usd.startsWith("-") ? usd.slice(1) : usd;
-        refundedStripeUnits += moneyAmountToStripeUnits(absolute as MoneyAmount, USD_CURRENCY);
-      }
-    }
-  }
-  return { refundedStripeUnits, productRevoked };
+  return await fetchBulldozerServerJson<PriorRefundSummary>({
+    method: "POST",
+    path: `/v1/${encodeURIComponent(options.tenancyId)}/refunds/prior-summary`,
+    body: {
+      customerType: options.customerType,
+      customerId: options.customerId,
+      sourceTxnId: options.sourceTxnId,
+    },
+  });
 }
 
 // ── Bulldozer reads: outstanding item grants for a refund ──────────────────
@@ -321,42 +258,17 @@ async function readOutstandingItemGrants(options: {
   sourceTxnId: string,
   igrSourceId: string,
 }): Promise<OutstandingItemGrant[]> {
-  const executionContext = createBulldozerExecutionContext();
-  const baseSql = toQueryableSqlQuery(paymentsSchema.transactions.listRowsInGroup(executionContext, {
-    start: "start",
-    end: "end",
-    startInclusive: true,
-    endInclusive: true,
-  }));
-  const igrPrefix = `igr:${options.igrSourceId}:`;
-  // LIKE pattern safety: igrSourceId is a UUID (purchase / subscription id)
-  // and the igr txnId format is `igr:<sourceId>:<effectiveAtMillis>` — neither
-  // contains LIKE metacharacters today. Same caveat as `readPriorRefundSummary`.
-  const sql = `
-    SELECT "__rows"."rowdata" AS "rowData"
-    FROM (${baseSql}) AS "__rows"
-    WHERE "__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}
-      AND "__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}
-      AND "__rows"."rowdata"->>'customerId' = ${quoteSqlStringLiteral(options.customerId).sql}
-      AND (
-        ("__rows"."rowdata"->>'txnId') = ${quoteSqlStringLiteral(options.sourceTxnId).sql}
-        OR (
-          ("__rows"."rowdata"->>'type') = 'item-grant-repeat'
-          AND ("__rows"."rowdata"->>'txnId') LIKE ${quoteSqlStringLiteral(`${igrPrefix}%`).sql}
-        )
-      )
-  `;
-  const rows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(sql)}`;
-  return computeOutstandingItemGrants(rows.map((row) => {
-    const rowData = row.rowData;
-    if (typeof rowData !== "object" || rowData === null) {
-      return { txnId: null, entries: null };
-    }
-    return {
-      txnId: Reflect.get(rowData, "txnId"),
-      entries: Reflect.get(rowData, "entries"),
-    };
-  }));
+  const response = await fetchBulldozerServerJson<{ grants: OutstandingItemGrant[] }>({
+    method: "POST",
+    path: `/v1/${encodeURIComponent(options.tenancyId)}/refunds/outstanding-item-grants`,
+    body: {
+      customerType: options.customerType,
+      customerId: options.customerId,
+      sourceTxnId: options.sourceTxnId,
+      igrSourceId: options.igrSourceId,
+    },
+  });
+  return response.grants;
 }
 
 // ── Stripe payment-intent resolution for invoice refunds ───────────────────
@@ -686,7 +598,7 @@ async function handleSubscriptionRefund(options: {
   });
   const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
   if (options.amountStripeUnits > remainingStripeUnits) {
-    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits, USD_CURRENCY)}).`);
   }
   // Replay gate for endNow on subs. Require both the durable subscription
   // marker and the refund ledger entry before rejecting; if a prior attempt
@@ -805,7 +717,7 @@ async function handleSubscriptionRefund(options: {
   }
 
   if (updatedSub) {
-    await bulldozerWriteSubscription(prisma, updatedSub);
+    await bulldozerWriteSubscription(updatedSub);
   }
 
   // Regrant the free plan if a Hexclave billing team just lost its only
@@ -897,7 +809,7 @@ async function handleSubscriptionRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : (hasStripeInvoice ? "stripe" : null),
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,
@@ -960,7 +872,7 @@ async function handleOneTimePurchaseRefund(options: {
   });
   const remainingStripeUnits = Math.max(0, totalStripeUnits - prior.refundedStripeUnits);
   if (options.amountStripeUnits > remainingStripeUnits) {
-    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits)}).`);
+    throw new KnownErrors.SchemaError(`Refund amount cannot exceed the remaining refundable amount ($${stripeUnitsToMoneyAmount(remainingStripeUnits, USD_CURRENCY)}).`);
   }
   if (options.endNow && prior.productRevoked) {
     throw new KnownErrors.SchemaError("This purchase's product has already been revoked.");
@@ -998,7 +910,7 @@ async function handleOneTimePurchaseRefund(options: {
       where: { tenancyId_id: { tenancyId: tenancy.id, id: purchase.id } },
       data: { revokedAt: now },
     });
-    await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
+    await bulldozerWriteOneTimePurchase(updatedPurchase);
   }
 
   // ── Refund row ────────────────────────────────────────────────────────
@@ -1055,7 +967,7 @@ async function handleOneTimePurchaseRefund(options: {
     paymentProvider: isTestMode ? "test_mode" : "stripe",
     createdAtMillis: nowMillis,
   };
-  await bulldozerWriteManualTransaction(prisma, refundTxnId, refundRow);
+  await bulldozerWriteManualTransaction(refundTxnId, refundRow);
 
   return {
     statusCode: 200 as const,

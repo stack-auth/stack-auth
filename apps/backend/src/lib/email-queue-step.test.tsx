@@ -1,10 +1,48 @@
 import { EmailOutboxCreatedWith } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { _forTesting } from "./email-queue-step";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
-const { failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS } = _forTesting;
+const { failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS, updateLastExecutionTime } = _forTesting;
+
+describe.sequential("updateLastExecutionTime", () => {
+  const metadataKeys: string[] = [];
+
+  afterAll(async () => {
+    await globalPrismaClient.emailOutboxProcessingMetadata.deleteMany({
+      where: { key: { in: metadataKeys } },
+    });
+  });
+
+  it("does not move lastExecutedAt backwards when the stored timestamp is ahead", async () => {
+    const key = `email-queue-step-delta-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    metadataKeys.push(key);
+
+    const futureTimestamp = new Date(Date.now() + 60_000);
+    await globalPrismaClient.emailOutboxProcessingMetadata.create({
+      data: {
+        key,
+        lastExecutedAt: futureTimestamp,
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const delta = await updateLastExecutionTime(key);
+
+      expect(delta).toBe(0);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      const after = await globalPrismaClient.emailOutboxProcessingMetadata.findUniqueOrThrow({
+        where: { key },
+      });
+      expect(after.lastExecutedAt?.toISOString()).toBe(futureTimestamp.toISOString());
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
 
 // These tests connect to the real dev DB (like payments.test.tsx) and create real EmailOutbox
 // rows against the seeded `internal` tenancy. Each row is tagged with a unique tsxSource so we

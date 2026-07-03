@@ -10,7 +10,7 @@ import { runAsynchronously, wait } from '@hexclave/shared/dist/utils/promises';
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { traceSpan } from '@hexclave/shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
-import { checkSmtpEgressPolicy } from '@/private';
+import { checkSmtpEgressPolicy, shouldEnforceSmtpEgressPolicy } from '@/lib/ssrf-protection/smtp';
 
 export function isSecureEmailPort(port: number | string) {
   // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
@@ -34,7 +34,11 @@ export type LowLevelEmailConfig = {
   senderEmail: string,
   senderName: string,
   secure: boolean,
-  type: 'shared' | 'standard',
+  // 'shared': Hexclave's shared email server. 'managed': a custom domain we provision & send through on the user's
+  // behalf (Resend under our account). 'standard': the user's own SMTP server or Resend API key. We run the Emailable
+  // deliverability check for 'shared' and 'managed' (where bad recipients hurt our own sending reputation), but not
+  // for 'standard' (the user owns their own deliverability there).
+  type: 'shared' | 'managed' | 'standard',
 }
 
 export type LowLevelSendEmailOptions = {
@@ -77,25 +81,39 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 
     return await traceSpan('sending email to ' + JSON.stringify(toArray), async () => {
       try {
-        const smtpEgressPolicyResult = await checkSmtpEgressPolicy({
-          host: options.emailConfig.host,
-          port: options.emailConfig.port,
-        });
-        if (smtpEgressPolicyResult.status === "error") {
-          console.warn("SMTP config rejected by the egress policy.", {
-            violation: smtpEgressPolicyResult.violation,
-            config: strippedEmailConfig,
+        // Only tenant-provided ("standard") SMTP configs are attacker-controlled, so the egress policy
+        // only applies to those. "shared" (operator/Hexclave server) and "managed" (Resend) are trusted
+        // — enforcing the policy on them would needlessly break e.g. local dev (Inbucket on 127.0.0.1).
+        let connectHost = options.emailConfig.host;
+        let connectServername: string | undefined = undefined;
+        if (options.emailConfig.type === 'standard' && shouldEnforceSmtpEgressPolicy()) {
+          const smtpEgressPolicyResult = await checkSmtpEgressPolicy({
+            host: options.emailConfig.host,
+            port: options.emailConfig.port,
           });
-          captureError("smtp-egress-policy-report-only", new HexclaveAssertionError("SMTP config would be rejected by the egress policy", {
-            violation: smtpEgressPolicyResult.violation,
-            config: strippedEmailConfig,
-          }));
+          if (smtpEgressPolicyResult.status === "error") {
+            captureError("smtp-egress-policy-rejected", new HexclaveAssertionError("SMTP config was rejected by the egress policy", {
+              violation: smtpEgressPolicyResult.violation,
+              config: strippedEmailConfig,
+            }));
+            return Result.error({
+              rawError: smtpEgressPolicyResult.violation,
+              errorType: 'EGRESS_POLICY_REJECTED',
+              canRetry: false,
+              message: 'The email server host or port is not allowed. Please use a public SMTP server on a standard SMTP port.',
+            } as const);
+          }
+          // Pin the connection to a validated address so nodemailer can't re-resolve the hostname to an
+          // internal IP after our check (DNS rebinding); keep the hostname as the TLS SNI/cert name.
+          connectHost = smtpEgressPolicyResult.connectHost;
+          connectServername = smtpEgressPolicyResult.servername ?? undefined;
         }
 
         const transporter = nodemailer.createTransport({
-          host: options.emailConfig.host,
+          host: connectHost,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          ...(connectServername != null ? { servername: connectServername } : {}),
           disableFileAccess: true,
           disableUrlAccess: true,
           connectionTimeout: 15000,
@@ -138,6 +156,19 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
               errorType: 'HOST_NOT_FOUND',
               canRetry: false,
               message: 'Failed to connect to the email host. Please make sure the email host configuration is correct.'
+            } as const);
+          }
+
+          // nodemailer surfaces a refused connection as code 'ESOCKET' with 'ECONNREFUSED' in the message.
+          // Safe to retry: the connection was refused before any SMTP exchange, so the message was never
+          // handed off — there's no duplicate-delivery risk, and a transient refusal (server restarting /
+          // overloaded) can recover. A persistent misconfig still fails after MAX_SEND_ATTEMPTS.
+          if (code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
+            return Result.error({
+              rawError: error,
+              errorType: 'CONNECTION_REFUSED',
+              canRetry: true,
+              message: 'The email server refused the connection. Please make sure the email host and port configuration are correct.',
             } as const);
           }
 
