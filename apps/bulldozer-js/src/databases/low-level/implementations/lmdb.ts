@@ -58,6 +58,10 @@ type LmdbActivityStats = {
   waitUntilDurableResolves: number,
   waitUntilAvailableResolveTotalMs: number,
   waitUntilDurableResolveTotalMs: number,
+  combinedSeqAvailabilityResolves: number,
+  combinedSeqDurabilityResolves: number,
+  combinedSeqAvailabilityResolveTotalMs: number,
+  combinedSeqDurabilityResolveTotalMs: number,
 };
 
 function emptyActivityStats(): LmdbActivityStats {
@@ -68,6 +72,10 @@ function emptyActivityStats(): LmdbActivityStats {
     waitUntilDurableResolves: 0,
     waitUntilAvailableResolveTotalMs: 0,
     waitUntilDurableResolveTotalMs: 0,
+    combinedSeqAvailabilityResolves: 0,
+    combinedSeqDurabilityResolves: 0,
+    combinedSeqAvailabilityResolveTotalMs: 0,
+    combinedSeqDurabilityResolveTotalMs: 0,
   };
 }
 
@@ -75,7 +83,9 @@ function hasActivity(stats: LmdbActivityStats): boolean {
   return stats.puts > 0
     || stats.transactions > 0
     || stats.waitUntilAvailableResolves > 0
-    || stats.waitUntilDurableResolves > 0;
+    || stats.waitUntilDurableResolves > 0
+    || stats.combinedSeqAvailabilityResolves > 0
+    || stats.combinedSeqDurabilityResolves > 0;
 }
 
 export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: string, simulateReadMissDelayMs?: number }): LowLevelDatabase {
@@ -89,6 +99,8 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const debugEntriesByStoreId = new Map<`${"store" | "dump"}-${string}`, () => Promise<LowLevelDatabaseDebugEntry[]>>();
   const seqToAvailability = new Map<string, Promise<void>>();
   const seqToDurability = new Map<string, Promise<void>>();
+  const combinedSeqToAvailability = new Map<string, Promise<void>>();
+  const combinedSeqToDurability = new Map<string, Promise<void>>();
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
   const activityInterval = setInterval(() => {
@@ -105,9 +117,15 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       waitUntilDurableResolvesPerSecond: activityStats.waitUntilDurableResolves / elapsedSeconds,
       averageSeqToAvailabilityResolveMs: activityStats.waitUntilAvailableResolves === 0 ? 0 : activityStats.waitUntilAvailableResolveTotalMs / activityStats.waitUntilAvailableResolves,
       averageSeqToDurabilityResolveMs: activityStats.waitUntilDurableResolves === 0 ? 0 : activityStats.waitUntilDurableResolveTotalMs / activityStats.waitUntilDurableResolves,
+      combinedSeqAvailabilityResolvesPerSecond: activityStats.combinedSeqAvailabilityResolves / elapsedSeconds,
+      combinedSeqDurabilityResolvesPerSecond: activityStats.combinedSeqDurabilityResolves / elapsedSeconds,
+      averageCombinedSeqAvailabilityResolveMs: activityStats.combinedSeqAvailabilityResolves === 0 ? 0 : activityStats.combinedSeqAvailabilityResolveTotalMs / activityStats.combinedSeqAvailabilityResolves,
+      averageCombinedSeqDurabilityResolveMs: activityStats.combinedSeqDurabilityResolves === 0 ? 0 : activityStats.combinedSeqDurabilityResolveTotalMs / activityStats.combinedSeqDurabilityResolves,
       mapSizes: {
         seqToAvailability: seqToAvailability.size,
         seqToDurability: seqToDurability.size,
+        combinedSeqToAvailability: combinedSeqToAvailability.size,
+        combinedSeqToDurability: combinedSeqToDurability.size,
         debugEntriesByStoreId: debugEntriesByStoreId.size,
       },
       currentVersion,
@@ -127,10 +145,10 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     return seq[1];
   };
   const getAvailabilityPromise = (seqId: string) => {
-    return seqToAvailability.get(seqId) ?? Promise.resolve();
+    return seqToAvailability.get(seqId) ?? combinedSeqToAvailability.get(seqId) ?? Promise.resolve();
   };
   const getDurabilityPromise = (seqId: string) => {
-    return seqToDurability.get(seqId) ?? Promise.resolve();
+    return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
   };
   const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
@@ -151,6 +169,26 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     }));
     durability.catch(() => {});
     seqToDurability.set(seqId, durability);
+  };
+  const rememberCombinedAvailability = (seqId: string, promise: Promise<unknown>) => {
+    const insertedAt = performance.now();
+    const availability = traceSpan({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+      activityStats.combinedSeqAvailabilityResolveTotalMs += performance.now() - insertedAt;
+      activityStats.combinedSeqAvailabilityResolves++;
+      combinedSeqToAvailability.delete(seqId);
+    }));
+    availability.catch(() => {});
+    combinedSeqToAvailability.set(seqId, availability);
+  };
+  const rememberCombinedDurability = (seqId: string, promise: Promise<unknown>) => {
+    const insertedAt = performance.now();
+    const durability = traceSpan({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+      activityStats.combinedSeqDurabilityResolveTotalMs += performance.now() - insertedAt;
+      activityStats.combinedSeqDurabilityResolves++;
+      combinedSeqToDurability.delete(seqId);
+    }));
+    durability.catch(() => {});
+    combinedSeqToDurability.set(seqId, durability);
   };
   const trackCommit = (seqId: string, promise: Promise<unknown>) => {
     rememberAvailability(seqId, promise);
@@ -321,6 +359,8 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
         debugEntriesByStoreId,
         seqToAvailability,
         seqToDurability,
+        combinedSeqToAvailability,
+        combinedSeqToDurability,
         initialSeq,
       };
     },
@@ -345,8 +385,8 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     combineSeqs(...seqs) {
       if (seqs.length === 0) return initialSeq;
       const seqId = nextSeqId();
-      rememberAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
-      rememberDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
+      rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
+      rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
       return toSeq(seqId);
     },
     async debugSnapshot() {
