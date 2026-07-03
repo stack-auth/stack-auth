@@ -938,6 +938,9 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
                 autoResumeAfterBuffering: true,
                 prematureFinishRetryLocalMs: null,
                 playingWithoutProgressSinceMs: null,
+                // Reset the throttle here too so mini tabs re-sync on the first
+                // TICK after buffering resumes rather than waiting out the interval.
+                lastMiniTabSyncWallMs: action.nowMs - MINI_TAB_SYNC_INTERVAL_MS,
                 playerError: null,
               },
               effects,
