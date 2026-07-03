@@ -7,7 +7,7 @@ description: Test the dashboard session replay player end-to-end (seeding replay
 
 ## Environment setup
 1. Run the minimal dev stack: `pnpm dev:basic` (dashboard :8101, backend :8102, assuming `NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX=81`).
-2. If the dashboard/backend return 500s, generated artifacts might be missing after a restart — `pnpm build:packages` usually fixes it (ask the user first per AGENTS.md; as an autonomous agent you may run it yourself).
+2. If the dashboard/backend return 500s, generated artifacts might be missing after a restart — `pnpm build:packages` usually fixes it. AGENTS.md says to ask the user to run it — do that when working interactively; autonomous background agents (e.g. Devin) are exempt per org Knowledge and may run it themselves.
 3. If `pnpm db:init` fails with a missing `migration-files` module, run `pnpm run generate-migration-imports` in `apps/backend` first.
 4. Sign in via mock GitHub OAuth as `admin@example.com`.
 
