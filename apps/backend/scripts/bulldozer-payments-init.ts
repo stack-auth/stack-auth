@@ -34,7 +34,7 @@ import { globalPrismaClient } from "@/prisma-client";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 
-const BATCH_SIZE = 50;
+const DEFAULT_BATCH_SIZE = 50;
 
 // Fixed processing order. Resume positions are interpreted against this list.
 export const BACKFILL_TABLES = [
@@ -55,6 +55,11 @@ export type BackfillResumeOptions = {
   // full list. Lets a single poison row not block a large migration, without
   // silently dropping it. Default (false) is fail-fast on the first bad row.
   continueOnError?: boolean,
+  // Number of rows to page per keyset query and per bulldozer-js batch POST.
+  // Larger values reduce round-trips but increase per-batch memory/latency and
+  // the amount of work redone if a batch fails mid-run. Defaults to
+  // DEFAULT_BATCH_SIZE when omitted.
+  batchSize?: number,
 };
 
 /** A row bulldozer-js refused, captured under --continue-on-error. */
@@ -64,6 +69,7 @@ type BackfillFailure = { table: BackfillTableName, tenancyId: string, id: string
 type BackfillRunContext = {
   continueOnError: boolean,
   recordFailure: (failure: BackfillFailure) => void,
+  batchSize: number,
 };
 
 function log(message: string) {
@@ -197,13 +203,23 @@ async function backfillTable<T extends Cursor>(
   let batchNumber = 0;
   let total = 0;
   let failed = 0;
+  // Aggregate the bulldozer request time (the write/POST phase) across the whole
+  // table so we can report an average per batch at the end — this is the number
+  // we care about in a backfill load test (the Prisma fetch is local + cheap).
+  let totalReqMs = 0;
+  const tableStartedAt = performance.now();
   log(`[${label}] starting${cursor ? ` from cursor ${cursor.tenancyId},${cursor.id}` : ""}`);
 
   for (;;) {
-    const batchStartedAt = performance.now();
+    const fetchStartedAt = performance.now();
     const batch = await fetchBatch(cursor);
+    const fetchMs = performance.now() - fetchStartedAt;
     if (batch.length === 0) break;
 
+    // Time only the bulldozer write (the HTTP batch request[s]), isolated from
+    // the Prisma read above. Under --continue-on-error the per-row retry writes
+    // are part of the same request phase, so they're included here on purpose.
+    const reqStartedAt = performance.now();
     try {
       await writeBatch(batch);
     } catch (error) {
@@ -223,6 +239,8 @@ async function backfillTable<T extends Cursor>(
         }
       }
     }
+    const reqMs = performance.now() - reqStartedAt;
+    totalReqMs += reqMs;
     total += batch.length;
 
     const last = batch[batch.length - 1];
@@ -237,20 +255,22 @@ async function backfillTable<T extends Cursor>(
 
     cursor = next;
     batchNumber++;
-    const batchDurationMs = performance.now() - batchStartedAt;
-    log(`[${label}] batch=${batchNumber} duration=${formatDuration(batchDurationMs)} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
+    // req = bulldozer request time (the number to watch), fetch = Prisma read.
+    log(`[${label}] batch=${batchNumber} req=${formatDuration(reqMs)} fetch=${formatDuration(fetchMs)} rows=${batch.length} total=${total}${failed > 0 ? ` failed=${failed}` : ""} cursor=${cursor.tenancyId},${cursor.id}`);
 
     // A short page means we've hit the end; skip the extra empty fetch.
-    if (batch.length < BATCH_SIZE) break;
+    if (batch.length < ctx.batchSize) break;
   }
 
-  log(`[${label}] done total=${total}${failed > 0 ? ` failed=${failed}` : ""}`);
+  const tableElapsedMs = performance.now() - tableStartedAt;
+  const avgReqMs = batchNumber > 0 ? totalReqMs / batchNumber : 0;
+  log(`[${label}] done total=${total}${failed > 0 ? ` failed=${failed}` : ""} elapsed=${formatDuration(tableElapsedMs)} bulldozerReqTotal=${formatDuration(totalReqMs)} avgReq/batch=${formatDuration(avgReqMs)}`);
 }
 
-function keysetArgs(cursor: Cursor | null) {
+function keysetArgs(cursor: Cursor | null, batchSize: number) {
   return {
     orderBy: [{ tenancyId: "asc" as const }, { id: "asc" as const }],
-    take: BATCH_SIZE,
+    take: batchSize,
     ...(cursor
       ? { cursor: { tenancyId_id: { tenancyId: cursor.tenancyId, id: cursor.id } }, skip: 1 }
       : {}),
@@ -281,10 +301,22 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
 
   const continueOnError = args.includes("--continue-on-error");
 
+  const batchSizeArg = readArg("batch-size");
+  let batchSize: number | undefined = undefined;
+  if (batchSizeArg !== undefined) {
+    const parsed = Number(batchSizeArg);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`--batch-size must be a positive integer (got "${batchSizeArg}")`);
+    }
+    batchSize = parsed;
+  }
+  // Common options that apply regardless of whether a resume cursor was passed.
+  const base: BackfillResumeOptions = { continueOnError, ...(batchSize !== undefined ? { batchSize } : {}) };
+
   const resumeTableArg = readArg("resume-table");
   const resumeCursorArg = readArg("resume-cursor");
   if (resumeTableArg === undefined && resumeCursorArg === undefined) {
-    return { continueOnError };
+    return base;
   }
   if (resumeTableArg === undefined) {
     throw new Error("--resume-cursor requires --resume-table");
@@ -294,7 +326,7 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
     throw new Error(`--resume-table must be one of: ${BACKFILL_TABLES.join(", ")}`);
   }
   if (resumeCursorArg === undefined) {
-    return { resumeTable, continueOnError };
+    return { ...base, resumeTable };
   }
   const commaIndex = resumeCursorArg.indexOf(",");
   const tenancyId = commaIndex === -1 ? "" : resumeCursorArg.slice(0, commaIndex);
@@ -302,7 +334,7 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
   if (tenancyId.length === 0 || id.length === 0) {
     throw new Error("--resume-cursor must be in the form <tenancyId>,<id>");
   }
-  return { resumeTable, resumeCursor: { tenancyId, id }, continueOnError };
+  return { ...base, resumeTable, resumeCursor: { tenancyId, id } };
 }
 
 const MAX_FAILURE_PREVIEW = 50;
@@ -322,12 +354,14 @@ function formatBackfillFailures(failures: BackfillFailure[]): string {
 
 export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = {}) {
   const replica = globalPrismaClient.$replica();
-  log("Backfilling bulldozer-js from Prisma...");
+  const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+  const runStartedAt = performance.now();
+  log(`Backfilling bulldozer-js from Prisma... (batchSize=${batchSize})`);
 
   const tables: BackfillTable[] = [
     makeTable(
       "Subscription",
-      (cursor) => replica.subscription.findMany(keysetArgs(cursor)),
+      (cursor) => replica.subscription.findMany(keysetArgs(cursor, batchSize)),
       async (subs) => {
         await bulldozerWriteSubscriptions(subs);
         // Synthesize refund transactions for the refunded rows in this page and
@@ -340,12 +374,12 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
     ),
     makeTable(
       "SubscriptionInvoice",
-      (cursor) => replica.subscriptionInvoice.findMany(keysetArgs(cursor)),
+      (cursor) => replica.subscriptionInvoice.findMany(keysetArgs(cursor, batchSize)),
       (invoices) => bulldozerWriteSubscriptionInvoices(invoices),
     ),
     makeTable(
       "OneTimePurchase",
-      (cursor) => replica.oneTimePurchase.findMany(keysetArgs(cursor)),
+      (cursor) => replica.oneTimePurchase.findMany(keysetArgs(cursor, batchSize)),
       async (purchases) => {
         await bulldozerWriteOneTimePurchases(purchases);
         const refunds = purchases
@@ -356,7 +390,7 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
     ),
     makeTable(
       "ItemQuantityChange",
-      (cursor) => replica.itemQuantityChange.findMany(keysetArgs(cursor)),
+      (cursor) => replica.itemQuantityChange.findMany(keysetArgs(cursor, batchSize)),
       (changes) => bulldozerWriteItemQuantityChanges(changes),
     ),
   ];
@@ -371,12 +405,16 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
   const ctx: BackfillRunContext = {
     continueOnError: options.continueOnError ?? false,
     recordFailure: (failure) => failures.push(failure),
+    batchSize,
   };
 
   for (const table of tables) {
     if (!shouldRunTable(table.name, options.resumeTable)) continue;
     await table.run(startCursorFor(table.name, options), ctx);
   }
+
+  const processingElapsedMs = performance.now() - runStartedAt;
+  log(`All tables processed in ${formatDuration(processingElapsedMs)} (excludes the final ~1.5s tick settle wait below).`);
 
   // Under --continue-on-error we deferred bad rows to here; surface them loudly
   // so the run is never quietly "complete" with data missing. Re-running after
@@ -392,7 +430,8 @@ export async function runBulldozerPaymentsInit(options: BackfillResumeOptions = 
   // a deterministic tick-to-now endpoint would be the upgrade if it ever bites.
   await wait(1500);
 
-  log("Backfill complete.");
+  const totalElapsedMs = performance.now() - runStartedAt;
+  log(`Backfill complete. Total wall time: ${formatDuration(totalElapsedMs)}.`);
 }
 
 import.meta.vitest?.describe("parseBackfillResumeOptions", (test) => {
@@ -433,6 +472,36 @@ import.meta.vitest?.describe("parseBackfillResumeOptions", (test) => {
   test("parses --continue-on-error alongside resume flags", ({ expect }) => {
     expect(parseBackfillResumeOptions(["--resume-table=OneTimePurchase", "--continue-on-error"]))
       .toEqual({ resumeTable: "OneTimePurchase", continueOnError: true });
+  });
+
+  test("omits batchSize when --batch-size is not passed (defaults later)", ({ expect }) => {
+    expect(parseBackfillResumeOptions([])).not.toHaveProperty("batchSize");
+  });
+
+  test("parses --batch-size on its own", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--batch-size=1000"]))
+      .toEqual({ continueOnError: false, batchSize: 1000 });
+  });
+
+  test("parses --batch-size alongside resume flags", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--resume-table=Subscription", "--resume-cursor=ten-1,sub-9", "--batch-size=250"]))
+      .toEqual({
+        resumeTable: "Subscription",
+        resumeCursor: { tenancyId: "ten-1", id: "sub-9" },
+        continueOnError: false,
+        batchSize: 250,
+      });
+  });
+
+  test("rejects a non-positive or non-integer --batch-size", ({ expect }) => {
+    expect(() => parseBackfillResumeOptions(["--batch-size=0"]))
+      .toThrow("--batch-size must be a positive integer");
+    expect(() => parseBackfillResumeOptions(["--batch-size=-5"]))
+      .toThrow("--batch-size must be a positive integer");
+    expect(() => parseBackfillResumeOptions(["--batch-size=abc"]))
+      .toThrow("--batch-size must be a positive integer");
+    expect(() => parseBackfillResumeOptions(["--batch-size=1.5"]))
+      .toThrow("--batch-size must be a positive integer");
   });
 
 });
@@ -491,6 +560,7 @@ import.meta.vitest?.describe("backfillTable continue-on-error", (test) => {
     await backfillTable("Subscription", null, fetchOnce(), failOnBadBatch(written), {
       continueOnError: true,
       recordFailure: (f) => failures.push(f),
+      batchSize: DEFAULT_BATCH_SIZE,
     });
     expect(written).toEqual(["a", "c"]);
     expect(failures).toEqual([{ table: "Subscription", tenancyId: "t", id: "bad", message: "nope" }]);
@@ -503,6 +573,7 @@ import.meta.vitest?.describe("backfillTable continue-on-error", (test) => {
       backfillTable("Subscription", null, fetchOnce(), failOnBadBatch(written), {
         continueOnError: false,
         recordFailure: (f) => failures.push(f),
+        batchSize: DEFAULT_BATCH_SIZE,
       }),
     ).rejects.toThrow("nope");
     // The batch fails atomically before recording any row, so nothing is written.
