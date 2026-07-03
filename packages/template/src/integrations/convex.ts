@@ -1,5 +1,7 @@
 import { urlString } from "@hexclave/shared/dist/utils/urls";
+import type { ConvexCtx } from "../lib/hexclave-app/common";
 import { defaultBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
+import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser } from "./adapter-core";
 
 export function getConvexProvidersConfig(options: {
   baseUrl?: string,
@@ -21,4 +23,65 @@ export function getConvexProvidersConfig(options: {
       algorithm: "ES256",
     },
   ];
+}
+
+export type HexclaveConvexFunctionOptions = {
+  /** Reject unauthenticated calls; the handler's `user` is then non-null. */
+  required?: boolean,
+  /** Recorded in the span data (low-cardinality span type stays `convex.function`). */
+  kind?: "query" | "mutation" | "action",
+  /** The function's name, recorded in the span data. */
+  name?: string,
+  /** Disable or customize the span. @default true */
+  telemetry?: AdapterTelemetryOptions,
+  /** Error factory for `required` rejections. */
+  unauthorized?: () => Error,
+};
+
+/**
+ * Wraps a Convex function handler: resolves the caller from Convex's identity
+ * (`ctx.auth`, wired to Hexclave via `getConvexProvidersConfig`) and runs the
+ * handler inside a `convex.function` span attributed to that user.
+ *
+ * ```ts
+ * export const listItems = query({
+ *   handler: hexclaveConvexFunction(stackServerApp, async ({ ctx, args, user }) => {
+ *     // user: ServerUser (non-null with { required: true })
+ *   }, { required: true, kind: "query", name: "listItems" }),
+ * });
+ * ```
+ *
+ * NOTE: Convex clients talk over WebSockets and functions receive no Request,
+ * so unlike the HTTP adapters this span is attributed by USER only — it does
+ * not (yet) nest under the caller's `$session-replay-segment`. Cross-tier
+ * segment linking for Convex is a follow-up.
+ */
+export function hexclaveConvexFunction<TCtx extends ConvexCtx, TArgs, TResult>(
+  app: AdapterServerApp,
+  handler: (options: { ctx: TCtx, args: TArgs, user: AdapterUser | null }) => TResult | Promise<TResult>,
+  options?: HexclaveConvexFunctionOptions,
+): (ctx: TCtx, args: TArgs) => Promise<TResult> {
+  return async (ctx: TCtx, args: TArgs): Promise<TResult> => {
+    const user = await (app.getUser as (options: { from: "convex", ctx: ConvexCtx, or: "return-null" }) => Promise<AdapterUser | null>)({ from: "convex", ctx, or: "return-null" });
+    if (options?.required && user === null) {
+      throw options.unauthorized?.() ?? new Error("You must be signed in to call this Convex function. (Hexclave: no identity on ctx.auth.)");
+    }
+    const run = () => handler({ ctx, args, user });
+    if (options?.telemetry === false) {
+      return await run();
+    }
+    const custom = typeof options?.telemetry === "object" ? options.telemetry : undefined;
+    return await app.withSpan(
+      custom?.spanType ?? "convex.function",
+      {
+        ...user !== null ? { userId: user.id } : {},
+        data: {
+          ...options?.kind ? { kind: options.kind } : {},
+          ...options?.name ? { name: options.name } : {},
+          ...custom?.data ?? {},
+        },
+      },
+      () => run(),
+    );
+  };
 }

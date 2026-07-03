@@ -67,6 +67,42 @@
       "require": {
         "default": "./dist/integrations/convex.js"
       }
+    },
+    "./convex": {
+      "types": "./dist/integrations/convex.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/convex.js"
+      },
+      "require": {
+        "default": "./dist/integrations/convex.js"
+      }
+    },
+    "./trpc": {
+      "types": "./dist/integrations/trpc.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/trpc.js"
+      },
+      "require": {
+        "default": "./dist/integrations/trpc.js"
+      }
+    },
+    "./orpc": {
+      "types": "./dist/integrations/orpc.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/orpc.js"
+      },
+      "require": {
+        "default": "./dist/integrations/orpc.js"
+      }
+    },
+    "./elysia": {
+      "types": "./dist/integrations/elysia.d.ts",
+      "import": {
+        "default": "./dist/esm/integrations/elysia.js"
+      },
+      "require": {
+        "default": "./dist/integrations/elysia.js"
+      }
     }
   },
   "homepage": "https://hexclave.com",
