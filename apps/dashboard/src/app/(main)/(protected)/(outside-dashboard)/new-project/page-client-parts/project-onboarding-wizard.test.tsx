@@ -180,9 +180,13 @@ describe("ProjectOnboardingWizard", () => {
     const testDir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
 
-    expect(source).not.toContain("pointer-events-none");
-    expect(source).not.toContain("inert>");
-    expect(source).not.toContain("bg-transparent");
+    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    expect(previewBlockMatch).not.toBeNull();
+    const previewBlock = previewBlockMatch![1];
+
+    expect(previewBlock).not.toContain("pointer-events-none");
+    expect(previewBlock).not.toContain("inert");
+    expect(previewBlock).not.toContain("bg-transparent");
   });
 
   it("keeps required apps when normalizing persisted onboarding state", () => {

@@ -42,10 +42,10 @@ function useHostedPreviewTabsContext() {
   return context;
 }
 
-function HostedPreviewTabs(props: HTMLAttributes<HTMLDivElement> & {
+function HostedPreviewTabs({ defaultValue, ...rest }: HTMLAttributes<HTMLDivElement> & {
   defaultValue: string,
 }) {
-  const [value, setValue] = useState(props.defaultValue);
+  const [value, setValue] = useState(defaultValue);
   const contextValue = useMemo<HostedPreviewTabsContextValue>(() => ({
     value,
     setValue,
@@ -53,7 +53,7 @@ function HostedPreviewTabs(props: HTMLAttributes<HTMLDivElement> & {
 
   return (
     <HostedPreviewTabsContext.Provider value={contextValue}>
-      <div {...props} />
+      <div {...rest} />
     </HostedPreviewTabsContext.Provider>
   );
 }
@@ -119,12 +119,17 @@ function HostedPreviewTabsTrigger({ className, value, onClick, ...props }: React
 }) {
   const tabs = useHostedPreviewTabsContext();
   const active = tabs.value === value;
+  const tabId = `hosted-preview-tab-${value}`;
+  const panelId = `hosted-preview-panel-${value}`;
 
   return (
     <button
       type="button"
       role="tab"
+      id={tabId}
       aria-selected={active}
+      aria-controls={panelId}
+      tabIndex={active ? 0 : -1}
       data-state={active ? "active" : "inactive"}
       className={cn(
         "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-colors duration-300 hover:text-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:font-semibold data-[state=active]:text-foreground",
@@ -147,9 +152,14 @@ function HostedPreviewTabsContent({ className, value, ...props }: HTMLAttributes
     return null;
   }
 
+  const panelId = `hosted-preview-panel-${value}`;
+  const tabId = `hosted-preview-tab-${value}`;
+
   return (
     <div
       role="tabpanel"
+      id={panelId}
+      aria-labelledby={tabId}
       data-state="active"
       className={cn("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", className)}
       {...props}

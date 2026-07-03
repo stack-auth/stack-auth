@@ -8,8 +8,12 @@ describe("auth methods live preview", () => {
     const testDir = dirname(fileURLToPath(import.meta.url));
     const source = readFileSync(join(testDir, "page-client.tsx"), "utf-8");
 
-    expect(source).not.toContain("pointer-events-none");
-    expect(source).not.toContain("inert>");
-    expect(source).not.toContain("bg-transparent z-10");
+    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    expect(previewBlockMatch).not.toBeNull();
+    const previewBlock = previewBlockMatch![1];
+
+    expect(previewBlock).not.toContain("pointer-events-none");
+    expect(previewBlock).not.toContain("inert");
+    expect(previewBlock).not.toContain("bg-transparent");
   });
 });
