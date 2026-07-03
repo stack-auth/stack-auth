@@ -28,7 +28,7 @@ Replay page: `/projects/<projectId>/session-replays`.
 
 ## Known pitfalls
 - rrweb v1 `Replayer.pause(offset)` is a full synchronous seek — any code path that calls it frequently (e.g. per 200ms TICK) can freeze the page. Keep this in mind when probing performance.
-- CI on this repo: `docker` and `E2E Fallback Tests` might be flaky/failing on the base (`dev`/`main`) branch — verify with `gh run list --branch dev/main` before assuming a PR caused them. Only the `all-good` workflow is required.
+- CI on this repo: `docker` and `E2E Fallback Tests` might be flaky/failing on the base (`dev`/`main`) branch — verify with `gh run list --branch dev` and `gh run list --branch main` before assuming a PR caused them. Only the `all-good` workflow is required.
 
 ## Devin Secrets Needed
 - None beyond repo defaults; the local backend uses the dev super-secret admin key from `.env.development`.
