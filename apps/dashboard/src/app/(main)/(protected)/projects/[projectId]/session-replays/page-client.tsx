@@ -1107,7 +1107,11 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     ) {
       let isFirstChunk = true;
       for (const ce of chunkEvents) {
-        if (!isFirstChunk) {
+        // Only yield while the tab is visible: yielding exists purely to keep
+        // the visible UI responsive, and browsers clamp setTimeout-backed
+        // waits in hidden tabs (up to ~1s each), which would make large
+        // replay loads crawl in the background.
+        if (!isFirstChunk && !document.hidden) {
           await wait(0);
         }
         isFirstChunk = false;
