@@ -88,6 +88,21 @@ describe("new project page data loading", () => {
   });
 });
 
+describe("new project creation dialog", () => {
+  it("uses native form submission for create-project keyboard access", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(
+      testDir,
+      "page-client-parts/content.tsx",
+    ), "utf-8");
+
+    expect(source).toContain("<form onSubmit={handleCreateProjectSubmit}>");
+    expect(source).toContain("onKeyDown={handleProjectNameKeyDown}");
+    expect(source).toContain('type="submit"');
+    expect(source).toContain("Create Project");
+  });
+});
+
 describe("OnboardingPage", () => {
   it("uses hover-exit-only transitions and accessible labels for progress dots", () => {
     render(
