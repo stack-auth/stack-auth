@@ -1,0 +1,233 @@
+---
+title: "Custom Events & Spans"
+description: "Record your own product telemetry — events and spans that automatically join Hexclave's session tree"
+---
+
+Hexclave's analytics dataset isn't limited to built-in events like `$page-view` and `$click`. With `trackEvent` and `startSpan`/`withSpan`, you can record your own **events** (points in time) and **spans** (intervals with a start and end), and they automatically nest under the user's session — so a `checkout` span you create in the browser lands in the same tree as the session replay and sign-in session it happened in.
+
+## Overview
+
+- **`trackEvent`**: record a point-in-time fact, like `item-added` or `export-finished`
+- **`startSpan` / `withSpan`**: record an interval, like a checkout flow or a background job
+- **Automatic parenting**: your telemetry nests under the current session, tab, and any enclosing spans without manual wiring
+- **Queryable**: everything lands in ClickHouse — inspect it visually in **Analytics -> Traces** or query it with SQL in **Analytics -> Queries**
+
+Custom events and spans require the Analytics app to be enabled (**Apps -> Analytics** in your dashboard) and count toward your analytics event quota.
+
+## How It Works
+
+Every user session forms a span tree. Hexclave writes the system levels for you; your custom telemetry attaches underneath:
+
+| Span type | Id | Parents | Meaning |
+|---|---|---|---|
+| `$refresh-token` | `rti-<id>` | — | One sign-in session; ends when the token expires |
+| `$session-replay` | `sri-<id>` | `rti-` | One session replay recording |
+| `$session-replay-segment` | `srsi-<id>` | `rti-`, `sri-` | One browser tab |
+| your custom types | `cs-<id>` | the above + custom ancestors | Whatever you record |
+
+Each row in the dataset carries a `parent_span_ids` array — the deduped, root-first chain of ancestor span ids. Span ids are prefixed by type (as in the table above), while scalar columns like `refresh_token_id` and `user_id` stay raw UUIDs.
+
+## Tracking Events
+
+Call `trackEvent` anywhere you have your app instance:
+
+```tsx
+import { hexclaveClientApp } from "./hexclave";
+
+hexclaveClientApp.trackEvent("item-added", { sku: "T-100", quantity: 2 });
+```
+
+Events are buffered and sent in batches (every 10 seconds in the browser, or sooner when the buffer fills). The returned promise resolves when the batch carrying the event is acknowledged — which can be up to one flush interval later — and is safe to ignore: `trackEvent` never throws, and invalid input yields a rejected (pre-caught) promise plus a console error. Call `hexclaveClientApp.flush()` to send everything immediately instead of awaiting individual calls.
+
+Events work even for signed-out visitors: batches are attributed to an anonymous user until they sign in.
+
+## Creating Spans
+
+For operations with a duration, prefer `withSpan` — it starts a span, makes it the ambient parent for everything created inside the callback, and ends it automatically when the callback settles:
+
+```tsx
+await hexclaveClientApp.withSpan("checkout", async (span) => {
+  hexclaveClientApp.trackEvent("checkout-started");   // nests under the span
+  await submitOrder();
+  span.setData({ total: 129.99 });   // fire-and-forget; awaiting would wait for the next batch send
+});
+```
+
+If the callback throws, the error message is recorded on the span's `data.error` and the error is rethrown — telemetry never changes your code's behavior.
+
+For spans that don't fit a single callback (multi-step flows, long-lived operations), use `startSpan` and end it yourself:
+
+```tsx
+const span = hexclaveClientApp.startSpan("onboarding", { data: { plan: "team" } });
+// ... later, possibly in another event handler:
+await span.end();
+```
+
+A span is written immediately as an open interval and re-written whenever its data changes or it ends. A span that is never ended (for example, the tab closed) stays visible as an open interval — that's a feature, not data loss.
+
+### The span handle
+
+`startSpan` and `withSpan` both give you a `Span` handle:
+
+| Member | What it does |
+|---|---|
+| `spanId`, `spanType`, `isEnded` | Identity and state |
+| `setData(data)` | Shallow-merges into the span's data and re-writes it |
+| `end(options?)` | Ends the span (idempotent); an explicit `endedAtMs` is clamped to never precede the start |
+| `trackEvent(type, data?, options?)` | Records an event with this span (and its full ancestor chain) as parent |
+| `startSpan(type, options?)` / `withSpan(type, fn)` | Creates a child span |
+| `run(fn)` | Re-enters the span as the ambient parent for `fn` — for timers and third-party callbacks |
+| `ref()` | A serializable `{ spanId, parentSpanIds }` reference you can store or pass around |
+| `getPropagationHeaders()` / `fetch(input, init?)` | Cross-tier propagation pinned to this span — see [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) |
+
+Like `trackEvent`, no span method ever throws, and all returned promises are pre-caught. Where analytics is unavailable — outside the browser, with analytics disabled, or when the app has no persistent token store (e.g. `tokenStore: "memory"`) — `startSpan` returns an inert span whose methods succeed as no-ops, so isomorphic code never needs to branch.
+
+## Parenting
+
+### Ambient parents
+
+When you track an event or start a span, its parents are resolved from context automatically:
+
+1. **Global spans** — anything registered with `hexclaveClientApp.setGlobalSpan(span)`; useful for app-wide context like "current document open". Ending a span automatically unregisters it.
+2. **Enclosing `withSpan` callbacks** — outermost first.
+3. **The session tree** — the current tab segment, replay, and sign-in session are attached server-side.
+
+Explicit `parentIds` are additive on top of the ambient ones.
+
+### Exact vs. best-effort ambient parenting
+
+On the server, ambient parenting is backed by `AsyncLocalStorage`, so it is exact across `await`s and under any concurrency. Browsers have no equivalent primitive, so the SDK defaults to **exact mode**: inside a `withSpan` callback, app-level calls (`hexclaveClientApp.trackEvent(...)`) see the span as an ambient parent only until the callback's first `await`. Calls made through the **span handle** are exact everywhere, always:
+
+```tsx
+await hexclaveClientApp.withSpan("checkout", async (span) => {
+  hexclaveClientApp.trackEvent("step-1");  // linked (before the first await)
+  await fetch("/api/pay");
+  hexclaveClientApp.trackEvent("step-2");  // NOT linked in exact mode
+  span.trackEvent("step-3");               // linked — handle calls are always exact
+});
+```
+
+If you prefer zero-glue linking across `await`s in the browser and accept that concurrent flows may occasionally cross-parent, opt into best-effort mode:
+
+```tsx
+import { HexclaveClientApp } from "@hexclave/js";
+
+export const hexclaveClientApp = new HexclaveClientApp({
+  // ...your existing client app options
+  analytics: { ambientParenting: "best-effort" },
+});
+```
+
+<Info>
+In exact mode a parent is only attached when it provably belongs to the current flow — a wrong parent is worse than a missing one. When in doubt, use the span handle (`span.trackEvent`, `span.withSpan`, `span.run`): it is exact in both modes and in every environment.
+</Info>
+
+### Explicit control
+
+All tracking calls accept parenting options:
+
+```tsx
+hexclaveClientApp.trackEvent("audit-log", { action: "delete" }, {
+  parentIds: [importSpan],   // add explicit parents
+  root: true,                // drop ALL ambient parents; only parentIds apply
+});
+```
+
+- `parentIds`: an array of `Span` handles, `ref()` objects, or raw span-id strings. Handles and refs contribute their full ancestor chain; a raw string contributes only itself.
+- `root: true`: drops all ambient parents (global spans and enclosing `withSpan` frames). Session attribution is identity, not parenting — it is always kept.
+- `excludeParentIds`: removes specific spans from the final merged parent list.
+
+A span's ancestor chain is frozen at creation, deduped root-first, and capped at 10 entries (the nearest ancestors are kept).
+
+## Server-Side Telemetry
+
+The same API exists on `HexclaveServerApp`, with two differences: attribution is explicit, and there is no page-lifetime flush cadence.
+
+```tsx
+import { hexclaveServerApp } from "./hexclave";
+
+await hexclaveServerApp.withSpan("import-job", { userId: user.id }, async (span) => {
+  const rows = await importRows();
+  await span.trackEvent("rows-imported", { count: rows.length });
+});
+```
+
+- **Attribution**: pass `userId` (a user UUID) to attribute telemetry to a user; child spans and span-attached events inherit it. To attribute to the calling user *and* link into their client session automatically, pass the incoming request — see [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) — or use a [framework adapter](/guides/apps/analytics/framework-adapters), which does it for you.
+- **Delivery**: server telemetry coalesces on the next microtask (a loop of `trackEvent` calls costs one request, not N). There is no interval timer — `await` the returned promises or call `await hexclaveServerApp.flush()` before your process exits.
+
+On serverless platforms, wire the `waitUntil` hook so fire-and-forget telemetry survives runtime teardown without awaiting every call:
+
+```tsx
+import { waitUntil } from "@vercel/functions";
+import { HexclaveServerApp } from "@hexclave/js";
+
+export const hexclaveServerApp = new HexclaveServerApp({
+  // ...your existing server app options
+  analytics: { waitUntil },  // Cloudflare Workers: (p) => ctx.waitUntil(p)
+});
+```
+
+<Warning>
+`setGlobalSpan` is app-instance state. On a server handling concurrent requests through one shared app instance, a global span set in one request becomes a parent in all of them — prefer explicit `parentIds` or the span handle on servers.
+</Warning>
+
+## Validation Rules & Limits
+
+| Rule | Value |
+|---|---|
+| Event/span type names | Start with a letter; then letters, digits, `_`, `.`, `:`, `-`; at most 64 characters. `$`-prefixed names are reserved for system telemetry. |
+| `data` payloads | Plain JSON-serializable object, at most 16,000 bytes serialized (for spans, the limit applies to the accumulated merged data) |
+| Parent chain | At most 10 ancestors; on overflow the nearest 10 are kept (with a console warning) |
+| Parent ids / `userId` | Must be UUIDs |
+| Browser flush | Every 10 seconds, or at 50 buffered items / ~64 KB, plus on tab hide |
+| Server flush | Next microtask; no timer — `await` or `flush()` is the delivery guarantee |
+
+Invalid input never throws: `trackEvent` returns a rejected (pre-caught) promise and `startSpan`/`withSpan` log an error and return an inert span.
+
+## Querying Your Telemetry
+
+Everything is queryable in **Analytics -> Queries**. Spans live in the `spans` view, events in `events`. Ids in `id`/`parent_span_ids` are prefixed; scalar columns (`user_id`, `refresh_token_id`, `session_replay_id`, `session_replay_segment_id`) are raw UUIDs.
+
+Duration stats per custom span type:
+
+```sql
+SELECT
+  span_type,
+  count() AS total,
+  countIf(span_ended_at IS NULL) AS still_open,
+  avgIf(dateDiff('millisecond', span_started_at, span_ended_at), span_ended_at IS NOT NULL) AS avg_ms
+FROM spans
+WHERE NOT startsWith(span_type, '$')
+GROUP BY span_type
+ORDER BY total DESC;
+```
+
+All events inside a given custom span (note the `cs-` prefix when matching against `parent_span_ids`):
+
+```sql
+SELECT event_type, event_at, data, user_id
+FROM events
+WHERE has(parent_span_ids, 'cs-1f9f9c58-6a3a-4d2b-9d6e-3f0a5b7c8d9e')  -- 'cs-' + your span's id
+ORDER BY event_at;
+```
+
+The full span tree for one sign-in session:
+
+```sql
+SELECT id, span_type, span_started_at, span_ended_at, parent_span_ids
+FROM spans
+WHERE refresh_token_id = '5a3c1b2d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'  -- a refresh token id
+ORDER BY span_started_at;
+```
+
+Things to know when writing queries:
+
+- `events.data` is a native ClickHouse JSON column (`data.url` works); `spans.data` is a JSON **string** — use `JSONExtractString(data, 'key')` and friends.
+- Open spans have `span_ended_at IS NULL`. `$refresh-token` spans end at the token's *expiry*, which is often in the future — it is not a "last activity" timestamp.
+- Custom span updates are last-`updated_at_ms`-wins: re-writes of the same span collapse to the latest version automatically.
+
+## Next Steps
+
+- [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing) — link backend spans to the client session that caused them
+- [Framework Adapters](/guides/apps/analytics/framework-adapters) — tRPC, oRPC, Elysia, and Convex integration in one line
+- [Analytics app](/guides/apps/analytics/overview) — the Traces, Tables, and Queries views in the dashboard
