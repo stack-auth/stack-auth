@@ -1,0 +1,19 @@
+docs-mintlify/guides/apps/analytics/overview.mdx
+  s_5b6ac9c07bf674::t_b7c2e5cd2d99a3 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7c538f7c43587fcaab0905f14f21b01cba0e28d9",
+  "prompts": {},
+  "sessions": {
+    "s_5b6ac9c07bf674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2919068-a569-4d74-a6b8-ccbda184ed6b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
