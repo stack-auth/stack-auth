@@ -107,6 +107,78 @@ it("should allow valid code and return product data", async ({ expect }) => {
   `);
 });
 
+it("should migrate legacy inline product-level free_trial to price-level free_trial", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({ payments: { testMode: false } });
+
+  const { userId } = await Auth.fastSignUp();
+  const createResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_inline: {
+        display_name: "Legacy Inline Trial",
+        customer_type: "user",
+        free_trial: [7, "day"],
+        server_only: true,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+          annual: {
+            USD: "10000",
+            interval: [1, "year"],
+            free_trial: [14, "day"],
+          },
+        },
+        included_items: {},
+      },
+    },
+  });
+  expect(createResponse.status).toBe(200);
+  const url = (createResponse.body as { url: string }).url;
+  const code = url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1];
+  expect(code).toBeDefined();
+
+  const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
+    method: "POST",
+    accessType: "client",
+    body: { full_code: code },
+  });
+  expect(validateResponse.status).toBe(200);
+  expect(validateResponse.body.product).not.toHaveProperty("free_trial");
+  expect(validateResponse.body.product.prices).toMatchInlineSnapshot(`
+    {
+      "annual": {
+        "USD": "10000",
+        "free_trial": [
+          14,
+          "day",
+        ],
+        "interval": [
+          1,
+          "year",
+        ],
+      },
+      "monthly": {
+        "USD": "1000",
+        "free_trial": [
+          7,
+          "day",
+        ],
+        "interval": [
+          1,
+          "month",
+        ],
+      },
+    }
+  `);
+});
+
 it("should set already_bought_non_stackable when user already owns non-stackable product", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();

@@ -4877,12 +4877,6 @@
                           "custom"
                         ]
                       },
-                      "free_trial": {
-                        "type": "array",
-                        "items": {
-                          "type": "integer"
-                        }
-                      },
                       "server_only": {
                         "type": "boolean",
                         "default": true
@@ -5105,12 +5099,6 @@
                             "team",
                             "custom"
                           ]
-                        },
-                        "free_trial": {
-                          "type": "array",
-                          "items": {
-                            "type": "integer"
-                          }
                         },
                         "server_only": {
                           "type": "boolean",
