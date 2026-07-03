@@ -149,6 +149,17 @@ describe("Usage settings page", () => {
     expect(authUsageFill.style.width).toBe("0%");
   });
 
+  it("hides overage banner when plan limits are not enforced", () => {
+    planUsageState = {
+      ...createPlanUsageState(),
+      arePlanLimitsEnforced: false,
+    };
+
+    render(<PageClient />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("starts checkout for the next plan from the upgrade CTA", async () => {
     render(<PageClient />);
 
