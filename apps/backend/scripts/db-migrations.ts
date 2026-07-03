@@ -192,6 +192,7 @@ Commands:
                                    --resume-table=<TableName> --resume-cursor=<tenancyId>,<id>
                                    --continue-on-error skips rows bulldozer-js rejects and reports them
                                    all at the end (default is fail-fast on the first bad row)
+                                   --batch-size=<n> rows per page/POST (default 500)
   backfill-internal-free-plans     Grant the free plan to internal-tenancy teams that have no plan. Run AFTER seed.
   regen-internal-subscriptions-to-latest
                                    Bring every active internal-tenancy subscription up to the latest version of its
@@ -246,6 +247,8 @@ const main = async () => {
       //   --resume-table=<TableName> --resume-cursor=<tenancyId>,<id>
       // Optional --continue-on-error: skip rows bulldozer-js rejects and throw
       // with the full list at the end instead of aborting on the first one.
+      // Optional --batch-size=<n>: rows per keyset page / bulldozer-js POST
+      // (default 500).
       await runBulldozerPaymentsInit(parseBackfillResumeOptions(args));
       break;
     }
