@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  areStatesRenderEquivalent,
   createInitialState,
+  MINI_TAB_SYNC_INTERVAL_MS,
   replayReducer,
   findBestTabAtGlobalOffset,
   isTabInRangeAtGlobalOffset,
@@ -842,14 +844,76 @@ describe("session-replay-machine", () => {
       expect(s.currentGlobalTimeMsForUi).toBe(3000);
     });
 
-    it("syncs mini tabs when playing", () => {
+    it("syncs mini tabs when playing and the sync interval has elapsed", () => {
       const state = twoTabReadyState({ playbackMode: "playing" });
-      const { effects } = dispatch(state, {
+      const { state: s, effects } = dispatch(state, {
         type: "TICK",
-        nowMs: 1000,
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS,
         activeReplayerLocalTimeMs: 2000,
       });
       expect(hasEffect(effects, "sync_mini_tabs")).toBe(true);
+      expect(s.lastMiniTabSyncWallMs).toBe(MINI_TAB_SYNC_INTERVAL_MS);
+    });
+
+    it("throttles mini tab syncs within the sync interval", () => {
+      const state = twoTabReadyState({ playbackMode: "playing" });
+      const first = dispatch(state, {
+        type: "TICK",
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS,
+        activeReplayerLocalTimeMs: 2000,
+      });
+      expect(hasEffect(first.effects, "sync_mini_tabs")).toBe(true);
+
+      const second = dispatch(first.state, {
+        type: "TICK",
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS + 200,
+        activeReplayerLocalTimeMs: 2200,
+      });
+      expect(hasEffect(second.effects, "sync_mini_tabs")).toBe(false);
+
+      const third = dispatch(second.state, {
+        type: "TICK",
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS * 2,
+        activeReplayerLocalTimeMs: 4000,
+      });
+      expect(hasEffect(third.effects, "sync_mini_tabs")).toBe(true);
+    });
+
+    it("resyncs mini tabs on the next tick after a seek", () => {
+      const state = twoTabReadyState({
+        playbackMode: "playing",
+        lastMiniTabSyncWallMs: MINI_TAB_SYNC_INTERVAL_MS,
+      });
+      const afterSeek = dispatch(state, {
+        type: "SEEK",
+        globalOffsetMs: 2000,
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS + 200,
+      });
+      const { effects } = dispatch(afterSeek.state, {
+        type: "TICK",
+        nowMs: MINI_TAB_SYNC_INTERVAL_MS + 400,
+        activeReplayerLocalTimeMs: 1000,
+      });
+      expect(hasEffect(effects, "sync_mini_tabs")).toBe(true);
+    });
+  });
+
+  describe("areStatesRenderEquivalent", () => {
+    it("ignores playback bookkeeping fields", () => {
+      const state = twoTabReadyState({ playbackMode: "playing" });
+      const { state: ticked } = dispatch(state, {
+        type: "TICK",
+        nowMs: 100,
+        activeReplayerLocalTimeMs: 1500,
+      });
+      expect(ticked).not.toBe(state);
+      expect(areStatesRenderEquivalent(state, ticked)).toBe(true);
+    });
+
+    it("detects render-relevant changes", () => {
+      const state = twoTabReadyState({ playbackMode: "playing" });
+      const { state: paused } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 100 });
+      expect(areStatesRenderEquivalent(state, paused)).toBe(false);
     });
   });
 

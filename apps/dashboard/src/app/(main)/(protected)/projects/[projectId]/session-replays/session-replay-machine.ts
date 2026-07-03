@@ -21,6 +21,14 @@ export const ALLOWED_PLAYER_SPEEDS = new Set([0.5, 1, 2, 4]);
  *  replayer reporting progress before we attempt automatic recovery. */
 export const STALL_THRESHOLD_MS = 3000;
 
+/** Minimum wall-clock interval between `sync_mini_tabs` effects while playing.
+ *  Syncing a mini tab is a full rrweb seek (rebuild from the last FullSnapshot
+ *  plus synchronous fast-forward of every event up to the offset), which can
+ *  block the main thread for hundreds of milliseconds on large recordings —
+ *  doing it on every tick froze the page. Mini tabs are small background
+ *  thumbnails, so a coarse sync cadence is enough. */
+export const MINI_TAB_SYNC_INTERVAL_MS = 2000;
+
 export const DEFAULT_REPLAY_SETTINGS: ReplaySettings = {
   playerSpeed: 1,
   skipInactivity: true,
@@ -100,6 +108,10 @@ export type ReplayState = {
   /** Wall-clock time when we first noticed "playing" mode but the replayer
    *  hadn't reported any progress.  Used for stall detection. */
   playingWithoutProgressSinceMs: number | null,
+
+  /** Wall-clock time of the last `sync_mini_tabs` effect, used to throttle
+   *  mini-tab seeks (see MINI_TAB_SYNC_INTERVAL_MS). */
+  lastMiniTabSyncWallMs: number,
 
   downloadError: string | null,
   playerError: string | null,
@@ -203,6 +215,7 @@ export function createInitialState(settings?: ReplaySettings): ReplayState {
     gapFastForward: null,
     prematureFinishRetryLocalMs: null,
     playingWithoutProgressSinceMs: null,
+    lastMiniTabSyncWallMs: 0,
     downloadError: null,
     playerError: null,
   };
@@ -339,6 +352,28 @@ function playEffectsForAllTabs(state: ReplayState, globalOffsetMs: number): Repl
 
 function isStaleGeneration(state: ReplayState, generation: number): boolean {
   return generation !== state.generation;
+}
+
+/** Fields that only matter for imperative playback bookkeeping — the UI reads
+ *  the current time via `getCurrentTimeMs()` / refs, never from React state.
+ *  Dispatches that change nothing else can skip the React re-render. This is
+ *  what keeps the 200ms TICK loop from re-rendering the whole page. */
+const RENDER_IRRELEVANT_STATE_KEYS: ReadonlySet<keyof ReplayState> = new Set([
+  "currentGlobalTimeMsForUi",
+  "pausedAtGlobalMs",
+  "playingWithoutProgressSinceMs",
+  "suppressAutoFollowUntilWallMs",
+  "prematureFinishRetryLocalMs",
+  "lastMiniTabSyncWallMs",
+] satisfies (keyof ReplayState)[]);
+
+export function areStatesRenderEquivalent(a: ReplayState, b: ReplayState): boolean {
+  if (a === b) return true;
+  for (const key of Object.keys(a) as (keyof ReplayState)[]) {
+    if (RENDER_IRRELEVANT_STATE_KEYS.has(key)) continue;
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -925,6 +960,8 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           suppressAutoFollowUntilWallMs: action.nowMs + 400,
           prematureFinishRetryLocalMs: null,
           playingWithoutProgressSinceMs: null,
+          // Reset the throttle so the next TICK re-syncs mini tabs to the new position
+          lastMiniTabSyncWallMs: 0,
           playerError: null,
         },
         effects,
@@ -1030,8 +1067,12 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
 
       let newState = { ...state, currentGlobalTimeMsForUi: globalOffset };
 
-      // Sync mini tabs
-      if (state.playbackMode === "playing") {
+      // Sync mini tabs (throttled — a mini-tab sync is a full rrweb seek)
+      if (
+        state.playbackMode === "playing"
+        && action.nowMs - state.lastMiniTabSyncWallMs >= MINI_TAB_SYNC_INTERVAL_MS
+      ) {
+        newState = { ...newState, lastMiniTabSyncWallMs: action.nowMs };
         effects.push({ type: "sync_mini_tabs", globalOffsetMs: globalOffset });
       }
 
