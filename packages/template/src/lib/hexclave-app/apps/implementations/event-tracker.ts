@@ -695,6 +695,16 @@ export class EventTracker {
     return refs;
   }
 
+  /**
+   * The ambient parents every new event/span would get right now — live global
+   * spans first, then enclosing withSpan() frames (outermost first), each with
+   * its full frozen ancestor chain. Used by cross-tier span propagation so an
+   * outgoing request carries the same ancestry a locally-tracked event would.
+   */
+  getAmbientParentRefs(): SpanRef[] {
+    return this._ambientParentRefs();
+  }
+
   private _enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
     let settler!: Settler;
     const promise = preCaught(new Promise<void>((resolve, reject) => {

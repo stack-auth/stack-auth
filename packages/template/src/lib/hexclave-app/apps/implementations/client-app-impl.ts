@@ -61,9 +61,8 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, withSpanImpl, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
-import { getAmbientSpanRefs } from "./span-context";
-import { installFetchSpanPropagation } from "./span-propagation";
+import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, withSpanImpl, type ParentRef, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { encodeSpanContextHeader, flattenParentRefsToIds, installFetchSpanPropagation, SPAN_CONTEXT_HEADER, type SpanPropagationContext } from "./span-propagation";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -761,19 +760,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       && this._eventTracker
       && this._analyticsOptions?.spanPropagation?.enabled !== false
     ) {
-      const eventTracker = this._eventTracker;
       const allowedOrigins = this._analyticsOptions?.spanPropagation?.targets ?? [];
       installFetchSpanPropagation({
-        getContext: () => {
-          const segmentId = eventTracker.getSessionReplaySegmentId();
-          const customParentSpanIds = getAmbientSpanRefs().map((frame) => frame.spanId);
-          if (!segmentId && customParentSpanIds.length === 0) return null;
-          return {
-            projectId: this.projectId,
-            ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
-            ...customParentSpanIds.length > 0 ? { customParentSpanIds } : {},
-          };
-        },
+        getContext: () => this._getSpanPropagationContext(),
         getSelfOrigin: () => (typeof window !== "undefined" ? window.location.origin : null),
         getAllowedOrigins: () => allowedOrigins,
       });
@@ -4075,6 +4064,34 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // this.startSpan dispatches virtually, so the server app's userId-aware
     // startSpan is used automatically when called on a StackServerApp.
     return withSpanImpl((type, options) => this.startSpan(type, options), spanType, optionsOrFn, maybeFn);
+  }
+
+  /**
+   * The context an outgoing request should carry so backend telemetry links to
+   * this tab's session: the per-tab replay segment plus the SAME ambient custom
+   * ancestry a locally-tracked event would get — global spans first, then
+   * enclosing withSpan() frames, each contributing its full frozen chain —
+   * flattened root-first and deduped (the codec caps overflow to the nearest
+   * ancestors, mirroring resolveParentIds). `extraParents` adds explicit
+   * per-request parents on top. Null when there is nothing to propagate.
+   */
+  protected _getSpanPropagationContext(extraParents?: ParentRef[]): SpanPropagationContext | null {
+    const tracker = this._eventTracker;
+    if (!tracker) return null;
+    const customParentSpanIds = flattenParentRefsToIds(tracker.getAmbientParentRefs(), extraParents);
+    const segmentId = tracker.getSessionReplaySegmentId();
+    if (!segmentId && customParentSpanIds.length === 0) return null;
+    return {
+      projectId: this.projectId,
+      ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
+      ...customParentSpanIds.length > 0 ? { customParentSpanIds } : {},
+    };
+  }
+
+  getSpanPropagationHeaders(options?: { parentIds?: ParentRef[] }): Record<string, string> {
+    const context = this._getSpanPropagationContext(options?.parentIds);
+    if (!context) return {};
+    return { [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(context) };
   }
 
   async getAccessToken(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {

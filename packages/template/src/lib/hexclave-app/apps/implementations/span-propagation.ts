@@ -1,4 +1,5 @@
 import { decodeBase64Url, encodeBase64Url } from "@hexclave/shared/dist/utils/bytes";
+import type { ParentRef, SpanRef } from "./event-tracker";
 
 /**
  * Cross-tier span propagation.
@@ -51,6 +52,37 @@ export type SpanPropagationContext = {
   customParentSpanIds?: string[],
 };
 
+/**
+ * Flattens ambient parent refs (+ optional explicit extras) into the flat,
+ * root-first, deduped id list the header carries. Each ref contributes its full
+ * frozen chain (`[...parentSpanIds, spanId]`); explicit extras follow the same
+ * ParentRef rules as parentIds elsewhere (a raw string contributes only itself).
+ * Mirrors the merge in resolveParentIds, minus validation — the codec drops
+ * malformed ids on decode and the backend re-validates.
+ */
+export function flattenParentRefsToIds(refs: SpanRef[], extraParents?: ParentRef[]): string[] {
+  const chains: string[][] = refs.map((ref) => [...ref.parentSpanIds, ref.spanId]);
+  for (const parent of extraParents ?? []) {
+    if (typeof parent === "string") {
+      chains.push([parent]);
+    } else {
+      const ref: SpanRef = "ref" in parent && typeof parent.ref === "function" ? parent.ref() : parent as SpanRef;
+      chains.push([...ref.parentSpanIds, ref.spanId]);
+    }
+  }
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const chain of chains) {
+    for (const id of chain) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+  return ids;
+}
+
 /** Header bag shape shared by browser `Headers` and node request-like objects. */
 type RequestLikeHeaders = { get: (name: string) => string | null } | Record<string, string | null>;
 
@@ -72,7 +104,9 @@ export function encodeSpanContextHeader(context: SpanPropagationContext): string
   if (context.sessionReplayId) payload.sessionReplayId = context.sessionReplayId;
   if (context.sessionReplaySegmentId) payload.sessionReplaySegmentId = context.sessionReplaySegmentId;
   if (context.customParentSpanIds && context.customParentSpanIds.length > 0) {
-    payload.customParentSpanIds = context.customParentSpanIds.slice(0, MAX_CUSTOM_PARENT_SPAN_IDS);
+    // Cap keeps the NEAREST ancestors (tail of a root-first list) — the same
+    // overflow rule resolveParentIds applies to locally-tracked items.
+    payload.customParentSpanIds = context.customParentSpanIds.slice(-MAX_CUSTOM_PARENT_SPAN_IDS);
   }
   const json = JSON.stringify(payload);
   return `${SPAN_CONTEXT_VERSION}.${encodeBase64Url(new TextEncoder().encode(json))}`;
@@ -115,7 +149,7 @@ export function decodeSpanContextHeader(headerValue: string | null | undefined):
   if (Array.isArray(obj.customParentSpanIds)) {
     const ids = obj.customParentSpanIds
       .filter((id): id is string => typeof id === "string" && UUID_RE.test(id))
-      .slice(0, MAX_CUSTOM_PARENT_SPAN_IDS);
+      .slice(-MAX_CUSTOM_PARENT_SPAN_IDS);
     if (ids.length > 0) context.customParentSpanIds = ids;
   }
   return context;

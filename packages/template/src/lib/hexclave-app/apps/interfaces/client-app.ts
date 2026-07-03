@@ -7,7 +7,7 @@ import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsL
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _HexclaveClientAppImpl } from "../implementations";
-import type { Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
+import type { ParentRef, Span, StartSpanOptions, TrackOptions } from "../implementations/event-tracker";
 import { AnalyticsOptions } from "../implementations/session-replay";
 
 /** @deprecated Use `HexclaveClientAppConstructorOptions` from the `@hexclave/*` package instead — same symbol, new brand name. See https://docs.hexclave.com/migration. */
@@ -157,6 +157,18 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
     withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,
+
+    /**
+     * The cross-tier span-propagation headers (`x-hexclave-span-context`) for a
+     * request the SDK cannot attach them to itself — `fetch` to same-origin (and
+     * `analytics.spanPropagation.targets`) already gets them automatically, so
+     * this is the escape hatch for other transports (XHR, sendBeacon, WebSocket
+     * handshakes) or manually-built requests. Carries the same ambient context an
+     * event tracked right now would get: the per-tab replay segment, global spans,
+     * and enclosing `withSpan()` frames — plus any explicit `parentIds`. Returns
+     * `{}` when there is nothing to propagate (analytics off, non-browser).
+     */
+    getSpanPropagationHeaders(options?: { parentIds?: ParentRef[] }): Record<string, string>,
 
     // note: we don't special-case 'anonymous' here to return non-null, see GetPartialUserOptions for more details
     getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore> & { from: 'token' }): Promise<TokenPartialUser | null>,

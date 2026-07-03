@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Span } from "./event-tracker";
 import {
   SPAN_CONTEXT_HEADER,
   decodeSpanContextHeader,
   encodeSpanContextHeader,
+  flattenParentRefsToIds,
   installFetchSpanPropagation,
   shouldPropagateSpanContext,
   type SpanPropagationContext,
@@ -40,11 +42,13 @@ describe("span propagation header codec", () => {
     expect(decodeSpanContextHeader(header)).toEqual({ projectId: "proj-1" });
   });
 
-  it("caps the custom parent chain at 10 on encode", () => {
+  it("caps the custom parent chain at 10, keeping the NEAREST ancestors (list tail)", () => {
+    // Mirrors resolveParentIds' overflow rule: on a root-first list, the nearest
+    // ancestors are at the end, so the cap keeps the tail.
     const many = Array.from({ length: 15 }, (_, i) => `55555555-5555-4555-8555-${String(i).padStart(12, "0")}`);
     const decoded = decodeSpanContextHeader(encodeSpanContextHeader({ projectId: "p", customParentSpanIds: many }));
     expect(decoded?.customParentSpanIds).toHaveLength(10);
-    expect(decoded?.customParentSpanIds).toEqual(many.slice(0, 10));
+    expect(decoded?.customParentSpanIds).toEqual(many.slice(-10));
   });
 
   it("returns null for missing / empty / non-string headers", () => {
@@ -87,6 +91,36 @@ describe("span propagation header codec", () => {
   it("rejects a JSON array (not an object) payload", () => {
     const arr = `v1.${Buffer.from(JSON.stringify([1, 2, 3])).toString("base64url")}`;
     expect(decodeSpanContextHeader(arr)).toBeNull();
+  });
+});
+
+describe("flattenParentRefsToIds", () => {
+  it("contributes each ref's full frozen chain, root-first", () => {
+    // A global span (a→b) plus a nested withSpan frame (a→c): the ancestry a
+    // locally-tracked event would get, so the propagated backend span matches.
+    expect(flattenParentRefsToIds([
+      { spanId: "b", parentSpanIds: ["a"] },
+      { spanId: "c", parentSpanIds: ["a"] },
+    ])).toEqual(["a", "b", "c"]);
+  });
+
+  it("dedupes across overlapping chains preserving first-seen order", () => {
+    expect(flattenParentRefsToIds([
+      { spanId: "c", parentSpanIds: ["a", "b"] },
+      { spanId: "d", parentSpanIds: ["b"] },
+    ])).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("appends explicit extras: raw string contributes only itself, refs/spans their chains", () => {
+    const live = { ref: () => ({ spanId: "s2", parentSpanIds: ["s1"] }) } as unknown as Span;
+    expect(flattenParentRefsToIds(
+      [{ spanId: "g", parentSpanIds: [] }],
+      ["raw", { spanId: "r2", parentSpanIds: ["r1"] }, live],
+    )).toEqual(["g", "raw", "r1", "r2", "s1", "s2"]);
+  });
+
+  it("returns [] for no refs and no extras", () => {
+    expect(flattenParentRefsToIds([])).toEqual([]);
   });
 });
 

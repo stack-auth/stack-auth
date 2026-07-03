@@ -1862,17 +1862,21 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   /**
-   * `_serverAmbientParentRefs` plus the client-propagated custom parents (raw
-   * uuids from the request's span-context header) as leaf frames, so they take
-   * part in parent resolution and are dropped together by `root: true`. The system
-   * ancestry (`rti-`/`sri-`/`srsi-`) is NOT here — it is composed server-side from
-   * the batch context's scalar ids, so it survives `root` (attribution to the
-   * session is always kept).
+   * The client-propagated custom parents (raw uuids from the request's
+   * span-context header — global spans + enclosing client withSpan frames,
+   * already flattened root-first by the sender) FIRST, then
+   * `_serverAmbientParentRefs`: the client ancestry is the outer context a
+   * server span nests inside, so the merged root-first list reads
+   * client-chain → server frames → explicit parents. All of these are leaf
+   * frames in parent resolution, so `root: true` drops them together. The
+   * system ancestry (`rti-`/`sri-`/`srsi-`) is NOT here — it is composed
+   * server-side from the batch context's scalar ids, so it survives `root`
+   * (attribution to the session is always kept).
    */
   private _ambientParentRefsWith(batchContext: ServerRequestSpanContext): SpanRef[] {
     return [
-      ...this._serverAmbientParentRefs(),
       ...batchContext.customParentSpanIds.map((spanId) => ({ spanId, parentSpanIds: [] as string[] })),
+      ...this._serverAmbientParentRefs(),
     ];
   }
 
