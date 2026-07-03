@@ -26,7 +26,7 @@ vi.mock("@/components/ui", () => ({
   Typography: () => null,
 }));
 
-vi.mock("@/lib/config-update", () => ({
+vi.mock("@/components/config-update", () => ({
   useUpdateConfig: () => async () => {},
 }));
 

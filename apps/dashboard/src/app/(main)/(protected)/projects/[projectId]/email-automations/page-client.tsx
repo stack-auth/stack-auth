@@ -15,7 +15,7 @@ import {
 } from "@/components/design-components";
 import { StyledLink } from "@/components/link";
 import { Label, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { sendAdminInternalRequestOrThrow } from "@/lib/hexclave-app-internals";
 import { cn } from "@/lib/utils";
 import {
@@ -592,6 +592,7 @@ export default function PageClient() {
                       <DesignButton
                         size="sm"
                         variant="secondary"
+                        disabled={!entry.rule.enabled}
                         onClick={() => setSendEntry(entry)}
                         className="gap-1 h-7 px-2.5 text-[11px] rounded-lg font-medium"
                       >
