@@ -237,7 +237,11 @@ export const POST = createSmartRouteHandler({
       }
     }
     if (sessionReplayId == null && refreshTokenId != null) {
-      const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
+      const recentSession = await findRecentSessionReplay(prisma, {
+        tenancyId,
+        refreshTokenId,
+        ...userId != null ? { projectUserId: userId } : {},
+      });
       sessionReplayId = recentSession?.id ?? null;
     }
     const sessionReplaySegmentId = body.session_replay_segment_id ?? null;

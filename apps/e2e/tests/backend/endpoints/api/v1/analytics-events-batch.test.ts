@@ -1011,6 +1011,44 @@ it("rejects forwarded server replay context without the matching refresh-token r
   expect(wrongRefresh.body).toBe("session_replay_id does not correspond to the forwarded refresh token and user");
 });
 
+it("does not derive a fallback replay from another user when server auth supplies user_id", async ({ expect }) => {
+  await setupAnalyticsProject();
+  const firstUser = await Auth.fastSignUp();
+  const refreshTokenId = currentRefreshTokenId();
+  const sessionReplaySegmentId = randomUUID();
+  const replayBatch = await uploadSessionReplayBatch({
+    browserSessionId: randomUUID(),
+    sessionReplaySegmentId,
+    batchId: randomUUID(),
+    startedAtMs: Date.now() - 1_000,
+    sentAtMs: Date.now(),
+  });
+  expect(replayBatch.status).toBe(200);
+  const secondUser = await Auth.fastSignUp();
+  const serverSegmentId = randomUUID();
+
+  const res = await uploadTelemetryBatch({
+    user_id: secondUser.userId,
+    refresh_token_id: refreshTokenId,
+    session_replay_segment_id: serverSegmentId,
+    events: [{ event_type: "server_action", event_at_ms: Date.now(), data: { ok: true } }],
+  }, { accessType: "server" });
+  expect(res.status).toBe(200);
+
+  const queryRes = await queryAnalyticsUntil({
+    query: "SELECT user_id, refresh_token_id, session_replay_id, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: serverSegmentId },
+  }, (r) => r.body?.result?.length === 1);
+
+  expect(queryRes?.status).toBe(200);
+  const row = (queryRes?.body as any).result[0];
+  expect(row.user_id).toBe(secondUser.userId);
+  expect(row.refresh_token_id).toBe(refreshTokenId);
+  expect(row.session_replay_id).toBeNull();
+  expect(row.parent_span_ids).toEqual([`rti-${refreshTokenId}`]);
+  expect(firstUser.userId).not.toBe(secondUser.userId);
+});
+
 it("rejects the forwarded server context under client auth", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
