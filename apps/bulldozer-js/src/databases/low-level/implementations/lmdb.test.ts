@@ -99,4 +99,44 @@ describe("LMDB low-level database", () => {
       await rm(path, { recursive: true, force: true });
     }
   });
+
+  it("coalesces independent writes into one delayed transaction", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "coalesce" });
+      const store = db.declareKvStore("store");
+      const beforeVersion = db.getDebugInfo().currentVersion;
+
+      const first = await store.setAll([{ key: buffer("a"), value: buffer("one") }]);
+      const second = await store.setAll([{ key: buffer("b"), value: buffer("two") }]);
+
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion);
+      await db.waitUntilAvailable(db.combineSeqs(first.seq, second.seq));
+
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion + 1);
+      expect(text((await store.get(buffer("a"))).buffer)).toBe("one");
+      expect(text((await store.get(buffer("b"))).buffer)).toBe("two");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("does not deadlock when one queued write requires another queued write", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "same-batch-dependency" });
+      const store = db.declareKvStore("store");
+      const beforeVersion = db.getDebugInfo().currentVersion;
+
+      const first = await store.setAll([{ key: buffer("parent"), value: buffer("first") }]);
+      const second = await store.setAll([{ key: buffer("child"), value: buffer("second") }], { requiresSeq: db.combineSeqs(first.seq) });
+
+      await db.waitUntilAvailable(second.seq);
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion + 1);
+      expect(text((await store.get(buffer("parent"))).buffer)).toBe("first");
+      expect(text((await store.get(buffer("child"))).buffer)).toBe("second");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
 });

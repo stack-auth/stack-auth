@@ -209,7 +209,7 @@ describe("payments schema", () => {
     // With calendar-anchored repeats, the first monthly boundary off the epoch anchor is
     // 1970-02-01 (31 days), not the 30-day MONTH_MS approximation.
     const firstRepeatMillis = Date.UTC(1970, 1, 1);
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
 
     expect(await balanceAt(snapshot, group, "credits", 0)).toBe(10);
     expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
@@ -232,8 +232,8 @@ describe("payments schema", () => {
       endedAtMillis: subEndMillis,
     }) as unknown as PiledriverObject);
 
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
-    snapshot = await snapshot.tick(new Date(subEndMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
+    snapshot = (await snapshot.tick(new Date(subEndMillis))).newSnapshot;
 
     const group = customerGroup("u-repeat");
     const txns = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[])
@@ -270,7 +270,7 @@ describe("payments schema", () => {
       ...overrides,
     }) as unknown as PiledriverObject;
     snapshot = await set(snapshot, schema.subscriptions, "sub-rewrite", subRow());
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
 
     const group = customerGroup("u-rewrite");
     const txnIds = async () => ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
@@ -287,7 +287,7 @@ describe("payments schema", () => {
     // Quantity upgrade: history keeps the originally granted quantities; only future repeats scale.
     snapshot = await set(snapshot, schema.subscriptions, "sub-rewrite", subRow({ quantity: 2, currentPeriodStartMillis: firstRepeatMillis }));
     expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(20);
-    snapshot = await snapshot.tick(new Date(secondRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(secondRepeatMillis))).newSnapshot;
     expect(await balanceAt(snapshot, group, "credits", secondRepeatMillis)).toBe(40);
     const secondGrant = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).find(txn => txn.txnId === `igr:sub-rewrite:${secondRepeatMillis}`);
     expect(secondGrant?.entries).toMatchObject([{ type: "item-quantity-change", itemId: "credits", quantity: 20 }]);
@@ -314,7 +314,7 @@ describe("payments schema", () => {
       ...overrides,
     });
     snapshot = await set(snapshot, schema.oneTimePurchases, "otp-rewrite", otpRow());
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
 
     const group = customerGroup("u-otp-rewrite");
     expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
@@ -323,7 +323,7 @@ describe("payments schema", () => {
     // survive the write, and future repeats stop at the revocation.
     snapshot = await set(snapshot, schema.oneTimePurchases, "otp-rewrite", otpRow({ revokedAtMillis: Date.UTC(1970, 1, 10) }));
     expect(await balanceAt(snapshot, group, "credits", firstRepeatMillis)).toBe(10);
-    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 2, 1)));
+    snapshot = (await snapshot.tick(new Date(Date.UTC(1970, 2, 1)))).newSnapshot;
     const txnIds = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
     expect(txnIds).toEqual([`igr:otp-rewrite:${firstRepeatMillis}`, "otp:otp-rewrite"]);
   });
@@ -341,12 +341,12 @@ describe("payments schema", () => {
       ...overrides,
     }) as unknown as PiledriverObject;
     snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow());
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
 
     // Cancellation arrives as a rewrite of the live row (that's how the Stripe sync works); the
     // end event must fire off the *existing* fold state, expiring the actually-emitted grants.
     snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis }));
-    snapshot = await snapshot.tick(new Date(subEndMillis));
+    snapshot = (await snapshot.tick(new Date(subEndMillis))).newSnapshot;
 
     const group = customerGroup("u-seal");
     const txns = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[])
@@ -362,7 +362,7 @@ describe("payments schema", () => {
     // Once ended, further webhook rewrites must not re-arm the fold: no duplicate subscription-end,
     // no resumed repeats past the end.
     snapshot = await set(snapshot, schema.subscriptions, "sub-seal", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis, currentPeriodStartMillis: firstRepeatMillis }));
-    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 3, 1)));
+    snapshot = (await snapshot.tick(new Date(Date.UTC(1970, 3, 1)))).newSnapshot;
     const txnIdsAfter = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
     expect(txnIdsAfter).toEqual([`igr:sub-seal:${firstRepeatMillis}`, "sub-end:sub-seal", "sub-start:sub-seal"]);
   });
@@ -399,7 +399,7 @@ describe("payments schema", () => {
 
     // The fold is sealed: later rewrites and ticks add nothing (no duplicate end).
     snapshot = await set(snapshot, schema.subscriptions, "sub-switch", subRow({ status: "canceled", endedAtMillis: subEndMillis, canceledAtMillis: subEndMillis, currentPeriodStartMillis: subEndMillis }));
-    snapshot = await snapshot.tick(new Date(Date.UTC(1970, 2, 1)));
+    snapshot = (await snapshot.tick(new Date(Date.UTC(1970, 2, 1)))).newSnapshot;
     const txnIdsAfter = ((await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[]).map(txn => txn.txnId).sort(stringCompare);
     expect(txnIdsAfter).toEqual(["sub-end:sub-switch", "sub-start:sub-switch"]);
   });
@@ -661,7 +661,7 @@ describe("transactions-by-tenancy date index", () => {
       product: product({ credits: { quantity: 10, repeat: [1, "month"], expires: "when-repeated" } }),
       currentPeriodEndMillis: 2 * MONTH_MS,
     }) as unknown as PiledriverObject);
-    snapshot = await snapshot.tick(new Date(firstRepeatMillis));
+    snapshot = (await snapshot.tick(new Date(firstRepeatMillis))).newSnapshot;
     snapshot = await setRefund(snapshot, { txnId: "refund:sub-start:sub-grant:uuid1", customerId: "u-grant", createdAtMillis: 5_000 });
 
     const txnIds = ((await rowDatas(snapshot, schema.transactions, customerGroup("u-grant"))) as unknown as TransactionRow[])

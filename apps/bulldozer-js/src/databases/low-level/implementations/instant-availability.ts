@@ -1,6 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
-import { traceSpan } from "../../../otel.js";
+import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
@@ -84,14 +84,14 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     });
   };
   const waitForPendingSeqRecordBudget = async () => {
-    await traceSpan({ description: "bulldozer-js.low-level.instant.waitForPendingSeqRecordBudget", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
+    await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitForPendingSeqRecordBudget", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
       while (pendingSeqRecords.size >= maxPendingSeqRecords) {
         await pendingSeqRecordsChanged;
       }
     });
   };
   const withWriteGate = async <T>(operation: () => Promise<T>): Promise<T> => {
-    return await traceSpan({ description: "bulldozer-js.low-level.instant.withWriteGate", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
+    return await traceSpanHot({ description: "bulldozer-js.low-level.instant.withWriteGate", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
       const previousOperation = currentWriteGateOperation;
       let releaseCurrentOperation: () => void;
       currentWriteGateOperation = new Promise<void>(resolve => {
@@ -109,7 +109,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   const createSeq = (underlyingSeq: Promise<DatabaseSeq>) => {
     const seq = toSeq(crypto.randomUUID());
     underlyingSeq.catch(() => {});
-    const underlyingAvailable = traceSpan({ description: "bulldozer-js.low-level.instant.underlyingAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
+    const underlyingAvailable = traceSpanHot({ description: "bulldozer-js.low-level.instant.underlyingAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
       const resolvedUnderlyingSeq = await underlyingSeq;
       await wrapped.waitUntilAvailable(resolvedUnderlyingSeq);
     });
@@ -169,7 +169,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
 
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key) {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.get", attributes }, async (span) => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.get", attributes }, async (span) => {
           const cached = cachedValues.get(cacheKey(key));
           span.setAttribute("bulldozer.low_level.instant.cache_hit", cached !== undefined);
           if (cached !== undefined) {
@@ -185,13 +185,13 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         });
       },
       async setAll(entries, setOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           if (entries.length === 0) return { seq: setOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => setAllLocked(entries, setOptions));
         });
       },
       async deleteAll(keys) {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           if (keys.length === 0) return { seq: initialSeq };
           return await withWriteGate(async () => {
             const keysForWrapped = keys.map(cloneArrayBuffer);
@@ -207,7 +207,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         });
       },
       async insertAll(values, insertOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
           if (values.length === 0) return { keys: [], seq: insertOptions?.requiresSeq ?? initialSeq };
           return await withWriteGate(async () => {
             const valuesForWrapped = values.map(cloneArrayBuffer);
@@ -221,7 +221,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         });
       },
       async compareAndSet(key, compare, value, compareAndSetOptions) {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.compareAndSet", attributes }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.compareAndSet", attributes }, async () => {
           // The read+compare must happen inside the SAME write-gate critical section as the
           // subsequent write; otherwise two concurrent calls could both read the same value,
           // both pass the comparison, and both write — each returning wasSet: true, defeating
@@ -235,7 +235,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
         });
       },
       async debugEntries() {
-        return await traceSpan({ description: "bulldozer-js.low-level.instant.debugEntries", attributes }, async () => await wrappedStore.debugEntries?.() ?? []);
+        return await traceSpanHot({ description: "bulldozer-js.low-level.instant.debugEntries", attributes }, async () => await wrappedStore.debugEntries?.() ?? []);
       },
     };
 
@@ -243,6 +243,23 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   };
 
   return {
+    getDebugInfo() {
+      return {
+        backend: "instant-availability",
+        constructorArguments: { wrapped, options },
+        wrapped,
+        dbId,
+        maxPendingSeqRecords,
+        initialSeq,
+        seqRecords,
+        createdSeqRecords,
+        underlyingAvailableSeqRecords,
+        pendingSeqRecords,
+        currentWriteGateOperation,
+        pendingSeqRecordsChanged,
+        cacheMaps,
+      };
+    },
     declareKvStore(id) {
       return declareStoreOrDump(wrapped.declareKvStore(id) as LowLevelKvStore & LowLevelKvDump);
     },
@@ -250,13 +267,13 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       return declareStoreOrDump(wrapped.declareKvDump(id) as LowLevelKvStore & LowLevelKvDump);
     },
     async waitUntilAvailable() {
-      return await traceSpan({ description: "bulldozer-js.low-level.instant.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {});
+      return await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {});
     },
     async waitUntilDurable(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.instant.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilDurable(await getUnderlyingSeq(seq)));
+      await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilDurable(await getUnderlyingSeq(seq)));
     },
     async waitUntilReplicated(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.instant.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilReplicated(await getUnderlyingSeq(seq)));
+      await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.waitUntilReplicated(await getUnderlyingSeq(seq)));
     },
     combineSeqs(...seqs) {
       if (seqs.length === 0) return initialSeq;
@@ -266,7 +283,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       return createSeq((async () => wrapped.combineSeqs(...await Promise.all(seqs.map(async seq => await getUnderlyingSeq(seq)))))());
     },
     async debugSnapshot() {
-      return await traceSpan({ description: "bulldozer-js.low-level.instant.debugSnapshot", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.debugSnapshot?.() ?? { stores: {}, dumps: {} });
+      return await traceSpanHot({ description: "bulldozer-js.low-level.instant.debugSnapshot", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.debugSnapshot?.() ?? { stores: {}, dumps: {} });
     },
     debugInstantAvailability() {
       return {
@@ -277,7 +294,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       };
     },
     async waitUntilUnderlyingAvailable(seq) {
-      await traceSpan({ description: "bulldozer-js.low-level.instant.waitUntilUnderlyingAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await getSeqRecord(seq).underlyingAvailable);
+      await traceSpanHot({ description: "bulldozer-js.low-level.instant.waitUntilUnderlyingAvailable", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await getSeqRecord(seq).underlyingAvailable);
     },
     initialSeq,
   };

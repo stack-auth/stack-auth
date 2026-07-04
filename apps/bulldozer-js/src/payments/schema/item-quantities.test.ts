@@ -630,7 +630,7 @@ describe("item quantities: full-pipeline integration", () => {
       currentPeriodEndMillis: 11 * DAY_MS + MONTH_MS,
       createdAtMillis: 11 * DAY_MS,
     }) as unknown as PiledriverObject);
-    snapshot = await snapshot.tick(new Date(11 * DAY_MS));
+    snapshot = (await snapshot.tick(new Date(11 * DAY_MS))).newSnapshot;
     expect(await balanceAt(snapshot, customerGroup("u-upgrade"), "emails", 11 * DAY_MS)).toBe(500);
   });
 
@@ -663,7 +663,7 @@ describe("item quantities: full-pipeline integration", () => {
     // The first monthly reset off the epoch anchor is 1970-02-01 (calendar-anchored, not 30 days),
     // still well before the manual grant's 3-month absolute expiry, so the reset ranks soonest.
     const firstResetMillis = Date.UTC(1970, 1, 1);
-    snapshot = await snapshot.tick(new Date(firstResetMillis));
+    snapshot = (await snapshot.tick(new Date(firstResetMillis))).newSnapshot;
     expect(await balanceAt(snapshot, g, "emails", firstResetMillis)).toBe(200);
   });
 });

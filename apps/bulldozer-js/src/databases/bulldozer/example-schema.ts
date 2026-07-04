@@ -348,7 +348,7 @@ export async function createExampleFungibleLedgerDatabase() {
   await db.applyRemainingMigrations();
   await db.withSnapshotReplicated(async snapshot => {
     for (const [rowIdentifier, rowData] of Object.entries(exampleLedgerRows)) {
-      snapshot = await snapshot.setOrDeleteRow({ tableId: storedTableId, rowIdentifier, newRowData: rowData as unknown as PiledriverObject });
+      snapshot = (await snapshot.setOrDeleteRow({ tableId: storedTableId, rowIdentifier, newRowData: rowData as unknown as PiledriverObject })).newSnapshot;
     }
     return snapshot;
   });
