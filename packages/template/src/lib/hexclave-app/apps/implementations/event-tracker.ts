@@ -46,11 +46,13 @@ export type TrackOptions = {
    */
   root?: boolean,
   /**
-   * Drop specific ambient parents ("I don't want THAT span as a parent").
-   * Filters the FINAL merged parent list — an excluded span stays excluded even
-   * when it re-enters via a kept child's frozen chain, which means "descendants
-   * of the excluded span" queries will not match this item (by design; that is
-   * the literal meaning of the option, not a dedupe bug).
+   * Drop specific parent span ids from the FINAL merged parent list, after both
+   * ambient parents and explicit `parentIds` have been expanded. This can remove
+   * an explicit parent too; e.g. `{ parentIds: [span], excludeParentIds: [span] }`
+   * produces no parent for `span`. An excluded span stays excluded even when it
+   * re-enters via a kept child's frozen chain, which means "descendants of the
+   * excluded span" queries will not match this item (by design; that is the
+   * literal meaning of the option, not a dedupe bug).
    */
   excludeParentIds?: ParentRef[],
 };

@@ -2,8 +2,9 @@
 
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventTracker, withSpanImpl } from "./event-tracker";
+import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
 
 async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
@@ -22,7 +23,12 @@ function getSentEventTypes(sentBodies: string[]) {
 }
 
 describe("EventTracker", () => {
+  beforeEach(() => {
+    __setAsyncContextModeForTesting("auto");
+  });
+
   afterEach(() => {
+    __setAsyncContextModeForTesting("auto");
     vi.useRealTimers();
   });
 
