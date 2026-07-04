@@ -96,4 +96,31 @@ describe("logIfMcpToolCall", () => {
       response: "done",
     });
   });
+
+  it("logs an errored MCP call but does not trigger a QA review", async () => {
+    logIfMcpToolCall({
+      mcpCallMetadata: {
+        toolName: "queryAnalytics",
+        reason: "review",
+        userPrompt: "show usage",
+      },
+      conversationIdForLog: "conversation-1",
+      correlationId: "correlation-1",
+      messages: [{ role: "user", content: "show usage" }],
+      steps: [],
+      text: "",
+      startedAt: performance.now(),
+      modelId: "model-1",
+      errorMessage: "Error: upstream failed",
+    });
+
+    await Promise.all(backgroundTasks.scheduled);
+
+    // Only the log write fires — no review-mcp-call for an errored response.
+    expect(callInternalTool).toHaveBeenCalledTimes(1);
+    const [logPath, logOptions] = vi.mocked(callInternalTool).mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(logPath).toBe("/api/backend/log-mcp-call");
+    expect(logOptions.body.errorMessage).toBe("Error: upstream failed");
+    expect(logOptions.body.response).toBe("");
+  });
 });

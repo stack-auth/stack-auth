@@ -49,8 +49,11 @@ export function logIfMcpToolCall(args: {
   text: string,
   startedAt: number,
   modelId: string,
+  // Set on the failure path so an MCP-backed question that errored still lands
+  // in the MCP Review workflow (with its error) instead of vanishing.
+  errorMessage?: string,
 }): void {
-  const { mcpCallMetadata, conversationIdForLog, correlationId, messages, steps, text, startedAt, modelId } = args;
+  const { mcpCallMetadata, conversationIdForLog, correlationId, messages, steps, text, startedAt, modelId, errorMessage } = args;
   if (mcpCallMetadata == null || conversationIdForLog == null) return;
   const lastUserMessage = messages.findLast(m => m.role === "user");
   const question = typeof lastUserMessage?.content === "string"
@@ -69,9 +72,12 @@ export function logIfMcpToolCall(args: {
     innerToolCallsJson,
     durationMs: Math.round(performance.now() - startedAt),
     modelId,
-    errorMessage: undefined,
+    errorMessage,
   });
   runAsynchronouslyAndWaitUntil(logPromise);
+  // An errored call has no meaningful response to review — log it, but don't
+  // spend an LLM QA run on it.
+  if (errorMessage != null) return;
   // The automated LLM QA review runs in the internal tool and updates the
   // freshly logged row, so it must only fire after the log write lands.
   runAsynchronouslyAndWaitUntil((async () => {

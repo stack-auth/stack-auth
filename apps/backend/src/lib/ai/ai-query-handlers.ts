@@ -134,6 +134,17 @@ export async function handleGenerateMode(ctx: ModeContext & {
     }).finally(() => clearTimeout(timeoutId));
   } catch (err) {
     logAiQuery({ type: "failure", common, startedAt, err, partialSteps: completedSteps });
+    logIfMcpToolCall({
+      mcpCallMetadata,
+      conversationIdForLog,
+      correlationId,
+      messages,
+      steps: completedSteps,
+      text: "",
+      startedAt,
+      modelId: String(model.modelId),
+      errorMessage: err instanceof Error ? err.stack ?? `${err.name}: ${err.message}` : String(err),
+    });
     throw new StatusError(StatusError.BadGateway, USER_FACING_ERROR_MESSAGE);
   }
 

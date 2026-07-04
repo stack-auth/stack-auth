@@ -29,7 +29,7 @@ const configs = {
     "--no-config",
     "--delete-data=on-conflict",
   ],
-  prod: ["publish", dbName, "--server", "maincloud", "-p", "spacetimedb", "--yes", "--no-config"],
+  prod: ["publish", dbName, "--server", "maincloud", "-p", "spacetimedb", "--no-config"],
 };
 
 const args = configs[target];
