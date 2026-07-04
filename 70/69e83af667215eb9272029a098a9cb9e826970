@@ -1,0 +1,416 @@
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4,131-132
+apps/backend/src/app/api/latest/analytics/query/timing/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-55
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 294-300
+apps/backend/src/lib/ssrf-protection/smtp.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-121
+examples/react-example/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+apps/bulldozer-js/src/databases/bulldozer/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-2804
+apps/bulldozer-js/src/databases/low-level/implementations/instant-availability.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-301
+apps/backend/src/lib/plan-entitlements.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 13,199-213
+  s_5f6c141e19a02d::t_710dc5df93bf1a 214-215
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sign-up-rules/page-client.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 62,86,112-121,194-218,246-279,343,354-373,474-737,759,786,2082-2084
+  s_5f6c141e19a02d::t_bba5288b1fe5eb 2085
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 7,143-144,148-149,154-162,218-220,639
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 165-218
+apps/backend/src/lib/bulldozer-server-client.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-50
+apps/bulldozer-js/src/payments/schema/types.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-148
+apps/e2e/tests/backend/endpoints/api/v1/internal/sign-up-rules-stats.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 197,199
+apps/e2e/tests/backend/endpoints/api/v1/internal-metrics.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 106,108
+sdks/implementations/swift/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/app/api/latest/internal/external-db-sync/status/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 5,855-880
+apps/bulldozer-js/src/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-1093
+examples/e-commerce/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/shared/src/utils/telemetry.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 7-14
+apps/dashboard/src/components/payments/checkout.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4,12-13,27-47,49,85-97,114-116,121-128,147,150,160-164,175-205,210-215,217,233,235
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 242-251
+  s_5f6c141e19a02d::t_d54141a56f8644 252
+apps/bulldozer-js/src/databases/piledriver/data-structures/concat-tree-list.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-121
+apps/backend/src/lib/ssrf-protection/external-db-sync.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-122
+apps/dev-launchpad/public/index.html
+  s_5f6c141e19a02d::t_3d9634d0c3b884 170-178
+  s_5f6c141e19a02d::t_1a071b361896b2 169
+apps/bulldozer-js/src/databases/piledriver/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-793
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-analytics.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 27,443,506,551,561,582
+packages/sc/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/lib/payments/ensure-free-plan.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 49,161
+apps/backend/scripts/verify-data-integrity/payments-verifier.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 7,163-166,168-169
+apps/backend/src/lib/email-queue-step.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 711-740,742-753,755-759
+packages/cli/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+.github/workflows/e2e-fallback-tests.yaml
+  s_5f6c141e19a02d::t_3d9634d0c3b884 94-110
+packages/shared/src/utils/dates.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 197-201,216-221,224-225,228,231-235,244-245,248,254-334
+  s_5f6c141e19a02d::t_87ded6a9ef8ce0 335
+sdks/spec/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/dashboard/src/components/commands/ask-ai.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 44
+apps/bulldozer-js/src/databases/piledriver/data-structures/augmented-tree-map.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-658
+apps/bulldozer-js/.gitignore
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-4
+.gitignore
+  s_5f6c141e19a02d::t_3d9634d0c3b884 6
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/switch/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 317,378
+apps/bulldozer-js/src/sentry.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-51
+apps/backend/src/lib/ssrf-protection/oauth.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-73
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/queries/page-client.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 36,327,381,399
+apps/backend/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3,14,41,55
+.github/workflows/e2e-custom-base-port-api-tests.yaml
+  s_5f6c141e19a02d::t_3d9634d0c3b884 112-128
+apps/backend/src/oauth/providers/base.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 7
+apps/backend/.env
+  s_5f6c141e19a02d::t_3d9634d0c3b884 121-123
+apps/bulldozer-js/src/databases/piledriver/data-structures/augmented-tree-map.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-428
+apps/bulldozer-js/src/load-env.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-27
+apps/dashboard/src/components/commands/run-query.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 13,383,396,410,428
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1
+packages/template/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 5
+apps/bulldozer-js/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-38
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 110
+apps/bulldozer-js/scripts/run-bulldozer-studio.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-10
+apps/dashboard/src/components/vibe-coding/chat-adapters.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 145
+apps/backend/scripts/db-migrations.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 12,187,189-195,236,241-252,258-260,266-268
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 20,22,43,45
+apps/backend/src/lib/payments/ensure-free-plan.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 37,117-118,234
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 2,40,1657-1660,1890
+apps/backend/src/lib/ai/tools/read-config.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-71
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 12,14,39,41,61,82,201,206,228,233,1871,1873
+apps/backend/src/lib/ssrf-protection/external-db-sync.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-145
+apps/bulldozer-js/src/payments/schema/performance.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-244
+apps/bulldozer-js/src/payments/schema/index.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-738
+packages/shared/src/config/schema.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 438-451,570-576,597-608
+  s_5f6c141e19a02d::t_a550dbb4cc9132 609-610
+apps/bulldozer-js/src/databases/low-level/implementations/lmdb.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-102
+docs-mintlify/openapi/admin.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 192-357
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 28,487,609,625,1232,1257
+apps/mcp/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 32
+apps/hosted-components/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 45,53,63
+apps/backend/src/app/api/latest/internal/payments/transactions/refund/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3,8,16,126,167-175,261-271,601,720,812,875,913,970
+apps/backend/src/lib/plan-entitlements.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 5,63-71,179-195
+apps/dev-launchpad/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/app/api/latest/payments/products/[customer_type]/[customer_id]/[product_id]/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 150
+apps/backend/src/lib/ai/prompts.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 69
+.github/workflows/e2e-api-tests.yaml
+  s_5f6c141e19a02d::t_3d9634d0c3b884 118-134
+apps/dashboard/src/app/(main)/purchase/[code]/page-client.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 35-69,164,167,170-172,174,191-192
+apps/backend/src/lib/payments.test.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 8-9,33,86
+apps/backend/src/lib/external-db-sync.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 6,1456,1458
+apps/e2e/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/e2e/tests/backend/endpoints/api/v1/internal/payments-perf.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-218
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 13-14,28-35,102,105,119,122,262-271,282
+apps/bulldozer-js/.eslintrc.cjs
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-4
+apps/bulldozer-js/src/payments/schema/item-quantities.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-762
+docs-mintlify/guides/getting-started/setup.mdx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 9
+.github/workflows/db-migration-backwards-compatibility.yaml
+  s_5f6c141e19a02d::t_3d9634d0c3b884 161-183,391-407
+apps/backend/prisma/seed.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 311-312
+apps/bulldozer-js/src/databases/piledriver/data-structures/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-2
+apps/e2e/tests/backend/endpoints/api/v1/external-db-sync-advanced.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 25,27
+apps/backend/src/app/api/latest/payments/purchases/purchase-session/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 191
+apps/bulldozer-js/src/databases/piledriver/index.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-75
+examples/docs-examples/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+examples/lovable-react-18-example/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+apps/e2e/tests/backend/endpoints/api/v1/payments/switch-plans.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3,7-27,202-204
+  s_5f6c141e19a02d::t_4376fb2a3206ed 205
+apps/backend/src/lib/emails-low-level.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 13,84-92,94-109,113,116
+examples/tanstack-start-demo/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/dashboard/src/components/assistant-ui/tool-fallback.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 35-39
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/query-analytics/page-client.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 9,24,56
+apps/backend/src/lib/ai/tools/read-config.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-32
+apps/backend/src/lib/ssrf-protection/smtp.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-122
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4012-4013,4025-4034,4036-4041
+  s_5f6c141e19a02d::t_5362292e550444 64
+docs-mintlify/llms.txt
+  s_5f6c141e19a02d::t_3d9634d0c3b884 30
+apps/bulldozer-js/src/payments/schema/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-1196
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/query-data-grid.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 34,335,342,465,498
+packages/react/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 471,529-554
+  s_5f6c141e19a02d::t_7227b98ef0ebd0 555-557
+apps/bulldozer-js/src/databases/bulldozer/index.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-1425
+apps/bulldozer-js/src/auth.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-52
+apps/bulldozer-js/src/databases/piledriver/data-structures/concat-tree-list.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-333
+examples/demo/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/bulldozer-js/src/databases/low-level/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-72
+apps/backend/src/app/api/latest/internal/payments/transactions/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1,3,36-48,56
+packages/shared/src/schema-fields.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 447-452,455-461
+apps/e2e/tests/backend/endpoints/api/v1/ai-query.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 355
+apps/bulldozer-js/src/databases/low-level/implementations/in-memory.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-174
+apps/bulldozer-js/src/databases/low-level/implementations/instant-availability.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-156
+docs/content/docs/(guides)/apps/analytics.mdx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 79-88
+examples/js-example/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/app/api/latest/analytics/query/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-106
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/teams/[teamId]/team-analytics.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 25,239,283,352
+apps/e2e/tests/backend/endpoints/api/v1/external-db-sync-basics.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 41,43
+apps/e2e/tests/backend/endpoints/api/v1/token-refresh-events.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 21,23
+apps/dashboard/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+examples/supabase/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/app/api/latest/integrations/stripe/webhooks/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 237
+docs-mintlify/openapi/server.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 192-357
+packages/shared/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/lib/payments.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 573,595,616
+apps/bulldozer-js/src/otel.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-45
+apps/backend/src/lib/ssrf-protection/oauth.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-102
+apps/backend/src/lib/payments/schema/types.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 7
+docs-mintlify/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/ui/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/lib/stripe.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 339,396
+packages/shared/src/interface/server-interface.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 15,1065-1081
+  s_5f6c141e19a02d::t_2fae7ffc4cb61f 1082-1083
+apps/backend/.env.development
+  s_5f6c141e19a02d::t_3d9634d0c3b884 80
+apps/bulldozer-js/.env
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-15
+apps/bulldozer-js/src/databases/bulldozer/performance.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-1176
+apps/backend/src/app/api/latest/team-invitations/accept/verification-code-handler.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4,11,91-107
+apps/backend/src/lib/ssrf-protection/core.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-172
+apps/bulldozer-js/vitest.config.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-21
+apps/bulldozer-js/src/databases/bulldozer/example-schema.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-356
+apps/skills/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+docs/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 902-911,920,926-927,929
+examples/convex/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/js/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+apps/backend/scripts/verify-data-integrity/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1,173-176
+apps/backend/src/lib/payments/customer-data.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 8,10,24-33,47-56,92-101
+packages/shared-backend/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/bulldozer-js/src/databases/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-31
+apps/e2e/tests/backend/endpoints/api/v1/payments/items.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 227-259
+apps/dashboard/src/components/hexclave-companion/ai-chat-widget.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 452
+pnpm-workspace.yaml
+  s_5f6c141e19a02d::t_3d9634d0c3b884 49-50
+apps/bulldozer-js/scripts/profile-bulldozer-performance.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-273
+apps/internal-tool/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+packages/shared/src/utils/currencies.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 21-54,88-121
+  s_5f6c141e19a02d::t_fadbff94d61886 122
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 320-323,364
+apps/backend/scripts/regen-internal-subscriptions-to-latest.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 335-343
+apps/backend/src/app/api/latest/teams/crud.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 138
+apps/bulldozer-js/tsconfig.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-33
+apps/backend/src/private/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1
+apps/backend/src/scripts/regen-internal-subscriptions-to-latest.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 59-64,99
+apps/bulldozer-js/.env.development
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-15
+apps/dashboard/src/components/commands/create-dashboard/create-dashboard-preview.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 125
+examples/middleware/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/next/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4
+apps/dashboard/src/components/payments/checkout.test.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-204
+apps/bulldozer-js/src/databases/bulldozer/studio.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-461
+sdks/spec/src/apps/server-app.spec.md
+  s_5f6c141e19a02d::t_3d9634d0c3b884 264-294
+apps/mock-oauth-server/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/use-admin-app.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 4,30-33,51-53
+  s_5f6c141e19a02d::t_2120644806a8b1 54
+apps/backend/src/lib/events.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 9,282-292
+apps/backend/src/app/api/latest/payments/items/[customer_type]/[customer_id]/[item_id]/update-quantity/route.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 123
+apps/backend/scripts/bulldozer-payments-init.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 2,4-10,12-18,22-26,28-68,70-71,73-78,80-81,84-86,88,91-94,96,107-119,121-131,133-144,146,148,156-157,170-179,182-187,190-269,272-449,451-453,457-460,462-613,615-618,621-624,626-634,636-681,683,685-694,696,698-705,707-717,719-744,746-777,779,781-865
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 561,563,974-987,1078,1255,1294
+apps/e2e/tests/js/email.test.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 184-185
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 10,151-200,206-209,215-218,224-227,233-241,248-311
+packages/template/package-template.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 16
+apps/e2e/.env.development
+  s_5f6c141e19a02d::t_3d9634d0c3b884 17
+apps/backend/src/lib/payments/transaction-entry-indexes.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-5
+apps/backend/src/app/api/latest/team-invitations/[id]/accept/route.tsx
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3,10,116-132
+apps/bulldozer-js/src/databases/low-level/implementations/lmdb.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-478
+apps/bulldozer-js/src/payments/schema/schema-test-helpers.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 1-93
+examples/cjs-test/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+apps/backend/src/lib/ai/tools/index.ts
+  s_5f6c141e19a02d::t_3d9634d0c3b884 8,14,53-56
+  s_5f6c141e19a02d::t_e199c818b37c18 57-60
+packages/dashboard-ui-components/package.json
+  s_5f6c141e19a02d::t_3d9634d0c3b884 3
+packages/tanstack-start/package.json
+  s_5f6c141e19a02d::t_b21ad5d25ce1a8 4
+pnpm-lock.yaml
+  s_5f6c141e19a02d::t_bccc6f003e4cdd 197,335-383,496,3472-3474,3613-3629,4913-4915,5328-5362,5456-5485,5727-5730,5782-5787,5806-5811,5836-5847,5854-5859,5872-5877,5884-5889,5896-5901,5908-5913,5920-5925,5932-5937,5944-5949,5962-5967,5974-5979,6365-6370,6407-6412,6431-6436,6443-6448,6473-6478,6491-6496,6543-6548,6567-6578,6603-6608,6621-6622,6627-6632,6645-6650,6669-6674,6681-6686,8703-8705,9616-9622,11972-11986,12459-12466,12527-12529,12620-12623,14183-14186,14432-14434,14763-14769,14971-14973,15004-15007,15205-15207,17063-17066,17353-17356,17626-17629,18222-18224,20129-20130,20354-20368,21014,21106-21107,21465-21485,22192-22209,22364-22367,22464-22467,22481-22485,22506-22520,22531-22539,22558-22568,22580-22591,22604-22612,22622-22631,22642-22648,22657-22667,22679-22687,22706-22714,22724-22731,22743,22752,22754,22762,22770,22772,22789,22796,22806,22808,22817,22845,22854,22856,22863,22865,22872,22880,22917,22924,22933,22935,22954,22973,22989,23005,23012,23021,23023,23045,23062,23069,23078,23080,23097,23115,23124,23132,23141,23149,23157,23169,23171,23182,23201,23208,23210,23218,23249,23257,23265,23267,23279-23289,23312,23347-23352,23371-23378,23387-23397,23436-23440,23451-23455,23466-23467,23472-23474,23479-23481,23486-23487,23492-23493,23504-23509,23514,23528-23540,23569-23574,23587,23590-23619,23647,23658-23664,23686-23692,23703-23709,23726,26670,26679,26722,26726,26728-26729,26732,26753,26777-26778,26782-26783,26829,26833-26834,26838,26842-26843,26881,26887,27019-27020,28614-28622,29262,29269,31259-31270,31903,32322-32323,32491-32492,32592-32600,34469-34485,34869-34870,35362-35377,35898-35899,35918-35921,36156-36157,37601,38584-38587,39065-39070,39387-39388,40048-40049
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7069e83af667215eb9272029a098a9cb9e826970",
+  "prompts": {},
+  "sessions": {
+    "s_5f6c141e19a02d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2a74-f31c-7593-81cc-341238c45741",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
