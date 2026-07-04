@@ -21,7 +21,7 @@ import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
-import { initSentry } from "./sentry.js";
+import { initSentry, resolveBulldozerSentryEnvironment } from "./sentry.js";
 
 const sentryEnabled = initSentry();
 
@@ -1035,6 +1035,7 @@ const startupFields = {
   port: app.server?.port ?? port,
   pid: process.pid,
   nodeVersion: process.version,
+  sentryEnvironment: resolveBulldozerSentryEnvironment(),
   lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
