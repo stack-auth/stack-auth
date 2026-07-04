@@ -444,10 +444,21 @@ import.meta.vitest?.test("countryCodeSchema", async ({ expect }) => {
   await expect(countryCodeSchema.validate(" us ")).resolves.toBe("US");
   await expect(countryCodeSchema.validate("usa")).rejects.toThrow("must be a 2-letter country code");
 });
-export const intervalSchema = yupTuple<Interval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
-export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
+// Interval counts must be >= 1: a zero-length interval is meaningless for billing
+// intervals, free trials, and item repeats alike, and a zero repeat interval in
+// particular makes the bulldozer tick loop spin forever on a never-advancing
+// trigger (see apps/bulldozer-js repeatIntervalMs).
+export const intervalSchema = yupTuple<Interval>([yupNumber().min(1).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
+export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(1).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
 export const intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(['never']).defined());
 export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yupString().oneOf(['never']).defined());
+import.meta.vitest?.test("interval schemas reject a zero/negative count", async ({ expect }) => {
+  await expect(intervalSchema.validate([1, "day"])).resolves.toEqual([1, "day"]);
+  await expect(dayIntervalSchema.validate([2, "month"])).resolves.toEqual([2, "month"]);
+  await expect(intervalSchema.validate([0, "day"])).rejects.toThrow();
+  await expect(dayIntervalSchema.validate([0, "month"])).rejects.toThrow();
+  await expect(dayIntervalSchema.validate([-1, "day"])).rejects.toThrow();
+});
 /**
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.

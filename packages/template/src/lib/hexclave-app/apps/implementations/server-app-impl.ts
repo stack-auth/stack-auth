@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -36,7 +37,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs } from "./span-context";
 
@@ -1653,6 +1654,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await this._emailDeliveryInfoCache.refresh([]);
   }
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
+
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([
       super._refreshUser(session),
@@ -1882,7 +1887,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (endPromise) return endPromise;
         ended = true;
         this._serverGlobalSpans.delete(span);
-        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },

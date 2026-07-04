@@ -558,9 +558,9 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   let queryRes;
   for (let attempt = 0; attempt < 15; attempt++) {
     await wait(500);
-    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    queryRes = await niceBackendFetch("/api/v1/analytics/query", {
       method: "POST",
-      accessType: "admin",
+      accessType: "server",
       body: {
         query: "SELECT event_type, session_replay_segment_id FROM events WHERE session_replay_segment_id = {segId:String} ORDER BY event_at",
         params: { segId: sessionReplaySegmentId },
@@ -971,6 +971,20 @@ it("rejects custom event data larger than the serialized size cap", async ({ exp
   expect(res.body?.error).toContain("Custom event data must be a JSON object");
 });
 
+it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "checkout_completed", event_at_ms: Date.now(), data: { pad: "é".repeat(8_000) } }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+});
+
 it("rejects $-prefixed span types", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
@@ -1061,7 +1075,7 @@ it("accepts a spans-only batch and lands it on the spans surface", async ({ expe
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -1238,7 +1252,7 @@ it("accepts server-key spans without refresh-token ancestry", async ({ expect })
     spans: [makeCustomSpan({ span_id: spanId })],
   }, { accessType: "server" });
   expect(res.status).toBe(200);
-  expect(res.body.inserted).toBe(1);
+  expect(res.body.inserted).toBe(0);
 
   const queryRes = await queryAnalyticsUntil({
     query: "SELECT id, span_type, parent_span_ids, user_id FROM spans WHERE id = {id:String}",
@@ -1277,7 +1291,7 @@ it("accepts a gzipped binary body containing custom events and spans", async ({ 
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 2 },
+      "body": { "inserted": 1 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

@@ -61,7 +61,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, warnTelemetryUnavailableOnce, withSpanImpl, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, warnTelemetryUnavailableOnce, withSpanImpl, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -4009,6 +4009,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (nameError) return rejectedPreCaught(nameError);
     const dataError = getCustomTelemetryDataError(data);
     if (dataError) return rejectedPreCaught(dataError);
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
+    if ("error" in resolved) return rejectedPreCaught(resolved.error);
     warnTelemetryUnavailableOnce();
     return Promise.resolve();
   }
@@ -4020,9 +4022,23 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const nameError = getCustomTelemetryNameError("span", spanType);
     if (nameError) {
       console.error(`Hexclave analytics: ${nameError}`);
-    } else {
-      warnTelemetryUnavailableOnce();
+      return createInertSpan(spanType);
     }
+    const dataError = getCustomTelemetryDataError(options?.data);
+    if (dataError) {
+      console.error(`Hexclave analytics: ${dataError}`);
+      return createInertSpan(spanType);
+    }
+    if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
+      console.error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
+      return createInertSpan(spanType);
+    }
+    const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
+    if ("error" in resolved) {
+      console.error(`Hexclave analytics: ${resolved.error}`);
+      return createInertSpan(spanType);
+    }
+    warnTelemetryUnavailableOnce();
     return createInertSpan(spanType);
   }
 

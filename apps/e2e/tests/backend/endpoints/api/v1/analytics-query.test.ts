@@ -9,9 +9,9 @@ import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body,
   });
 
@@ -36,9 +36,9 @@ async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: 
     await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS[planId].analyticsTimeoutSeconds);
   }
 
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body,
   });
 
@@ -58,7 +58,7 @@ const stripQueryId = <T extends { status: number, body?: Record<string, unknown>
 };
 
 async function fetchQueryTiming(queryId: string) {
-  return await niceBackendFetch("/api/v1/internal/analytics/query/timing", {
+  return await niceBackendFetch("/api/v1/analytics/query/timing", {
     method: "POST",
     accessType: "server",
     body: {
@@ -79,7 +79,7 @@ async function fetchQueryTimingWithRetry(queryId: string, attempts = 5, delayMs 
   return response;
 }
 
-it("can execute a basic query with admin access", async ({ expect }) => {
+it("can execute a basic query with server access", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT 1 as value" });
 
   expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
@@ -198,12 +198,12 @@ it("rejects timeouts longer than max plan limit", async ({ expect }) => {
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/internal/analytics/query:
+            Request validation failed on POST /api/v1/analytics/query:
               - body.timeout_ms must be less than or equal to ${maxSchemaMs}
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/internal/analytics/query:
+          Request validation failed on POST /api/v1/analytics/query:
             - body.timeout_ms must be less than or equal to ${maxSchemaMs}
         \`,
       },
@@ -225,12 +225,12 @@ it("validates required query field", async ({ expect }) => {
         "code": "SCHEMA_ERROR",
         "details": {
           "message": deindent\`
-            Request validation failed on POST /api/v1/internal/analytics/query:
+            Request validation failed on POST /api/v1/analytics/query:
               - body.query must be defined
           \`,
         },
         "error": deindent\`
-          Request validation failed on POST /api/v1/internal/analytics/query:
+          Request validation failed on POST /api/v1/analytics/query:
             - body.query must be defined
         \`,
       },
@@ -1868,9 +1868,9 @@ it("rejects analytics queries when the timeout quota is zero (would otherwise se
   // Wait for the bulldozer timefold to materialize the drained quota.
   await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, 0);
 
-  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+  const response = await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body: {
       query: "SELECT getSetting('max_execution_time') as max_execution_time",
       timeout_ms: 5000,

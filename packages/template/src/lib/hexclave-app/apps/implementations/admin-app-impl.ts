@@ -2,7 +2,6 @@ import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
 import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
-import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
@@ -1217,10 +1216,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return data;
   }
   // END_PLATFORM
-
-  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
-    return await this._interface.queryAnalytics(options);
-  }
 
   async getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse> {
     return await this._interface.getAnalyticsClickmap({

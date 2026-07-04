@@ -468,6 +468,7 @@ describe("EventTracker", () => {
       await expect(tracker.trackCustomEvent("x".repeat(65))).rejects.toThrow(/at most 64 characters/);
       await expect(tracker.trackCustomEvent("ok", [1, 2] as any)).rejects.toThrow(/plain JSON-serializable object/);
       await expect(tracker.trackCustomEvent("ok", { big: "x".repeat(17_000) })).rejects.toThrow(/at most 16000 bytes/);
+      await expect(tracker.trackCustomEvent("ok", { big: "é".repeat(8_000) })).rejects.toThrow(/at most 16000 bytes/);
       await expect(tracker.trackCustomEvent("ok", {}, { parentIds: ["not-a-uuid"] })).rejects.toThrow(/parent ids must be span uuids/);
       // Ignoring the rejected promise entirely must not blow up the test run
       // (the internal catch keeps it from ever being an unhandled rejection).
@@ -522,6 +523,35 @@ describe("EventTracker", () => {
       expect(row.parent_span_ids).toEqual([]);
     } finally {
       tracker.stop();
+    }
+  });
+
+  it("falls back to a finite timestamp when a span is ended with an invalid endedAtMs", async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const span = tracker.startSpan("checkout-flow");
+      const endPromise = span.end({ endedAtMs: Number.NaN });
+      await advancePastFlush();
+      await expect(endPromise).resolves.toBeUndefined();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { ended_at_ms: number | null }[] };
+      expect(payload.spans).toHaveLength(1);
+      expect(payload.spans![0].ended_at_ms).toBeTypeOf("number");
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("endedAtMs must be a finite"));
+    } finally {
+      tracker.stop();
+      errorSpy.mockRestore();
     }
   });
 

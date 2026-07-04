@@ -162,6 +162,60 @@ describe("SessionRecorder flush", () => {
     }
   });
 
+  it("keeps all batches from one flush on the segment id captured before sign-out rotation", async () => {
+    vi.useFakeTimers();
+
+    const storageKey = `hexclave:session-replay:v1:test-project`;
+    localStorage.setItem(storageKey, JSON.stringify({
+      session_id: "test-session",
+      created_at_ms: Date.now(),
+      last_activity_ms: Date.now(),
+    }));
+
+    const sentBodies: string[] = [];
+    const recorder = new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async (body) => {
+          sentBodies.push(body);
+          recorder.setSessionReplaySegmentId("new-segment");
+          return Result.ok(new Response("ok", { status: 200 }));
+        },
+        sessionReplaySegmentId: "old-segment",
+      },
+      {},
+    );
+
+    try {
+      // Force two batches so the second payload is built after sendBatch's
+      // await boundary has had a chance to rotate the recorder id.
+      const largeData = "x".repeat(500_000);
+      const event1 = { type: 2, timestamp: Date.now(), data: largeData };
+      const event2 = { type: 3, timestamp: Date.now(), data: largeData };
+      const sizeOf = (e: unknown) => new TextEncoder().encode(JSON.stringify(e)).byteLength;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._events = [event1, event2];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._eventSizes = [sizeOf(event1), sizeOf(event2)];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (recorder as any)._approxBytes = sizeOf(event1) + sizeOf(event2);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+      await (recorder as any)._flush({ keepalive: false });
+
+      expect(sentBodies).toHaveLength(2);
+      const batch1 = JSON.parse(sentBodies[0]);
+      const batch2 = JSON.parse(sentBodies[1]);
+      expect(batch1.session_replay_segment_id).toBe("old-segment");
+      expect(batch2.session_replay_segment_id).toBe("old-segment");
+    } finally {
+      recorder.stop();
+      localStorage.removeItem(storageKey);
+      vi.useRealTimers();
+    }
+  });
+
   it("sends a single oversized event alone without dropping it", async () => {
     vi.useFakeTimers();
 

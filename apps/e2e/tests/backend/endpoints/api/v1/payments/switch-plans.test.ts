@@ -1,7 +1,29 @@
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
+
+// Stripe webhook processing happens in the background after a fast 200 ack, so
+// the subscription it creates (Prisma + bulldozer dual-write) is only
+// eventually visible to reads. Poll the customer's products until the expected
+// subscription shows up before exercising flows that depend on it.
+async function waitForActiveSubscription(userId: string, productId: string) {
+  for (let i = 0; i < 30; i++) {
+    const res = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+      accessType: "client",
+    });
+    if (res.status !== 200) {
+      throw new Error(`Unexpected ${res.status} reading products for user ${userId}`);
+    }
+    const items = (res.body as { items: { id: string, type: string }[] }).items;
+    if (items.some((item) => item.id === productId && item.type === "subscription")) {
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Subscription for product ${productId} never became visible for user ${userId}`);
+}
 
 async function setupProducts(products: Record<string, any>, productLines?: Record<string, any>) {
   await Project.createAndSwitch();
@@ -176,6 +198,10 @@ it("successfully switches a Stripe-backed subscription to another product", asyn
     },
   });
   expect(webhookRes.status).toBe(200);
+
+  // The webhook processes in the background, so wait for the subscription to
+  // materialize before switching (otherwise the switch races an empty read).
+  await waitForActiveSubscription(userId, "basic");
 
   // Now switch from basic → pro via the switch endpoint
   const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
