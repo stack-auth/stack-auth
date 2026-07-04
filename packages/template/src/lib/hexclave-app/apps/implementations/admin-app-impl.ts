@@ -9,7 +9,7 @@ import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { pick, typedEntries, typedValues } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -910,8 +910,15 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       : "teamId" in options
         ? ["team", options.teamId] as const
         : ["custom", options.customCustomerId] as const;
-    await this._refreshItemCache(customerType, customerId, options.itemId);
-    await this._transactionsCache.invalidateWhere(() => true);
+    try {
+      // Best-effort: the quantity change is already persisted at this point, so
+      // a cache refresh failure must not make the mutation look failed (a retry
+      // would apply the delta twice).
+      await this._refreshItemCache(customerType, customerId, options.itemId);
+      await this._transactionsCache.invalidateWhere(() => true);
+    } catch (error) {
+      captureError("create-item-quantity-change-cache-refresh", error);
+    }
   }
 
   async refundTransaction(options: {

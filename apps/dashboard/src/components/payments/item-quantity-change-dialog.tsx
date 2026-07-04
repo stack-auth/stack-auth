@@ -127,8 +127,8 @@ export function ItemQuantityChangeDialog(props: Props) {
               if (error) setError(null);
             }}
             placeholder="e.g. 10 or -5"
-            inputMode="numeric"
             autoFocus
+            disabled={isSubmitting}
             size="md"
             className={cn(
               "tabular-nums",
@@ -157,6 +157,7 @@ export function ItemQuantityChangeDialog(props: Props) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Support credit for outage"
+            disabled={isSubmitting}
             size="md"
           />
         </div>
