@@ -568,7 +568,8 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2026-07-01: product-level freeTrial removed; free trials are now configured per-price only.
-  // Move saved product-level freeTrial overrides onto prices before stripping them so existing trials keep working.
+  // Treat product-level freeTrial as legacy input only: copy it to prices visible in the same override,
+  // then strip the product-level field before validating against the current schema.
   if (isBranchOrHigher) {
     res = migrateProductLevelFreeTrialsToPrices(res);
   }
@@ -634,7 +635,8 @@ import.meta.vitest?.test("migrateConfigOverride moves product-level freeTrial to
     payments: { products: { pro: { prices: { monthly: { freeTrial: [14, "day"] }, annual: { USD: "100", freeTrial: [7, "day"] } } } } },
   });
 
-  // Product-level freeTrial with no prices is simply removed because there is nowhere safe to preserve it.
+  // Product-level freeTrial with no prices visible in this override is removed because there is nowhere
+  // override-local to preserve it. Other config layers are not inspected by this migration.
   expect(migrateConfigOverride("branch", {
     payments: { products: { pro: { freeTrial: [7, "day"] } } },
   })).toEqual({
@@ -743,6 +745,50 @@ import.meta.vitest?.test("migrateConfigOverride moves product-level freeTrial to
     "payments.products.pro.prices.monthly.USD": "10",
     "payments.products.pro.prices.monthly.freeTrial": [7, "day"],
   });
+});
+
+import.meta.vitest?.test("migrateConfigOverride normalizes legacy product-level freeTrial before branch validation", async ({ expect }) => {
+  const legacyOverride = {
+    payments: {
+      products: {
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          freeTrial: [7, "day"],
+          prices: {
+            monthly: { USD: "10" },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  };
+
+  const unmigratedErrors = await getConfigOverrideErrors(branchConfigSchema, legacyOverride);
+  expect(unmigratedErrors.status).toBe("error");
+
+  const migratedOverride = migrateConfigOverride("branch", legacyOverride);
+  expect(migratedOverride).toEqual({
+    payments: {
+      products: {
+        pro: {
+          displayName: "Pro",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            monthly: { USD: "10", freeTrial: [7, "day"] },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const migratedErrors = await getConfigOverrideErrors(branchConfigSchema, migratedOverride);
+  expect(migratedErrors.status).toBe("ok");
 });
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
