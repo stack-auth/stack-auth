@@ -162,6 +162,34 @@ function withHeapCounters(tree: AugmentedTreeMap<number, number, number>, arity 
   };
 }
 
+function withMultiMapHeapCounters(tree: AugmentedTreeMultiMap<number, number, number, string>, multiMapOptions: ConstructorParameters<typeof AugmentedTreeMultiMap<number, number, number, string>>[0]) {
+  let gets = 0;
+  const seen = new WeakMap<PiledriverHeapObject, PiledriverHeapObject>();
+
+  const wrapRef = (ref: PiledriverHeapObject): PiledriverHeapObject => {
+    const cached = seen.get(ref);
+    if (cached) return cached;
+    const wrapped = {
+      async get() {
+        gets++;
+        const node: any = await ref.get();
+        return isNode(node) ? { ...node, children: node.children.map(wrapChild) } : node;
+      },
+      [isPiledriverHeapObjectSymbol]: true as const,
+    } as PiledriverHeapObject;
+    seen.set(ref, wrapped);
+    return wrapped;
+  };
+  const wrapChild = (child: any) => child ? { ...child, ref: wrapRef(child.ref) } : child;
+  const serialized = tree.toPiledriverObject() as { type: string, tree: { type: string, root: any } };
+
+  return {
+    tree: AugmentedTreeMultiMap.fromPiledriverObject<number, number, number, string>({ ...serialized, tree: { ...serialized.tree, root: wrapChild(serialized.tree.root) } }, multiMapOptions),
+    reset: () => { gets = 0; },
+    gets: () => gets,
+  };
+}
+
 async function collectRefs(tree: AugmentedTreeMap<number, number, number>) {
   const refs = new Set<PiledriverHeapObject>();
   const visit = async (child: Serialized["root"]) => {
@@ -293,6 +321,54 @@ describe("AugmentedTreeMap", () => {
 
     tree = await tree.delete(10, "a");
     expect(await arrayFrom(tree.entries())).toEqual([[10, "b", 2], [11, "a", 4]]);
+  });
+
+  it("answers hasAny without materializing all entries for a key", async () => {
+    const multiMapOptions = {
+      ...options(8),
+      entryIdComparator: stringCompare,
+    };
+    let tree = new AugmentedTreeMultiMap(multiMapOptions);
+
+    expect(await tree.hasAny(10)).toBe(false);
+    for (let i = 0; i < 1000; i++) tree = await tree.add(10, `id-${i}`, i);
+    tree = await tree.add(11, "a", 1);
+
+    expect(await tree.hasAny(10)).toBe(true);
+    expect(await tree.hasAny(11)).toBe(true);
+    expect(await tree.hasAny(12)).toBe(false);
+
+    // hasAny must stay O(depth) even when many entries share the key; getAll here would load
+    // all 1000 entries (hundreds of node reads).
+    const counted = withMultiMapHeapCounters(tree, multiMapOptions);
+    counted.reset();
+    await counted.tree.hasAny(10);
+    expect(counted.gets()).toBeLessThanOrEqual(8);
+  });
+
+  it("uses binary search for bounded range scans inside large nodes", async () => {
+    let comparisons = 0;
+    const countedOptions = {
+      arity: 2048,
+      comparator: (a: number, b: number) => {
+        comparisons++;
+        return a - b;
+      },
+      initialAugmentation: 0,
+      extractAugmentation: (value: number) => value,
+      mergeAugmentations: (...values: number[]) => values.reduce((sum, value) => sum + value, 0),
+      entryIdComparator: stringCompare,
+    };
+    let tree = new AugmentedTreeMultiMap<number, number, number, string>(countedOptions);
+    for (let i = 0; i < 1000; i++) tree = await tree.add(i, "", i);
+
+    comparisons = 0;
+    expect(await arrayFrom(tree.entries({ gte: 990, limit: 1 }))).toEqual([[990, "", 990]]);
+    expect(comparisons).toBeLessThan(80);
+
+    comparisons = 0;
+    expect(await arrayFrom(tree.entries({ lte: 10, reverse: true, limit: 1 }))).toEqual([[10, "", 10]]);
+    expect(comparisons).toBeLessThan(80);
   });
 
   it("keeps heap reads logarithmic for point operations", async () => {

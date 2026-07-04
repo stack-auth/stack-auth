@@ -105,6 +105,15 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     return result;
   }
 
+  // O(depth) existence check. Callers that only need to know whether *any* entry exists for a
+  // key must use this instead of `getAll(key).length`: getAll materializes every entry, which
+  // is O(n) when many entries share one key (e.g. null-ish join keys) and turns bulk ingestion
+  // into O(n^2).
+  async hasAny(key: Key): Promise<boolean> {
+    for await (const _entry of this.entries({ gte: key, lte: key, limit: 1 })) return true;
+    return false;
+  }
+
   async add(key: Key, entryId: EntryId, value: Value) {
     return await this.insertRaw({ key, id: entryId }, value);
   }
@@ -197,6 +206,8 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
 
   private async *rawEntries(options: EntryOptions<MultiKey<Key, EntryId>> = {}): AsyncIterable<[MultiKey<Key, EntryId>, Value]> {
     let yielded = 0;
+    const lowerBound = this.tighterLowerBound(options.gte, options.gt);
+    const upperBound = this.tighterUpperBound(options.lte, options.lt);
     const isInRange = (key: MultiKey<Key, EntryId>) =>
       (options.gte === undefined || this.compareKeys(key, options.gte) >= 0)
       && (options.gt === undefined || this.compareKeys(key, options.gt) > 0)
@@ -211,18 +222,21 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         if (isInRange(entry[0]) && (options.limit === undefined || yielded++ < options.limit)) yield [entry[0], await tree.loadValue(entry[1])];
       };
 
+      const startIndex = lowerBound === undefined ? 0 : tree.lowerBoundIndex(node.entries, lowerBound);
+      const endIndex = upperBound === undefined ? node.entries.length : tree.lowerBoundIndex(node.entries, upperBound);
+
       if (options.reverse) {
-        for (let i = node.entries.length - 1; i >= 0; i--) {
-          yield* walk(tree, node.children[i + 1] ?? null);
+        yield* walk(tree, node.children[endIndex] ?? null);
+        for (let i = endIndex - 1; i >= startIndex; i--) {
           yield* visitEntry(node.entries[i]);
+          yield* walk(tree, node.children[i] ?? null);
         }
-        yield* walk(tree, node.children[0] ?? null);
       } else {
-        for (let i = 0; i < node.entries.length; i++) {
+        for (let i = startIndex; i < endIndex; i++) {
           yield* walk(tree, node.children[i] ?? null);
           yield* visitEntry(node.entries[i]);
         }
-        yield* walk(tree, node.children[node.entries.length] ?? null);
+        yield* walk(tree, node.children[endIndex] ?? null);
       }
     };
 
@@ -333,13 +347,30 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
   }
 
   private search(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], key: MultiKey<Key, EntryId>) {
+    const low = this.lowerBoundIndex(entries, key);
+    return { index: low, found: low < entries.length && this.compareKeys(entries[low][0], key) === 0 };
+  }
+
+  private lowerBoundIndex(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], key: MultiKey<Key, EntryId>) {
     let low = 0, high = entries.length;
     while (low < high) {
       const mid = (low + high) >> 1;
       if (this.compareKeys(entries[mid][0], key) < 0) low = mid + 1;
       else high = mid;
     }
-    return { index: low, found: low < entries.length && this.compareKeys(entries[low][0], key) === 0 };
+    return low;
+  }
+
+  private tighterLowerBound(a: MultiKey<Key, EntryId> | undefined, b: MultiKey<Key, EntryId> | undefined) {
+    if (a === undefined) return b;
+    if (b === undefined) return a;
+    return this.compareKeys(a, b) >= 0 ? a : b;
+  }
+
+  private tighterUpperBound(a: MultiKey<Key, EntryId> | undefined, b: MultiKey<Key, EntryId> | undefined) {
+    if (a === undefined) return b;
+    if (b === undefined) return a;
+    return this.compareKeys(a, b) <= 0 ? a : b;
   }
 
   private async finishUpsert(result: { root: Child<MultiKey<Key, EntryId>, Augmentation>, split?: Split<MultiKey<Key, EntryId>, Value, Augmentation> }) {
