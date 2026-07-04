@@ -1,0 +1,23 @@
+apps/backend/src/lib/session-replays.tsx
+  s_7944732389f342::t_2821eb87b24581 10,18
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_7944732389f342::t_e3ad6e641872cd 1014-1051
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_7944732389f342::t_2821eb87b24581 240-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cb858e7a2e83133c1d44ad8f06d32c61671d3123",
+  "prompts": {},
+  "sessions": {
+    "s_7944732389f342": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2a99-805e-78e1-b5ab-f1d11c8e5d50",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
