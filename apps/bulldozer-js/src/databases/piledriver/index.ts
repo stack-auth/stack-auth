@@ -1,5 +1,4 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
@@ -75,13 +74,6 @@ export type PiledriverDatabaseOptions = {
 // fine: only true ancestors are in the path. Plain-object cycles are detected separately with a
 // push/pop set during the synchronous payload walk.
 type HeapSerializationPath = ReadonlySet<PiledriverHeapObject>;
-type PendingHeapInsert = {
-  buffer: ArrayBuffer,
-  requiresSeq: DatabaseSeq,
-  serializationTimingStats: PiledriverSerializationTimingStats | undefined,
-  resolve: (value: { key: ArrayBuffer, seq: DatabaseSeq }) => void,
-  reject: (error: unknown) => void,
-};
 type PiledriverSerializationTimingStats = {
   primitiveNodes: number,
   arrayNodes: number,
@@ -99,9 +91,6 @@ type PiledriverSerializationTimingStats = {
   heapObjectGetTotalMs: number,
   heapObjectSerializeTotalMs: number,
   heapObjectInsertAwaitTotalMs: number,
-  heapInsertFlushes: number,
-  heapInsertValues: number,
-  heapInsertAllTotalMs: number,
   branchStats: Map<string, PiledriverSerializationBranchStats>,
   heapObjectCacheMissesByShape: Map<string, number>,
   heapObjectCacheMissInlineNodeCountsByShape: Map<string, number>,
@@ -156,9 +145,6 @@ function emptyPiledriverSerializationTimingStats(): PiledriverSerializationTimin
     heapObjectGetTotalMs: 0,
     heapObjectSerializeTotalMs: 0,
     heapObjectInsertAwaitTotalMs: 0,
-    heapInsertFlushes: 0,
-    heapInsertValues: 0,
-    heapInsertAllTotalMs: 0,
     branchStats: new Map(),
     heapObjectCacheMissesByShape: new Map(),
     heapObjectCacheMissInlineNodeCountsByShape: new Map(),
@@ -264,56 +250,12 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq }>();
   const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.refIdentity === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
   const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>>();
-  let pendingHeapInserts: PendingHeapInsert[] = [];
-  let heapInsertFlushScheduled = false;
 
   const cacheHeapObjectByKey = (key: ArrayBuffer, heapObj: PiledriverHeapObject, seq: DatabaseSeq) => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const refIdentity = crypto.randomUUID();
     heapObjectsByHeapKeyBase64.set(keyBase64, { refIdentity, object: new WeakRef(heapObj), seq });
     heapObjectsByHeapKeyFinalizer.register(heapObj, [keyBase64, refIdentity]);
-  };
-  const flushPendingHeapInserts = async () => {
-    const batch = pendingHeapInserts;
-    pendingHeapInserts = [];
-    heapInsertFlushScheduled = false;
-    if (batch.length === 0) return;
-
-    try {
-      const entriesBySerializationTimingStats = new Map<PiledriverSerializationTimingStats, number>();
-      for (const entry of batch) {
-        if (entry.serializationTimingStats !== undefined) {
-          entriesBySerializationTimingStats.set(entry.serializationTimingStats, (entriesBySerializationTimingStats.get(entry.serializationTimingStats) ?? 0) + 1);
-        }
-      }
-      const heapInsertAllStartedAt = performance.now();
-      const inserted = await heapDump.insertAll(batch.map(entry => entry.buffer));
-      const heapInsertAllMs = performance.now() - heapInsertAllStartedAt;
-      for (const [stats, entryCount] of entriesBySerializationTimingStats) {
-        stats.heapInsertFlushes++;
-        stats.heapInsertValues += entryCount;
-        stats.heapInsertAllTotalMs += heapInsertAllMs * entryCount / batch.length;
-      }
-      for (let i = 0; i < batch.length; i++) {
-        // Most heap payloads (e.g. leaf row data) have no heap children, so requiresSeq is the
-        // singleton initial seq — skip the combined-seq allocation entirely for those.
-        batch[i].resolve({ key: inserted.keys[i], seq: batch[i].requiresSeq === lowLevelDb.initialSeq ? inserted.seq : lowLevelDb.combineSeqs(batch[i].requiresSeq, inserted.seq) });
-      }
-    } catch (error) {
-      for (const entry of batch) entry.reject(error);
-    }
-  };
-  const insertHeapObjectBatched = async (buffer: ArrayBuffer, requiresSeq: DatabaseSeq, serializationTimingStats: PiledriverSerializationTimingStats | undefined): Promise<{ key: ArrayBuffer, seq: DatabaseSeq }> => {
-    return await new Promise((resolve, reject) => {
-      pendingHeapInserts.push({ buffer, requiresSeq, serializationTimingStats, resolve, reject });
-      if (!heapInsertFlushScheduled) {
-        heapInsertFlushScheduled = true;
-        const timeout = setTimeout(() => {
-          runAsynchronously(async () => await flushPendingHeapInserts());
-        }, 0);
-        timeout.unref();
-      }
-    });
   };
 
   // Deduplicates and drops initial seqs before delegating to the low-level combineSeqs. This is
@@ -373,9 +315,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const serialized = await serializePiledriverObject(heapObject, childHeapPath, serializationTimingStats, branchKey);
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectSerializeTotalMs += performance.now() - heapObjectSerializeStartedAt;
         const heapObjectInsertStartedAt = performance.now();
-        const result = await insertHeapObjectBatched(serialized.buffer, serialized.seq, serializationTimingStats);
+        const inserted = await heapDump.insertAll([serialized.buffer], { requiresSeq: serialized.seq });
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectInsertAwaitTotalMs += performance.now() - heapObjectInsertStartedAt;
-        return result;
+        return { key: inserted.keys[0], seq: inserted.seq };
       });
     })();
     heapKeysAndSeqByHeapObjects.set(heapObj, promise);
@@ -740,9 +682,6 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           heapObjectGetTotalMs: timingStats.heapObjectGetTotalMs,
           heapObjectSerializeTotalMs: timingStats.heapObjectSerializeTotalMs,
           heapObjectInsertAwaitTotalMs: timingStats.heapObjectInsertAwaitTotalMs,
-          heapInsertFlushes: timingStats.heapInsertFlushes,
-          heapInsertValues: timingStats.heapInsertValues,
-          heapInsertAllTotalMs: timingStats.heapInsertAllTotalMs,
           topHeapObjectCacheMissShapes,
           topSerializationBranches,
         });
