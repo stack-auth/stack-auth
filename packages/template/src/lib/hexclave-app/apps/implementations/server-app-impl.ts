@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -36,7 +37,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
 import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
@@ -1655,6 +1656,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await this._emailDeliveryInfoCache.refresh([]);
   }
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
+
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([
       super._refreshUser(session),
@@ -1987,7 +1992,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (endPromise) return endPromise;
         ended = true;
         this._serverGlobalSpans.delete(span);
-        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },
@@ -2004,13 +2009,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       getPropagationHeaders: () => ({
         [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
           projectId: this.projectId,
+          ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
           ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
           customParentSpanIds: [...parentSpanIds, spanId],
         }),
       }),
-      // Server→server fetch: no CORS and the call itself is explicit intent, so
-      // the origin policy is bypassed; an explicitly-set header still wins and
-      // no-cors requests are still skipped.
+      // Server runtimes do not have a browser-like current origin, so span.fetch
+      // fails closed instead of leaking context to arbitrary third-party URLs.
+      // Use getPropagationHeaders() explicitly when the target service is trusted.
       fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         try {
           const initWithHeader = buildFetchInitWithSpanContext({
@@ -2019,7 +2025,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
             headerValue: span.getPropagationHeaders()[SPAN_CONTEXT_HEADER],
             selfOrigin: null,
             allowedOrigins: [],
-            bypassOriginPolicy: true,
           });
           return globalThis.fetch(input, initWithHeader ?? init);
         } catch {
@@ -2127,7 +2132,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._serverTelemetryInFlight.add(tracked);
     // Serverless keep-alive (AnalyticsOptions.waitUntil): un-awaited sends must
     // survive runtime teardown.
-    this._analyticsOptions?.waitUntil?.(tracked);
+    registerTelemetryBackgroundTask(this._analyticsOptions?.waitUntil, tracked, "server telemetry");
   }
 }
 

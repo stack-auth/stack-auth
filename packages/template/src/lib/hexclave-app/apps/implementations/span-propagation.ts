@@ -244,34 +244,61 @@ export type FetchSpanPropagationOptions = {
   getAllowedOrigins: () => readonly string[],
 };
 
+type FetchSpanPropagationState = {
+  originalFetch: typeof fetch,
+  wrappedFetch: typeof fetch,
+  options: FetchSpanPropagationOptions,
+};
+
+function getFetchSpanPropagationState(): FetchSpanPropagationState | null {
+  const value = (globalThis as typeof globalThis & Record<string, unknown>)[FETCH_WRAP_MARKER];
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<FetchSpanPropagationState>;
+  if (typeof candidate.originalFetch !== "function" || typeof candidate.wrappedFetch !== "function") return null;
+  if (candidate.options === undefined) return null;
+  return candidate as FetchSpanPropagationState;
+}
+
 /**
  * Installs a global `fetch` wrapper that attaches `x-hexclave-span-context` to
  * same-origin (or allowlisted) outgoing requests. Idempotent (a global marker
- * guards against HMR / multiple app instances), chains through the existing fetch
- * so it composes with other wrappers (Sentry/OTel), and never lets propagation
- * throw into the caller's request. Header merging preserves native fetch header
- * semantics exactly, then adds ours. Returns an uninstaller, or null if fetch is
- * unavailable or already wrapped.
+ * guards against HMR / multiple app instances), but later app instances update
+ * the shared provider so the wrapper does not keep the first app's project/session
+ * forever. It chains through the existing fetch so it composes with other wrappers
+ * (Sentry/OTel), and never lets propagation throw into the caller's request.
+ * Header merging preserves native fetch header semantics exactly, then adds ours.
+ * Returns an uninstaller, or null if fetch is unavailable or already wrapped.
  */
 export function installFetchSpanPropagation(options: FetchSpanPropagationOptions): (() => void) | null {
   const g = globalThis as typeof globalThis & Record<string, unknown>;
-  if (typeof g.fetch !== "function" || g[FETCH_WRAP_MARKER]) return null;
+  if (typeof g.fetch !== "function") return null;
+  const existingState = getFetchSpanPropagationState();
+  if (existingState) {
+    existingState.options = options;
+    return null;
+  }
+  if (g[FETCH_WRAP_MARKER]) return null;
 
   // Keep the exact original reference to restore on uninstall, but call it bound —
   // an unbound `fetch` throws "Illegal invocation" in browsers.
   const originalFetch = g.fetch as typeof fetch;
   const callFetch = originalFetch.bind(globalThis) as typeof fetch;
+  const state: FetchSpanPropagationState = {
+    originalFetch,
+    wrappedFetch: originalFetch,
+    options,
+  };
 
   const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     try {
-      const context = options.getContext();
+      const context = state.options.getContext();
       if (context) {
         const initWithHeader = buildFetchInitWithSpanContext({
           input,
           init,
           headerValue: encodeSpanContextHeader(context),
-          selfOrigin: options.getSelfOrigin(),
-          allowedOrigins: options.getAllowedOrigins(),
+          selfOrigin: state.options.getSelfOrigin(),
+          allowedOrigins: state.options.getAllowedOrigins(),
         });
         if (initWithHeader) {
           return callFetch(input, initWithHeader);
@@ -283,8 +310,9 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
     return callFetch(input as RequestInfo | URL, init);
   }) as typeof fetch;
 
+  state.wrappedFetch = wrapped;
   g.fetch = wrapped;
-  g[FETCH_WRAP_MARKER] = true;
+  g[FETCH_WRAP_MARKER] = state;
 
   return () => {
     if (g.fetch === wrapped) g.fetch = originalFetch;

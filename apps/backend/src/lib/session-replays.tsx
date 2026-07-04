@@ -7,6 +7,7 @@ export const MAX_SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 export async function findRecentSessionReplay(prisma: PrismaClientWithReplica<PrismaClient>, options: {
   tenancyId: string,
   refreshTokenId: string,
+  projectUserId?: string,
 }) {
   const cutoff = new Date(Date.now() - SESSION_IDLE_TIMEOUT_MS);
   const maxDurationCutoff = new Date(Date.now() - MAX_SESSION_DURATION_MS);
@@ -14,6 +15,7 @@ export async function findRecentSessionReplay(prisma: PrismaClientWithReplica<Pr
     where: {
       tenancyId: options.tenancyId,
       refreshTokenId: options.refreshTokenId,
+      ...options.projectUserId !== undefined ? { projectUserId: options.projectUserId } : {},
       updatedAt: { gte: cutoff },
       startedAt: { gte: maxDurationCutoff },
     },

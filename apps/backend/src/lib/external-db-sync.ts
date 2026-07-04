@@ -3,6 +3,7 @@ import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@hexclave/shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -1452,10 +1453,9 @@ async function syncDatabase(
       );
     }
     assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
+    const externalClientOptions = await getSafeExternalPostgresClientOptions(dbConfig.connectionString);
 
-    const externalClient = new Client({
-      connectionString: dbConfig.connectionString,
-    });
+    const externalClient = new Client(externalClientOptions);
 
     let needsResync = false;
     const syncResult = await Result.fromPromise((async () => {

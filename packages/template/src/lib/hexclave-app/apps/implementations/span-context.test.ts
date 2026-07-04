@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SpanRef } from "./event-tracker";
-import { __setAsyncContextModeForTesting, getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
 
 function ref(spanId: string, parentSpanIds: string[] = []): SpanRef {
   return { spanId, parentSpanIds };
@@ -167,6 +168,27 @@ describe("span context (exact sync-window reads)", () => {
     release();
     await promise;
     // One extra microtask for the .finally(pop) chained on the result.
+    await Promise.resolve();
+    expect(getAmbientSpanRefs()).toEqual([]);
+  });
+
+  it("runWithSpanFrame treats thenables as async for best-effort readers", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    const waiters: ((value: string) => void)[] = [];
+    const thenable = {
+      then: (resolve: (value: string) => void) => {
+        waiters.push(resolve);
+      },
+    };
+
+    const result = runWithSpanFrame(ref("thenable"), () => thenable);
+    expect(result).toBe(thenable);
+    expect(exactIds()).toEqual([]);
+    expect(ambientIds()).toEqual(["thenable"]);
+    const settled = Promise.resolve(thenable);
+    await Promise.resolve();
+    for (const resolve of waiters) resolve("done");
+    await settled;
     await Promise.resolve();
     expect(getAmbientSpanRefs()).toEqual([]);
   });
