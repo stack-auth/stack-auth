@@ -4,7 +4,7 @@
  * Data flows: SeedEventsTables -> Events -> Transactions -> TransactionEntries -> CompactedEntries -> OwnedProducts / ItemQuantities
  *
  * All field names use camelCase since they're stored as JSONB keys
- * in the BulldozerStorageEngine.
+ * in bulldozer-js's stored tables.
  */
 
 

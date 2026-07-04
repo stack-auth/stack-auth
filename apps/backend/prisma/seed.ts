@@ -308,8 +308,8 @@ export async function seed() {
   //
   // We create the subscription with raw Prisma (matching seed-dummy-data.ts)
   // rather than grantProductToCustomer because bulldozer storage tables
-  // aren't initialized at this point in the seed yet. The Bulldozer init
-  // call right below this block ingresses the row into the ledger.
+  // aren't initialized at this point in the seed yet. The row is ingressed into
+  // bulldozer later by the explicit db:backfill-bulldozer-from-prisma step.
   const growthProduct = updatedInternalTenancy.config.payments.products.growth;
   if (growthProduct.customerType === 'team') {
     const existingGrowthSub = await internalPrisma.subscription.findFirst({
