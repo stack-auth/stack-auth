@@ -1,0 +1,21 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_a03326f8296a7c::t_ade6eef4e961f7 49-55
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_a03326f8296a7c::t_ade6eef4e961f7 5,7,26-29,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6363de0f2b8a2a2ea797414cd287a8156624aff5",
+  "prompts": {},
+  "sessions": {
+    "s_a03326f8296a7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2a79-9bcf-78c1-ac6a-afdc4ebaa131",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
