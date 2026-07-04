@@ -2,7 +2,14 @@ import { useState, useMemo, useEffect } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import type { McpCallLogRow } from "../types";
 import { toDate } from "../utils";
+import { reviewVisible } from "../lib/mcp-review-api";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { clsx } from "clsx";
+
+// Matches MAX_BACKFILL_ITEMS in the backfill-visible route — one click enqueues
+// at most this many reviews.
+const MAX_REVIEW_BATCH = 50;
 
 function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + "..." : str;
@@ -74,6 +81,8 @@ export function CallLogList({
   const [toolFilter, setToolFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize>(50);
+  const [reviewing, setReviewing] = useState(false);
+  const [justQueued, setJustQueued] = useState(false);
 
   const filteredAndSorted = useMemo(() => {
     let result = rows;
@@ -138,6 +147,32 @@ export function CallLogList({
   const pageCount = Math.max(1, Math.ceil(filteredAndSorted.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
   const pageRows = filteredAndSorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+  // Rows on the current page that have never been auto-reviewed (qaReviewedAt is
+  // null — including ones whose inline review failed and left no verdict). The
+  // "Review visible" button backfills these; capped to the endpoint's batch max.
+  const reviewableOnPage = pageRows
+    .filter(r => r.qaReviewedAt == null)
+    .slice(0, MAX_REVIEW_BATCH);
+
+  const handleReviewVisible = async () => {
+    if (reviewableOnPage.length === 0 || reviewing) return;
+    setReviewing(true);
+    try {
+      await reviewVisible(reviewableOnPage.map(r => ({
+        correlationId: r.correlationId,
+        question: r.question,
+        reason: r.reason,
+        response: r.response,
+      })));
+      setJustQueued(true);
+      setTimeout(() => setJustQueued(false), 3000);
+    } catch (err) {
+      captureError("internal-tool-review-visible", err);
+    } finally {
+      setReviewing(false);
+    }
+  };
 
   useEffect(() => {
     setPage(0);
@@ -241,7 +276,26 @@ export function CallLogList({
               Clear filters
             </button>
           )}
-          <span className="text-xs text-gray-400 ml-auto">
+          <button
+            className={clsx(
+              "ml-auto px-2 py-1 text-xs rounded border",
+              reviewableOnPage.length === 0 || reviewing
+                ? "border-gray-200 text-gray-400 bg-white cursor-default"
+                : "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+            )}
+            onClick={() => { runAsynchronously(handleReviewVisible); }}
+            disabled={reviewableOnPage.length === 0 || reviewing}
+            title="Run the automated QA review for the not-yet-reviewed rows on this page. Runs in the background."
+          >
+            {reviewing
+              ? "Queuing…"
+              : justQueued
+                ? "Queued ✓"
+                : reviewableOnPage.length === 0
+                  ? "All reviewed"
+                  : `Review ${reviewableOnPage.length} on page`}
+          </button>
+          <span className="text-xs text-gray-400">
             {filteredAndSorted.length} of {rows.length} calls
           </span>
         </div>

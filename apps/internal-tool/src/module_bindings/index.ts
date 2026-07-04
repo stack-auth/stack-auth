@@ -35,22 +35,19 @@ import {
 
 // Import all reducer arg schemas
 import AddManualQaReducer from "./add_manual_qa_reducer";
-import AddOperatorReducer from "./add_operator_reducer";
 import ClearMcpQaReviewReducer from "./clear_mcp_qa_review_reducer";
 import DeleteAiQueryLogReducer from "./delete_ai_query_log_reducer";
 import DeleteMcpCallLogReducer from "./delete_mcp_call_log_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
-import EnrollServiceReducer from "./enroll_service_reducer";
 import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
-import RemoveOperatorReducer from "./remove_operator_reducer";
-import RemoveOperatorsForUserReducer from "./remove_operators_for_user_reducer";
 import SetHumanReviewedReducer from "./set_human_reviewed_reducer";
-import UpdateAiQueryCostReducer from "./update_ai_query_cost_reducer";
+import TouchSessionReducer from "./touch_session_reducer";
+import UpdateAiQueryUsageReducer from "./update_ai_query_usage_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 import UpdateQaEntryWithPublishReducer from "./update_qa_entry_with_publish_reducer";
-import UpsertQaFromCallAndMarkReviewedReducer from "./upsert_qa_from_call_and_mark_reviewed_reducer";
 import UpsertQaFromCallReducer from "./upsert_qa_from_call_reducer";
+import UpsertQaFromCallAndMarkReviewedReducer from "./upsert_qa_from_call_and_mark_reviewed_reducer";
 
 // Import all procedure arg schemas
 
@@ -58,24 +55,12 @@ import UpsertQaFromCallReducer from "./upsert_qa_from_call_reducer";
 import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
 import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
 import MyVisibleQaEntriesRow from "./my_visible_qa_entries_table";
-import OperatorsRow from "./operators_table";
 import PublishedQaRow from "./published_qa_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  operators: __table({
-    name: 'operators',
-    indexes: [
-      { accessor: 'identity', name: 'operators_identity_idx_btree', algorithm: 'btree', columns: [
-        'identity',
-      ] },
-    ],
-    constraints: [
-      { name: 'operators_identity_key', constraint: 'unique', columns: ['identity'] },
-    ],
-  }, OperatorsRow),
   myVisibleAiQueryLog: __table({
     name: 'my_visible_ai_query_log',
     indexes: [
@@ -109,22 +94,19 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
-  __reducerSchema("add_operator", AddOperatorReducer),
   __reducerSchema("clear_mcp_qa_review", ClearMcpQaReviewReducer),
   __reducerSchema("delete_ai_query_log", DeleteAiQueryLogReducer),
   __reducerSchema("delete_mcp_call_log", DeleteMcpCallLogReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
-  __reducerSchema("enroll_service", EnrollServiceReducer),
   __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
-  __reducerSchema("remove_operator", RemoveOperatorReducer),
-  __reducerSchema("remove_operators_for_user", RemoveOperatorsForUserReducer),
   __reducerSchema("set_human_reviewed", SetHumanReviewedReducer),
-  __reducerSchema("update_ai_query_cost", UpdateAiQueryCostReducer),
+  __reducerSchema("touch_session", TouchSessionReducer),
+  __reducerSchema("update_ai_query_usage", UpdateAiQueryUsageReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
   __reducerSchema("update_qa_entry_with_publish", UpdateQaEntryWithPublishReducer),
-  __reducerSchema("upsert_qa_from_call_and_mark_reviewed", UpsertQaFromCallAndMarkReviewedReducer),
   __reducerSchema("upsert_qa_from_call", UpsertQaFromCallReducer),
+  __reducerSchema("upsert_qa_from_call_and_mark_reviewed", UpsertQaFromCallAndMarkReviewedReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

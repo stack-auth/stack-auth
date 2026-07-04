@@ -9,14 +9,14 @@
  * The SDK does NOT guarantee these are mutually exclusive: an aborted
  * request can fire `onError({ AbortError })` AND `onAbort()` for the same
  * lifecycle. Without a guard at the call site, both will invoke
- * `logAiQueryFailure`, which schedules a SpacetimeDB `log_ai_query` insert
+ * `logAiQuery`, which schedules a SpacetimeDB `log_ai_query` insert
  * keyed by `correlationId`. The second insert violates the
  * `UNIQUE(correlation_id)` constraint, throws a SenderError that gets
  * silently swallowed via `captureError`, and we lose any signal that
  * logging is unreliable.
  *
  * The tests below encode the desired behavior: each request lifecycle
- * triggers `logAiQueryFailure` / `logAiQuerySuccess` AT MOST ONCE,
+ * triggers `logAiQuery` AT MOST ONCE,
  * regardless of which subset of callbacks the SDK emits. With no fix in
  * place, the multi-callback tests fail with `Received: 2`.
  */
@@ -27,8 +27,7 @@ const hoisted = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/ai/loggers/ai-query-logger", () => ({
-  logAiQuerySuccess: vi.fn(),
-  logAiQueryFailure: vi.fn(),
+  logAiQuery: vi.fn(),
 }));
 
 vi.mock("@/lib/ai/loggers/mcp-call-logger", () => ({
@@ -49,12 +48,11 @@ vi.mock("ai", async (importOriginal) => {
   };
 });
 
-import { logAiQueryFailure, logAiQuerySuccess } from "@/lib/ai/loggers/ai-query-logger";
+import { logAiQuery } from "@/lib/ai/loggers/ai-query-logger";
 import { handleStreamMode } from "./ai-query-handlers";
 import type { CommonLogFields } from "./types";
 
-const mockedLogAiQueryFailure = vi.mocked(logAiQueryFailure);
-const mockedLogAiQuerySuccess = vi.mocked(logAiQuerySuccess);
+const mockedLogAiQuery = vi.mocked(logAiQuery);
 
 const baseCommon: CommonLogFields = {
   correlationId: "test-correlation-id",
@@ -76,7 +74,7 @@ function makeCtx(): Parameters<typeof handleStreamMode>[0] {
     // streamText is mocked, so the model object is never actually consulted.
     // Cast through unknown to bypass the LanguageModel structural type.
     model: { modelId: "test/model" } as unknown as Parameters<typeof handleStreamMode>[0]["model"],
-    cachedMessages: [],
+    messagesWithCachedSystemPrompt: [],
     toolsArg: undefined,
     stepLimit: 1,
     common: baseCommon,
@@ -90,8 +88,7 @@ function makeCtx(): Parameters<typeof handleStreamMode>[0] {
 
 beforeEach(() => {
   hoisted.capturedCallbacks.current = undefined;
-  mockedLogAiQueryFailure.mockClear();
-  mockedLogAiQuerySuccess.mockClear();
+  mockedLogAiQuery.mockClear();
 });
 
 describe("handleStreamMode terminal callback logging", () => {
@@ -106,22 +103,22 @@ describe("handleStreamMode terminal callback logging", () => {
       providerMetadata: undefined,
       response: { id: "gen-1" },
     });
-    expect(mockedLogAiQuerySuccess).toHaveBeenCalledTimes(1);
-    expect(mockedLogAiQueryFailure).not.toHaveBeenCalled();
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "success" }));
   });
 
   it("logs failure exactly once when only onError fires", () => {
     handleStreamMode(makeCtx());
     hoisted.capturedCallbacks.current!.onError!({ error: new Error("upstream model error") });
-    expect(mockedLogAiQueryFailure).toHaveBeenCalledTimes(1);
-    expect(mockedLogAiQuerySuccess).not.toHaveBeenCalled();
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
   });
 
   it("logs failure exactly once when only onAbort fires", () => {
     handleStreamMode(makeCtx());
     hoisted.capturedCallbacks.current!.onAbort!();
-    expect(mockedLogAiQueryFailure).toHaveBeenCalledTimes(1);
-    expect(mockedLogAiQuerySuccess).not.toHaveBeenCalled();
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
   });
 
   // --- Bug repro: multi-callback firings should still log only once -------
@@ -131,14 +128,16 @@ describe("handleStreamMode terminal callback logging", () => {
     hoisted.capturedCallbacks.current!.onError!({ error: new DOMException("aborted", "AbortError") });
     hoisted.capturedCallbacks.current!.onAbort!();
     // FAILS today: receives 2. After applying the dedup guard, receives 1.
-    expect(mockedLogAiQueryFailure).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
   });
 
   it("logs failure at most once when an aborted stream fires onAbort THEN onError(AbortError)", () => {
     handleStreamMode(makeCtx());
     hoisted.capturedCallbacks.current!.onAbort!();
     hoisted.capturedCallbacks.current!.onError!({ error: new DOMException("aborted", "AbortError") });
-    expect(mockedLogAiQueryFailure).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
   });
 
   it("does not log failure if onError fires after onFinish (post-completion error)", () => {
@@ -151,9 +150,9 @@ describe("handleStreamMode terminal callback logging", () => {
       response: { id: "gen-1" },
     });
     hoisted.capturedCallbacks.current!.onError!({ error: new Error("post-finish error") });
-    // FAILS today: success=1, failure=1. After fix: success=1, failure=0.
-    expect(mockedLogAiQuerySuccess).toHaveBeenCalledTimes(1);
-    expect(mockedLogAiQueryFailure).not.toHaveBeenCalled();
+    // FAILS today: success=1, failure=1. After fix: success=1.
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "success" }));
   });
 
   it("does not log success twice if onFinish fires twice (defensive)", () => {
@@ -167,7 +166,7 @@ describe("handleStreamMode terminal callback logging", () => {
     };
     hoisted.capturedCallbacks.current!.onFinish!(finishArgs);
     hoisted.capturedCallbacks.current!.onFinish!(finishArgs);
-    expect(mockedLogAiQuerySuccess).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
   });
 
   it("uses the first terminal callback (idempotent on rapid-fire abort+error)", () => {
@@ -178,6 +177,7 @@ describe("handleStreamMode terminal callback logging", () => {
     hoisted.capturedCallbacks.current!.onError!({ error: new Error("trailing model error") });
     hoisted.capturedCallbacks.current!.onAbort!();
     hoisted.capturedCallbacks.current!.onAbort!();
-    expect(mockedLogAiQueryFailure).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
+    expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
   });
 });

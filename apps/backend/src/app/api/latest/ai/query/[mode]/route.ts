@@ -83,9 +83,9 @@ export const POST = createSmartRouteHandler({
     // excluded `system` at the schema layer to prevent prompt-injection via
     // client-supplied system messages — see schema.ts.
     const modelMessages = messages as unknown as ModelMessage[];
-    const cachedMessages: ModelMessage[] = [systemMessage, ...modelMessages];
+    const messagesWithCachedSystemPrompt: ModelMessage[] = [systemMessage, ...modelMessages];
 
-    const ctx: ModeContext = { model, cachedMessages, toolsArg, stepLimit, common, startedAt };
+    const ctx: ModeContext = { model, messagesWithCachedSystemPrompt, toolsArg, stepLimit, common, startedAt };
     const extras = {
       messages,
       mcpCallMetadata: body.mcpCallMetadata ?? undefined,

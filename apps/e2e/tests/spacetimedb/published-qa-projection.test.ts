@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
-import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { createCleanupScope, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
+import { callReducer, createCleanupScope, isSpacetimedbReachable, signMemberToken, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 
@@ -39,28 +38,16 @@ describe.skipIf(!canRun)("published_qa view projection", () => {
   });
 
   it("exposes only {id, question, answer, publishedAt} — no reviewer or QA internals", async ({ expect }) => {
-    const reviewerIdentity = await mintIdentity();
-    scope.trackIdentity(reviewerIdentity.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewerIdentity.identity },
-    });
-    expect(enroll.status).toBe(200);
+    const reviewerToken = await signMemberToken();
 
     const markerQuestion = `test-projection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     scope.trackMcpQuestion(markerQuestion);
     const markerAnswer = "answer-for-projection-test";
 
-    const publish = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: markerQuestion, answer: markerAnswer, publish: true, requestId: markerQuestion },
-    });
-    expect(publish.status).toBe(200);
+    const publish = await callReducer(reviewerToken, "add_manual_qa", [markerQuestion, markerAnswer, true, markerQuestion]);
+    expect(publish.ok, publish.body).toBe(true);
 
-    // Query with a fresh non-operator token — published_qa is anonymousView so any
+    // Query with a fresh claimless token — published_qa is anonymousView so any
     // bearer works; using a stranger identity matches the real public-page scenario.
     const stranger = await mintIdentity();
     const result = await sqlQuery(stranger.token, "SELECT * FROM published_qa");

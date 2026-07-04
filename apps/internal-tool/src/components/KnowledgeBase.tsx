@@ -7,8 +7,10 @@ import { toDate } from "../utils";
 
 type KbFilter = "all" | "published" | "draft";
 
-export function KnowledgeBase({ rows, onSave, onDelete }: {
+export function KnowledgeBase({ rows, connectionState, connectionErrorMessage, onSave, onDelete }: {
   rows: QaEntriesRow[];
+  connectionState: "connecting" | "connected" | "error";
+  connectionErrorMessage: string | null;
   onSave: (qaId: bigint, question: string, answer: string, publish: boolean) => Promise<void> | void;
   onDelete: (qaId: bigint) => Promise<void> | void;
 }) {
@@ -86,7 +88,15 @@ export function KnowledgeBase({ rows, onSave, onDelete }: {
       </div>
 
       {/* List */}
-      {kbRows.length === 0 ? (
+      {connectionState === "error" ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {connectionErrorMessage ?? "Unable to load Q&A entries."}
+        </div>
+      ) : connectionState === "connecting" ? (
+        <div className="text-center text-gray-400 py-12">
+          <p className="text-sm">Loading Q&A entries...</p>
+        </div>
+      ) : kbRows.length === 0 ? (
         <div className="text-center text-gray-400 py-12">
           <p className="text-sm">No Q&A entries yet</p>
           <p className="text-xs mt-1">Add one with the "+ Add Q&A" button above</p>

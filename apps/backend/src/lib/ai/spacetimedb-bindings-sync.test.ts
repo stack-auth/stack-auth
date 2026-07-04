@@ -109,18 +109,14 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
     expect(clientReducerNames).toEqual(serverReducerNames);
   });
 
-  it("operators server columns match operators client row binding", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'operators',\s*public:\s*true\s*\},\s*/);
-    const clientSource = read("apps/internal-tool/src/module_bindings/operators_table.ts");
-    const clientFields = extractClientFields(clientSource, /__t\.row\(/);
-    expect(clientFields).toEqual(serverFields);
-  });
-
-  it("operators server columns match Operators algebraic type in types.ts", () => {
-    const serverFields = extractServerFields(serverSchema, /name:\s*'operators',\s*public:\s*true\s*\},\s*/);
-    const typesSource = read("apps/internal-tool/src/module_bindings/types.ts");
-    const clientFields = extractClientFields(typesSource, /export const Operators = __t\.object\("Operators",\s*/);
-    expect(clientFields).toEqual(serverFields);
+  // The `sessions` table is private (never in client bindings), so there is
+  // no positional-drift risk for it; instead pin the auth-critical behaviors:
+  // expired sessions are garbage-collected and the private views gate on a
+  // session row.
+  it("session-gated views check membership and expired sessions get collected", () => {
+    expect(serverSchema).toContain("removeExpiredSessions(ctx)");
+    expect(serverSchema).toContain("if (!hasMemberSession(ctx)) return [];");
+    expect(serverSchema).toContain("row.expiresAt.microsSinceUnixEpoch <= now.microsSinceUnixEpoch");
   });
 
   it("qa_entries server columns match my_visible_qa_entries client row binding", () => {
@@ -140,6 +136,13 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
   it("add_manual_qa server reducer args match client reducer binding", () => {
     const serverFields = extractServerFields(serverSchema, /export const add_manual_qa = spacetimedb\.reducer\(\s*/);
     const clientSource = read("apps/internal-tool/src/module_bindings/add_manual_qa_reducer.ts");
+    const clientFields = extractClientFields(clientSource, /export default\s*/);
+    expect(clientFields).toEqual(serverFields);
+  });
+
+  it("update_ai_query_usage server reducer args match client reducer binding", () => {
+    const serverFields = extractServerFields(serverSchema, /export const update_ai_query_usage = spacetimedb\.reducer\(\s*/);
+    const clientSource = read("apps/internal-tool/src/module_bindings/update_ai_query_usage_reducer.ts");
     const clientFields = extractClientFields(clientSource, /export default\s*/);
     expect(clientFields).toEqual(serverFields);
   });

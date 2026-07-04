@@ -1,4 +1,4 @@
-import { logAiQueryFailure, logAiQuerySuccess } from "@/lib/ai/loggers/ai-query-logger";
+import { logAiQuery } from "@/lib/ai/loggers/ai-query-logger";
 import { logIfMcpToolCall } from "@/lib/ai/loggers/mcp-call-logger";
 import type { SystemPromptId } from "@/lib/ai/prompts";
 import type { ContentBlock, McpCallMetadata, MessageLike, ModeContext } from "@/lib/ai/types";
@@ -38,7 +38,7 @@ export function handleStreamMode(ctx: ModeContext & {
   correlationId: string,
   conversationIdForLog: string | undefined,
 }) {
-  const { model, cachedMessages, toolsArg, stepLimit, common, startedAt, messages, mcpCallMetadata, correlationId, conversationIdForLog } = ctx;
+  const { model, messagesWithCachedSystemPrompt, toolsArg, stepLimit, common, startedAt, messages, mcpCallMetadata, correlationId, conversationIdForLog } = ctx;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
   const completedSteps: StepResult<ToolSet>[] = [];
@@ -50,23 +50,23 @@ export function handleStreamMode(ctx: ModeContext & {
   let logged = false;
   const result = streamText({
     model,
-    messages: cachedMessages,
+    messages: messagesWithCachedSystemPrompt,
     tools: toolsArg,
     abortSignal: controller.signal,
     stopWhen: stepCountIs(stepLimit),
     providerOptions: { openrouter: OPENROUTER_PROVIDER_OPTIONS },
     onStepFinish: (step) => { completedSteps.push(step); },
-    onFinish: ({ text, steps, usage, providerMetadata, response }) => {
+    onFinish: ({ text, steps, usage, response }) => {
       clearTimeout(timeoutId);
       if (logged) return;
       logged = true;
-      logAiQuerySuccess({
+      logAiQuery({
+        type: "success",
         common,
         startedAt,
         steps,
         text,
         usage,
-        providerMetadata,
         openrouterGenerationId: response.id,
       });
       logIfMcpToolCall({
@@ -84,13 +84,14 @@ export function handleStreamMode(ctx: ModeContext & {
       clearTimeout(timeoutId);
       if (logged) return;
       logged = true;
-      logAiQueryFailure({ common, startedAt, err: error, partialSteps: completedSteps });
+      logAiQuery({ type: "failure", common, startedAt, err: error, partialSteps: completedSteps });
     },
     onAbort: () => {
       clearTimeout(timeoutId);
       if (logged) return;
       logged = true;
-      logAiQueryFailure({
+      logAiQuery({
+        type: "failure",
         common,
         startedAt,
         err: new Error("Stream aborted (client disconnect or timeout)"),
@@ -116,7 +117,7 @@ export async function handleGenerateMode(ctx: ModeContext & {
   correlationId: string,
   conversationIdForLog: string | undefined,
 }) {
-  const { model, cachedMessages, toolsArg, stepLimit, common, startedAt, messages, mcpCallMetadata, correlationId, conversationIdForLog } = ctx;
+  const { model, messagesWithCachedSystemPrompt, toolsArg, stepLimit, common, startedAt, messages, mcpCallMetadata, correlationId, conversationIdForLog } = ctx;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
   const completedSteps: StepResult<ToolSet>[] = [];
@@ -124,7 +125,7 @@ export async function handleGenerateMode(ctx: ModeContext & {
   try {
     result = await generateText({
       model,
-      messages: cachedMessages,
+      messages: messagesWithCachedSystemPrompt,
       tools: toolsArg,
       abortSignal: controller.signal,
       stopWhen: stepCountIs(stepLimit),
@@ -132,7 +133,7 @@ export async function handleGenerateMode(ctx: ModeContext & {
       onStepFinish: (step) => { completedSteps.push(step); },
     }).finally(() => clearTimeout(timeoutId));
   } catch (err) {
-    logAiQueryFailure({ common, startedAt, err, partialSteps: completedSteps });
+    logAiQuery({ type: "failure", common, startedAt, err, partialSteps: completedSteps });
     throw new StatusError(StatusError.BadGateway, USER_FACING_ERROR_MESSAGE);
   }
 
@@ -155,13 +156,13 @@ export async function handleGenerateMode(ctx: ModeContext & {
     }
   }
 
-  logAiQuerySuccess({
+  logAiQuery({
+    type: "success",
     common,
     startedAt,
     steps: result.steps,
     text: result.text,
     usage: result.usage,
-    providerMetadata: result.providerMetadata,
     openrouterGenerationId: result.response.id,
   });
 

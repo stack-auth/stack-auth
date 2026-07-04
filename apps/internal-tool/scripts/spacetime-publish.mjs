@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Cross-platform SpacetimeDB publish that injects the token, publishes, and
-// always restores the original file — even on failure.
+// Cross-platform SpacetimeDB publish that injects the allowed-issuers/audience
+// auth config, publishes, and always restores the original file — even on
+// failure.
 
 import { spawnSync } from "node:child_process";
 
@@ -37,14 +38,14 @@ if (!args) {
   process.exit(1);
 }
 
-if (target === "prod" && !process.env.STACK_MCP_LOG_TOKEN) {
-  console.error("Error: STACK_MCP_LOG_TOKEN must be set for prod publish");
+if (target === "prod" && !process.env.STACK_SPACETIMEDB_ALLOWED_ISSUERS && !process.env.STACK_SPACETIMEDB_TOKEN_ISSUER) {
+  console.error("Error: STACK_SPACETIMEDB_TOKEN_ISSUER (or STACK_SPACETIMEDB_ALLOWED_ISSUERS) must be set for prod publish — the deployed internal tool's public URL, which serves the OIDC discovery document SpacetimeDB validates tokens against.");
   process.exit(1);
 }
 
 let exitCode = 1;
 try {
-  const inject = spawnSync("node", ["scripts/spacetime-token.mjs", "inject"], { stdio: "inherit" });
+  const inject = spawnSync("node", ["scripts/spacetime-auth-config.mjs", "inject"], { stdio: "inherit" });
   if (inject.status !== 0) {
     exitCode = inject.status ?? 1;
   } else {
@@ -52,7 +53,7 @@ try {
     exitCode = publish.status ?? 1;
   }
 } finally {
-  const restore = spawnSync("node", ["scripts/spacetime-token.mjs", "restore"], { stdio: "inherit" });
+  const restore = spawnSync("node", ["scripts/spacetime-auth-config.mjs", "restore"], { stdio: "inherit" });
   if (restore.status !== 0 && exitCode === 0) {
     exitCode = restore.status ?? 1;
   }

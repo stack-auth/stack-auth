@@ -85,15 +85,6 @@ export type MyVisibleMcpCallLog = __Infer<typeof MyVisibleMcpCallLog>;
 export const MyVisibleQaEntries = __t.object("MyVisibleQaEntries", {});
 export type MyVisibleQaEntries = __Infer<typeof MyVisibleQaEntries>;
 
-export const Operators = __t.object("Operators", {
-  identity: __t.identity(),
-  addedAt: __t.timestamp(),
-  stackUserId: __t.string(),
-  displayName: __t.string(),
-  expiresAt: __t.option(__t.timestamp()),
-});
-export type Operators = __Infer<typeof Operators>;
-
 export const PublishedQa = __t.object("PublishedQa", {});
 export type PublishedQa = __Infer<typeof PublishedQa>;
 
@@ -121,3 +112,11 @@ export const QaEntries = __t.object("QaEntries", {
   lastPublishedAt: __t.option(__t.timestamp()),
 });
 export type QaEntries = __Infer<typeof QaEntries>;
+
+export const Sessions = __t.object("Sessions", {
+  identity: __t.identity(),
+  stackUserId: __t.string(),
+  connectedAt: __t.timestamp(),
+  expiresAt: __t.timestamp(),
+});
+export type Sessions = __Infer<typeof Sessions>;

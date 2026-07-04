@@ -1,19 +1,9 @@
-import { logAiQuery, type AiQueryLogEntry } from "@/lib/ai/loggers/ai-query-logger";
-import { refineGenerationCost, type UsageFields } from "@/lib/ai/openrouter-usage";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { logAiQuery } from "@/lib/ai/loggers/ai-query-logger";
+import type { AiQueryLogEntry, ProxyLogFields } from "@/lib/ai/types";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 
-export type ProxyLogFields = {
-  correlationId: string,
-  parsed: { model: string } & Record<string, unknown>,
-  apiKey: string,
-  durationMs: bigint,
-  responseStatus: number,
-  usage?: UsageFields,
-};
-
 export function buildProxyLogRow(fields: ProxyLogFields): AiQueryLogEntry {
-  const { parsed, apiKey, durationMs, responseStatus, usage, correlationId } = fields;
+  const { parsed, apiKey, durationMs, responseStatus, openrouterGenerationId, correlationId } = fields;
   const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
   const toolNames = tools
     .map((t) => {
@@ -42,13 +32,13 @@ export function buildProxyLogRow(fields: ProxyLogFields): AiQueryLogEntry {
     messagesJson: JSON.stringify(messages),
     stepsJson: "[]",
     finalText: "",
-    inputTokens: usage?.inputTokens,
-    outputTokens: usage?.outputTokens,
-    cachedInputTokens: usage?.cachedInputTokens,
-    cacheCreationTokens: usage?.cacheCreationTokens,
-    costUsd: usage?.costUsd,
+    inputTokens: undefined,
+    outputTokens: undefined,
+    cachedInputTokens: undefined,
+    cacheCreationTokens: undefined,
+    costUsd: undefined,
     cacheDiscountUsd: undefined,
-    openrouterGenerationId: usage?.generationId,
+    openrouterGenerationId,
     stepCount: 0,
     durationMs,
     errorMessage: responseStatus >= 400 ? `upstream ${responseStatus}` : undefined,
@@ -58,20 +48,7 @@ export function buildProxyLogRow(fields: ProxyLogFields): AiQueryLogEntry {
 
 export function scheduleProxyLog(row: AiQueryLogEntry): void {
   try {
-    const safe = (async () => {
-      try {
-        await logAiQuery(row);
-      } catch (e) {
-        captureError("ai-proxy-log-async", e);
-      }
-    })();
-    runAsynchronouslyAndWaitUntil(safe);
-    if (row.openrouterGenerationId != null) {
-      runAsynchronouslyAndWaitUntil(refineGenerationCost({
-        generationId: row.openrouterGenerationId,
-        correlationId: row.correlationId,
-      }));
-    }
+    logAiQuery({ type: "entry", entry: row });
   } catch (e) {
     captureError("ai-proxy-log-sync", e);
   }

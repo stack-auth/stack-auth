@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
-import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { createCleanupScope, findManualQaEntryIdByQuestion, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
+import { callReducer, createCleanupScope, findManualQaEntryIdByQuestion, isSpacetimedbReachable, signMemberToken, mintIdentity, sqlQuery, touchSession, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 
@@ -15,6 +14,13 @@ async function publishedQaContains(question: string): Promise<boolean> {
   return rows.some(r => r.question === question);
 }
 
+async function createMemberSessionToken(): Promise<string> {
+  const reviewerToken = await signMemberToken();
+  const touch = await touchSession(reviewerToken);
+  if (!touch.ok) throw new Error(`touch_session failed: ${touch.body}`);
+  return reviewerToken;
+}
+
 describe.skipIf(!canRun)("published_qa visibility", () => {
   let scope: CleanupScope;
   beforeEach(() => {
@@ -25,143 +31,74 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
   });
 
   it("does not expose rows added with publish:false", async ({ expect }) => {
-    const reviewer = await mintIdentity();
-    scope.trackIdentity(reviewer.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewer.identity },
-    });
-    expect(enroll.status).toBe(200);
+    const reviewerToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("unpublished");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "x", publish: false, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerToken, "add_manual_qa", [marker, "x", false, marker]);
+    expect(add.ok, add.body).toBe(true);
 
     expect(await publishedQaContains(marker)).toBe(false);
   });
 
-  it("removes a row from published_qa when update-qa-entry sets publish:false", async ({ expect }) => {
-    const reviewer = await mintIdentity();
-    scope.trackIdentity(reviewer.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewer.identity },
-    });
-    expect(enroll.status).toBe(200);
+  it("removes a row from published_qa when update_qa_entry_with_publish sets publish:false", async ({ expect }) => {
+    const reviewerToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("to-unpublish");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "x", publish: true, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerToken, "add_manual_qa", [marker, "x", true, marker]);
+    expect(add.ok, add.body).toBe(true);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    const qaId = await findManualQaEntryIdByQuestion(reviewerToken, marker);
     expect(qaId).toBeDefined();
 
-    const update = await niceBackendFetch("/api/latest/internal/mcp-review/update-qa-entry", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        qaId: qaId!.toString(),
-        question: marker,
-        answer: "x",
-        publish: false,
-      },
-    });
-    expect(update.status).toBe(200);
+    const update = await callReducer(reviewerToken, "update_qa_entry_with_publish", [
+      qaId!,
+      marker,
+      "x",
+      false,
+    ]);
+    expect(update.ok, update.body).toBe(true);
 
     expect(await publishedQaContains(marker)).toBe(false);
   });
 
   it("removes a row from published_qa when deleted", async ({ expect }) => {
-    const reviewer = await mintIdentity();
-    scope.trackIdentity(reviewer.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewer.identity },
-    });
-    expect(enroll.status).toBe(200);
+    const reviewerToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("to-delete");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "x", publish: true, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerToken, "add_manual_qa", [marker, "x", true, marker]);
+    expect(add.ok, add.body).toBe(true);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    const qaId = await findManualQaEntryIdByQuestion(reviewerToken, marker);
     expect(qaId).toBeDefined();
 
-    const del = await niceBackendFetch("/api/latest/internal/mcp-review/delete", {
-      method: "POST",
-      accessType: "client",
-      body: { qaId: qaId!.toString() },
-    });
-    expect(del.status).toBe(200);
+    const del = await callReducer(reviewerToken, "delete_qa_entry", [qaId!]);
+    expect(del.ok, del.body).toBe(true);
 
     expect(await publishedQaContains(marker)).toBe(false);
   });
 
   it("lets reviewer B delete a row published by reviewer A (cross-reviewer integrity)", async ({ expect }) => {
     // A publishes.
-    const reviewerA = await mintIdentity();
-    scope.trackIdentity(reviewerA.identity);
-    await AiChatReviewer.createReviewer();
-    const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewerA.identity },
-    });
-    expect(enrollA.status).toBe(200);
+    const reviewerAToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("cross-reviewer");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "x", publish: true, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerAToken, "add_manual_qa", [marker, "x", true, marker]);
+    expect(add.ok, add.body).toBe(true);
     expect(await publishedQaContains(marker)).toBe(true);
 
-    const qaId = await findManualQaEntryIdByQuestion(reviewerA.token, marker);
+    const qaId = await findManualQaEntryIdByQuestion(reviewerAToken, marker);
     expect(qaId).toBeDefined();
 
-    // B deletes. fastSignUp re-points backendContext.userAuth to B; subsequent calls use B's auth.
-    const reviewerB = await mintIdentity();
-    scope.trackIdentity(reviewerB.identity);
-    await AiChatReviewer.createReviewer();
-    const enrollB = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewerB.identity },
-    });
-    expect(enrollB.status).toBe(200);
-
-    const del = await niceBackendFetch("/api/latest/internal/mcp-review/delete", {
-      method: "POST",
-      accessType: "client",
-      body: { qaId: qaId!.toString() },
-    });
-    expect(del.status).toBe(200);
+    // B deletes with their own token.
+    const reviewerBToken = await signMemberToken();
+    const del = await callReducer(reviewerBToken, "delete_qa_entry", [qaId!]);
+    expect(del.ok, del.body).toBe(true);
 
     expect(await publishedQaContains(marker)).toBe(false);
   });

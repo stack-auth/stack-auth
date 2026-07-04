@@ -300,6 +300,11 @@ services:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}39:3000"
     command: start
 
+  spacetimedb-issuer-proxy:
+    image: alpine/socat
+    network_mode: "service:spacetimedb"
+    command: TCP-LISTEN:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41,fork,reuseaddr,bind=127.0.0.1 TCP:host.docker.internal:${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}41
+
   # ================= Drizzle Gateway =================
 
   drizzle-gateway:

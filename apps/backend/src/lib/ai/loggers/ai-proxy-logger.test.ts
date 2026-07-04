@@ -7,7 +7,7 @@ import { buildProxyLogRow } from "./ai-proxy-logger";
 const baseInput = {
   correlationId: "corr-1",
   apiKey: "stack-auth-proxy",
-  durationMs: 0n,
+  durationMs: 0,
   responseStatus: 200,
 };
 
@@ -65,5 +65,38 @@ describe("buildProxyLogRow tool-name extraction", () => {
       },
     });
     expect(JSON.parse(row.requestedToolsJson)).toEqual([]);
+  });
+
+  it("stores generation id but leaves usage accounting empty for refinement", () => {
+    const row = buildProxyLogRow({
+      ...baseInput,
+      openrouterGenerationId: "gen-header-1",
+      parsed: {
+        model: "anthropic/claude-sonnet-4.6",
+        stream: true,
+        messages: [{ role: "user", content: "hi" }],
+      },
+    });
+
+    expect(row.openrouterGenerationId).toBe("gen-header-1");
+    expect(row.inputTokens).toBeUndefined();
+    expect(row.outputTokens).toBeUndefined();
+    expect(row.cachedInputTokens).toBeUndefined();
+    expect(row.cacheCreationTokens).toBeUndefined();
+    expect(row.costUsd).toBeUndefined();
+    expect(row.cacheDiscountUsd).toBeUndefined();
+  });
+
+  it("records upstream failure status even without a generation id", () => {
+    const row = buildProxyLogRow({
+      ...baseInput,
+      responseStatus: 429,
+      parsed: {
+        model: "anthropic/claude-sonnet-4.6",
+      },
+    });
+
+    expect(row.openrouterGenerationId).toBeUndefined();
+    expect(row.errorMessage).toBe("upstream 429");
   });
 });

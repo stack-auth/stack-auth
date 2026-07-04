@@ -207,6 +207,30 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   return res;
 }
 
+export async function niceInternalToolFetch(url: string | URL, options?: Omit<NiceRequestInit, "body" | "headers"> & {
+  body?: unknown,
+  headers?: Record<string, string | undefined>,
+}): Promise<NiceResponse> {
+  const { body, headers, ...otherOptions } = options ?? {};
+  const fullUrl = new URL(url, localhostUrl("41"));
+  if (fullUrl.origin !== new URL(localhostUrl("41")).origin) {
+    throw new HexclaveAssertionError(`Invalid niceInternalToolFetch origin: ${fullUrl.origin}`);
+  }
+  const userAuth = backendContext.value.userAuth;
+  return await niceFetch(fullUrl, {
+    ...otherOptions,
+    ...body !== undefined ? { body: JSON.stringify(body) } : {},
+    headers: filterUndefined({
+      "content-type": body !== undefined ? "application/json" : undefined,
+      "x-stack-auth": JSON.stringify({
+        accessToken: userAuth?.accessToken ?? null,
+        refreshToken: userAuth?.refreshToken ?? null,
+      }),
+      ...headers,
+    }),
+  });
+}
+
 
 /**
  * Creates a new mailbox with a different email address, and sets it as the current mailbox.
@@ -1617,19 +1641,6 @@ export namespace User {
     return response;
   }
 }
-
-export namespace AiChatReviewer {
-  export async function createReviewer() {
-    const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
-    await User.setClientReadOnlyMetadata(userId, { isAiChatReviewer: true });
-    return { userId, accessToken, refreshToken };
-  }
-
-  export async function createNonReviewer() {
-    return await Auth.fastSignUp();
-  }
-}
-
 
 export namespace Webhook {
   export async function createProjectWithEndpoint() {

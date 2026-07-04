@@ -11,6 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  token: __t.string(),
   qaId: __t.u64(),
 };

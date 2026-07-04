@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
-import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
 import {
+  callReducer,
   createCleanupScope,
+  decodeOptional,
   findManualQaEntryIdByQuestion,
-  isSpacetimedbReachable,
-  mintIdentity,
+  isSpacetimedbReachable, signMemberToken,
   sqlQuery,
+  touchSession,
   type CleanupScope,
 } from "./helpers";
 
@@ -27,13 +28,13 @@ async function readManualEntry(token: string, qaId: bigint) {
   return match as Record<string, unknown>;
 }
 
-function readOptional<T>(value: unknown): T | undefined {
-  if (value == null) return undefined;
-  if (typeof value === "object" && "some" in value) {
-    return (value as { some: T }).some;
-  }
-  if (typeof value === "object" && "none" in value) return undefined;
-  return value as T;
+const readOptional = decodeOptional;
+
+async function createMemberSessionToken(): Promise<string> {
+  const token = await signMemberToken();
+  const touch = await touchSession(token);
+  if (!touch.ok) throw new Error(`touch_session failed: ${touch.body}`);
+  return token;
 }
 
 describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
@@ -46,54 +47,34 @@ describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
   });
 
   it("firstPublishedAt is immutable; lastPublishedAt updates per republish; both survive unpublish", async ({ expect }) => {
-    const reviewer = await mintIdentity();
-    scope.trackIdentity(reviewer.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewer.identity },
-    });
-    expect(enroll.status).toBe(200);
+    const reviewerToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("publish-history");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "a", publish: true, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerToken, "add_manual_qa", [marker, "a", true, marker]);
+    expect(add.ok, add.body).toBe(true);
 
-    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    const qaId = await findManualQaEntryIdByQuestion(reviewerToken, marker);
     expect(qaId).toBeDefined();
 
-    const initial = await readManualEntry(reviewer.token, qaId!);
+    const initial = await readManualEntry(reviewerToken, qaId!);
     const firstPublishedAt = readOptional<unknown>(initial.first_published_at ?? initial.firstPublishedAt);
     const lastPublishedAt1 = readOptional<unknown>(initial.last_published_at ?? initial.lastPublishedAt);
     expect(firstPublishedAt).toBeDefined();
     expect(lastPublishedAt1).toBeDefined();
 
     // Unpublish: both timestamps must survive.
-    const unpub = await niceBackendFetch("/api/latest/internal/mcp-review/update-qa-entry", {
-      method: "POST",
-      accessType: "client",
-      body: { qaId: qaId!.toString(), question: marker, answer: "a", publish: false },
-    });
-    expect(unpub.status).toBe(200);
-    const afterUnpub = await readManualEntry(reviewer.token, qaId!);
+    const unpub = await callReducer(reviewerToken, "update_qa_entry_with_publish", [qaId!, marker, "a", false]);
+    expect(unpub.ok, unpub.body).toBe(true);
+    const afterUnpub = await readManualEntry(reviewerToken, qaId!);
     expect(readOptional(afterUnpub.first_published_at ?? afterUnpub.firstPublishedAt)).toEqual(firstPublishedAt);
     expect(readOptional(afterUnpub.last_published_at ?? afterUnpub.lastPublishedAt)).toEqual(lastPublishedAt1);
 
     // Republish: firstPublishedAt unchanged; lastPublishedAt advances.
     await new Promise(r => setTimeout(r, 10));
-    const rep = await niceBackendFetch("/api/latest/internal/mcp-review/update-qa-entry", {
-      method: "POST",
-      accessType: "client",
-      body: { qaId: qaId!.toString(), question: marker, answer: "a", publish: true },
-    });
-    expect(rep.status).toBe(200);
-    const afterRep = await readManualEntry(reviewer.token, qaId!);
+    const rep = await callReducer(reviewerToken, "update_qa_entry_with_publish", [qaId!, marker, "a", true]);
+    expect(rep.ok, rep.body).toBe(true);
+    const afterRep = await readManualEntry(reviewerToken, qaId!);
     expect(readOptional(afterRep.first_published_at ?? afterRep.firstPublishedAt)).toEqual(firstPublishedAt);
     const lastPublishedAt2 = readOptional<unknown>(afterRep.last_published_at ?? afterRep.lastPublishedAt);
     expect(lastPublishedAt2).toBeDefined();
@@ -105,40 +86,24 @@ describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
     // delete reducer's scope is qa_entries only. Since manual entries have nothing to
     // preserve in mcp_call_log, the test asserts via the row-count of qa_entries dropping
     // by exactly 1, with no side effect on other tables.
-    const reviewer = await mintIdentity();
-    scope.trackIdentity(reviewer.identity);
-    await AiChatReviewer.createReviewer();
-    const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
-      method: "POST",
-      accessType: "client",
-      body: { identity: reviewer.identity },
-    });
-    expect(enroll.status).toBe(200);
+    const reviewerToken = await createMemberSessionToken();
 
     const marker = uniqueMarker("delete-scope");
     scope.trackMcpQuestion(marker);
-    const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
-      method: "POST",
-      accessType: "client",
-      body: { question: marker, answer: "a", publish: true, requestId: marker },
-    });
-    expect(add.status).toBe(200);
+    const add = await callReducer(reviewerToken, "add_manual_qa", [marker, "a", true, marker]);
+    expect(add.ok, add.body).toBe(true);
 
-    const qaId = await findManualQaEntryIdByQuestion(reviewer.token, marker);
+    const qaId = await findManualQaEntryIdByQuestion(reviewerToken, marker);
     expect(qaId).toBeDefined();
 
-    const beforeQa = (await sqlQuery(reviewer.token, "SELECT * FROM my_visible_qa_entries")).rows.length;
-    const beforeMcp = (await sqlQuery(reviewer.token, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
+    const beforeQa = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_qa_entries")).rows.length;
+    const beforeMcp = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
 
-    const del = await niceBackendFetch("/api/latest/internal/mcp-review/delete", {
-      method: "POST",
-      accessType: "client",
-      body: { qaId: qaId!.toString() },
-    });
-    expect(del.status).toBe(200);
+    const del = await callReducer(reviewerToken, "delete_qa_entry", [qaId!]);
+    expect(del.ok, del.body).toBe(true);
 
-    const afterQa = (await sqlQuery(reviewer.token, "SELECT * FROM my_visible_qa_entries")).rows.length;
-    const afterMcp = (await sqlQuery(reviewer.token, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
+    const afterQa = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_qa_entries")).rows.length;
+    const afterMcp = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
     expect(afterQa).toBe(beforeQa - 1);
     expect(afterMcp).toBe(beforeMcp);
   });

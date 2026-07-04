@@ -1,61 +1,43 @@
-import { reviewMcpCall } from "@/lib/ai/qa/qa-reviewer";
-import type { McpCallMetadata, MessageLike } from "@/lib/ai/types";
+import type { McpCallMetadata, McpLogEntry, MessageLike } from "@/lib/ai/types";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Json } from "@hexclave/shared/dist/utils/json";
 import { type StepResult, type ToolSet } from "ai";
-import { callReducer, opt } from "../spacetimedb-client";
-
-export type McpLogEntry = {
-  correlationId: string,
-  toolName: string,
-  reason: string,
-  userPrompt: string,
-  conversationId: string | undefined,
-  question: string,
-  response: string,
-  stepCount: number,
-  innerToolCallsJson: string,
-  durationMs: bigint,
-  modelId: string,
-  errorMessage: string | undefined,
-};
+import { callInternalTool } from "../internal-tool-client";
 
 export async function logMcpCall(entry: McpLogEntry): Promise<void> {
-  const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
-  await callReducer("log_mcp_call", [
-    logToken,
-    entry.correlationId,
-    opt(entry.conversationId),
-    entry.toolName,
-    entry.reason,
-    entry.userPrompt,
-    entry.question,
-    entry.response,
-    entry.stepCount,
-    entry.innerToolCallsJson,
-    entry.durationMs,
-    entry.modelId,
-    opt(entry.errorMessage),
-  ]);
+  await callInternalTool("/api/backend/log-mcp-call", { body: entry });
 }
 
 function buildInnerToolCallsJson(steps: ReadonlyArray<StepResult<ToolSet>>): string {
-  const items: Json[] = [];
-  for (const step of steps) {
-    const resultsByCallId = new Map(step.toolResults.map(r => [r.toolCallId, r]));
-    for (const tc of step.toolCalls) {
-      items.push({
-        type: "tool-call",
-        toolName: tc.toolName,
-        toolCallId: tc.toolCallId,
-        args: tc.input as Json,
-        argsText: JSON.stringify(tc.input),
-        result: (resultsByCallId.get(tc.toolCallId)?.output ?? null) as Json,
-      });
+  try {
+    const items: Json[] = [];
+    for (const step of steps) {
+      const resultsByCallId = new Map(step.toolResults.map(r => [r.toolCallId, r]));
+      for (const tc of step.toolCalls) {
+        items.push({
+          type: "tool-call",
+          toolName: tc.toolName,
+          toolCallId: tc.toolCallId,
+          args: tc.input as Json,
+          argsText: JSON.stringify(tc.input),
+          result: (resultsByCallId.get(tc.toolCallId)?.output ?? null) as Json,
+        });
+      }
     }
+    return JSON.stringify(items);
+  } catch {
+    return JSON.stringify({ _serializationFailed: true, stepCount: steps.length });
   }
-  return JSON.stringify(items);
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" ? serialized : "";
+  } catch {
+    return JSON.stringify({ _serializationFailed: true });
+  }
 }
 
 export function logIfMcpToolCall(args: {
@@ -73,7 +55,7 @@ export function logIfMcpToolCall(args: {
   const lastUserMessage = messages.findLast(m => m.role === "user");
   const question = typeof lastUserMessage?.content === "string"
     ? lastUserMessage.content
-    : JSON.stringify(lastUserMessage?.content ?? "");
+    : safeStringify(lastUserMessage?.content ?? "");
   const innerToolCallsJson = buildInnerToolCallsJson(steps);
   const logPromise = logMcpCall({
     correlationId,
@@ -85,16 +67,27 @@ export function logIfMcpToolCall(args: {
     response: text,
     stepCount: steps.length,
     innerToolCallsJson,
-    durationMs: BigInt(Math.round(performance.now() - startedAt)),
+    durationMs: Math.round(performance.now() - startedAt),
     modelId,
     errorMessage: undefined,
   });
   runAsynchronouslyAndWaitUntil(logPromise);
-  runAsynchronouslyAndWaitUntil(reviewMcpCall({
-    logPromise,
-    correlationId,
-    question,
-    reason: mcpCallMetadata.reason,
-    response: text,
-  }));
+  // The automated LLM QA review runs in the internal tool and updates the
+  // freshly logged row, so it must only fire after the log write lands.
+  runAsynchronouslyAndWaitUntil((async () => {
+    try {
+      await logPromise;
+    } catch (err) {
+      captureError("qa-reviewer-log-wait", err);
+      return;
+    }
+    await callInternalTool("/api/backend/review-mcp-call", {
+      body: {
+        correlationId,
+        question,
+        reason: mcpCallMetadata.reason,
+        response: text,
+      },
+    });
+  })());
 }

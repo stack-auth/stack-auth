@@ -4,15 +4,13 @@ import { useEffect, useState, useRef } from "react";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
-export type SpacetimeBrowserSession = {
-  host: string,
-  dbName: string,
-  identity: string,
-  token: string,
-  scopeKey: string,
-};
-
-export type GetSpacetimeBrowserSession = (options?: { refresh?: boolean }) => Promise<SpacetimeBrowserSession>;
+/**
+ * Returns a fresh SpacetimeDB token (minted under the internal tool's own OIDC
+ * issuer) for the signed-in user. SpacetimeDB validates it via OIDC discovery;
+ * the module authorizes on issuer + audience only, so any valid member token
+ * grants full read/write.
+ */
+export type GetSpacetimeToken = () => Promise<string>;
 
 const PLACEHOLDER_ENV_VALUE = "REPLACE_ME";
 
@@ -37,7 +35,9 @@ function getConfig() {
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
-const ENROLL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+// Access tokens live ~10min and `withToken` is fixed at build() time, so tear
+// down and reconnect with a fresh token before the current one expires.
+const TOKEN_RECONNECT_INTERVAL_MS = 8 * 60 * 1000;
 
 type ConnectionState = "connecting" | "connected" | "error";
 
@@ -96,17 +96,19 @@ type TableBinding<Row extends { id: bigint }> = {
 
 function useTableSubscription<Row extends { id: bigint }>(
   binding: TableBinding<Row>,
-  getBrowserSession?: GetSpacetimeBrowserSession,
-  requireBrowserSession = false,
+  getToken?: GetSpacetimeToken,
+  requireAuth = false,
 ) {
   const [rows, setRows] = useState<Row[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [connectionErrorMessage, setConnectionErrorMessage] = useState<string | null>(null);
+  const [conn, setConn] = useState<DbConnection | null>(null);
   const connRef = useRef<DbConnection | null>(null);
 
   useEffect(() => {
-    if (requireBrowserSession && !getBrowserSession) {
+    if (requireAuth && !getToken) {
       setRows([]);
+      setConn(null);
       setConnectionState("connecting");
       return;
     }
@@ -114,11 +116,11 @@ function useTableSubscription<Row extends { id: bigint }>(
     let cancelled = false;
     let retryCount = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    let refreshTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let lastConnectionErrorMessage: string | null = null;
     const query = `SELECT * FROM ${binding.tableName}`;
 
-    function retry(refreshBrowserSession: boolean) {
+    function retry() {
       if (cancelled) return;
       retryCount++;
       if (retryCount > MAX_RETRIES) {
@@ -133,36 +135,52 @@ function useTableSubscription<Row extends { id: bigint }>(
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (!cancelled) {
-          runAsynchronously(() => connect(refreshBrowserSession));
+          runAsynchronously(() => connect());
         }
       }, RETRY_DELAY_MS);
     }
 
-    async function connect(refreshBrowserSession = false) {
+    function scheduleTokenReconnect() {
+      if (!getToken || reconnectTimer != null) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (cancelled) return;
+        // Proactive teardown + reconnect: fetches a fresh access token in
+        // connect(). Rows are kept until the new subscription applies, so the
+        // UI doesn't flicker.
+        connRef.current?.disconnect();
+        connRef.current = null;
+        runAsynchronously(() => connect());
+      }, TOKEN_RECONNECT_INTERVAL_MS);
+    }
+
+    async function connect() {
       const config = getConfig();
-      let browserSession: SpacetimeBrowserSession | null = null;
-      if (getBrowserSession) {
+      let token: string | null = null;
+      if (getToken) {
         try {
-          browserSession = await getBrowserSession({ refresh: refreshBrowserSession });
+          token = await getToken();
         } catch (err) {
           if (cancelled) return;
-          lastConnectionErrorMessage = formatUnknownError(err, "Failed to get SpacetimeDB browser session");
+          lastConnectionErrorMessage = formatUnknownError(err, "Failed to get Stack Auth access token");
           setConnectionErrorMessage(lastConnectionErrorMessage);
-          captureError("spacetimedb-browser-session", err);
-          retry(true);
+          captureError("spacetimedb-access-token", err);
+          retry();
           return;
         }
       }
       if (cancelled) return;
 
       const builder = DbConnection.builder()
-        .withUri(browserSession?.host ?? config.host)
-        .withDatabaseName(browserSession?.dbName ?? config.dbName)
+        .withUri(config.host)
+        .withDatabaseName(config.dbName)
         .onConnect((connInstance: DbConnection, _identity, _token) => {
           if (cancelled) return;
           retryCount = 0;
           connRef.current = connInstance;
+          setConn(connInstance);
           setConnectionErrorMessage(null);
+          scheduleTokenReconnect();
 
           const startSubscription = () => {
             if (cancelled) return;
@@ -188,20 +206,6 @@ function useTableSubscription<Row extends { id: bigint }>(
               .subscribe(query);
           };
 
-          if (getBrowserSession) {
-            if (refreshTimer == null) {
-              refreshTimer = setInterval(() => {
-                if (cancelled) return;
-                runAsynchronously(async () => {
-                  await getBrowserSession();
-                }, {
-                  onError: (err) => {
-                    captureError("spacetimedb-browser-session-refresh", err);
-                  },
-                });
-              }, ENROLL_REFRESH_INTERVAL_MS);
-            }
-          }
           startSubscription();
 
           binding.onInsert(connInstance, (row) => {
@@ -239,14 +243,14 @@ function useTableSubscription<Row extends { id: bigint }>(
           lastConnectionErrorMessage = message;
           setConnectionErrorMessage(message);
           captureError("spacetimedb-connect", err);
-          retry(true);
+          retry();
         });
-      if (browserSession) {
-        builder.withToken(browserSession.token);
+      if (token != null) {
+        builder.withToken(token);
       }
-      const conn = builder.build();
+      const newConn = builder.build();
 
-      connRef.current = conn;
+      connRef.current = newConn;
     }
 
     runAsynchronously(() => connect());
@@ -257,18 +261,19 @@ function useTableSubscription<Row extends { id: bigint }>(
         clearTimeout(retryTimer);
         retryTimer = null;
       }
-      if (refreshTimer !== null) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
       if (connRef.current) {
         connRef.current.disconnect();
         connRef.current = null;
       }
+      setConn(null);
     };
-  }, [binding, getBrowserSession, requireBrowserSession]);
+  }, [binding, getToken, requireAuth]);
 
-  return { rows, connectionState, connectionErrorMessage };
+  return { rows, connectionState, connectionErrorMessage, conn };
 }
 
 const mcpBinding: TableBinding<McpCallLogRow> = {
@@ -324,16 +329,16 @@ const qaEntriesBinding: TableBinding<QaEntriesRow> = {
   },
 };
 
-export function useMcpCallLogs(getBrowserSession?: GetSpacetimeBrowserSession) {
-  return useTableSubscription(mcpBinding, getBrowserSession, true);
+export function useMcpCallLogs(getToken?: GetSpacetimeToken) {
+  return useTableSubscription(mcpBinding, getToken, true);
 }
 
-export function useAiQueryLogs(getBrowserSession?: GetSpacetimeBrowserSession) {
-  return useTableSubscription(aiQueryBinding, getBrowserSession, true);
+export function useAiQueryLogs(getToken?: GetSpacetimeToken) {
+  return useTableSubscription(aiQueryBinding, getToken, true);
 }
 
 /**
- * Public — no enrollment required. Backed by the `published_qa` anonymousView,
+ * Public — no auth required. Backed by the `published_qa` anonymousView,
  * which returns only rows reviewers have explicitly published. Safe to call
  * from unauthenticated pages.
  */
@@ -347,6 +352,6 @@ export function usePublishedQa() {
  * here is a Q&A pair, either tied to a real MCP call (sourceMcpCorrelationId
  * non-null) or a manual entry (null).
  */
-export function useQaEntries(getBrowserSession?: GetSpacetimeBrowserSession) {
-  return useTableSubscription(qaEntriesBinding, getBrowserSession, true);
+export function useQaEntries(getToken?: GetSpacetimeToken) {
+  return useTableSubscription(qaEntriesBinding, getToken, true);
 }
