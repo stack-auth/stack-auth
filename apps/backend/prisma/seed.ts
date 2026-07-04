@@ -3,11 +3,11 @@ import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride } from '@/lib/config';
 import {
-  LOCAL_EMULATOR_ADMIN_EMAIL,
-  LOCAL_EMULATOR_ADMIN_PASSWORD,
-  LOCAL_EMULATOR_ADMIN_USER_ID,
-  LOCAL_EMULATOR_OWNER_TEAM_ID,
-  isLocalEmulatorEnabled,
+    LOCAL_EMULATOR_ADMIN_EMAIL,
+    LOCAL_EMULATOR_ADMIN_PASSWORD,
+    LOCAL_EMULATOR_ADMIN_USER_ID,
+    LOCAL_EMULATOR_OWNER_TEAM_ID,
+    isLocalEmulatorEnabled,
 } from '@/lib/local-emulator';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
@@ -537,7 +537,6 @@ export async function seed() {
         }
       }
     }
-
 
     // Create or ensure TeamMember exists before granting permissions.
     // Using upsert here (instead of create inside the else block above) ensures
