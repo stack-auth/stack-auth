@@ -1,4 +1,6 @@
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { SpanRef } from "./event-tracker";
+import { ensureAsyncContext, getAsyncLocalStorage, isAsyncContextSettled, syncStack, type SyncFrame } from "./span-context-state";
 
 /**
  * Ambient span context for withSpan(): tracks the stack of enclosing withSpan
@@ -21,50 +23,6 @@ import type { SpanRef } from "./event-tracker";
  *   code never hits this path.
  */
 
-type AsyncLocalStorageLike = {
-  run: <T>(store: SpanRef[], fn: () => T) => T,
-  getStore: () => SpanRef[] | undefined,
-};
-
-let als: AsyncLocalStorageLike | null = null;
-let alsInitPromise: Promise<void> | null = null;
-// Whether the ALS probe has finished (either way). Once settled, context entry
-// can run the callback SYNCHRONOUSLY (no await first), which is what makes the
-// sync-window guarantee compose across nested withSpan calls.
-let alsSettled = false;
-// Sync-stack fallback frames (browsers / before ALS finishes loading). A frame's
-// `prologueOpen` is true only while its callback's SYNCHRONOUS prologue is still
-// executing — JS sync execution is single-threaded and uninterruptible, so a
-// prologue-open frame provably belongs to the currently-running flow. Once the
-// callback suspends (returns its promise), the frame stays for best-effort
-// readers but is no longer provably ours.
-type SyncFrame = { ref: SpanRef, prologueOpen: boolean };
-const syncStack: SyncFrame[] = [];
-
-async function ensureAsyncContext(): Promise<void> {
-  if (alsInitPromise) return await alsInitPromise;
-  alsInitPromise = (async () => {
-    try {
-      // Opaque specifier: bundlers must leave this as a runtime dynamic import
-      // (vite/webpack hints + non-literal string), which simply rejects in
-      // browsers and resolves to the built-in module everywhere node-like.
-      // (When browsers ship TC39 AsyncContext, probe it here first — the whole
-      // sync-window machinery below then never engages.)
-      const specifier = "node:async_hooks";
-      const mod = await import(/* @vite-ignore */ /* webpackIgnore: true */ specifier) as { AsyncLocalStorage?: new () => AsyncLocalStorageLike };
-      if (typeof mod.AsyncLocalStorage === "function") {
-        als = new mod.AsyncLocalStorage();
-      }
-    } catch {
-      // Browser: no async-context primitive; the sync stack is the fallback.
-      als = null;
-    } finally {
-      alsSettled = true;
-    }
-  })();
-  return await alsInitPromise;
-}
-
 /**
  * The SpanRefs of all enclosing withSpan() frames, outermost first. Consumed by
  * the parent-resolution logic as ambient parents (alongside global spans).
@@ -78,6 +36,7 @@ async function ensureAsyncContext(): Promise<void> {
  * concurrently interleaved flows).
  */
 export function getAmbientSpanRefs(opts?: { includeSuspendedSyncFrames?: boolean }): SpanRef[] {
+  const als = getAsyncLocalStorage();
   const store = als?.getStore();
   if (store) return [...store];
   const includeSuspended = opts?.includeSuspendedSyncFrames ?? true;
@@ -94,7 +53,7 @@ export function getAmbientSpanRefs(opts?: { includeSuspendedSyncFrames?: boolean
  * policy can differ per consumer without losing context.
  */
 export function isExactAsyncContextActive(): boolean {
-  return als !== null;
+  return getAsyncLocalStorage() !== null;
 }
 
 /**
@@ -106,7 +65,8 @@ export function isExactAsyncContextActive(): boolean {
  * across nested withSpan calls on the sync-stack fallback.
  */
 export async function runWithSpanContext<T>(frame: SpanRef, fn: () => Promise<T>): Promise<T> {
-  if (!alsSettled) await ensureAsyncContext();
+  if (!isAsyncContextSettled()) await ensureAsyncContext();
+  const als = getAsyncLocalStorage();
   if (als) {
     const enclosing = als.getStore() ?? [];
     return await als.run([...enclosing, frame], fn);
@@ -137,7 +97,10 @@ export async function runWithSpanContext<T>(frame: SpanRef, fn: () => Promise<T>
  * visible to best-effort readers until it settles.
  */
 export function runWithSpanFrame<T>(ref: SpanRef, fn: () => T): T {
-  if (!alsSettled) ensureAsyncContext().catch(() => {});
+  if (!isAsyncContextSettled()) {
+    runAsynchronously(ensureAsyncContext(), { noErrorLogging: true });
+  }
+  const als = getAsyncLocalStorage();
   if (als) {
     const enclosing = als.getStore() ?? [];
     return als.run([...enclosing, ref], fn);
@@ -162,21 +125,4 @@ export function runWithSpanFrame<T>(ref: SpanRef, fn: () => T): T {
     pop();
     throw error;
   }
-}
-
-/**
- * Test hook: forces the sync-stack fallback (as if ALS failed to load) or
- * resets to automatic detection. Never call outside tests.
- */
-export function __setAsyncContextModeForTesting(mode: "sync-stack" | "auto"): void {
-  if (mode === "sync-stack") {
-    als = null;
-    alsInitPromise = Promise.resolve();
-    alsSettled = true;
-  } else {
-    als = null;
-    alsInitPromise = null;
-    alsSettled = false;
-  }
-  syncStack.length = 0;
 }

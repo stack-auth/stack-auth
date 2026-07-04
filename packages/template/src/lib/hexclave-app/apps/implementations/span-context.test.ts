@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SpanRef } from "./event-tracker";
-import { __setAsyncContextModeForTesting, getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
 
 function ref(spanId: string, parentSpanIds: string[] = []): SpanRef {
   return { spanId, parentSpanIds };

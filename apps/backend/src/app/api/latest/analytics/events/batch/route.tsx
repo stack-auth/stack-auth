@@ -10,26 +10,29 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
+import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Custom (user-defined) event/span type names: must not start with `$` (reserved
-// for system types), start with a letter, and stay within 64 chars. Keep in sync
-// with the SDK-side validation in packages/template's event-tracker.
-const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
 const SYSTEM_EVENT_TYPES = ["$page-view", "$click"] as const;
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
-const MAX_PARENT_CHAIN = 10;
-const MAX_ITEM_DATA_BYTES = 16_000;
 const MAX_COMPRESSED_BYTES = 1 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
 
 function isPlainObjectWithinLimit(value: unknown): boolean {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  return JSON.stringify(value).length <= MAX_ITEM_DATA_BYTES;
+  let serialized: string | undefined;
+  try {
+    const stringified = JSON.stringify(value);
+    serialized = typeof stringified === "string" ? stringified : undefined;
+  } catch {
+    return false;
+  }
+  return serialized !== undefined && Buffer.byteLength(serialized, "utf8") <= CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES;
 }
 
 // Bodies sent as application/octet-stream are gzipped JSON. The encoding is
@@ -103,10 +106,10 @@ export const POST = createSmartRouteHandler({
           data: yupMixed().defined(),
           // Custom ancestor chain, root-first, raw span uuids. System ancestry
           // (refresh-token/replay/segment) is composed server-side on top.
-          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).optional().max(MAX_PARENT_CHAIN),
+          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).optional().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
         }).defined().test(
           "custom-event-data",
-          `Custom event data must be a JSON object of at most ${MAX_ITEM_DATA_BYTES} serialized bytes`,
+          `Custom event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
           // System event data stays permissive for backward compatibility with
           // deployed trackers; the object/size cap applies to custom types only.
           (event) => (SYSTEM_EVENT_TYPES as readonly string[]).includes(event.event_type) || isPlainObjectWithinLimit(event.data),
@@ -120,10 +123,10 @@ export const POST = createSmartRouteHandler({
           span_type: yupString().defined().matches(CUSTOM_TELEMETRY_NAME_RE, "Invalid span_type"),
           started_at_ms: yupNumber().defined().integer().min(0),
           ended_at_ms: yupNumber().nullable().defined().integer().min(0),
-          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).defined().max(MAX_PARENT_CHAIN),
+          parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).defined().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
           data: yupMixed().defined().test(
             "span-data",
-            `Span data must be a JSON object of at most ${MAX_ITEM_DATA_BYTES} serialized bytes`,
+            `Span data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
             (value) => isPlainObjectWithinLimit(value),
           ),
           updated_at_ms: yupNumber().defined().integer().min(0),
@@ -269,18 +272,18 @@ export const POST = createSmartRouteHandler({
     // unavailable ClickHouse never delays the upload; the events insert above
     // stays on-path because the response reports what was accepted.
     if (spans.length > 0) {
-      const spanRows = buildCustomSpanRows({
-        spans,
-        projectId,
-        branchId,
-        userId,
-        refreshTokenId,
-        sessionReplayId,
-        sessionReplaySegmentId,
-        serverNowMs: Date.now(),
-      });
       runAsynchronouslyAndWaitUntil(async () => {
         try {
+          const spanRows = buildCustomSpanRows({
+            spans,
+            projectId,
+            branchId,
+            userId,
+            refreshTokenId,
+            sessionReplayId,
+            sessionReplaySegmentId,
+            serverNowMs: Date.now(),
+          });
           await insertSpans(clickhouseClient, spanRows);
         } catch (error) {
           captureError("analytics-custom-spans-insert", error);
@@ -291,7 +294,7 @@ export const POST = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: events.length + spans.length },
+      body: { inserted: events.length },
     };
   },
 });

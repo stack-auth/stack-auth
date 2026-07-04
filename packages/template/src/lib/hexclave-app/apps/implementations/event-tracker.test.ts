@@ -2,10 +2,10 @@
 
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventTracker, withSpanImpl } from "./event-tracker";
-import { __setAsyncContextModeForTesting } from "./span-context";
 import { decodeSpanContextHeader } from "./span-propagation";
+import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
 
 async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
@@ -24,7 +24,12 @@ function getSentEventTypes(sentBodies: string[]) {
 }
 
 describe("EventTracker", () => {
+  beforeEach(() => {
+    __setAsyncContextModeForTesting("auto");
+  });
+
   afterEach(() => {
+    __setAsyncContextModeForTesting("auto");
     vi.useRealTimers();
   });
 
@@ -470,6 +475,7 @@ describe("EventTracker", () => {
       await expect(tracker.trackCustomEvent("x".repeat(65))).rejects.toThrow(/at most 64 characters/);
       await expect(tracker.trackCustomEvent("ok", [1, 2] as any)).rejects.toThrow(/plain JSON-serializable object/);
       await expect(tracker.trackCustomEvent("ok", { big: "x".repeat(17_000) })).rejects.toThrow(/at most 16000 bytes/);
+      await expect(tracker.trackCustomEvent("ok", { big: "é".repeat(8_000) })).rejects.toThrow(/at most 16000 bytes/);
       await expect(tracker.trackCustomEvent("ok", {}, { parentIds: ["not-a-uuid"] })).rejects.toThrow(/parent ids must be span uuids/);
       // Ignoring the rejected promise entirely must not blow up the test run
       // (the internal catch keeps it from ever being an unhandled rejection).
@@ -524,6 +530,35 @@ describe("EventTracker", () => {
       expect(row.parent_span_ids).toEqual([]);
     } finally {
       tracker.stop();
+    }
+  });
+
+  it("falls back to a finite timestamp when a span is ended with an invalid endedAtMs", async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      const span = tracker.startSpan("checkout-flow");
+      const endPromise = span.end({ endedAtMs: Number.NaN });
+      await advancePastFlush();
+      await expect(endPromise).resolves.toBeUndefined();
+
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { ended_at_ms: number | null }[] };
+      expect(payload.spans).toHaveLength(1);
+      expect(payload.spans![0].ended_at_ms).toBeTypeOf("number");
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("endedAtMs must be a finite"));
+    } finally {
+      tracker.stop();
+      errorSpy.mockRestore();
     }
   });
 
@@ -860,6 +895,29 @@ describe("EventTracker", () => {
 
     expect(registered).toHaveLength(2);
     await expect(Promise.all(registered)).resolves.toBeDefined();
+  });
+
+  it("isolates registerBackgroundTask hook failures from flush delivery", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async () => Result.ok(new Response()),
+      registerBackgroundTask: () => {
+        throw new Error("waitUntil unavailable");
+      },
+    });
+
+    try {
+      tracker.trackCustomEvent("first").catch(() => {});
+
+      await expect(tracker.flush()).resolves.toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Hexclave analytics: EventTracker waitUntil hook failed:",
+        expect.any(Error),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
