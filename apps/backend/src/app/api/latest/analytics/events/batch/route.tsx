@@ -219,6 +219,23 @@ export const POST = createSmartRouteHandler({
     // Prefer an explicitly forwarded replay id (server SDK — exact join); otherwise
     // derive the caller's current rolling replay from their refresh token.
     let sessionReplayId = body.session_replay_id ?? null;
+    if (sessionReplayId != null) {
+      if (refreshTokenId == null) {
+        throw new StatusError(StatusError.BadRequest, "session_replay_id requires refresh_token_id");
+      }
+      const replay = await prisma.sessionReplay.findFirst({
+        where: {
+          tenancyId,
+          id: sessionReplayId,
+          refreshTokenId,
+          ...userId != null ? { projectUserId: userId } : {},
+        },
+        select: { id: true },
+      });
+      if (replay == null) {
+        throw new StatusError(StatusError.BadRequest, "session_replay_id does not correspond to the forwarded refresh token and user");
+      }
+    }
     if (sessionReplayId == null && refreshTokenId != null) {
       const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
       sessionReplayId = recentSession?.id ?? null;

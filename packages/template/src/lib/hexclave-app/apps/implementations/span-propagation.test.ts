@@ -268,4 +268,21 @@ describe("installFetchSpanPropagation", () => {
     uninstall = undefined;
     expect((globalThis as { fetch: typeof fetch }).fetch).toBe(originalFetch);
   });
+
+  it("updates the shared provider when another app installs after the wrapper is already active", async () => {
+    install({ projectId: "first", sessionReplaySegmentId: SEG });
+    const second = installFetchSpanPropagation({
+      getContext: () => ({ projectId: "second", customParentSpanIds: [CUSTOM_A] }),
+      getSelfOrigin: () => SELF,
+      getAllowedOrigins: () => [],
+    });
+    expect(second).toBeNull();
+
+    await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+
+    expect(decodeSpanContextHeader(sentHeader())).toEqual({
+      projectId: "second",
+      customParentSpanIds: [CUSTOM_A],
+    });
+  });
 });

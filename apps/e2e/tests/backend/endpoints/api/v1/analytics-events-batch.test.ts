@@ -804,6 +804,57 @@ async function uploadTelemetryBatch(
   });
 }
 
+async function uploadSessionReplayBatch(options: {
+  browserSessionId: string,
+  sessionReplaySegmentId: string,
+  batchId: string,
+  startedAtMs: number,
+  sentAtMs: number,
+}) {
+  return await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      browser_session_id: options.browserSessionId,
+      session_replay_segment_id: options.sessionReplaySegmentId,
+      batch_id: options.batchId,
+      started_at_ms: options.startedAtMs,
+      sent_at_ms: options.sentAtMs,
+      events: [{ timestamp: options.startedAtMs + 100, type: 2 }],
+    },
+  });
+}
+
+function currentRefreshTokenId(): string {
+  const accessToken = backendContext.value.userAuth?.accessToken;
+  if (accessToken == null) throw new Error("Expected signed-in user auth before reading refresh token id");
+  const payloadPart = accessToken.split(".")[1];
+  if (payloadPart == null) throw new Error("Expected JWT access token with payload");
+  const parsed: unknown = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8"));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Expected JWT payload object");
+  }
+  if (!("refresh_token_id" in parsed)) {
+    throw new Error("Expected access-token payload to include refresh_token_id");
+  }
+  const refreshTokenId = parsed.refresh_token_id;
+  if (typeof refreshTokenId !== "string") {
+    throw new Error("Expected access-token payload to include refresh_token_id");
+  }
+  return refreshTokenId;
+}
+
+function sessionReplayIdFromResponseBody(body: unknown): string {
+  if (typeof body !== "object" || body === null || Array.isArray(body) || !("session_replay_id" in body)) {
+    throw new Error("Expected session replay batch response to include session_replay_id");
+  }
+  const sessionReplayId = body.session_replay_id;
+  if (typeof sessionReplayId !== "string") {
+    throw new Error("Expected session_replay_id to be a string");
+  }
+  return sessionReplayId;
+}
+
 function makeCustomSpan(overrides?: Record<string, unknown>) {
   const now = Date.now();
   return {
@@ -882,9 +933,17 @@ it("server-auth telemetry parents under the forwarded client-session context", a
   const me = await niceBackendFetch("/api/v1/users/me", { accessType: "client" });
   const userId = me.body.id as string;
 
-  const refreshTokenId = randomUUID();
-  const sessionReplayId = randomUUID();
   const sessionReplaySegmentId = randomUUID();
+  const replayBatch = await uploadSessionReplayBatch({
+    browserSessionId: randomUUID(),
+    sessionReplaySegmentId,
+    batchId: randomUUID(),
+    startedAtMs: Date.now() - 1_000,
+    sentAtMs: Date.now(),
+  });
+  expect(replayBatch.status).toBe(200);
+  const refreshTokenId = currentRefreshTokenId();
+  const sessionReplayId = sessionReplayIdFromResponseBody(replayBatch.body);
   const customParent = randomUUID();
   const now = Date.now();
 
@@ -918,6 +977,38 @@ it("server-auth telemetry parents under the forwarded client-session context", a
   expect(row.session_replay_id).toBe(sessionReplayId);
   expect(row.session_replay_segment_id).toBe(sessionReplaySegmentId);
   expect(row.user_id).toBe(userId);
+});
+
+it("rejects forwarded server replay context without the matching refresh-token root", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+  const sessionReplaySegmentId = randomUUID();
+  const replayBatch = await uploadSessionReplayBatch({
+    browserSessionId: randomUUID(),
+    sessionReplaySegmentId,
+    batchId: randomUUID(),
+    startedAtMs: Date.now() - 1_000,
+    sentAtMs: Date.now(),
+  });
+  expect(replayBatch.status).toBe(200);
+  const sessionReplayId = sessionReplayIdFromResponseBody(replayBatch.body);
+
+  const noRefresh = await uploadTelemetryBatch({
+    session_replay_id: sessionReplayId,
+    session_replay_segment_id: sessionReplaySegmentId,
+    events: [{ event_type: "server_action", event_at_ms: Date.now(), data: {} }],
+  }, { accessType: "server" });
+  expect(noRefresh.status).toBe(400);
+  expect(noRefresh.body).toBe("session_replay_id requires refresh_token_id");
+
+  const wrongRefresh = await uploadTelemetryBatch({
+    refresh_token_id: randomUUID(),
+    session_replay_id: sessionReplayId,
+    session_replay_segment_id: sessionReplaySegmentId,
+    events: [{ event_type: "server_action", event_at_ms: Date.now(), data: {} }],
+  }, { accessType: "server" });
+  expect(wrongRefresh.status).toBe(400);
+  expect(wrongRefresh.body).toBe("session_replay_id does not correspond to the forwarded refresh token and user");
 });
 
 it("rejects the forwarded server context under client auth", async ({ expect }) => {

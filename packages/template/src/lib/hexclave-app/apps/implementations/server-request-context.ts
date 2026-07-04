@@ -9,9 +9,9 @@
  * session without threading the context by hand.
  *
  * AsyncLocalStorage-backed (see span-context.ts for the same rationale) so
- * concurrent requests sharing one app instance never cross-contaminate; a
- * single-value sync fallback covers environments without `node:async_hooks`
- * (which server-key telemetry never actually runs in).
+ * concurrent requests sharing one app instance never cross-contaminate. If an
+ * exact async-context primitive is unavailable, this fails closed and does not
+ * expose ambient request context rather than risking cross-request attribution.
  */
 
 /** The resolved, prefix-free context. Ids are raw uuids; the backend applies `rti-`/`sri-`/`srsi-`/`cs-`. */
@@ -30,8 +30,6 @@ type AsyncLocalStorageLike = {
 
 let als: AsyncLocalStorageLike | null = null;
 let alsInitPromise: Promise<void> | null = null;
-// Single-value fallback (before ALS finishes loading / where it is unavailable).
-let syncCurrent: ServerRequestSpanContext | null = null;
 
 async function ensureAsyncContext(): Promise<void> {
   if (alsInitPromise) return await alsInitPromise;
@@ -54,7 +52,7 @@ async function ensureAsyncContext(): Promise<void> {
 
 /** The ambient request context, or null when not inside a `{ request }` scope. */
 export function getServerRequestContext(): ServerRequestSpanContext | null {
-  return als?.getStore() ?? syncCurrent;
+  return als?.getStore() ?? null;
 }
 
 /** Runs `fn` with `context` ambient. Awaits the ALS load first so the very first
@@ -64,11 +62,5 @@ export async function runWithServerRequestContext<T>(context: ServerRequestSpanC
   if (als) {
     return await als.run(context, fn);
   }
-  const previous = syncCurrent;
-  syncCurrent = context;
-  try {
-    return await fn();
-  } finally {
-    syncCurrent = previous;
-  }
+  return await fn();
 }

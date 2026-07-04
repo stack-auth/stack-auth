@@ -171,4 +171,25 @@ describe("span context (exact sync-window reads)", () => {
     await Promise.resolve();
     expect(getAmbientSpanRefs()).toEqual([]);
   });
+
+  it("runWithSpanFrame treats thenables as async for best-effort readers", async () => {
+    __setAsyncContextModeForTesting("sync-stack");
+    const waiters: ((value: string) => void)[] = [];
+    const thenable = {
+      then: (resolve: (value: string) => void) => {
+        waiters.push(resolve);
+      },
+    };
+
+    const result = runWithSpanFrame(ref("thenable"), () => thenable);
+    expect(result).toBe(thenable);
+    expect(exactIds()).toEqual([]);
+    expect(ambientIds()).toEqual(["thenable"]);
+    const settled = Promise.resolve(thenable);
+    await Promise.resolve();
+    for (const resolve of waiters) resolve("done");
+    await settled;
+    await Promise.resolve();
+    expect(getAmbientSpanRefs()).toEqual([]);
+  });
 });

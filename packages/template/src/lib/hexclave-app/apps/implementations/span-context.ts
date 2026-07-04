@@ -44,19 +44,6 @@ export function getAmbientSpanRefs(opts?: { includeSuspendedSyncFrames?: boolean
 }
 
 /**
- * Whether an EXACT async-context primitive backs the ambient frames right now
- * (AsyncLocalStorage today; TC39 AsyncContext when browsers ship it). When
- * false, getAmbientSpanRefs() serves the shared sync stack, which can mix
- * frames from concurrently interleaved async flows — readers use this to apply
- * the `ambientParenting` policy ("exact" drops the frames, "best-effort" keeps
- * them). Frames are always RECORDED either way; only reading is gated, so the
- * policy can differ per consumer without losing context.
- */
-export function isExactAsyncContextActive(): boolean {
-  return getAsyncLocalStorage() !== null;
-}
-
-/**
  * Runs `fn` with `frame` appended to the ambient span context. Awaits the ALS
  * probe on the very first call (so server code gets isolation from the first
  * withSpan() rather than racing the module load); once the probe has settled it
@@ -114,8 +101,8 @@ export function runWithSpanFrame<T>(ref: SpanRef, fn: () => T): T {
   try {
     const result = fn();
     syncFrame.prologueOpen = false;
-    if (result instanceof Promise) {
-      result.finally(pop).catch(() => {});
+    if (result !== null && result !== undefined && typeof (result as { then?: unknown }).then === "function") {
+      runAsynchronously(Promise.resolve(result).finally(pop), { noErrorLogging: true });
     } else {
       pop();
     }
