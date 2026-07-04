@@ -890,6 +890,29 @@ describe("EventTracker", () => {
     await expect(Promise.all(registered)).resolves.toBeDefined();
   });
 
+  it("isolates registerBackgroundTask hook failures from flush delivery", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async () => Result.ok(new Response()),
+      registerBackgroundTask: () => {
+        throw new Error("waitUntil unavailable");
+      },
+    });
+
+    try {
+      tracker.trackCustomEvent("first").catch(() => {});
+
+      await expect(tracker.flush()).resolves.toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Hexclave analytics: EventTracker waitUntil hook failed:",
+        expect.any(Error),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Click me</button>";

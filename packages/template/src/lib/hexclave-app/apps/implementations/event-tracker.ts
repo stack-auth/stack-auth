@@ -119,6 +119,19 @@ export function rejectedPreCaught(message: string): Promise<never> {
   return preCaught(Promise.reject(new Error(message)));
 }
 
+export function registerTelemetryBackgroundTask(
+  registerBackgroundTask: ((promise: Promise<unknown>) => void) | undefined,
+  promise: Promise<unknown>,
+  source: string,
+): void {
+  if (registerBackgroundTask === undefined) return;
+  try {
+    registerBackgroundTask(promise);
+  } catch (error) {
+    console.warn(`Hexclave analytics: ${source} waitUntil hook failed:`, error);
+  }
+}
+
 let warnedTelemetryUnavailable = false;
 export function warnTelemetryUnavailableOnce(): void {
   if (warnedTelemetryUnavailable) return;
@@ -1094,7 +1107,7 @@ export class EventTracker {
       this._inFlight.delete(tracked);
     });
     this._inFlight.add(tracked);
-    this._deps.registerBackgroundTask?.(tracked);
+    registerTelemetryBackgroundTask(this._deps.registerBackgroundTask, tracked, "EventTracker");
     await tracked;
   }
 
