@@ -1,0 +1,38 @@
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.test.ts
+  s_7944732389f342::t_5a04ec6d7ac268 3
+  s_7944732389f342::t_9e2d60dbe369a2 4
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_7944732389f342::t_5a04ec6d7ac268 40
+  s_7944732389f342::t_5b99178980e24c 2,1659-1662,1995,2135
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_7944732389f342::t_5a04ec6d7ac268 64
+  s_7944732389f342::t_5b7ae108e3b463 4037-4038,4050-4059,4061-4066
+packages/template/src/lib/hexclave-app/apps/implementations/span-context-state.ts
+  s_7944732389f342::t_5a04ec6d7ac268 12-58,61
+  s_7944732389f342::t_cd5a3701e10ce9 9-11
+  s_7944732389f342::t_b07204f0194a1f 59-60
+  s_7944732389f342::t_636f607a16b625 1-8
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.ts
+  s_7944732389f342::t_5a04ec6d7ac268 3,39,56,68-69,100,102-103
+  s_7944732389f342::t_3d857c12f1cd2c 1,101
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_7944732389f342::t_1089eea521897d 5,8,27-30,32,478,536-564,900-922
+packages/template/src/lib/hexclave-app/apps/interfaces/server-app.ts
+  s_7944732389f342::t_49aead3c36df35 4,145-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0b7c3d1bf58e752f497294b2f2dd89f1d19e0ef2",
+  "prompts": {},
+  "sessions": {
+    "s_7944732389f342": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f2a99-805e-78e1-b5ab-f1d11c8e5d50",
+        "model": "gpt-5.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
