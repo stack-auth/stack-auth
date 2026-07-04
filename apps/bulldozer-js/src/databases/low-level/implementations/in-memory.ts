@@ -1,6 +1,6 @@
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { traceSpan } from "../../../otel.js";
+import { traceSpanHot } from "../../../otel.js";
 import { Database, DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
 
@@ -47,7 +47,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     const seqSentinel: DatabaseSeq = [] as unknown as DatabaseSeq;
     const result: LowLevelKvStore & LowLevelKvDump = {
       async get(key: ArrayBuffer) {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.get", attributes }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.get", attributes }, async () => {
           if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
           return {
             buffer: base64KeyToValue.get(encodeBase64(new Uint8Array(key)))?.slice(0) ?? null,
@@ -56,7 +56,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         });
       },
       async setAll(entries: Array<{ key: ArrayBuffer, value: ArrayBuffer }>) {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.setAll", attributes: { ...attributes, "bulldozer.low_level.entry_count": entries.length } }, async () => {
           for (const { key, value } of entries) {
             if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
             if (value.byteLength > 2_000_000_000) throw new Error("KV store value must be <= 2GB");
@@ -68,7 +68,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         });
       },
       async deleteAll(keys: ArrayBuffer[]) {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.deleteAll", attributes: { ...attributes, "bulldozer.low_level.key_count": keys.length } }, async () => {
           for (const key of keys) {
             if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
             base64KeyToValue.delete(encodeBase64(new Uint8Array(key)));
@@ -79,7 +79,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         });
       },
       async insertAll(values: ArrayBuffer[], options: { requiresSeq: DatabaseSeq }) {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.insertAll", attributes: { ...attributes, "bulldozer.low_level.value_count": values.length } }, async () => {
           for (const value of values) {
             if (value.byteLength > 2_000_000_000) throw new Error("KV store value must be <= 2GB");
           }
@@ -91,7 +91,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         });
       },
       async compareAndSet(key: ArrayBuffer, compare: ArrayBuffer, value: ArrayBuffer, options: { requiresSeq: DatabaseSeq }) {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.compareAndSet", attributes }, async () => {
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.compareAndSet", attributes }, async () => {
           if (key.byteLength > 64) throw new Error("KV store key must be <= 64 bytes");
           if (compare.byteLength > 2_000_000_000) throw new Error("KV store compare must be <= 2GB");
           if (value.byteLength > 2_000_000_000) throw new Error("KV store value must be <= 2GB");
@@ -107,7 +107,7 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
         });
       },
       async debugEntries() {
-        return await traceSpan({ description: "bulldozer-js.low-level.in-memory.debugEntries", attributes }, async () => [...base64KeyToValue.entries()]
+        return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.debugEntries", attributes }, async () => [...base64KeyToValue.entries()]
           .sort(([a], [b]) => stringCompare(a, b))
           .map(([keyBase64, value]) => {
             const keyBytes = Buffer.from(keyBase64, "base64");
@@ -143,19 +143,19 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
       return declareInMemoryLowLevelKvStoreOrDump("store", JSON.stringify([dbId, storeId]));
     },
     async waitUntilAvailable() {
-      return await traceSpan({ description: "bulldozer-js.low-level.in-memory.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
+      return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.waitUntilAvailable", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
     },
     async waitUntilDurable() {
-      return await traceSpan({ description: "bulldozer-js.low-level.in-memory.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
+      return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.waitUntilDurable", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
     },
     async waitUntilReplicated() {
-      return await traceSpan({ description: "bulldozer-js.low-level.in-memory.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
+      return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.waitUntilReplicated", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {});
     },
     combineSeqs(...seqs) {
       return this.initialSeq;
     },
     async debugSnapshot() {
-      return await traceSpan({ description: "bulldozer-js.low-level.in-memory.debugSnapshot", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {
+      return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.debugSnapshot", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {
         const stores: Record<string, LowLevelDatabaseDebugEntry[]> = {};
         const dumps: Record<string, LowLevelDatabaseDebugEntry[]> = {};
         for (const [storeId, entries] of debugEntriesByStoreId.entries()) {
