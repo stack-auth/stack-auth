@@ -1448,6 +1448,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
+  protected async _refreshItemCache(customerType: "user" | "team" | "custom", customerId: string, itemId: string): Promise<void> {
+    if (customerType === "user") {
+      await this._serverUserItemsCache.refresh([customerId, itemId]);
+    } else if (customerType === "team") {
+      await this._serverTeamItemsCache.refresh([customerId, itemId]);
+    } else {
+      await this._serverCustomItemsCache.refresh([customerId, itemId]);
+    }
+  }
+
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
     if ("userId" in options) {
       const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
