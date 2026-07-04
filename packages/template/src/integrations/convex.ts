@@ -1,7 +1,7 @@
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import type { ConvexCtx } from "../lib/hexclave-app/common";
 import { defaultBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
-import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser } from "./adapter-core";
+import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, runAdapterSpan } from "./adapter-core";
 
 export function getConvexProvidersConfig(options: {
   baseUrl?: string,
@@ -63,25 +63,19 @@ export function hexclaveConvexFunction<TCtx extends ConvexCtx, TArgs, TResult>(
 ): (ctx: TCtx, args: TArgs) => Promise<TResult> {
   return async (ctx: TCtx, args: TArgs): Promise<TResult> => {
     const user = await (app.getUser as (options: { from: "convex", ctx: ConvexCtx, or: "return-null" }) => Promise<AdapterUser | null>)({ from: "convex", ctx, or: "return-null" });
-    if (options?.required && user === null) {
-      throw options.unauthorized?.() ?? new Error("You must be signed in to call this Convex function. (Hexclave: no identity on ctx.auth.)");
-    }
-    const run = () => handler({ ctx, args, user });
-    if (options?.telemetry === false) {
-      return await run();
-    }
-    const custom = typeof options?.telemetry === "object" ? options.telemetry : undefined;
-    return await app.withSpan(
-      custom?.spanType ?? "convex.function",
-      {
-        ...user !== null ? { userId: user.id } : {},
-        data: {
-          ...options?.kind ? { kind: options.kind } : {},
-          ...options?.name ? { name: options.name } : {},
-          ...custom?.data ?? {},
-        },
+    return await runAdapterSpan(app, {
+      defaultSpanType: "convex.function",
+      data: {
+        ...options?.kind ? { kind: options.kind } : {},
+        ...options?.name ? { name: options.name } : {},
       },
-      () => run(),
-    );
+      link: user !== null ? { userId: user.id } : undefined,
+      telemetry: options?.telemetry,
+    }, async () => {
+      if (options?.required && user === null) {
+        throw options.unauthorized?.() ?? new Error("You must be signed in to call this Convex function. (Hexclave: no identity on ctx.auth.)");
+      }
+      return await handler({ ctx, args, user });
+    });
   };
 }
