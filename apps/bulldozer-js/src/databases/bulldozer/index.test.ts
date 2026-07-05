@@ -45,8 +45,8 @@ const initializedSnapshot = async (migrations: Parameters<typeof declareBulldoze
 };
 const rows = (snapshot: Awaited<ReturnType<typeof initializedSnapshot>>, tableId: string, range: Record<string, PiledriverObject> = {}, groupKey: PiledriverObject = null) =>
   asRows(snapshot.listRowsInGroup({ tableId, groupKey, range }));
-const set = (snapshot: Awaited<ReturnType<typeof initializedSnapshot>>, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
-  snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData });
+const set = async (snapshot: Awaited<ReturnType<typeof initializedSnapshot>>, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
+  (await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData })).newSnapshot;
 
 describe("Bulldozer", () => {
   it("persists an empty snapshot for zero migrations", async () => {
@@ -410,13 +410,13 @@ describe("Bulldozer", () => {
     ]);
     expect(reducerCalls).toEqual([{ rowIdentifier: "a", trigger: null, state: 0 }]);
 
-    snapshot = await snapshot.tick(new Date(firstTrigger));
+    snapshot = (await snapshot.tick(new Date(firstTrigger))).newSnapshot;
     expect(await rows(snapshot, "time")).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
     ]);
 
-    snapshot = await snapshot.tick(new Date(secondTrigger));
+    snapshot = (await snapshot.tick(new Date(secondTrigger))).newSnapshot;
     expect(await rows(snapshot, "time")).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
@@ -460,7 +460,7 @@ describe("Bulldozer", () => {
     ]]);
 
     snapshot = await set(snapshot, "store", "a", "A");
-    snapshot = await snapshot.tick(new Date(firstTrigger));
+    snapshot = (await snapshot.tick(new Date(firstTrigger))).newSnapshot;
     expect(await rows(snapshot, "time")).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },
@@ -477,7 +477,7 @@ describe("Bulldozer", () => {
 
     // The hook's returned state and trigger drive subsequent timed steps: the next tick appends
     // (using the carried-over state) instead of replaying history.
-    snapshot = await snapshot.tick(new Date(secondTrigger));
+    snapshot = (await snapshot.tick(new Date(secondTrigger))).newSnapshot;
     expect(await rows(snapshot, "time")).toEqual([
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 0]), rowSortKey: null, rowData: "A:initial" },
       { groupKey: null, rowIdentifier: JSON.stringify(["a", 1]), rowSortKey: null, rowData: "A:2" },

@@ -94,8 +94,8 @@ async function initializedSnapshot(migrations: Migration) {
   await db.applyRemainingMigrations();
   return (await db.getSnapshot()).snapshot;
 }
-const set = (snapshot: Snapshot, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
-  snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData });
+const set = async (snapshot: Snapshot, tableId: string, rowIdentifier: string, newRowData: PiledriverObject | undefined) =>
+  (await snapshot.setOrDeleteRow({ tableId, rowIdentifier, newRowData })).newSnapshot;
 const seedRows = async (
   snapshot: Snapshot,
   tableId: string,
