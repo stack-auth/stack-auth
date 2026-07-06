@@ -559,7 +559,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     };
     \`\`\`
 
-    Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add handler/auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
+    Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
   "fraud-protection": deindent`
     Key concepts: sign-up rules are ordered checks that decide whether a sign-up should be allowed, rejected, restricted, or logged; rule priority decides which matching rule wins when multiple rules apply.
@@ -1172,32 +1172,6 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
           ` : ""}
         </Step>
-
-        ${isMaybeTanstackStart ? deindent`
-          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Hexclave handler route">
-            Hexclave's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`HexclaveHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
-
-            \`\`\`tsx src/routes/handler/$.tsx
-            import { HexclaveHandler } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
-            import { createFileRoute, useLocation } from "@tanstack/react-router";
-
-            export const Route = createFileRoute("/handler/$")({
-              ssr: false,
-              component: HandlerPage,
-            });
-
-            function HandlerPage() {
-              const { pathname } = useLocation();
-              return <HexclaveHandler fullPage location={pathname} />;
-            }
-            \`\`\`
-
-            Two TanStack-specific notes:
-
-            - The route is opted out of SSR with \`ssr: false\`. The handler runs browser-only auth flows (cookies, redirects, popups), so rendering it on the server provides no benefit and can fight with hydration. Other routes can opt into or out of SSR per-route the same way.
-            - Hexclave resolves the current user during SSR by reading TanStack Start's request cookies through \`@hexclave/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`HexclaveClientApp\`.
-          </Step>
-        ` : ""}
       ` : ""}
 
       ${isMaybeBackend && !isDefinitelyNextjs ? deindent`
