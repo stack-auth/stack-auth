@@ -361,6 +361,22 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     return cache;
   }
 
+  // Combines a parent entry-aug cache (for the separator entry) with a child node's cache into a
+  // single map for make(). Used by borrow paths where the receiving node is built from a parent
+  // separator plus a child's entries.
+  private combineCaches(
+    parentCache: ReadonlyMap<object, Augmentation> | undefined,
+    separator: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>,
+    childCache: ReadonlyMap<object, Augmentation> | undefined,
+  ): ReadonlyMap<object, Augmentation> | undefined {
+    const sepAug = parentCache?.get(separator);
+    if (sepAug === undefined && !childCache) return undefined;
+    const combined = new Map<object, Augmentation>();
+    if (childCache) for (const [e, a] of childCache) combined.set(e, a);
+    if (sepAug !== undefined) combined.set(separator, sepAug);
+    return combined;
+  }
+
   private arity() {
     return Math.max(3, this.options.arity ?? defaultArity);
   }
@@ -532,25 +548,29 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     const left = children[index - 1];
     if (left && left.entryCount > this.minEntries()) {
       const leftNode = (await this.node(left.ref))!;
-      const childNode = child ? (await this.node(child.ref))! : { entries: [], children: [] };
+      const loadedChild = child ? (await this.node(child.ref))! : undefined;
+      const childNode = loadedChild ?? { entries: [] as Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: [] as Child<MultiKey<Key, EntryId>, Augmentation>[] };
       const separator = entries[index - 1];
       const borrowedEntry = leftNode.entries[leftNode.entries.length - 1];
       const borrowedChild = leftNode.children.at(-1);
       entries[index - 1] = borrowedEntry;
       children[index - 1] = await this.make(leftNode.entries.slice(0, -1), leftNode.children.slice(0, -1), this.buildEntryAugCache(leftNode));
-      children[index] = await this.make([separator, ...childNode.entries], borrowedChild === undefined ? childNode.children : [borrowedChild, ...childNode.children]);
+      const borrowRecvCache = this.combineCaches(cachedEntryAugs, separator, loadedChild ? this.buildEntryAugCache(loadedChild) : undefined);
+      children[index] = await this.make([separator, ...childNode.entries], borrowedChild === undefined ? childNode.children : [borrowedChild, ...childNode.children], borrowRecvCache);
       return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
     }
 
     const right = children[index + 1];
     if (right && right.entryCount > this.minEntries()) {
-      const childNode = child ? (await this.node(child.ref))! : { entries: [], children: [] };
+      const loadedChild = child ? (await this.node(child.ref))! : undefined;
+      const childNode = loadedChild ?? { entries: [] as Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: [] as Child<MultiKey<Key, EntryId>, Augmentation>[] };
       const rightNode = (await this.node(right.ref))!;
       const separator = entries[index];
       const borrowedEntry = rightNode.entries[0];
       const borrowedChild = rightNode.children.at(0);
       entries[index] = borrowedEntry;
-      children[index] = await this.make([...childNode.entries, separator], borrowedChild === undefined ? childNode.children : [...childNode.children, borrowedChild]);
+      const borrowRecvCache = this.combineCaches(cachedEntryAugs, separator, loadedChild ? this.buildEntryAugCache(loadedChild) : undefined);
+      children[index] = await this.make([...childNode.entries, separator], borrowedChild === undefined ? childNode.children : [...childNode.children, borrowedChild], borrowRecvCache);
       children[index + 1] = await this.make(rightNode.entries.slice(1), rightNode.children.slice(1), this.buildEntryAugCache(rightNode));
       return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
     }
