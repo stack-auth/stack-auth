@@ -37,12 +37,13 @@ import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
 import { typedFromEntries, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { resolvePlanId } from "@hexclave/shared/dist/plans";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
-import { useId, useMemo, useState } from "react";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
+import { Suspense, useEffect, useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -193,7 +194,24 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
     return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
   }
 
-  return <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />;
+  // The plan check reads the internal project's owned products from bulldozer.
+  // That gate must not break the auth-methods page if bulldozer is down: on a
+  // read failure (or while it loads) we report it and fall back to the locked
+  // (non-Team) state, which is the same safe default as having no owner team.
+  return (
+    <ErrorBoundary errorComponent={() => <AddCustomOidcButtonPlanReadFailed onClick={onClick} />}>
+      <Suspense fallback={<AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />}>
+        <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function AddCustomOidcButtonPlanReadFailed({ onClick }: { onClick: () => void }) {
+  useEffect(() => {
+    captureError("auth-methods:custom-oidc-plan-gate", new Error("Failed to load owner team plan for the custom OIDC gate; defaulting to locked"));
+  }, []);
+  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
 }
 
 function AddCustomOidcButtonInner({
