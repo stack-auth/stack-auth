@@ -133,8 +133,8 @@ function CliAuthContent() {
   if (state.status === "loading") {
     return (
       <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
         </div>
         <Skeleton className="h-64 w-full rounded-xl" />
         <Skeleton className="h-64 w-full rounded-xl" />
@@ -306,6 +306,9 @@ function AttemptStatusIcon({ status }: { status: CliAuthAttempt["status"] }) {
     case "pending": {
       return <WarningCircleIcon className="h-4 w-4 shrink-0 text-amber-500" />;
     }
+    default: {
+      return <WarningCircleIcon className="h-4 w-4 shrink-0 text-gray-400" />;
+    }
   }
 }
 
@@ -322,6 +325,9 @@ function AttemptStatusBadge({ status }: { status: CliAuthAttempt["status"] }) {
     }
     case "pending": {
       return <DesignBadge label="Pending" color="orange" size="sm" />;
+    }
+    default: {
+      return <DesignBadge label={status} color="orange" size="sm" />;
     }
   }
 }
