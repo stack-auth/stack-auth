@@ -439,6 +439,30 @@ function SelectionCheckbox({
   );
 }
 
+// ─── Scroll parent detection ─────────────────────────────────────────
+
+// When the grid does NOT own its own vertical scroll (`fillHeight={false}`
+// and no `maxHeight`), rows scroll inside the nearest scrollable ancestor —
+// the page shell — not inside the grid's own container. The virtualizer must
+// measure against THAT element; otherwise it treats the grid's own unbounded,
+// non-scrolling container as the viewport, computes a viewport height equal to
+// the full content height, and renders every single row. For long
+// infinite-scroll lists (transactions, customers, users) that means the DOM
+// grows without bound as more pages load, until the tab runs out of memory and
+// crashes/reloads. Walking up to the real scroller lets the virtualizer window
+// rows correctly in page-scroll mode too.
+export function findScrollParent(start: HTMLElement | null): HTMLElement | null {
+  let el = start?.parentElement ?? null;
+  while (el) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
 // ─── Infinite scroll sentinel ────────────────────────────────────────
 
 const NOOP = () => {};
@@ -907,20 +931,65 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const stickyChromeRef = useRef<HTMLDivElement>(null);
   const rowsClipRef = useRef<HTMLDivElement>(null);
+  const rowsContainerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const measureElementFn = useCallback((el: Element) => el.getBoundingClientRect().height, []);
 
+  // In page-scroll mode (see findScrollParent) the virtualizer measures against
+  // the nearest scrollable ancestor, offset by how far the row list sits below
+  // that scroller's top (`scrollMargin`). In grid-owned-scroll mode the grid's
+  // own container is the scroller and there is no offset.
+  const usesAncestorScroll = !(fillHeight || maxHeight != null);
+  const [ancestorScrollEl, setAncestorScrollEl] = useState<HTMLElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!usesAncestorScroll) {
+      setAncestorScrollEl(null);
+      return;
+    }
+    setAncestorScrollEl(findScrollParent(gridRef.current));
+  }, [usesAncestorScroll]);
+
+  const activeScrollMargin = usesAncestorScroll ? scrollMargin : 0;
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => (usesAncestorScroll ? ancestorScrollEl : scrollContainerRef.current),
     estimateSize: () => estimatedRowHeight,
     overscan,
+    scrollMargin: activeScrollMargin,
     getItemKey: (index) => {
       const row = rows[index];
       return row != null ? String(getRowId(row)) : index;
     },
     ...(isDynamicRowHeight ? { measureElement: measureElementFn } : {}),
   });
+
+  // Keep `scrollMargin` synced with the row list's offset inside the ancestor
+  // scroller. The list sits below the sticky toolbar/header, so its offset is
+  // stable as rows load, but we re-measure on resize and row-count changes to
+  // stay correct across layout shifts.
+  useLayoutEffect(() => {
+    if (!usesAncestorScroll || !ancestorScrollEl) return;
+    const listEl = rowsContainerRef.current;
+    if (!listEl) return;
+    const update = () => {
+      const offset = listEl.getBoundingClientRect().top
+        - ancestorScrollEl.getBoundingClientRect().top
+        + ancestorScrollEl.scrollTop;
+      setScrollMargin((prev) => (Math.abs(prev - offset) > 0.5 ? offset : prev));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(ancestorScrollEl);
+    observer.observe(listEl);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [usesAncestorScroll, ancestorScrollEl, rows.length, isLoading]);
 
   // ── Sticky chrome clipping ───────────────────────────────────
   useLayoutEffect(() => {
@@ -1134,6 +1203,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
             {!isLoading && rows.length > 0 && (
               <div
+                ref={rowsContainerRef}
                 style={{
                   height: rowVirtualizer.getTotalSize(),
                   width: "100%",
@@ -1168,7 +1238,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         ...(isDynamicRowHeight
                           ? { minHeight: estimatedRowHeight }
                           : { height: fixedRowHeight }),
-                        transform: `translateY(${virtualRow.start}px)`,
+                        transform: `translateY(${virtualRow.start - activeScrollMargin}px)`,
                       }}
                       onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
                       onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}

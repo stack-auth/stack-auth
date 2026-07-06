@@ -10,6 +10,7 @@ import {
   type DataGridColumnDef,
   type DataGridProps,
 } from "./index";
+import { findScrollParent } from "./data-grid";
 
 type Row = {
   id: string,
@@ -263,6 +264,54 @@ describe("DataGrid infinite scroll observer", () => {
     });
 
     expect(intersectionObserverRecords.at(-1)?.options?.root ?? null).toBeNull();
+  });
+});
+
+describe("findScrollParent", () => {
+  // In page-scroll mode the virtualizer must measure against the nearest
+  // scrollable ancestor (not the grid's own non-scrolling container), otherwise
+  // it renders every row and long infinite lists exhaust memory and crash.
+  afterEach(() => cleanup());
+
+  it("returns the nearest ancestor with a scrollable overflow", () => {
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    const middle = document.createElement("div");
+    const leaf = document.createElement("div");
+    scroller.append(middle);
+    middle.append(leaf);
+    document.body.append(scroller);
+
+    expect(findScrollParent(leaf)).toBe(scroller);
+
+    scroller.remove();
+  });
+
+  it("treats overflowY:scroll as scrollable", () => {
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "scroll";
+    const leaf = document.createElement("div");
+    scroller.append(leaf);
+    document.body.append(scroller);
+
+    expect(findScrollParent(leaf)).toBe(scroller);
+
+    scroller.remove();
+  });
+
+  it("returns null when no ancestor scrolls", () => {
+    const outer = document.createElement("div");
+    const leaf = document.createElement("div");
+    outer.append(leaf);
+    document.body.append(outer);
+
+    expect(findScrollParent(leaf)).toBeNull();
+
+    outer.remove();
+  });
+
+  it("returns null for a null start element", () => {
+    expect(findScrollParent(null)).toBeNull();
   });
 });
 
