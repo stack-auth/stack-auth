@@ -31,6 +31,11 @@ type Split<K, V extends PiledriverObject, A> = { entry: Entry<K, StoredValue<V>>
 // Persisted B-tree node. Children are heap objects, so unchanged subtrees are shared across versions.
 type Node<K, V extends PiledriverObject, A> = {
   entries: Entry<K, StoredValue<V>>[],
+  // Cached per-entry augmentations, parallel to `entries`. When a node is path-copied during a
+  // mutation, unchanged entries (same tuple identity) can reuse their cached augmentation instead
+  // of re-calling extractAugmentation. This avoids creating duplicate heap objects for the same
+  // data, letting the downstream serializer recognise them as already-written (heap cache hits).
+  entryAugmentations?: A[],
   children: Child<K, A>[],
   augmentation: A,
   size: number,
@@ -291,7 +296,11 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
   }
 
   // Recomputes all cached metadata for a freshly path-copied node.
-  private async make(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[] = []) {
+  // cachedEntryAugs: when provided, maps entry tuple references to their previously computed
+  // augmentations. Unchanged entries (same tuple identity) get a cache hit, avoiding a redundant
+  // extractAugmentation call and — critically — reusing the same PiledriverHeapObjects so that
+  // downstream serialization sees them as already-written (heap object cache hits).
+  private async make(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[] = [], cachedEntryAugs?: ReadonlyMap<object, Augmentation>) {
     if (!entries.length && children.length !== 1) throw new Error("Invalid empty B-tree node");
     if (!entries.length) {
       const [onlyChild] = children;
@@ -307,6 +316,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     }
 
     const augmentations: Augmentation[] = [];
+    const entryAugmentations: Augmentation[] = [];
     let size = entries.length;
 
     for (let i = 0; i < entries.length; i++) {
@@ -315,7 +325,12 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         augmentations.push(child.augmentation);
         size += child.size;
       }
-      augmentations.push(await this.options.extractAugmentation(await this.loadValue(entries[i][1]), entries[i][0].key, entries[i][0].id));
+      const cached = cachedEntryAugs?.get(entries[i]);
+      const entryAug = cached !== undefined
+        ? cached
+        : await this.options.extractAugmentation(await this.loadValue(entries[i][1]), entries[i][0].key, entries[i][0].id);
+      entryAugmentations.push(entryAug);
+      augmentations.push(entryAug);
     }
     const lastChild = children.at(entries.length);
     if (lastChild) {
@@ -325,6 +340,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
 
     const node = {
       entries,
+      entryAugmentations,
       children,
       augmentation: await this.options.mergeAugmentations(...augmentations),
       size,
@@ -332,6 +348,17 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       maxKey: children[children.length - 1]?.maxKey ?? entries[entries.length - 1][0],
     };
     return this.child(asHeapObject(node as PiledriverObject), node);
+  }
+
+  // Builds a Map from entry tuple references to their cached augmentations, enabling O(1) lookups
+  // during make(). Returns undefined if the node has no cached augmentations (e.g. old format).
+  private buildEntryAugCache(node: Node<MultiKey<Key, EntryId>, Value, Augmentation>): ReadonlyMap<object, Augmentation> | undefined {
+    if (!node.entryAugmentations || node.entryAugmentations.length !== node.entries.length) return undefined;
+    const cache = new Map<object, Augmentation>();
+    for (let i = 0; i < node.entries.length; i++) {
+      cache.set(node.entries[i], node.entryAugmentations[i]);
+    }
+    return cache;
   }
 
   private arity() {
@@ -377,15 +404,15 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     return result.split ? await this.make([result.split.entry], [result.root, result.split.right]) : result.root;
   }
 
-  private async split(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[]) {
+  private async split(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[], cachedEntryAugs?: ReadonlyMap<object, Augmentation>) {
     const middle = entries.length >> 1;
-    const left = await this.make(entries.slice(0, middle), children.length ? children.slice(0, middle + 1) : []);
-    const right = await this.make(entries.slice(middle + 1), children.length ? children.slice(middle + 1) : []);
+    const left = await this.make(entries.slice(0, middle), children.length ? children.slice(0, middle + 1) : [], cachedEntryAugs);
+    const right = await this.make(entries.slice(middle + 1), children.length ? children.slice(middle + 1) : [], cachedEntryAugs);
     return { root: left, split: { entry: entries[middle], right } };
   }
 
-  private async done(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[], added: boolean) {
-    const result = entries.length > this.maxEntries() ? await this.split(entries, children) : { root: await this.make(entries, children) };
+  private async done(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: Child<MultiKey<Key, EntryId>, Augmentation>[], added: boolean, cachedEntryAugs?: ReadonlyMap<object, Augmentation>) {
+    const result = entries.length > this.maxEntries() ? await this.split(entries, children, cachedEntryAugs) : { root: await this.make(entries, children, cachedEntryAugs) };
     return { ...result, added };
   }
 
@@ -396,16 +423,17 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     const { index, found } = this.search(node.entries, key);
     const entries = [...node.entries];
     const children = [...node.children];
+    const cachedEntryAugs = this.buildEntryAugCache(node);
 
     if (found) {
       if (!replace) throw new Error("Key already exists");
       entries[index] = [key, this.storeValue(value)];
-      return await this.done(entries, children, false);
+      return await this.done(entries, children, false, cachedEntryAugs);
     }
 
     if (!children.length) {
       entries.splice(index, 0, [key, this.storeValue(value)]);
-      return await this.done(entries, children, true);
+      return await this.done(entries, children, true, cachedEntryAugs);
     }
 
     const child = await this.upsert(children[index].ref, key, value, replace);
@@ -414,7 +442,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       entries.splice(index, 0, child.split.entry);
       children.splice(index + 1, 0, child.split.right);
     }
-    return await this.done(entries, children, child.added);
+    return await this.done(entries, children, child.added, cachedEntryAugs);
   }
 
   private async deleteFrom(child: Child<MultiKey<Key, EntryId>, Augmentation> | null, key: MultiKey<Key, EntryId>, isRoot = false): Promise<{ root: Child<MultiKey<Key, EntryId>, Augmentation> | null, deleted: boolean }> {
@@ -424,11 +452,12 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     const { index, found } = this.search(node.entries, key);
     const entries = [...node.entries];
     const children = [...node.children] as (Child<MultiKey<Key, EntryId>, Augmentation> | null)[];
+    const cachedEntryAugs = this.buildEntryAugCache(node);
 
     if (found) {
       if (!children.length) {
         entries.splice(index, 1);
-        return await this.afterDelete(entries, children, isRoot, true);
+        return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
       }
 
       // Replace the separator with its predecessor or successor (from whichever side has more
@@ -441,12 +470,12 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
         const { root, entry } = await this.deleteMin(right);
         entries[index] = entry;
         children[index + 1] = root;
-        return await this.fixChild(entries, children, index + 1, isRoot);
+        return await this.fixChild(entries, children, index + 1, isRoot, cachedEntryAugs);
       }
       const { root, entry } = await this.deleteMax(left);
       entries[index] = entry;
       children[index] = root;
-      return await this.fixChild(entries, children, index, isRoot);
+      return await this.fixChild(entries, children, index, isRoot, cachedEntryAugs);
     }
 
     if (!children.length) return { root: child, deleted: false };
@@ -454,49 +483,51 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     const deletedChild = await this.deleteFrom(children[index], key);
     if (!deletedChild.deleted) return { root: child, deleted: false };
     children[index] = deletedChild.root;
-    return await this.fixChild(entries, children, index, isRoot);
+    return await this.fixChild(entries, children, index, isRoot, cachedEntryAugs);
   }
 
   private async deleteMin(child: Child<MultiKey<Key, EntryId>, Augmentation>): Promise<{ root: Child<MultiKey<Key, EntryId>, Augmentation> | null, entry: Entry<MultiKey<Key, EntryId>, StoredValue<Value>> }> {
     const node = (await this.node(child.ref))!;
     const entries = [...node.entries];
     const children = [...node.children] as (Child<MultiKey<Key, EntryId>, Augmentation> | null)[];
+    const cachedEntryAugs = this.buildEntryAugCache(node);
 
     if (!children.length) {
       const [entry] = entries.splice(0, 1);
-      return { root: entries.length ? await this.make(entries) : null, entry };
+      return { root: entries.length ? await this.make(entries, [], cachedEntryAugs) : null, entry };
     }
 
     const result = await this.deleteMin(children[0]!);
     children[0] = result.root;
-    return { root: (await this.fixChild(entries, children, 0, false)).root, entry: result.entry };
+    return { root: (await this.fixChild(entries, children, 0, false, cachedEntryAugs)).root, entry: result.entry };
   }
 
   private async deleteMax(child: Child<MultiKey<Key, EntryId>, Augmentation>): Promise<{ root: Child<MultiKey<Key, EntryId>, Augmentation> | null, entry: Entry<MultiKey<Key, EntryId>, StoredValue<Value>> }> {
     const node = (await this.node(child.ref))!;
     const entries = [...node.entries];
     const children = [...node.children] as (Child<MultiKey<Key, EntryId>, Augmentation> | null)[];
+    const cachedEntryAugs = this.buildEntryAugCache(node);
 
     if (!children.length) {
       const entry = entries.pop()!;
-      return { root: entries.length ? await this.make(entries) : null, entry };
+      return { root: entries.length ? await this.make(entries, [], cachedEntryAugs) : null, entry };
     }
 
     const index = children.length - 1;
     const result = await this.deleteMax(children[index]!);
     children[index] = result.root;
-    return { root: (await this.fixChild(entries, children, index, false)).root, entry: result.entry };
+    return { root: (await this.fixChild(entries, children, index, false, cachedEntryAugs)).root, entry: result.entry };
   }
 
-  private async afterDelete(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: (Child<MultiKey<Key, EntryId>, Augmentation> | null)[], isRoot: boolean, deleted: boolean) {
+  private async afterDelete(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: (Child<MultiKey<Key, EntryId>, Augmentation> | null)[], isRoot: boolean, deleted: boolean, cachedEntryAugs?: ReadonlyMap<object, Augmentation>) {
     const liveChildren = children.filter(child => child !== null);
     if (!entries.length) return { root: isRoot ? liveChildren[0] ?? null : liveChildren[0] ? await this.make([], [liveChildren[0]]) : null, deleted };
-    return { root: await this.make(entries, liveChildren), deleted };
+    return { root: await this.make(entries, liveChildren, cachedEntryAugs), deleted };
   }
 
-  private async fixChild(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: (Child<MultiKey<Key, EntryId>, Augmentation> | null)[], index: number, isRoot: boolean): Promise<{ root: Child<MultiKey<Key, EntryId>, Augmentation> | null, deleted: boolean }> {
+  private async fixChild(entries: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>[], children: (Child<MultiKey<Key, EntryId>, Augmentation> | null)[], index: number, isRoot: boolean, cachedEntryAugs?: ReadonlyMap<object, Augmentation>): Promise<{ root: Child<MultiKey<Key, EntryId>, Augmentation> | null, deleted: boolean }> {
     const child = children[index];
-    if (child && child.entryCount >= this.minEntries()) return await this.afterDelete(entries, children, isRoot, true);
+    if (child && child.entryCount >= this.minEntries()) return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
 
     const left = children[index - 1];
     if (left && left.entryCount > this.minEntries()) {
@@ -506,9 +537,9 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       const borrowedEntry = leftNode.entries[leftNode.entries.length - 1];
       const borrowedChild = leftNode.children.at(-1);
       entries[index - 1] = borrowedEntry;
-      children[index - 1] = await this.make(leftNode.entries.slice(0, -1), leftNode.children.slice(0, -1));
+      children[index - 1] = await this.make(leftNode.entries.slice(0, -1), leftNode.children.slice(0, -1), this.buildEntryAugCache(leftNode));
       children[index] = await this.make([separator, ...childNode.entries], borrowedChild === undefined ? childNode.children : [borrowedChild, ...childNode.children]);
-      return await this.afterDelete(entries, children, isRoot, true);
+      return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
     }
 
     const right = children[index + 1];
@@ -520,23 +551,38 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
       const borrowedChild = rightNode.children.at(0);
       entries[index] = borrowedEntry;
       children[index] = await this.make([...childNode.entries, separator], borrowedChild === undefined ? childNode.children : [...childNode.children, borrowedChild]);
-      children[index + 1] = await this.make(rightNode.entries.slice(1), rightNode.children.slice(1));
-      return await this.afterDelete(entries, children, isRoot, true);
+      children[index + 1] = await this.make(rightNode.entries.slice(1), rightNode.children.slice(1), this.buildEntryAugCache(rightNode));
+      return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
     }
 
     const mergeIndex = left ? index - 1 : index;
-    const merged = await this.mergeChildren(children[mergeIndex], entries[mergeIndex], children[mergeIndex + 1]);
+    const merged = await this.mergeChildren(children[mergeIndex], entries[mergeIndex], children[mergeIndex + 1], cachedEntryAugs);
     entries.splice(mergeIndex, 1);
     children.splice(mergeIndex, 2, merged);
-    return await this.afterDelete(entries, children, isRoot, true);
+    return await this.afterDelete(entries, children, isRoot, true, cachedEntryAugs);
   }
 
-  private async mergeChildren(left: Child<MultiKey<Key, EntryId>, Augmentation> | null, entry: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>, right: Child<MultiKey<Key, EntryId>, Augmentation> | null) {
-    const leftNode = left ? (await this.node(left.ref))! : { entries: [], children: [] };
-    const rightNode = right ? (await this.node(right.ref))! : { entries: [], children: [] };
+  private async mergeChildren(left: Child<MultiKey<Key, EntryId>, Augmentation> | null, entry: Entry<MultiKey<Key, EntryId>, StoredValue<Value>>, right: Child<MultiKey<Key, EntryId>, Augmentation> | null, parentEntryAugs?: ReadonlyMap<object, Augmentation>) {
+    const leftNode = left ? (await this.node(left.ref))! : null;
+    const rightNode = right ? (await this.node(right.ref))! : null;
+
+    // Build a combined entry augmentation cache from both child nodes and the parent separator
+    const cache = new Map<object, Augmentation>();
+    if (leftNode) {
+      const lc = this.buildEntryAugCache(leftNode);
+      if (lc) for (const [e, a] of lc) cache.set(e, a);
+    }
+    if (rightNode) {
+      const rc = this.buildEntryAugCache(rightNode);
+      if (rc) for (const [e, a] of rc) cache.set(e, a);
+    }
+    const sepAug = parentEntryAugs?.get(entry);
+    if (sepAug !== undefined) cache.set(entry, sepAug);
+
     return await this.make(
-      [...leftNode.entries, entry, ...rightNode.entries],
-      [...leftNode.children, ...rightNode.children],
+      [...(leftNode?.entries ?? []), entry, ...(rightNode?.entries ?? [])],
+      [...(leftNode?.children ?? []), ...(rightNode?.children ?? [])],
+      cache.size ? cache : undefined,
     );
   }
 
@@ -558,7 +604,9 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     for (let i = 0; i < node.entries.length; i++) {
       result = await this.merge(result, await this.augmentation(node.children[i] ?? null, range));
       if (aboveLowerBound(node.entries[i][0]) && belowUpperBound(node.entries[i][0])) {
-        result = await this.merge(result, await this.options.extractAugmentation(await this.loadValue(node.entries[i][1]), node.entries[i][0].key, node.entries[i][0].id));
+        const entryAug = node.entryAugmentations?.[i]
+          ?? await this.options.extractAugmentation(await this.loadValue(node.entries[i][1]), node.entries[i][0].key, node.entries[i][0].id);
+        result = await this.merge(result, entryAug);
       }
     }
     return await this.merge(result, await this.augmentation(node.children[node.entries.length] ?? null, range));
