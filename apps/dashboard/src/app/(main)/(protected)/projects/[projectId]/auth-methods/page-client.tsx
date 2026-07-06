@@ -769,8 +769,7 @@ function LivePreviewBody({
     <div className="self-stretch py-2 min-w-[400px] items-center">
       <BrowserFrame url="your-website.com/signin">
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert>
-            <div className="absolute inset-0 bg-transparent z-10"></div>
+          <div className="w-full sm:max-w-xs m-auto scale-90">
             <HostedAuthMethodPreview
               project={{
                 displayName: projectDisplayName,
