@@ -3,6 +3,7 @@ import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
 import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { isActiveSubscription } from "@/lib/payments";
 import {
+  arePlanLimitsEnforced,
   getBillingTeamId,
   getNonAnonymousUserCountForTenancies,
   getOwnedProjectAndTenancyIdsForBillingTeam,
@@ -423,6 +424,7 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
     period_start_millis: period.start.getTime(),
     period_end_millis: period.end.getTime(),
     next_plan_id: getNextPlanId(planId),
+    are_plan_limits_enforced: arePlanLimitsEnforced(),
     rows: buildRows({
       planId,
       dashboardAdmins,

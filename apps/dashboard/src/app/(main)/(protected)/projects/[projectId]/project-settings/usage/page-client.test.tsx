@@ -15,6 +15,7 @@ function createPlanUsageState() {
     periodStart: new Date(Date.UTC(2026, 5, 1)),
     periodEnd: new Date(Date.UTC(2026, 6, 1)),
     nextPlanId: "team",
+    arePlanLimitsEnforced: true,
     rows: [
       {
         itemId: "dashboard_admins",
@@ -146,6 +147,17 @@ describe("Usage settings page", () => {
       throw new Error("Expected Auth users progress fill element");
     }
     expect(authUsageFill.style.width).toBe("0%");
+  });
+
+  it("hides overage banner when plan limits are not enforced", () => {
+    planUsageState = {
+      ...createPlanUsageState(),
+      arePlanLimitsEnforced: false,
+    };
+
+    render(<PageClient />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("starts checkout for the next plan from the upgrade CTA", async () => {
