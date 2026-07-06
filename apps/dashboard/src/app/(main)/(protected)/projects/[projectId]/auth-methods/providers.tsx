@@ -21,6 +21,7 @@ import { useWatch } from "react-hook-form";
 import * as yup from "yup";
 import { useAdminApp } from "../use-admin-app";
 import { resolveProviderCallbackUrl } from "./oauth-callback-url";
+import { envConfigIsWritable } from "./provider-config";
 
 export function ProviderIcon(props: { id: string, size?: "sm" | "md" | "lg" }) {
   const size = props.size ?? "md";
@@ -99,10 +100,25 @@ function ProviderHeader({ providerId }: { providerId: string }) {
 function PillToggleControl({
   form,
   hasSharedKeys,
+  envWritable,
 }: {
   form: UseFormReturn<ProviderFormValues>,
   hasSharedKeys: boolean,
+  envWritable: boolean,
 }) {
+  // Development environments can't write the environment config layer where
+  // custom OAuth credentials live, so the "Own credentials" choice is removed.
+  // Shared-capable providers are pinned to shared; non-shared-capable providers
+  // are blocked entirely (handled by the form / disabled Save).
+  if (!envWritable) {
+    return (
+      <Typography variant="secondary" type="footnote">
+        {hasSharedKeys
+          ? "Using shared keys. Custom OAuth credentials can only be configured in your production deployment."
+          : "This provider requires your own credentials, which can only be configured in your production deployment."}
+      </Typography>
+    );
+  }
   if (!hasSharedKeys) {
     return (
       <Typography variant="secondary" type="footnote">
@@ -262,18 +278,31 @@ function OAuthProviderSettingsForm(props: {
   form: UseFormReturn<ProviderFormValues>,
   providerId: string,
   hasSharedKeys: boolean,
+  envWritable: boolean,
+  blockedNoShared: boolean,
 }) {
-  const shared = useWatch({ control: props.form.control, name: "shared" });
+  const sharedValue = useWatch({ control: props.form.control, name: "shared" });
+  // In a development environment the env layer is read-only, so custom
+  // credentials are impossible; shared-capable providers behave as shared
+  // regardless of the form value, and the credential fields are never shown.
+  const shared = props.envWritable ? sharedValue : true;
 
   return (
     <div className="flex flex-col gap-5 w-full">
       <ProviderHeader providerId={props.providerId} />
       <div className="flex flex-col gap-2">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Credential source</span>
-        <PillToggleControl form={props.form} hasSharedKeys={props.hasSharedKeys} />
+        <PillToggleControl form={props.form} hasSharedKeys={props.hasSharedKeys} envWritable={props.envWritable} />
       </div>
-      {shared && <WarningInline />}
-      {!shared && (
+      {props.blockedNoShared && (
+        <DesignAlert
+          variant="warning"
+          title="Configure in your production deployment"
+          description="This provider has no shared keys and requires your own OAuth credentials. Credentials are part of the environment configuration, which is read-only in development environments. Add this provider from your production deployment instead."
+        />
+      )}
+      {shared && !props.blockedNoShared && <WarningInline />}
+      {!shared && props.envWritable && (
         <>
           <RedirectInline providerId={props.providerId} />
           <div className="flex flex-col gap-3">
@@ -291,11 +320,19 @@ function OAuthProviderSettingsForm(props: {
 }
 
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
+  const project = useAdminApp().useProject();
+  const envWritable = envConfigIsWritable(project);
   const hasSharedKeys = sharedProviders.includes(props.id as any);
   const bundleIdsArray = (props.provider as any)?.appleBundleIds ?? [];
 
+  // In a development environment, custom credentials can't be written. Pin
+  // shared-capable providers to shared, and block providers that have no shared
+  // keys (they can only be added from a production deployment).
+  const forcedShared = !envWritable && hasSharedKeys;
+  const blockedNoShared = !envWritable && !hasSharedKeys;
+
   const defaultValues = {
-    shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
+    shared: forcedShared ? true : (props.provider ? (props.provider.type === 'shared') : hasSharedKeys),
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
@@ -304,7 +341,11 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
-    if (values.shared) {
+    // Defensive: this dialog blocks Save for no-shared providers in dev envs,
+    // and the action hook re-checks before any write. Nothing to do here.
+    if (blockedNoShared) return;
+    // In a dev env, shared-capable providers are always saved as shared.
+    if (forcedShared || values.shared) {
       await props.updateProvider({ id: props.id, type: 'shared' });
     } else {
       await props.updateProvider({
@@ -328,12 +369,14 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       onClose={props.onClose}
       title={`${toTitle(props.id)} OAuth provider`}
       cancelButton
-      okButton={{ label: 'Save' }}
+      okButton={{ label: 'Save', props: { disabled: blockedNoShared } }}
       render={(form) => (
         <OAuthProviderSettingsForm
           form={form}
           providerId={props.id}
           hasSharedKeys={hasSharedKeys}
+          envWritable={envWritable}
+          blockedNoShared={blockedNoShared}
         />
       )}
     />

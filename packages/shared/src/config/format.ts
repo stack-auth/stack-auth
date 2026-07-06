@@ -222,6 +222,36 @@ import.meta.vitest?.test("override(...)", ({ expect }) => {
   });
 });
 
+import.meta.vitest?.test("OAuth two-stage layering: resetting the whole env key clears the credential subtree", ({ expect }) => {
+  // Switching real -> shared (and clearing stale credentials on edit) is done by
+  // resetting the WHOLE env key `auth.oauth.providers.<id>`. `removeKeysFromConfig`
+  // strips the key and all descendants regardless of whether credentials were
+  // stored as leaf keys or as a whole object.
+  expect(
+    removeKeysFromConfig(
+      {
+        "auth.oauth.providers.spotify.isShared": false,
+        "auth.oauth.providers.spotify.clientId": "client-id",
+        "auth.oauth.providers.spotify.clientSecret": "client-secret",
+        "auth.oauth.providers.google.isShared": false,
+      },
+      ["auth.oauth.providers.spotify"],
+    ),
+  ).toEqual({
+    "auth.oauth.providers.google.isShared": false,
+  });
+
+  // Also works when the env stored a whole provider object (old / migrated shape).
+  expect(
+    removeKeysFromConfig(
+      {
+        auth: { oauth: { providers: { spotify: { isShared: false, clientId: "client-id" } } } },
+      },
+      ["auth.oauth.providers.spotify"],
+    ),
+  ).toEqual({});
+});
+
 type NormalizeOptions = {
   /**
    * What to do if a dot notation is used on a value that is not an object.

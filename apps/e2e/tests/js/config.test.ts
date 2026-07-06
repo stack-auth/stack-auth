@@ -61,20 +61,19 @@ describe("error handling", () => {
     } as any, { source: { type: "unlinked" } })).rejects.toThrow(/nonExistentField/);
   });
 
-  it("updateConfig rejects invalid oauth provider type", async ({ expect }) => {
+  it("pushConfig rejects invalid oauth provider type", async ({ expect }) => {
     const { adminApp } = await createApp();
     const project = await adminApp.getProject();
 
-    await expect(project.updateConfig({
+    // The provider roster (incl. `type`) lives on the branch layer, so the enum
+    // validation fires there (via pushConfig), not on the environment layer.
+    await expect(project.pushConfig({
       'auth.oauth.providers.invalid': {
         type: 'not-a-real-provider',
-        isShared: false,
-        clientId: 'test',
-        clientSecret: 'test',
         allowSignIn: true,
         allowConnectedAccounts: true,
       },
-    } as any)).rejects.toThrow(/type must be one of the following values/);
+    } as any, { source: { type: "unlinked" } })).rejects.toThrow(/type must be one of the following values/);
   });
 
   it("pushConfig rejects environment-only fields at branch level", async ({ expect }) => {

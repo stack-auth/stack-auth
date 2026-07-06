@@ -327,36 +327,29 @@ export function ProjectOnboardingWizard(props: {
         configUpdate[`apps.installed.${appId}.enabled`] = true;
       }
     }
-    if (isDevelopmentEnvironment) {
-      for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
-        configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
-          type: providerId,
-          allowSignIn: true,
-          allowConnectedAccounts: true,
-        } : null;
-      }
-    }
-    return configUpdate;
-  }, [completeConfig.emails.selectedThemeId, isDevelopmentEnvironment, selectedApps, selectedEmailThemeId, signInMethods]);
-
-  const buildEnvironmentOAuthConfigUpdate = useCallback(() => {
-    const configUpdate: EnvironmentConfigOverrideOverride = {};
+    // The provider roster + enabled state lives in the branch layer (always
+    // writable, even in development environments). These are all SHARED providers,
+    // which have no environment credentials, so this branch write is all that's
+    // needed — there is nothing to write to the environment layer.
     for (const providerId of SHARED_OAUTH_SIGN_IN_METHODS) {
-      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId) ? {
-        type: providerId,
-        isShared: true,
-        allowSignIn: true,
-        allowConnectedAccounts: true,
-      } : null;
+      // Shared providers are branch-only (no environment credentials): just the
+      // enable fields. `type`'s presence is what makes the provider render.
+      configUpdate[`auth.oauth.providers.${providerId}`] = signInMethods.has(providerId)
+        ? { type: providerId, allowSignIn: true, allowConnectedAccounts: true }
+        : null;
     }
     return configUpdate;
-  }, [signInMethods]);
+  }, [completeConfig.emails.selectedThemeId, selectedApps, selectedEmailThemeId, signInMethods]);
 
   const saveFinalConfig = useCallback(async (): Promise<boolean> => {
     if (isLinkExistingMode) {
       return true;
     }
 
+    // Everything onboarding configures — sign-in methods, apps, email theme, and
+    // the SHARED OAuth provider roster — lives in the branch layer, which is
+    // writable even in development environments. Shared providers have no
+    // environment credentials, so there is no environment-layer write to make.
     const branchConfigUpdated = await updateConfig({
       adminApp: props.project.app,
       configUpdate: buildBranchConfigUpdate(),
@@ -366,22 +359,9 @@ export function ProjectOnboardingWizard(props: {
       return false;
     }
 
-    if (!isDevelopmentEnvironment) {
-      const providersUpdated = await updateConfig({
-        adminApp: props.project.app,
-        configUpdate: buildEnvironmentOAuthConfigUpdate(),
-        pushable: false,
-      });
-      if (!providersUpdated) {
-        return false;
-      }
-    }
-
     return true;
   }, [
     buildBranchConfigUpdate,
-    buildEnvironmentOAuthConfigUpdate,
-    isDevelopmentEnvironment,
     isLinkExistingMode,
     props.project.app,
     updateConfig,

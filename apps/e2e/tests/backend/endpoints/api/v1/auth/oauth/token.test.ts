@@ -5,10 +5,11 @@ import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 const enableSharedSpotifyProvider = async () => {
-  await Project.updateConfig({
+  // The provider roster + enabled state lives in the branch layer; a shared provider
+  // has no env credentials, so this is a branch-only write.
+  await Project.updatePushedConfig({
     "auth.oauth.providers.spotify": {
       type: "spotify",
-      isShared: true,
       allowSignIn: true,
       allowConnectedAccounts: true,
     },

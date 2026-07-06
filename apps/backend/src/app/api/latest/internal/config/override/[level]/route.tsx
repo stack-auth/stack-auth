@@ -198,7 +198,7 @@ function findIncludeByDefaultPath(value: unknown, path: string[] = []): string |
 
 async function parseAndValidateConfig(
   configString: string,
-  levelConfig: typeof levelConfigs["branch" | "environment" | "project"]
+  levelConfig: typeof levelConfigs["branch" | "environment" | "project"],
 ) {
   let parsedConfig;
   try {
@@ -221,6 +221,9 @@ async function parseAndValidateConfig(
     );
   }
 
+  // Whole-object OAuth provider writes to the environment config are normalized into
+  // credential leaf keys by `migrateConfigOverride("environment", ...)`, so the
+  // environment layer can never clobber the branch-owned provider roster at render.
   const migratedConfig = levelConfig.migrate(parsedConfig);
   const overrideError = await getConfigOverrideErrors(levelConfig.schema, migratedConfig);
   if (overrideError.status === "error") {
