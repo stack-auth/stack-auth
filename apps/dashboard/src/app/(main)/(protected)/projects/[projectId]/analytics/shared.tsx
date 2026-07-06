@@ -333,16 +333,16 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
  * error escape to the page. `Suspense` keeps the banner from blocking the page
  * while its data loads.
  */
-function BillingBannerErrorFallback({ error }: { error: Error }) {
+function BillingBannerErrorFallback({ location, error }: { location: string, error: unknown }) {
   useEffect(() => {
-    captureError("analytics-limit-banner:billing-read-failed", error);
-  }, [error]);
+    captureError(location, error);
+  }, [location, error]);
   return null;
 }
 
-function ResilientBillingBanner(props: { children: ReactNode }) {
+function ResilientBillingBanner(props: { children: ReactNode, location: string }) {
   return (
-    <ErrorBoundary errorComponent={BillingBannerErrorFallback}>
+    <ErrorBoundary errorComponent={({ error }) => <BillingBannerErrorFallback location={props.location} error={error} />}>
       <Suspense fallback={null}>
         {props.children}
       </Suspense>
@@ -356,7 +356,7 @@ function ResilientBillingBanner(props: { children: ReactNode }) {
  */
 export function AnalyticsEventLimitBanner() {
   return (
-    <ResilientBillingBanner>
+    <ResilientBillingBanner location="analytics-limit-banner:billing-read-failed">
       <AnalyticsEventLimitBannerContent />
     </ResilientBillingBanner>
   );
@@ -387,7 +387,7 @@ function AnalyticsEventLimitBannerContent() {
  */
 export function SessionReplayLimitBanner() {
   return (
-    <ResilientBillingBanner>
+    <ResilientBillingBanner location="session-replay-limit-banner:billing-read-failed">
       <SessionReplayLimitBannerContent />
     </ResilientBillingBanner>
   );

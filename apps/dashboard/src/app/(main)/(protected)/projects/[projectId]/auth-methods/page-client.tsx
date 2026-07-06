@@ -207,7 +207,7 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function AddCustomOidcButtonPlanReadFailed({ onClick, error }: { onClick: () => void, error: Error }) {
+function AddCustomOidcButtonPlanReadFailed({ onClick, error }: { onClick: () => void, error: unknown }) {
   useEffect(() => {
     captureError("auth-methods:custom-oidc-plan-gate", error);
   }, [error]);
