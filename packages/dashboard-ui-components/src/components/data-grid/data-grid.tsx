@@ -58,6 +58,11 @@ import type {
   RowId,
 } from "./types";
 
+// Viewport-relative fallback height for infinite-scroll grids that the caller left unbounded
+// (no `fillHeight`, no `maxHeight`). Leaves ~16rem of room for the top bar, page header, and grid
+// toolbar. See the `effectiveMaxHeight` comment in DataGrid for why an infinite grid must be bounded.
+const DEFAULT_INFINITE_MAX_HEIGHT = "calc(100dvh - 16rem)";
+
 // ─── Row click target ────────────────────────────────────────────────
 
 function getEventTargetElement(target: EventTarget | null): Element | null {
@@ -997,8 +1002,18 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const allSelected = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
   const someSelected = !allSelected && rowIds.some((id) => state.selection.selectedIds.has(id));
+
+  // An infinite-scroll grid MUST have a height-bounded scroll container, otherwise the container
+  // grows to fit every loaded row, the virtualizer measures it as fully visible, and it renders
+  // all rows into the DOM — unbounded memory growth that eventually OOMs the tab (rows never stop
+  // accumulating as the user scrolls). When the caller didn't bound it (no fillHeight, no maxHeight),
+  // fall back to a viewport-relative cap so virtualization can actually window. Only applied to
+  // infinite mode; paginated grids cap rows at the page size and are safe to render unbounded.
+  const effectiveMaxHeight =
+    maxHeight ?? (paginationMode === "infinite" && !fillHeight ? DEFAULT_INFINITE_MAX_HEIGHT : undefined);
+
   const infiniteScrollRootRef =
-    paginationMode === "infinite" && (fillHeight || maxHeight != null)
+    paginationMode === "infinite" && (fillHeight || effectiveMaxHeight != null)
       ? scrollContainerRef
       : undefined;
 
@@ -1016,7 +1031,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     return m;
   }, [headers]);
 
-  const isBounded = fillHeight || maxHeight != null;
+  const isBounded = fillHeight || effectiveMaxHeight != null;
 
   return (
     <>
@@ -1036,7 +1051,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           isBounded && "overflow-hidden",
           className,
         )}
-        style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
+        style={effectiveMaxHeight != null ? { ...cssVars, maxHeight: effectiveMaxHeight } : cssVars}
         role="grid"
         aria-rowcount={totalRowCount ?? rows.length}
         aria-colcount={visibleColumns.length}
@@ -1044,7 +1059,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         <div
           ref={stickyChromeRef}
           className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl"
-          style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
+          style={{ top: stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
         >
           {toolbar !== false && (
             <div className="relative bg-transparent">

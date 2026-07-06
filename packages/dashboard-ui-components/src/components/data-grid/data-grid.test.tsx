@@ -166,6 +166,24 @@ function DataGridHarness(props: { fillHeight?: boolean }) {
   );
 }
 
+function PaginatedDataGridHarness() {
+  const [state, setState] = useState(() => createDefaultDataGridState(columns));
+
+  return (
+    <div style={{ height: 400 }}>
+      <DataGrid<Row>
+        columns={columns}
+        rows={[{ id: "row-1", name: "Row 1" }]}
+        getRowId={(row) => row.id}
+        state={state}
+        onChange={setState}
+        paginationMode="paginated"
+        fillHeight={false}
+      />
+    </div>
+  );
+}
+
 function InteractiveDataGridHarness(props: {
   onSortChange?: DataGridProps<Row>["onSortChange"],
   onSelectionChange?: DataGridProps<Row>["onSelectionChange"],
@@ -259,14 +277,39 @@ describe("DataGrid infinite scroll observer", () => {
     expect(intersectionObserverRecords.at(-1)?.options?.root).toBe(scrollContainer);
   });
 
-  it("falls back to the viewport when the page owns vertical scrolling", async () => {
-    render(<DataGridHarness fillHeight={false} />);
+  // Regression: an infinite grid left unbounded (`fillHeight={false}`, no `maxHeight`) used to
+  // grow its scroll container to fit every loaded row, which defeats virtualization (the
+  // virtualizer measures the container as fully visible and mounts every row) and OOMs the tab on
+  // large datasets. Such grids now fall back to a default `maxHeight`, so the grid owns its own
+  // bounded scroll container and observes against it rather than the viewport.
+  it("bounds an unbounded infinite grid and observes against its own scroll container", async () => {
+    const { container } = render(<DataGridHarness fillHeight={false} />);
 
     await waitFor(() => {
       expect(intersectionObserverRecords.length).toBeGreaterThan(0);
     });
 
-    expect(intersectionObserverRecords.at(-1)?.options?.root ?? null).toBeNull();
+    const grid = container.querySelector('[role="grid"]');
+    expect(grid).not.toBeNull();
+    const scrollContainer = grid?.children.item(1);
+
+    expect(intersectionObserverRecords.at(-1)?.options?.root).toBe(scrollContainer);
+  });
+
+  it("applies a default maxHeight to an otherwise-unbounded infinite grid", () => {
+    const { container } = render(<DataGridHarness fillHeight={false} />);
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    expect(grid).not.toBeNull();
+    expect(grid?.style.maxHeight).toBe("calc(100dvh - 16rem)");
+  });
+
+  it("does not force a maxHeight onto a paginated grid", () => {
+    const { container } = render(<PaginatedDataGridHarness />);
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    expect(grid).not.toBeNull();
+    expect(grid?.style.maxHeight).toBe("");
   });
 });
 
