@@ -26,6 +26,7 @@ import { PageLayout } from "../page-layout";
 type CliAuthSummary = {
   total_attempts: number,
   completed_attempts: number,
+  used_attempts: number,
   expired_attempts: number,
   pending_attempts: number,
   active_tokens: number,
@@ -171,9 +172,10 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
       />
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard label="Total attempts" value={summary.total_attempts} icon={<TerminalWindowIcon className="h-4 w-4" />} />
-        <KpiCard label="Completed" value={summary.completed_attempts} icon={<CheckCircleIcon className="h-4 w-4 text-emerald-500" />} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <KpiCard label="Total" value={summary.total_attempts} icon={<TerminalWindowIcon className="h-4 w-4" />} />
+        <KpiCard label="Used" value={summary.used_attempts} icon={<CheckCircleIcon className="h-4 w-4 text-emerald-500" />} />
+        <KpiCard label="Ready" value={summary.completed_attempts} icon={<CheckCircleIcon className="h-4 w-4 text-blue-500" />} />
         <KpiCard label="Expired" value={summary.expired_attempts} icon={<XCircleIcon className="h-4 w-4 text-red-500" />} />
         <KpiCard label="Active tokens" value={summary.active_tokens} icon={<UserIcon className="h-4 w-4 text-blue-500" />} />
       </div>
@@ -210,7 +212,7 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
                       {user.expires_at == null ? "No expiry" : `Expires ${new Date(user.expires_at).toLocaleDateString()}`}
                     </Typography>
                   </div>
-                  <DesignBadge color="green" size="sm">Active</DesignBadge>
+                  <DesignBadge label="Active" color="green" size="sm" />
                 </div>
               </div>
             ))}
@@ -233,7 +235,7 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
                     <Typography variant="secondary" className="text-[11px]">
                       Expired {user.expires_at != null ? formatRelativeTime(user.expires_at) : ""}
                     </Typography>
-                    <DesignBadge color="gray" size="sm">Expired</DesignBadge>
+                    <DesignBadge label="Expired" color="red" size="sm" />
                   </div>
                 </div>
               ))}
@@ -310,16 +312,16 @@ function AttemptStatusIcon({ status }: { status: CliAuthAttempt["status"] }) {
 function AttemptStatusBadge({ status }: { status: CliAuthAttempt["status"] }) {
   switch (status) {
     case "used": {
-      return <DesignBadge color="green" size="sm">Used</DesignBadge>;
+      return <DesignBadge label="Used" color="green" size="sm" />;
     }
     case "completed": {
-      return <DesignBadge color="blue" size="sm">Ready</DesignBadge>;
+      return <DesignBadge label="Ready" color="blue" size="sm" />;
     }
     case "expired": {
-      return <DesignBadge color="red" size="sm">Expired</DesignBadge>;
+      return <DesignBadge label="Expired" color="red" size="sm" />;
     }
     case "pending": {
-      return <DesignBadge color="orange" size="sm">Pending</DesignBadge>;
+      return <DesignBadge label="Pending" color="orange" size="sm" />;
     }
   }
 }

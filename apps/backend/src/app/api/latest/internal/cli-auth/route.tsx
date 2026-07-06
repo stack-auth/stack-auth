@@ -44,6 +44,7 @@ export const GET = createSmartRouteHandler({
       summary: yupObject({
         total_attempts: yupNumber().integer().defined(),
         completed_attempts: yupNumber().integer().defined(),
+        used_attempts: yupNumber().integer().defined(),
         expired_attempts: yupNumber().integer().defined(),
         pending_attempts: yupNumber().integer().defined(),
         active_tokens: yupNumber().integer().defined(),
@@ -89,16 +90,16 @@ export const GET = createSmartRouteHandler({
     `);
 
     // Compute summary stats
+    let used = 0;
     let completed = 0;
     let expired = 0;
     let pending = 0;
     for (const attempt of recentAttempts) {
       if (attempt.usedAt != null) {
-        completed++;
+        used++;
       } else if (attempt.expiresAt < now) {
         expired++;
       } else if (attempt.refreshToken != null) {
-        // Refresh token assigned but not yet polled/used — treat as completed
         completed++;
       } else {
         pending++;
@@ -129,12 +130,15 @@ export const GET = createSmartRouteHandler({
     // Find active CLI tokens: tokens that were created via CLI auth (by looking
     // at CliAuthAttempt rows that have a non-null refreshToken and usedAt).
     // We join with the global ProjectUserRefreshToken table to find active sessions.
+    // Bounded to most recent 200 to avoid scanning entire history for high-usage tenants.
     const cliRefreshTokens = await prisma.$replica().$queryRaw<{ refreshToken: string }[]>(Prisma.sql`
       SELECT "refreshToken"
       FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
       WHERE "tenancyId" = ${tenancy.id}::UUID
         AND "refreshToken" IS NOT NULL
         AND "usedAt" IS NOT NULL
+      ORDER BY "createdAt" DESC
+      LIMIT 200
     `);
 
     let activeCliUsers: Array<{
@@ -147,10 +151,22 @@ export const GET = createSmartRouteHandler({
       is_expired: boolean,
     }> = [];
 
+    let activeTokenCount = 0;
+
     if (cliRefreshTokens.length > 0) {
       const tokenValues = cliRefreshTokens.map((r) => r.refreshToken);
 
-      // Look up which tokens are still active in the global refresh token table
+      // Get accurate total count of active (non-expired) tokens separately from the display list
+      const countResult = await globalPrismaClient.$replica().$queryRaw<{ count: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*) as count
+        FROM "ProjectUserRefreshToken"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "refreshToken" = ANY(${tokenValues})
+          AND ("expiresAt" IS NULL OR "expiresAt" >= ${now})
+      `);
+      activeTokenCount = Number(countResult[0]?.count ?? 0n);
+
+      // Look up which tokens are still active in the global refresh token table (limited for display)
       const activeTokens = await globalPrismaClient.$replica().$queryRaw<ActiveCliTokenRow[]>(Prisma.sql`
         SELECT
           "id",
@@ -195,8 +211,6 @@ export const GET = createSmartRouteHandler({
       }
     }
 
-    const activeTokenCount = activeCliUsers.filter((u) => !u.is_expired).length;
-
     return {
       statusCode: 200 as const,
       bodyType: "json" as const,
@@ -204,6 +218,7 @@ export const GET = createSmartRouteHandler({
         summary: {
           total_attempts: recentAttempts.length,
           completed_attempts: completed,
+          used_attempts: used,
           expired_attempts: expired,
           pending_attempts: pending,
           active_tokens: activeTokenCount,
