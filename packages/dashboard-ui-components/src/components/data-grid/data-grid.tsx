@@ -951,11 +951,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     setAncestorScrollEl(findScrollParent(gridRef.current));
   }, [usesAncestorScroll]);
 
-  const activeScrollMargin = usesAncestorScroll ? scrollMargin : 0;
+  // Only offset by the margin once we've actually resolved (and measured) an
+  // ancestor scroller. Until then — and when no scrollable ancestor exists
+  // (e.g. a window-scrolled page, which this app's shell never produces) — we
+  // fall back to the grid's own container so the virtualizer always has a real
+  // scroll element to measure and `scrollMargin` stays consistent with it.
+  const hasAncestorScroll = usesAncestorScroll && ancestorScrollEl != null;
+  const activeScrollMargin = hasAncestorScroll ? scrollMargin : 0;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => (usesAncestorScroll ? ancestorScrollEl : scrollContainerRef.current),
+    getScrollElement: () => (hasAncestorScroll ? ancestorScrollEl : scrollContainerRef.current),
     estimateSize: () => estimatedRowHeight,
     overscan,
     scrollMargin: activeScrollMargin,
@@ -967,9 +973,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   });
 
   // Keep `scrollMargin` synced with the row list's offset inside the ancestor
-  // scroller. The list sits below the sticky toolbar/header, so its offset is
-  // stable as rows load, but we re-measure on resize and row-count changes to
-  // stay correct across layout shifts.
+  // scroller. The offset is scroll-invariant (it subtracts the scroller's own
+  // rect and adds back scrollTop), so only *layout* above the list changes it:
+  // the sticky toolbar/header growing (e.g. filter chips wrapping) pushes the
+  // list down without resizing the list itself. We therefore observe the
+  // scroller, the grid, the sticky chrome, and the list, plus window resizes.
   useLayoutEffect(() => {
     if (!usesAncestorScroll || !ancestorScrollEl) return;
     const listEl = rowsContainerRef.current;
@@ -984,6 +992,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     const observer = new ResizeObserver(update);
     observer.observe(ancestorScrollEl);
     observer.observe(listEl);
+    if (gridRef.current) observer.observe(gridRef.current);
+    if (stickyChromeRef.current) observer.observe(stickyChromeRef.current);
     window.addEventListener("resize", update);
     return () => {
       observer.disconnect();
