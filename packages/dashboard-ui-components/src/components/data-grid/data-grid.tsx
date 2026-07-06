@@ -655,6 +655,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const fixedRowHeight = isDynamicRowHeight ? undefined : rowHeightProp;
   const estimatedRowHeight = estimatedRowHeightProp ?? (fixedRowHeight ?? 44);
 
+  // "Bounded" = the grid owns a fixed-height, internally-scrolling viewport
+  // (either `fillHeight` fills its parent, or an explicit `maxHeight` caps it).
+  // When it's NOT bounded the grid grows to its content and an ancestor (the
+  // page layout) scrolls instead — which changes where the virtualizer must
+  // look for the scroll viewport (see `externalScrollParent` below).
+  const isBounded = fillHeight || maxHeight != null;
+
   const strings = useMemo(() => resolveDataGridStrings(stringsOverride), [stringsOverride]);
 
   // ── Build TanStack column defs from our column defs ──────────
@@ -921,11 +928,25 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const gridRef = useRef<HTMLDivElement>(null);
   const measureElementFn = useCallback((el: Element) => el.getBoundingClientRect().height, []);
 
+  // For page-scrolled grids (`fillHeight` false, no `maxHeight`) the grid grows
+  // to its content and never scrolls internally — an ancestor owns vertical
+  // scrolling. The virtualizer must track THAT element; otherwise it measures a
+  // viewport equal to the full content height, so every loaded row mounts into
+  // the DOM at once. On a long history (thousands of rows) that grows the DOM
+  // and heap without bound until the tab OOM-crashes ("Aw snap"), with nothing
+  // in the console, no failed requests, and no Sentry errors.
+  const [externalScrollParent, setExternalScrollParent] = useState<HTMLElement | null>(null);
+  // Content-space offset from the scroll parent's top to the first virtualized
+  // row (TanStack `scrollMargin`); lets the virtualizer position rows correctly
+  // when the scrolled element isn't the rows' own container.
+  const [scrollMargin, setScrollMargin] = useState(0);
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => (isBounded ? scrollContainerRef.current : externalScrollParent),
     estimateSize: () => estimatedRowHeight,
     overscan,
+    scrollMargin: isBounded ? 0 : scrollMargin,
     getItemKey: (index) => {
       const row = rows[index];
       return row != null ? String(getRowId(row)) : index;
@@ -962,6 +983,60 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       observer.disconnect();
     };
   }, []);
+
+  // ── Scroll parent tracking (page-scrolled grids) ─────────────
+  // Find the nearest scrollable ancestor so the virtualizer can track the
+  // element that actually scrolls. Only relevant when the grid isn't bounded;
+  // bounded grids scroll their own `scrollContainerRef`.
+  useLayoutEffect(() => {
+    if (isBounded) {
+      setExternalScrollParent(null);
+      return;
+    }
+    const gridEl = gridRef.current;
+    if (!gridEl) return;
+    let el = gridEl.parentElement;
+    let found: HTMLElement | null = null;
+    while (el) {
+      const overflowY = getComputedStyle(el).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
+        found = el;
+        break;
+      }
+      el = el.parentElement;
+    }
+    setExternalScrollParent(found ?? (gridEl.ownerDocument.scrollingElement as HTMLElement | null));
+  }, [isBounded]);
+
+  // Measure the rows' content-space offset within the scroll parent so
+  // absolutely-positioned virtual rows land in the right place. This offset is
+  // scroll-independent (we add back `scrollTop`), so it only needs recomputing
+  // on layout changes, not on every scroll. The threshold guard avoids a
+  // ResizeObserver → setState → re-render feedback loop from sub-pixel jitter.
+  useLayoutEffect(() => {
+    if (isBounded || !externalScrollParent) {
+      setScrollMargin(0);
+      return;
+    }
+    const rowsEl = rowsClipRef.current;
+    if (!rowsEl) return;
+    const compute = () => {
+      const parentRect = externalScrollParent.getBoundingClientRect();
+      const rowsRect = rowsEl.getBoundingClientRect();
+      const margin = Math.max(0, rowsRect.top - parentRect.top + externalScrollParent.scrollTop);
+      setScrollMargin((prev) => (Math.abs(prev - margin) > 0.5 ? margin : prev));
+    };
+    compute();
+    const observer = new ResizeObserver(compute);
+    observer.observe(externalScrollParent);
+    const gridEl = gridRef.current;
+    if (gridEl) observer.observe(gridEl);
+    window.addEventListener("resize", compute);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", compute);
+    };
+  }, [isBounded, externalScrollParent]);
 
   const handleBodyScroll = useCallback(() => {
     const body = scrollContainerRef.current;
@@ -1015,8 +1090,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     for (const h of headers) m.set(h.column.id, h);
     return m;
   }, [headers]);
-
-  const isBounded = fillHeight || maxHeight != null;
 
   return (
     <>
@@ -1179,7 +1252,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         ...(isDynamicRowHeight
                           ? { minHeight: estimatedRowHeight }
                           : { height: fixedRowHeight }),
-                        transform: `translateY(${virtualRow.start}px)`,
+                        transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
                       }}
                       onClick={(e) => { if (!shouldIgnoreRowClick(e)) handleRowClick(row, rowId, e); }}
                       onDoubleClick={(e) => { if (!shouldIgnoreRowClick(e)) onRowDoubleClick?.(row, rowId, e); }}
