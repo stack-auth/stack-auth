@@ -18,12 +18,19 @@ export const convexSetupPrompt = deindent`
 
       When prompted, choose **Next.js** and **No auth**. Hexclave will provide auth.
 
-      During development, run the Convex backend and the app dev server:
+      During development, run the Convex backend in one terminal:
 
       \`\`\`sh
       npx convex dev
-      npm run dev
       \`\`\`
+
+      Then start your app through the Hexclave CLI in another terminal. The CLI injects your Hexclave project ID and secret server key into the command after \`--\`. Convex functions run in a separate deployment that does not inherit your app process's environment, so forward those variables into the Convex deployment with \`convex env set\` before starting the app dev server:
+
+      \`\`\`sh
+      npx @hexclave/cli dev --config-file ./hexclave.config.ts -- sh -c 'npx convex env set HEXCLAVE_PROJECT_ID "$HEXCLAVE_PROJECT_ID" && npx convex env set HEXCLAVE_SECRET_SERVER_KEY "$HEXCLAVE_SECRET_SERVER_KEY" && npm run dev'
+      \`\`\`
+
+      This keeps the Convex deployment's \`HEXCLAVE_PROJECT_ID\` and \`HEXCLAVE_SECRET_SERVER_KEY\` in sync with the credentials the Hexclave CLI provisions, so your Convex auth config and server-side functions can read them. Keep the \`convex dev\` deployment running so \`convex env set\` can target it.
     </Step>
 
     <Step title="Install and configure Hexclave">
