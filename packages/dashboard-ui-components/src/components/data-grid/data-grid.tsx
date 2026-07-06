@@ -455,16 +455,27 @@ function InfiniteScrollSentinel({
   strings: DataGridStrings;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Read `onIntersect` through a ref so the observer never has to be
+  // re-created when the callback identity changes. `onLoadMore` (and thus
+  // `onIntersect`) changes on every `isLoadingMore`/`hasMore` toggle; if the
+  // observer were re-created each time, a freshly-created observer re-reports
+  // the sentinel's *current* intersection state, so a sentinel that stays in
+  // view keeps firing `onIntersect` after every page. That auto-loads the
+  // entire dataset back-to-back (defeating "load on scroll") and OOM-crashes
+  // the tab on long transaction/customer histories. A single stable observer
+  // only fires on genuine intersection *changes* (real user scrolls).
+  const onIntersectRef = useRef(onIntersect);
+  onIntersectRef.current = onIntersect;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0]?.isIntersecting) onIntersect(); },
+      (entries) => { if (entries[0]?.isIntersecting) onIntersectRef.current(); },
       { root: rootRef?.current ?? null, rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [onIntersect, rootRef]);
+  }, [rootRef]);
   return (
     <div ref={ref} className="flex items-center justify-center py-4">
       {isLoading && (
