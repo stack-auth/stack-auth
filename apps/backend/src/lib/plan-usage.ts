@@ -12,7 +12,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, getTenancy, type Te
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { BASE_PLAN_IDS_BY_TIER, ITEM_IDS, PLAN_LIMITS, UNLIMITED, type ItemId, type PlanId } from "@hexclave/shared/dist/plans";
 import type { PlanUsageResponse } from "@hexclave/shared/dist/interface/admin-interface";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { mapWithConcurrency } from "@hexclave/shared/dist/utils/promises";
 import type { SubscriptionRow } from "./payments/schema/types";
 
@@ -134,6 +134,27 @@ function getPlanLabel(planId: PlanId): string {
 
 function getUsageItemLabel(itemId: ItemId): string {
   return USAGE_ITEM_LABELS.get(itemId) ?? throwErr(`Missing usage item label for ${itemId}`);
+}
+
+/**
+ * Reads the billing team's subscription map, but never lets a bulldozer outage
+ * break the caller. Plan usage is surfaced only on the dashboard's own
+ * (internal project) surfaces — the overview/analytics limit banners and the
+ * usage page — so a hard dependency on bulldozer here would take the whole
+ * dashboard down whenever bulldozer is unreachable. On failure we report the
+ * error and fall back to an empty subscription map, which resolves to the free
+ * plan: we skip whatever we would normally bill/enforce rather than failing the
+ * page. The real plan is re-resolved on the next request once bulldozer is back.
+ */
+export async function readBillingSubscriptionMapOrSkip(
+  read: () => Promise<Record<string, SubscriptionRow>>,
+): Promise<Record<string, SubscriptionRow>> {
+  try {
+    return await read();
+  } catch (error) {
+    captureError("plan-usage:subscription-map-unavailable", error);
+    return {};
+  }
 }
 
 function resolveActivePlanSubscription(subscriptions: Record<string, SubscriptionRow>): SubscriptionRow | null {
@@ -394,12 +415,12 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
 
   const internalTenancy = await getInternalBillingTenancy();
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
-  const subscriptions = await getSubscriptionMapForCustomer({
+  const subscriptions = await readBillingSubscriptionMapOrSkip(() => getSubscriptionMapForCustomer({
     prisma: internalPrisma,
     tenancyId: internalTenancy.id,
     customerType: "team",
     customerId: ownerTeamId,
-  });
+  }));
   const activePlanSubscription = resolveActivePlanSubscription(subscriptions);
   const planId = resolveActivePlanId(activePlanSubscription);
   const period = getPlanUsagePeriod(activePlanSubscription, now);
