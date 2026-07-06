@@ -396,11 +396,14 @@ function createInternalApp(apiBaseUrl: string, anonymousRefreshToken?: string) {
 function envVarsForProject(project: RemoteDevelopmentEnvironmentProject): Record<string, string> {
   const brands = ["HEXCLAVE", "STACK"];
   const publicPrefixes = ["", "NEXT_PUBLIC_", "VITE_", "EXPO_PUBLIC_"];
+  const dashboardUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_DASHBOARD_URL");
 
   const publicValues: Record<string, string> = {
     PROJECT_ID: project.projectId,
     PUBLISHABLE_CLIENT_KEY: project.publishableClientKey,
     API_URL: project.apiBaseUrl,
+    IS_REMOTE_DEVELOPMENT_ENVIRONMENT: "true",
+    ...(dashboardUrl == null ? {} : { DASHBOARD_URL: dashboardUrl }),
   };
   const secretValues: Record<string, string> = {
     SECRET_SERVER_KEY: project.secretServerKey,

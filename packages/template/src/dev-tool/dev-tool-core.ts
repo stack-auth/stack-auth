@@ -190,8 +190,22 @@ function resolveApiBaseUrl(app: StackClientApp<true>): string {
   return getBaseUrl(opts.baseUrl);
 }
 
+function resolveConfiguredLocalDashboardBaseUrl(): string | undefined {
+  const dashboardUrl = envVars.HEXCLAVE_DASHBOARD_URL;
+  if (dashboardUrl == null || !isLocalhost(dashboardUrl)) return undefined;
+  try {
+    return new URL(dashboardUrl).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
-  return envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+  return (
+    envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app))
+  ) || (
+    envVars.HEXCLAVE_IS_REMOTE_DEVELOPMENT_ENVIRONMENT === "true" && resolveConfiguredLocalDashboardBaseUrl() != null
+  );
 }
 
 function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {
@@ -222,7 +236,7 @@ function deriveDashboardBaseUrl(apiBaseUrl: string): string {
 }
 
 function resolveDashboardUrl(app: StackClientApp<true>): string {
-  const base = deriveDashboardBaseUrl(resolveApiBaseUrl(app));
+  const base = resolveConfiguredLocalDashboardBaseUrl() ?? deriveDashboardBaseUrl(resolveApiBaseUrl(app));
   return `${base}/projects/${encodeURIComponent(app.projectId)}`;
 }
 

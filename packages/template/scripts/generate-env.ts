@@ -28,6 +28,9 @@ const envVarsConfig: Record<string, { allowPublic?: boolean, deprecatedLegacyNam
     allowPublic: true,
     deprecatedLegacyNames: ["HEXCLAVE_URL", "STACK_URL"],
   },
+  HEXCLAVE_DASHBOARD_URL: {
+    allowPublic: true,
+  },
   HEXCLAVE_HOSTED_HANDLER_DOMAIN_SUFFIX: {
     allowPublic: true,
   },
@@ -44,6 +47,9 @@ const envVarsConfig: Record<string, { allowPublic?: boolean, deprecatedLegacyNam
     allowPublic: true,
   },
   HEXCLAVE_IS_LOCAL_EMULATOR: {
+    allowPublic: true,
+  },
+  HEXCLAVE_IS_REMOTE_DEVELOPMENT_ENVIRONMENT: {
     allowPublic: true,
   },
   HEXCLAVE_POSTHOG_KEY: {
