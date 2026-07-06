@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
   DataGrid,
   isDataGridInteractiveRowClickTarget,
+  useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridProps,
 } from "./index";
 
@@ -52,6 +54,7 @@ type ObserverRecord = {
 };
 
 let intersectionObserverRecords: ObserverRecord[] = [];
+let intersectionObserverInstances: MockIntersectionObserver[] = [];
 
 class MockIntersectionObserver implements IntersectionObserver {
   readonly root: Element | Document | null;
@@ -74,6 +77,7 @@ class MockIntersectionObserver implements IntersectionObserver {
       : [options?.threshold ?? 0];
     this.record = { options };
     intersectionObserverRecords.push(this.record);
+    intersectionObserverInstances.push(this);
   }
 
   disconnect() {}
@@ -263,6 +267,131 @@ describe("DataGrid infinite scroll observer", () => {
     });
 
     expect(intersectionObserverRecords.at(-1)?.options?.root ?? null).toBeNull();
+  });
+});
+
+// Drives a real `useDataSource` infinite-scroll grid whose data source
+// always reports `hasMore: true`, mirroring a project with a long
+// transaction / customer history (e.g. the transactions table and customers
+// tab). Used to prove the sentinel doesn't thrash its IntersectionObserver.
+function InfiniteScrollLoadMoreHarness({ onFetch }: { onFetch: () => void }) {
+  const [state, setState] = useState(() => createDefaultDataGridState(columns));
+  const dataSource = useMemo<DataGridDataSource<Row>>(
+    () => {
+      let page = 0;
+      return async function* () {
+        onFetch();
+        const current = page++;
+        yield {
+          rows: [{ id: `row-${current}`, name: `Row ${current}` }],
+          hasMore: true,
+          nextCursor: `cursor-${current}`,
+        };
+      };
+    },
+    [onFetch],
+  );
+
+  const gridData = useDataSource<Row>({
+    dataSource,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: state.sorting,
+    quickSearch: state.quickSearch,
+    pagination: state.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <div style={{ height: 400 }}>
+      <DataGrid<Row>
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={(row) => row.id}
+        state={state}
+        onChange={setState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoading={gridData.isLoading}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+      />
+    </div>
+  );
+}
+
+describe("DataGrid infinite scroll observer stability", () => {
+  beforeEach(() => {
+    intersectionObserverRecords = [];
+    intersectionObserverInstances = [];
+
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect() {
+        return {
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 44,
+          top: 0,
+          left: 0,
+          right: 320,
+          bottom: 44,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  // Regression: the sentinel used to re-create its IntersectionObserver every
+  // time the `onLoadMore` callback changed identity (which happens on every
+  // `isLoadingMore` / `hasMore` toggle). A freshly-created observer re-reports
+  // the sentinel's current intersection state, so a sentinel that stays in
+  // view fires `onLoadMore` again after every page — auto-loading the entire
+  // history back-to-back and OOM-crashing the tab ("Aw snap") on large
+  // datasets. The observer must stay stable across load-more cycles.
+  it("does not re-create the observer on load-more cycles", async () => {
+    const onFetch = vi.fn();
+    render(<InfiniteScrollLoadMoreHarness onFetch={onFetch} />);
+
+    // Initial page load, after which the sentinel (and its observer) mounts.
+    await waitFor(() => expect(onFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(intersectionObserverInstances.length).toBeGreaterThan(0));
+
+    const observersBeforeLoadMore = intersectionObserverInstances.length;
+
+    // Simulate the sentinel scrolling into view exactly once.
+    await act(async () => {
+      intersectionObserverInstances.at(-1)?.trigger();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(onFetch).toHaveBeenCalledTimes(2));
+
+    // A single scroll-in must trigger a single fetch, without spawning new
+    // observers — otherwise each new observer would re-fire and runaway.
+    expect(intersectionObserverInstances.length).toBe(observersBeforeLoadMore);
   });
 });
 
