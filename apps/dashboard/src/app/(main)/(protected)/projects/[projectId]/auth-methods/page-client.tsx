@@ -199,7 +199,7 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
   // read failure (or while it loads) we report it and fall back to the locked
   // (non-Team) state, which is the same safe default as having no owner team.
   return (
-    <ErrorBoundary errorComponent={() => <AddCustomOidcButtonPlanReadFailed onClick={onClick} />}>
+    <ErrorBoundary errorComponent={({ error }) => <AddCustomOidcButtonPlanReadFailed onClick={onClick} error={error} />}>
       <Suspense fallback={<AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />}>
         <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />
       </Suspense>
@@ -207,10 +207,10 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function AddCustomOidcButtonPlanReadFailed({ onClick }: { onClick: () => void }) {
+function AddCustomOidcButtonPlanReadFailed({ onClick, error }: { onClick: () => void, error: Error }) {
   useEffect(() => {
-    captureError("auth-methods:custom-oidc-plan-gate", new Error("Failed to load owner team plan for the custom OIDC gate; defaulting to locked"));
-  }, []);
+    captureError("auth-methods:custom-oidc-plan-gate", error);
+  }, [error]);
   return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
 }
 

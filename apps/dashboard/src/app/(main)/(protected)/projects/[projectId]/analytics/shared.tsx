@@ -333,10 +333,10 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
  * error escape to the page. `Suspense` keeps the banner from blocking the page
  * while its data loads.
  */
-function BillingBannerErrorFallback() {
+function BillingBannerErrorFallback({ error }: { error: Error }) {
   useEffect(() => {
-    captureError("analytics-limit-banner:billing-read-failed", new Error("Failed to load plan-limit banner data; hiding the banner"));
-  }, []);
+    captureError("analytics-limit-banner:billing-read-failed", error);
+  }, [error]);
   return null;
 }
 
