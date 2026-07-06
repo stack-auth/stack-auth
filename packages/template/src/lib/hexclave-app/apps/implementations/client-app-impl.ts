@@ -942,6 +942,15 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (tokens?.refreshToken == null) {
       return null;
     }
+    // Anonymous sessions (e.g. the one analytics silently creates on page load) must not be handed
+    // off across domains. If we did, redirecting to a hosted sign-in page would attach this
+    // session's refresh token, the hosted domain would adopt the anonymous session and treat itself
+    // as "signed in", and then immediately mint a callback code back to the app — which lands on the
+    // sign-in page again and re-triggers the handoff, producing an infinite cross-domain redirect
+    // loop instead of ever showing the sign-in form.
+    if (tokens.accessToken.payload.is_anonymous) {
+      return null;
+    }
     return tokens.accessToken.payload.refresh_token_id;
   }
 

@@ -4,7 +4,7 @@ import { Store } from "@hexclave/shared/dist/utils/stores";
 import { hexclaveAppInternalsSymbol } from "../../common";
 import { StackClientApp } from "../interfaces/client-app";
 
-function createAccessTokenString(refreshTokenId: string): string {
+function createAccessTokenString(refreshTokenId: string, options?: { isAnonymous?: boolean }): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const nowSeconds = Math.floor(Date.now() / 1000);
   return [
@@ -24,7 +24,7 @@ function createAccessTokenString(refreshTokenId: string): string {
       email_verified: false,
       selected_team_id: null,
       signed_up_at: nowSeconds,
-      is_anonymous: false,
+      is_anonymous: options?.isAnonymous ?? false,
       is_restricted: false,
       restricted_reason: null,
       requires_totp_mfa: false,
@@ -164,6 +164,78 @@ describe("StackClientApp cross-domain auth", () => {
     expect(refreshedRawRefreshTokens).toEqual(["fresh-refresh-token"]);
     expect(capturedRefreshTokens).toEqual(["fresh-refresh-token"]);
     expect(capturedAccessTokenRefreshTokenIds).toEqual(["fresh-refresh-token-id"]);
+  });
+
+  it("does not hand off an anonymous session as the current nested cross-domain auth session", async () => {
+    // An analytics-created anonymous session must not be treated as "signed in" for a session
+    // handoff. Otherwise, redirecting to hosted sign-in attaches the anonymous refresh token, the
+    // hosted domain adopts it, decides it is already signed in, and immediately mints a code back
+    // to the app — which lands on sign-in again and re-triggers the handoff, an infinite loop.
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-00000000000a",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: {
+        accessToken: createAccessTokenString("anonymous-refresh-token-id", { isAnonymous: true }),
+        refreshToken: "anonymous-refresh-token",
+      },
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+    });
+
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
+    Reflect.set(clientInterface, "fetchNewAccessToken", async () => {
+      return AccessToken.createIfValid(createAccessTokenString("anonymous-refresh-token-id", { isAnonymous: true })) ?? (() => {
+        throw new Error("Expected test access token to be valid");
+      })();
+    });
+
+    try {
+      const fetchCurrentRefreshTokenIdIfSignedIn = Reflect.get(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn");
+      if (typeof fetchCurrentRefreshTokenIdIfSignedIn !== "function") {
+        throw new Error("Expected StackClientApp to expose _fetchCurrentRefreshTokenIdIfSignedIn in tests.");
+      }
+      await expect(fetchCurrentRefreshTokenIdIfSignedIn.call(clientApp, {
+        awaitPendingAuthResolutions: false,
+      })).resolves.toBe(null);
+    } finally {
+      Reflect.set(clientInterface, "fetchNewAccessToken", originalFetchNewAccessToken);
+    }
+  });
+
+  it("still hands off a real (non-anonymous) session as the current nested cross-domain auth session", async () => {
+    const clientApp = new StackClientApp({
+      baseUrl: "http://localhost:12345",
+      projectId: "00000000-0000-4000-8000-00000000000b",
+      publishableClientKey: "stack-pk-test",
+      tokenStore: {
+        accessToken: createAccessTokenString("real-refresh-token-id"),
+        refreshToken: "real-refresh-token",
+      },
+      redirectMethod: "none",
+      noAutomaticPrefetch: true,
+    });
+
+    const clientInterface = Reflect.get(clientApp, "_interface");
+    const originalFetchNewAccessToken = Reflect.get(clientInterface, "fetchNewAccessToken");
+    Reflect.set(clientInterface, "fetchNewAccessToken", async () => {
+      return AccessToken.createIfValid(createAccessTokenString("real-refresh-token-id")) ?? (() => {
+        throw new Error("Expected test access token to be valid");
+      })();
+    });
+
+    try {
+      const fetchCurrentRefreshTokenIdIfSignedIn = Reflect.get(clientApp, "_fetchCurrentRefreshTokenIdIfSignedIn");
+      if (typeof fetchCurrentRefreshTokenIdIfSignedIn !== "function") {
+        throw new Error("Expected StackClientApp to expose _fetchCurrentRefreshTokenIdIfSignedIn in tests.");
+      }
+      await expect(fetchCurrentRefreshTokenIdIfSignedIn.call(clientApp, {
+        awaitPendingAuthResolutions: false,
+      })).resolves.toBe("real-refresh-token-id");
+    } finally {
+      Reflect.set(clientInterface, "fetchNewAccessToken", originalFetchNewAccessToken);
+    }
   });
 
   it("uses a fresh nested OAuth state while preserving the outer cross-domain return state", async () => {
