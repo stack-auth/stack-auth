@@ -2977,6 +2977,49 @@
         }
       }
     },
+    "/agent-auth/capabilities/execute": {
+      "post": {
+        "summary": "POST /agent-auth/capabilities/execute",
+        "description": "No documentation available for this endpoint.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "capability": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "capability"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/agent-auth/capabilities/execute",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/mfa/sign-in": {
       "post": {
         "summary": "MFA sign in",

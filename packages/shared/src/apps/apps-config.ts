@@ -57,6 +57,13 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "agent-auth": {
+    displayName: "Agent Auth",
+    subtitle: "Register, authorize, and audit AI agent identities",
+    tags: ["auth", "security", "developers"],
+    stage: "alpha",
+    parentAppId: "authentication",
+  },
   "fraud-protection": {
     displayName: "Fraud Protection",
     subtitle: "Protect your project from fraud and abuse",

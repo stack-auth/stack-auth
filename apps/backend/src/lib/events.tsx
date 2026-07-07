@@ -169,6 +169,48 @@ const SignUpRuleTriggerEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
+const AgentRegisteredEventType = {
+  id: "$agent-registered",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    actor: yupObject({
+      type: yupString().oneOf(["agent"]).defined(),
+      agentId: yupString().uuid().defined(),
+      hostId: yupString().uuid().defined(),
+      userId: yupString().uuid().defined(),
+    }).defined(),
+    hostId: yupString().uuid().defined(),
+    agentId: yupString().uuid().defined(),
+    mode: yupString().oneOf(["delegated", "autonomous"]).defined(),
+    agentName: yupString().defined(),
+    hostName: yupString().defined(),
+    requestedCapabilities: yupMixed().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+const AgentCapabilityExecutedEventType = {
+  id: "$agent-capability-executed",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    actor: yupObject({
+      type: yupString().oneOf(["agent"]).defined(),
+      agentId: yupString().uuid().defined(),
+      hostId: yupString().uuid().defined(),
+      userId: yupString().uuid().defined(),
+    }).defined(),
+    agentId: yupString().uuid().defined(),
+    hostId: yupString().uuid().defined(),
+    capability: yupString().defined(),
+    input: yupMixed().defined(),
+    decision: yupString().oneOf(["allowed", "denied"]).defined(),
+    constraints: yupMixed().nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -178,6 +220,8 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ApiRequestEventType,
   LegacyApiEventType,
   SignUpRuleTriggerEventType,
+  AgentRegisteredEventType,
+  AgentCapabilityExecutedEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
