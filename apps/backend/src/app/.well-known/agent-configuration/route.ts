@@ -1,5 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { jsonSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, jsonSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { AGENT_AUTH_AGENTS_PATH, AGENT_AUTH_CAPABILITY_EXECUTE_PATH, AGENT_AUTH_DISCOVERY_PATH, AGENT_AUTH_MODES, AGENT_AUTH_PROTOCOL_VERSION, AGENT_AUTH_REGISTER_PATH } from "@/lib/agent-auth/constants";
 import { AGENT_CAPABILITIES } from "@/lib/agent-auth/capabilities";
@@ -12,9 +12,9 @@ function buildDiscoveryUrl(baseUrl: string, path: string) {
 export const GET = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
-      type: yupString(),
-      user: jsonSchema,
-      project: jsonSchema,
+      type: adaptSchema,
+      user: adaptSchema,
+      project: adaptSchema,
     }).nullable(),
   }),
   response: yupObject({

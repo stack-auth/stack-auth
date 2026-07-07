@@ -134,7 +134,7 @@ export const POST = createSmartRouteHandler({
           status: "ACTIVE",
           constraints: capability.constraints == null ? undefined : JSON.parse(JSON.stringify(capability.constraints)),
           grantedByProjectUserId: existingUser.projectUserId,
-          expiresAt: sessionExpiresAt,
+          expiresAt: null,
         })),
       });
     }
@@ -159,8 +159,8 @@ export const POST = createSmartRouteHandler({
     });
 
     return {
-      statusCode: 201 as const,
-      bodyType: "json" as const,
+      statusCode: 201,
+      bodyType: "json",
       body: {
         host_id: host.id,
         agent_id: agent.id,

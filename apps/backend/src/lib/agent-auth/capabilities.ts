@@ -104,9 +104,10 @@ function assertConstraintSatisfied(field: string, value: unknown, constraint: Ag
 }
 
 function applyConstraintsForListUsers(input: { limit?: number }, constraints: AgentCapabilityGrantConstraints | null | undefined) {
+  const requestedLimit = input.limit;
   if (constraints == null || Object.keys(constraints).length === 0) {
     return {
-      limit: input.limit ?? AGENT_AUTH_DEFAULT_LIST_USERS_LIMIT,
+      limit: requestedLimit ?? AGENT_AUTH_DEFAULT_LIST_USERS_LIMIT,
     };
   }
 
@@ -117,10 +118,25 @@ function applyConstraintsForListUsers(input: { limit?: number }, constraints: Ag
   }
 
   const limitConstraint = constraints.limit;
-  if (limitConstraint == null) return input;
-  const resolvedLimit = clampNumber(input.limit ?? AGENT_AUTH_DEFAULT_LIST_USERS_LIMIT, limitConstraint.min, limitConstraint.max);
-  assertConstraintSatisfied("limit", resolvedLimit, limitConstraint);
-  return { limit: resolvedLimit };
+  if (limitConstraint == null) {
+    return {
+      limit: requestedLimit ?? AGENT_AUTH_DEFAULT_LIST_USERS_LIMIT,
+    };
+  }
+
+  if (requestedLimit != null) {
+    assertConstraintSatisfied("limit", requestedLimit, limitConstraint);
+    return { limit: requestedLimit };
+  }
+
+  if (limitConstraint.min != null && limitConstraint.max != null && limitConstraint.min > limitConstraint.max) {
+    throwConstraintViolation("constraint_violated");
+  }
+
+  const defaultLimit = AGENT_AUTH_DEFAULT_LIST_USERS_LIMIT;
+  const boundedLimit = clampNumber(defaultLimit, limitConstraint.min, limitConstraint.max);
+  assertConstraintSatisfied("limit", boundedLimit, limitConstraint);
+  return { limit: boundedLimit };
 }
 
 export function validateAgentCapabilityInput<TInput extends Record<string, unknown>>(

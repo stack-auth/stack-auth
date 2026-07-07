@@ -32,8 +32,8 @@ export const GET = createSmartRouteHandler({
     });
 
     return {
-      statusCode: 200 as const,
-      bodyType: "json" as const,
+      statusCode: 200,
+      bodyType: "json",
       body: {
         agents: agents.map(serializeAgent),
       },

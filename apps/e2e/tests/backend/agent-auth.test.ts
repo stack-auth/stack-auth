@@ -124,6 +124,22 @@ describe("agent auth", () => {
       expect(listUsersResponse.status).toBe(200);
       expect(listUsersResponse.body.result.users).toHaveLength(1);
 
+      const invalidListUsersResponse = await niceBackendFetch("/api/latest/agent-auth/capabilities/execute", {
+        accessType: "server",
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${agentJwt}`,
+        },
+        body: {
+          capability: "list_users",
+          input: {
+            limit: 50,
+          },
+        },
+      });
+      expect(invalidListUsersResponse.status).toBe(400);
+      expect(invalidListUsersResponse.body).toBe("constraint_violated");
+
       const projectInfoResponse = await niceBackendFetch("/api/latest/agent-auth/capabilities/execute", {
         accessType: "server",
         method: "POST",
