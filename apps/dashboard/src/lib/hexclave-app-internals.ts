@@ -139,6 +139,15 @@ function applyMetricsResponseDefaults(body: MetricsResponse): MetricsResponse {
       top_operating_systems: rawAnalytics.top_operating_systems ?? [],
       top_devices: rawAnalytics.top_devices ?? [],
     },
+    auth_overview: {
+      ...body.auth_overview,
+      agent_auth: body.auth_overview.agent_auth ?? {
+        total_registrations: 0,
+        completed_claims: 0,
+        new_user_signups: 0,
+        api_keys_issued: 0,
+      },
+    },
   };
 }
 

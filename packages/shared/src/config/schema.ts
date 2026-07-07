@@ -88,6 +88,15 @@ const branchApiKeysSchema = yupObject({
 });
 // --- END NEW API Keys Schema ---
 
+// --- NEW Agent Auth Schema ---
+const branchAgentAuthSchema = yupObject({
+  identityTypes: yupObject({
+    serviceAuth: yupBoolean(),
+    anonymous: yupBoolean(),
+  }),
+});
+// --- END NEW Agent Auth Schema ---
+
 // --- NEW Apps Schema ---
 const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
 const branchAppsSchema = yupObject({
@@ -313,6 +322,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   apiKeys: branchApiKeysSchema,
 
+  agentAuth: branchAgentAuthSchema,
+
   apps: branchAppsSchema,
 
   domains: branchDomain,
@@ -513,6 +524,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // BEGIN 2025-08-25: payments.items.default is no longer used, so let's remove it
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "items" && p[3] === "default");
+  }
+  // END
+
+  // BEGIN 2026-07-07: agentAuth.identityTypes.identityAssertion is not supported in this slice, so remove any stale override
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.join(".") === "agentAuth.identityTypes.identityAssertion");
   }
   // END
 
@@ -741,6 +758,13 @@ const organizationConfigDefaults = {
     enabled: {
       team: false,
       user: false,
+    },
+  },
+
+  agentAuth: {
+    identityTypes: {
+      serviceAuth: true,
+      anonymous: true,
     },
   },
 

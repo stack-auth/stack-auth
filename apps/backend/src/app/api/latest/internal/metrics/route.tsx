@@ -1942,7 +1942,7 @@ async function loadAnalyticsOverview(
 async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
-  const [usersRow, teamsRow, dailyActiveUsersSplit, dailyActiveTeamsSplit, mau] = await Promise.all([
+  const [usersRow, teamsRow, dailyActiveUsersSplit, dailyActiveTeamsSplit, mau, agentAuthCounts] = await Promise.all([
     clickhouseClient.query({
       query: `
         SELECT
@@ -1997,6 +1997,31 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
     loadDailyActiveUsersSplit(tenancy, now, includeAnonymous),
     loadDailyActiveTeamsSplit(tenancy, now),
     loadMonthlyActiveUsers(tenancy, now, includeAnonymous),
+    clickhouseClient.query({
+      query: `
+        SELECT
+          countIf(event_type = '$agent-auth-registration') AS total_registrations,
+          countIf(event_type = '$agent-auth-claim-completed') AS completed_claims,
+          countIf(event_type = '$agent-auth-claim-completed' AND coalesce(CAST(data.is_new_user, 'Nullable(UInt8)'), 0) = 1) AS new_user_signups,
+          countIf(event_type = '$agent-auth-api-key-issued') AS api_keys_issued
+        FROM analytics_internal.events
+        WHERE project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+      `,
+      query_params: {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+      },
+      format: "JSONEachRow",
+    }).then(async (r) => {
+      const rows = await r.json() as [{
+        total_registrations: string | number,
+        completed_claims: string | number,
+        new_user_signups: string | number,
+        api_keys_issued: string | number,
+      }];
+      return rows[0];
+    }),
   ]);
 
   const totalUsers = Number(usersRow.total_users);
@@ -2020,6 +2045,12 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
     daily_active_users_split: dailyActiveUsersSplit,
     daily_active_teams_split: dailyActiveTeamsSplit,
     total_users_filtered: totalUsersFiltered,
+    agent_auth: {
+      total_registrations: Number(agentAuthCounts.total_registrations),
+      completed_claims: Number(agentAuthCounts.completed_claims),
+      new_user_signups: Number(agentAuthCounts.new_user_signups),
+      api_keys_issued: Number(agentAuthCounts.api_keys_issued),
+    },
   };
 }
 

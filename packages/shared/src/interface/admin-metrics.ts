@@ -32,6 +32,17 @@ export const MetricsAuthOverviewSchema = yupObject({
   daily_active_users_split: MetricsActivitySplitSchema,
   daily_active_teams_split: MetricsActivitySplitSchema,
   total_users_filtered: yupNumber().integer().defined(),
+  agent_auth: yupObject({
+    total_registrations: yupNumber().integer().defined(),
+    completed_claims: yupNumber().integer().defined(),
+    new_user_signups: yupNumber().integer().defined(),
+    api_keys_issued: yupNumber().integer().defined(),
+  }).optional().default({
+    total_registrations: 0,
+    completed_claims: 0,
+    new_user_signups: 0,
+    api_keys_issued: 0,
+  }),
 }).defined();
 
 export const MetricsPaymentsOverviewSchema = yupObject({

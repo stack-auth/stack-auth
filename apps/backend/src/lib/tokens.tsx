@@ -20,6 +20,33 @@ import { CLOUD_HOST_PAIRS } from './request-api-url';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
+export const ACCESS_TOKEN_EXPIRATION_TIME = getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min");
+
+function parseDurationToSeconds(value: string): number {
+  const normalized = value.trim().toLowerCase();
+  const match = normalized.match(/^(\d+(?:\.\d+)?)(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)?$/);
+  if (match == null) {
+    throw new HexclaveAssertionError("Unsupported STACK_ACCESS_TOKEN_EXPIRATION_TIME format", { value });
+  }
+
+  const amount = Number(match[1]);
+  const [, unit = "s"] = match;
+  let multiplier: number;
+  if (unit === "ms") {
+    multiplier = 1 / 1000;
+  } else if (unit === "s" || unit === "sec" || unit === "secs" || unit === "second" || unit === "seconds") {
+    multiplier = 1;
+  } else if (unit === "m" || unit === "min" || unit === "mins" || unit === "minute" || unit === "minutes") {
+    multiplier = 60;
+  } else if (unit === "h" || unit === "hr" || unit === "hrs" || unit === "hour" || unit === "hours") {
+    multiplier = 60 * 60;
+  } else {
+    multiplier = 60 * 60 * 24;
+  }
+  return Math.max(0, Math.round(amount * multiplier));
+}
+
+export const ACCESS_TOKEN_EXPIRATION_SECONDS = parseDurationToSeconds(ACCESS_TOKEN_EXPIRATION_TIME);
 
 const accessTokenSchema = yupObject({
   projectId: yupString().defined(),
@@ -401,7 +428,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Genera
   return await signJWT({
     issuer: getIssuer(options.tenancy.project.id, userType, options.apiUrl),
     audience: getAudience(options.tenancy.project.id, userType),
-    expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
+    expirationTime: ACCESS_TOKEN_EXPIRATION_TIME,
     payload,
   });
 }

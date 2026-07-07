@@ -88,6 +88,12 @@ export const ALL_APPS = {
     tags: ["auth", "security", "developers"],
     stage: "stable",
   },
+  "agent-auth": {
+    displayName: "Agent Auth",
+    subtitle: "Project-scoped agent registration and discovery",
+    tags: ["auth", "security", "developers"],
+    stage: "alpha",
+  },
   "payments": {
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",

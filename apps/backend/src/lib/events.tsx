@@ -169,6 +169,35 @@ const SignUpRuleTriggerEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
+const AgentAuthRegistrationEventType = {
+  id: "$agent-auth-registration",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    type: yupString().oneOf(["anonymous", "service_auth"]).defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+const AgentAuthClaimCompletedEventType = {
+  id: "$agent-auth-claim-completed",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    type: yupString().oneOf(["anonymous", "service_auth"]).defined(),
+    userId: yupString().uuid().defined(),
+    is_new_user: yupBoolean().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
+const AgentAuthApiKeyIssuedEventType = {
+  id: "$agent-auth-api-key-issued",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    userId: yupString().uuid().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -178,6 +207,9 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ApiRequestEventType,
   LegacyApiEventType,
   SignUpRuleTriggerEventType,
+  AgentAuthRegistrationEventType,
+  AgentAuthClaimCompletedEventType,
+  AgentAuthApiKeyIssuedEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
@@ -318,7 +350,7 @@ export async function logEvent<T extends EventType[]>(
     });
 
     // Log specific events to ClickHouse
-    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
+    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger', '$agent-auth-registration', '$agent-auth-claim-completed', '$agent-auth-api-key-issued'];
     const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
     if (matchingEventType) {
       let clickhouseEventData: Record<string, unknown>;
@@ -368,6 +400,29 @@ export async function logEvent<T extends EventType[]>(
           auth_method: authMethod,
           oauth_provider: oauthProvider,
         };
+      } else if (matchingEventType.id === "$agent-auth-registration") {
+        const type =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.type === "string"
+            ? dataRecord.type
+            : throwErr(new HexclaveAssertionError("type is required for $agent-auth-registration ClickHouse event", { dataRecord }));
+        clickhouseEventData = {
+          type,
+        };
+      } else if (matchingEventType.id === "$agent-auth-claim-completed") {
+        const type =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.type === "string"
+            ? dataRecord.type
+            : throwErr(new HexclaveAssertionError("type is required for $agent-auth-claim-completed ClickHouse event", { dataRecord }));
+        const isNewUser =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.is_new_user === "boolean"
+            ? dataRecord.is_new_user
+            : throwErr(new HexclaveAssertionError("is_new_user is required for $agent-auth-claim-completed ClickHouse event", { dataRecord }));
+        clickhouseEventData = {
+          type,
+          is_new_user: isNewUser,
+        };
+      } else if (matchingEventType.id === "$agent-auth-api-key-issued") {
+        clickhouseEventData = {};
       } else {
         throw new HexclaveAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
       }

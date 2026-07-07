@@ -16,15 +16,23 @@ import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as yup from "yup";
 
 
-async function throwIfFeatureDisabled(tenancy: Tenancy, type: "team" | "user") {
+export function isFeatureDisabled(tenancy: Tenancy, type: "team" | "user") {
   if (type === "team") {
     if (!tenancy.config.apiKeys.enabled.team) {
-      throw new StatusError(StatusError.BadRequest, "Team API keys are not enabled for this project.");
+      return true;
     }
   } else {
     if (!tenancy.config.apiKeys.enabled.user) {
-      throw new StatusError(StatusError.BadRequest, "User API keys are not enabled for this project.");
+      return true;
     }
+  }
+
+  return false;
+}
+
+export async function throwIfFeatureDisabled(tenancy: Tenancy, type: "team" | "user") {
+  if (isFeatureDisabled(tenancy, type)) {
+    throw new StatusError(StatusError.BadRequest, type === "team" ? "Team API keys are not enabled for this project." : "User API keys are not enabled for this project.");
   }
 }
 

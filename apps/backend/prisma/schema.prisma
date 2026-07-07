@@ -1142,6 +1142,41 @@ model CliAuthAttempt {
   @@id([tenancyId, id])
 }
 
+enum AgentAuthRegistrationType {
+  anonymous
+  service_auth
+}
+
+enum AgentAuthRegistrationStatus {
+  pending
+  claimed
+  expired
+}
+
+model AgentAuthRegistration {
+  tenancyId String @db.Uuid
+
+  id                    String                       @default(uuid()) @db.Uuid
+  type                  AgentAuthRegistrationType
+  status                AgentAuthRegistrationStatus  @default(pending)
+  loginHint             String?
+  claimToken            String                       @unique
+  claimAttemptToken     String?                      @unique
+  userCode              String?
+  claimAttemptExpiresAt DateTime?
+  expiresAt             DateTime
+  userId                String?                      @db.Uuid
+  refreshTokenId        String?                      @db.Uuid
+  lastPollAt            DateTime?
+  usedAt                DateTime?
+  claimedAt             DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, id])
+}
+
 model UserNotificationPreference {
   id                     String @default(uuid()) @db.Uuid
   tenancyId              String @db.Uuid

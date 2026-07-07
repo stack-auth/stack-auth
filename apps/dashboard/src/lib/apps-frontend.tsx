@@ -191,6 +191,18 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  "agent-auth": {
+    icon: SparkleIcon,
+    href: "agent-auth-app",
+    screenshots: getScreenshots('auth', 1),
+    storeDescription: (
+      <>
+        <p>Agent Auth lets third-party agents discover your project, register identities, and complete a claim ceremony when human approval is needed.</p>
+        <p>Enable the project-scoped discovery documents, then choose whether email-backed service auth and anonymous registrations are available.</p>
+        <p>The app keeps the future claim, exchange, and revocation paths tied to a single per-project surface area.</p>
+      </>
+    ),
+  },
   payments: {
     icon: CreditCardIcon,
     href: "payments",

@@ -26,6 +26,12 @@ const branchSchemaFuzzerConfig = [{
       user: [true, false],
     }],
   }],
+  agentAuth: [{
+    identityTypes: [{
+      serviceAuth: [true, false],
+      anonymous: [true, false],
+    }],
+  }],
   auth: [{
     allowSignUp: [true, false],
     password: [{
