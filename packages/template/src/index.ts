@@ -1,5 +1,7 @@
 export * from './lib/hexclave-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
+export { createMcpAuthAdapter, InvalidMcpAccessTokenError } from "./integrations/mcp";
+export type { McpAuthAdapter, McpAuthAdapterOptions, McpAuthInfo } from "./integrations/mcp";
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the original
 // declarations in @hexclave/shared/config so it survives dts bundling
 // (per-specifier JSDoc on re-exports does not).
