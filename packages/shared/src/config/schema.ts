@@ -293,6 +293,14 @@ const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
 });
 
+const installedAppIdsByDefault = typedEntries(ALL_APPS)
+  .filter(([, app]) => {
+    if ("includedInDefaultInstalledApps" in app) {
+      return false;
+    }
+    return true;
+  })
+  .map(([appId]) => appId);
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   "sourceOfTruth",
@@ -745,7 +753,7 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+    installed: typedFromEntries(installedAppIdsByDefault.map((appId) => [appId, { enabled: false }])),
   },
 
   teams: {

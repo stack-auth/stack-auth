@@ -47,6 +47,7 @@ type App = {
   stage: "alpha" | "beta" | "stable",
   parentAppId?: ParentAppId,
   independentlyEnableable?: boolean,
+  includedInDefaultInstalledApps?: boolean,
 };
 
 export type AppId = keyof typeof ALL_APPS;
@@ -71,6 +72,7 @@ export const ALL_APPS = {
     stage: "alpha",
     parentAppId: "authentication",
     independentlyEnableable: true,
+    includedInDefaultInstalledApps: false,
   },
   "fraud-protection": {
     displayName: "Fraud Protection",
