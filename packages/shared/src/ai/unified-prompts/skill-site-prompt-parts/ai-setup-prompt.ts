@@ -784,7 +784,6 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
   const isDefinitelyVite = isDefinitelyTanstackStart;
-  // The no-bundler <script> approach only makes sense for plain browser JS, so we only surface it for the generic "Other JS/TS" tab and the unified AI prompt (never for the bundled React/Next/TanStack tabs).
   const isMaybeNoBundler = mainType === "js" || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
