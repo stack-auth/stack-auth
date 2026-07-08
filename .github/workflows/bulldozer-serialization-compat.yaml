@@ -13,6 +13,10 @@ on:
       - main
   pull_request:
 
+# This workflow only checks out code and runs tests; it never pushes or calls the GitHub API.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
@@ -34,6 +38,7 @@ jobs:
       - name: Checkout current branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Check for serialization-relevant changes
@@ -68,11 +73,13 @@ jobs:
       - name: Checkout current branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           path: current
 
       - name: Checkout base branch (${{ needs.check-changed.outputs.base_branch }})
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          persist-credentials: false
           ref: ${{ needs.check-changed.outputs.base_branch }}
           path: base
 
