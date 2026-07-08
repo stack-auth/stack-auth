@@ -13,7 +13,7 @@
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",
     "build": "rimraf .next/types .next/dev/types .next-development-environment/types .next-development-environment/dev/types && pnpm run bundle-type-definitions && next build",
-    "build:rde-standalone": "NEXT_CONFIG_OUTPUT=standalone STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT=true pnpm run build",
+    "build:rde-standalone": "NEXT_CONFIG_OUTPUT=standalone STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT=true HEXCLAVE_DASHBOARD_BUILD_FOR_RDE=true pnpm run build",
     "docker-build": "pnpm run bundle-type-definitions && next build --experimental-build-mode compile",
     "analyze-bundle": "next experimental-analyze",
     "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01",

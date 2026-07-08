@@ -41,6 +41,7 @@ runOrExit("pnpm", ["exec", "next", "build"], {
     NEXT_CONFIG_OUTPUT: "standalone",
     NODE_ENV: "production",
     STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT: "true",
+    HEXCLAVE_DASHBOARD_BUILD_FOR_RDE: "true",
   },
 });
 
