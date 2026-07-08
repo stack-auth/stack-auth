@@ -22,7 +22,7 @@ import styles from './setup-page.module.css';
 const countriesPromise = import('./country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
-type SetupMode = "recommended" | "manual";
+type SetupMode = "recommended" | "manual" | "script";
 
 const PROD_DOCS_BASE_URL = 'https://docs.hexclave.com';
 const PROD_API_BASE_URL = 'https://api.hexclave.com';
@@ -41,7 +41,8 @@ function buildBrowserScriptSnippet(options: {
 
   return deindent`
     <script type="module">
-      // Environment variables do NOT work here, so every value must be passed explicitly.
+      // Sets up Hexclave as a global hexclaveClientApp variable.
+      // See: https://docs.hexclave.com (humans), https://skill.hexclave.com (AI agents)
       import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${NO_BUNDLER_SDK_VERSION}";
 
       globalThis.hexclaveClientApp = new HexclaveClientApp({
@@ -222,10 +223,13 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
 
       <div className="flex justify-end mt-8 mx-4">
-        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : "recommended")}>
+        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : value === "script" ? "script" : "recommended")}>
           <TabsList>
-            <TabsTrigger value="recommended">Recommended</TabsTrigger>
+            <TabsTrigger value="recommended">AI Prompt (recommended)</TabsTrigger>
             <TabsTrigger value="manual">Manual setup</TabsTrigger>
+            {!isRemoteDevelopmentEnvironment && (
+              <TabsTrigger value="script">{`<script> tag`}</TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
       </div>
@@ -305,11 +309,9 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               </li>
             ))}
           </ol>
-
-          {!isRemoteDevelopmentEnvironment && (
-            <BrowserScriptSetup snippet={browserScriptSnippet} requirePublishableClientKey={requirePublishableClientKey} />
-          )}
         </div>
+      ) : setupMode === "script" ? (
+        <BrowserScriptSetup snippet={browserScriptSnippet} requirePublishableClientKey={requirePublishableClientKey} />
       ) : (
         <div className="mx-4 mt-12 flex flex-col items-center gap-4 py-16 text-center">
           <Typography>
@@ -421,15 +423,10 @@ function SetupRecommendedDoneStep(props: { onExploreDashboard: () => void }) {
 
 function BrowserScriptSetup(props: { snippet: string, requirePublishableClientKey: boolean }) {
   return (
-    <div className="mx-4 mt-4 flex flex-col gap-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.06] bg-white/60 dark:bg-background/40 p-6 ring-1 ring-black/[0.06] dark:ring-white/[0.06] shadow-sm">
-      <div className="flex flex-col gap-1">
-        <Typography type="h4">
-          No build step? Use a <InlineCode>{`<script>`}</InlineCode> tag
-        </Typography>
-        <Typography variant="secondary">
-          For a quick prototype or static HTML page, load the SDK from esm.sh and expose the app on <InlineCode>globalThis</InlineCode>. This is significantly less preferred than installing <InlineCode>@hexclave/js</InlineCode> with a bundler — reach for it only when you genuinely cannot run a build step.
-        </Typography>
-      </div>
+    <div className="mx-4 mt-8 flex flex-col gap-4">
+      <Typography variant="secondary">
+        For static pages or quick prototypes with no build step. Environment variables aren&apos;t available in the browser, so the project ID{props.requirePublishableClientKey ? ' and publishable client key are' : ' is'} set directly in the snippet.
+      </Typography>
 
       <CodeBlock
         language="html"
@@ -443,10 +440,6 @@ function BrowserScriptSetup(props: { snippet: string, requirePublishableClientKe
         icon="code"
         maxHeight={480}
       />
-
-      <Typography variant="secondary">
-        Any other script on the page can then use <InlineCode>await globalThis.hexclaveClientApp.getUser()</InlineCode>. Environment variables do not work with this approach, so the project ID{props.requirePublishableClientKey ? ' and publishable client key are' : ' is'} hard-coded above. Only ever construct a <InlineCode>HexclaveClientApp</InlineCode> here — never a server app with a secret key, since everything in a <InlineCode>{`<script>`}</InlineCode> tag is publicly visible.
-      </Typography>
     </div>
   );
 }
