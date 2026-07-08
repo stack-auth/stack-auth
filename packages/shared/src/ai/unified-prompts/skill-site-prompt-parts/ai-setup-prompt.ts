@@ -784,6 +784,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
   const isDefinitelyVite = isDefinitelyTanstackStart;
+  const isMaybeNoBundler = mainType === "js" || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -842,7 +843,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           - React: \`@hexclave/react\`
           - TanStack Start: \`@hexclave/tanstack-start\`
           - Other & vanilla JS: \`@hexclave/js\`
-            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\`
+            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\` in a \`<script type="module">\` tag (see the "Browser \`<script>\` tag" section below). This is significantly less preferred than installing the npm package with a bundler, and environment variables do not work with it.
 
           You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`
@@ -875,6 +876,44 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             },
           });
           \`\`\`
+        ` : ""}
+
+        ${isMaybeFrontend && isMaybeNoBundler ? deindent`
+          #### Browser \`<script>\` tag (no bundler)
+
+          <Note>
+            This approach is significantly less preferred than installing the \`@hexclave/js\` npm package and using a bundler. Reach for it only for quick prototypes, static HTML pages, or environments where you genuinely cannot run a build step. Prefer the npm setup above whenever possible.
+          </Note>
+
+          If you cannot use npm or a bundler, load the SDK directly from [esm.sh](https://esm.sh) inside a \`<script type="module">\` tag and expose the app on the global scope:
+
+          \`\`\`html
+          <script type="module">
+            // Pin a specific version so a new release cannot unexpectedly break your page.
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
+
+            globalThis.hexclaveClientApp = new HexclaveClientApp({
+              // Environment variables are NOT read with this approach, so the project ID
+              // (and the publishable client key, if the project has requirePublishableClientKey
+              // enabled) MUST be passed explicitly here.
+              projectId: "your-project-id",
+              tokenStore: "cookie",
+              urls: {
+                default: {
+                  type: "hosted",
+                },
+              },
+            });
+          </script>
+          \`\`\`
+
+          Any other script on the page can then use the app through the global, for example \`await globalThis.hexclaveClientApp.getUser()\`.
+
+          Important caveats for this approach:
+
+          - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
+          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
