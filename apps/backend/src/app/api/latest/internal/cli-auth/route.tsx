@@ -184,14 +184,22 @@ export const GET = createSmartRouteHandler({
       if (activeTokens.length > 0) {
         // Fetch user info for the active tokens
         const userIds = [...new Set(activeTokens.map((t) => t.projectUserId))];
+        // ProjectUser has no email column; the primary email lives in ContactChannel
+        // (type = EMAIL, isPrimary = TRUE). isPrimary/type are Postgres enums, so we
+        // cast to text for a schema-agnostic comparison.
         const userRows = await prisma.$replica().$queryRaw<ProjectUserRow[]>(Prisma.sql`
           SELECT
-            "projectUserId",
-            "displayName",
-            "primaryEmail"
-          FROM ${sqlQuoteIdent(schema)}."ProjectUser"
-          WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "projectUserId" = ANY(${userIds}::UUID[])
+            pu."projectUserId",
+            pu."displayName",
+            cc."value" AS "primaryEmail"
+          FROM ${sqlQuoteIdent(schema)}."ProjectUser" pu
+          LEFT JOIN ${sqlQuoteIdent(schema)}."ContactChannel" cc
+            ON cc."tenancyId" = pu."tenancyId"
+            AND cc."projectUserId" = pu."projectUserId"
+            AND cc."type"::text = 'EMAIL'
+            AND cc."isPrimary"::text = 'TRUE'
+          WHERE pu."tenancyId" = ${tenancy.id}::UUID
+            AND pu."projectUserId" = ANY(${userIds}::UUID[])
         `);
         const userMap = new Map(userRows.map((u) => [u.projectUserId, u]));
 
