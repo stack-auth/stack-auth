@@ -1,8 +1,8 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Payments as PaymentsHelper, Project, Team, User, flushBackgroundTasks, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments as PaymentsHelper, Project, Team, User, niceBackendFetch } from "../../../../backend-helpers";
 
 type PaymentsConfigOptions = {
   extraProducts?: Record<string, any>,
@@ -76,24 +76,7 @@ async function createPurchaseCodeForCustomer(options: { customerType: "user" | "
 const stripeWebhookSecret = getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET", "mock_stripe_webhook_secret");
 
 async function sendStripeWebhook(payload: unknown) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const hmac = createHmac("sha256", stripeWebhookSecret);
-  hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
-  const signature = hmac.digest("hex");
-  const res = await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "stripe-signature": `t=${timestamp},v1=${signature}`,
-    },
-    body: payload,
-  });
-  // The webhook acks immediately and processes the event in a fire-and-forget
-  // background task, so wait for that work to finish before reading side effects.
-  if (res.status === 200 && res.body?.received === true && res.body?.deduplicated !== true) {
-    await flushBackgroundTasks();
-  }
-  return res;
+  return await PaymentsHelper.sendStripeWebhook(payload, { secret: stripeWebhookSecret });
 }
 async function createPurchaseCode(options: { userId: string, productId: string }) {
   return await createPurchaseCodeForCustomer({
