@@ -805,9 +805,11 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   const fullCode = purchaseUrl.split("/purchase/")[1];
   const stackTestTenancyId = fullCode.split("_")[0];
 
+  const idSuffix = randomUUID().replace(/-/g, "");
+  const stripeCustomerId = `cus_update_${idSuffix}`;
   const nowSec = Math.floor(Date.now() / 1000);
   const activeSubscription = {
-    id: "sub_update_1",
+    id: `sub_update_${idSuffix}`,
     status: "active",
     items: {
       data: [
@@ -832,7 +834,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     account: accountId,
     data: {
       object: {
-        customer: "cus_update_1",
+        customer: stripeCustomerId,
         stack_stripe_mock_data: {
           "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
           "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
@@ -848,15 +850,28 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
 
   await waitForItemQuantity({ customerType: "user", customerId: userId, itemId, expected: 1 });
 
+  // Cancel the subscription "now". The included-item grant is emitted effective
+  // at the subscription row's DB creation time (i.e. when the add webhook above
+  // was processed), so the cancellation must end the subscription strictly after
+  // that — otherwise the grant's expiry would be ordered *before* the grant
+  // itself and the seat would never drop. We capture the time after the add has
+  // been confirmed and add one second: `floor(now)+1 > now > createdAt`, so the
+  // ended_at (in whole Stripe seconds) is guaranteed to land after the row's
+  // createdAt while still being at most ~1s ahead of the subsequent poll, which
+  // the poll loop tolerates. Real Stripe likewise always sets canceled_at/
+  // ended_at on a terminal-status subscription.
+  const cancelSec = Math.floor(Date.now() / 1000) + 1;
   const canceledSubscription = {
     ...activeSubscription,
     status: "canceled",
+    canceled_at: cancelSec,
+    ended_at: cancelSec,
     items: {
       data: [
         {
           quantity: 1,
-          current_period_start: nowSec - 2 * 60,
-          current_period_end: nowSec - 60,
+          current_period_start: nowSec - 60,
+          current_period_end: cancelSec,
         },
       ],
     },
@@ -868,7 +883,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     account: accountId,
     data: {
       object: {
-        customer: "cus_update_1",
+        customer: stripeCustomerId,
         stack_stripe_mock_data: {
           "accounts.retrieve": { metadata: { tenancyId: stackTestTenancyId } },
           "customers.retrieve": { metadata: { customerId: userId, customerType: "USER" } },
