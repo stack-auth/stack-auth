@@ -71,7 +71,7 @@ export default function PageClient() {
       setError(null);
       try {
         const response = await adminApp[hexclaveAppInternalsSymbol].sendRequest(
-          "/api/latest/agent-auth/agents",
+          "/agent-auth/agents",
           {},
           "admin",
         );
