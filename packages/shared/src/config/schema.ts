@@ -752,7 +752,7 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(installedAppIdsByDefault.map((appId) => [appId, { enabled: false }])),
+    installed: typedFromEntries(installedAppIdsByDefault.map((appId) => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
   },
 
   teams: {

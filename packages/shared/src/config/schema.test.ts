@@ -19,6 +19,7 @@ test("agent-auth stays explicitly enableable", () => {
     },
   });
 
-  expect(defaults.apps.installed["agent-auth"].enabled).toBe(true);
+  expect(defaults.apps.installed["agent-auth"]).toBeDefined();
+  expect(defaults.apps.installed["agent-auth"]?.enabled).toBe(true);
   expect(ALL_APPS["agent-auth"].independentlyEnableable).toBe(true);
 });
