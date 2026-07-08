@@ -559,7 +559,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     };
     \`\`\`
 
-    For large OAuth providers like Google and GitHub, Hexclave automatically provides a client ID and secret, so no extra provider setup is needed.
+    For some OAuth providers like Google and GitHub, Hexclave automatically provides a client ID and secret, so no extra provider setup is needed.
 
     Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
