@@ -382,8 +382,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
     // resolveProviderType alone would accept any globally-known provider type (via its allProviders
     // fallback, which exists so onRead/onList can still surface the type of historical accounts whose
     // provider was later removed), so we gate creation on the provider being present in the config.
-    findProviderConfig(auth.tenancy, data.provider_config_id)
-      ?? throwErr(new StatusError(StatusError.NotFound, `OAuth provider ${data.provider_config_id} not found or not configured`));
+    if (findProviderConfig(auth.tenancy, data.provider_config_id) == null) {
+      throw new StatusError(StatusError.NotFound, `OAuth provider ${data.provider_config_id} not found or not configured`);
+    }
     const providerType = resolveProviderType(auth.tenancy, data.provider_config_id)
       ?? throwErr(new StatusError(StatusError.NotFound, `OAuth provider ${data.provider_config_id} not found or not configured`));
 
