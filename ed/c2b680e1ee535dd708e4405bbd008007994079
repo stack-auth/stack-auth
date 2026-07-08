@@ -1,0 +1,177 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/metrics.tsx
+  s_6cf067c4f3b843::t_67724349dc097e 1-133,135-217
+  s_6cf067c4f3b843::t_7ada600f4fd101 134
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/variation-1.tsx
+  s_6cf067c4f3b843::t_935059cb71ed2b 54
+  s_6cf067c4f3b843::t_bb1a861ee93df1 213-214,230-231,260,264-267
+  s_6cf067c4f3b843::t_9b0db5a5d2db4d 102
+  s_6cf067c4f3b843::t_8186a9e0e3be3a 1-2,212,261,275-277
+  s_6cf067c4f3b843::t_8dffc2a244e039 28-42,47-48,55-56,63-64,71-72,79-80,87-88,95-96,103-104,111-112,119-120,127-128,132-172
+  s_6cf067c4f3b843::t_2a3992da961aad 210-211,215-229,232-259
+  s_6cf067c4f3b843::t_6609df6334d0c7 22
+  s_6cf067c4f3b843::t_2d91746cc4a942 5
+  s_6cf067c4f3b843::t_95d2fa64d701e2 3-4,7-21,23-27,43-45,49-53,57-62,65-70,73-78,81-86,89-94,97-101,105-110,113-118,121-126,129-131,173-208,262,268-273
+  s_6cf067c4f3b843::t_2781bcd909f9d4 46
+  s_6cf067c4f3b843::t_57665da33e9e79 6,209,263,274
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v2/tiles-ops.tsx
+  s_6cf067c4f3b843::t_2797a9baf7314e 1-379
+.claude/launch.json
+  s_6cf067c4f3b843::t_bbe1137c40c0a2 1-11
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/security-report.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v4/primitives.tsx
+  s_6cf067c4f3b843::t_1b3e5a2bce41dd 1-135
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/benchmarks.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/extras/role-switcher.tsx
+  s_6cf067c4f3b843::t_09af29f0eeab95 1-34
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/sales-strategy.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/variation-5.tsx
+  s_6cf067c4f3b843::t_8186a9e0e3be3a 1-2,6,9-10,23-25
+  s_6cf067c4f3b843::t_57665da33e9e79 3-5,7-8,11-22
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/connectors.tsx
+  s_6cf067c4f3b843::t_5804f9d7134c5b 1-275
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/one-thing.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/team-pulse.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/intro/intro-sequence.tsx
+  s_6cf067c4f3b843::t_687f962c114a83 1-12
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/agent-log.tsx
+  s_6cf067c4f3b843::t_b0fc3782076dcc 1-13,15,17-30,123-125,128-131,134-136,138-172,177-187,189-199,201-209,270-272
+  s_6cf067c4f3b843::t_411eaa7c96945b 211-225
+  s_6cf067c4f3b843::t_af22e6013d599a 210,226-269
+  s_6cf067c4f3b843::t_d6acc480103931 14
+  s_6cf067c4f3b843::t_cfe5d3ae22689a 188
+  s_6cf067c4f3b843::t_696415febad934 62-64
+  s_6cf067c4f3b843::t_b37375b307ab1f 137
+  s_6cf067c4f3b843::t_74e00b47ee2f50 31-61,65-117,120-122,126-127,132-133
+  s_6cf067c4f3b843::t_db130f58e9c974 118-119
+  s_6cf067c4f3b843::t_2ab80c75940632 173
+  s_6cf067c4f3b843::t_766cbe6d9a513b 16
+  s_6cf067c4f3b843::t_3208271c096784 200
+  s_6cf067c4f3b843::t_879b0be454e479 174-176
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/replays-worth-watching.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/incidents.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/page.tsx
+  s_6cf067c4f3b843::t_fa910d6eeace0c 2-3,12-16,22
+  s_6cf067c4f3b843::t_d4bd57fafbd6dd 1,4-11,17-21
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v2/charts.tsx
+  s_6cf067c4f3b843::t_4de55135ad60f6 1-198
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/support-digest.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v2/tile.tsx
+  s_6cf067c4f3b843::t_dd8655d6b0a326 1-107
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v4/stories.tsx
+  s_6cf067c4f3b843::t_2ed89a428fd5ed 1-153,155-262
+  s_6cf067c4f3b843::t_31353fbd4a4a83 154
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/rest.tsx
+  s_6cf067c4f3b843::t_34ce60c719cd00 320-322
+  s_6cf067c4f3b843::t_19d0a5f96c2631 284-288
+  s_6cf067c4f3b843::t_65cb9da053f002 1-283,289-319,323-431
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/fixtures.ts
+  s_6cf067c4f3b843::t_f4162fef9f685c 433-458
+  s_6cf067c4f3b843::t_8e1bd70657546d 1-19,22-26,29-34,37-42,45-50,53-421,423-432,459-528
+  s_6cf067c4f3b843::t_04d098476b6a68 20-21,27-28,35-36,43-44,51-52
+  s_6cf067c4f3b843::t_fc484e90e60df0 422
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v4/figures.tsx
+  s_6cf067c4f3b843::t_1bf76ed6dc68f2 1-97
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/extras/live-ticker.tsx
+  s_6cf067c4f3b843::t_687f962c114a83 1-6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v5/scene-open.tsx
+  s_6cf067c4f3b843::t_4c846123bc2de3 1-144
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/use-briefing-state.ts
+  s_6cf067c4f3b843::t_ed8522da454544 1-73
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v4/fixtures.ts
+  s_6cf067c4f3b843::t_614b41869a7436 1-335
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v2/tiles-people.tsx
+  s_6cf067c4f3b843::t_1ce120776f6385 1-307
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/delivery/delivery-modes.tsx
+  s_6cf067c4f3b843::t_687f962c114a83 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v3/data.ts
+  s_6cf067c4f3b843::t_6fcbbe45fae152 1-264
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v5/fixtures.ts
+  s_6cf067c4f3b843::t_c54cc3ca442187 1-405
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/drafted-emails.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v3/ui.tsx
+  s_6cf067c4f3b843::t_d678f98fe45d69 1-268
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/variation-2.tsx
+  s_6cf067c4f3b843::t_8186a9e0e3be3a 1-2,6,9-10,23-25
+  s_6cf067c4f3b843::t_57665da33e9e79 3-5,7-8,11-22
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/extras/customize-drawer.tsx
+  s_6cf067c4f3b843::t_d0367edc78204e 1-17
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/mock-data.ts
+  s_6cf067c4f3b843::t_72384fc9df4389 1-110,112-135,137,139,141-180
+  s_6cf067c4f3b843::t_e55fa80e545f1f 111
+  s_6cf067c4f3b843::t_6fa3ebf6742d35 136,138,140
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/intro/ambient-gradient.tsx
+  s_6cf067c4f3b843::t_4cd1720d90fa71 1-53
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx
+  s_6cf067c4f3b843::t_be732a8125c4c1 97-104
+  s_6cf067c4f3b843::t_7b13fb1905c2e1 38
+  s_6cf067c4f3b843::t_6c0f933d4d5138 567-571
+  s_6cf067c4f3b843::t_548becc515cba7 566
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v3/panels.tsx
+  s_6cf067c4f3b843::t_fec5f9476e3c69 1-635
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/agent-log.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/support.tsx
+  s_6cf067c4f3b843::t_412653fc948b7a 1-99
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/metrics-section.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/risk-radar.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/briefing-config.ts
+  s_6cf067c4f3b843::t_980b626bd6740f 213-218
+  s_6cf067c4f3b843::t_c6f6e10c4b7611 1-212,219-221
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/extras/ask-briefing.tsx
+  s_6cf067c4f3b843::t_687f962c114a83 1-6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/hero-strip.tsx
+  s_6cf067c4f3b843::t_1dc8af1b89cd62 1-2,5-7,11,17-20,42-44,47,68-69,72-74
+  s_6cf067c4f3b843::t_5a7260c20f617f 3-4,8-10,12-16,21-41,45-46,48-67,70-71
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/section-shell.tsx
+  s_6cf067c4f3b843::t_2ef6abe7cfaf6f 7-10,16,20,29,32-33,35-38,40-45,47
+  s_6cf067c4f3b843::t_24b969466e452d 1-6,11-15,17-19,21-28,30-31,34,39,46,48-51
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/variation-3.tsx
+  s_6cf067c4f3b843::t_ac914606f66429 96
+  s_6cf067c4f3b843::t_7e2bdeb820fef6 3-5,7-95,97-189,191,193-239
+  s_6cf067c4f3b843::t_8186a9e0e3be3a 1-2,6,190,192,240-242
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variation-switcher.tsx
+  s_6cf067c4f3b843::t_77712284d323c2 1-70
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v2/data.ts
+  s_6cf067c4f3b843::t_addc64e90173ee 1-179
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/section-stub.tsx
+  s_6cf067c4f3b843::t_c23c17390443c0 1-29
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/sections/meeting-dossiers.tsx
+  s_6cf067c4f3b843::t_23c7b29b630605 1-8
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/page-client.tsx
+  s_6cf067c4f3b843::t_8385ca115a3159 1-3,23-24,26,41,45-47
+  s_6cf067c4f3b843::t_fb3350f2d3e482 4-22,25,27-40,42-44
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/variation-4.tsx
+  s_6cf067c4f3b843::t_8186a9e0e3be3a 1-2,6,9-10,23-25
+  s_6cf067c4f3b843::t_57665da33e9e79 3-5,7-8,11-22
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v1/primitives.tsx
+  s_6cf067c4f3b843::t_7004e6f4d1479c 1-79
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/daily-briefing/variations/v5/cinema.tsx
+  s_6cf067c4f3b843::t_c8000739653a3c 1-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "edc2b680e1ee535dd708e4405bbd008007994079",
+  "prompts": {},
+  "sessions": {
+    "s_6cf067c4f3b843": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43245cae-330a-4f40-a6ee-18e6649bfa57",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
