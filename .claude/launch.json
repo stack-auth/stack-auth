@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT=$PORT pnpm --filter @hexclave/dashboard dev"],
+      "autoPort": true
+    }
+  ]
+}
