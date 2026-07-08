@@ -1,7 +1,7 @@
 "use client";
 
 import { DesignAlert, DesignCard } from "@/components/design-components";
-import { Switch, Typography } from "@/components/ui";
+import { SimpleTooltip, Switch, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/components/config-update";
 import { hexclaveAppInternalsSymbol } from "@hexclave/next";
 import { GearSix, Users } from "@phosphor-icons/react";
@@ -152,14 +152,49 @@ export default function PageClient() {
               <table className="w-full text-left text-sm">
                 <thead className="border-b">
                   <tr className="text-muted-foreground">
-                    <th className="py-2 pr-4">Name</th>
                     <th className="py-2 pr-4">Agent</th>
-                    <th className="py-2 pr-4">Host</th>
-                    <th className="py-2 pr-4">Linked user</th>
-                    <th className="py-2 pr-4">Mode</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Capabilities</th>
-                    <th className="py-2 pr-4">Last used</th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Agent ID
+                        <SimpleTooltip type="info" inline tooltip="Unique identifier for this agent (first 8 characters shown)." />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Runs on host
+                        <SimpleTooltip type="info" inline tooltip="The machine or service the agent runs on. A host registers its agents and holds its own identity key." />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        On behalf of
+                        <SimpleTooltip type="info" inline tooltip="The human user this agent represents. A delegated agent can only do what this user is allowed to do." />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Authority
+                        <SimpleTooltip type="info" inline tooltip={"How the agent is authorized.\nDelegated: acts for the linked user, limited to that user's access.\nAutonomous: acts as its own principal."} />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Status
+                        <SimpleTooltip type="info" inline tooltip="Whether the agent is currently active and allowed to authenticate." />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Capabilities
+                        <SimpleTooltip type="info" inline tooltip="The specific scoped actions this agent is permitted to perform." />
+                      </div>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <div className="flex items-center gap-1">
+                        Last used
+                        <SimpleTooltip type="info" inline tooltip="When this agent last authenticated or executed a capability." />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -174,7 +209,12 @@ export default function PageClient() {
                       <td className="py-3 pr-4">
                         {agent.linked_user?.display_name ?? agent.linked_user_id ?? "—"}
                       </td>
-                      <td className="py-3 pr-4">{agent.mode}</td>
+                      <td className="py-3 pr-4">
+                        <div className="font-medium">{agent.mode === "delegated" ? "Delegated" : "Autonomous"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {agent.mode === "delegated" ? "Acts for the linked user" : "Acts as itself"}
+                        </div>
+                      </td>
                       <td className="py-3 pr-4">{agent.status}</td>
                       <td className="py-3 pr-4">
                         {agent.capabilities.map((capability) => (
