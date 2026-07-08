@@ -1,14 +1,14 @@
 import { ALL_APPS } from "../apps/apps-config";
 import { applyOrganizationDefaults } from "./schema";
-import { expect } from "vitest";
+import { expect, test } from "vitest";
 
-import.meta.vitest?.test("agent-auth is absent from default installed apps", () => {
+test("agent-auth is absent from default installed apps", () => {
   const defaults = applyOrganizationDefaults({});
 
   expect(Object.keys(defaults.apps.installed)).not.toContain("agent-auth");
 });
 
-import.meta.vitest?.test("agent-auth stays explicitly enableable", () => {
+test("agent-auth stays explicitly enableable", () => {
   const defaults = applyOrganizationDefaults({
     apps: {
       installed: {

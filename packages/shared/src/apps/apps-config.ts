@@ -40,7 +40,7 @@ export const ALL_APP_TAGS = {
 
 type ParentAppId = "authentication" | "analytics";
 
-type App = {
+export type App = {
   displayName: string,
   subtitle: string,
   tags: (keyof typeof ALL_APP_TAGS)[],
