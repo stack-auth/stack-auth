@@ -1,5 +1,6 @@
 import { isShallowEqual } from "@hexclave/shared/dist/utils/arrays";
 import { inspect } from "node:util";
+import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan } from "../../otel.js";
 import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
@@ -228,6 +229,7 @@ function logSnapshotMutationDebugInfo(value: {
   rowsSetOrDeleted: number,
   debugInfo: BulldozerSnapshotMutationDebugInfo,
 }) {
+  if (shouldSuppressPeriodicBulldozerLogs) return;
   if (value.rowsSetOrDeleted <= 0) return;
   console.debug("bulldozer-js snapshot mutation", inspect(value, {
     depth: null,
@@ -934,23 +936,25 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         await piledriverDatabase.waitUntilReplicated(result.seq);
         waitUntilReplicatedMs = performance.now() - waitUntilReplicatedStartedAt;
       }
-      console.debug("bulldozer-js withSnapshot timing", inspect({
-        replicated: options.replicated,
-        elapsedMs: performance.now() - startedAt,
-        writeLockWaitMs,
-        getSnapshotMs,
-        updateSnapshotMs,
-        toPiledriverObjectMs,
-        setRootMs,
-        waitUntilAvailableMs,
-        waitUntilReplicatedMs,
-        mutation: mutationDebugInfo === undefined ? undefined : {
-          operation: mutationDebugInfo.operation,
-          sourceTableId: mutationDebugInfo.sourceTableId,
-          rowsSetOrDeleted: mutationDebugInfo.rowsSetOrDeleted,
-          durationMs: mutationDebugInfo.durationMs,
-        },
-      }, { depth: null, maxArrayLength: null }));
+      if (!shouldSuppressPeriodicBulldozerLogs) {
+        console.debug("bulldozer-js withSnapshot timing", inspect({
+          replicated: options.replicated,
+          elapsedMs: performance.now() - startedAt,
+          writeLockWaitMs,
+          getSnapshotMs,
+          updateSnapshotMs,
+          toPiledriverObjectMs,
+          setRootMs,
+          waitUntilAvailableMs,
+          waitUntilReplicatedMs,
+          mutation: mutationDebugInfo === undefined ? undefined : {
+            operation: mutationDebugInfo.operation,
+            sourceTableId: mutationDebugInfo.sourceTableId,
+            rowsSetOrDeleted: mutationDebugInfo.rowsSetOrDeleted,
+            durationMs: mutationDebugInfo.durationMs,
+          },
+        }, { depth: null, maxArrayLength: null }));
+      }
       return result;
     });
   };
