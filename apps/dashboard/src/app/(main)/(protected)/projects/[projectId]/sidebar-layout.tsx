@@ -35,6 +35,7 @@ import {
   ListIcon,
   PlusIcon,
   SidebarIcon,
+  SparkleIcon,
   UsersIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
@@ -91,6 +92,14 @@ const overviewItem: Item = {
   regex: /^\/projects\/[^\/]+\/?$/,
   icon: GlobeIcon,
   type: 'item'
+};
+
+const dailyBriefingItem: Item = {
+  name: "Daily Briefing",
+  href: "/daily-briefing",
+  regex: /^\/projects\/[^\/]+\/daily-briefing(\/.*)?$/,
+  icon: SparkleIcon,
+  type: "item",
 };
 
 const usersItem: Item = {
@@ -552,6 +561,12 @@ function SidebarContent({
             item={overviewItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${overviewItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={dailyBriefingItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${dailyBriefingItem.href}`}
             isCollapsed={isCollapsed}
           />
           <NavItem
