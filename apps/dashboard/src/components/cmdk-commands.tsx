@@ -283,6 +283,14 @@ const PROJECT_SHORTCUTS: ProjectShortcutDefinition[] = [
     keywords: ["users", "user", "people", "members", "accounts"],
   },
   {
+    id: "navigation/daily-brief",
+    icon: SparkleIcon,
+    label: "Daily Brief",
+    description: "Navigation",
+    href: "/daily-brief",
+    keywords: ["daily brief", "briefing", "ai brief", "gtm assistant", "recommendations", "suggestions"],
+  },
+  {
     id: "navigation/dashboards",
     icon: ChartBarIcon,
     label: "Dashboards",

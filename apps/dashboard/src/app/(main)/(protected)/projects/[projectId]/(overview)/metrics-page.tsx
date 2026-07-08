@@ -46,6 +46,8 @@ import { LayoutGroup, motion, useReducedMotion, type Transition } from "motion/r
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, type ReactNode, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsEventLimitBanner } from "../analytics/shared";
+import { DailyBriefOverviewCard } from "../_daily-brief/components";
+import { TODAYS_DAILY_BRIEF } from "../_daily-brief/mock-data";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { UserPageMetricCard } from "../users/[userId]/user-page-metric-card";
@@ -1898,6 +1900,8 @@ function MetricsContent({
           spark={sessionSparkValues.length >= 2 ? { values: sessionSparkValues } : undefined}
         />
       </div>
+
+      <DailyBriefOverviewCard brief={TODAYS_DAILY_BRIEF} projectId={projectId} />
 
       <div
         ref={gridContainerRef}
