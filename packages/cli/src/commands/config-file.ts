@@ -1,5 +1,5 @@
 import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
-import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
+import { detectImportPackageFromDir, evalConfigFileContent } from "@hexclave/shared/dist/config-eval";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -217,8 +217,28 @@ export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd:
   return candidate;
 }
 
+// `config pull` updates an existing config in place (via updateConfigObject, which runs an
+// agent-assisted rewrite so hand-authored wrappers/imports/comments survive) only when the target
+// already defines a config object to patch. A file that doesn't yet define one — empty, a
+// placeholder, or otherwise not a config — has nothing worth preserving, and updateConfigObject
+// cannot parse it, so we replace it with a freshly rendered config instead.
+function existingConfigFileHasConfigObject(filePath: string): boolean {
+  const content = fs.readFileSync(filePath, "utf-8");
+  if (content.trim() === "") return false;
+  try {
+    evalConfigFileContent(content, filePath);
+    return true;
+  } catch {
+    // jiti may fail on imports that only resolve inside the user's project; fall back to a
+    // structural check for the `export const config` binding the renderer always emits.
+    return /\bexport\s+const\s+config\b/.test(content);
+  }
+}
+
 export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
-  return opts.overwrite === true || !fs.existsSync(filePath);
+  if (opts.overwrite === true) return true;
+  if (!fs.existsSync(filePath)) return true;
+  return !existingConfigFileHasConfigObject(filePath);
 }
 
 export function registerConfigCommand(program: Command) {

@@ -68,6 +68,24 @@ describe("shouldReplaceConfigFileForPull", () => {
   it("replaces when pull needs to create a new config file", () => {
     expect(shouldReplaceConfigFileForPull(path.join(tmpDir, "hexclave.config.ts"), {})).toBe(true);
   });
+
+  it("replaces an existing file that does not define a config object", () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(configPath, "existing\n");
+    expect(shouldReplaceConfigFileForPull(configPath, {})).toBe(true);
+  });
+
+  it("replaces an existing placeholder/comment-only file", () => {
+    const configPath = path.join(tmpDir, "stack.config.ts");
+    fs.writeFileSync(configPath, "// placeholder so the file exists\n");
+    expect(shouldReplaceConfigFileForPull(configPath, {})).toBe(true);
+  });
+
+  it("replaces an existing empty file", () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(configPath, "   \n");
+    expect(shouldReplaceConfigFileForPull(configPath, {})).toBe(true);
+  });
 });
 
 describe("buildConfigPushSource", () => {
