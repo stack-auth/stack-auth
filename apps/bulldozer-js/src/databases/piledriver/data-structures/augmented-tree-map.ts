@@ -637,8 +637,12 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     for (let i = 0; i < node.entries.length; i++) {
       result = await this.merge(result, await this.augmentation(node.children[i] ?? null, range));
       if (aboveLowerBound(node.entries[i][0]) && belowUpperBound(node.entries[i][0])) {
-        const entryAug = ((node.version ?? 0) >= 1 ? node.entryAugmentations?.[i] : undefined)
-          ?? await this.options.extractAugmentation(await this.loadValue(node.entries[i][1]), node.entries[i][0].key, node.entries[i][0].id);
+        // Trust the cached augmentation only for versioned nodes, and check `!== undefined` (not
+        // `??`) so a legitimately-cached `null` augmentation is still a hit rather than re-extracted.
+        const cachedEntryAug = (node.version ?? 0) >= 1 ? node.entryAugmentations?.[i] : undefined;
+        const entryAug = cachedEntryAug !== undefined
+          ? cachedEntryAug
+          : await this.options.extractAugmentation(await this.loadValue(node.entries[i][1]), node.entries[i][0].key, node.entries[i][0].id);
         result = await this.merge(result, entryAug);
       }
     }
