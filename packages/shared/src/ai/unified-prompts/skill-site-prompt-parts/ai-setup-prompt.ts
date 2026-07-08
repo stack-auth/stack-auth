@@ -890,7 +890,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           \`\`\`html
           <script type="module">
-            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js";
+            // Pin a specific version so a new release cannot unexpectedly break your page.
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
 
             globalThis.hexclaveClientApp = new HexclaveClientApp({
               // Environment variables are NOT read with this approach, so the project ID
@@ -913,7 +914,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
           - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
-          - Pin a specific version for stability, e.g. \`https://esm.sh/@hexclave/js@1.0.51\`, so that a new SDK release cannot unexpectedly break your page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
