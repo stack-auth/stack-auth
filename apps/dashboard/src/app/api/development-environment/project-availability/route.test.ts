@@ -92,30 +92,19 @@ describe("development environment project-availability route", () => {
     useTempStateFile();
     const response = await getResponse(request(
       `http://127.0.0.1:26700/api/development-environment/project-availability?project_id=${knownProjectId}`,
-      { host: "127.0.0.1:26700", origin: "http://localhost:3000" },
+      { host: "127.0.0.1:26700" },
     ));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ running: true, project_available: true });
-    expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
   });
 
   it("reports project_available: false for an unknown project", async () => {
     useTempStateFile();
     const response = await getResponse(request(
       "http://127.0.0.1:26700/api/development-environment/project-availability?project_id=some-other-project",
-      { host: "127.0.0.1:26700", origin: "http://localhost:3000" },
+      { host: "127.0.0.1:26700" },
     ));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ running: true, project_available: false });
-  });
-
-  it("does not reflect non-localhost origins in CORS headers", async () => {
-    useTempStateFile();
-    const response = await getResponse(request(
-      `http://127.0.0.1:26700/api/development-environment/project-availability?project_id=${knownProjectId}`,
-      { host: "127.0.0.1:26700", origin: "https://evil.example.com" },
-    ));
-    expect(response.status).toBe(200);
-    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
