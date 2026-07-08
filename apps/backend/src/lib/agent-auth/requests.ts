@@ -1,6 +1,7 @@
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { AGENT_AUTH_APP_ID } from "./constants";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isAppEnabledInInstalledApps } from "@hexclave/shared/dist/apps/apps-config";
 import type { SmartRequest } from "@/route-handlers/smart-request";
 
 export function getHeader(req: SmartRequest, name: string): string | null {
@@ -26,7 +27,7 @@ export async function getAgentAuthTenancy(projectId: string) {
   if (!tenancy) {
     throw new StatusError(StatusError.NotFound, "Agent auth project not found");
   }
-  if (!tenancy.config.apps.installed[AGENT_AUTH_APP_ID]?.enabled) {
+  if (!isAppEnabledInInstalledApps(tenancy.config.apps.installed, AGENT_AUTH_APP_ID)) {
     throw new StatusError(StatusError.NotFound, "Not found");
   }
   return tenancy;
