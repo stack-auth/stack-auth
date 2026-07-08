@@ -26,6 +26,33 @@ type SetupMode = "recommended" | "manual";
 
 const PROD_DOCS_BASE_URL = 'https://docs.hexclave.com';
 const PROD_API_BASE_URL = 'https://api.hexclave.com';
+// Pin the esm.sh version in the copy-paste snippet so a new SDK release can't unexpectedly break the page.
+const NO_BUNDLER_SDK_VERSION = '1.0.51';
+
+function buildBrowserScriptSnippet(options: {
+  apiBaseUrl: string,
+  projectId: string,
+  requirePublishableClientKey: boolean,
+}) {
+  const { apiBaseUrl, projectId, requirePublishableClientKey } = options;
+  const publishableClientKeyLine = requirePublishableClientKey
+    ? `\n    publishableClientKey: "<your-publishable-client-key>",`
+    : '';
+
+  return deindent`
+    <script type="module">
+      // Environment variables do NOT work here, so every value must be passed explicitly.
+      import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${NO_BUNDLER_SDK_VERSION}";
+
+      globalThis.hexclaveClientApp = new HexclaveClientApp({
+        baseUrl: "${apiBaseUrl}",
+        projectId: "${projectId}",${publishableClientKeyLine}
+        tokenStore: "cookie",
+        urls: { default: { type: "hosted" } },
+      });
+    </script>
+  `;
+}
 
 function getSetupDocsBaseUrl() {
   return getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL') ?? PROD_DOCS_BASE_URL;
@@ -134,6 +161,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     });
   };
 
+  const setupApiBaseUrl = getSetupApiBaseUrl();
+  const browserScriptSnippet = buildBrowserScriptSnippet({
+    apiBaseUrl: setupApiBaseUrl,
+    projectId: adminApp.projectId,
+    requirePublishableClientKey,
+  });
   const setupDocsBaseUrl = getSetupDocsBaseUrl();
   const selectedInstallPrompt = isRemoteDevelopmentEnvironment
     ? buildCliDevSetupPrompt({
@@ -142,7 +175,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     : buildCloudSetupPrompt({
       docsBaseUrl: setupDocsBaseUrl,
       projectId: adminApp.projectId,
-      apiBaseUrl: getSetupApiBaseUrl(),
+      apiBaseUrl: setupApiBaseUrl,
     });
   const manualSetupDocsUrl = getManualSetupDocsUrl();
 
@@ -272,6 +305,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               </li>
             ))}
           </ol>
+
+          {!isRemoteDevelopmentEnvironment && (
+            <BrowserScriptSetup snippet={browserScriptSnippet} requirePublishableClientKey={requirePublishableClientKey} />
+          )}
         </div>
       ) : (
         <div className="mx-4 mt-12 flex flex-col items-center gap-4 py-16 text-center">
@@ -378,6 +415,38 @@ function SetupRecommendedDoneStep(props: { onExploreDashboard: () => void }) {
           Explore Dashboard
         </DesignButton>
       </div>
+    </div>
+  );
+}
+
+function BrowserScriptSetup(props: { snippet: string, requirePublishableClientKey: boolean }) {
+  return (
+    <div className="mx-4 mt-4 flex flex-col gap-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.06] bg-white/60 dark:bg-background/40 p-6 ring-1 ring-black/[0.06] dark:ring-white/[0.06] shadow-sm">
+      <div className="flex flex-col gap-1">
+        <Typography type="h4">
+          No build step? Use a <InlineCode>{`<script>`}</InlineCode> tag
+        </Typography>
+        <Typography variant="secondary">
+          For a quick prototype or static HTML page, load the SDK from esm.sh and expose the app on <InlineCode>globalThis</InlineCode>. This is significantly less preferred than installing <InlineCode>@hexclave/js</InlineCode> with a bundler — reach for it only when you genuinely cannot run a build step.
+        </Typography>
+      </div>
+
+      <CodeBlock
+        language="html"
+        content={props.snippet}
+        customRender={
+          <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
+            {props.snippet}
+          </pre>
+        }
+        title="index.html"
+        icon="code"
+        maxHeight={480}
+      />
+
+      <Typography variant="secondary">
+        Any other script on the page can then use <InlineCode>await globalThis.hexclaveClientApp.getUser()</InlineCode>. Environment variables do not work with this approach, so the project ID{props.requirePublishableClientKey ? ' and publishable client key are' : ' is'} hard-coded above. Only ever construct a <InlineCode>HexclaveClientApp</InlineCode> here — never a server app with a secret key, since everything in a <InlineCode>{`<script>`}</InlineCode> tag is publicly visible.
+      </Typography>
     </div>
   );
 }
