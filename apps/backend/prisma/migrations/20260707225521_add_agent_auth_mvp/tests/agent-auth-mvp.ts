@@ -162,4 +162,13 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   expect(Number(countsAfterDelete[0].host_count)).toBe(0);
   expect(Number(countsAfterDelete[0].agent_count)).toBe(0);
   expect(Number(countsAfterDelete[0].grant_count)).toBe(0);
+
+  await sql`
+    DELETE FROM "Tenancy"
+    WHERE "id" = ${ctx.tenancyId}::uuid
+  `;
+  await sql`
+    DELETE FROM "Project"
+    WHERE "id" = ${ctx.projectId}
+  `;
 };
