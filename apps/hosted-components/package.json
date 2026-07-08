@@ -8,7 +8,7 @@
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "lint": "eslint --ext .ts,.tsx .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rimraf .output && rimraf node_modules"
   },
   "dependencies": {

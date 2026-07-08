@@ -11,7 +11,7 @@
     "profile:performance": "tsx scripts/profile-bulldozer-performance.ts",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "eslint --ext .ts .",
     "clean": "rimraf dist && rimraf node_modules"
   },

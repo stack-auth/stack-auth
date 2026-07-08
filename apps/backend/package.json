@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "clean": "rimraf src/generated && rimraf .next && rimraf node_modules",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "with-env": "dotenv -c --",
     "with-env:dev": "dotenv -c development --",
     "with-env:prod": "dotenv -c production --",

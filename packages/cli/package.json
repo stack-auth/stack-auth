@@ -13,7 +13,7 @@
     "build": "tsdown",
     "package-dashboard-release": "node scripts/package-dashboard-release.mjs",
     "lint": "eslint --ext .tsx,.ts .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run"
   },
   "files": [

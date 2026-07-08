@@ -100,6 +100,7 @@
     "turbo": "^2.8.15",
     "unrun": "^0.2.39",
     "typescript": "6.0.3",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^1.6.0",
     "wait-on": "^8.0.1"

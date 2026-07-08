@@ -8,11 +8,15 @@ import { FieldValues, useForm } from "react-hook-form";
 import * as yup from "yup";
 import { SmartForm } from "./smart-form";
 
-export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
+// Parametrize on the schema's inferred shape `F` rather than the whole schema type `S`
+// (see SmartForm): TypeScript 7 checks yup's `concat` method contravariantly, so a
+// concrete `ObjectSchema` is no longer assignable to `ObjectSchema<any, ...>`. The
+// default/flags params are left as `any` so `.default()` schemas (flag `"d"`) are accepted.
+export function SmartFormDialog<F extends FieldValues>(
   props: Omit<ActionDialogProps, 'children'> & {
-    formSchema: S,
-    defaultValues?: Partial<yup.InferType<S>>,
-    onSubmit: (values: yup.InferType<S>) => Promise<void | 'prevent-close'> | void | 'prevent-close',
+    formSchema: yup.ObjectSchema<F, yup.AnyObject, any, any>,
+    defaultValues?: Partial<F>,
+    onSubmit: (values: F) => Promise<void | 'prevent-close'> | void | 'prevent-close',
   },
 ) {
   const formId = `${useId()}-form`;
@@ -28,7 +32,7 @@ export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
       ...((typeof props.okButton === "boolean") ? {} : props.okButton?.props),
     },
   };
-  const handleSubmit = async (values: yup.InferType<S>) => {
+  const handleSubmit = async (values: F) => {
     const res = await props.onSubmit(values);
     if (res !== 'prevent-close') {
       setOpenState(false);

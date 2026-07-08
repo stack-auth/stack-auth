@@ -8,7 +8,7 @@
     "dev": "vite --force --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}20",
     "build": "tsc -b && vite build",
     "clean": "rimraf dist && rimraf node_modules",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

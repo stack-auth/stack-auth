@@ -5,7 +5,7 @@
   "description": "",
   "private": true,
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rimraf .next && rimraf node_modules",
     "dev": "next dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}08",
     "build": "next build",

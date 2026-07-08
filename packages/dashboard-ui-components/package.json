@@ -7,7 +7,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "rimraf dist && tsdown && pnpm run build-iife && pnpm run copy-iife",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "build-iife": "tsx scripts/build-iife.ts",
     "copy-iife": "tsx scripts/copy-iife.ts",

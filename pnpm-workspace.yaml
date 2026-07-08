@@ -9,6 +9,13 @@ packages:
 
 minimumReleaseAge: 10080
 
+# @typescript/native-preview ships the TypeScript 7 native compiler (tsgo), which we
+# use for typechecking. Its dev builds are published daily and are always within the
+# 7-day minimumReleaseAge window, so it must be excluded from that policy.
+minimumReleaseAgeExclude:
+  - '@typescript/native-preview'
+  - '@typescript/native-preview-*'
+
 blockExoticSubdeps: true
 
 overrides:

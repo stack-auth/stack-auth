@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "clean": "rimraf .next .next-development-environment node_modules",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "concurrently -n \"dev,bundle-type-defs\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_HEXCLAVE_LOCAL_DASHBOARD_PORT:-${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}01}\" \"pnpm run bundle-type-definitions:watch\"",

@@ -5,7 +5,7 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Form } from "@/components/ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { FieldValues, useForm } from "react-hook-form";
 import * as yup from "yup";
 import { CheckboxField, DateField, InputField, NumberField, TextAreaField } from "./form-fields";
 
@@ -21,12 +21,18 @@ declare module 'yup' {
   }
 }
 
-export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
-  formSchema: S,
-  onSubmit: (values: yup.InferType<S>) => Promise<void>,
+// Parametrize on the schema's inferred shape `F` rather than the whole schema type `S`
+// (mirrors FormDialog below). TypeScript 7 checks yup's `concat` method contravariantly,
+// so a concrete `ObjectSchema` is no longer assignable to `ObjectSchema<any, ...>`;
+// inferring `F` makes that comparison concrete-to-concrete instead. The default/flags
+// params are left as `any` so schemas built with `.default()` (flag `"d"`) are accepted
+// and still satisfy `yupResolver`, which expects the default flag `""`.
+export function SmartForm<F extends FieldValues>(props: {
+  formSchema: yup.ObjectSchema<F, yup.AnyObject, any, any>,
+  onSubmit: (values: F) => Promise<void>,
   formId?: string,
   onChangeIsSubmitting?: (isSubmitting: boolean) => void,
-  defaultValues?: Partial<yup.InferType<S>>,
+  defaultValues?: Partial<F>,
   isOpen?: boolean,
 }) {
   const resolvedDefaultValues = props.defaultValues ?? props.formSchema.getDefault();
@@ -40,7 +46,7 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
     props.onChangeIsSubmitting?.(true);
     setIsSubmitting(true);
     try {
-      await form.handleSubmit(async (values: yup.InferType<S>, e?: React.BaseSyntheticEvent) => {
+      await form.handleSubmit(async (values: F, e?: React.BaseSyntheticEvent) => {
         e!.preventDefault();
         await props.onSubmit(values);
         form.reset(resolvedDefaultValues);

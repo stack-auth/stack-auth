@@ -14,7 +14,7 @@
     "start": "next start --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}27",
     "build": "next build",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rimraf .next && rimraf node_modules"
   },
   "dependencies": {

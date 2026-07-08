@@ -35,7 +35,7 @@
   },
   "scripts": {
     "build": "rimraf dist && tsdown",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts ."
   },
