@@ -16,12 +16,12 @@ import {
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import { useStackApp } from "@hexclave/next";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
+import { useAdminApp } from "../use-admin-app";
 
 type CliAuthSummary = {
   total_attempts: number,
@@ -104,7 +104,11 @@ export default function PageClient() {
 }
 
 function CliAuthContent() {
-  const app = useStackApp();
+  // Use the admin app for the currently-viewed project (not useStackApp(), which
+  // returns the dashboard's own internal-project client app): this both carries
+  // admin credentials and scopes the /internal/cli-auth request to this project's
+  // tenancy. Mirrors the external-db-sync page pattern.
+  const app = useAdminApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
