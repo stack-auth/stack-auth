@@ -30,11 +30,17 @@ type StoredValue<V extends PiledriverObject> = V | PiledriverHeapObject;
 type Split<K, V extends PiledriverObject, A> = { entry: Entry<K, StoredValue<V>>, right: Child<K, A> };
 // Persisted B-tree node. Children are heap objects, so unchanged subtrees are shared across versions.
 type Node<K, V extends PiledriverObject, A> = {
+  // On-disk format version for this node. Absent (undefined) on nodes persisted before versioning
+  // was introduced — those are treated as version 0. Bump `nodeFormatVersion` whenever a persisted
+  // field is added/changed in a way that makes previously-written data unsafe to trust, and gate
+  // the reads of that field on the version so old nodes keep deserialising correctly.
+  version?: number,
   entries: Entry<K, StoredValue<V>>[],
   // Cached per-entry augmentations, parallel to `entries`. When a node is path-copied during a
   // mutation, unchanged entries (same tuple identity) can reuse their cached augmentation instead
   // of re-calling extractAugmentation. This avoids creating duplicate heap objects for the same
   // data, letting the downstream serializer recognise them as already-written (heap cache hits).
+  // Only trusted when `version >= 1` (see `nodeFormatVersion`).
   entryAugmentations?: A[],
   children: Child<K, A>[],
   augmentation: A,
@@ -71,6 +77,10 @@ const lowerEntryId = Symbol("lower-entry-id");
 const upperEntryId = Symbol("upper-entry-id");
 const mapEntryId = "";
 const defaultArity = 32;
+// Current on-disk B-tree node format version. Version 1 introduced cached per-entry augmentations
+// (`entryAugmentations`). Nodes without a `version` field were written before versioning (version 0)
+// and have their augmentations recomputed on read. See the `version` field on `Node`.
+const nodeFormatVersion = 1;
 
 // Code-unit comparisons; localeCompare would persist a tree whose order depends on the runtime locale.
 function compareStrings(a: string, b: string) {
@@ -305,6 +315,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     if (!entries.length) {
       const [onlyChild] = children;
       const node = {
+        version: nodeFormatVersion,
         entries,
         children,
         augmentation: onlyChild.augmentation,
@@ -339,6 +350,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     }
 
     const node = {
+      version: nodeFormatVersion,
       entries,
       entryAugmentations,
       children,
@@ -353,6 +365,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
   // Builds a Map from entry tuple references to their cached augmentations, enabling O(1) lookups
   // during make(). Returns undefined if the node has no cached augmentations (e.g. old format).
   private buildEntryAugCache(node: Node<MultiKey<Key, EntryId>, Value, Augmentation>): ReadonlyMap<object, Augmentation> | undefined {
+    if ((node.version ?? 0) < 1) return undefined;
     if (!node.entryAugmentations || node.entryAugmentations.length !== node.entries.length) return undefined;
     const cache = new Map<object, Augmentation>();
     for (let i = 0; i < node.entries.length; i++) {
@@ -624,7 +637,7 @@ export class AugmentedTreeMultiMap<Key extends PiledriverObject, Value extends P
     for (let i = 0; i < node.entries.length; i++) {
       result = await this.merge(result, await this.augmentation(node.children[i] ?? null, range));
       if (aboveLowerBound(node.entries[i][0]) && belowUpperBound(node.entries[i][0])) {
-        const entryAug = node.entryAugmentations?.[i]
+        const entryAug = ((node.version ?? 0) >= 1 ? node.entryAugmentations?.[i] : undefined)
           ?? await this.options.extractAugmentation(await this.loadValue(node.entries[i][1]), node.entries[i][0].key, node.entries[i][0].id);
         result = await this.merge(result, entryAug);
       }
