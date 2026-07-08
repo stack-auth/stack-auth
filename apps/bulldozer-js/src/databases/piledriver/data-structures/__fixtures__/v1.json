@@ -1,0 +1,659 @@
+{
+  "arity": 8,
+  "tree": {
+    "type": "AugmentedTreeMap",
+    "root": {
+      "ref": {
+        "version": 1,
+        "entries": [
+          [
+            {
+              "key": 5,
+              "id": ""
+            },
+            10
+          ],
+          [
+            {
+              "key": 10,
+              "id": ""
+            },
+            20
+          ],
+          [
+            {
+              "key": 15,
+              "id": ""
+            },
+            30
+          ],
+          [
+            {
+              "key": 20,
+              "id": ""
+            },
+            40
+          ],
+          [
+            {
+              "key": 25,
+              "id": ""
+            },
+            50
+          ],
+          [
+            {
+              "key": 30,
+              "id": ""
+            },
+            60
+          ],
+          [
+            {
+              "key": 35,
+              "id": ""
+            },
+            70
+          ]
+        ],
+        "entryAugmentations": [
+          10,
+          20,
+          30,
+          40,
+          50,
+          60,
+          70
+        ],
+        "children": [
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 1,
+                    "id": ""
+                  },
+                  2
+                ],
+                [
+                  {
+                    "key": 2,
+                    "id": ""
+                  },
+                  4
+                ],
+                [
+                  {
+                    "key": 3,
+                    "id": ""
+                  },
+                  6
+                ],
+                [
+                  {
+                    "key": 4,
+                    "id": ""
+                  },
+                  8
+                ]
+              ],
+              "entryAugmentations": [
+                2,
+                4,
+                6,
+                8
+              ],
+              "children": [],
+              "augmentation": 20,
+              "size": 4,
+              "minKey": {
+                "key": 1,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 4,
+                "id": ""
+              }
+            },
+            "augmentation": 20,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 1,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 4,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 6,
+                    "id": ""
+                  },
+                  12
+                ],
+                [
+                  {
+                    "key": 7,
+                    "id": ""
+                  },
+                  14
+                ],
+                [
+                  {
+                    "key": 8,
+                    "id": ""
+                  },
+                  16
+                ],
+                [
+                  {
+                    "key": 9,
+                    "id": ""
+                  },
+                  18
+                ]
+              ],
+              "entryAugmentations": [
+                12,
+                14,
+                16,
+                18
+              ],
+              "children": [],
+              "augmentation": 60,
+              "size": 4,
+              "minKey": {
+                "key": 6,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 9,
+                "id": ""
+              }
+            },
+            "augmentation": 60,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 6,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 9,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 11,
+                    "id": ""
+                  },
+                  22
+                ],
+                [
+                  {
+                    "key": 12,
+                    "id": ""
+                  },
+                  24
+                ],
+                [
+                  {
+                    "key": 13,
+                    "id": ""
+                  },
+                  26
+                ],
+                [
+                  {
+                    "key": 14,
+                    "id": ""
+                  },
+                  28
+                ]
+              ],
+              "entryAugmentations": [
+                22,
+                24,
+                26,
+                28
+              ],
+              "children": [],
+              "augmentation": 100,
+              "size": 4,
+              "minKey": {
+                "key": 11,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 14,
+                "id": ""
+              }
+            },
+            "augmentation": 100,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 11,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 14,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 16,
+                    "id": ""
+                  },
+                  32
+                ],
+                [
+                  {
+                    "key": 17,
+                    "id": ""
+                  },
+                  34
+                ],
+                [
+                  {
+                    "key": 18,
+                    "id": ""
+                  },
+                  36
+                ],
+                [
+                  {
+                    "key": 19,
+                    "id": ""
+                  },
+                  38
+                ]
+              ],
+              "entryAugmentations": [
+                32,
+                34,
+                36,
+                38
+              ],
+              "children": [],
+              "augmentation": 140,
+              "size": 4,
+              "minKey": {
+                "key": 16,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 19,
+                "id": ""
+              }
+            },
+            "augmentation": 140,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 16,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 19,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 21,
+                    "id": ""
+                  },
+                  42
+                ],
+                [
+                  {
+                    "key": 22,
+                    "id": ""
+                  },
+                  44
+                ],
+                [
+                  {
+                    "key": 23,
+                    "id": ""
+                  },
+                  46
+                ],
+                [
+                  {
+                    "key": 24,
+                    "id": ""
+                  },
+                  48
+                ]
+              ],
+              "entryAugmentations": [
+                42,
+                44,
+                46,
+                48
+              ],
+              "children": [],
+              "augmentation": 180,
+              "size": 4,
+              "minKey": {
+                "key": 21,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 24,
+                "id": ""
+              }
+            },
+            "augmentation": 180,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 21,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 24,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 26,
+                    "id": ""
+                  },
+                  52
+                ],
+                [
+                  {
+                    "key": 27,
+                    "id": ""
+                  },
+                  54
+                ],
+                [
+                  {
+                    "key": 28,
+                    "id": ""
+                  },
+                  56
+                ],
+                [
+                  {
+                    "key": 29,
+                    "id": ""
+                  },
+                  58
+                ]
+              ],
+              "entryAugmentations": [
+                52,
+                54,
+                56,
+                58
+              ],
+              "children": [],
+              "augmentation": 220,
+              "size": 4,
+              "minKey": {
+                "key": 26,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 29,
+                "id": ""
+              }
+            },
+            "augmentation": 220,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 26,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 29,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 31,
+                    "id": ""
+                  },
+                  62
+                ],
+                [
+                  {
+                    "key": 32,
+                    "id": ""
+                  },
+                  64
+                ],
+                [
+                  {
+                    "key": 33,
+                    "id": ""
+                  },
+                  66
+                ],
+                [
+                  {
+                    "key": 34,
+                    "id": ""
+                  },
+                  68
+                ]
+              ],
+              "entryAugmentations": [
+                62,
+                64,
+                66,
+                68
+              ],
+              "children": [],
+              "augmentation": 260,
+              "size": 4,
+              "minKey": {
+                "key": 31,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 34,
+                "id": ""
+              }
+            },
+            "augmentation": 260,
+            "size": 4,
+            "entryCount": 4,
+            "minKey": {
+              "key": 31,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 34,
+              "id": ""
+            }
+          },
+          {
+            "ref": {
+              "version": 1,
+              "entries": [
+                [
+                  {
+                    "key": 36,
+                    "id": ""
+                  },
+                  72
+                ],
+                [
+                  {
+                    "key": 37,
+                    "id": ""
+                  },
+                  74
+                ],
+                [
+                  {
+                    "key": 38,
+                    "id": ""
+                  },
+                  76
+                ],
+                [
+                  {
+                    "key": 39,
+                    "id": ""
+                  },
+                  78
+                ],
+                [
+                  {
+                    "key": 40,
+                    "id": ""
+                  },
+                  80
+                ]
+              ],
+              "entryAugmentations": [
+                72,
+                74,
+                76,
+                78,
+                80
+              ],
+              "children": [],
+              "augmentation": 380,
+              "size": 5,
+              "minKey": {
+                "key": 36,
+                "id": ""
+              },
+              "maxKey": {
+                "key": 40,
+                "id": ""
+              }
+            },
+            "augmentation": 380,
+            "size": 5,
+            "entryCount": 5,
+            "minKey": {
+              "key": 36,
+              "id": ""
+            },
+            "maxKey": {
+              "key": 40,
+              "id": ""
+            }
+          }
+        ],
+        "augmentation": 1640,
+        "size": 40,
+        "minKey": {
+          "key": 1,
+          "id": ""
+        },
+        "maxKey": {
+          "key": 40,
+          "id": ""
+        }
+      },
+      "augmentation": 1640,
+      "size": 40,
+      "entryCount": 7,
+      "minKey": {
+        "key": 1,
+        "id": ""
+      },
+      "maxKey": {
+        "key": 40,
+        "id": ""
+      }
+    }
+  },
+  "queries": {
+    "size": 40,
+    "entriesInRange": [
+      [
+        10,
+        20
+      ],
+      [
+        11,
+        22
+      ],
+      [
+        12,
+        24
+      ],
+      [
+        13,
+        26
+      ],
+      [
+        14,
+        28
+      ],
+      [
+        15,
+        30
+      ]
+    ],
+    "reversedLimited": [
+      [
+        30,
+        60
+      ],
+      [
+        29,
+        58
+      ],
+      [
+        28,
+        56
+      ],
+      [
+        27,
+        54
+      ],
+      [
+        26,
+        52
+      ]
+    ],
+    "augmentationAll": 1640,
+    "augmentationRange": 330
+  }
+}
