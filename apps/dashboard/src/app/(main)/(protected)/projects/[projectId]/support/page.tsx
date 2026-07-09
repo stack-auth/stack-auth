@@ -1,17 +1,7 @@
 "use client";
 
-import { useRouter } from "@/components/router";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
-import { useParams } from "next/navigation";
-import { useEffect } from "react";
+import PageClient from "./page-client";
 
 export default function Page() {
-  const { projectId } = useParams<{ projectId: string }>();
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace(urlString`/projects/${projectId}/conversations`);
-  }, [projectId, router]);
-
-  return null;
+  return <PageClient />;
 }
