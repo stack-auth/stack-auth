@@ -1,0 +1,106 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/confidence-meter.tsx
+  s_cde03ddcc22f7a::t_d91d9e72a59f78 1-27
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/use-demo-playback.ts
+  s_cde03ddcc22f7a::t_8923d4d37b18a5 136-142
+  s_cde03ddcc22f7a::t_d2db74e3751d67 23
+  s_cde03ddcc22f7a::t_a53d2699e3b602 85
+  s_cde03ddcc22f7a::t_4cb09d1c80e3c5 18-19
+  s_cde03ddcc22f7a::t_0870409c29bb1b 135,146-153,156-163,168-169
+  s_cde03ddcc22f7a::t_c827352bc31ae7 251
+  s_cde03ddcc22f7a::t_73c14a84720010 190-201
+  s_cde03ddcc22f7a::t_feba01ca00a68b 1-17,20-22,24-55,57-84,86-134,143-145,154-155,164-167,170-189,202-250,252
+  s_cde03ddcc22f7a::t_57e67c9b9f293e 56
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/shared.tsx
+  s_cde03ddcc22f7a::t_04816780f87486 1-34,36-67
+  s_cde03ddcc22f7a::t_0b5fb14b58b257 35
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/fused-timeline.tsx
+  s_cde03ddcc22f7a::t_a14de20092b670 1-66
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/approval-card.tsx
+  s_cde03ddcc22f7a::t_e6f2ba5bea4516 21-22,26-27,30
+  s_cde03ddcc22f7a::t_dac582d4f53f31 1-5,7-18,28-29,31-70
+  s_cde03ddcc22f7a::t_9f3bcacdab1a19 6
+  s_cde03ddcc22f7a::t_99552598e16383 19-20,23-25
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/mock-copilot-adapter.ts
+  s_cde03ddcc22f7a::t_65c56188573cc9 66,70
+  s_cde03ddcc22f7a::t_e4cbfb5cf2ddb9 85,114,118,127
+  s_cde03ddcc22f7a::t_e72f696a880720 3-4,11-24,26,28-38,40-45,57-59,63,68-69,71-72,81,83-84,86,111-113,115-117,119-126,128,133-135
+  s_cde03ddcc22f7a::t_771e5d78865676 25,27,39
+  s_cde03ddcc22f7a::t_bb7ce8b1396127 46-56,60-62,64-65,67,73-80
+  s_cde03ddcc22f7a::t_02b316c56ea538 129-130,132
+  s_cde03ddcc22f7a::t_9727e37c152fc4 82
+  s_cde03ddcc22f7a::t_7953c922c205aa 131
+  s_cde03ddcc22f7a::t_647427a11a5c98 87-110
+  s_cde03ddcc22f7a::t_159b3a29b4fd14 5-10
+  s_cde03ddcc22f7a::t_56b630bd7e1a5c 1
+  s_cde03ddcc22f7a::t_8c57a1bb35d45e 2
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/thread-pane.tsx
+  s_cde03ddcc22f7a::t_db2d2116d829ca 1-126,128-157,159-178
+  s_cde03ddcc22f7a::t_17ff8e7127d59a 158
+  s_cde03ddcc22f7a::t_251758ad49f26a 127
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/fixtures.ts
+  s_cde03ddcc22f7a::t_c5cb70f7844307 55-62,65-68,72
+  s_cde03ddcc22f7a::t_b744c018b74765 245-248
+  s_cde03ddcc22f7a::t_06b48c3ebc220e 210
+  s_cde03ddcc22f7a::t_38ad90a7e06ae4 381-383,388-401
+  s_cde03ddcc22f7a::t_8fbac8ffda06dc 127-129
+  s_cde03ddcc22f7a::t_ab1b2a1d845ac1 413
+  s_cde03ddcc22f7a::t_b8880b852cf97c 417
+  s_cde03ddcc22f7a::t_67df05274bffa2 1-45,47-54,69-71,73-126,130-165,167-209,211-223,263-380,402-412,414-416,418-591
+  s_cde03ddcc22f7a::t_256b1f4f5a8834 63-64
+  s_cde03ddcc22f7a::t_d20720f7e61c4c 46
+  s_cde03ddcc22f7a::t_3ea805bcc87d8c 384-387
+  s_cde03ddcc22f7a::t_ef903f5d4198ea 166
+  s_cde03ddcc22f7a::t_e8b9a39067e66d 227-230
+  s_cde03ddcc22f7a::t_9c8187952d7421 224-226,231-244,249-262
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/copilot-pane.tsx
+  s_cde03ddcc22f7a::t_c35f2d9a2be708 1-7,9-10,12-20,27,45-49,51-60,70-84
+  s_cde03ddcc22f7a::t_e956bef6e32554 61
+  s_cde03ddcc22f7a::t_47172b63571edb 28-31,39-42
+  s_cde03ddcc22f7a::t_bb470075d14475 62-67
+  s_cde03ddcc22f7a::t_4e12ac33a5195e 8
+  s_cde03ddcc22f7a::t_d13bacbbdc5cdf 50
+  s_cde03ddcc22f7a::t_5711fbc3d41485 68-69
+  s_cde03ddcc22f7a::t_5e464fa7a91bdb 32-38,43-44
+  s_cde03ddcc22f7a::t_0b5f50bc9e0438 21-26
+  s_cde03ddcc22f7a::t_280eea22a06ae9 11
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/page.tsx
+  s_cde03ddcc22f7a::t_6493f52fbb3292 3,6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/page-client.tsx
+  s_cde03ddcc22f7a::t_b9401c878559a3 4
+  s_cde03ddcc22f7a::t_4159ccd0764c4c 1-3,5-26,31-47,63-71,73-82
+  s_cde03ddcc22f7a::t_0bc730a3db7045 27-28,30
+  s_cde03ddcc22f7a::t_907ad60edf14bc 29
+  s_cde03ddcc22f7a::t_6afc5747768b40 48-62
+  s_cde03ddcc22f7a::t_771b337a63ed10 72
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/docs-suggestion-card.tsx
+  s_cde03ddcc22f7a::t_b61d4f44dd50c9 1-59
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/incident-banner.tsx
+  s_cde03ddcc22f7a::t_61e5630611c307 1-51
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/inbox-pane.tsx
+  s_cde03ddcc22f7a::t_cdb94a4ee506b7 1-176
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/dossier-card.tsx
+  s_cde03ddcc22f7a::t_8600578b8d557f 1-20,28-35,37-105
+  s_cde03ddcc22f7a::t_58758a9f5ad201 21-27
+  s_cde03ddcc22f7a::t_4e54bf734f7d6c 36
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/approval-store.ts
+  s_cde03ddcc22f7a::t_ec0dddf861254a 1-20
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/support/components/message-bubble.tsx
+  s_cde03ddcc22f7a::t_7e510979e244d5 19
+  s_cde03ddcc22f7a::t_7846fbcea0c391 1-18,20-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5e2e5bb5ac067c69b888317e7c982ebc3a3587e7",
+  "prompts": {},
+  "sessions": {
+    "s_cde03ddcc22f7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eaa3dac-f8c4-4992-8bfe-233fa9bde46d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
