@@ -1,4 +1,4 @@
-import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
+import { replaceConfigObject } from "@hexclave/shared-backend";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
@@ -217,28 +217,20 @@ export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd:
   return candidate;
 }
 
-// `config pull` updates an existing config in place (via updateConfigObject, which runs an
-// agent-assisted rewrite so hand-authored wrappers/imports/comments survive) only when the target
-// already defines a config object to patch. A file that doesn't yet define one — empty, a
-// placeholder, or otherwise not a config — has nothing worth preserving, so we replace it with a
-// freshly rendered config instead.
+// `config pull` means "download the entire branch config into a fresh local file". It always writes
+// the whole file (via replaceConfigObject) and never edits an existing file in place. In-place,
+// hand-authored-preserving edits are the job of the config *update* flow (e.g. from the RDE), which
+// routes through updateConfigObject's agent-assisted rewrite — that path is intentionally not
+// reachable from `pull`.
 //
-// This is a *structural* check that deliberately does NOT execute the file: a config may have
-// top-level side effects (reading secrets, network calls, writing files) and we're only deciding
-// how to rewrite it here, so we must not run it. We look for the `export const config` binding the
-// renderer always emits (matching the fallback in shared-backend's configFileExportsConfig). The
-// downstream updateConfigObject still fully evaluates and validates the file, failing loudly if it
-// turns out not to be a usable config.
-function existingConfigFileHasConfigObject(filePath: string): boolean {
-  const content = fs.readFileSync(filePath, "utf-8");
-  if (content.trim() === "") return false;
-  return /\bexport\s+const\s+config\b/.test(content);
-}
-
-export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
-  if (opts.overwrite === true) return true;
-  if (!fs.existsSync(filePath)) return true;
-  return !existingConfigFileHasConfigObject(filePath);
+// Because pull writes the whole file, it would clobber whatever is already at the target path. To
+// avoid silently destroying a hand-authored config, we refuse to write over an existing file and
+// require the user to opt in explicitly with --overwrite.
+export function assertConfigPullTarget(filePath: string, opts: { overwrite?: boolean }): void {
+  if (opts.overwrite === true) return;
+  if (fs.existsSync(filePath)) {
+    throw new CliError(`A config file already exists at ${filePath}. Pass --overwrite to replace it with the pulled config, or remove the file first.`);
+  }
 }
 
 export function registerConfigCommand(program: Command) {
@@ -251,7 +243,7 @@ export function registerConfigCommand(program: Command) {
     .description("Pull branch config to a local file")
     .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
-    .option("--overwrite", "Overwrite an existing config file instead of updating it in place")
+    .option("--overwrite", "Replace the config file if one already exists at the target path")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
@@ -270,11 +262,8 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
       }
 
-      if (shouldReplaceConfigFileForPull(filePath, opts)) {
-        await replaceConfigObject(filePath, configOverride);
-      } else {
-        await updateConfigObject(filePath, configOverride);
-      }
+      assertConfigPullTarget(filePath, opts);
+      await replaceConfigObject(filePath, configOverride);
       console.log(`Config written to ${filePath}`);
     });
 
