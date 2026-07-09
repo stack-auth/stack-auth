@@ -1719,11 +1719,6 @@ function createDashboardTab(app: StackClientApp<true>): HTMLElement {
     }, HOSTED_DASHBOARD_URL));
     text.appendChild(document.createTextNode(" to view this project's dashboard"));
     message.appendChild(text);
-    const retryBtn = h('button', { className: 'sdt-iframe-error-btn' }, 'Check again');
-    retryBtn.addEventListener('click', () => {
-      runAsynchronously(check);
-    });
-    message.appendChild(retryBtn);
     container.appendChild(message);
   }
 
