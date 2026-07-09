@@ -249,20 +249,21 @@ export function registerConfigCommand(program: Command) {
       if (!isProjectAuthWithRefreshToken(auth)) {
         throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
       }
+      // Resolve and validate the target file before any network work so we fail fast (e.g. when the
+      // target already exists without --overwrite) instead of paying for a wasted round-trip.
+      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
+      const ext = path.extname(filePath);
+      if (ext !== ".ts") {
+        throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
+      }
+      assertConfigPullTarget(filePath, opts);
+
       const project = await getAdminProject(auth);
 
       const configOverride = await project.getConfigOverride("branch");
       if (!isValidConfig(configOverride)) {
         throw new CliError("Pulled branch config is not a valid local config object.");
       }
-      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
-      const ext = path.extname(filePath);
-
-      if (ext !== ".ts") {
-        throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
-      }
-
-      assertConfigPullTarget(filePath, opts);
       await replaceConfigObject(filePath, configOverride);
       console.log(`Config written to ${filePath}`);
     });
