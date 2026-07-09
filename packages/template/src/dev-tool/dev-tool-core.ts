@@ -203,28 +203,48 @@ function parseProjectAvailabilityResponse(body: unknown): boolean {
   return 'project_available' in body && body.project_available === true;
 }
 
+// How long to wait for the availability probe before giving up. A refused
+// connection rejects almost immediately, but a host that accepts the socket yet
+// never responds would otherwise leave the tab stuck on "Checking…" forever.
+const LOCAL_DASHBOARD_PROBE_TIMEOUT_MS = 3000;
+
+// Whether the current page can even talk to the HTTP-only local dashboard.
+// LOCAL_DASHBOARD_ORIGIN is `http://localhost:26700`, so the page itself must be
+// an http: localhost origin: an https: page (e.g. an HTTPS dev server) would
+// have both the probe fetch and the iframe embed blocked as mixed content, so
+// we treat that as "not available" and fall back to the hosted dashboard.
+function canReachLocalDashboard(): boolean {
+  return isLocalhost(window.location.href) && window.location.protocol === 'http:';
+}
+
 // Decides whether the Dashboard tab can embed the locally-running
 // development-environment dashboard. Rather than inferring from build-time env
 // vars (which don't reflect whether the dev environment is actually up right
 // now), we ask the running development environment directly:
-//   1. We must be viewing the app from a localhost origin — the dashboard on
-//      :26700 is only reachable from, and only relevant to, a local browser.
+//   1. We must be viewing the app from an http: localhost origin — the HTTP-only
+//      dashboard on :26700 is only reachable from, and only relevant to, a local
+//      browser (and an https: page can't reach it without mixed-content errors).
 //   2. The development environment must be running AND already own this exact
 //      project (see the project-availability route it answers).
-// Any failure — dev environment not running (connection refused), project
-// unknown, or a malformed response — resolves to `false`, which shows the
-// hosted-dashboard hint instead.
+// Any failure — dev environment not running (connection refused), probe timeout,
+// project unknown, or a malformed response — resolves to `false`, which shows
+// the hosted-dashboard hint instead.
 async function isLocalDashboardProjectAvailable(app: StackClientApp<true>): Promise<boolean> {
-  if (!isLocalhost(window.location.href)) return false;
+  if (!canReachLocalDashboard()) return false;
   const url = `${LOCAL_DASHBOARD_ORIGIN}/api/development-environment/project-availability?project_id=${encodeURIComponent(app.projectId)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOCAL_DASHBOARD_PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { method: 'GET' });
+    const response = await fetch(url, { method: 'GET', signal: controller.signal });
     if (!response.ok) return false;
     return parseProjectAvailabilityResponse(await response.json());
   } catch {
     // Reachability probe: when the local development environment isn't running,
-    // the fetch rejects (connection refused). That simply means "not available".
+    // the fetch rejects (connection refused); when it hangs, the AbortController
+    // aborts it. Either way that simply means "not available".
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
