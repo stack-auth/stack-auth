@@ -5,7 +5,7 @@ import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, getDocumentationHref } from
 import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/components/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
-import { ALL_APPS, AppId, getParentAppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, type AppId, getParentAppId } from "@/lib/shared-apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@hexclave/shared/dist/apps/apps-ui";
 import { useState } from "react";
 import { AppWarningModal } from "./app-warning-modal";

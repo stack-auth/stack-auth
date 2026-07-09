@@ -1,7 +1,7 @@
 "use client";
 
 import { ALL_APPS_FRONTEND, hasNavigationItems } from "@/lib/apps-frontend";
-import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@/lib/shared-apps-config";
 
 type InstalledAppConfig = {
   enabled?: boolean,

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  ChatCircleDotsIcon,
   DatabaseIcon,
   ChartBarIcon,
   CubeIcon,
@@ -39,7 +40,7 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { ALL_APPS, type AppId } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, type AppId } from "@/lib/shared-apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -98,6 +99,22 @@ const usersItem: Item = {
   href: "/users",
   regex: /^\/projects\/[^\/]+\/users(\/.*)?$/,
   icon: UsersIcon,
+  type: "item",
+};
+
+const contactsItem: Item = {
+  name: "Contacts",
+  href: "/contacts",
+  regex: /^\/projects\/[^\/]+\/contacts(\/.*)?$/,
+  icon: UsersIcon,
+  type: "item",
+};
+
+const commsItem: Item = {
+  name: "Comms",
+  href: "/comms",
+  regex: /^\/projects\/[^\/]+\/comms(\/.*)?$/,
+  icon: ChatCircleDotsIcon,
   type: "item",
 };
 
@@ -558,6 +575,18 @@ function SidebarContent({
             item={usersItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${usersItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={contactsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${contactsItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={commsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${commsItem.href}`}
             isCollapsed={isCollapsed}
           />
           <NavItem

@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import { Link } from "@/components/link";
 import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
-import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
+import type { AppId } from "@/lib/shared-apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
@@ -256,6 +256,27 @@ export const ALL_APPS_FRONTEND = {
         <p>The Email API unlocks programmatic messaging flows directly from the Stack SDK.</p>
         <p>Trigger transactional emails from your server code, reuse the templates and themes you author in the dashboard, and capture delivery results in the same log.</p>
         <p>It is the fastest path from an automation idea to a production-ready notification.</p>
+      </>
+    ),
+  },
+  comms: {
+    icon: createSvgIcon(() => <>
+      <path d="M4 5.5 A2.5 2.5 0 0 1 6.5 3 L17.5 3 A2.5 2.5 0 0 1 20 5.5 L20 13.5 A2.5 2.5 0 0 1 17.5 16 L9 16 L4 20 L5.2 15.4 A2.5 2.5 0 0 1 4 13.3 Z" />
+      <path d="M8 8 L16 8" />
+      <path d="M8 11 L13.5 11" />
+    </>),
+    href: "comms",
+    navigationItems: [
+      { displayName: "Message Stream", href: "." },
+      { displayName: "Drafts", href: "./drafts" },
+      { displayName: "Topics", href: "./topics" },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Comms is a unified communication primitive for customer-facing teams.</p>
+        <p>Route email, shared Slack, Discord, support tickets, push notifications, and future channels through one operational surface.</p>
+        <p>AI-assisted topics keep related messages together while operators can override, merge, and split anything manually.</p>
       </>
     ),
   },

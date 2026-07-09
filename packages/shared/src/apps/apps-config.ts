@@ -112,6 +112,12 @@ export const ALL_APPS = {
     tags: ["comms", "developers", "expert"],
     stage: "alpha",
   },
+  "comms": {
+    displayName: "Comms",
+    subtitle: "Unified customer communication across channels",
+    tags: ["comms", "operations", "gtm"],
+    stage: "alpha",
+  },
   "data-vault": {
     displayName: "Data Vault",
     subtitle: "Secure storage for sensitive user data",
