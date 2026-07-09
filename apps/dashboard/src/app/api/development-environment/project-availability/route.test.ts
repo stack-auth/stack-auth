@@ -79,6 +79,25 @@ describe("development environment project-availability route", () => {
     expect(response.status).toBe(403);
   });
 
+  it("returns 403 for non-localhost origins", async () => {
+    useTempStateFile();
+    const response = await getResponse(request(
+      `http://127.0.0.1:26700/api/development-environment/project-availability?project_id=${knownProjectId}`,
+      { host: "127.0.0.1:26700", origin: "https://evil.example.com" },
+    ));
+    expect(response.status).toBe(403);
+  });
+
+  it("allows requests from a localhost origin (the customer's dev tool)", async () => {
+    useTempStateFile();
+    const response = await getResponse(request(
+      `http://127.0.0.1:26700/api/development-environment/project-availability?project_id=${knownProjectId}`,
+      { host: "127.0.0.1:26700", origin: "http://localhost:3000" },
+    ));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ running: true, project_available: true });
+  });
+
   it("returns 400 when project_id is missing", async () => {
     useTempStateFile();
     const response = await getResponse(request(
