@@ -1,0 +1,87 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/incident-playback.tsx
+  s_3766a12285fd0f::t_33b506be0af66e 1-41,43-45,52-65,82-91,94-108,110-191,193-224,238,255-278,280-289,291-297
+  s_3766a12285fd0f::t_35398ee63d044c 239-243
+  s_3766a12285fd0f::t_549a09a14a86cc 42,46-51,66-81,92-93,109,192,225-237,244-254,279,290
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/page.tsx
+  s_50ec278c9133a9::t_0c0cb386df8efd 1-9
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_50ec278c9133a9::t_006d47efd1fd9c 390
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/stories.ts
+  s_50ec278c9133a9::t_1f8c47eb29d564 683
+  s_97dfafa4e6698c::t_f5f19a80420fa4 1-682,684-688
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/stories.test.ts
+  s_97dfafa4e6698c::t_41f989a98cf674 1-56
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/telemetry-investigation.tsx
+  s_610828c0648aba::t_cc03c9e5845930 45,47-48,50-51,53-54,56,60,268
+  s_50ec278c9133a9::t_ec2ebefc490ea6 40,76-106,108-157,191,193-195,199,214,228,234,237,252-254,279-285,289-292,294-299
+  s_610828c0648aba::t_eca471ef72ebf5 1-39,41-44,46,49,52,55,57-59,61-65,67-75,107,158-190,192,196-198,200-213,215-227,229-233,235-236,238-251,255-267,269-278,287-288,293,300-302
+  s_50ec278c9133a9::t_dd3760253ad7f5 286
+  s_610828c0648aba::t_abebca796258aa 66
+  s_610828c0648aba::t_4f5c9aecb23f1a 303-305
+  s_97dfafa4e6698c::t_966e9bb5549c50 306-719
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/page-client.tsx
+  s_50ec278c9133a9::t_78264cae27185e 1-9,16-22,44-46,48-53,55-57,65-74,76-86,88-102,104-109,113-114,116-139,141-166,183
+  s_50ec278c9133a9::t_7296d63761ef35 54,75,87,103,110-112,115
+  s_50ec278c9133a9::t_6a117019b4bead 58-64,140
+  s_50ec278c9133a9::t_20a1d656ba4091 23
+  s_50ec278c9133a9::t_6444e75a881e27 10-15,24-43,47
+  s_50ec278c9133a9::t_3cf9f43022470a 167-169,180-182
+  s_50ec278c9133a9::t_1375f59f2b95a4 184
+  s_97dfafa4e6698c::t_475cdb4e9fd696 170-179
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/mission-control/incident-evidence.tsx
+  s_d6b1975a62e653::t_9f0c72ab3f699a 25-26,28,31,34,37,40,42-48
+  s_d6b1975a62e653::t_6837686343fccf 27,29-30,32-33,35-36,38-39,41,57,86
+  s_50ec278c9133a9::t_22a92e62e8a54f 11,16-17,22-23,49,58,60-66,69-70,80,95,120-121,130-140,143-144,146,160,166-169,172-180,182-187,189-195,197-199,201-203,206,209-210,213-214,217-223,225-229,231-251,253-280,282-285,288-291
+  s_d6b1975a62e653::t_56da83fede69c2 1-10,12-15,18-21,24,50-56,67-68,71-79,81-85,87-94,96-119,122-129,141-142,145,147-159,161-165,170-171,181,188,196,200,204-205,207-208,211-212,215-216,224,230,252,281,286-287,292-294
+  s_d6b1975a62e653::t_2e201ee88345e9 59
+  s_d6b1975a62e653::t_2d1f83ced889f8 295-297
+  s_97dfafa4e6698c::t_9d5b41ed2f80f0 298-567
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "0b7a7cf988b7b502d1f8ed658d05dbc33b5fea6d",
+  "prompts": {},
+  "sessions": {
+    "s_3766a12285fd0f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bc8c085a-1763-4d69-af75-a4e8943e86fe",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_50ec278c9133a9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2241d3b0-f30e-4b47-bf93-37d17258ceef",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_610828c0648aba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1cb9e792-cfb3-4838-abc8-b4a4f45e2767",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_97dfafa4e6698c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f97dd19f-016f-44b9-8253-7876dd87399e",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_d6b1975a62e653": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3e1367e9-741c-4341-8433-f3ca935d7774",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
