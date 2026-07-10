@@ -131,10 +131,13 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       addRequestListener(listener: RequestListener): () => void,
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      getUrls(): Readonly<ResolvedHandlerUrls>,
       getRedirectMethod(): RedirectMethod,
       redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
+      getRedirectToHandlerUrl(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<string>,
       redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
+      awaitPendingAuthResolutions(): Promise<void>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

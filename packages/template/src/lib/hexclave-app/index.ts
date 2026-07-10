@@ -115,6 +115,14 @@ export type {
 } from "./projects";
 
 export type {
+  PlanUsage,
+  PlanUsageKind,
+  PlanUsageNextPlanId,
+  PlanUsagePlanId,
+  PlanUsageRow,
+} from "./plan-usage";
+
+export type {
   EditableTeamMemberProfile, ReceivedTeamInvitation,
   SentTeamInvitation, ServerListUsersOptions,
   ServerTeam,

@@ -2,10 +2,9 @@
 
 import type { RequestLogEntry } from "@hexclave/shared/dist/interface/client-interface";
 import { DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/hexclave-app";
-import { envVars } from "../generated/env";
 import { getGlobalUiInstance, h, hasAppendChild, setGlobalUiInstance, setHtml, type UiGlobalInstance } from "../in-page-ui/dom";
 import { getBaseUrl } from "../lib/hexclave-app/apps/implementations/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/hexclave-app/common";
@@ -60,6 +59,11 @@ const MAX_LOG_ENTRIES = 500;
 const CONSOLE_LOG_BATCH_SIZE = 100;
 const DRAG_THRESHOLD = 5;
 const DOCS_URL = 'https://docs.hexclave.com';
+// The local development-environment dashboard always listens on this loopback
+// port (see the CLI's DEFAULT_DASHBOARD_PORT). The dev tool runs inside the
+// customer's own app, so it can't read the CLI's env vars — the port is fixed.
+const LOCAL_DASHBOARD_ORIGIN = 'http://localhost:26700';
+const HOSTED_DASHBOARD_URL = 'https://app.hexclave.com';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
@@ -190,40 +194,58 @@ function resolveApiBaseUrl(app: StackClientApp<true>): string {
   return getBaseUrl(opts.baseUrl);
 }
 
-function shouldShowDashboardTab(app: StackClientApp<true>): boolean {
-  return envVars.HEXCLAVE_IS_LOCAL_EMULATOR === "true" && isLocalhost(resolveApiBaseUrl(app));
+function localDashboardProjectUrl(app: StackClientApp<true>): string {
+  return `${LOCAL_DASHBOARD_ORIGIN}/projects/${encodeURIComponent(app.projectId)}`;
 }
 
-function getTabsForApp(app: StackClientApp<true>): { id: TabId; label: string; icon: string }[] {
-  if (shouldShowDashboardTab(app)) {
-    return TABS;
-  }
-  return TABS.filter((tab) => tab.id !== 'dashboard');
+function parseProjectAvailabilityResponse(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false;
+  return 'project_available' in body && body.project_available === true;
 }
 
-function deriveDashboardBaseUrl(apiBaseUrl: string): string {
+// How long to wait for the availability probe before giving up. A refused
+// connection rejects almost immediately, but a host that accepts the socket yet
+// never responds would otherwise leave the tab stuck on "Checking…" forever.
+const LOCAL_DASHBOARD_PROBE_TIMEOUT_MS = 3000;
+
+// Whether the current page can even talk to the HTTP-only local dashboard.
+// LOCAL_DASHBOARD_ORIGIN is `http://localhost:26700`, so the page itself must be
+// an http: localhost origin: an https: page (e.g. an HTTPS dev server) would
+// have both the probe fetch and the iframe embed blocked as mixed content, so
+// we treat that as "not available" and fall back to the hosted dashboard.
+function canReachLocalDashboard(): boolean {
+  return isLocalhost(window.location.href) && window.location.protocol === 'http:';
+}
+
+// Decides whether the Dashboard tab can embed the locally-running
+// development-environment dashboard. Rather than inferring from build-time env
+// vars (which don't reflect whether the dev environment is actually up right
+// now), we ask the running development environment directly:
+//   1. We must be viewing the app from an http: localhost origin — the HTTP-only
+//      dashboard on :26700 is only reachable from, and only relevant to, a local
+//      browser (and an https: page can't reach it without mixed-content errors).
+//   2. The development environment must be running AND already own this exact
+//      project (see the project-availability route it answers).
+// Any failure — dev environment not running (connection refused), probe timeout,
+// project unknown, or a malformed response — resolves to `false`, which shows
+// the hosted-dashboard hint instead.
+async function isLocalDashboardProjectAvailable(app: StackClientApp<true>): Promise<boolean> {
+  if (!canReachLocalDashboard()) return false;
+  const url = `${LOCAL_DASHBOARD_ORIGIN}/api/development-environment/project-availability?project_id=${encodeURIComponent(app.projectId)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOCAL_DASHBOARD_PROBE_TIMEOUT_MS);
   try {
-    const url = new URL(apiBaseUrl);
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]') {
-      const port = url.port;
-      if (port && port.endsWith('02')) {
-        url.port = port.slice(0, -2) + '01';
-      }
-      return url.origin;
-    }
-    if (url.hostname.startsWith('api.')) {
-      url.hostname = 'app.' + url.hostname.slice(4);
-      return url.origin;
-    }
-    return url.origin;
+    const response = await fetch(url, { method: 'GET', signal: controller.signal });
+    if (!response.ok) return false;
+    return parseProjectAvailabilityResponse(await response.json());
   } catch {
-    return 'https://app.hexclave.com';
+    // Reachability probe: when the local development environment isn't running,
+    // the fetch rejects (connection refused); when it hangs, the AbortController
+    // aborts it. Either way that simply means "not available".
+    return false;
+  } finally {
+    clearTimeout(timeout);
   }
-}
-
-function resolveDashboardUrl(app: StackClientApp<true>): string {
-  const base = deriveDashboardBaseUrl(resolveApiBaseUrl(app));
-  return `${base}/projects/${encodeURIComponent(app.projectId)}`;
 }
 
 function formatTimestamp(ts: number): string {
@@ -245,7 +267,7 @@ function generateRandomEmail(): string {
   for (let i = 0; i < 8; i++) {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
-  return `dev-${id}@test.hexclave.com`;
+  return `dev-${id}@devtool-quick-sign-up.example.com`;
 }
 
 // ---------------------------------------------------------------------------
@@ -560,8 +582,8 @@ function createTabBar(
 // Iframe helper
 // ---------------------------------------------------------------------------
 
-function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026', errorMsg = 'Unable to load content', errorDetail?: string, openExternallyLabel?: string): HTMLElement {
-  const container = h('div', { className: 'sdt-iframe-container' });
+function populateIframeTab(container: HTMLElement, src: string, title: string, loadingMsg = 'Loading\u2026', errorMsg = 'Unable to load content', errorDetail?: string, openExternallyLabel?: string): void {
+  container.innerHTML = '';
   if (openExternallyLabel != null) {
     container.appendChild(h('div', { className: 'sdt-iframe-toolbar' },
       h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-iframe-open-link' }, openExternallyLabel),
@@ -591,7 +613,7 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
     }
     const retryBtn = h('button', { className: 'sdt-iframe-error-btn' }, 'Retry');
     retryBtn.addEventListener('click', () => {
-      container.replaceWith(createIframeTab(src, title, loadingMsg, errorMsg, errorDetail, openExternallyLabel));
+      populateIframeTab(container, src, title, loadingMsg, errorMsg, errorDetail, openExternallyLabel);
     });
     errDiv.appendChild(retryBtn);
     const link = h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', style: { color: 'var(--sdt-accent)', fontSize: '12px', textDecoration: 'none' } }, 'Open in new tab');
@@ -600,7 +622,6 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
   });
 
   container.appendChild(iframe);
-  return container;
 }
 
 // ===========================================================================================
@@ -1678,8 +1699,52 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 // ---------------------------------------------------------------------------
 
 function createDashboardTab(app: StackClientApp<true>): HTMLElement {
-  const dashboardUrl = resolveDashboardUrl(app);
-  return createIframeTab(dashboardUrl, 'Hexclave Dashboard', 'Loading dashboard\u2026', 'Unable to load dashboard', 'The dashboard may require authentication or block framing', 'Open in New Tab');
+  const container = h('div', { className: 'sdt-iframe-container' });
+
+  function showChecking() {
+    container.innerHTML = '';
+    container.appendChild(h('div', { className: 'sdt-iframe-loading' }, 'Checking development environment\u2026'));
+  }
+
+  function showUnavailable() {
+    container.innerHTML = '';
+    const message = h('div', { className: 'sdt-dashboard-unavailable' });
+    const text = h('div', { className: 'sdt-dashboard-unavailable-text' });
+    text.appendChild(document.createTextNode('Navigate to '));
+    text.appendChild(h('a', {
+      className: 'sdt-dashboard-unavailable-link',
+      href: HOSTED_DASHBOARD_URL,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    }, HOSTED_DASHBOARD_URL));
+    text.appendChild(document.createTextNode(" to view this project's dashboard"));
+    message.appendChild(text);
+    container.appendChild(message);
+  }
+
+  async function check() {
+    showChecking();
+    const available = await isLocalDashboardProjectAvailable(app);
+    // The dev tool may have been torn down while we were probing; only mutate
+    // the DOM if this container is still mounted.
+    if (!container.isConnected) return;
+    if (available) {
+      populateIframeTab(
+        container,
+        localDashboardProjectUrl(app),
+        'Hexclave Dashboard',
+        'Loading dashboard\u2026',
+        'Unable to load dashboard',
+        'The dashboard may require authentication or block framing',
+        'Open in New Tab',
+      );
+    } else {
+      showUnavailable();
+    }
+  }
+
+  runAsynchronously(check);
+  return container;
 }
 
 // ---------------------------------------------------------------------------
@@ -1848,7 +1913,7 @@ function createSupportTab(app: StackClientApp<true>): HTMLElement {
 function createComponentsTab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-pg-layout' });
   const apiBaseUrl = resolveApiBaseUrl(app);
-  const urls = app.urls;
+  const urls = app[hexclaveAppInternalsSymbol].getUrls();
   const urlOptions: HandlerUrlOptions = app[hexclaveAppInternalsSymbol].getConstructorOptions().urls ?? {};
 
   const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
@@ -1933,11 +1998,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     });
   }
 
-  function getCompactUrl(url: string): string {
-    const resolved = new URL(url, window.location.origin);
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-  }
-
   const sidebar = h('div', { className: 'sdt-pg-sidebar' });
   const mainArea = h('div', { className: 'sdt-pg-main' });
 
@@ -1988,7 +2048,6 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const header = h('div', { className: 'sdt-pg-header' });
     const headerTop = h('div', { className: 'sdt-pg-header-top' });
     headerTop.appendChild(h('h3', { className: 'sdt-pg-title' }, `${page.label} Page`));
-    headerTop.appendChild(h('a', { href: page.url, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-pg-title-url' }, getCompactUrl(page.url)));
     if (page.versionStatus === 'outdated') {
       headerTop.appendChild(h('span', { className: 'sdt-pg-badge sdt-pg-badge-outdated' }, 'Outdated'));
     }
@@ -2000,8 +2059,19 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     const openBtn = h('button', { className: 'sdt-pg-copy-btn sdt-pg-open-btn' });
     setHtml(openBtn, 'Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>');
     openBtn.addEventListener('click', () => {
-      const resolved = new URL(page.url, window.location.origin);
-      window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+      const openedWindow = window.open('about:blank', '_blank');
+      if (openedWindow != null) {
+        openedWindow.opener = null;
+      }
+      runAsynchronouslyWithAlert(async () => {
+        const redirectUrl = await app[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl(page.key);
+        const resolved = new URL(redirectUrl, window.location.origin);
+        if (openedWindow != null) {
+          openedWindow.location.replace(resolved.toString());
+        } else {
+          window.open(resolved.toString(), '_blank', 'noopener,noreferrer');
+        }
+      });
     });
     codeRow.appendChild(openBtn);
     header.appendChild(codeRow);
@@ -2104,7 +2174,7 @@ function createPanel(
     panel.style.height = state.get().panelHeight + 'px';
   }
 
-  const tabs = getTabsForApp(app);
+  const tabs = TABS;
   const storedActiveTab = state.get().activeTab;
   const activeTab = tabs.some((tab) => tab.id === storedActiveTab) ? storedActiveTab : DEFAULT_STATE.activeTab;
 

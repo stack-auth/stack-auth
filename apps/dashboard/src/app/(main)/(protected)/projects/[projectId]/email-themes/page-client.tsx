@@ -5,7 +5,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } from "@phosphor-icons/react";
 import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";

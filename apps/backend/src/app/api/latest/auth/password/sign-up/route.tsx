@@ -69,7 +69,7 @@ export const POST = createSmartRouteHandler({
         primary_email_auth_enabled: true,
         password,
       },
-      [KnownErrors.UserWithEmailAlreadyExists],
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse],
       buildSignUpRuleOptions({
         authMethod: 'password',
         oauthProvider: null,

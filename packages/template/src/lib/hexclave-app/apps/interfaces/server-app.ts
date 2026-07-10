@@ -1,6 +1,7 @@
 import { KnownErrors } from "@hexclave/shared";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
@@ -31,6 +32,11 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
       ({ productId: string } | { product: InlineProduct }) &
       { quantity?: number }
     )): Promise<void>,
+    createCheckoutUrl(options: (
+      ({ userId: string } | { teamId: string } | { customCustomerId: string }) &
+      ({ productId: string } | { product: InlineProduct }) &
+      { returnUrl?: string }
+    )): Promise<string>,
 
     // IF_PLATFORM react-like
     useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentServerUser<ProjectId>,
@@ -99,6 +105,8 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     // END_PLATFORM
 
     activateEmailCapacityBoost(): Promise<void>,
+
+    queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

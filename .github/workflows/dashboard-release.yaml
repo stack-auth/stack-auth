@@ -1,0 +1,144 @@
+name: Publish RDE dashboard release
+
+# Builds the standalone RDE dashboard and publishes it as a GitHub Release
+# artifact (instead of bundling it into the @hexclave/cli npm tarball). The CLI
+# fetches the newest build at runtime via the `dashboard-latest` manifest. See
+# packages/cli/src/lib/dashboard-release.ts.
+
+on:
+  push:
+    branches:
+      - main
+    # Only rebuild/publish when the dashboard or its packaging actually changes.
+    # A new release is keyed by the version in apps/dashboard/package.json, so
+    # changes outside these paths can't produce a new dashboard build anyway.
+    paths:
+      - 'apps/dashboard/**'
+      - 'packages/cli/scripts/package-dashboard-release.mjs'
+      - 'packages/cli/scripts/copy-runtime-assets.mjs'
+      - '.github/workflows/dashboard-release.yaml'
+
+permissions:
+  contents: write  # create releases and upload assets
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false  # don't interrupt a publish in progress
+
+jobs:
+  publish-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          # Don't leave the contents:write token in .git/config for the
+          # install/build/package steps; the gh steps below pass GH_TOKEN directly.
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22.x'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dashboard standalone
+        run: pnpm exec turbo run build:rde-standalone --filter=@hexclave/dashboard
+
+      - name: Package dashboard release
+        id: package
+        env:
+          DASHBOARD_RELEASE_REPO: ${{ github.repository }}
+        run: pnpm --filter @hexclave/cli run package-dashboard-release
+
+      - name: Publish versioned release (immutable)
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.package.outputs.tag }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          VERSION: ${{ steps.package.outputs.version }}
+          EXPECTED_SHA: ${{ steps.package.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # A published dashboard-v<version> asset is immutable, so never replace
+          # it; advertise the sha of whatever asset is live. (The rebuild isn't
+          # byte-reproducible — staged files get fresh mtimes — so we can't just
+          # trust EXPECTED_SHA when reusing an existing asset.)
+          live_sha="$EXPECTED_SHA"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$ZIP_NAME"; then
+              tmp="$(mktemp -d)"
+              gh release download "$TAG" -p "$ZIP_NAME" -D "$tmp"
+              live_sha="$(sha256sum "$tmp/$ZIP_NAME" | cut -d' ' -f1)"
+              if [ "$live_sha" != "$EXPECTED_SHA" ]; then
+                echo "::warning::$TAG already has a published asset whose sha256 ($live_sha) differs from this rebuild ($EXPECTED_SHA). Releases are immutable, so the existing asset is kept and advertised. A differing hash is expected for nondeterministic rebuilds of identical content; if you intended to ship NEW dashboard content, bump the version in apps/dashboard/package.json."
+              else
+                echo "Existing $TAG asset matches the build; reusing it."
+              fi
+            else
+              echo "$TAG exists without its asset; uploading."
+              gh release upload "$TAG" "$ZIP" --clobber
+            fi
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "RDE dashboard $VERSION" \
+              --notes "Standalone RDE dashboard build for \`hexclave dev\` (version $VERSION)."
+          fi
+          echo "live_sha=$live_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Update floating latest manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST: ${{ steps.package.outputs.manifest }}
+          VERSION: ${{ steps.package.outputs.version }}
+          LIVE_SHA: ${{ steps.publish.outputs.live_sha }}
+        run: |
+          set -euo pipefail
+          # Advertise the live asset's sha, which may differ from the rebuild's.
+          tmp="$(mktemp)"
+          jq --arg s "$LIVE_SHA" '.sha256 = $s' "$MANIFEST" > "$tmp"
+          mv "$tmp" "$MANIFEST"
+          # dashboard-latest is only ever a plain X.Y.Z release. Refuse to advance
+          # it to a prerelease/build-metadata version rather than guess SemVer
+          # prerelease ordering in bash (`sort -V` is not a SemVer comparator).
+          # The dashboard always ships plain releases, so this should never fire.
+          new="${VERSION#v}"
+          case "$new" in
+            *[-+]*)
+              echo "::error::Refusing to publish prerelease/build version $VERSION as dashboard-latest; it must be a plain X.Y.Z release."
+              exit 1
+              ;;
+          esac
+          if gh release view dashboard-latest >/dev/null 2>&1; then
+            # dashboard-latest must only ever move forward. Re-running on an older
+            # commit must not roll clients back to a stale dashboard. Re-publishing
+            # the same version is allowed (it refreshes the advertised sha).
+            published_dir="$(mktemp -d)"
+            if gh release download dashboard-latest -p manifest.json -D "$published_dir" 2>/dev/null; then
+              published_version="$(jq -r '.version // ""' "$published_dir/manifest.json")"
+              # Both sides are plain releases (the published one was gated the same
+              # way), so a leading-'v'-stripped, numeric-aware `sort -V` is exact.
+              pub="${published_version#v}"
+              if [ -n "$pub" ] && [ "$pub" != "$new" ]; then
+                newest="$(printf '%s\n%s\n' "$pub" "$new" | sort -V | tail -n1)"
+                if [ "$newest" = "$pub" ]; then
+                  echo "::warning::dashboard-latest already points at $published_version, which is newer than $VERSION; refusing to roll it back."
+                  exit 0
+                fi
+              fi
+            fi
+          else
+            gh release create dashboard-latest \
+              --title "RDE dashboard (latest)" \
+              --notes "Always points at the newest published RDE dashboard. The manifest.json asset is consumed by the Hexclave CLI at runtime." \
+              --latest=false
+          fi
+          gh release upload dashboard-latest "$MANIFEST" --clobber
+          echo "dashboard-latest now points at $VERSION (sha256 $LIVE_SHA)."

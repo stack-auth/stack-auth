@@ -10,7 +10,7 @@ import {
   RowDetailDialog,
   VirtualizedFlatTable
 } from "@/app/(main)/(protected)/projects/[projectId]/analytics/shared";
-import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useAdminAppIfExists, useServerAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import {
@@ -27,7 +27,7 @@ import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,
@@ -380,6 +380,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   query,
 }: CmdKPreviewProps) {
   const adminApp = useAdminAppIfExists();
+  const serverApp = useServerAppIfExists();
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<RowData[]>([]);
   const [error, setError] = useState<unknown>(null);
@@ -392,7 +393,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   const trimmedQuery = query.trim();
 
   const runQuery = useCallback(async () => {
-    if (!adminApp) {
+    if (!serverApp) {
       setError(new Error("Not connected to a project"));
       return;
     }
@@ -406,7 +407,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
     setHasQueried(true);
 
     try {
-      const response = await adminApp.queryAnalytics({
+      const response = await serverApp.queryAnalytics({
         query: trimmedQuery,
         include_all_branches: false,
         timeout_ms: 30000,
@@ -424,7 +425,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
     } finally {
       setLoading(false);
     }
-  }, [adminApp, trimmedQuery]);
+  }, [serverApp, trimmedQuery]);
 
   // Run query on mount with debounce
   useDebouncedAction({

@@ -91,6 +91,23 @@ jobs:
       - name: Initialize database
         run: pnpm run db:init
 
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
       # Start backend ONLY on fallback port 8110 — primary port 8102 is intentionally left down
       # so the SDK exercises its fallback logic for every request.
       - name: Start stack-backend on fallback port (8110)

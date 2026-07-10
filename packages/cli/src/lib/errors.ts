@@ -11,3 +11,7 @@ export class AuthError extends CliError {
     this.name = "AuthError";
   }
 }
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
