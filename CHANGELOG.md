@@ -2,6 +2,14 @@
 
 ---
 
+## 7/10/26
+
+- New navigation funnel analytics, location-aware overview globe, recent sign-up rule activity, and project IDs in platform analytics.
+- Faster project onboarding with instant preview projects, redesigned setup guidance, and broader OAuth support.
+- Unified Payments customer management and checkout creation, with manual item quantity changes and more reliable checkout and webhooks.
+- Expanded email sending for arbitrary recipients and custom domains, plus improved user email filtering and exports.
+- New CLI Auth dashboard app and a leaner development environment workflow, alongside session replay and dashboard stability fixes.
+
 ## 6/19/26
 
 - New clickmap heatmaps for route analytics — visualize where users click on any page.
