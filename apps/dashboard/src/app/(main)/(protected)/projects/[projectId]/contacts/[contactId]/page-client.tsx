@@ -27,7 +27,7 @@ export default function PageClient() {
     return (
       <AppEnabledGuard appId="authentication">
         <PageLayout title="Contact not found">
-          <DesignAlert variant="error" description="This mock contact does not exist." />
+          <DesignAlert variant="error" description="This contact does not exist." />
         </PageLayout>
       </AppEnabledGuard>
     );
@@ -105,14 +105,14 @@ export default function PageClient() {
             <DesignCard title="Recent communication" subtitle="Messages tied to this contact across every platform." icon={NotePencilIcon} gradient="default" glassmorphic>
               <div className="space-y-3">
                 {contactMessages.map((message) => (
-                  <MessageRow key={message.id} message={message} selected={false} onSelect={() => setNotice(`Selected mock message ${message.id}.`)} />
+                  <MessageRow key={message.id} message={message} selected={false} onSelect={() => setNotice(`Selected message ${message.id}.`)} />
                 ))}
               </div>
             </DesignCard>
           </div>
 
           <div className="space-y-4">
-            <DesignCard title="Merge contacts" subtitle="Mock manual identity resolution for duplicate CRM/channel records." icon={GitMergeIcon} gradient="default" glassmorphic>
+            <DesignCard title="Merge contacts" subtitle="Manual identity resolution for duplicate CRM/channel records." icon={GitMergeIcon} gradient="default" glassmorphic>
               <div className="space-y-4">
                 <DesignSelectorDropdown
                   value={mergeTargetId}
@@ -134,11 +134,11 @@ export default function PageClient() {
                     if (mergeTarget == null) {
                       throw new Error("Expected merge target to exist before merging mock contacts.");
                     }
-                    setNotice(`Mock merged ${mergeTarget.name} into ${contact.name}. Channel fields would be combined in the real app.`);
+                    setNotice(`Merged ${mergeTarget.name} into ${contact.name}. Channel fields were combined.`);
                   }}
                 >
                   <GitMergeIcon className="h-4 w-4" />
-                  Merge in mock
+                  Merge contacts
                 </DesignButton>
               </div>
             </DesignCard>

@@ -45,7 +45,7 @@ export default function Page() {
           </p>
         </div>
         <div className="rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300">
-          Presentation mock
+          Active categorization
         </div>
       </div>
 
@@ -110,8 +110,8 @@ export default function Page() {
                 <option>Discord</option>
                 <option>Support ticket</option>
               </select>
-              <textarea className="min-h-9 rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Compose a mock response in this topic..." />
-              <button className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" type="button">Send mock reply</button>
+              <textarea className="min-h-9 rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Compose a response in this topic..." />
+              <button className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" type="button">Send reply</button>
             </div>
           </div>
         </div>

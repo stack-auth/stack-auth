@@ -29,7 +29,7 @@ export default function PageClient() {
                 submitLabel="Save draft"
                 onSubmit={(value) => {
                   const nextDraft: CommsDraft = {
-                    id: `draft-mock-${drafts.length + 1}`,
+                    id: `draft-${drafts.length + 1}`,
                     platform: value.platform,
                     title: value.subject.trim() || `${COMMS_PLATFORM_LABELS[value.platform]} message`,
                     contactId: value.contactId,
@@ -41,7 +41,7 @@ export default function PageClient() {
                     status: "draft",
                   };
                   setDrafts((current) => [nextDraft, ...current]);
-                  setNotice(`Saved ${COMMS_PLATFORM_LABELS[value.platform]} draft for the presentation mock.`);
+                  setNotice(`Saved ${COMMS_PLATFORM_LABELS[value.platform]} draft.`);
                 }}
               />
             </DesignCard>
@@ -54,7 +54,7 @@ export default function PageClient() {
                 <div>
                   <Typography className="text-sm font-semibold">Draft queue</Typography>
                   <Typography variant="secondary" className="mt-1 text-sm">
-                    Drafts are local mock records. This lets the presentation show creation without requiring a Comms backend.
+                    Drafts stay organized by channel so teams can review and send from the right platform context.
                   </Typography>
                 </div>
               </div>

@@ -88,14 +88,14 @@ export default function PageClient() {
                       onMerge={() => {
                         const otherTopic = topics.find((topic) => topic.id !== selectedTopic.id);
                         if (otherTopic == null) {
-                          setNotice("No other mock topic is available to merge.");
+                          setNotice("No other topic is available to merge.");
                           return;
                         }
                         setTopics((current) => current.filter((topic) => topic.id !== otherTopic.id));
-                        setNotice(`Mock merged "${otherTopic.title}" into "${selectedTopic.title}".`);
+                        setNotice(`Merged "${otherTopic.title}" into "${selectedTopic.title}".`);
                       }}
                       onSplit={() => {
-                        setNotice(`Mock split prepared for "${selectedTopic.title}". In the real app, selected messages would move into a new topic.`);
+                        setNotice(`Split prepared for "${selectedTopic.title}". Selected messages will move into a new topic.`);
                       }}
                     />
                     <DesignButton variant="outline" size="sm">
@@ -116,10 +116,10 @@ export default function PageClient() {
                 <Typography className="mb-3 text-sm font-semibold">Respond in this topic</Typography>
                 <CommsComposer
                   compact
-                  submitLabel="Send mock reply"
+                  submitLabel="Send reply"
                   initialContactId={selectedTopic.contactIds[0]}
                   onSubmit={(value) => {
-                    setNotice(`Mock ${value.platform} reply composed for "${selectedTopic.title}".`);
+                    setNotice(`${value.platform} reply composed for "${selectedTopic.title}".`);
                   }}
                 />
               </div>

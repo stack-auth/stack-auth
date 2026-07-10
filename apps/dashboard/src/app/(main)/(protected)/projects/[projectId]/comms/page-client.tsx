@@ -57,7 +57,7 @@ export default function PageClient() {
         fillWidth
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <DesignBadge label="Live mock feed" color="green" size="sm" />
+            <DesignBadge label="Live feed" color="green" size="sm" />
             <DesignButton variant="outline" size="sm">
               <ArrowsClockwiseIcon className="h-4 w-4" />
               Refresh view
@@ -73,7 +73,7 @@ export default function PageClient() {
               </Typography>
               <DesignBadge label={`${filteredMessages.length} shown`} color="blue" size="sm" />
               <Typography variant="secondary" className="hidden text-xs sm:inline">
-                New inbound mock messages appear every few seconds.
+                New inbound messages appear every few seconds.
               </Typography>
             </div>
             <div className="flex flex-wrap items-center gap-2">

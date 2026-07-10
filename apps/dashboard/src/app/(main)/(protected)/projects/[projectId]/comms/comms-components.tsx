@@ -531,7 +531,7 @@ function getDefaultChannelLabel(platform: CommsPlatform, contact: CommsContact):
 
 function getComposerHelp(platform: CommsPlatform): string {
   if (platform === "email") {
-    return "Email supports recipients, a subject, attachments, and a richer body. This mock keeps the editor lightweight for the presentation.";
+    return "Email supports recipients, a subject, attachments, and a richer body.";
   }
   if (platform === "discord") {
     return "Discord replies require a server/channel/thread or an incoming Discord message to anchor the response.";
