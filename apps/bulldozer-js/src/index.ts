@@ -1088,7 +1088,9 @@ runAsynchronously(async () => {
           memory: serviceMemoryUsage(),
         }, { suppressInNodeEnvDevelopment: true });
       }
-      await wait(1000);
+      // The HTTP server owns this periodic loop's lifetime; after it closes,
+      // waiting for the next tick must not keep the process alive.
+      await wait(1000, { unref: true });
     });
   }
 });

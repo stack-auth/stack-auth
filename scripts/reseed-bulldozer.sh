@@ -23,7 +23,7 @@ echo "Starting temporary bulldozer-js on port $BULLDOZER_PORT ..."
 # Run the server directly (single node process, so we can reliably kill it) via
 # tsx's node loader — the same entrypoint the package's `start` script uses.
 (
-  cd "$BULLDOZER_DIR" && exec node --import tsx --expose-gc src/index.ts
+  cd "$BULLDOZER_DIR" && NODE_ENV=development exec node --import tsx --expose-gc src/index.ts
 ) &
 BULLDOZER_PID=$!
 
