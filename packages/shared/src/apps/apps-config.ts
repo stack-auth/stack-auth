@@ -193,6 +193,12 @@ export const ALL_APPS = {
     stage: "alpha",
     parentAppId: "authentication",
   },
+  "deployments": {
+    displayName: "Deployments",
+    subtitle: "Design and connect your deployment architecture",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {

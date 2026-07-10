@@ -18,4 +18,5 @@ console.log(`Hexclave backend listening on http://${hostname}:${port}`);
 
 process.once("SIGTERM", () => {
   runAsynchronously(app.stop());
+  process.exit(0);
 });

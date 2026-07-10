@@ -66,6 +66,7 @@
     "@tanstack/react-virtual": "^3.13.18",
     "@vercel/analytics": "^1.2.2",
     "@vercel/speed-insights": "^1.0.12",
+    "@xyflow/react": "^12.11.1",
     "ai": "^6.0.0",
     "browser-image-compression": "^2.0.2",
     "canvas-confetti": "^1.9.2",

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CloudArrowUpIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -434,6 +434,20 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>CLI Auth shows real-time insight into how CLI authentication is used in your project.</p>
         <p>Monitor recent login attempts, see which users have active CLI refresh tokens, and track session health at a glance.</p>
+      </>
+    ),
+  },
+  deployments: {
+    icon: CloudArrowUpIcon,
+    href: "deployments",
+    navigationItems: [
+      { displayName: "Deployments", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Deployments turns your project architecture into a visual, connected service graph.</p>
+        <p>Map compute, databases, public domains, environment variables, and Hexclave credentials in one place.</p>
       </>
     ),
   },

@@ -1,4 +1,5 @@
 import { SmartRouter } from "@/smart-router";
+import { writeFileSyncIfChanged } from "@hexclave/shared/dist/utils/fs";
 import fs from "fs";
 
 const httpMethodNames = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"] as const;
@@ -40,9 +41,9 @@ async function main() {
   const routes = await SmartRouter.listRoutes();
   const apiVersions = await SmartRouter.listApiVersions();
   fs.mkdirSync("src/generated", { recursive: true });
-  fs.writeFileSync("src/generated/routes.json", JSON.stringify(routes, null, 2));
-  fs.writeFileSync("src/generated/api-versions.json", JSON.stringify(apiVersions, null, 2));
-  fs.writeFileSync("src/generated/route-modules.ts", generateRouteModules(routes));
+  writeFileSyncIfChanged("src/generated/routes.json", JSON.stringify(routes, null, 2));
+  writeFileSyncIfChanged("src/generated/api-versions.json", JSON.stringify(apiVersions, null, 2));
+  writeFileSyncIfChanged("src/generated/route-modules.ts", generateRouteModules(routes));
   console.log("Successfully updated route info");
 }
 // eslint-disable-next-line no-restricted-syntax
