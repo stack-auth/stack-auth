@@ -2,7 +2,6 @@ import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@hexclave/shared/dist/utils/node-http";
-import { NextRequest, NextResponse } from "next/server";
 import { createOidcProvider } from "../../../../idp";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +26,7 @@ function getOidcCallbackPromise() {
   return _oidcCallbackPromiseCache;
 }
 
-const handler = handleApiRequest(async (req: NextRequest) => {
+const handler = handleApiRequest(async (req: Request) => {
   const newUrl = req.url.replace(pathPrefix, "");
   if (newUrl === req.url) {
     throw new HexclaveAssertionError("No path prefix found in request URL. Is the pathPrefix correct?", { newUrl, url: req.url, pathPrefix });
@@ -60,7 +59,7 @@ const handler = handleApiRequest(async (req: NextRequest) => {
   // filter out session cookies; we don't want to keep sessions open, every OAuth flow should start a new session
   headers = headers.filter(([k, v]) => k !== "set-cookie" || !v.toString().match(/^_session\.?/));
 
-  return new NextResponse(body, {
+  return new Response(body, {
     headers: headers,
     status: {
       // our API never returns 301 or 302 by convention, so transform them to 307 or 308
