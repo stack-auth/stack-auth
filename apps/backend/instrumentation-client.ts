@@ -1,11 +1,11 @@
 // This file configures the initialization of Sentry on the client.
 // The config you add here will be used whenever a users loads a page in their browser.
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/
+// https://docs.sentry.io/platforms/javascript/guides/browser/
 
-import * as Sentry from "@sentry/nextjs";
 import { getBrowserCompatibilityReport } from "@hexclave/shared/dist/utils/browser-compat";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
+import * as Sentry from "@sentry/browser";
 
 Sentry.init({
   ...sentryBaseConfig,
