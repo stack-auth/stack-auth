@@ -1,0 +1,184 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/tenants.ts
+  s_00b4850a42246a::t_df604c1eabf59c 1-165
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/databases.ts
+  s_00b4850a42246a::t_3d4e0916bb499c 1-4,7-19,34-140,145-241
+  s_00b4850a42246a::t_8c4ba2f13040f6 5-6
+  s_00b4850a42246a::t_b90c2c66e56980 20-33
+  s_00b4850a42246a::t_77d2151dadd1ce 141-144
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/topology.ts
+  s_00b4850a42246a::t_6a090d5a666dd8 12-18,20-30,45-46,48-53
+  s_00b4850a42246a::t_e45c338a3f7a24 1-11,19,31-44,47
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/copilot-script.ts
+  s_00b4850a42246a::t_3584abbc981110 1-58
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/databases/page.tsx
+  s_3134089a2bf5ed::t_5034dc0b1eb2b5 6
+  s_00b4850a42246a::t_dc4be5f139e1fd 1-5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/continuum-store.ts
+  s_00b4850a42246a::t_0856e0bba1802e 1-74
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/incident-scrubber.tsx
+  s_92a7315e9d3813::t_36680c549b0a12 1-3,6-10,32-34,36-77,84,86,90-92,94-101
+  s_96abc8d8f1d6f3::t_d26faeccd4f40d 4-5,11-31,35,78-83,85,87-89,93,102-103
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/incident/page.tsx
+  s_ae9cc183fc49ab::t_c73265d9ffbce7 6
+  s_00b4850a42246a::t_0a42c364baf07a 1-5
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/node-inspector.tsx
+  s_92a7315e9d3813::t_cef83e4bb3e51e 71,73-74,76-77,79-80,82-83,85-86,88
+  s_00b4850a42246a::t_cd002e4846e73c 246,248-255,259-260
+  s_00b4850a42246a::t_da94a4e9047282 22
+  s_00b4850a42246a::t_33daf6401f7db4 1-21,23-70,72,75,78,81,84,87,89-245,247,256-258,261-302
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/page-client.tsx
+  s_00b4850a42246a::t_4b408cc1012e4e 1-10,12-15,17-22,24-35,37-45,47,49-51,53,56,58,60,62-104,108-144,146-157,160-175,178-181,184-185,188-194,197,199-229,238-258,267-296,303-305,308-359
+  s_92a7315e9d3813::t_28a2af67132896 145,158-159,176-177,182-183,186-187,195-196,198
+  s_00b4850a42246a::t_160e1326cee4dd 11,16
+  s_92a7315e9d3813::t_c9c7eee4363669 105-107
+  s_00b4850a42246a::t_271efdbfbf30b6 230-237
+  s_00b4850a42246a::t_c1f115c397aa85 297-302
+  s_92a7315e9d3813::t_eb9aa3385638f6 23
+  s_92a7315e9d3813::t_27a8a0b70abb42 46,48,52,54-55,57,59,61
+  s_00b4850a42246a::t_1567246cb19f2c 259-266
+  s_92a7315e9d3813::t_d06ffaf2689883 306-307
+  s_00b4850a42246a::t_62b54ad17b5426 36
+packages/shared/src/apps/apps-config.ts
+  s_00b4850a42246a::t_fa099bfef33a80 189-194
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/schema-browser.tsx
+  s_3134089a2bf5ed::t_fdafcbc5495335 4-5,7,15-17,19-22,27,31,36-37,39-41,44-45,48-53,55-56
+  s_00b4850a42246a::t_12b2d1b73d837a 1-3,6,8-14,18,23-26,28-30,32-35,38,42-43,46-47,54
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/rollout-stages.tsx
+  s_92a7315e9d3813::t_cef88309f99e66 14,16-17,19-20,22,24,26
+  s_96abc8d8f1d6f3::t_f0f39cba1ec973 1-3,5-10,12,27,30-34,39-48,54-55,60,67,70-71,86,93,97,103,108
+  s_96abc8d8f1d6f3::t_557fb1f7db745f 49-53
+  s_00b4850a42246a::t_34cd6471e5a384 4,11,13,15,18,21,23,25,28-29,35-38,56-59,61-66,68-69,72-85,87-92,94-96,98-102,104-107
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/overview/page.tsx
+  s_00b4850a42246a::t_6a6c18c924bc4d 1-5
+  s_ff1a7d15147c43::t_070575df09d531 6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/blast-radius-panel.tsx
+  s_00b4850a42246a::t_1a994e02f9c840 1-3,5,11-15,17-23,26-27,29-31,36
+  s_3134089a2bf5ed::t_006f513a9a1830 4,6-10,16,24-25,28,32-35,37-38
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/release-cockpit.tsx
+  s_96abc8d8f1d6f3::t_42f36b9662620d 1-2,4-14,16-27,32-33,36-81,90,94,97-98,100-102,104-110,112-116,118,124,128-130,132-133,136,138-139,146-147,149,151-153,155-163,168-171,173,177-189,191-193
+  s_00b4850a42246a::t_ff3e11e592d4fc 3,15,28-31,34-35,82-89,91-93,95-96,99,103,111,117,119-123,125-127,131,134-135,137,140-145,148,150,154,164-167,172,174-176,190
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/incident.ts
+  s_00b4850a42246a::t_e530d233c01fd2 1-224
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/branch-tree.tsx
+  s_00b4850a42246a::t_68c17823358c94 38
+  s_3134089a2bf5ed::t_e715a7d00ceda8 1-5,7,14-37,39-76
+  s_00b4850a42246a::t_e17f7b8532e5e7 6,8-13
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/types.ts
+  s_00b4850a42246a::t_b51e20f0757486 171-189
+  s_00b4850a42246a::t_092b9b05569e13 1-170,190-344
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/protect-checklist.tsx
+  s_ae9cc183fc49ab::t_fce653d4d8f172 1-83
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/copilot-rail.tsx
+  s_3134089a2bf5ed::t_0c3e9b63426b95 1-54
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/use-demo-scripts.ts
+  s_00b4850a42246a::t_3532c2e728061a 1-81
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_00b4850a42246a::t_5d0feadccab18a 427-428,430,432-441
+  s_00b4850a42246a::t_6ca73d34efbef1 3
+  s_00b4850a42246a::t_6158b2a59ed7c9 429,431
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/releases.ts
+  s_00b4850a42246a::t_ce944fe4eb484c 1-84
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/closing-briefing.tsx
+  s_ae9cc183fc49ab::t_b3ae41badb04f1 1-52
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/database-workspace.tsx
+  s_00b4850a42246a::t_e9bd9f71750188 1-244
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/build-log-viewer.tsx
+  s_96abc8d8f1d6f3::t_1497865fa75c4d 1-5,7-36,43-51,59,61-63,65-67,69-71,73-74,76,78,80,84-89,91-94,101-102
+  s_00b4850a42246a::t_4eebaa9c21eeb1 6,37-42,52-58,60,64,68,72,75,77,79,81-83,90,95-100
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/releases/page.tsx
+  s_00b4850a42246a::t_d8b5f319904bb9 1-5
+  s_96abc8d8f1d6f3::t_aa887fc30f0859 6
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/ui-kit.tsx
+  s_00b4850a42246a::t_b45307b1d559aa 1-127,129,131-132,134,136,138,141,144,146-147
+  s_92a7315e9d3813::t_72f84ba05970da 128,130,133,135,137,139-140,142-143,145
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/forensic-clone-lab.tsx
+  s_ae9cc183fc49ab::t_baf25117daf454 1-20,22-74,80-217
+  s_ae9cc183fc49ab::t_f1b48f7ac6997d 21,75-79
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/continuum-map.tsx
+  s_00b4850a42246a::t_747957ae121bad 31,39,42,45,48,51,54,57,62,65,68,132-133,135-136,148,150-151,155,212-215,217,294,296-299,304,306,324,345-346,349,351,355
+  s_92a7315e9d3813::t_f0227b813269d3 106,108-109,111-112,114-115,117,119,121
+  s_00b4850a42246a::t_f002a95f13a757 33-34
+  s_00b4850a42246a::t_4a43e38006eb25 157,163-164
+  s_00b4850a42246a::t_d9ce850dde77ef 195
+  s_00b4850a42246a::t_9f7737093f7088 3-26,32,71,74,76-80,82,85,88,91,93,95,97-105,107,110,113,116,118,120,122-125,141-147,149,156,158,161,165,167-171,173-178,180-194,196-211,216,218-219,221-293,295,300-303,305,307-323,325-344,347,352
+  s_92a7315e9d3813::t_31011c4c2588d1 64,66-67,69-70,72-73,75
+  s_92a7315e9d3813::t_a9a554959e12a4 41,43-44,46-47,49-50,52-53,55-56,58
+  s_ff1a7d15147c43::t_52689770ea55ed 1-2,27-30,35-38,40,59-61,63,126-131,134,137-140,152-154,159-160,166,172,220,348,350,353-354,356-357
+  s_92a7315e9d3813::t_f2724f7e9d7580 81,83-84,86-87,89-90,92,94,96
+  s_92a7315e9d3813::t_43e0dcb20d000a 162
+  s_00b4850a42246a::t_5171d0e235036d 179
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/query-insights.tsx
+  s_3134089a2bf5ed::t_0579fdf1c63c7d 3,5-7,13,15,17-18,20,22-23,25-26
+  s_00b4850a42246a::t_b46c3a00cd8e86 1-2,4,8-12,14,16,19,21,24
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/use-incident-playback.ts
+  s_00b4850a42246a::t_08993f8cba2f2b 1-130
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/platform.ts
+  s_00b4850a42246a::t_0d610392c0d5d0 1-98
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/compat-matrix.tsx
+  s_96abc8d8f1d6f3::t_41def44cf271bc 1-4,6,11-13,15-23,28,31-32,34,36-39,41-48,52-54,57-60,64-65,67-75,81-82
+  s_00b4850a42246a::t_78f00c6f87ee5e 5,7-10,24-27,29-30,33,35,40,49-51,55-56,61-63,66,76-80
+  s_96abc8d8f1d6f3::t_3ce6ee602b3bbf 14
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/page.tsx
+  s_00b4850a42246a::t_28d6697dfcae34 1-9
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/components/clone-wizard.tsx
+  s_00b4850a42246a::t_d5a53300d7d38a 3,9,48-53,55-63,68,73-75,77-78,84-86,90-91,93,101,107,111,114,126-131,134-135,141,145
+  s_3134089a2bf5ed::t_8ceb358282a6d7 1-2,4-8,10-47,54,64-67,69-72,76,79-83,87-89,92,94-100,102-106,108-110,112-113,115-125,132-133,136-140,142-144,146-147
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/continuum/fixtures/incident.test.ts
+  s_00b4850a42246a::t_02053418b49b15 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "fefcf9601eaba49a1aae6693b6ad1dab390ebdfd",
+  "prompts": {},
+  "sessions": {
+    "s_00b4850a42246a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a630ffe9-f280-4c1b-a5dd-88b0e0b6065d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_3134089a2bf5ed": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "88afbdfb-758a-4783-9740-013cc546d04f",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_92a7315e9d3813": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "78f5f37b-8e55-466a-90c6-f5567b4081b5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_96abc8d8f1d6f3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4a2439a1-5487-4cd0-9a1e-ad3670c18b69",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ae9cc183fc49ab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7472b85a-d3bb-4110-b457-0c1bbb5c0688",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_ff1a7d15147c43": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "25fe4357-a036-4d45-9406-04dfec7f2d8a",
+        "model": "gpt-5.6-sol-medium"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
