@@ -387,6 +387,7 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
+      { displayName: "Mission Control", href: "./mission-control" },
       { displayName: "Tables", href: "./tables" },
       { displayName: "Traces", href: "./spans-events" },
       { displayName: "Replays", href: "../session-replays" },
