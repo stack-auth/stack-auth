@@ -15,7 +15,7 @@ import {
   type AssistantComposerApi,
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { cn } from "@/lib/utils";
 import {

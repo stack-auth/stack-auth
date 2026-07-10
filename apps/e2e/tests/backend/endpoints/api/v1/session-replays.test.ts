@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { PLAN_LIMITS } from "@hexclave/shared/dist/plans";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
@@ -160,6 +161,112 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     }
   `);
   expect(second.body?.session_replay_id).toBe(recordingId);
+});
+
+it("accepts a gzipped binary body (compressed large-payload encoding)", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const payload = {
+    browser_session_id: randomUUID(),
+    session_replay_segment_id: randomUUID(),
+    batch_id: randomUUID(),
+    started_at_ms: now,
+    sent_at_ms: now + 500,
+    // Large full snapshot: exceeds the 1MB raw wire limit but gzips under it.
+    events: [{ timestamp: now + 100, type: 2, data: { html: "x".repeat(2_000_000) } }],
+  };
+  const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf-8"));
+  // Sanity: the raw payload exceeds the wire limit, the compressed one doesn't.
+  expect(compressed.byteLength).toBeLessThan(1_000_000);
+
+  const res = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: compressed,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "batch_id": "<stripped UUID>",
+        "deduped": false,
+        "s3_key": "session-replays/<stripped UUID>/main/<stripped UUID>/<stripped UUID>.json.gz",
+        "session_replay_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const res = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: new Uint8Array([0, 1, 2, 3, 4, 5]),
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded session replay body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body larger than the compressed size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // Random bytes don't compress, so the byteLength check fires before gunzip.
+  // 1.1 MB > the 1 MB MAX_BODY_BYTES cap.
+  const oversized = new Uint8Array(randomBytes(Math.floor(1.1 * 1024 * 1024)));
+
+  const res = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: oversized,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 413,
+      "body": "Encoded session replay body too large (max 1000000 bytes)",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a gzipped body that decompresses past the server size cap", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // 9 MB of zeros gzips to ~9 KB but decompresses past the 8 MB server cap.
+  const bomb = gzipSync(Buffer.alloc(9 * 1024 * 1024));
+
+  const res = await niceBackendFetch("/api/v1/session-replays/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: bomb,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "Invalid encoded session replay body",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
 });
 
 it("rejects empty events", async ({ expect }) => {

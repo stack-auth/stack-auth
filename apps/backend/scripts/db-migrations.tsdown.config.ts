@@ -12,9 +12,15 @@ const backendDir = resolve(__dirname, '..');
 
 const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
 
-// Packages that must remain as runtime imports (can't be statically bundled)
+// Packages that must remain as runtime imports (can't be statically bundled).
+// @aws-sdk and @smithy use complex class hierarchies that rolldown mis-scopes,
+// causing "StructureSchema$2 is not defined" at runtime. They're unused by the
+// migration script anyway (pulled in transitively), and node_modules is present
+// in the Docker image, so keeping them external is safe.
 const externalPackages = [
   '@prisma/client',
+  '@aws-sdk',
+  '@smithy',
 ];
 
 const customNoExternal = new Set([

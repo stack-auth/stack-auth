@@ -60,7 +60,7 @@ function PopoverPanel({
       ref={popoverRef}
       className={cn(
         "absolute top-full left-0 mt-1 z-50",
-        "bg-popover text-popover-foreground rounded-xl shadow-lg",
+        "bg-white text-popover-foreground rounded-xl shadow-lg dark:bg-popover",
         "ring-1 ring-black/[0.08] dark:ring-white/[0.1]",
         "backdrop-blur-xl",
         className,

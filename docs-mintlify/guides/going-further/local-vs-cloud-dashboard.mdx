@@ -8,7 +8,7 @@ Hexclave has two common ways to work with a project:
 
 | Option | Best for | How it is configured |
 | --- | --- | --- |
-| Local dashboard | Development | A local `hexclave.config.ts` file plus `stack dev --config-file ...`. |
+| Local dashboard | Development | A local `hexclave.config.ts` file plus `hexclave dev --config-file ...`. |
 | Cloud dashboard | Production | A hosted project on [app.hexclave.com](https://app.hexclave.com) with project ID and keys in your app environment. |
 
 ## Development Environment
@@ -33,13 +33,13 @@ export const config: HexclaveConfig = "show-onboarding";
 ```json title="package.json"
 {
   "scripts": {
-    "dev": "stack dev --config-file ./hexclave.config.ts -- npm run dev:inner",
+    "dev": "hexclave dev --config-file ./hexclave.config.ts -- npm run dev:inner",
     "dev:inner": "<your-existing-dev-script>"
   }
 }
 ```
 
-For the full config file reference, see [`hexclave.config.ts`](/guides/going-further/hexclave-config). For CLI details, see [Stack CLI](/guides/going-further/cli).
+For the full config file reference, see [`hexclave.config.ts`](/guides/going-further/hexclave-config). For CLI details, see [Hexclave CLI](/guides/going-further/cli).
 
 ## Cloud Dashboard
 

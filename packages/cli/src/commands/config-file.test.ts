@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildConfigPushSource, resolveConfigFilePathForPull } from "./config-file.js";
+import { buildConfigPushSource, resolveConfigFilePathForPull, shouldReplaceConfigFileForPull } from "./config-file.js";
 
 describe("resolveConfigFilePathForPull", () => {
   let tmpDir: string;
@@ -41,8 +41,32 @@ describe("resolveConfigFilePathForPull", () => {
     expect(resolveConfigFilePathForPull({ configFile: "" }, tmpDir)).toBe(expected);
   });
 
-  it("throws a CliError with help text when neither --config-file nor cwd stack.config.ts exists", () => {
-    expect(() => resolveConfigFilePathForPull({}, tmpDir)).toThrow(/Pass --config-file/);
+  it("defaults to ./hexclave.config.ts when neither --config-file nor cwd config file exists", () => {
+    expect(resolveConfigFilePathForPull({}, tmpDir)).toBe(path.join(tmpDir, "hexclave.config.ts"));
+  });
+});
+
+describe("shouldReplaceConfigFileForPull", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("updates an existing config in place unless overwrite is explicit", () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(configPath, "export const config = {};\n");
+
+    expect(shouldReplaceConfigFileForPull(configPath, {})).toBe(false);
+    expect(shouldReplaceConfigFileForPull(configPath, { overwrite: true })).toBe(true);
+  });
+
+  it("replaces when pull needs to create a new config file", () => {
+    expect(shouldReplaceConfigFileForPull(path.join(tmpDir, "hexclave.config.ts"), {})).toBe(true);
   });
 });
 

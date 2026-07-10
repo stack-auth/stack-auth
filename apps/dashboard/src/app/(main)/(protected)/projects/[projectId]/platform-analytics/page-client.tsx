@@ -528,10 +528,11 @@ function ProjectLeaderboard({ projects, windowDays }: { projects: ProjectRow[], 
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div className="min-w-[820px]">
-            <div className="grid grid-cols-[1.5rem_minmax(10rem,1.5fr)_5rem_4.5rem_5rem_5rem_5rem_5rem_4rem] items-center gap-3 border-b border-border/60 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="min-w-[900px]">
+            <div className="grid grid-cols-[1.5rem_minmax(10rem,1.5fr)_5rem_5rem_4.5rem_5rem_5rem_5rem_5rem_4rem] items-center gap-3 border-b border-border/60 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               <span>#</span>
               <span>Project</span>
+              <span>ID</span>
               {header("total_users", "Users")}
               {header("verified", "Verified")}
               {header("active_users", "Active")}
@@ -547,13 +548,14 @@ function ProjectLeaderboard({ projects, windowDays }: { projects: ProjectRow[], 
                 return (
                   <div
                     key={project.id}
-                    className="grid grid-cols-[1.5rem_minmax(10rem,1.5fr)_5rem_4.5rem_5rem_5rem_5rem_5rem_4rem] items-center gap-3 py-2.5 text-sm"
+                    className="grid grid-cols-[1.5rem_minmax(10rem,1.5fr)_5rem_5rem_4.5rem_5rem_5rem_5rem_5rem_4rem] items-center gap-3 py-2.5 text-sm"
                   >
                     <span className="tabular-nums text-muted-foreground">{index + 1}</span>
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium text-foreground">{project.display_name || project.id}</span>
                       <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold", STATUS_STYLES[status])}>{status}</span>
                     </div>
+                    <span className="truncate font-mono text-xs text-muted-foreground" title={project.id}>{project.id}</span>
                     <span className="text-right tabular-nums text-foreground">{formatCompact(project.total_users)}</span>
                     <span className="text-right tabular-nums text-muted-foreground">{formatCompact(project.verified_users)}</span>
                     <span className="text-right tabular-nums text-muted-foreground">{formatCompact(project.active_users)}</span>

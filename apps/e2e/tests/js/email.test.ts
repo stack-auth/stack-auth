@@ -113,7 +113,7 @@ it("should send email with notification category", async ({ expect }) => {
   })).resolves.not.toThrow();
 });
 
-it("should throw RequiresCustomEmailServer error when email server is not configured", async ({ expect }) => {
+it("should send custom emails over the shared server (wrapped as dev emails) when no custom server is configured", async ({ expect }) => {
   const { serverApp } = await createApp();
 
   const user = await serverApp.createUser({
@@ -123,9 +123,9 @@ it("should throw RequiresCustomEmailServer error when email server is not config
 
   await expect(serverApp.sendEmail({
     userIds: [user.id],
-    html: "<p>This should fail</p>",
+    html: "<p>This now sends over the shared server</p>",
     subject: "Test Email",
-  })).rejects.toThrow(KnownErrors.RequiresCustomEmailServer);
+  })).resolves.not.toThrow();
 });
 
 it("should handle non-existent user IDs", async ({ expect }) => {
@@ -181,8 +181,8 @@ it("should provide delivery statistics", async ({ expect }) => {
     primaryEmailVerified: true,
   });
 
-  // Give Bulldozer's pg_cron tick time to materialise the billing team's
-  // `emails_per_month` quota from its freshly-granted free plan. Without
+  // Give bulldozer-js's in-process tick loop time to materialise the billing
+  // team's `emails_per_month` quota from its freshly-granted free plan. Without
   // this wait the first email gets quota-blocked into a permanent
   // server-error terminal and `stats.hour.sent` never reaches 1.
   await wait(2000);

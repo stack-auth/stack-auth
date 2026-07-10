@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const mockUpdateConfig = vi.hoisted(() => vi.fn(async () => true));
+const mockPublicEnvVars = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("@/components/design-components", () => ({
   DesignCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -54,6 +58,10 @@ vi.mock("@/components/design-components/select", () => ({
   ),
 }));
 
+vi.mock("@/components/hosted-auth-preview", () => ({
+  HostedAuthMethodPreview: () => <div>Hosted auth preview</div>,
+}));
+
 vi.mock("@/components/router", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -83,16 +91,15 @@ vi.mock("@/components/ui", () => ({
 }));
 
 vi.mock("@/lib/env", () => ({
-  getPublicEnvVar: () => "false",
+  getPublicEnvVar: (key: string) => mockPublicEnvVars.get(key) ?? "false",
 }));
 
-vi.mock("@/lib/config-update", () => ({
+vi.mock("@/components/config-update", () => ({
   useUpdateConfig: () => mockUpdateConfig,
 }));
 
 vi.mock("@hexclave/next", () => ({
   AdminOwnedProject: class {},
-  AuthPage: () => <div>Auth preview</div>,
 }));
 
 vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
@@ -152,6 +159,7 @@ import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps
 afterEach(() => {
   cleanup();
   mockUpdateConfig.mockClear();
+  mockPublicEnvVars.clear();
 });
 
 function createDeferred<T>() {
@@ -168,6 +176,19 @@ function createDeferred<T>() {
 }
 
 describe("ProjectOnboardingWizard", () => {
+  it("keeps the hosted auth preview interactive", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+
+    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    expect(previewBlockMatch).not.toBeNull();
+    const previewBlock = previewBlockMatch![1];
+
+    expect(previewBlock).not.toContain("pointer-events-none");
+    expect(previewBlock).not.toContain("inert");
+    expect(previewBlock).not.toContain("bg-transparent");
+  });
+
   it("keeps required apps when normalizing persisted onboarding state", () => {
     const normalizedState = normalizeProjectOnboardingState({
       selected_config_choice: "create-new",
@@ -180,32 +201,23 @@ describe("ProjectOnboardingWizard", () => {
     expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
   });
 
-  it("preserves OAuth sign-in methods when developmentEnvironment is true but isLocalEmulator is false (RDE)", () => {
-    const normalizedState = normalizeProjectOnboardingState({
-      selected_config_choice: "create-new",
-      selected_apps: [],
-      selected_sign_in_methods: ["credential", "google", "github"],
-      selected_email_theme_id: null,
-      selected_payments_country: "US",
-    }, { developmentEnvironment: true, isLocalEmulator: false });
-
-    expect(normalizedState.selected_sign_in_methods).toContain("google");
-    expect(normalizedState.selected_sign_in_methods).toContain("github");
-  });
-
-  it("strips OAuth sign-in methods when isLocalEmulator is true", () => {
+  it("preserves OAuth sign-in methods in development environments", () => {
     const normalizedState = normalizeProjectOnboardingState({
       selected_config_choice: "create-new",
       selected_apps: [],
       selected_sign_in_methods: ["credential", "google", "github", "microsoft"],
       selected_email_theme_id: null,
       selected_payments_country: "US",
-    }, { developmentEnvironment: true, isLocalEmulator: true });
+    }, { developmentEnvironment: true });
 
-    expect(normalizedState.selected_sign_in_methods).toContain("credential");
-    expect(normalizedState.selected_sign_in_methods).not.toContain("google");
-    expect(normalizedState.selected_sign_in_methods).not.toContain("github");
-    expect(normalizedState.selected_sign_in_methods).not.toContain("microsoft");
+    expect(normalizedState.selected_sign_in_methods).toMatchInlineSnapshot(`
+      [
+        "credential",
+        "google",
+        "github",
+        "microsoft",
+      ]
+    `);
   });
 
   it("does not offer alpha apps during app selection", () => {
@@ -234,6 +246,7 @@ describe("ProjectOnboardingWizard", () => {
       throw new Error("Stripe account info should not load on the app selection step.");
     });
     const listEmailThemes = vi.fn(async () => []);
+    const getEmailPreview = vi.fn(async () => "");
     const getStripeAccountInfo = vi.fn(async () => null);
 
     render(
@@ -265,6 +278,7 @@ describe("ProjectOnboardingWizard", () => {
           app: {
             setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
             listEmailThemes,
+            getEmailPreview,
             getStripeAccountInfo,
             useEmailThemes,
             useStripeAccountInfo,
@@ -280,6 +294,7 @@ describe("ProjectOnboardingWizard", () => {
     );
 
     expect(listEmailThemes).toHaveBeenCalledOnce();
+    expect(getEmailPreview).not.toHaveBeenCalled();
     expect(getStripeAccountInfo).not.toHaveBeenCalled();
     expect(useEmailThemes).not.toHaveBeenCalled();
     expect(useStripeAccountInfo).not.toHaveBeenCalled();
@@ -966,8 +981,8 @@ describe("ProjectOnboardingWizard", () => {
         status="welcome"
         onboardingState={{
           selected_config_choice: "create-new",
-          selected_apps: ["authentication", "emails"],
-          selected_sign_in_methods: ["credential", "google"],
+          selected_apps: ["authentication", "emails", "payments", "analytics"],
+          selected_sign_in_methods: ["credential", "magicLink", "google"],
           selected_email_theme_id: "default",
           selected_payments_country: "US",
         }}
@@ -982,11 +997,15 @@ describe("ProjectOnboardingWizard", () => {
       expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
       expect(mockUpdateConfig).toHaveBeenNthCalledWith(1, {
         adminApp: app,
-        configUpdate: expect.objectContaining({
+        configUpdate: {
           "auth.password.allowSignIn": true,
+          "auth.otp.allowSignIn": true,
+          "emails.selectedThemeId": "default",
           "apps.installed.authentication.enabled": true,
           "apps.installed.emails.enabled": true,
-        }),
+          "apps.installed.payments.enabled": true,
+          "apps.installed.analytics.enabled": true,
+        },
         pushable: true,
       });
       expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {
@@ -1009,6 +1028,95 @@ describe("ProjectOnboardingWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
 
     await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
+  it("waits for Get Started before applying RDE onboarding config", async () => {
+    mockPublicEnvVars.set("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "true");
+    const saveOnboardingProgress = vi.fn(async () => {});
+    const onComplete = vi.fn();
+    const getPushedConfigSource = vi.fn(async () => ({ type: "unlinked" }));
+    const app = {
+      setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      listEmailThemes: vi.fn(async () => []),
+      getStripeAccountInfo: vi.fn(async () => null),
+      useEmailThemes: () => [],
+      useStripeAccountInfo: () => null,
+    };
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: false },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app,
+          getPushedConfigSource,
+        } as never}
+        status="welcome"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails", "analytics"],
+          selected_sign_in_methods: ["credential", "google"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "US",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={onComplete}
+      />,
+    );
+
+    await Promise.resolve();
+
+    expect(getPushedConfigSource).not.toHaveBeenCalled();
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(mockUpdateConfig).toHaveBeenCalledWith({
+        adminApp: app,
+        configUpdate: {
+          "auth.password.allowSignIn": true,
+          "emails.selectedThemeId": "default",
+          "apps.installed.authentication.enabled": true,
+          "apps.installed.emails.enabled": true,
+          "apps.installed.analytics.enabled": true,
+          "auth.oauth.providers.google": {
+            type: "google",
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+          "auth.oauth.providers.github": null,
+          "auth.oauth.providers.microsoft": null,
+        },
+        pushable: true,
+      });
       expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
       expect(onComplete).toHaveBeenCalled();
     });

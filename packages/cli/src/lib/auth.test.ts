@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isRetryableFetchError, localEmulatorReadyTimeoutMs, resolveProjectId } from "./auth.js";
+import { isRetryableFetchError, resolveProjectId } from "./auth.js";
 
 describe("isRetryableFetchError", () => {
   it("retries TypeError (Node fetch wraps connection errors as TypeError)", () => {
@@ -31,42 +31,6 @@ describe("isRetryableFetchError", () => {
   it("does not retry generic Errors that aren't transport-shaped", () => {
     expect(isRetryableFetchError(new Error("something else broke"))).toBe(false);
     expect(isRetryableFetchError(new SyntaxError("bad json"))).toBe(false);
-  });
-});
-
-describe("localEmulatorReadyTimeoutMs", () => {
-  const SAVED = process.env.STACK_EMULATOR_READY_TIMEOUT_MS;
-  beforeEach(() => {
-    delete process.env.STACK_EMULATOR_READY_TIMEOUT_MS;
-  });
-  afterEach(() => {
-    if (SAVED === undefined) delete process.env.STACK_EMULATOR_READY_TIMEOUT_MS;
-    else process.env.STACK_EMULATOR_READY_TIMEOUT_MS = SAVED;
-  });
-
-  it("returns the default when the env var is unset", () => {
-    expect(localEmulatorReadyTimeoutMs()).toBe(10_000);
-  });
-
-  it("treats empty string as unset", () => {
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "";
-    expect(localEmulatorReadyTimeoutMs()).toBe(10_000);
-  });
-
-  it("parses a valid non-negative integer (including 0 for fail-fast)", () => {
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "0";
-    expect(localEmulatorReadyTimeoutMs()).toBe(0);
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "2500";
-    expect(localEmulatorReadyTimeoutMs()).toBe(2500);
-  });
-
-  it("rejects negative, non-integer, and non-numeric values", () => {
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "-1";
-    expect(() => localEmulatorReadyTimeoutMs()).toThrow(/Invalid STACK_EMULATOR_READY_TIMEOUT_MS/);
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "1.5";
-    expect(() => localEmulatorReadyTimeoutMs()).toThrow(/Invalid STACK_EMULATOR_READY_TIMEOUT_MS/);
-    process.env.STACK_EMULATOR_READY_TIMEOUT_MS = "abc";
-    expect(() => localEmulatorReadyTimeoutMs()).toThrow(/Invalid STACK_EMULATOR_READY_TIMEOUT_MS/);
   });
 });
 

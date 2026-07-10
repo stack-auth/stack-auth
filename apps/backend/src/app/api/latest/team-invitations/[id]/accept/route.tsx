@@ -1,12 +1,13 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
-import { arePlanLimitsEnforced } from "@/lib/plan-entitlements";
+import { arePlanLimitsEnforced, UNLIMITED_ITEM_CAPACITY } from "@/lib/plan-entitlements";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -104,20 +105,34 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.VerificationCodeNotFound();
     }
 
+    // Read the seat cap from bulldozer-js BEFORE starting the Prisma
+    // transaction. getItemQuantityForCustomer reads via HTTP from the
+    // bulldozer-js server; keeping the call inside the transaction would
+    // hold it open for the full HTTP round-trip, risking transaction
+    // timeouts and connection-pool exhaustion.
+    let maxDashboardAdmins: number | undefined;
+    if (auth.tenancy.project.id === "internal" && arePlanLimitsEnforced()) {
+      try {
+        maxDashboardAdmins = await getItemQuantityForCustomer({
+          prisma,
+          tenancyId: auth.tenancy.id,
+          customerId: invitationData.team_id,
+          itemId: "dashboard_admins",
+          customerType: "team",
+        });
+      } catch (error) {
+        captureError("team-invitations:accept:dashboard-admins-seat-check", error);
+        maxDashboardAdmins = UNLIMITED_ITEM_CAPACITY;
+      }
+    }
+
     await retryTransaction(prisma, async (tx) => {
-      if (auth.tenancy.project.id === "internal" && arePlanLimitsEnforced()) {
+      if (maxDashboardAdmins !== undefined) {
         const currentMemberCount = await tx.teamMember.count({
           where: {
             tenancyId: auth.tenancy.id,
             teamId: invitationData.team_id,
           },
-        });
-        const maxDashboardAdmins = await getItemQuantityForCustomer({
-          prisma: tx,
-          tenancyId: auth.tenancy.id,
-          customerId: invitationData.team_id,
-          itemId: "dashboard_admins",
-          customerType: "team",
         });
         if (currentMemberCount + 1 > maxDashboardAdmins) {
           throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", invitationData.team_id, -1);

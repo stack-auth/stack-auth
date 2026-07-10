@@ -131,7 +131,7 @@ describe("dev env state", () => {
     }
     // A hand-edited / cross-version file with a non-string version would
     // otherwise reach parseVersionCore (version.trim()) and throw, crashing
-    // `stack dev` outside the auto-update fail-open guard. Drop the entry.
+    // `hexclave dev` outside the auto-update fail-open guard. Drop the entry.
     writeFileSync(statePath, JSON.stringify({
       version: 1,
       localDashboardsByPort: { "26700": { port: 26700, secret: "s", pid: 999, startedAtMillis: 1, version: 2 } },

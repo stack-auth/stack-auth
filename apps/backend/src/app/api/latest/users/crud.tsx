@@ -61,9 +61,38 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 };
 
 const personalTeamDefaultDisplayName = "Personal Team";
+// Keep in sync with the Users table parser. This validates exact domains only;
+// excluding gmail.com intentionally does not exclude mail.gmail.com.
+const emailDomainRegex = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const maxExcludedEmailDomains = 100; // to prevent abuse
 
 function getSignedUpAtMillis(signedUpAt: Date): number {
   return signedUpAt.getTime();
+}
+
+// lowercases, strips leading @, handles duplicates to validate domains
+function normalizeExcludedEmailDomains(rawDomains: string | undefined): string[] {
+  if (rawDomains === undefined || rawDomains.trim() === "") {
+    return [];
+  }
+
+  const normalizedDomains = new Map<string, true>();
+  for (const rawDomain of rawDomains.split(",")) { // expects comma-separated list of domains
+    const domain = rawDomain.trim().replace(/^@/, "").toLowerCase();
+    if (domain === "") {
+      continue;
+    }
+    if (!emailDomainRegex.test(domain)) {
+      throw new StatusError(StatusError.BadRequest, "excluded_email_domains must be a comma-separated list of valid domains");
+    }
+    normalizedDomains.set(domain, true);
+  }
+
+  if (normalizedDomains.size > maxExcludedEmailDomains) {
+    throw new StatusError(StatusError.BadRequest, `excluded_email_domains cannot contain more than ${maxExcludedEmailDomains} domains`);
+  }
+
+  return [...normalizedDomains.keys()];
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -525,6 +554,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     order_by: yupString().oneOf(['signed_up_at', 'last_active_at']).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "The field to sort the results by. Defaults to signed_up_at" } }),
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
+    excluded_email_domains: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A comma-separated list of primary email domains to exclude from the results." } }),
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
     only_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to return only anonymous users. When true, implies include_anonymous=true. Defaults to false" } }),
     include_restricted: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include restricted users in the results. Defaults to false" } }),
@@ -538,6 +568,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
   },
   onList: async ({ auth, query }) => {
     const queryWithoutSpecialChars = query.query?.replace(/[^a-zA-Z0-9\-_.]/g, '');
+    // normalization happens once at the start of the list handling.
+    const excludedEmailDomains = normalizeExcludedEmailDomains(query.excluded_email_domains);
+
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
     // Filtering hierarchy:
@@ -588,6 +621,23 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
       ...shouldFilterRestrictedByAdmin ? {
         restrictedByAdmin: false,
+      } : {},
+      ...excludedEmailDomains.length > 0 ? {
+        NOT: {
+          contactChannels: {
+            some: {
+              type: 'EMAIL' as const,
+              isPrimary: 'TRUE' as const,
+              OR: excludedEmailDomains.map((domain) => ({
+                value: {
+                  // Exact-domain match: @gmail.com matches user@gmail.com, not user@mail.gmail.com.
+                  endsWith: `@${domain}`,
+                  mode: 'insensitive' as const,
+                },
+              })),
+            },
+          },
+        },
       } : {},
       ...query.query ? {
         OR: [

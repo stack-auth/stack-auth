@@ -22,7 +22,7 @@ import {
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
 import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
@@ -139,7 +139,7 @@ const projectSettingsItem: AppSection = {
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/?$/.test(fullUrl.pathname),
     },
     {
-      name: "Usage",
+      name: "Billing & Usage",
       href: "/project-settings/usage",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings\/usage(\/.*)?$/.test(fullUrl.pathname),
     },
@@ -468,11 +468,13 @@ function SidebarContent({
   onNavigate,
   isCollapsed,
   onToggleCollapse,
+  isDrawer = false,
 }: {
   projectId: string,
   onNavigate?: () => void,
   isCollapsed?: boolean,
   onToggleCollapse?: () => void,
+  isDrawer?: boolean,
 }) {
   const hexclaveAdminApp = useAdminApp();
   const pathname = usePathname();
@@ -611,7 +613,11 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-      <div className={cn("sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl dark:rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn(
+        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl",
+        !isDrawer && "dark:rounded-b-2xl",
+        isCollapsed ? "px-2" : "px-3",
+      )}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -748,7 +754,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
                     className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
                     hasCloseButton={false}
                   >
-                    <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+                    <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} isDrawer />
                   </SheetContent>
                 </Sheet>
 

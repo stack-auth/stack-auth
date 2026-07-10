@@ -11,7 +11,7 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumbe
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { gzip as gzipCb } from "node:zlib";
+import { gzip as gzipCb, gunzipSync } from "node:zlib";
 
 const gzip = promisify(gzipCb);
 
@@ -19,6 +19,35 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_EVENTS = 5_000;
+// Zip-bomb guard; keep in sync with the client's MAX_SINGLE_EVENT_BYTES.
+const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
+
+// Gunzips application/octet-stream bodies (the client gzips large batches);
+// plain application/json bodies pass through untouched.
+function maybeDecodeBinaryBody(value: unknown): unknown {
+  let bytes: Uint8Array | undefined;
+  if (value instanceof ArrayBuffer) {
+    bytes = new Uint8Array(value);
+  } else if (value instanceof Uint8Array) {
+    bytes = value;
+  }
+  if (!bytes) return value;
+
+  if (bytes.byteLength > MAX_BODY_BYTES) {
+    throw new StatusError(StatusError.PayloadTooLarge, `Encoded session replay body too large (max ${MAX_BODY_BYTES} bytes)`);
+  }
+  let decompressed: Buffer;
+  try {
+    decompressed = gunzipSync(bytes, { maxOutputLength: MAX_DECOMPRESSED_BYTES });
+  } catch {
+    throw new StatusError(StatusError.BadRequest, "Invalid encoded session replay body");
+  }
+  try {
+    return JSON.parse(decompressed.toString("utf-8"));
+  } catch {
+    throw new StatusError(StatusError.BadRequest, "Invalid encoded session replay body");
+  }
+}
 
 function extractEventTimesMs(events: unknown[], fallbackMs: number) {
   let minTs = Infinity;
@@ -60,7 +89,7 @@ export const POST = createSmartRouteHandler({
       started_at_ms: yupNumber().defined().integer().min(0),
       sent_at_ms: yupNumber().defined().integer().min(0),
       events: yupArray(yupMixed().defined()).defined(),
-    }).defined(),
+    }).defined().transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
