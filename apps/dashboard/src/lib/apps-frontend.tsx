@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, HexagonIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -421,6 +421,21 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
         <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
+      </>
+    ),
+  },
+  continuum: {
+    icon: HexagonIcon,
+    href: "continuum",
+    navigationItems: [
+      { displayName: "Canvas", href: "." },
+    ],
+    screenshots: getScreenshots('continuum', 0),
+    storeDescription: (
+      <>
+        <p>Continuum protects individual customers — not just infrastructure.</p>
+        <p>Deploy, roll back, isolate, clone, or fail over one tenant without touching anyone else. Cells carry each customer&apos;s app version, database branch, auth policies, and recovery plan.</p>
+        <p>When a release breaks three enterprise accounts, pin them back while everyone else stays on the new version — and keep their sessions alive across a cross-cloud failover.</p>
       </>
     ),
   },

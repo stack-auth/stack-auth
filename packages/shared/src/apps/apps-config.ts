@@ -186,6 +186,12 @@ export const ALL_APPS = {
     stage: "stable",
     parentAppId: "analytics",
   },
+  "continuum": {
+    displayName: "Continuum",
+    subtitle: "Per-customer deploys, databases, and recovery — protect individual tenants",
+    tags: ["operations", "developers", "storage"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {
