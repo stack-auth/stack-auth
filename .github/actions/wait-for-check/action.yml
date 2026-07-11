@@ -1,0 +1,76 @@
+name: "Wait for check"
+description: "Polls the GitHub Checks API until a named check-run on this commit completes, then succeeds/fails accordingly."
+
+inputs:
+  check-name:
+    description: "Name of the check-run (i.e. the job name) to wait for."
+    required: true
+  github-token:
+    description: "Token used to query the Checks API."
+    required: true
+  timeout-seconds:
+    description: "How long to wait for the check to appear and complete before giving up."
+    required: false
+    default: "3600"
+  poll-interval-seconds:
+    description: "How long to sleep between polls."
+    required: false
+    default: "15"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Wait for "${{ inputs.check-name }}" to succeed
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        # For pull_request events the PR head SHA is where the checks live; for
+        # push events it's just the pushed commit.
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        CHECK_NAME: ${{ inputs.check-name }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
+      run: |
+        set -euo pipefail
+        echo "Waiting for check \"${CHECK_NAME}\" on ${REPO}@${SHA}..."
+
+        deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+
+        while true; do
+          response=$(curl -s -f \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/commits/${SHA}/check-runs?per_page=100" \
+            || echo '{}')
+
+          # All check-runs that share our target name (there is normally exactly one).
+          matching=$(echo "$response" | jq -c --arg name "$CHECK_NAME" \
+            '[.check_runs[]? | select(.name == $name)]')
+          count=$(echo "$matching" | jq 'length')
+
+          if [ "$count" -eq 0 ]; then
+            echo "Check \"${CHECK_NAME}\" not reported yet; waiting..."
+          else
+            pending=$(echo "$matching" | jq '[.[] | select(.status != "completed")] | length')
+            if [ "$pending" -gt 0 ]; then
+              echo "Check \"${CHECK_NAME}\" is still running; waiting..."
+            else
+              # Completed. Treat success/skipped/neutral as "did not block".
+              failed=$(echo "$matching" | jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length')
+              if [ "$failed" -eq 0 ]; then
+                echo "Check \"${CHECK_NAME}\" passed. Proceeding."
+                exit 0
+              fi
+              echo "Check \"${CHECK_NAME}\" did not pass:"
+              echo "$matching" | jq -r '.[] | "  - \(.name): \(.conclusion)"'
+              exit 1
+            fi
+          fi
+
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "Timed out after ${TIMEOUT_SECONDS}s waiting for check \"${CHECK_NAME}\"."
+            exit 1
+          fi
+          sleep "$POLL_INTERVAL_SECONDS"
+        done

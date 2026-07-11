@@ -1,0 +1,324 @@
+name: Fast-fail tests
+
+# Gets to the most likely-broken unit tests as fast as possible: it asks an AI
+# (OpenAI Codex) which existing test files are most likely to fail given the
+# PR's diff, then runs only that subset. The full test suites depend on this
+# workflow (via the wait-for-check gate) and only run once this subset passes,
+# so an obviously-broken change fails within minutes instead of after the whole
+# (expensive) matrix has run.
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  select-tests:
+    name: select-tests
+    runs-on: ubuntu-latest
+    outputs:
+      test_files: ${{ steps.select.outputs.test_files }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff against base
+        id: diff
+        env:
+          # For PRs, compare against the merge base with the target branch. For
+          # pushes, compare against the commit that was there before the push.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          base="$BASE_SHA"
+          # `github.event.before` is all-zeroes for the first push to a branch.
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          merge_base=$(git merge-base "$base" "$HEAD_SHA" 2>/dev/null || echo "$base")
+          echo "Diffing ${merge_base}...${HEAD_SHA}"
+
+          git diff --name-only "$merge_base" "$HEAD_SHA" > changed-files.txt || true
+          # Cap the patch so the prompt stays within a reasonable size.
+          git diff "$merge_base" "$HEAD_SHA" | head -c 200000 > diff.patch || true
+
+          echo "Changed files:"
+          cat changed-files.txt || true
+
+      - name: Collect existing test files
+        run: |
+          set -euo pipefail
+          git ls-files \
+            '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' \
+            > all-test-files.txt
+          echo "Found $(wc -l < all-test-files.txt) test files."
+
+      - name: Build Codex prompt
+        run: |
+          set -euo pipefail
+          {
+            echo "You are helping a CI pipeline decide which existing test files to run first."
+            echo "Given the diff of a pull request and the list of all test files in the repo,"
+            echo "pick the SUBSET of existing test files that are most likely to FAIL because of"
+            echo "these changes (i.e. the tests most directly exercising the changed code, plus"
+            echo "closely-related integration/e2e tests)."
+            echo ""
+            echo "Rules:"
+            echo "- Only return paths that appear verbatim in the ALL TEST FILES list below."
+            echo "- Prefer a focused subset (roughly 1-15 files). If the change is broad or"
+            echo "  touches shared/core code, you may return more; if it clearly cannot affect"
+            echo "  any test (e.g. docs-only), return an empty list."
+            echo "- Do NOT invent new file paths and do NOT return non-test source files."
+            echo ""
+            echo "===== CHANGED FILES ====="
+            cat changed-files.txt || true
+            echo ""
+            echo "===== DIFF (possibly truncated) ====="
+            cat diff.patch || true
+            echo ""
+            echo "===== ALL TEST FILES ====="
+            cat all-test-files.txt || true
+          } > prompt.txt
+          echo "Prompt is $(wc -c < prompt.txt) bytes."
+
+      - name: Write output schema
+        run: |
+          cat > schema.json <<'JSON'
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "test_files": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["test_files"]
+          }
+          JSON
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex@0.142.5
+
+      - name: Ask Codex which tests to run
+        id: codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::warning::OPENAI_API_KEY is not set; skipping AI test selection (full suites will still run)."
+            echo '{"test_files":[]}' > codex-out.json
+            exit 0
+          fi
+
+          # `codex exec` runs non-interactively. We keep it read-only and never
+          # prompt for approvals so it can't hang CI. It's given the diff + test
+          # list directly in the prompt, so it doesn't need to explore the repo.
+          if ! codex exec \
+              --skip-git-repo-check \
+              -s read-only \
+              -c approval_policy="never" \
+              --output-schema schema.json \
+              --output-last-message codex-out.json \
+              "$(cat prompt.txt)"; then
+            echo "::warning::Codex invocation failed; skipping AI test selection (full suites will still run)."
+            echo '{"test_files":[]}' > codex-out.json
+          fi
+
+          echo "Codex raw output:"
+          cat codex-out.json || true
+
+      - name: Parse selected test files
+        id: select
+        run: |
+          set -euo pipefail
+
+          # Intersect Codex's picks with the real test-file list so a hallucinated
+          # or malformed path can never end up on the vitest command line.
+          selected=""
+          if [ -s codex-out.json ]; then
+            selected=$(jq -r '.test_files[]?' codex-out.json 2>/dev/null \
+              | grep -Fxf all-test-files.txt \
+              | sort -u \
+              | tr '\n' ' ' \
+              | sed 's/ *$//' || true)
+          fi
+
+          if [ -z "$selected" ]; then
+            echo "No test files selected; the full suites will run without a fast-fail gate."
+          else
+            echo "Selected test files:"
+            printf '  %s\n' $selected
+          fi
+          echo "test_files=$selected" >> "$GITHUB_OUTPUT"
+
+  fast-fail-tests:
+    name: fast-fail-tests
+    needs: select-tests
+    if: ${{ needs.select-tests.outputs.test_files != '' }}
+    runs-on: ubicloud-standard-8
+    env:
+      NODE_ENV: test
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
+      SELECTED_TEST_FILES: ${{ needs.select-tests.outputs.test_files }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22.x
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Start Docker Compose in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d &
+          wait-on: /dev/null
+          tail: true
+          wait-for: 3s
+          log-output-if: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create .env.test.local files
+        run: |
+          cp apps/backend/.env.development apps/backend/.env.test.local
+          cp apps/dashboard/.env.development apps/dashboard/.env.test.local
+          cp apps/e2e/.env.development apps/e2e/.env.test.local
+          cp docs/.env.development docs/.env.test.local
+          cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
+          cp examples/demo/.env.development examples/demo/.env.test.local
+          cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
+          cp examples/e-commerce/.env.development examples/e-commerce/.env.test.local
+          cp examples/middleware/.env.development examples/middleware/.env.test.local
+          cp examples/supabase/.env.development examples/supabase/.env.test.local
+          cp examples/convex/.env.development examples/convex/.env.test.local
+          cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
+
+      - name: Build
+        run: pnpm build
+
+      - name: Wait on Postgres
+        run: pnpm run wait-until-postgres-is-ready:pg_isready
+
+      - name: Wait on Inbucket
+        run: pnpm exec wait-on tcp:localhost:8129
+
+      - name: Wait on Svix
+        run: pnpm exec wait-on tcp:localhost:8113
+
+      - name: Wait on QStash
+        run: pnpm exec wait-on tcp:localhost:8125
+
+      - name: Wait on ClickHouse
+        run: pnpm exec wait-on http://localhost:8136/ping
+
+      - name: Initialize database
+        run: pnpm run db:init
+
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
+      - name: Start stack-backend in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm run start:backend --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start stack-mcp in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm run start:mcp --log-order=stream &
+          wait-on: |
+            http://localhost:8144/health
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start stack-dashboard in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm run start:dashboard --log-order=stream &
+          wait-on: |
+            http://localhost:8101
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start mock-oauth-server in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm run start:mock-oauth-server --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start run-email-queue in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-email-queue --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Wait 10 seconds
+        run: sleep 10
+
+      - name: Run AI-selected subset of tests
+        run: |
+          set -euo pipefail
+          echo "Running fast-fail subset: $SELECTED_TEST_FILES"
+          pnpm test run $SELECTED_TEST_FILES --reporter=verbose
+
+      - name: Print Docker Compose logs
+        if: always()
+        run: docker compose -f docker/dependencies/docker.compose.yaml logs
