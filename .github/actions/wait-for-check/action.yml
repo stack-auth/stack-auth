@@ -47,16 +47,19 @@ runs:
         while true; do
           # Gather matching check-runs across all candidate commits and dedupe by
           # id, so the same run reported under two SHAs isn't counted twice.
-          matching="[]"
+          # Responses can be large (up to 100 runs), so pipe them through files
+          # rather than passing them as jq argv (which hits ARG_MAX).
+          : > matching.jsonl
           for sha in $shas; do
-            response=$(curl -s -f \
+            curl -s -f \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100" \
-              || echo '{}')
-            matching=$(jq -c -n --argjson acc "$matching" --argjson resp "$response" --arg name "$CHECK_NAME" \
-              '$acc + [$resp.check_runs[]? | select(.name == $name)] | unique_by(.id)')
+              -o response.json || echo '{}' > response.json
+            jq -c --arg name "$CHECK_NAME" \
+              '.check_runs[]? | select(.name == $name)' response.json >> matching.jsonl || true
           done
+          matching=$(jq -s -c 'unique_by(.id)' matching.jsonl)
           count=$(echo "$matching" | jq 'length')
 
           if [ "$count" -eq 0 ]; then
