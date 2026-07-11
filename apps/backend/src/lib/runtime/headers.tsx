@@ -45,11 +45,16 @@ export function serializeSetCookie(name: string, value: string, options: Respons
   if (options.maxAge != null) {
     parts.push(`Max-Age=${Math.trunc(options.maxAge)}`);
   }
-  if (options.httpOnly === true) {
-    parts.push("HttpOnly");
-  }
+  // Emit Secure before HttpOnly to match the attribute order the pre-ElysiaJS
+  // (Next.js) backend produced. Cookie attribute order is semantically irrelevant
+  // per RFC 6265, but the e2e suite asserts the exact Set-Cookie string for the
+  // oauth-inner cookies (`...; Max-Age=N;( Secure;)? HttpOnly`), so keeping this
+  // order avoids a spurious regression there.
   if (options.secure === true) {
     parts.push("Secure");
+  }
+  if (options.httpOnly === true) {
+    parts.push("HttpOnly");
   }
 
   const sameSite = normalizeSameSite(options.sameSite);
