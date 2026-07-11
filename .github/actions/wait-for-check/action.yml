@@ -51,15 +51,25 @@ runs:
           # rather than passing them as jq argv (which hits ARG_MAX).
           : > matching.jsonl
           for sha in $shas; do
-            curl -s -f \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100" \
-              -o response.json || echo '{}' > response.json
-            jq -c --arg name "$CHECK_NAME" \
-              '.check_runs[]? | select(.name == $name)' response.json >> matching.jsonl || true
+            # Page through the check-runs API: a busy commit can have >100 runs,
+            # so the target might not be on the first page.
+            page=1
+            while true; do
+              curl -s -f \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100&page=${page}" \
+                -o response.json || echo '{}' > response.json
+              jq -c --arg name "$CHECK_NAME" \
+                '.check_runs[]? | select(.name == $name)' response.json >> matching.jsonl || true
+              page_count=$(jq '.check_runs | length' response.json 2>/dev/null || echo 0)
+              [ "$page_count" -lt 100 ] && break
+              page=$((page + 1))
+            done
           done
-          matching=$(jq -s -c 'unique_by(.id)' matching.jsonl)
+          # Keep only the most recent check-run (highest id) so a stale failed
+          # rerun doesn't block when a newer run of the same check succeeded.
+          matching=$(jq -s -c 'unique_by(.id) | (max_by(.id) // empty) | [.]' matching.jsonl)
           count=$(echo "$matching" | jq 'length')
 
           if [ "$count" -eq 0 ]; then
