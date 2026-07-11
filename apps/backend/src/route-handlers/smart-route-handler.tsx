@@ -1,7 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/node";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
@@ -9,7 +9,6 @@ import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, errorToNiceString } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
-import { NextRequest } from "next/server";
 import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
@@ -65,8 +64,8 @@ let concurrentRequestsInProcess = 0;
  * Catches any errors thrown in the handler and returns a 500 response with the thrown error message. Also logs the
  * request details.
  */
-export function handleApiRequest(handler: (req: NextRequest, options: any, requestId: string) => Promise<Response>): (req: NextRequest, options: any) => Promise<Response> {
-  return async (req: NextRequest, options: any) => {
+export function handleApiRequest(handler: (req: Request, options: any, requestId: string) => Promise<Response>): (req: Request, options: any) => Promise<Response> {
+  return async (req: Request, options: any) => {
     concurrentRequestsInProcess++;
     try {
       const requestId = generateSecureRandomString(80);
@@ -80,12 +79,13 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           "stack.process.concurrent-requests": concurrentRequestsInProcess,
         },
       }, async (span) => {
+        const requestUrl = new URL(req.url);
         // Set Sentry scope to include request details
         Sentry.setContext("stack-request", {
           requestId: requestId,
           method: req.method,
           url: req.url,
-          query: Object.fromEntries(req.nextUrl.searchParams),
+          query: Object.fromEntries(requestUrl.searchParams),
           headers: Object.fromEntries(req.headers),
         });
 
@@ -121,11 +121,11 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             ...allowedLongRequestPaths,
             ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
           ];
-          const warnAfterSeconds = allAllowedLongRequestPaths.includes(req.nextUrl.pathname) ? 240 : 12;
+          const warnAfterSeconds = allAllowedLongRequestPaths.includes(requestUrl.pathname) ? 240 : 12;
           runAsynchronously(async () => {
             await wait(warnAfterSeconds * 1000);
             if (!hasRequestFinished) {
-              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${requestUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
             }
           });
 
@@ -135,10 +135,10 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const time = (performance.now() - timeStart);
 
           // Record request stats for dev-stats page
-          recordRequestStats(req.method, req.nextUrl.pathname, time);
+          recordRequestStats(req.method, requestUrl.pathname, time);
 
           if ([301, 302].includes(res.status)) {
-            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
+            throw new HexclaveAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: requestUrl, req, res });
           }
           if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
           return res;
@@ -201,7 +201,7 @@ export type SmartRouteHandler<
   Req extends DeepPartialSmartRequestWithSentinel = DeepPartialSmartRequestWithSentinel,
   Res extends SmartResponse = SmartResponse,
   InitArgs extends [readonly OverloadParam[], SmartRouteHandlerOverloadGenerator<OverloadParam, Req, Res>] | [SmartRouteHandlerOverload<Req, Res>] = any,
-> = ((req: NextRequest, options: any) => Promise<Response>) & {
+> = ((req: Request, options: any) => Promise<Response>) & {
   overloads: Map<OverloadParam, SmartRouteHandlerOverload<Req, Res>>,
   invoke: (smartRequest: SmartRequest) => Promise<Res>,
   initArgs: InitArgs,
@@ -247,7 +247,7 @@ export function createSmartRouteHandler<
     throw new HexclaveAssertionError("Duplicate overload parameters");
   }
 
-  const invoke = async (nextRequest: NextRequest | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
+  const invoke = async (nextRequest: Request | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
     const reqsParsed: [[Req, SmartRequest], SmartRouteHandlerOverload<Req, Res>][] = [];
     const reqsErrors: unknown[] = [];
     for (const [overloadParam, overload] of overloads.entries()) {

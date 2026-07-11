@@ -1,8 +1,10 @@
-import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { getSafeExternalPostgresClientOptions } from "@/lib/ssrf-protection/external-db-sync";
+import { globalPrismaClient } from "@/prisma-client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { traceSpan } from "@/utils/telemetry";
+import { KnownErrors } from "@hexclave/shared";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import {
   adaptSchema,
@@ -14,11 +16,9 @@ import {
   yupString,
 } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { errorToNiceString, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { errorToNiceString, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { Client } from "pg";
-import { KnownErrors } from "@hexclave/shared";
-import { traceSpan } from "@/utils/telemetry";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;
 
