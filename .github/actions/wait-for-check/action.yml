@@ -25,28 +25,38 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
-        # For pull_request events the PR head SHA is where the checks live; for
-        # push events it's just the pushed commit.
-        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        # A check-run can be reported against either the commit the workflow ran
+        # on (`github.sha`, the merge commit for pull_request events) or the PR
+        # head commit, depending on the event. Poll both, like all-good.yaml.
+        MERGE_SHA: ${{ github.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         CHECK_NAME: ${{ inputs.check-name }}
         TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
       run: |
         set -euo pipefail
-        echo "Waiting for check \"${CHECK_NAME}\" on ${REPO}@${SHA}..."
+
+        shas="$MERGE_SHA"
+        if [ -n "${HEAD_SHA:-}" ] && [ "$HEAD_SHA" != "$MERGE_SHA" ]; then
+          shas="$shas $HEAD_SHA"
+        fi
+        echo "Waiting for check \"${CHECK_NAME}\" on ${REPO} (commits: ${shas})..."
 
         deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
 
         while true; do
-          response=$(curl -s -f \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/commits/${SHA}/check-runs?per_page=100" \
-            || echo '{}')
-
-          # All check-runs that share our target name (there is normally exactly one).
-          matching=$(echo "$response" | jq -c --arg name "$CHECK_NAME" \
-            '[.check_runs[]? | select(.name == $name)]')
+          # Gather matching check-runs across all candidate commits and dedupe by
+          # id, so the same run reported under two SHAs isn't counted twice.
+          matching="[]"
+          for sha in $shas; do
+            response=$(curl -s -f \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100" \
+              || echo '{}')
+            matching=$(jq -c -n --argjson acc "$matching" --argjson resp "$response" --arg name "$CHECK_NAME" \
+              '$acc + [$resp.check_runs[]? | select(.name == $name)] | unique_by(.id)')
+          done
           count=$(echo "$matching" | jq 'length')
 
           if [ "$count" -eq 0 ]; then
