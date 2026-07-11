@@ -69,7 +69,7 @@ runs:
           done
           # Keep only the most recent check-run (highest id) so a stale failed
           # rerun doesn't block when a newer run of the same check succeeded.
-          matching=$(jq -s -c 'unique_by(.id) | (max_by(.id) // empty) | [.]' matching.jsonl)
+          matching=$(jq -s -c 'unique_by(.id) | if length == 0 then [] else [max_by(.id)] end' matching.jsonl)
           count=$(echo "$matching" | jq 'length')
 
           if [ "$count" -eq 0 ]; then
