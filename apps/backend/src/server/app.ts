@@ -18,10 +18,27 @@ const globalSecurityHeaders = {
   "Content-Security-Policy": "",
 };
 const knownHttpMethods = new Set<string>(httpMethodNames);
+const developmentRequestStartTimes = new WeakMap<Request, number>();
+const shouldLogDevelopmentRequests = getNodeEnvironment() === "development";
 
 export const app = new Elysia({
   adapter: node(),
 })
+  .onRequest(({ request }) => {
+    if (shouldLogDevelopmentRequests) {
+      developmentRequestStartTimes.set(request, performance.now());
+    }
+  })
+  .onAfterResponse(({ request, set }) => {
+    if (!shouldLogDevelopmentRequests) {
+      return;
+    }
+
+    const startTime = developmentRequestStartTimes.get(request);
+    const elapsedMilliseconds = startTime == null ? "unknown" : (performance.now() - startTime).toFixed(1);
+    const pathname = new URL(request.url).pathname;
+    console.log(`[Elysia] ${request.method} ${pathname} ${set.status} ${elapsedMilliseconds}ms`);
+  })
   .get("/", () => htmlResponse(homeHtml()))
   .get("/dev-stats", () => htmlResponse(devStatsHtml()))
   .get("/health/error-handler-debug", () => htmlResponse(errorHandlerDebugHtml()))
