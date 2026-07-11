@@ -1,4 +1,4 @@
-import { replaceConfigObject, updateConfigObject } from "@hexclave/shared-backend";
+import { replaceConfigObject } from "@hexclave/shared-backend";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
@@ -217,8 +217,20 @@ export function resolveConfigFilePathForPull(opts: { configFile?: string }, cwd:
   return candidate;
 }
 
-export function shouldReplaceConfigFileForPull(filePath: string, opts: { overwrite?: boolean }): boolean {
-  return opts.overwrite === true || !fs.existsSync(filePath);
+// `config pull` means "download the entire branch config into a fresh local file". It always writes
+// the whole file (via replaceConfigObject) and never edits an existing file in place. In-place,
+// hand-authored-preserving edits are the job of the config *update* flow (e.g. from the RDE), which
+// routes through updateConfigObject's agent-assisted rewrite — that path is intentionally not
+// reachable from `pull`.
+//
+// Because pull writes the whole file, it would clobber whatever is already at the target path. To
+// avoid silently destroying a hand-authored config, we refuse to write over an existing file and
+// require the user to opt in explicitly with --overwrite.
+export function assertConfigPullTarget(filePath: string, opts: { overwrite?: boolean }): void {
+  if (opts.overwrite === true) return;
+  if (fs.existsSync(filePath)) {
+    throw new CliError(`A config file already exists at ${filePath}. Pass --overwrite to replace it with the pulled config, or remove the file first.`);
+  }
 }
 
 export function registerConfigCommand(program: Command) {
@@ -231,30 +243,28 @@ export function registerConfigCommand(program: Command) {
     .description("Pull branch config to a local file")
     .option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)")
     .option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory")
-    .option("--overwrite", "Overwrite an existing config file instead of updating it in place")
+    .option("--overwrite", "Replace the config file if one already exists at the target path")
     .action(async (opts) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
       if (!isProjectAuthWithRefreshToken(auth)) {
         throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
       }
+      // Resolve and validate the target file before any network work so we fail fast (e.g. when the
+      // target already exists without --overwrite) instead of paying for a wasted round-trip.
+      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
+      const ext = path.extname(filePath);
+      if (ext !== ".ts") {
+        throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
+      }
+      assertConfigPullTarget(filePath, opts);
+
       const project = await getAdminProject(auth);
 
       const configOverride = await project.getConfigOverride("branch");
       if (!isValidConfig(configOverride)) {
         throw new CliError("Pulled branch config is not a valid local config object.");
       }
-      const filePath = resolveConfigFilePathForPull(opts, process.cwd());
-      const ext = path.extname(filePath);
-
-      if (ext !== ".ts") {
-        throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
-      }
-
-      if (shouldReplaceConfigFileForPull(filePath, opts)) {
-        await replaceConfigObject(filePath, configOverride);
-      } else {
-        await updateConfigObject(filePath, configOverride);
-      }
+      await replaceConfigObject(filePath, configOverride);
       console.log(`Config written to ${filePath}`);
     });
 

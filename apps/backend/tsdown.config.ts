@@ -26,6 +26,15 @@ const externalPackages = [
   "oidc-provider",
   "pg",
   "sharp",
+  // @aws-sdk and @smithy use complex class hierarchies that rolldown mis-scopes
+  // when bundled, emitting references to hoisted classes before they're defined
+  // (e.g. "ReferenceError: StructureSchema$1 is not defined" when the server
+  // bundle boots via `node dist/server.mjs`). Keep them external so Node resolves
+  // them from node_modules at runtime, which is always present alongside the
+  // bundle (Docker image, CI runner, Vercel NFT trace). Mirrors the same fix in
+  // scripts/db-migrations.tsdown.config.ts.
+  "@aws-sdk",
+  "@smithy",
 ];
 
 const nodeBuiltins = builtinModules.flatMap((moduleName) => [moduleName, `node:${moduleName}`]);
