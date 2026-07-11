@@ -1,0 +1,19 @@
+apps/backend/src/server/app.ts
+  s_1819a09e56fe29::t_c2f5757a0e9cec 21-22,27-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "aa4225665b17e2363bd84b466ded420ae1ebd306",
+  "prompts": {},
+  "sessions": {
+    "s_1819a09e56fe29": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7de5a77f-3202-4fb2-a15d-5ef94b1b72a7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
