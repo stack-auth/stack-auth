@@ -5,8 +5,9 @@ import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib
 import { node } from "@elysiajs/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { Elysia } from "elysia";
-import { runRequestPipeline } from "./middleware";
 import { createBackendRequest } from "./backend-request";
+import { handleUncaughtBackendError } from "./error-handler";
+import { runRequestPipeline } from "./middleware";
 import { MalformedRouteParamError, matchRoute } from "./registry";
 
 const globalSecurityHeaders = {
@@ -39,6 +40,7 @@ export const app = new Elysia({
     const pathname = new URL(request.url).pathname;
     console.log(`[Elysia] ${request.method} ${pathname} ${set.status} ${elapsedMilliseconds}ms`);
   })
+  .onError(({ error }) => withGlobalHeaders(handleUncaughtBackendError(error)))
   .get("/", () => htmlResponse(homeHtml()))
   .get("/dev-stats", () => htmlResponse(devStatsHtml()))
   .get("/health/error-handler-debug", () => htmlResponse(errorHandlerDebugHtml()))
