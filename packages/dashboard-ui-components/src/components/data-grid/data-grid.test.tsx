@@ -204,7 +204,9 @@ function InteractiveDataGridHarness(props: {
   );
 }
 
-function WideDataGridHarness() {
+function WideDataGridHarness(props: {
+  horizontalScrollbarPosition?: "top" | "bottom",
+} = {}) {
   const [state, setState] = useState(() => createDefaultDataGridState(wideColumns));
 
   return (
@@ -215,6 +217,7 @@ function WideDataGridHarness() {
         getRowId={(row) => row.id}
         state={state}
         onChange={setState}
+        horizontalScrollbarPosition={props.horizontalScrollbarPosition}
       />
     </div>
   );
@@ -577,5 +580,34 @@ describe("DataGrid horizontal scrolling", () => {
     expect(stickyChrome).toBeInstanceOf(HTMLElement);
     expect((stickyChrome as HTMLElement).className).toContain("overflow-visible");
     expect(container.textContent).toContain("Email");
+  });
+
+  it("puts the horizontal scrollbar under the column headers when position is top", () => {
+    const { container } = render(<WideDataGridHarness horizontalScrollbarPosition="top" />);
+
+    const stickyChrome = container.querySelector('[role="grid"]')?.firstElementChild;
+    expect(stickyChrome).toBeInstanceOf(HTMLElement);
+    const headerScroll = stickyChrome?.querySelector(".overflow-x-auto");
+    expect(headerScroll).toBeInstanceOf(HTMLElement);
+
+    const bodyScroll = container.querySelector('[role="grid"]')?.children.item(1);
+    expect(bodyScroll).toBeInstanceOf(HTMLElement);
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-x-hidden");
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-y-auto");
+
+    Object.defineProperty(headerScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+    Object.defineProperty(bodyScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    (headerScroll as HTMLElement).scrollLeft = 120;
+    fireEvent.scroll(headerScroll as HTMLElement);
+    expect((bodyScroll as HTMLElement).scrollLeft).toBe(120);
   });
 });
