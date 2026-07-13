@@ -4,6 +4,7 @@
   "rewrites": [
     { "source": "/api/:version/internal/config/github/apply", "destination": "/api/config-github-apply" },
     { "source": "/api/:version/internal/config/github/commit", "destination": "/api/config-github-commit" },
+    { "source": "/api/:version/internal/config/github/cancel", "destination": "/api/config-github-cancel" },
     { "source": "/(.*)", "destination": "/api" }
   ],
   "crons": [

@@ -2,11 +2,13 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("Vercel function durations", () => {
-  it("preserves the route-specific limits from the Next.js deployment", async () => {
-    const [vercelJson, applyEntry, commitEntry] = await Promise.all([
+  it("preserves inherited and route-specific limits from the Next.js deployment", async () => {
+    const [vercelJson, defaultEntry, applyEntry, commitEntry, cancelEntry] = await Promise.all([
       readFile(new URL("../../vercel.json", import.meta.url), "utf8"),
+      readFile(new URL("../../api/index.ts", import.meta.url), "utf8"),
       readFile(new URL("../../api/config-github-apply.ts", import.meta.url), "utf8"),
       readFile(new URL("../../api/config-github-commit.ts", import.meta.url), "utf8"),
+      readFile(new URL("../../api/config-github-cancel.ts", import.meta.url), "utf8"),
     ]);
 
     expect(JSON.parse(vercelJson)).toMatchObject({
@@ -20,12 +22,18 @@ describe("Vercel function durations", () => {
           destination: "/api/config-github-commit",
         },
         {
+          source: "/api/:version/internal/config/github/cancel",
+          destination: "/api/config-github-cancel",
+        },
+        {
           source: "/(.*)",
           destination: "/api",
         },
       ],
     });
+    expect(defaultEntry).not.toContain("maxDuration");
     expect(applyEntry).toContain("maxDuration: 800");
     expect(commitEntry).toContain("maxDuration: 120");
+    expect(cancelEntry).toContain("maxDuration: 60");
   });
 });
