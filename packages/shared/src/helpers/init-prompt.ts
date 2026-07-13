@@ -9,7 +9,7 @@ The Hexclave CLI already created or linked this project to a local Hexclave deve
 ${configPath}
 \`\`\`
 
-Do not create or link another Hexclave project. When the SDK setup instructions mention creating \`stack.config.ts\` or wrapping the dev script with \`stack dev --config-file\`, use the config file path above.
+Do not create or link another Hexclave project. When the SDK setup instructions mention creating \`hexclave.config.ts\` or wrapping the dev script with \`hexclave dev --config-file\`, use the config file path above.
 `;
   }
 
@@ -26,7 +26,7 @@ HEXCLAVE SETUP INSTRUCTIONS
 
 These instructions describe how to set up Hexclave.
 ${web ? `
-First of all, if you have access to a terminal, it is better to use \`npx @hexclave/cli init\`.
+First of all, use the full setup prompt below as the source of truth. Do not run the Hexclave CLI initializer unless the user explicitly asks for the CLI workflow.
 ` : ""}
 
 ${getCliProjectSetupContext(configPath)}

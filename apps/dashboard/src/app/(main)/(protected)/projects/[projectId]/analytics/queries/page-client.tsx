@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
@@ -33,7 +33,7 @@ import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
-import { useAdminApp } from "../../use-admin-app";
+import { useAdminApp, useServerApp } from "../../use-admin-app";
 import {
   AnalyticsEventLimitBanner,
   ErrorDisplay,
@@ -324,6 +324,7 @@ function DeleteConfirmDialog({
 // Main content component
 function QueriesContent() {
   const adminApp = useAdminApp();
+  const serverApp = useServerApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
@@ -377,7 +378,7 @@ function QueriesContent() {
     setHasQueried(true);
 
     try {
-      const response = await adminApp.queryAnalytics({
+      const response = await serverApp.queryAnalytics({
         query: trimmedQuery,
         include_all_branches: false,
         timeout_ms: 30000,
@@ -395,7 +396,7 @@ function QueriesContent() {
     } finally {
       setLoading(false);
     }
-  }, [adminApp, sqlQuery]);
+  }, [serverApp, sqlQuery]);
 
   const handleSelectQuery = (folderId: string, query: { id: string, displayName: string, sqlQuery: string, description?: string }) => {
     setSelectedFolderId(folderId);

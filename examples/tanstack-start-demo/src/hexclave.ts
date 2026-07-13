@@ -9,7 +9,7 @@ function replaceHexclavePortPrefix(value: string): string {
 }
 
 function getStackApiUrl(): string {
-  const configured = import.meta.env.VITE_STACK_API_URL as string | undefined;
+  const configured = (import.meta.env.VITE_HEXCLAVE_API_URL || import.meta.env.VITE_STACK_API_URL) as string | undefined;
   return configured ? replaceHexclavePortPrefix(configured) : `http://localhost:${getPortPrefix()}02`;
 }
 

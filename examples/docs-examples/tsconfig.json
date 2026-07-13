@@ -14,16 +14,19 @@
     "noErrorTruncation": true,
     "module": "esnext",
     "moduleResolution": "Bundler",
+    "noUncheckedSideEffectImports": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "incremental": true,
     "jsx": "preserve",
-    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"
       }
     ],
+    "paths": {
+      "src/*": ["./src/*"]
+    },
     "strictNullChecks": true,
     "skipLibCheck": true
   },

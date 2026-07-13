@@ -26,6 +26,8 @@ export type PushConfigOptions = {
 export type Project = {
   readonly id: string,
   readonly displayName: string,
+  readonly pushedConfigError: { message: string } | null,
+  readonly configWarnings: { message: string }[],
   readonly config: ProjectConfig,
 };
 
@@ -38,6 +40,7 @@ export type AdminProject = {
   readonly isDevelopmentEnvironment: boolean,
   readonly ownerTeamId: string | null,
   readonly onboardingStatus: ProjectOnboardingStatus,
+  readonly onboardingState: NonNullable<ProjectsCrud["Admin"]["Read"]["onboarding_state"]> | null,
   readonly logoUrl: string | null | undefined,
   readonly logoFullUrl: string | null | undefined,
   readonly logoDarkModeUrl: string | null | undefined,
@@ -176,17 +179,19 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
         domain: d.domain,
         handler_path: d.handlerPath
       })),
-      oauth_providers: options.config?.oauthProviders?.map((p) => ({
-        id: p.id as any,
-        type: p.type,
-        ...(p.type === 'standard' && {
-          client_id: p.clientId,
-          client_secret: p.clientSecret,
-          facebook_config_id: p.facebookConfigId,
-          microsoft_tenant_id: p.microsoftTenantId,
-          apple_bundle_ids: p.appleBundleIds,
-        }),
-      })),
+      oauth_providers: options.config?.oauthProviders
+        ?.filter((p): p is Exclude<typeof p, { type: 'custom_oidc' }> => p.type !== 'custom_oidc')
+        .map((p) => ({
+          id: p.id as any,
+          type: p.type,
+          ...(p.type === 'standard' && {
+            client_id: p.clientId,
+            client_secret: p.clientSecret,
+            facebook_config_id: p.facebookConfigId,
+            microsoft_tenant_id: p.microsoftTenantId,
+            apple_bundle_ids: p.appleBundleIds,
+          }),
+        })),
       email_config: options.config?.emailConfig && (
         options.config.emailConfig.type === 'shared' ? {
           type: 'shared',

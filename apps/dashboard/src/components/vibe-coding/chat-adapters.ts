@@ -361,10 +361,11 @@ export async function* streamDashboardCode(
     options?.enabledAppIds,
   );
 
-  // Only give the agent the sql-query tool when we know which project to scope it to.
-  // Without projectId, the tool would fall back to the internal project — wrong target.
+  // Only give the agent the sql-query and read-config tools when we know which
+  // project to scope them to. Without projectId, they would fall back to the
+  // internal project — wrong target.
   const tools = options?.projectId
-    ? ["update-dashboard", "patch-dashboard", "sql-query"]
+    ? ["update-dashboard", "patch-dashboard", "sql-query", "read-config"]
     : ["update-dashboard", "patch-dashboard"];
 
   const chunkStream = await sendAiStreamRequest(
@@ -372,7 +373,7 @@ export async function* streamDashboardCode(
     currentUser,
     {
       quality: "smart",
-      speed: "slow",
+      speed: "fast",
       systemPrompt: "create-dashboard",
       tools,
       messages: [...contextMessages, ...messages],
@@ -410,14 +411,14 @@ export async function generateDashboardCode(
     options?.enabledAppIds,
   );
   const tools = options?.projectId
-    ? ["update-dashboard", "patch-dashboard", "sql-query"]
+    ? ["update-dashboard", "patch-dashboard", "sql-query", "read-config"]
     : ["update-dashboard", "patch-dashboard"];
   const rawContent = await sendAiRequest(
     backendBaseUrl,
     currentUser,
     {
       quality: "smart",
-      speed: "slow",
+      speed: "fast",
       systemPrompt: "create-dashboard",
       tools,
       messages: [...contextMessages, ...messages],

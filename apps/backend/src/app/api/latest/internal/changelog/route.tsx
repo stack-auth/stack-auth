@@ -1,10 +1,9 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import * as fs from "fs/promises";
 import * as path from "path";
-
-const REVALIDATE_SECONDS = 60 * 60;
 
 type ChangeType = "major" | "minor" | "patch";
 
@@ -131,11 +130,10 @@ export const GET = createSmartRouteHandler({
     method: yupString().oneOf(["GET"]).defined(),
   }),
   response: yupObject({
-    statusCode: yupNumber().oneOf([200, 502]).defined(),
+    statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      entries: yupArray(changelogEntrySchema).optional(),
-      error: yupString().optional(),
+      entries: yupArray(changelogEntrySchema).defined(),
     }).defined(),
   }),
   handler: async () => {
@@ -173,17 +171,10 @@ export const GET = createSmartRouteHandler({
         "Accept": "text/plain",
         "User-Agent": "stack-auth-backend-changelog",
       },
-      next: {
-        revalidate: REVALIDATE_SECONDS,
-      },
     });
 
     if (!response.ok) {
-      return {
-        statusCode: 502,
-        bodyType: "json",
-        body: { error: "Failed to download changelog" },
-      } as const;
+      throw new HexclaveAssertionError(`Changelog fetch failed with status ${response.status}`, { changelogUrl });
     }
 
     const content = await response.text();

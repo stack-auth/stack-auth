@@ -3,8 +3,9 @@ import "server-only";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { generateText, stepCountIs } from "ai";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { generateText, Output, stepCountIs } from "ai";
+import { z } from "zod";
 import { callReducerStrict, opt } from "./spacetimedb-client";
 import { getVerifiedQaContext } from "./verified-qa";
 
@@ -17,15 +18,7 @@ Your tasks:
 
 The repo name for all tool calls is "stack-auth/stack-auth". Only use the repository documentation tools (read_wiki_structure, read_wiki_contents, ask_question) — do not create sessions or modify any other resources.
 
-You MUST respond with ONLY valid JSON matching this exact schema (no markdown, no explanation outside the JSON):
-{
-  "needsHumanReview": boolean,
-  "answerCorrect": boolean,
-  "answerRelevant": boolean,
-  "flags": [{"type": string, "severity": "low" | "medium" | "high" | "critical", "explanation": string}],
-  "improvementSuggestions": string,
-  "overallScore": number
-}
+Produce a structured review. For each issue you find, add an entry to "flags" with a type, severity (one of "low", "medium", "high", "critical"), and explanation.
 
 Flag types: "factual_error", "incomplete_answer", "off_topic", "hallucination", "outdated_info", "missing_context", "misleading", "reason_mismatch"
 
@@ -39,6 +32,21 @@ Scoring:
 Set needsHumanReview=true if: score < 50, any critical flag, or you are uncertain about correctness.`;
 
 const REVIEW_MODEL_ID = "x-ai/grok-build-0.1";
+
+const qaReviewSchema = z.object({
+  needsHumanReview: z.boolean(),
+  answerCorrect: z.boolean(),
+  answerRelevant: z.boolean(),
+  flags: z.array(z.object({
+    type: z.string(),
+    severity: z.string(),
+    explanation: z.string(),
+  })),
+  // Optional in practice: the model omits this for good answers with nothing to suggest.
+  // Defaulting (rather than requiring) avoids turning those into structured-output failures.
+  improvementSuggestions: z.string().default(""),
+  overallScore: z.number(),
+});
 
 function createOpenRouterProvider() {
   return createOpenRouter({
@@ -117,6 +125,7 @@ export async function reviewMcpCall(accessToken: string, entry: {
       // still validated by the MCP client/tool schemas.
       tools: mcpTools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(10),
+      output: Output.object({ schema: qaReviewSchema }),
       messages: [{ role: "user", content: userMessage }],
       abortSignal: controller.signal,
       maxOutputTokens: 2000,
@@ -137,35 +146,21 @@ export async function reviewMcpCall(accessToken: string, entry: {
       };
     });
 
-    const raw = extractJsonObject(result.text);
-    if (raw == null) {
-      throw new HexclaveAssertionError(`No valid JSON object found in QA review response: ${result.text.slice(0, 200)}`);
-    }
-    if (
-      typeof raw.needsHumanReview !== "boolean" ||
-      typeof raw.answerCorrect !== "boolean" ||
-      typeof raw.answerRelevant !== "boolean" ||
-      !Array.isArray(raw.flags) ||
-      typeof raw.improvementSuggestions !== "string" ||
-      typeof raw.overallScore !== "number" ||
-      !Number.isFinite(raw.overallScore)
-    ) {
-      throw new HexclaveAssertionError(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
-    }
-
-    const flags = raw.flags.filter((flag): flag is { type: unknown, severity: unknown, explanation: unknown } => (
-      typeof flag === "object" && flag !== null
-    ));
-    const overallScore = Math.max(0, Math.min(100, Math.round(raw.overallScore)));
-    const hasCriticalFlag = flags.some(flag => flag.severity === "critical");
-    const needsHumanReview = raw.needsHumanReview || overallScore < 50 || hasCriticalFlag;
+    // The model is constrained to the schema via structured output, so the result is
+    // already a validated object — no fragile text extraction or JSON.parse needed.
+    // If the model fails to produce schema-conforming output, generateText throws and
+    // we fail open below (row stays unreviewed), same as the old parse-failure path.
+    const parsed = result.output;
+    const overallScore = Math.max(0, Math.min(100, Math.round(parsed.overallScore)));
+    const hasCriticalFlag = parsed.flags.some(flag => flag.severity === "critical");
+    const needsHumanReview = parsed.needsHumanReview || overallScore < 50 || hasCriticalFlag;
 
     update = {
       qaNeedsHumanReview: needsHumanReview,
-      qaAnswerCorrect: raw.answerCorrect,
-      qaAnswerRelevant: raw.answerRelevant,
-      qaFlagsJson: JSON.stringify(raw.flags),
-      qaImprovementSuggestions: raw.improvementSuggestions,
+      qaAnswerCorrect: parsed.answerCorrect,
+      qaAnswerRelevant: parsed.answerRelevant,
+      qaFlagsJson: JSON.stringify(parsed.flags),
+      qaImprovementSuggestions: parsed.improvementSuggestions,
       qaOverallScore: overallScore,
       qaConversationJson: JSON.stringify(conversation),
       qaErrorMessage: undefined,
@@ -204,69 +199,4 @@ export async function reviewMcpCall(accessToken: string, entry: {
   } catch (err) {
     captureError("internal-tool-qa-reviewer-update-reducer-failed", err);
   }
-}
-
-function extractJsonObject(text: string): Record<string, unknown> | null {
-  const tryParse = (value: string): Record<string, unknown> | null => {
-    try {
-      const parsed: unknown = JSON.parse(value);
-      return isRecord(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const trimmed = text.trim();
-  const direct = tryParse(trimmed);
-  if (direct) return direct;
-
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fenceMatch) {
-    const fenced = tryParse(fenceMatch[1].trim());
-    if (fenced) return fenced;
-  }
-
-  const candidates: string[] = [];
-  for (let i = 0; i < trimmed.length; i++) {
-    if (trimmed[i] !== "{") continue;
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-    for (let j = i; j < trimmed.length; j++) {
-      const c = trimmed[j];
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (c === "\\") {
-        escape = true;
-        continue;
-      }
-      if (c === "\"") {
-        inString = !inString;
-        continue;
-      }
-      if (inString) continue;
-      if (c === "{") depth += 1;
-      if (c === "}") {
-        depth -= 1;
-        if (depth === 0) {
-          candidates.push(trimmed.slice(i, j + 1));
-          break;
-        }
-      }
-    }
-  }
-
-  candidates.sort((a, b) => b.length - a.length);
-  for (const candidate of candidates) {
-    const parsed = tryParse(candidate);
-    if (parsed) return parsed;
-  }
-
-  return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

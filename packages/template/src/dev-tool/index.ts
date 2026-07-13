@@ -5,6 +5,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import { canMountIntoDom } from "../in-page-ui/dom";
+import { envVars } from "../generated/env";
 import type { createDevTool as CreateDevToolFn } from "./dev-tool-core";
 
 // Hexclave rebrand: UI-only local pref — straight rename (one-time reset is harmless)
@@ -19,10 +20,28 @@ function getOverride(): boolean | null {
   return null;
 }
 
+let activeDevToolOption: true | "auto" | undefined = undefined;
+
 function shouldShow(): boolean {
   const override = getOverride();
   if (override !== null) return override;
   if (!canMountIntoDom()) return false;
+
+  // If devTool was explicitly set to true, always show
+  if (activeDevToolOption === true) return true;
+
+  // "auto" behavior (the default):
+  const nodeEnv = envVars.NODE_ENV;
+  if (nodeEnv !== undefined) {
+    // NODE_ENV is available (bundler/process env exists) — only show in development
+    return nodeEnv === "development";
+  }
+
+  // NODE_ENV not found (no process.env/import.meta) — show on localhost or file: protocol
+  try {
+    const url = new URL(window.location.href);
+    if (url.protocol === "file:") return true;
+  } catch {}
   return isLocalhost(window.location.href);
 }
 
@@ -68,17 +87,19 @@ function tryMount() {
 /**
  * Mounts the Hexclave dev tool on the page.
  *
- * - Only renders on localhost (or when overridden via console)
- * - Lazily loads the dev tool UI via dynamic import
- * - Returns a cleanup function to unmount
+ * Visibility is determined by the `devTool` option:
+ * - `true`: always show
+ * - `false`: never show (caller gates this — mountDevTool won't be called)
+ * - `"auto"` / `undefined`: show based on NODE_ENV or localhost/file: heuristics
  *
  * Console commands (also work in production):
  *   HexclaveDevTool.enable()  — force-show the dev tool
  *   HexclaveDevTool.disable() — force-hide the dev tool
- *   HexclaveDevTool.reset()   — revert to default (localhost-only)
+ *   HexclaveDevTool.reset()   — revert to auto behavior
  */
-export function mountDevTool(app: StackClientApp<true>): () => void {
+export function mountDevTool(app: StackClientApp<true>, devToolOption?: boolean | "auto"): () => void {
   activeApp = app;
+  activeDevToolOption = devToolOption === false ? undefined : devToolOption ?? undefined;
   tryMount();
 
   // Capture the cleanup created by THIS specific mount call so that React
@@ -126,7 +147,7 @@ if (typeof window !== 'undefined') {
         activeCleanup();
         activeCleanup = null;
       }
-      console.log('[Stack DevTool] Reset to default (visible on localhost only).');
+      console.log('[Stack DevTool] Reset to default (auto-detect based on NODE_ENV or localhost/file: origin).');
     },
   };
 }

@@ -102,6 +102,7 @@ it("creates a new project", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "Test Project",
@@ -114,10 +115,48 @@ it("creates a new project", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("updates onboarding status and state together without modifying config", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const beforeResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+  });
+  expect(beforeResponse.status).toBe(200);
+
+  const onboardingState = {
+    selected_config_choice: "create-new" as const,
+    selected_apps: ["authentication", "emails", "payments"] as const,
+    selected_sign_in_methods: ["credential", "magicLink"] as const,
+    selected_email_theme_id: "a0172b5d-cff0-463b-83bb-85124697373a",
+    selected_payments_country: "US" as const,
+  };
+
+  const patchResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+    method: "PATCH",
+    body: {
+      onboarding_status: "auth_setup",
+      onboarding_state: onboardingState,
+    },
+  });
+  expect(patchResponse.status).toBe(200);
+  expect(patchResponse.body.onboarding_status).toBe("auth_setup");
+  expect(patchResponse.body.onboarding_state).toEqual(onboardingState);
+  expect(patchResponse.body.config).toEqual(beforeResponse.body.config);
+
+  const afterResponse = await niceBackendFetch("/api/v1/internal/projects/current", {
+    accessType: "admin",
+  });
+  expect(afterResponse.status).toBe(200);
+  expect(afterResponse.body.onboarding_status).toBe("auth_setup");
+  expect(afterResponse.body.onboarding_state).toEqual(onboardingState);
+  expect(afterResponse.body.config).toEqual(beforeResponse.body.config);
 });
 
 it("creates a new project with different configurations", async ({ expect }) => {
@@ -160,6 +199,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Test description",
         "display_name": "Test Project",
@@ -172,6 +212,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -220,6 +261,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "Test Project",
@@ -232,6 +274,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -271,6 +314,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "Test Project",
@@ -283,6 +327,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -336,6 +381,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "Test Project",
@@ -348,6 +394,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -403,6 +450,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "Test Project",
@@ -415,6 +463,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -453,6 +502,7 @@ it("lists the current projects after creating a new project", async ({ expect })
               "team_member_default_permissions": [{ "id": "team_member" }],
               "user_default_permissions": [],
             },
+            "config_warnings": [],
             "created_at_millis": <stripped field 'created_at_millis'>,
             "description": "",
             "display_name": "New Project",
@@ -465,6 +515,7 @@ it("lists the current projects after creating a new project", async ({ expect })
             "logo_url": null,
             "onboarding_status": "completed",
             "owner_team_id": "<stripped UUID>",
+            "pushed_config_error": null,
           },
         ],
       },
@@ -509,6 +560,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -521,6 +573,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -554,6 +607,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -566,6 +620,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -609,6 +664,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -621,6 +677,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -667,6 +724,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -679,6 +737,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -742,6 +801,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -754,6 +814,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
         "logo_url": "http://localhost:<$NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

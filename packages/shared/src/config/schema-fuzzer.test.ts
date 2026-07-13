@@ -61,17 +61,6 @@ const branchSchemaFuzzerConfig = [{
     }],
     signUpRulesDefaultAction: ["allow", "reject"],
   }],
-  dbSync: [{
-    externalDatabases: [{
-      "some-external-db-id": [{
-        type: ["postgres"] as const,
-        connectionString: [
-          "postgres://user:password@host:port/database",
-          "some-connection-string",
-        ],
-      }],
-    }],
-  }],
   dataVault: [{
     stores: [{
       "some-store-id": [{
@@ -216,6 +205,9 @@ const environmentSchemaFuzzerConfig = [{
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
         appleBundles: [{ "some-bundle-id": [{ bundleId: ["com.example.app"] }] }],
+        issuerUrl: [undefined, "https://accounts.google.com"] as (string | undefined)[],
+        scope: [undefined, "openid email profile"] as (string | undefined)[],
+        displayName: [undefined, "My OIDC Provider"] as (string | undefined)[],
       }]]))] as const,
     }],
   }],
@@ -246,6 +238,17 @@ const environmentSchemaFuzzerConfig = [{
   payments: [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
+  }],
+  dbSync: [{
+    externalDatabases: [{
+      "some-external-db-id": [{
+        type: ["postgres"] as const,
+        connectionString: [
+          "postgres://user:password@db.example.com:5432/database",
+          "postgresql://user:password@db.example.net/database",
+        ],
+      }],
+    }],
   }],
   analytics: [{
     queryFolders: [{

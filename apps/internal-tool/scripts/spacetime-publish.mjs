@@ -10,8 +10,9 @@ const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
 
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
-  if (process.env.STACK_SPACETIME_PUBLISH_URL) {
-    return process.env.STACK_SPACETIME_PUBLISH_URL;
+  const publishUrl = resolveHexclaveStackEnvVar("HEXCLAVE_SPACETIME_PUBLISH_URL", "STACK_SPACETIME_PUBLISH_URL");
+  if (publishUrl) {
+    return publishUrl;
   }
   const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
   return `http://127.0.0.1:${prefix}39`;

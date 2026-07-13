@@ -8,7 +8,7 @@ import {
   type DesignEditableGridItem,
 } from "@/components/design-components";
 import { ActionDialog, Checkbox, Switch, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { GearSix, ShieldCheck, ShieldIcon, UserPlus, UsersIcon } from "@phosphor-icons/react";
 import { typedFromEntries } from "@hexclave/shared/dist/utils/objects";
 import { useCallback, useEffect, useMemo, useState } from "react";

@@ -17,10 +17,10 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
-      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -59,7 +59,7 @@ jobs:
       - name: Override Freestyle API key for prod mode
         if: matrix.freestyle-mode == 'prod'
         run: |
-          echo "STACK_FREESTYLE_API_KEY=${{ secrets.STACK_FREESTYLE_REAL_API_KEY }}" >> apps/backend/.env.test.local
+          echo "HEXCLAVE_FREESTYLE_API_KEY=${{ secrets.STACK_FREESTYLE_REAL_API_KEY }}" >> apps/backend/.env.test.local
 
       - name: Create .env.test.local file for apps/dashboard
         run: cp apps/dashboard/.env.development apps/dashboard/.env.test.local
@@ -115,10 +115,30 @@ jobs:
       - name: Initialize database
         run: pnpm run db:init
   
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
+      # The built server (node dist/server.mjs) does not auto-load .env files the way
+      # `next start` used to, so it must be wrapped in with-env:test to pick up
+      # .env.test.local (mirrors the e2e-fallback-tests workflow).
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm run start:backend --log-order=stream &
+          run: pnpm -C apps/backend run with-env:test pnpm run start &
           wait-on: |
             http://localhost:8102
           tail: true

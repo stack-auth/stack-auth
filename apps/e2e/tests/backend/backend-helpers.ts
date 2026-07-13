@@ -1807,11 +1807,32 @@ export namespace Payments {
       }
       headers["stripe-signature"] = header;
     }
-    return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
+    const res = await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
       method: "POST",
       headers,
       body: payload,
     });
+    // The webhook route acks Stripe immediately and processes the event in a
+    // fire-and-forget background task. E2E tests read side effects (transactions,
+    // subscriptions, ...) right after, so we deterministically wait for that
+    // background work to finish before returning. Only do this when the event was
+    // actually accepted for processing (a successful, non-deduplicated ack);
+    // signature-rejection tests never spawn background work.
+    if (res.status === 200 && res.body?.received === true && res.body?.deduplicated !== true) {
+      await flushBackgroundTasks();
+    }
+    return res;
   }
 
+}
+
+// Waits for any in-flight background tasks (e.g. async Stripe webhook processing)
+// to finish. Backed by the internal flush-background-tasks endpoint.
+export async function flushBackgroundTasks() {
+  const res = await niceBackendFetch("/api/latest/internal/flush-background-tasks", {
+    method: "POST",
+    accessType: "admin",
+    body: {},
+  });
+  expect(res.status).toBe(200);
 }

@@ -2,7 +2,7 @@ import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "./tenancies";
 
 /**
@@ -39,6 +39,11 @@ type GlobalPrismaLike = {
   },
 };
 
+type OwnedBillingScope = {
+  projectIds: string[],
+  tenancyIds: string[],
+};
+
 type ItemCapacityReaders = {
   getPrismaForTenancy: (tenancy: Tenancy) => Promise<unknown>,
   getItemQuantityForCustomer: (options: {
@@ -54,6 +59,15 @@ const TEAM_WIDE_CAPACITY_ITEM_IDS = new Set<string>([
   ITEM_IDS.authUsers,
   ITEM_IDS.seats,
 ]);
+
+/**
+ * Sentinel "no effective limit" capacity used when a bulldozer outage forces us
+ * to skip an entitlement check (see `getTeamWideItemCapacity`). A large finite
+ * number rather than `Infinity` on purpose: capacities flow into `usage > cap`
+ * comparisons and into Sentry detail objects, and `Infinity` JSON-serializes to
+ * `null` and yields `NaN` under subtraction — a finite sentinel avoids both.
+ */
+export const UNLIMITED_ITEM_CAPACITY = Number.MAX_SAFE_INTEGER;
 
 export function getBillingTeamId(project: { id: string, ownerTeamId?: string | null, owner_team_id?: string | null }): string | null {
   return project.ownerTeamId ?? project.owner_team_id ?? null;
@@ -85,13 +99,16 @@ export async function getOwnedProjectIdsForBillingTeam(
   return projects.map((project) => project.id);
 }
 
-export async function getOwnedTenancyIdsForBillingTeam(
+export async function getOwnedProjectAndTenancyIdsForBillingTeam(
   billingTeamId: string,
   globalPrisma: GlobalPrismaLike = globalPrismaClient,
-): Promise<string[]> {
+): Promise<OwnedBillingScope> {
   const projectIds = await getOwnedProjectIdsForBillingTeam(billingTeamId, globalPrisma);
   if (projectIds.length === 0) {
-    return [];
+    return {
+      projectIds,
+      tenancyIds: [],
+    };
   }
   const tenancies = await globalPrisma.tenancy.findMany({
     where: {
@@ -103,16 +120,23 @@ export async function getOwnedTenancyIdsForBillingTeam(
       id: true,
     },
   });
-  return tenancies.map((tenancy) => tenancy.id);
+  return {
+    projectIds,
+    tenancyIds: tenancies.map((tenancy) => tenancy.id),
+  };
 }
 
-export async function getTeamWideNonAnonymousUserCount(
+export async function getOwnedTenancyIdsForBillingTeam(
   billingTeamId: string,
   globalPrisma: GlobalPrismaLike = globalPrismaClient,
+): Promise<string[]> {
+  return (await getOwnedProjectAndTenancyIdsForBillingTeam(billingTeamId, globalPrisma)).tenancyIds;
+}
+
+export async function getNonAnonymousUserCountForTenancies(
+  tenancyIds: string[],
+  globalPrisma: GlobalPrismaLike = globalPrismaClient,
 ): Promise<number> {
-  // Usage metric: how many non-anonymous users are currently consumed by this billing team.
-  // This is compared against auth user capacity to determine over-limit conditions.
-  const tenancyIds = await getOwnedTenancyIdsForBillingTeam(billingTeamId, globalPrisma);
   if (tenancyIds.length === 0) {
     return 0;
   }
@@ -124,6 +148,16 @@ export async function getTeamWideNonAnonymousUserCount(
       isAnonymous: false,
     },
   });
+}
+
+export async function getTeamWideNonAnonymousUserCount(
+  billingTeamId: string,
+  globalPrisma: GlobalPrismaLike = globalPrismaClient,
+): Promise<number> {
+  // Usage metric: how many non-anonymous users are currently consumed by this billing team.
+  // This is compared against auth user capacity to determine over-limit conditions.
+  const tenancyIds = await getOwnedTenancyIdsForBillingTeam(billingTeamId, globalPrisma);
+  return await getNonAnonymousUserCountForTenancies(tenancyIds, globalPrisma);
 }
 
 async function getTeamWideItemCapacity(
@@ -142,13 +176,23 @@ async function getTeamWideItemCapacity(
   }
   const internalBillingTenancy = await getInternalBillingTenancy();
   const billingPrisma = await readers.getPrismaForTenancy(internalBillingTenancy);
-  return await readers.getItemQuantityForCustomer({
-    prisma: billingPrisma,
-    tenancyId: internalBillingTenancy.id,
-    customerId: billingTeamId,
-    customerType: "team",
-    itemId,
-  });
+  try {
+    return await readers.getItemQuantityForCustomer({
+      prisma: billingPrisma,
+      tenancyId: internalBillingTenancy.id,
+      customerId: billingTeamId,
+      customerType: "team",
+      itemId,
+    });
+  } catch (error) {
+    // Bulldozer is the only source for this capacity, but it must not be a hard
+    // dependency for the flows that read it (auth sign-ups via auth-user caps,
+    // team invites via seat checks). If bulldozer is unreachable, report it and
+    // treat capacity as unlimited so the gated flow isn't blocked by a bulldozer
+    // outage — the cap is re-enforced on the next request once bulldozer is back.
+    captureError("plan-entitlements:team-wide-item-capacity", error);
+    return UNLIMITED_ITEM_CAPACITY;
+  }
 }
 
 export async function getTeamWideItemCapacityForTests(

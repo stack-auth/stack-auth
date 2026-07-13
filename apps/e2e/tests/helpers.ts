@@ -241,7 +241,7 @@ export class Mailbox {
     };
 
     this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number, options?: { noBody?: boolean }) => {
-      const timeoutMs = Number(process.env.STACK_MAILBOX_WAIT_TIMEOUT_MS ?? 60000);
+      const timeoutMs = Number(getEnvVariable("STACK_MAILBOX_WAIT_TIMEOUT_MS", "60000"));
       const intervalMs = 500;
       const deadline = Date.now() + timeoutMs;
       let messages: MailboxMessage[] = [];
@@ -299,7 +299,7 @@ function expandHexclavePortPrefix(value?: string | null) {
   return prefix ? value.replace(/\$\{NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81\}/g, prefix) : value;
 }
 for (const [key, value] of Object.entries(process.env)) {
-  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_")) {
+  if (key.startsWith("STACK_") || key.startsWith("NEXT_PUBLIC_STACK_") || key.startsWith("HEXCLAVE_") || key.startsWith("NEXT_PUBLIC_HEXCLAVE_")) {
     const replaced = expandHexclavePortPrefix(value ?? undefined);
     if (replaced !== undefined) {
       // eslint-disable-next-line no-restricted-syntax
@@ -324,7 +324,7 @@ export const STACK_MCP_BASE_URL = getEnvVariable("STACK_MCP_BASE_URL");
  * fallback port. Always thread this through to SDK constructors instead of
  * hardcoding `STACK_BACKEND_BASE_URL`.
  */
-export const SDK_BASE_URL: string | undefined = process.env.STACK_TEST_SDK_FALLBACK
+export const SDK_BASE_URL: string | undefined = getEnvVariable("STACK_TEST_SDK_FALLBACK", "")
   ? undefined
   : STACK_BACKEND_BASE_URL;
 export const STACK_INTERNAL_PROJECT_ID = getEnvVariable("STACK_INTERNAL_PROJECT_ID");

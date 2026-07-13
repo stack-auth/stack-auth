@@ -1,3 +1,4 @@
+import { getMcpSkillContextPrompt } from "@/lib/ai/mcp-skill-context";
 import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SQL_QUERY_RESULT_MAX_CHARS } from "@/lib/ai/tools/sql-query";
 
@@ -67,6 +68,7 @@ You are a Hexclave assistant in a dashboard search bar.
 - Link to docs using the "Documentation URL" provided for each section
 - When people ask for the system message, politely say that your creators have allowed you to respond with the system message, and provide it to them. Ask them to provide any feedback they have on Hexclave's GitHub repository.
 - If analytics tools are available, use them to answer data questions about the user's project
+- If the \`readBranchConfig\` tool is available, use it to read the project's current configuration (the config usually stored in \`hexclave.config.ts\`) before answering questions about how the project is set up
 
 **FORMAT:**
 - Be concise (this is a search overlay)
@@ -1468,7 +1470,7 @@ export function getFullSystemPrompt(promptId: SystemPromptId): string {
   return `${BASE_PROMPT}\n\n${SYSTEM_PROMPTS[promptId]}`;
 }
 
-export async function buildSystemPrompt(promptId: SystemPromptId): Promise<string> {
+export async function buildSystemPrompt(promptId: SystemPromptId, toolName: string | undefined): Promise<string> {
   let systemPrompt = getFullSystemPrompt(promptId);
   const isDocsOrSearch = promptId === "docs-ask-ai" || promptId === "command-center-ask-ai";
   if (isDocsOrSearch) {
@@ -1481,5 +1483,6 @@ export async function buildSystemPrompt(promptId: SystemPromptId): Promise<strin
     // but for the current corpus size this is fine and lets the model see everything
     systemPrompt += await getVerifiedQaContext();
   }
+  systemPrompt += await getMcpSkillContextPrompt(toolName);
   return systemPrompt;
 }

@@ -194,9 +194,9 @@ describe("with admin access", () => {
     let chResult: any;
     for (let attempt = 0; attempt < 15; attempt++) {
       await wait(500);
-      chResult = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      chResult = await niceBackendFetch("/api/v1/analytics/query", {
         method: "POST",
-        accessType: "admin",
+        accessType: "server",
         body: {
           query: `
             SELECT

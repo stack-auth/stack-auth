@@ -17,10 +17,10 @@ export default mergeConfig(
     },
     resolve: {
       alias: {
-        '@': resolve(__dirname, './src')
+        '@': resolve(__dirname, './src'),
       }
     },
     envDir: __dirname,
-    envPrefix: 'STACK_',
+    envPrefix: ['HEXCLAVE_', 'STACK_'],
   })
 )

@@ -29,7 +29,7 @@ export const POST = createSmartRouteHandler({
   response: yupMixed<SmartResponse>().defined(),
   async handler({ params, body }, fullReq) {
     const { mode } = params;
-    const isAuthenticated = fullReq.auth != null;
+    const isAuthenticated = fullReq.auth?.user != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
     if (projectId != null) {
@@ -41,8 +41,12 @@ export const POST = createSmartRouteHandler({
       ? getEnvVariable("STACK_OPENROUTER_AUTHENTICATED_API_KEY", "")
       : "";
     const model = selectModel(quality, speed, isAuthenticated, authenticatedApiKey || undefined);
-    const systemPrompt = await buildSystemPrompt(systemPromptId);
-    const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
+    const systemPrompt = await buildSystemPrompt(systemPromptId, body.mcpCallMetadata?.toolName);
+    const tools = await getTools(toolNames, {
+      auth: fullReq.auth,
+      targetProjectId: projectId,
+      mcpToolName: body.mcpCallMetadata?.toolName,
+    });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const stepLimit = getStepLimit(systemPromptId, toolsArg != null);
 

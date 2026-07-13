@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const mockUpdateConfig = vi.hoisted(() => vi.fn(async () => true));
+const mockPublicEnvVars = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("@/components/design-components", () => ({
   DesignCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -54,6 +58,10 @@ vi.mock("@/components/design-components/select", () => ({
   ),
 }));
 
+vi.mock("@/components/hosted-auth-preview", () => ({
+  HostedAuthMethodPreview: () => <div>Hosted auth preview</div>,
+}));
+
 vi.mock("@/components/router", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -73,6 +81,9 @@ vi.mock("@/components/ui", () => ({
   Button: ({ children, type, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type={type ?? "button"} {...props}>{children}</button>
   ),
+  Skeleton: ({ children, ...props }: { children?: ReactNode } & HTMLAttributes<HTMLDivElement>) => (
+    <div {...props}>{children}</div>
+  ),
   Switch: () => <button type="button">switch</button>,
   TooltipProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Typography: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -80,16 +91,15 @@ vi.mock("@/components/ui", () => ({
 }));
 
 vi.mock("@/lib/env", () => ({
-  getPublicEnvVar: () => "false",
+  getPublicEnvVar: (key: string) => mockPublicEnvVars.get(key) ?? "false",
 }));
 
-vi.mock("@/lib/config-update", () => ({
+vi.mock("@/components/config-update", () => ({
   useUpdateConfig: () => mockUpdateConfig,
 }));
 
 vi.mock("@hexclave/next", () => ({
   AdminOwnedProject: class {},
-  AuthPage: () => <div>Auth preview</div>,
 }));
 
 vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
@@ -98,6 +108,9 @@ vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
 }));
 
 vi.mock("@hexclave/shared/dist/utils/promises", () => ({
+  runAsynchronously: (promiseOrFn: Promise<unknown> | (() => Promise<unknown>)) => (
+    typeof promiseOrFn === "function" ? promiseOrFn() : promiseOrFn
+  ),
   runAsynchronouslyWithAlert: (fn: () => Promise<unknown>) => fn(),
 }));
 
@@ -141,14 +154,41 @@ vi.mock("./link-existing-onboarding", () => ({
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import { normalizeProjectOnboardingState, orderedAppIds, REQUIRED_APP_IDS } from "./shared";
-import { ALL_APPS } from "@hexclave/shared/dist/apps/apps-config";
+import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 
 afterEach(() => {
   cleanup();
   mockUpdateConfig.mockClear();
+  mockPublicEnvVars.clear();
 });
 
+function createDeferred<T>() {
+  let resolveDeferred: (value: T | PromiseLike<T>) => void = () => {
+    throw new Error("Deferred promise was resolved before initialization.");
+  };
+  const promise = new Promise<T>((resolve) => {
+    resolveDeferred = resolve;
+  });
+  return {
+    promise,
+    resolve: resolveDeferred,
+  };
+}
+
 describe("ProjectOnboardingWizard", () => {
+  it("keeps the hosted auth preview interactive", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+
+    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    expect(previewBlockMatch).not.toBeNull();
+    const previewBlock = previewBlockMatch![1];
+
+    expect(previewBlock).not.toContain("pointer-events-none");
+    expect(previewBlock).not.toContain("inert");
+    expect(previewBlock).not.toContain("bg-transparent");
+  });
+
   it("keeps required apps when normalizing persisted onboarding state", () => {
     const normalizedState = normalizeProjectOnboardingState({
       selected_config_choice: "create-new",
@@ -161,6 +201,25 @@ describe("ProjectOnboardingWizard", () => {
     expect(normalizedState.selected_apps).toEqual(REQUIRED_APP_IDS);
   });
 
+  it("preserves OAuth sign-in methods in development environments", () => {
+    const normalizedState = normalizeProjectOnboardingState({
+      selected_config_choice: "create-new",
+      selected_apps: [],
+      selected_sign_in_methods: ["credential", "google", "github", "microsoft"],
+      selected_email_theme_id: null,
+      selected_payments_country: "US",
+    }, { developmentEnvironment: true });
+
+    expect(normalizedState.selected_sign_in_methods).toMatchInlineSnapshot(`
+      [
+        "credential",
+        "google",
+        "github",
+        "microsoft",
+      ]
+    `);
+  });
+
   it("does not offer alpha apps during app selection", () => {
     const alphaAppIds = Object.entries(ALL_APPS)
       .filter(([, app]) => app.stage === "alpha")
@@ -171,8 +230,412 @@ describe("ProjectOnboardingWizard", () => {
     }
   });
 
+  it("does not offer sub-apps during app selection", () => {
+    const subAppIds = (Object.keys(ALL_APPS) as AppId[]).filter((appId) => getParentAppId(appId) != null);
+
+    for (const subAppId of subAppIds) {
+      expect(orderedAppIds()).not.toContain(subAppId);
+    }
+  });
+
+  it("prefetches email themes on early steps without mounting heavy hooks", () => {
+    const useEmailThemes = vi.fn(() => {
+      throw new Error("Email themes should not load on the app selection step.");
+    });
+    const useStripeAccountInfo = vi.fn(() => {
+      throw new Error("Stripe account info should not load on the app selection step.");
+    });
+    const listEmailThemes = vi.fn(async () => []);
+    const getEmailPreview = vi.fn(async () => "");
+    const getStripeAccountInfo = vi.fn(async () => null);
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes,
+            getEmailPreview,
+            getStripeAccountInfo,
+            useEmailThemes,
+            useStripeAccountInfo,
+          },
+        } as never}
+        status="apps_selection"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(listEmailThemes).toHaveBeenCalledOnce();
+    expect(getEmailPreview).not.toHaveBeenCalled();
+    expect(getStripeAccountInfo).not.toHaveBeenCalled();
+    expect(useEmailThemes).not.toHaveBeenCalled();
+    expect(useStripeAccountInfo).not.toHaveBeenCalled();
+  });
+
+  it("saves app selection state and status in one request", async () => {
+    const saveOnboardingProgress = vi.fn(async () => {});
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="apps_selection"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledOnce();
+    });
+    expect(saveOnboardingProgress).toHaveBeenCalledWith({
+      status: "auth_setup",
+      onboardingState: expect.objectContaining({
+        selected_apps: expect.arrayContaining(["authentication", "emails", "payments"]),
+      }),
+    });
+  });
+
+  it("saves auth setup state and status in one request", async () => {
+    const saveOnboardingProgress = vi.fn(async () => {});
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: false },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="auth_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledOnce();
+    });
+    expect(saveOnboardingProgress).toHaveBeenCalledWith({
+      status: "email_theme_setup",
+      onboardingState: expect.objectContaining({
+        selected_sign_in_methods: expect.arrayContaining(["credential"]),
+      }),
+    });
+  });
+
+  it("saves email theme state and status in one request", async () => {
+    const saveOnboardingProgress = vi.fn(async () => {});
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
+            useEmailThemes: () => [{ id: "default", displayName: "Default" }],
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="email_theme_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledOnce();
+    });
+    expect(saveOnboardingProgress).toHaveBeenCalledWith({
+      status: "payments_setup",
+      onboardingState: expect.objectContaining({
+        selected_email_theme_id: "default",
+      }),
+    });
+  });
+
+  it("prefetches Stripe account info on the email theme step without mounting the payments hook", () => {
+    const getStripeAccountInfo = vi.fn(async () => null);
+    const useStripeAccountInfo = vi.fn(() => {
+      throw new Error("Stripe account info should not load before the payments step.");
+    });
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo,
+            useEmailThemes: () => [{ id: "default", displayName: "Default" }],
+            useStripeAccountInfo,
+          },
+        } as never}
+        status="email_theme_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(getStripeAccountInfo).toHaveBeenCalledOnce();
+    expect(useStripeAccountInfo).not.toHaveBeenCalled();
+  });
+
+  it("shows an email-theme shimmer instead of the page spinner while themes load", () => {
+    const pendingEmailThemes = new Promise<never>(() => {});
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
+            useEmailThemes: () => {
+              throw pendingEmailThemes;
+            },
+            useStripeAccountInfo: () => null,
+          },
+        } as never}
+        status="email_theme_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Select an email theme")).toBeTruthy();
+    expect(screen.getByTestId("email-theme-step-skeleton")).toBeTruthy();
+  });
+
+  it("shows a payments shimmer instead of the page spinner while Stripe status loads", () => {
+    const pendingStripeAccountInfo = new Promise<never>(() => {});
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: true },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app: {
+            setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
+            useEmailThemes: () => [],
+            useStripeAccountInfo: () => {
+              throw pendingStripeAccountInfo;
+            },
+          },
+        } as never}
+        status="payments_setup"
+        onboardingState={null}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={vi.fn(async () => {})}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Set up payments")).toBeTruthy();
+    expect(screen.getByTestId("payments-setup-step-skeleton")).toBeTruthy();
+  });
+
   it("completes onboarding automatically after Stripe setup returns successfully", async () => {
-    const setStatus = vi.fn(async () => {});
+    const saveOnboardingProgress = vi.fn(async () => {});
     const onComplete = vi.fn();
 
     const project = {
@@ -201,6 +664,8 @@ describe("ProjectOnboardingWizard", () => {
       }),
       app: {
         setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+        listEmailThemes: vi.fn(async () => []),
+        getStripeAccountInfo: vi.fn(async () => null),
         useEmailThemes: () => [],
         useStripeAccountInfo: () => ({
           account_id: "acct_123",
@@ -218,22 +683,24 @@ describe("ProjectOnboardingWizard", () => {
         onboardingState={null}
         mode={null}
         setMode={vi.fn()}
-        setStatus={setStatus}
-        setOnboardingState={vi.fn(async () => {})}
-        clearOnboardingState={vi.fn(async () => {})}
+        saveOnboardingProgress={saveOnboardingProgress}
         onComplete={onComplete}
       />,
     );
 
     await waitFor(() => {
-      expect(setStatus).toHaveBeenCalledWith("welcome");
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({
+        status: "welcome",
+        onboardingState: expect.objectContaining({
+          selected_payments_country: "US",
+        }),
+      });
     });
     expect(onComplete).not.toHaveBeenCalled();
   });
 
   it("creates a deferred Stripe account when payments setup is deferred for a US project", async () => {
-    const setStatus = vi.fn(async () => {});
-    const setOnboardingState = vi.fn(async () => {});
+    const saveOnboardingProgress = vi.fn(async () => {});
     const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
 
     render(
@@ -264,6 +731,8 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments,
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
             useEmailThemes: () => [],
             useStripeAccountInfo: () => null,
           },
@@ -272,9 +741,7 @@ describe("ProjectOnboardingWizard", () => {
         onboardingState={null}
         mode={null}
         setMode={vi.fn()}
-        setStatus={setStatus}
-        setOnboardingState={setOnboardingState}
-        clearOnboardingState={vi.fn(async () => {})}
+        saveOnboardingProgress={saveOnboardingProgress}
         onComplete={vi.fn()}
       />,
     );
@@ -284,12 +751,16 @@ describe("ProjectOnboardingWizard", () => {
     await waitFor(() => {
       expect(setupPayments).toHaveBeenCalledOnce();
     });
-    expect(setOnboardingState).toHaveBeenCalledOnce();
-    expect(setStatus).toHaveBeenCalledWith("welcome");
+    expect(saveOnboardingProgress).toHaveBeenCalledWith({
+      status: "welcome",
+      onboardingState: expect.objectContaining({
+        selected_payments_country: "US",
+      }),
+    });
   });
 
   it("does not create a Stripe account when payments setup is deferred for an unsupported country", async () => {
-    const setStatus = vi.fn(async () => {});
+    const saveOnboardingProgress = vi.fn(async () => {});
     const setupPayments = vi.fn(async () => ({ url: "https://example.com" }));
 
     render(
@@ -320,6 +791,8 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments,
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
             useEmailThemes: () => [],
             useStripeAccountInfo: () => null,
           },
@@ -334,9 +807,7 @@ describe("ProjectOnboardingWizard", () => {
         }}
         mode={null}
         setMode={vi.fn()}
-        setStatus={setStatus}
-        setOnboardingState={vi.fn(async () => {})}
-        clearOnboardingState={vi.fn(async () => {})}
+        saveOnboardingProgress={saveOnboardingProgress}
         onComplete={vi.fn()}
       />,
     );
@@ -344,7 +815,12 @@ describe("ProjectOnboardingWizard", () => {
     fireEvent.click(screen.getByText("Do Later"));
 
     await waitFor(() => {
-      expect(setStatus).toHaveBeenCalledWith("welcome");
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({
+        status: "welcome",
+        onboardingState: expect.objectContaining({
+          selected_payments_country: "OTHER",
+        }),
+      });
     });
     expect(setupPayments).not.toHaveBeenCalled();
   });
@@ -380,6 +856,8 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments,
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
             useEmailThemes: () => [],
             useStripeAccountInfo: () => null,
           },
@@ -388,9 +866,7 @@ describe("ProjectOnboardingWizard", () => {
         onboardingState={null}
         mode={null}
         setMode={vi.fn()}
-        setStatus={vi.fn(async () => {})}
-        setOnboardingState={vi.fn(async () => {})}
-        clearOnboardingState={vi.fn(async () => {})}
+        saveOnboardingProgress={vi.fn(async () => {})}
         onComplete={vi.fn()}
       />,
     );
@@ -436,6 +912,8 @@ describe("ProjectOnboardingWizard", () => {
           }),
           app: {
             setupPayments,
+            listEmailThemes: vi.fn(async () => []),
+            getStripeAccountInfo: vi.fn(async () => null),
             useEmailThemes: () => [],
             useStripeAccountInfo: () => null,
           },
@@ -444,9 +922,7 @@ describe("ProjectOnboardingWizard", () => {
         onboardingState={null}
         mode={null}
         setMode={vi.fn()}
-        setStatus={vi.fn(async () => {})}
-        setOnboardingState={vi.fn(async () => {})}
-        clearOnboardingState={vi.fn(async () => {})}
+        saveOnboardingProgress={vi.fn(async () => {})}
         onComplete={vi.fn()}
       />,
     );
@@ -462,11 +938,12 @@ describe("ProjectOnboardingWizard", () => {
   });
 
   it("persists shared OAuth providers selected during onboarding before completing", async () => {
-    const setStatus = vi.fn(async () => {});
-    const clearOnboardingState = vi.fn(async () => {});
+    const saveOnboardingProgress = vi.fn(async () => {});
     const onComplete = vi.fn();
     const app = {
       setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      listEmailThemes: vi.fn(async () => []),
+      getStripeAccountInfo: vi.fn(async () => null),
       useEmailThemes: () => [],
       useStripeAccountInfo: () => null,
     };
@@ -495,6 +972,7 @@ describe("ProjectOnboardingWizard", () => {
         },
       }),
       app,
+      getPushedConfigSource: vi.fn(async () => ({ type: "unlinked" })),
     };
 
     render(
@@ -503,24 +981,33 @@ describe("ProjectOnboardingWizard", () => {
         status="welcome"
         onboardingState={{
           selected_config_choice: "create-new",
-          selected_apps: ["authentication", "emails"],
-          selected_sign_in_methods: ["credential", "google"],
+          selected_apps: ["authentication", "emails", "payments", "analytics"],
+          selected_sign_in_methods: ["credential", "magicLink", "google"],
           selected_email_theme_id: "default",
           selected_payments_country: "US",
         }}
         mode={null}
         setMode={vi.fn()}
-        setStatus={setStatus}
-        setOnboardingState={vi.fn(async () => {})}
-        clearOnboardingState={clearOnboardingState}
+        saveOnboardingProgress={saveOnboardingProgress}
         onComplete={onComplete}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
-
     await waitFor(() => {
       expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
+      expect(mockUpdateConfig).toHaveBeenNthCalledWith(1, {
+        adminApp: app,
+        configUpdate: {
+          "auth.password.allowSignIn": true,
+          "auth.otp.allowSignIn": true,
+          "emails.selectedThemeId": "default",
+          "apps.installed.authentication.enabled": true,
+          "apps.installed.emails.enabled": true,
+          "apps.installed.payments.enabled": true,
+          "apps.installed.analytics.enabled": true,
+        },
+        pushable: true,
+      });
       expect(mockUpdateConfig).toHaveBeenNthCalledWith(2, {
         adminApp: app,
         configUpdate: {
@@ -535,8 +1022,187 @@ describe("ProjectOnboardingWizard", () => {
         },
         pushable: false,
       });
-      expect(setStatus).toHaveBeenCalledWith("completed");
-      expect(clearOnboardingState).toHaveBeenCalled();
+    });
+    expect(saveOnboardingProgress).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
+  it("waits for Get Started before applying RDE onboarding config", async () => {
+    mockPublicEnvVars.set("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT", "true");
+    const saveOnboardingProgress = vi.fn(async () => {});
+    const onComplete = vi.fn();
+    const getPushedConfigSource = vi.fn(async () => ({ type: "unlinked" }));
+    const app = {
+      setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      listEmailThemes: vi.fn(async () => []),
+      getStripeAccountInfo: vi.fn(async () => null),
+      useEmailThemes: () => [],
+      useStripeAccountInfo: () => null,
+    };
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: false },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app,
+          getPushedConfigSource,
+        } as never}
+        status="welcome"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails", "analytics"],
+          selected_sign_in_methods: ["credential", "google"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "US",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={onComplete}
+      />,
+    );
+
+    await Promise.resolve();
+
+    expect(getPushedConfigSource).not.toHaveBeenCalled();
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(1);
+      expect(mockUpdateConfig).toHaveBeenCalledWith({
+        adminApp: app,
+        configUpdate: {
+          "auth.password.allowSignIn": true,
+          "emails.selectedThemeId": "default",
+          "apps.installed.authentication.enabled": true,
+          "apps.installed.emails.enabled": true,
+          "apps.installed.analytics.enabled": true,
+          "auth.oauth.providers.google": {
+            type: "google",
+            allowSignIn: true,
+            allowConnectedAccounts: true,
+          },
+          "auth.oauth.providers.github": null,
+          "auth.oauth.providers.microsoft": null,
+        },
+        pushable: true,
+      });
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
+  it("waits for the in-flight welcome config save before marking onboarding completed", async () => {
+    const saveOnboardingProgress = vi.fn(async () => {});
+    const onComplete = vi.fn();
+    const branchConfigSave = createDeferred<boolean>();
+    const environmentConfigSave = createDeferred<boolean>();
+    mockUpdateConfig.mockImplementationOnce(async () => await branchConfigSave.promise);
+    mockUpdateConfig.mockImplementationOnce(async () => await environmentConfigSave.promise);
+    const app = {
+      setupPayments: vi.fn(async () => ({ url: "https://example.com" })),
+      listEmailThemes: vi.fn(async () => []),
+      getStripeAccountInfo: vi.fn(async () => null),
+      useEmailThemes: () => [],
+      useStripeAccountInfo: () => null,
+    };
+
+    render(
+      <ProjectOnboardingWizard
+        project={{
+          id: "proj_123",
+          config: {
+            credentialEnabled: true,
+            magicLinkEnabled: false,
+            passkeyEnabled: false,
+            oauthProviders: [],
+          },
+          useConfig: () => ({
+            apps: {
+              installed: {
+                authentication: { enabled: true },
+                emails: { enabled: true },
+                payments: { enabled: false },
+              },
+            },
+            domains: {
+              trustedDomains: {},
+            },
+            emails: {
+              selectedThemeId: "default",
+              server: {},
+            },
+          }),
+          app,
+          getPushedConfigSource: vi.fn(async () => ({ type: "unlinked" })),
+        } as never}
+        status="welcome"
+        onboardingState={{
+          selected_config_choice: "create-new",
+          selected_apps: ["authentication", "emails"],
+          selected_sign_in_methods: ["credential"],
+          selected_email_theme_id: "default",
+          selected_payments_country: "US",
+        }}
+        mode={null}
+        setMode={vi.fn()}
+        saveOnboardingProgress={saveOnboardingProgress}
+        onComplete={onComplete}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledOnce();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Get Started" }));
+
+    await Promise.resolve();
+    expect(saveOnboardingProgress).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    branchConfigSave.resolve(true);
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledTimes(2);
+    });
+    expect(saveOnboardingProgress).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    environmentConfigSave.resolve(true);
+
+    await waitFor(() => {
+      expect(saveOnboardingProgress).toHaveBeenCalledWith({ status: "completed", onboardingState: null });
       expect(onComplete).toHaveBeenCalled();
     });
   });

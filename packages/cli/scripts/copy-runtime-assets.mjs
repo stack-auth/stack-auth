@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, readlinkSync, readdirSync, rmSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readlinkSync, readdirSync, rmSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -123,12 +123,61 @@ function hoistPnpmNodeModules(pnpmDir) {
   }
 }
 
+function getPackageNameFromPnpmSpecifier(specifier) {
+  // Extract the package name from a pnpm store specifier directory name.
+  // e.g. "@anthropic-ai+claude-agent-sdk@0.2.73_zod@4.3.6" → "@anthropic-ai/claude-agent-sdk"
+  // e.g. "react@19.2.3" → "react"
+  const atVersionIndex = specifier.indexOf("@", specifier.startsWith("@") ? 1 : 0);
+  if (atVersionIndex < 0) {
+    return undefined;
+  }
+  const nameWithPlus = specifier.slice(0, atVersionIndex);
+  if (nameWithPlus.startsWith("@")) {
+    const plusIndex = nameWithPlus.indexOf("+");
+    if (plusIndex >= 0) {
+      return nameWithPlus.slice(0, plusIndex) + "/" + nameWithPlus.slice(plusIndex + 1);
+    }
+  }
+  return nameWithPlus;
+}
+
+function hoistPnpmStorePackages(pnpmDir) {
+  // Each .pnpm/<specifier>/node_modules/<name>/ contains the primary package
+  // for that specifier. When serverExternalPackages are used, these directories
+  // hold the actual module files (including non-imported assets like cli.js)
+  // that Node.js needs to resolve at runtime. Hoist them to the top-level
+  // node_modules/ so they survive .pnpm removal.
+  const destNodeModules = dirname(pnpmDir);
+  for (const entry of readdirSync(pnpmDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) {
+      continue;
+    }
+    const packageName = getPackageNameFromPnpmSpecifier(entry.name);
+    if (packageName == null || EXCLUDED_RUNTIME_PACKAGES.has(packageName)) {
+      continue;
+    }
+    const packageDir = join(pnpmDir, entry.name, "node_modules", ...packageName.split("/"));
+    if (!existsSync(packageDir) || !existsSync(join(packageDir, "package.json"))) {
+      continue;
+    }
+    const dest = join(destNodeModules, packageName);
+    if (!existsSync(dest)) {
+      const scopeDir = packageName.includes("/") ? join(destNodeModules, packageName.split("/")[0]) : null;
+      if (scopeDir && !existsSync(scopeDir)) {
+        mkdirSync(scopeDir, { recursive: true });
+      }
+      cpSync(packageDir, dest, { recursive: true, dereference: true });
+    }
+  }
+}
+
 function removePnpmStore(nodeModulesDir) {
   const pnpmDir = join(nodeModulesDir, ".pnpm");
   if (!existsSync(pnpmDir)) {
     return;
   }
   hoistPnpmNodeModules(pnpmDir);
+  hoistPnpmStorePackages(pnpmDir);
   rmSync(pnpmDir, { recursive: true, force: true });
 }
 

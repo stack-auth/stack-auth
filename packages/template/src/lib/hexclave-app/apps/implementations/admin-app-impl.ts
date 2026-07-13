@@ -2,7 +2,6 @@ import { KnownErrors, HexclaveAdminInterface } from "@hexclave/shared";
 import { getProductionModeErrors } from "@hexclave/shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@hexclave/shared/dist/interface/admin-interface";
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@hexclave/shared/dist/interface/admin-metrics";
-import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@hexclave/shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
@@ -10,7 +9,7 @@ import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { pick, typedEntries, typedValues } from "@hexclave/shared/dist/utils/objects";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -20,6 +19,7 @@ import { EmailConfig, hexclaveAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
+import type { PlanUsage } from "../../plan-usage";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
@@ -33,6 +33,7 @@ import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
+type PlanUsageResponse = Awaited<ReturnType<HexclaveAdminInterface["getPlanUsage"]>>;
 /**
  * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
  */
@@ -74,6 +75,9 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
 
   private readonly _adminProjectCache = createCache(async () => {
     return await this._interface.getProject();
+  });
+  private readonly _planUsageCache = createCache(async () => {
+    return await this._interface.getPlanUsage();
   });
   private readonly _internalApiKeysCache = createCache(async () => {
     const res = await this._interface.listInternalApiKeys();
@@ -192,10 +196,17 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       isDevelopmentEnvironment: data.is_development_environment,
       ownerTeamId: data.owner_team_id,
       onboardingStatus: data.onboarding_status,
+      onboardingState: data.onboarding_state ?? null,
       logoUrl: data.logo_url,
       logoFullUrl: data.logo_full_url,
       logoDarkModeUrl: data.logo_dark_mode_url,
       logoFullDarkModeUrl: data.logo_full_dark_mode_url,
+      pushedConfigError: data.pushed_config_error == null ? null : {
+        message: data.pushed_config_error.message,
+      },
+      configWarnings: data.config_warnings.map((warning) => ({
+        message: warning.message,
+      })),
       config: {
         signUpEnabled: data.config.sign_up_enabled,
         credentialEnabled: data.config.credential_enabled,
@@ -331,6 +342,30 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     };
   }
 
+  _planUsageFromCrud(data: PlanUsageResponse): PlanUsage {
+    return {
+      ownerTeamId: data.owner_team_id,
+      ownerTeamDisplayName: data.owner_team_display_name,
+      planId: data.plan_id,
+      planDisplayName: data.plan_display_name,
+      periodStart: new Date(data.period_start_millis),
+      periodEnd: new Date(data.period_end_millis),
+      nextPlanId: data.next_plan_id,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- getPlanUsage() returns raw JSON without yup validation, so this field can be undefined at runtime if the backend hasn't deployed the field yet
+      arePlanLimitsEnforced: data.are_plan_limits_enforced ?? true,
+      rows: data.rows.map((row) => ({
+        itemId: row.item_id,
+        displayName: row.display_name,
+        kind: row.kind,
+        used: row.used,
+        limit: row.limit,
+        remaining: row.remaining,
+        overage: row.overage,
+        isUnlimited: row.is_unlimited,
+      })),
+    };
+  }
+
   override async getProject(): Promise<AdminProject> {
     return this._adminProjectFromCrud(
       Result.orThrow(await this._adminProjectCache.getOrWait([], "write-only")),
@@ -345,6 +380,17 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       crud,
       () => this._refreshProject()
     ), [crud]);
+  }
+  // END_PLATFORM
+
+  async getPlanUsage(): Promise<PlanUsage> {
+    return this._planUsageFromCrud(Result.orThrow(await this._planUsageCache.getOrWait([], "write-only")));
+  }
+
+  // IF_PLATFORM react-like
+  usePlanUsage(): PlanUsage {
+    const crud = useAsyncCache(this._planUsageCache, [], "adminApp.usePlanUsage()");
+    return useMemo(() => this._planUsageFromCrud(crud), [crud]);
   }
   // END_PLATFORM
 
@@ -783,7 +829,8 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   }
 
   async getEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<string> {
-    return (await this._interface.renderEmailPreview(options)).html;
+    const result = Result.orThrow(await this._emailPreviewCache.getOrWait([options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource], "write-only"));
+    return result.html;
   }
   // IF_PLATFORM react-like
   useEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): string {
@@ -860,6 +907,20 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
         allow_negative: true,
       }
     );
+    const [customerType, customerId] = "userId" in options
+      ? ["user", options.userId] as const
+      : "teamId" in options
+        ? ["team", options.teamId] as const
+        : ["custom", options.customCustomerId] as const;
+    try {
+      // Best-effort: the quantity change is already persisted at this point, so
+      // a cache refresh failure must not make the mutation look failed (a retry
+      // would apply the delta twice).
+      await this._refreshItemCache(customerType, customerId, options.itemId);
+      await this._transactionsCache.invalidateWhere(() => true);
+    } catch (error) {
+      captureError("create-item-quantity-change-cache-refresh", error);
+    }
   }
 
   async refundTransaction(options: {
@@ -1112,10 +1173,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return result as AdminEmailOutbox;
   }
 
-  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, userId?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
     const response = await this._interface.listOutboxEmails({
       status: options?.status,
       simple_status: options?.simpleStatus,
+      user_id: options?.userId,
       limit: options?.limit,
       cursor: options?.cursor,
     });
@@ -1161,7 +1223,7 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   // END_PLATFORM
 
   async getStripeAccountInfo(): Promise<null | { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean }> {
-    return await this._interface.getStripeAccountInfo();
+    return Result.orThrow(await this._stripeAccountInfoCache.getOrWait([], "write-only"));
   }
 
   // IF_PLATFORM react-like
@@ -1170,10 +1232,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return data;
   }
   // END_PLATFORM
-
-  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
-    return await this._interface.queryAnalytics(options);
-  }
 
   async getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse> {
     return await this._interface.getAnalyticsClickmap({

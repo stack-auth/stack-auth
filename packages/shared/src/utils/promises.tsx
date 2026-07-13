@@ -259,7 +259,7 @@ export function concatStacktracesIfRejected<T>(promise: Promise<T>): void {
   });
 }
 
-export async function wait(ms: number) {
+export async function wait(ms: number, options?: { unref?: boolean }) {
   if (!Number.isFinite(ms) || ms < 0) {
     throw new HexclaveAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
   }
@@ -267,7 +267,10 @@ export async function wait(ms: number) {
     throw new HexclaveAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
   }
   return await traceSpan({ description: 'wait(...)', attributes: { 'stack.wait.ms': ms } }, async (span) => {
-    return await new Promise<void>(resolve => setTimeout(resolve, ms));
+    return await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, ms);
+      if (options?.unref === true && typeof timeout === "object") timeout.unref();
+    });
   });
 }
 import.meta.vitest?.test("wait", async ({ expect }) => {
@@ -279,6 +282,10 @@ import.meta.vitest?.test("wait", async ({ expect }) => {
 
   // Test with zero
   await expect(wait(0)).resolves.toBeUndefined();
+
+  // Node's unref option must preserve the normal wait behavior while another
+  // referenced handle (the test runner) owns the process lifetime.
+  await expect(wait(0, { unref: true })).resolves.toBeUndefined();
 
   // Test with negative number
   await expect(wait(-10)).rejects.toThrow("wait() requires a non-negative integer");
@@ -433,6 +440,71 @@ import.meta.vitest?.test("timeoutThrow", async ({ expect }) => {
   await expect(timeoutThrow(slowPromise, 10)).rejects.toBeInstanceOf(TimeoutError);
 });
 
+
+/**
+ * Maps over `items` with `fn`, running at most `concurrency` invocations at a time.
+ *
+ * Unlike `Promise.all(items.map(fn))`, this bounds the number of in-flight
+ * promises, which matters when `fn` hits a shared resource (e.g. a database) and
+ * an unbounded fan-out could exhaust connections or overload a replica. Results
+ * are returned in input order regardless of completion order, and the first
+ * rejection aborts further scheduling — already in-flight workers still settle
+ * but no new items are started.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new HexclaveAssertionError(`mapWithConcurrency requires a positive integer concurrency, got ${concurrency}`);
+  }
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let aborted = false;
+  const worker = async () => {
+    while (!aborted) {
+      // Claim an index synchronously before awaiting so workers never process the same item.
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try {
+        // Bounds-checked above; `?? throwErr(…)` is unsuitable because T may legitimately be null/undefined
+        results[index] = await fn(items[index] as T, index);
+      } catch (error) {
+        aborted = true;
+        throw error;
+      }
+    }
+  };
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+import.meta.vitest?.test("mapWithConcurrency", async ({ expect }) => {
+  // Preserves input order regardless of completion order.
+  const ordered = await mapWithConcurrency([30, 10, 20], 3, async (ms, index) => {
+    await wait(ms);
+    return `${index}:${ms}`;
+  });
+  expect(ordered).toEqual(["0:30", "1:10", "2:20"]);
+
+  // Never exceeds the configured concurrency.
+  let inFlight = 0;
+  let maxInFlight = 0;
+  await mapWithConcurrency(Array.from({ length: 10 }, (_, i) => i), 3, async () => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await wait(5);
+    inFlight--;
+  });
+  expect(maxInFlight).toBe(3);
+
+  // Empty input spawns no workers and returns an empty array.
+  expect(await mapWithConcurrency([], 4, async () => 1)).toEqual([]);
+
+  // Invalid concurrency fails loudly.
+  await expect(mapWithConcurrency([1], 0, async (x) => x)).rejects.toThrow("positive integer concurrency");
+});
 
 export type RateLimitOptions = {
   /**

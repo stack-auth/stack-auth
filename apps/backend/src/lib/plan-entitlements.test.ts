@@ -4,10 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   arePlanLimitsEnforced,
   getBillingTeamId,
+  getNonAnonymousUserCountForTenancies,
+  getOwnedProjectAndTenancyIdsForBillingTeam,
   getOwnedProjectIdsForBillingTeam,
   getOwnedTenancyIdsForBillingTeam,
   getTeamWideItemCapacityForTests,
   getTeamWideNonAnonymousUserCount,
+  UNLIMITED_ITEM_CAPACITY,
 } from "./plan-entitlements";
 
 type ProjectRow = { id: string, ownerTeamId: string | null };
@@ -98,6 +101,28 @@ describe("team-wide ownership aggregation", () => {
     expect(tenancyIds).toEqual(["tenancy-a-main", "tenancy-a-dev", "tenancy-b-main"]);
   });
 
+  it("lists owned project and tenancy ids from one ownership scope", async () => {
+    const scope = await getOwnedProjectAndTenancyIdsForBillingTeam("team-1", globalPrisma);
+    expect(scope).toMatchInlineSnapshot(`
+      {
+        "projectIds": [
+          "project-a",
+          "project-b",
+        ],
+        "tenancyIds": [
+          "tenancy-a-main",
+          "tenancy-a-dev",
+          "tenancy-b-main",
+        ],
+      }
+    `);
+  });
+
+  it("counts non-anonymous users from already-resolved tenancies", async () => {
+    const usage = await getNonAnonymousUserCountForTenancies(["tenancy-a-main", "tenancy-b-main"], globalPrisma);
+    expect(usage).toBe(2);
+  });
+
   it("counts only non-anonymous users across all owned tenancies", async () => {
     const usage = await getTeamWideNonAnonymousUserCount("team-1", globalPrisma);
     expect(usage).toBe(3);
@@ -171,6 +196,23 @@ describe("capacity lookup helpers", () => {
     expect(seatsCapacity).toBe(PLAN_LIMITS.free.seats);
   });
 
+  it("fails open to unlimited capacity when the bulldozer read throws", async () => {
+    // A bulldozer outage must not block the flows that read this capacity (auth
+    // sign-ups, team invites) — the check is skipped this once by returning the
+    // unlimited sentinel rather than propagating the error.
+    const capacity = await getTeamWideItemCapacityForTests(
+      billingTeamId,
+      ITEM_IDS.authUsers,
+      {
+        ...capacityReaders,
+        getItemQuantityForCustomer: async () => {
+          throw new Error("bulldozer unreachable");
+        },
+      },
+    );
+    expect(capacity).toBe(UNLIMITED_ITEM_CAPACITY);
+  });
+
   it("throws on unknown item id", async () => {
     await expect(getTeamWideItemCapacityForTests(
       billingTeamId,
@@ -194,25 +236,25 @@ describe("arePlanLimitsEnforced", () => {
   });
 
   it("returns true when env var is unset (default-on enforcement)", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns false when env var is exactly 'true'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "true");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "true");
     expect(arePlanLimitsEnforced()).toBe(false);
   });
 
   it("returns true when env var is 'false'", () => {
-    vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", "false");
+    vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", "false");
     expect(arePlanLimitsEnforced()).toBe(true);
   });
 
   it("returns true for any non-'true' value (e.g. '1', 'yes', 'TRUE')", () => {
     // Explicit string match is intentional — we don't want to risk a typo
-    // like STACK_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
+    // like HEXCLAVE_DISABLE_PLAN_LIMITS=trueee silently disabling enforcement.
     for (const value of ["1", "yes", "TRUE", "True", " true", "true ", "trueee"]) {
-      vi.stubEnv("STACK_DISABLE_PLAN_LIMITS", value);
+      vi.stubEnv("HEXCLAVE_DISABLE_PLAN_LIMITS", value);
       expect(arePlanLimitsEnforced()).toBe(true);
     }
   });

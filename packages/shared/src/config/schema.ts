@@ -11,7 +11,7 @@ import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { HexclaveAssertionError } from "../utils/errors";
-import { allProviders } from "../utils/oauth";
+import { allProviders, allProviderTypes } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
@@ -23,6 +23,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+const providerIdRegex = /^[a-z0-9_-]+$/;
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -116,7 +117,7 @@ const branchAuthSchema = yupObject({
     providers: yupRecord(
       yupString().matches(permissionRegex),
       yupObject({
-        type: yupString().oneOf(allProviders).optional(),
+        type: yupString().oneOf(allProviderTypes).optional(),
         allowSignIn: yupBoolean(),
         allowConnectedAccounts: yupBoolean(),
       }),
@@ -326,20 +327,6 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
-  dbSync: yupObject({
-    externalDatabases: yupRecord(
-      userSpecifiedIdSchema("externalDatabaseId"),
-      yupObject({
-        type: yupString().oneOf(["postgres"]).defined(),
-        connectionString: yupString().when("type", {
-          is: "postgres",
-          then: (schema) => schema.defined(),
-          otherwise: (schema) => schema.optional(),
-        }),
-      }),
-    ),
-  }),
-
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -376,9 +363,9 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
       providers: yupRecord(
-        yupString().matches(permissionRegex),
+        yupString().matches(providerIdRegex),
         yupObject({
-          type: yupString().oneOf(allProviders).optional(),
+          type: yupString().oneOf(allProviderTypes).optional(),
           isShared: yupBoolean(),
           clientId: schemaFields.oauthClientIdSchema.optional(),
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
@@ -395,6 +382,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
               bundleId: schemaFields.oauthAppleBundleIdSchema,
             }),
           ).optional(),
+          // Custom OIDC provider fields (only used when type is "custom_oidc")
+          issuerUrl: schemaFields.oauthIssuerUrlSchema.optional(),
+          scope: schemaFields.oauthScopeSchema.optional(),
+          displayName: yupString().optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
@@ -443,6 +434,20 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   payments: branchConfigSchema.getNested("payments").concat(yupObject({
     testMode: yupBoolean(),
   })),
+
+  dbSync: yupObject({
+    externalDatabases: yupRecord(
+      userSpecifiedIdSchema("externalDatabaseId"),
+      yupObject({
+        type: yupString().oneOf(["postgres"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
+    ),
+  }),
 
   analytics: environmentAnalyticsSchema,
   customDashboards: schemaFields.customDashboardsSchema,
@@ -562,6 +567,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-07-01: dbSync.externalDatabases contains environment-specific connection strings.
+  // It should never be rendered from branch config, which can be read by branch-scoped tools.
+  if (type === "branch") {
+    res = removeProperty(res, p => p[0] === "dbSync");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -580,6 +592,20 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth ove
     "sourceOfTruth.type": "postgres",
     "sourceOfTruth.connectionString": "postgres://user:password@host:5432/database",
   })).toEqual({});
+});
+
+import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSync overrides", ({ expect }) => {
+  const dbSync = {
+    externalDatabases: {
+      main: {
+        type: "postgres",
+        connectionString: "postgres://user:password@host:5432/database",
+      },
+    },
+  };
+
+  expect(migrateConfigOverride("branch", { dbSync })).toEqual({});
+  expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {

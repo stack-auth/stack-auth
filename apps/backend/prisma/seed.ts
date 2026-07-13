@@ -2,13 +2,6 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride } from '@/lib/config';
-import {
-    LOCAL_EMULATOR_ADMIN_EMAIL,
-    LOCAL_EMULATOR_ADMIN_PASSWORD,
-    LOCAL_EMULATOR_ADMIN_USER_ID,
-    LOCAL_EMULATOR_OWNER_TEAM_ID,
-    isLocalEmulatorEnabled,
-} from '@/lib/local-emulator';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { seedDummyProject } from '@/lib/seed-dummy-data';
@@ -19,6 +12,7 @@ import { DEFAULT_EMAIL_THEME_ID } from '@hexclave/shared/dist/helpers/emails';
 import { AdminUserProjectsCrud } from '@hexclave/shared/dist/interface/crud/projects';
 import { ITEM_IDS, PLAN_LIMITS } from '@hexclave/shared/dist/plans';
 import { DayInterval } from '@hexclave/shared/dist/utils/dates';
+import { getEnvVariable } from '@hexclave/shared/dist/utils/env';
 import { throwErr } from '@hexclave/shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@hexclave/shared/dist/utils/objects';
 
@@ -56,23 +50,22 @@ function enableSeedLogTimestamps() {
 
 export async function seed() {
   enableSeedLogTimestamps();
-  process.env.STACK_SEED_MODE = 'true';
+  process.env.HEXCLAVE_SEED_MODE = 'true';
   console.log('Seeding database...');
 
   // Optional default admin user
-  const adminEmail = process.env.STACK_SEED_INTERNAL_PROJECT_USER_EMAIL;
-  const adminPassword = process.env.STACK_SEED_INTERNAL_PROJECT_USER_PASSWORD;
-  const adminInternalAccess = process.env.STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS === 'true';
-  const adminGithubId = process.env.STACK_SEED_INTERNAL_PROJECT_USER_GITHUB_ID;
+  const adminEmail = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_EMAIL", "");
+  const adminPassword = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_PASSWORD", "");
+  const adminInternalAccess = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS", "") === 'true';
+  const adminGithubId = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_USER_GITHUB_ID", "");
 
   // dashboard settings
-  const dashboardDomain = process.env.NEXT_PUBLIC_STACK_DASHBOARD_URL;
-  const oauthProviderIds = process.env.STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS?.split(',') ?? [];
-  const otpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED === 'true';
-  const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
-  const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
-
-  const localEmulatorEnabled = isLocalEmulatorEnabled();
+  const dashboardDomain = getEnvVariable("NEXT_PUBLIC_STACK_DASHBOARD_URL", "");
+  const rawOauthProviderIds = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS", "");
+  const oauthProviderIds = rawOauthProviderIds ? rawOauthProviderIds.split(',') : [];
+  const otpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED", "") === 'true';
+  const signUpEnabled = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED", "") === 'true';
+  const allowLocalhost = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST", "") === 'true';
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
@@ -315,8 +308,8 @@ export async function seed() {
   //
   // We create the subscription with raw Prisma (matching seed-dummy-data.ts)
   // rather than grantProductToCustomer because bulldozer storage tables
-  // aren't initialized at this point in the seed yet. The Bulldozer init
-  // call right below this block ingresses the row into the ledger.
+  // aren't initialized at this point in the seed yet. The row is ingressed into
+  // bulldozer later by the explicit db:backfill-bulldozer-from-prisma step.
   const growthProduct = updatedInternalTenancy.config.payments.products.growth;
   if (growthProduct.customerType === 'team') {
     const existingGrowthSub = await internalPrisma.subscription.findFirst({
@@ -363,25 +356,22 @@ export async function seed() {
   }
 
   // Upsert the internal API key set before any flake-prone work (dummy-project
-  // seed, email/svix, clickhouse). The emulator CLI authenticates against the
-  // internal project using the pck stored here, so it must land before the rest
-  // of the seed even if something later fails.
-  const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
-  const rawPck = process.env.STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY;
-  if (isLocalEmulator && !rawPck) {
-    // Emulator images build before a per-VM pck is available. Runtime boots set
-    // STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
-    // random value and re-run the seed, which upserts the internal key set then.
-    console.log('Skipping internal API key set (no pck provided; emulator mode).');
-  } else {
+  // seed, email/svix, clickhouse).
+  const rawPck = getEnvVariable("STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY", "");
+  const rawSsk = getEnvVariable("STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY", "");
+  const rawAdminKey = getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY", "");
+  const hasAnyKey = rawPck !== "" || rawSsk !== "" || rawAdminKey !== "";
+  const hasAllKeys = rawPck !== "" && rawSsk !== "" && rawAdminKey !== "";
+
+  if (hasAnyKey && !hasAllKeys) {
+    throwErr('HEXCLAVE internal API key bootstrap requires STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY, STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY, and STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY together');
+  }
+
+  if (hasAllKeys) {
     const keySet = {
-      publishableClientKey: rawPck || throwErr('STACK_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
-      secretServerKey: isLocalEmulator
-        ? (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
-        : (process.env.STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
-      superSecretAdminKey: isLocalEmulator
-        ? (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY ?? null)
-        : (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set')),
+      publishableClientKey: rawPck,
+      secretServerKey: rawSsk,
+      superSecretAdminKey: rawAdminKey,
     };
 
     await globalPrismaClient.apiKeySet.upsert({
@@ -399,9 +389,11 @@ export async function seed() {
     });
 
     console.log('Updated internal API key set');
+  } else {
+    console.log('Skipped internal API key set bootstrap');
   }
 
-  const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
+  const shouldSeedDummyProject = getEnvVariable("STACK_SEED_ENABLE_DUMMY_PROJECT", "") === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
       projectId: DUMMY_PROJECT_ID,
@@ -565,107 +557,6 @@ export async function seed() {
         permissionId: "team_admin",
       });
     }
-  }
-
-  if (localEmulatorEnabled) {
-    const emulatorTeam = await internalPrisma.team.findUnique({
-      where: {
-        tenancyId_teamId: {
-          tenancyId: internalTenancy.id,
-          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-        },
-      },
-    });
-    if (!emulatorTeam) {
-      await internalPrisma.team.create({
-        data: {
-          tenancyId: internalTenancy.id,
-          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-          displayName: 'Emulator Team',
-          mirroredProjectId: "internal",
-          mirroredBranchId: DEFAULT_BRANCH_ID,
-        },
-      });
-      console.log('Created emulator team');
-    }
-
-    const existingUser = await internalPrisma.projectUser.findFirst({
-      where: {
-        mirroredProjectId: 'internal',
-        mirroredBranchId: DEFAULT_BRANCH_ID,
-        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
-      }
-    });
-
-    if (existingUser) {
-      console.log('Emulator user already exists, skipping creation');
-    } else {
-      await internalPrisma.projectUser.create({
-        data: {
-          displayName: 'Local Emulator User',
-          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
-          tenancyId: internalTenancy.id,
-          mirroredProjectId: 'internal',
-          mirroredBranchId: DEFAULT_BRANCH_ID,
-          signedUpAt: new Date(),
-          signUpRiskScoreBot: 0,
-          signUpRiskScoreFreeTrialAbuse: 0,
-        }
-      });
-
-      console.log('Created emulator user');
-    }
-
-    await internalPrisma.teamMember.upsert({
-      where: {
-        tenancyId_projectUserId_teamId: {
-          tenancyId: internalTenancy.id,
-          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
-          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-        },
-      },
-      create: {
-        tenancyId: internalTenancy.id,
-        teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
-      },
-      update: {},
-    });
-
-    await usersCrudHandlers.adminUpdate({
-      tenancy: internalTenancy,
-      user_id: LOCAL_EMULATOR_ADMIN_USER_ID,
-      data: {
-        password: LOCAL_EMULATOR_ADMIN_PASSWORD,
-        primary_email: LOCAL_EMULATOR_ADMIN_EMAIL,
-        primary_email_auth_enabled: true,
-      },
-    });
-
-    const userTeamMembership = await internalPrisma.teamMember.findUnique({
-      where: {
-        tenancyId_projectUserId_teamId: {
-          tenancyId: internalTenancy.id,
-          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
-          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-        },
-      },
-      select: {
-        projectUserId: true,
-      },
-    });
-    if (!userTeamMembership) {
-      throw new Error('Local emulator user must be a member of the local emulator owner team');
-    } else {
-      console.log('Ensured emulator user is a member of emulator team');
-    }
-
-    await grantTeamPermission(internalPrisma, {
-      tenancy: internalTenancy,
-      teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-      userId: LOCAL_EMULATOR_ADMIN_USER_ID,
-      permissionId: "team_admin",
-    });
   }
 
   console.log('Seeding complete!');

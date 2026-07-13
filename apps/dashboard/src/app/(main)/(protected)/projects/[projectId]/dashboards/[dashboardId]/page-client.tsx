@@ -17,7 +17,7 @@ import {
 import { ToolCallContent, type DashboardChip, type DashboardPatchFailure, type DashboardPatchSnapshot } from "@/components/vibe-coding/chat-adapters";
 import { patchSnapshotKey, registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
 import type { AppId } from "@/lib/apps-frontend";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";

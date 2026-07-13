@@ -12,8 +12,8 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies } from "@/lib/runtime/headers";
+import { redirect } from "@/lib/runtime/navigation";
 import { generators } from "openid-client";
 import type { InferType, Schema } from "yup";
 
@@ -140,7 +140,7 @@ export const GET = createSmartRouteHandler({
     // Hexclave rebrand: prefer the new query param name, accept the legacy one,
     // and only fall back to "redirect" when neither was provided.
     const responseMode = query.hexclave_response_mode ?? query.stack_response_mode ?? "redirect";
-    const providerObj = await getProvider(provider);
+    const providerObj = await getProvider(provider, provider.id);
     const oauthUrl = providerObj.getAuthorizationUrl({
       codeVerifier: innerCodeVerifier,
       state: innerState,

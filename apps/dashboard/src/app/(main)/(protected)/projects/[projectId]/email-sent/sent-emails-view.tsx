@@ -17,31 +17,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
 import { STATUS_LABELS, computeEmailStats, getStatusBadgeColor } from "./email-status-utils";
+import { getRecipientDisplay, getEmailTimestamp } from "./email-outbox-utils";
 import { StatsBar } from "./stats-bar";
-
-type EmailWithDeliveredAt = AdminEmailOutbox & {
-  deliveredAt?: Date | string | null,
-};
-
-function hasDeliveredAt(email: AdminEmailOutbox): email is EmailWithDeliveredAt {
-  return "deliveredAt" in email;
-}
-
-function getRecipientDisplay(email: AdminEmailOutbox): string {
-  const to = email.to;
-  if (to.type === "user-primary-email") {
-    return `User: ${to.userId.slice(0, 8)}...`;
-  }
-  if (to.type === "user-custom-emails") {
-    return to.emails[0] ?? `User: ${to.userId.slice(0, 8)}...`;
-  }
-  return to.emails[0] ?? "No recipients";
-}
-
-function getEmailTimestamp(email: AdminEmailOutbox): Date {
-  const deliveredAt = hasDeliveredAt(email) ? email.deliveredAt : undefined;
-  return deliveredAt ? new Date(deliveredAt) : email.scheduledAt;
-}
 
 const emailColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   {

@@ -193,7 +193,7 @@ function DemoChartTooltip({ active, payload }: TooltipProps<number, string>) {
     ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : data.date;
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]">
+    <div className="rounded-xl bg-white/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-black/[0.08] dark:bg-background/95 dark:ring-white/[0.08]">
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
         <div className="flex items-center gap-2.5">

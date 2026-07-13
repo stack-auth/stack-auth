@@ -1,7 +1,7 @@
 "use client";
 
 import { Switch, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
 import { DesignBadge, DesignCard } from "@/components/design-components";
 import { FlaskIcon } from "@phosphor-icons/react";

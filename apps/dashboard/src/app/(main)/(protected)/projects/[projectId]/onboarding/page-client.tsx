@@ -8,7 +8,7 @@ import {
   DesignDialogClose,
 } from "@/components/design-components";
 import { Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { WarningCircle } from "@phosphor-icons/react";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";

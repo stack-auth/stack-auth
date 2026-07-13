@@ -15,8 +15,8 @@ import { KnownError, KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { HexclaveAssertionError, StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { deindent, extractScopes, mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies } from "@/lib/runtime/headers";
+import { redirect } from "@/lib/runtime/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
 /**
@@ -189,7 +189,7 @@ const handler = createSmartRouteHandler({
         throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
       }
 
-      const providerObj = await getProvider(provider as any);
+      const providerObj = await getProvider(provider as any, provider.id);
       let callbackResult: Awaited<ReturnType<typeof providerObj.getCallback>>;
       try {
         callbackResult = await providerObj.getCallback({
