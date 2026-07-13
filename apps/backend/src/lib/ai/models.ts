@@ -62,8 +62,8 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 
 export function getOpenRouterProxyBaseUrl() {
   return (getNodeEnvironment() === "development")
-  ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-  : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
+    ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
+    : `${PRODUCTION_AI_PROXY_BASE_URL}/v1`;
 }
 
 export function createOpenRouterProvider() {

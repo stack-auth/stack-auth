@@ -12,7 +12,23 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
+  wait-for-fast-fail:
+    name: wait-for-fast-fail
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/wait-for-check
+        with:
+          check-name: fast-fail-tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: wait-for-fast-fail
     name: E2E Tests (Node ${{ matrix.node-version }}, Freestyle ${{ matrix.freestyle-mode }})
     runs-on: ubicloud-standard-8
     env:
@@ -132,13 +148,10 @@ jobs:
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
 
-      # The built server (node dist/server.mjs) does not auto-load .env files the way
-      # `next start` used to, so it must be wrapped in with-env:test to pick up
-      # .env.test.local (mirrors the e2e-fallback-tests workflow).
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm -C apps/backend run with-env:test pnpm run start &
+          run: pnpm run start:backend --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true

@@ -1829,10 +1829,12 @@ export namespace Payments {
 // Waits for any in-flight background tasks (e.g. async Stripe webhook processing)
 // to finish. Backed by the internal flush-background-tasks endpoint.
 export async function flushBackgroundTasks() {
-  const res = await niceBackendFetch("/api/latest/internal/flush-background-tasks", {
-    method: "POST",
-    accessType: "admin",
-    body: {},
+  const res = await withInternalProject(async () => {
+    return await niceBackendFetch("/api/latest/internal/flush-background-tasks", {
+      method: "POST",
+      accessType: "admin",
+      body: {},
+    });
   });
   expect(res.status).toBe(200);
 }

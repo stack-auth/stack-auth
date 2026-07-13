@@ -1,14 +1,13 @@
 import { observeAndLog, sanitizeBody } from "@/lib/ai/ai-proxy-handlers";
-import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { PRODUCTION_AI_PROXY_BASE_URL } from "@/lib/ai/proxy-url";
-import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path?: string[] }> }) {
+
+async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ path?: string[] }> }) {
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
@@ -23,7 +22,7 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
   const startedAt = performance.now();
 
   const targetUrl = apiKey === "FORWARD_TO_PRODUCTION"
-    ? `${PRODUCTION_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`
+    ? `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`
     : `${OPENROUTER_BASE_URL}/${subpath}${req.nextUrl.search}`;
   const forwardHeaders: Record<string, string> = apiKey === "FORWARD_TO_PRODUCTION"
     ? {}

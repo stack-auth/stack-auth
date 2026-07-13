@@ -3,8 +3,9 @@ import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
+import { NextRequest } from "next/server";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   if (!code || code.length !== 45)

@@ -1,8 +1,9 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { NextRequest } from "next/server";
 
-export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("db")) {
+export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get("db")) {
     const project = await globalPrismaClient.project.findFirst({});
 
     if (!project) {

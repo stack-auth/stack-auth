@@ -6,7 +6,7 @@
       "dom.iterable",
       "esnext"
     ],
-    "allowJs": false,
+    "allowJs": true,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -17,6 +17,11 @@
     "jsx": "react-jsx",
     "incremental": true,
     "noErrorTruncation": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
       "@/*": [
         "./src/*"
@@ -28,15 +33,16 @@
     ]
   },
   "include": [
+    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     "**/*.?ts",
-    "**/*.?tsx"
+    "**/*.?tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "api",
     "node_modules",
-    ".next/dev",
-    "dist"
+    ".next/dev"
   ]
 }

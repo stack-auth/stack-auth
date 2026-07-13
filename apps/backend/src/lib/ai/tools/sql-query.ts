@@ -1,5 +1,6 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
+import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { ClickHouseError } from "@clickhouse/client";
 import { tool } from "ai";
 import { z } from "zod";
@@ -22,8 +23,8 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
     });
   }
 
-  const projectId = targetProjectId;
-  const branchId = "main";
+  const projectId = targetProjectId ?? auth.tenancy.project.id;
+  const branchId = targetProjectId ? "main" : auth.tenancy.branchId;
 
   // Max rows returned to the model (backstop if LIMIT is missing).
   const MAX_ROWS_FOR_AI = 50;
