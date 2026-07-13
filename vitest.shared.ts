@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     watch: false,
     pool: 'threads',
+    minWorkers: 1,
     maxWorkers: 8,
     include: ['**/*.test.{js,ts,jsx,tsx}'],
     includeSource: ['**/*.{js,ts,jsx,tsx}'],

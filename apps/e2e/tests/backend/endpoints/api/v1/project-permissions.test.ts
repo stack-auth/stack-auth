@@ -234,6 +234,7 @@ it("can customize default user permissions", async ({ expect }) => {
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [{ "id": "test" }],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "",
         "display_name": "New Project",
@@ -246,6 +247,7 @@ it("can customize default user permissions", async ({ expect }) => {
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }

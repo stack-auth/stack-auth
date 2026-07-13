@@ -3,7 +3,7 @@ import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { isIpAddress } from "@hexclave/shared/dist/utils/ips";
 import { pick } from "@hexclave/shared/dist/utils/objects";
-import { headers } from "next/headers";
+import { headers } from "@/lib/runtime/headers";
 
 // An end user is a person sitting behind a computer screen.
 //

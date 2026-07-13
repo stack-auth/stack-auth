@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { defineConfig, type Rolldown } from 'tsdown';
+import { defineConfig, type NormalizedFormat, type Rolldown } from 'tsdown';
 import { createBasePlugin } from './plugins.ts';
 
 
@@ -60,6 +60,30 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
     // and CJS dist isn't needed during development.
     dts: inlineConfig.watch ? false : true,
     onSuccess: _options.onSuccess,
+    // Some source files use `import.meta` inside platform-specific branches (e.g.
+    // `import.meta.env?.SSR` for the TanStack Start build in src/lib/cookie.ts).
+    // `import.meta` isn't valid in CJS, so rolldown emits an [EMPTY_IMPORT_META]
+    // warning for it once per package during the dual-format build, spamming the
+    // dev output. Only the ESM build is ever loaded by the runtimes that read
+    // `import.meta`; the CJS build's auto-replacement of `import.meta` with `{}`
+    // is exactly the behaviour we want, so silence just that warning for CJS.
+    inputOptions: (options: Rolldown.InputOptions, format: NormalizedFormat) => {
+      if (format !== 'cjs') {
+        return options;
+      }
+      const previousOnLog = options.onLog;
+      options.onLog = (level, log, defaultHandler) => {
+        if (log.code === 'EMPTY_IMPORT_META') {
+          return;
+        }
+        if (previousOnLog != null) {
+          previousOnLog(level, log, defaultHandler);
+        } else {
+          defaultHandler(level, log);
+        }
+      };
+      return options;
+    },
     ...(inlineConfig.watch ? {
       format: 'esm',
       outDir: 'dist/esm',

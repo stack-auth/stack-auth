@@ -18,10 +18,11 @@ import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementatio
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
+import { shouldSuppressPeriodicBulldozerLogs } from "./logging.js";
 import { instrumentation, traceSpan } from "./otel.js";
 import { createPaymentsSchema, itemQuantitiesLedgerUpperBoundAsOf } from "./payments/schema/index.js";
 import type { CustomerType, Json, SubscriptionRow, TransactionRow } from "./payments/schema/types.js";
-import { initSentry } from "./sentry.js";
+import { initSentry, resolveBulldozerSentryEnvironment } from "./sentry.js";
 
 const sentryEnabled = initSentry();
 
@@ -128,7 +129,8 @@ function serviceMemoryUsage() {
   };
 }
 
-function logBulldozerService(event: string, fields: Record<string, unknown>) {
+function logBulldozerService(event: string, fields: Record<string, unknown>, options?: { suppressInNodeEnvDevelopment?: boolean }) {
+  if (options?.suppressInNodeEnvDevelopment === true && shouldSuppressPeriodicBulldozerLogs) return;
   console.log(JSON.stringify({
     component: "bulldozer-js",
     event,
@@ -283,7 +285,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
     logBulldozerService("http-handler-start", {
       label,
       memory: serviceMemoryUsage(),
-    });
+    }, { suppressInNodeEnvDevelopment: true });
     try {
       const operationStartedAt = performance.now();
       const body = await operation();
@@ -300,7 +302,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
         responseSerializationMs,
         elapsedMs: performance.now() - startedAt,
         memory: serviceMemoryUsage(),
-      });
+      }, { suppressInNodeEnvDevelopment: true });
       return response;
     } catch (error) {
       if (StatusError.isStatusError(error) && error.isClientError()) {
@@ -1035,6 +1037,7 @@ const startupFields = {
   port: app.server?.port ?? port,
   pid: process.pid,
   nodeVersion: process.version,
+  sentryEnvironment: resolveBulldozerSentryEnvironment(),
   lowLevelBackend: process.env.HEXCLAVE_BULLDOZER_JS_LOW_LEVEL_BACKEND ?? "lmdb",
   usingTmpLmdb: process.env.HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB === "1",
   disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
@@ -1043,7 +1046,7 @@ const startupFields = {
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
   memory: serviceMemoryUsage(),
 };
-logBulldozerService("service-started", startupFields);
+logBulldozerService("service-started", startupFields, { suppressInNodeEnvDevelopment: true });
 
 // Emit every boot to Sentry so restart/crash loops are visible. An OOM kill (and
 // most hard crashes) terminate the process before anything can be reported, so we
@@ -1083,9 +1086,11 @@ runAsynchronously(async () => {
           slowThresholdMs: TICK_LOOP_SLOW_MS,
           lastTickMillis,
           memory: serviceMemoryUsage(),
-        });
+        }, { suppressInNodeEnvDevelopment: true });
       }
-      await wait(1000);
+      // The HTTP server owns this periodic loop's lifetime; after it closes,
+      // waiting for the next tick must not keep the process alive.
+      await wait(1000, { unref: true });
     });
   }
 });

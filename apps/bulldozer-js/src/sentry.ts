@@ -4,6 +4,12 @@ import { ignoreUnhandledRejection } from "@hexclave/shared/dist/utils/promises";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
 
+export function resolveBulldozerSentryEnvironment(): string {
+  const configured = process.env.BULLDOZER_JS_SENTRY_ENVIRONMENT?.trim();
+  if (configured) return configured;
+  return process.env.NODE_ENV === "production" ? "production" : "development";
+}
+
 // Init Sentry for the bulldozer-js process and route `captureError`/`captureWarning` to it. No-ops
 // without a DSN, in which case errors still hit the default console sink. Returns whether Sentry was
 // actually configured, so the boot path can decide whether to emit the startup signal to Sentry
@@ -15,7 +21,7 @@ export function initSentry(): boolean {
   Sentry.init({
     ...sentryBaseConfig,
     dsn,
-    environment: process.env.NODE_ENV === "production" ? "production" : "development",
+    environment: resolveBulldozerSentryEnvironment(),
     sendDefaultPii: false,
     tracesSampleRate: 0,
 

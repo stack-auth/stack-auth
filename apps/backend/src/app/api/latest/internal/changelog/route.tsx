@@ -5,8 +5,6 @@ import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import * as fs from "fs/promises";
 import * as path from "path";
 
-const REVALIDATE_SECONDS = 60 * 60;
-
 type ChangeType = "major" | "minor" | "patch";
 
 type ChangelogEntry = {
@@ -172,9 +170,6 @@ export const GET = createSmartRouteHandler({
       headers: {
         "Accept": "text/plain",
         "User-Agent": "stack-auth-backend-changelog",
-      },
-      next: {
-        revalidate: REVALIDATE_SECONDS,
       },
     });
 
