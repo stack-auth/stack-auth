@@ -1061,11 +1061,11 @@ GROUP BY date, event_type ORDER BY date DESC, event_count DESC LIMIT 100
 
 ### INTERACTION STYLE
 
-- Generate accurate one-shot queries using the schema above. Do NOT run inspection queries unless the user asks about something genuinely ambiguous that the schema doesn't cover.
+- Run \`DESCRIBE TABLE\` on the relevant tables first, then generate accurate one-shot queries from what it returns. Re-run it whenever you're unsure about a column, type, or valid value.
 - Keep chat messages short — the user sees the grid directly.
 - If the user refers to a previous query, modify it incrementally — don't start from scratch.
 - If \`queryAnalytics\` returns an error, adjust and retry. Do NOT invent columns or fabricate data.
-- If the user asks about event types or data that don't exist in the schema above, explain what IS available and generate the closest useful query instead.
+- If the user asks about event types or data that don't exist (per \`SHOW TABLES\`/\`DESCRIBE TABLE\`), explain what IS available and generate the closest useful query instead.
 `,
 
   "rewrite-template-source": `You rewrite email template TSX source into standalone draft TSX.
