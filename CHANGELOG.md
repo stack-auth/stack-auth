@@ -4,11 +4,27 @@
 
 ## 7/10/26
 
-- New navigation funnel analytics, location-aware overview globe, recent sign-up rule activity, and project IDs in platform analytics.
-- Faster project onboarding with instant preview projects, redesigned setup guidance, and broader OAuth support.
-- Unified Payments customer management and checkout creation, with manual item quantity changes and more reliable checkout and webhooks.
-- Expanded email sending for arbitrary recipients and custom domains, plus improved user email filtering and exports.
-- New CLI Auth dashboard app and a leaner development environment workflow, alongside session replay and dashboard stability fixes.
+- New CLI Auth dashboard app and a browser `<script>` setup path that works without a bundler.
+- The project overview globe now centers on the viewer, and the onboarding auth preview is interactive.
+- Payments customers now support manual item quantity adjustments directly from the dashboard.
+- Fixes for user-page syncing, session replay playback freezes, and runaway infinite scrolling.
+- Improved docs discoverability and dashboard resilience when internal billing data is temporarily unavailable.
+
+## 7/3/26
+
+- New navigation funnel graph, recent sign-up rule activity, and project IDs in platform analytics.
+- Payments checkout now surfaces errors clearly, with a more polished onboarding flow.
+- Expanded email delivery to arbitrary recipients on managed domains, plus filtered user exports and safer user dialogs.
+- Leaner dashboard downloads and local-dashboard support for `hexclave exec`, with one unified development environment workflow.
+- Large session replays are compressed to avoid dropped recordings, alongside faster analytics and Payments data processing.
+
+## 6/26/26
+
+- Unified payments customers table with "Create checkout" available everywhere and idempotent webhook handling.
+- Faster project onboarding with a preview project pool for instant creation and prefetched email themes.
+- New Usage settings page with performance improvements and a "View usage" shortcut from limit banners.
+- TypeScript 6.0 upgrade, STACK_* → HEXCLAVE_* env-var rename, and devtool indicator auto-visibility.
+- Stability fixes for session recording flush limits, duplicate-email sign-up errors, and recurring production errors.
 
 ## 6/19/26
 
