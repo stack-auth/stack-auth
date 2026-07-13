@@ -1,5 +1,5 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { AutomationJson, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
+import { AutomationJson, AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { AutomationActionPlan, AutomationEvaluationResult, AutomationSourceAdapter, AutomationActionAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 
 export type AutomationRuleExecutionClaimResult =
@@ -75,7 +75,7 @@ export async function runAutomationRuleForRoute(options: {
   stateStore: AutomationRuleExecutionStateStore,
   emailSender: AutomationEmailSender,
 }): Promise<AutomationRunResult> {
-  const rule = getSupportedAutomationRule(options.tenancy, options.ruleId);
+  const rule = getSupportedAutomationRuleForRunRoute(options.tenancy, options.ruleId);
   if (!rule.enabled) {
     throw new StatusError(StatusError.Conflict, `Automation rule "${options.ruleId}" is disabled and cannot be manually sent.`);
   }
@@ -156,6 +156,17 @@ export async function runAutomationRuleForRoute(options: {
     nextCursor: evaluation.nextCursor,
     decisions,
   };
+}
+
+function getSupportedAutomationRuleForRunRoute(tenancy: AutomationRuleTenancy, ruleId: string) {
+  try {
+    return getSupportedAutomationRule(tenancy, ruleId);
+  } catch (error) {
+    if (error instanceof AutomationRuleNotFoundError) {
+      throw new StatusError(StatusError.NotFound, error.message);
+    }
+    throw error;
+  }
 }
 
 export function automationRunResultToApiBody(result: AutomationRunResult) {

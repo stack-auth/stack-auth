@@ -424,23 +424,31 @@ export function parseAutomationRouteResult(value: unknown): AutomationRouteResul
     suppressedCount: requireNumberFromRecord(value, "suppressed_count"),
     sentCount: readNumber(value.sent_count),
     nextCursor: value.next_cursor === null ? null : requireStringFromRecord(value, "next_cursor"),
-    decisions: value.decisions.flatMap((rawDecision) => parseDecision(rawDecision)),
+    decisions: value.decisions.map((rawDecision) => parseDecision(rawDecision)),
   };
 }
 
-function parseDecision(rawDecision: unknown): AutomationDecision[] {
-  if (!isRecord(rawDecision)) return [];
+function parseDecision(rawDecision: unknown): AutomationDecision {
+  if (!isRecord(rawDecision)) {
+    throw new Error("Automation response decision did not match the expected shape");
+  }
   const source = isRecord(rawDecision.source) ? rawDecision.source : undefined;
   const cooldown = isRecord(rawDecision.cooldown) ? rawDecision.cooldown : undefined;
   const recipient = isRecord(rawDecision.recipient) ? rawDecision.recipient : undefined;
-  if (source === undefined || cooldown === undefined) return [];
+  if (source === undefined || cooldown === undefined) {
+    throw new Error("Automation response decision did not match the expected shape");
+  }
+  const subjectType = requireStringFromRecord(rawDecision, "subject_type");
+  if (subjectType !== "user") {
+    throw new Error(`Automation response subject_type "${subjectType}" is unsupported`);
+  }
   const thresholdKind = requireStringFromRecord(source, "threshold_kind");
   if (thresholdKind !== "near" && thresholdKind !== "over") {
-    return [];
+    throw new Error(`Automation response threshold_kind "${thresholdKind}" is unsupported`);
   }
 
-  return [{
-    subjectType: "user",
+  return {
+    subjectType,
     subjectId: requireStringFromRecord(rawDecision, "subject_id"),
     thresholdKind,
     currentQuantity: requireNumberFromRecord(source, "current_quantity"),
@@ -449,7 +457,7 @@ function parseDecision(rawDecision: unknown): AutomationDecision[] {
     sent: readBoolean(rawDecision.sent),
     skipReason: readString(rawDecision.skip_reason),
     hasPrimaryEmail: recipient === undefined ? undefined : readBoolean(recipient.has_primary_email),
-  }];
+  };
 }
 
 async function requestAutomationRun(adminApp: object, ruleId: string, mode: "dry-run" | "run"): Promise<AutomationRouteResult> {
@@ -791,25 +799,27 @@ function RuleEditorDialog(props: {
         {/* SECTION 0: General Identity Block */}
         <div className="grid gap-4 sm:grid-cols-12 items-end bg-foreground/[0.01] dark:bg-white/[0.01] border border-foreground/[0.05] rounded-2xl p-4">
           <div className="sm:col-span-4">
-            <Field label="Rule ID">
+            <Field label="Rule ID">{(fieldId) => (
               <DesignInput
+                id={fieldId}
                 value={draft.ruleId}
                 disabled={isEditing}
                 onChange={(event) => setDraftField("ruleId", sanitizeUserSpecifiedId(event.target.value))}
                 size="md"
                 className="font-mono text-xs h-9"
               />
-            </Field>
+            )}</Field>
           </div>
           <div className="sm:col-span-5">
-            <Field label="Display Name">
+            <Field label="Display Name">{(fieldId) => (
               <DesignInput
+                id={fieldId}
                 value={draft.displayName}
                 onChange={(event) => setDraftField("displayName", event.target.value)}
                 size="md"
                 className="h-9"
               />
-            </Field>
+            )}</Field>
           </div>
           <div className="sm:col-span-3">
             <div className="flex flex-col gap-1.5">
@@ -849,8 +859,9 @@ function RuleEditorDialog(props: {
 
             <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Item to Monitor">
+                <Field label="Item to Monitor">{(fieldId) => (
                   <DesignSelectorDropdown
+                    triggerId={fieldId}
                     value={draft.itemId}
                     onValueChange={(value) => setDraftField("itemId", value)}
                     options={props.itemOptions}
@@ -858,9 +869,10 @@ function RuleEditorDialog(props: {
                     disabled={props.itemOptions.length === 0}
                     size="md"
                   />
-                </Field>
-                <Field label="Cooldown Period" helper="Days">
+                )}</Field>
+                <Field label="Cooldown Period" helper="Days">{(fieldId) => (
                   <DesignInput
+                    id={fieldId}
                     type="number"
                     inputMode="numeric"
                     min="1"
@@ -870,7 +882,7 @@ function RuleEditorDialog(props: {
                     size="md"
                     placeholder="e.g. 7"
                   />
-                </Field>
+                )}</Field>
               </div>
             </div>
           </div>
@@ -892,8 +904,9 @@ function RuleEditorDialog(props: {
 
             <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Remaining Ratio">
+                <Field label="Remaining Ratio">{(fieldId) => (
                   <DesignInput
+                    id={fieldId}
                     type="number"
                     inputMode="decimal"
                     step="0.01"
@@ -904,9 +917,10 @@ function RuleEditorDialog(props: {
                     size="md"
                     placeholder="Between 0.0 and 1.0"
                   />
-                </Field>
-                <Field label="Remaining Quantity">
+                )}</Field>
+                <Field label="Remaining Quantity">{(fieldId) => (
                   <DesignInput
+                    id={fieldId}
                     type="number"
                     inputMode="decimal"
                     min="0"
@@ -915,9 +929,10 @@ function RuleEditorDialog(props: {
                     size="md"
                     placeholder="e.g. 10"
                   />
-                </Field>
-                <Field label="Over-Limit Quantity">
+                )}</Field>
+                <Field label="Over-Limit Quantity">{(fieldId) => (
                   <DesignInput
+                    id={fieldId}
                     type="number"
                     inputMode="decimal"
                     min="0"
@@ -926,7 +941,7 @@ function RuleEditorDialog(props: {
                     size="md"
                     placeholder="e.g. 0"
                   />
-                </Field>
+                )}</Field>
               </div>
             </div>
           </div>
@@ -948,8 +963,9 @@ function RuleEditorDialog(props: {
 
             <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Email Template">
+                <Field label="Email Template">{(fieldId) => (
                   <DesignSelectorDropdown
+                    triggerId={fieldId}
                     value={draft.templateId}
                     onValueChange={(value) => setDraftField("templateId", value)}
                     options={props.templateOptions}
@@ -957,29 +973,31 @@ function RuleEditorDialog(props: {
                     disabled={props.templateOptions.length === 0}
                     size="md"
                   />
-                </Field>
-                <Field label="Theme">
+                )}</Field>
+                <Field label="Theme">{(fieldId) => (
                   <DesignSelectorDropdown
+                    triggerId={fieldId}
                     value={draft.themeId}
                     onValueChange={(value) => setDraftField("themeId", value)}
                     options={props.themeOptions}
                     size="md"
                   />
-                </Field>
-                <Field label="Subject Override" helper="Optional">
+                )}</Field>
+                <Field label="Subject Override" helper="Optional">{(fieldId) => (
                   <DesignInput
+                    id={fieldId}
                     value={draft.subject}
                     onChange={(event) => setDraftField("subject", event.target.value)}
                     size="md"
                     placeholder="e.g. Action Required: Your quota is low"
                   />
-                </Field>
-                <Field label="Notification Category">
-                  <div className="flex items-center justify-between rounded-xl bg-foreground/[0.02] dark:bg-white/[0.01] border border-foreground/[0.06] px-3.5 h-9">
+                )}</Field>
+                <Field label="Notification Category">{(fieldId) => (
+                  <div id={fieldId} className="flex items-center justify-between rounded-xl bg-foreground/[0.02] dark:bg-white/[0.01] border border-foreground/[0.06] px-3.5 h-9">
                     <span className="text-xs text-muted-foreground">Category</span>
                     <DesignBadge label="Marketing" color="green" size="sm" />
                   </div>
-                </Field>
+                )}</Field>
               </div>
             </div>
           </div>
@@ -1215,7 +1233,7 @@ function Metric(props: { label: string, value: number }) {
   );
 }
 
-function Field(props: { label: string, helper?: string, children: React.ReactNode }) {
+function Field(props: { label: string, helper?: string, children: (id: string) => React.ReactNode }) {
   const id = `usage-email-field-${props.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <div className="flex flex-col gap-1.5">
@@ -1227,7 +1245,7 @@ function Field(props: { label: string, helper?: string, children: React.ReactNod
           </span>
         ) : null}
       </Label>
-      <div className={cn("[&_input]:w-full [&_button]:w-full")}>{props.children}</div>
+      <div className={cn("[&_input]:w-full [&_button]:w-full")}>{props.children(id)}</div>
     </div>
   );
 }

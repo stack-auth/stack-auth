@@ -4,6 +4,7 @@ import {
   automationRunResultToApiBody,
   runAutomationRuleForRoute,
 } from "@/lib/automations/run-route";
+import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
 import {
   createPaymentsItemQuotaSourceAdapter,
   paymentsItemQuotaCustomerDataReaders,
@@ -78,7 +79,7 @@ export const POST = createSmartRouteHandler({
       projectUserReader: prismaPaymentsItemQuotaProjectUserReader,
       customerDataReaders: paymentsItemQuotaCustomerDataReaders,
     });
-    const scheduledAt = body.scheduled_at_millis === undefined ? new Date() : new Date(body.scheduled_at_millis);
+    const scheduledAt = parseAutomationScheduledAtMillis(body.scheduled_at_millis, "scheduled_at_millis");
     const result = await runAutomationRuleForRoute({
       tenancy: auth.tenancy,
       ruleId: params.rule_id,

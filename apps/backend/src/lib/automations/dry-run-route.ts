@@ -1,7 +1,8 @@
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { automationCooldownStatusToApiBody, type AutomationCooldownStatus } from "./cooldown";
 import { AutomationRuleExecutionStateReader } from "./execution-state-store";
 import { AutomationActionAdapter, AutomationEvaluationResult, AutomationSourceAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
-import { getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
+import { AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 
 export type AutomationDryRunRecipientStatus = {
   userExists: boolean,
@@ -64,7 +65,7 @@ export async function evaluateAutomationRuleDryRunForRoute<TPrisma>(options: {
   executionStateReader: AutomationRuleExecutionStateReader,
   now: Date,
 }) {
-  const rule = getSupportedAutomationRule(options.tenancy, options.ruleId);
+  const rule = getSupportedAutomationRuleForDryRunRoute(options.tenancy, options.ruleId);
   const result = await evaluateAutomationRule({
     tenancy: options.tenancy,
     ruleId: options.ruleId,
@@ -97,6 +98,17 @@ export async function evaluateAutomationRuleDryRunForRoute<TPrisma>(options: {
   })));
 
   return automationDryRunResultToApiBody(result, recipientStatuses, cooldownStatuses);
+}
+
+function getSupportedAutomationRuleForDryRunRoute(tenancy: AutomationRuleTenancy, ruleId: string) {
+  try {
+    return getSupportedAutomationRule(tenancy, ruleId);
+  } catch (error) {
+    if (error instanceof AutomationRuleNotFoundError) {
+      throw new StatusError(StatusError.NotFound, error.message);
+    }
+    throw error;
+  }
 }
 
 export function automationDryRunResultToApiBody(

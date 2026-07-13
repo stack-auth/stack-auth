@@ -345,4 +345,37 @@ describe("usage email automation dashboard helpers", () => {
       }
     `);
   });
+
+  it("fails loudly for malformed automation decision rows", () => {
+    expect(() => parseAutomationRouteResult({
+      rule_id: "usage-upgrade",
+      mode: "dry-run",
+      evaluated_count: 1,
+      eligible_count: 1,
+      suppressed_count: 0,
+      next_cursor: null,
+      decisions: [
+        {
+          subject_type: "user",
+          subject_id: "user-1",
+          source: {
+            type: "payments-item-quota",
+            item_id: "credits",
+            current_quantity: 12,
+            entitlement_quantity: 10,
+            threshold_kind: "future-threshold",
+            owned_product_ids: [],
+            active_subscription_ids: [],
+          },
+          cooldown: {
+            blocked: false,
+          },
+          recipient: {
+            user_exists: true,
+            has_primary_email: true,
+          },
+        },
+      ],
+    })).toThrowErrorMatchingInlineSnapshot(`[Error: Automation response threshold_kind "future-threshold" is unsupported]`);
+  });
 });

@@ -10,12 +10,30 @@ import {
   automationRunResultToApiBody,
   runAutomationRuleForRoute,
 } from "@/lib/automations/run-route";
+import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
 
 const ruleId = "low-api-credits";
 const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
 
+describe("automation scheduled timestamp parsing", () => {
+  it("accepts valid scheduled millis", () => {
+    expect(parseAutomationScheduledAtMillis(1782907200000, "scheduled_at_millis")).toEqual(new Date("2026-07-01T12:00:00.000Z"));
+  });
+
+  it("rejects out-of-range manual run scheduled millis", () => {
+    expect(() => parseAutomationScheduledAtMillis(8640000000000001, "scheduled_at_millis"))
+      .toThrowErrorMatchingInlineSnapshot(`[StatusError: scheduled_at_millis must be a valid JavaScript timestamp in milliseconds.]`);
+  });
+
+  it("rejects out-of-range scheduled worker millis", () => {
+    expect(() => parseAutomationScheduledAtMillis(-8640000000000001, "scheduledAtMillis"))
+      .toThrowErrorMatchingInlineSnapshot(`[StatusError: scheduledAtMillis must be a valid JavaScript timestamp in milliseconds.]`);
+  });
+});
+
 function createTenancy(options: {
   enabled?: boolean,
+  ruleExists?: boolean,
 } = {}) {
   return {
     id: "tenancy-1",
@@ -24,7 +42,7 @@ function createTenancy(options: {
     },
     config: {
       automations: {
-        rules: {
+        rules: options.ruleExists === false ? {} : {
           [ruleId]: {
             enabled: options.enabled ?? true,
             source: {
@@ -155,8 +173,8 @@ function createInMemoryStateStore() {
 
       states.set(key, {
         lastTriggeredAt: options.lastTriggeredAt,
-        lastActionAt: existing?.lastActionAt ?? null,
-        lastEmailOutboxId: existing?.lastEmailOutboxId ?? null,
+        lastActionAt: null,
+        lastEmailOutboxId: null,
         lastSourceSnapshot: options.sourceSnapshot,
       });
       return {
@@ -187,6 +205,7 @@ function createInMemoryStateStore() {
 async function runWithFakes(options: {
   stateStore?: AutomationRuleExecutionStateStore,
   decisionFactory?: () => AutomationSourceDecision,
+  emailSender?: Parameters<typeof runAutomationRuleForRoute>[0]["emailSender"],
   now?: Date,
   limit?: number,
   cursor?: string | null,
@@ -194,7 +213,7 @@ async function runWithFakes(options: {
 } = {}) {
   const sourceAdapter = createSourceAdapter(options.decisionFactory);
   const actionAdapter = createActionAdapter();
-  const emailSender = vi.fn(async () => {});
+  const emailSender = vi.fn(options.emailSender ?? (async () => {}));
   let createdStore: ReturnType<typeof createInMemoryStateStore> | undefined;
   let stateStore = options.stateStore;
   if (stateStore === undefined) {
@@ -225,6 +244,32 @@ async function runWithFakes(options: {
 }
 
 describe("automation real-send route helpers", () => {
+  it("returns 404 for missing manual rules before evaluating, claiming state, or sending email", async () => {
+    const sourceAdapter = createSourceAdapter();
+    const actionAdapter = createActionAdapter();
+    const emailSender = vi.fn(async () => {});
+    const { stateStore } = createInMemoryStateStore();
+
+    const resultPromise = runAutomationRuleForRoute({
+      tenancy: createTenancy({ ruleExists: false }),
+      ruleId,
+      scheduledAt,
+      now: new Date("2026-07-01T12:00:00.000Z"),
+      sourceAdapter,
+      actionAdapter,
+      stateStore,
+      emailSender,
+    });
+    await expect(resultPromise).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resultPromise).rejects.toThrowErrorMatchingInlineSnapshot(`[StatusError: Automation rule "low-api-credits" was not found for tenancy "tenancy-1".]`);
+
+    expect(sourceAdapter.evaluate).not.toHaveBeenCalled();
+    expect(actionAdapter.buildPlan).not.toHaveBeenCalled();
+    expect(stateStore.claimExecution).not.toHaveBeenCalled();
+    expect(stateStore.markActionCompleted).not.toHaveBeenCalled();
+    expect(emailSender).not.toHaveBeenCalled();
+  });
+
   it("refuses disabled rules before evaluating, claiming state, or sending email", async () => {
     const sourceAdapter = createSourceAdapter();
     const actionAdapter = createActionAdapter();
@@ -380,6 +425,77 @@ describe("automation real-send route helpers", () => {
     expect(first.result.nextCursor).toBe("cursor-2");
     expect(first.result.sentCount).toBe(1);
     expect(second.result.sentCount).toBe(0);
+  });
+
+  it("leaves failed sends as temporary in-flight claims and does not mark completion", async () => {
+    const { stateStore, states } = createInMemoryStateStore();
+    const failingEmailSender = vi.fn(async () => {
+      throw new Error("email provider unavailable");
+    });
+
+    await expect(runWithFakes({
+      stateStore,
+      emailSender: failingEmailSender,
+    })).rejects.toThrow("email provider unavailable");
+
+    expect(failingEmailSender).toHaveBeenCalledOnce();
+    expect(stateStore.claimExecution).toHaveBeenCalledOnce();
+    expect(stateStore.markActionCompleted).not.toHaveBeenCalled();
+    expect([...states.values()]).toMatchObject([{
+      lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      lastActionAt: null,
+      lastEmailOutboxId: null,
+    }]);
+
+    const immediateRetry = await runWithFakes({
+      stateStore,
+      now: new Date("2026-07-01T12:01:00.000Z"),
+    });
+
+    expect(immediateRetry.result.sentCount).toBe(0);
+    expect(immediateRetry.result.suppressedCount).toBe(1);
+    expect(immediateRetry.emailSender).not.toHaveBeenCalled();
+  });
+
+  it("allows retry after a failed send claim becomes stale", async () => {
+    const { stateStore } = createInMemoryStateStore();
+
+    await expect(runWithFakes({
+      stateStore,
+      emailSender: async () => {
+        throw new Error("email provider unavailable");
+      },
+    })).rejects.toThrow("email provider unavailable");
+
+    const retryAfterStaleClaim = await runWithFakes({
+      stateStore,
+      now: new Date("2026-07-01T12:16:00.000Z"),
+    });
+
+    expect(retryAfterStaleClaim.result.sentCount).toBe(1);
+    expect(retryAfterStaleClaim.emailSender).toHaveBeenCalledOnce();
+  });
+
+  it("suppresses a second run after an expired cooldown is reclaimed but not completed", async () => {
+    const { stateStore } = createInMemoryStateStore();
+
+    await runWithFakes({ stateStore });
+    await expect(runWithFakes({
+      stateStore,
+      now: new Date("2026-07-09T12:00:00.000Z"),
+      emailSender: async () => {
+        throw new Error("email provider unavailable");
+      },
+    })).rejects.toThrow("email provider unavailable");
+
+    const secondReclaimAttempt = await runWithFakes({
+      stateStore,
+      now: new Date("2026-07-09T12:01:00.000Z"),
+    });
+
+    expect(secondReclaimAttempt.result.sentCount).toBe(0);
+    expect(secondReclaimAttempt.result.suppressedCount).toBe(1);
+    expect(secondReclaimAttempt.emailSender).not.toHaveBeenCalled();
   });
 });
 
@@ -617,6 +733,42 @@ describe("Prisma automation execution state store", () => {
       claimed: true,
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
     });
+  });
+
+  it("allows only one expired cooldown reclaim before completion", async () => {
+    const lastActionAt = new Date("2026-07-01T12:05:00.000Z");
+    const { prisma, rows } = createMockExecutionStatePrisma([{
+      ...createClaimOptions(),
+      sourceType: "payments-item-quota",
+      actionType: "send-email",
+      lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      lastActionAt,
+      lastEmailOutboxId: null,
+      lastSourceSnapshot: {
+        itemId: "api_credits",
+      },
+    }]);
+    const store = createPrismaAutomationRuleExecutionStateStore(prisma);
+
+    const first = await store.claimExecution(createClaimOptions({
+      lastTriggeredAt: new Date("2026-07-09T12:06:00.000Z"),
+    }));
+    const second = await store.claimExecution(createClaimOptions({
+      lastTriggeredAt: new Date("2026-07-09T12:07:00.000Z"),
+    }));
+
+    expect(first).toEqual({
+      claimed: true,
+      lastActionAt,
+    });
+    expect(second).toEqual({
+      claimed: false,
+      lastActionAt: null,
+    });
+    expect([...rows.values()]).toMatchObject([{
+      lastTriggeredAt: new Date("2026-07-09T12:06:00.000Z"),
+      lastActionAt: null,
+    }]);
   });
 
   it("marks a claimed action completed with Prisma update", async () => {

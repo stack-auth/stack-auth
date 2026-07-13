@@ -46,6 +46,7 @@ export type AutomationRuleExecutionStatePrisma = {
         sourceType: string,
         actionType: string,
         lastTriggeredAt: Date,
+        lastActionAt: Date | null,
         lastSourceSnapshot: Prisma.InputJsonObject,
       },
     }) => Promise<{ count: number }>,
@@ -177,6 +178,7 @@ export function createPrismaAutomationRuleExecutionStateStore(prisma: Automation
           sourceType: options.sourceType,
           actionType: options.actionType,
           lastTriggeredAt: options.lastTriggeredAt,
+          lastActionAt: null,
           lastSourceSnapshot,
         },
       });

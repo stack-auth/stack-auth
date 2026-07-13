@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+const captureErrorMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/automations/actions/send-email", () => ({
   createSendEmailActionAdapter: () => ({}),
 }));
@@ -34,6 +36,14 @@ vi.mock("@/prisma-client", () => ({
   },
 }));
 
+vi.mock("@hexclave/shared/dist/utils/errors", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hexclave/shared/dist/utils/errors")>();
+  return {
+    ...actual,
+    captureError: captureErrorMock,
+  };
+});
+
 import {
   discoverEnabledScheduledAutomationRules,
   enqueueScheduledAutomationRuns,
@@ -45,9 +55,35 @@ import { AutomationRunResult } from "./run-route";
 
 const enabledRuleId = "low-api-credits";
 
+function createAutomationRule(options: {
+  enabled?: boolean,
+  sourceType?: string,
+} = {}) {
+  return {
+    enabled: options.enabled ?? true,
+    source: {
+      type: options.sourceType ?? "payments-item-quota",
+      itemId: "api_credits",
+      customerType: "user",
+      thresholds: {
+        nearRemainingQuantity: 10,
+      },
+    },
+    action: {
+      type: "send-email",
+      templateId: "8c6f6960-7a87-4ebd-b2a6-bfd06d68e2d1",
+      notificationCategoryName: "Marketing",
+    },
+    cooldown: {
+      days: 7,
+    },
+  };
+}
+
 function createTenancy(options: {
   enabled?: boolean,
   sourceType?: string,
+  rules?: Record<string, ReturnType<typeof createAutomationRule>>,
 } = {}) {
   return {
     id: "tenancy-1",
@@ -72,26 +108,8 @@ function createTenancy(options: {
     },
     config: {
       automations: {
-        rules: {
-          [enabledRuleId]: {
-            enabled: options.enabled ?? true,
-            source: {
-              type: options.sourceType ?? "payments-item-quota",
-              itemId: "api_credits",
-              customerType: "user",
-              thresholds: {
-                nearRemainingQuantity: 10,
-              },
-            },
-            action: {
-              type: "send-email",
-              templateId: "8c6f6960-7a87-4ebd-b2a6-bfd06d68e2d1",
-              notificationCategoryName: "Marketing",
-            },
-            cooldown: {
-              days: 7,
-            },
-          },
+        rules: options.rules ?? {
+          [enabledRuleId]: createAutomationRule(options),
         },
       },
     },
@@ -155,7 +173,8 @@ describe("scheduled automation discovery", () => {
     });
   });
 
-  it("fails loudly for enabled non-V1 rules", async () => {
+  it("reports malformed enabled rules and continues discovering later valid rules", async () => {
+    captureErrorMock.mockClear();
     const prisma = {
       tenancy: {
         findMany: vi.fn(async () => [{ id: "tenancy-1" }]),
@@ -164,10 +183,25 @@ describe("scheduled automation discovery", () => {
 
     await expect(discoverEnabledScheduledAutomationRules({
       prisma,
-      getTenancyById: async () => createTenancy({ sourceType: "client-push-quota" }),
-    })).rejects.toThrowErrorMatchingInlineSnapshot(
-      `[Error: Automation rule "low-api-credits" has unsupported source.type "client-push-quota". V1 supports only "payments-item-quota".]`,
-    );
+      getTenancyById: async () => createTenancy({
+        rules: {
+          invalidRule: createAutomationRule({ sourceType: "client-push-quota" }),
+          [enabledRuleId]: createAutomationRule(),
+        },
+      }),
+    })).resolves.toMatchInlineSnapshot(`
+      {
+        "nextCursor": null,
+        "scannedTenancyCount": 1,
+        "targets": [
+          {
+            "ruleId": "low-api-credits",
+            "tenancyId": "tenancy-1",
+          },
+        ],
+      }
+    `);
+    expect(captureErrorMock).toHaveBeenCalledWith("automation-scheduler-invalid-rule", expect.any(Error));
   });
 });
 
@@ -209,6 +243,27 @@ describe("scheduled automation queueing", () => {
       }],
       skipDuplicates: true,
     });
+  });
+
+  it("reports zero enqueues when a duplicate pending OutgoingRequest already exists", async () => {
+    const prisma = {
+      outgoingRequest: {
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
+    };
+
+    await expect(enqueueScheduledAutomationRuns({
+      prisma,
+      targets: [{
+        tenancyId: "tenancy-1",
+        ruleId: enabledRuleId,
+      }],
+      scheduledAt: new Date("2026-07-01T12:00:00.000Z"),
+    })).resolves.toEqual({ enqueuedCount: 0 });
+
+    expect(prisma.outgoingRequest.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      skipDuplicates: true,
+    }));
   });
 
   it("uses cursor-specific dedupe keys for continuation pages", () => {
@@ -263,6 +318,48 @@ describe("scheduled automation worker orchestration", () => {
       limit: 100,
       scheduledAt: new Date("2026-07-01T12:00:00.000Z"),
     });
+  });
+
+  it("reports duplicate continuation work without failing the completed page", async () => {
+    const runRule = vi.fn(async () => createRunResult("user-100"));
+    const enqueueContinuation = vi.fn(async () => ({ enqueuedCount: 0 }));
+
+    await expect(runScheduledAutomationRulePage({
+      tenancyId: "tenancy-1",
+      ruleId: enabledRuleId,
+      limit: 100,
+      scheduledAt: new Date("2026-07-01T12:00:00.000Z"),
+      now: new Date("2026-07-01T12:01:00.000Z"),
+      getTenancyById: async () => createTenancy(),
+      runRule,
+      enqueueContinuation,
+    })).resolves.toMatchObject({
+      status: "ran",
+      enqueuedContinuation: false,
+      result: {
+        nextCursor: "user-100",
+      },
+    });
+  });
+
+  it("propagates continuation enqueue failures so the queue can retry the page", async () => {
+    const runRule = vi.fn(async () => createRunResult("user-100"));
+    const enqueueContinuation = vi.fn(async () => {
+      throw new Error("queue unavailable");
+    });
+
+    await expect(runScheduledAutomationRulePage({
+      tenancyId: "tenancy-1",
+      ruleId: enabledRuleId,
+      limit: 100,
+      scheduledAt: new Date("2026-07-01T12:00:00.000Z"),
+      now: new Date("2026-07-01T12:01:00.000Z"),
+      getTenancyById: async () => createTenancy(),
+      runRule,
+      enqueueContinuation,
+    })).rejects.toThrow("queue unavailable");
+
+    expect(runRule).toHaveBeenCalledOnce();
   });
 
   it("skips stale queued work when the rule was disabled after enqueue", async () => {

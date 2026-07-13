@@ -271,6 +271,24 @@ describe("automation evaluator skeleton", () => {
     })).rejects.toThrow('Automation rule "low-api-credits" has unsupported action.type "webhook". V1 supports only "send-email".');
   });
 
+  it("fails loudly when source.thresholds has no configured values", async () => {
+    const { adapters } = createAdapters();
+    const rule = createRule();
+
+    await expect(evaluateAutomationRule({
+      tenancy: createTenancy({
+        ...rule,
+        source: {
+          ...rule.source,
+          thresholds: {},
+        },
+      }),
+      ruleId,
+      mode: "dry-run",
+      adapters,
+    })).rejects.toThrow('Automation rule "low-api-credits" must configure at least one source.thresholds value.');
+  });
+
   it("uses the same evaluator dispatch path for real-send mode", async () => {
     const { sourceAdapter, actionAdapter, adapters } = createAdapters();
 
@@ -447,6 +465,26 @@ describe("payments item quota source adapter", () => {
     });
   });
 
+  it("does not emit an implicit over signal for near-only absolute thresholds at zero quantity", async () => {
+    const tenancy = createSourceTenancy();
+    const rule = createSourceRule(tenancy, { nearRemainingQuantity: 10 });
+    const { adapter } = createSourceAdapterFixture({
+      projectUserIds: ["user-1"],
+      currentQuantities: {
+        "user-1": 0,
+      },
+    });
+
+    await expect(adapter.evaluate({ tenancy, ruleId, rule })).resolves.toMatchObject({
+      decisions: [{
+        signal: {
+          key: "api_credits:near",
+          kind: "near",
+        },
+      }],
+    });
+  });
+
   it("detects near threshold by remaining ratio", async () => {
     const tenancy = createSourceTenancy();
     const rule = createSourceRule(tenancy, { nearRemainingRatio: 0.2 });
@@ -454,6 +492,31 @@ describe("payments item quota source adapter", () => {
       projectUserIds: ["user-1"],
       currentQuantities: {
         "user-1": 15,
+      },
+      ownedProducts: {
+        "user-1": {
+          pro: createOwnedProduct({ quantity: 1, includedQuantity: 100 }),
+        },
+      },
+    });
+
+    await expect(adapter.evaluate({ tenancy, ruleId, rule })).resolves.toMatchObject({
+      decisions: [{
+        signal: {
+          key: "api_credits:near",
+          kind: "near",
+        },
+      }],
+    });
+  });
+
+  it("does not emit an implicit over signal for near-only ratio thresholds at zero quantity", async () => {
+    const tenancy = createSourceTenancy();
+    const rule = createSourceRule(tenancy, { nearRemainingRatio: 0.2 });
+    const { adapter } = createSourceAdapterFixture({
+      projectUserIds: ["user-1"],
+      currentQuantities: {
+        "user-1": 0,
       },
       ownedProducts: {
         "user-1": {

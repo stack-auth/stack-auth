@@ -12,6 +12,7 @@ import {
 import { sendEmailToMany } from "@/lib/emails";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { assertSupportedAutomationRule, AutomationRuleTenancy, getAutomationRule, listAutomationRules } from "./rules";
 
 export const scheduledAutomationDiscoveryLimit = 500;
@@ -142,7 +143,16 @@ export async function discoverEnabledScheduledAutomationRules(options: {
       if (!rule.enabled) {
         continue;
       }
-      assertSupportedAutomationRule(ruleId, rule);
+      try {
+        assertSupportedAutomationRule(ruleId, rule);
+      } catch (error) {
+        captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${ruleId}" for tenancy "${tenancy.id}".`, {
+          cause: error,
+          tenancyId: tenancy.id,
+          ruleId,
+        }));
+        continue;
+      }
       targets.push({
         tenancyId: tenancy.id,
         ruleId,

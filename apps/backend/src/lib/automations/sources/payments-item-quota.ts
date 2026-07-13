@@ -235,8 +235,7 @@ function getThresholdKind(options: {
   rule: PaymentsItemQuotaAutomationRule,
 }): "near" | "over" | null {
   const thresholds = options.rule.source.thresholds;
-  const overLimitQuantity = thresholds.overLimitQuantity ?? 0;
-  if (options.currentQuantity <= overLimitQuantity) {
+  if (thresholds.overLimitQuantity !== undefined && options.currentQuantity <= thresholds.overLimitQuantity) {
     return "over";
   }
   if (thresholds.nearRemainingQuantity !== undefined && options.currentQuantity <= thresholds.nearRemainingQuantity) {

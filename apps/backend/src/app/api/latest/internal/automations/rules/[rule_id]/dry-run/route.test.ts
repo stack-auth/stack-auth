@@ -8,6 +8,7 @@ const now = new Date("2026-07-01T00:00:00.000Z");
 
 function createTenancy(options: {
   enabled?: boolean,
+  ruleExists?: boolean,
 } = {}) {
   return {
     id: "tenancy-1",
@@ -16,7 +17,7 @@ function createTenancy(options: {
     },
     config: {
       automations: {
-        rules: {
+        rules: options.ruleExists === false ? {} : {
           [ruleId]: {
             enabled: options.enabled ?? true,
             source: {
@@ -119,6 +120,33 @@ function createFakePrisma(options: {
 }
 
 describe("automation dry-run route helpers", () => {
+  it("returns 404 for missing rules before evaluating or writing state", async () => {
+    const fakePrisma = createFakePrisma();
+    const sourceAdapter = createSourceAdapter();
+    const actionAdapter = createActionAdapter();
+
+    const resultPromise = evaluateAutomationRuleDryRunForRoute({
+      tenancy: createTenancy({ ruleExists: false }),
+      ruleId,
+      prisma: fakePrisma,
+      sourceAdapter,
+      actionAdapter,
+      recipientStatusReader: async () => new Map(),
+      executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
+      now,
+    });
+    await expect(resultPromise).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resultPromise).rejects.toThrowErrorMatchingInlineSnapshot(`[StatusError: Automation rule "low-api-credits" was not found for tenancy "tenancy-1".]`);
+
+    expect(sourceAdapter.evaluate).not.toHaveBeenCalled();
+    expect(actionAdapter.buildPlan).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.findUnique).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.create).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.update).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.updateMany).not.toHaveBeenCalled();
+    expect(fakePrisma.emailOutbox.createMany).not.toHaveBeenCalled();
+  });
+
   it("allows disabled rules to be previewed without writing automation state or email outbox rows", async () => {
     const fakePrisma = createFakePrisma();
     const sourceAdapter = createSourceAdapter();

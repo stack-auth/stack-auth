@@ -90,10 +90,17 @@ export function getAutomationRule(tenancy: AutomationRuleTenancy, ruleId: string
   return tenancy.config.automations?.rules?.[ruleId];
 }
 
+export class AutomationRuleNotFoundError extends Error {
+  constructor(tenancyId: string, ruleId: string) {
+    super(`Automation rule "${ruleId}" was not found for tenancy "${tenancyId}".`);
+    this.name = "AutomationRuleNotFoundError";
+  }
+}
+
 export function getSupportedAutomationRule(tenancy: AutomationRuleTenancy, ruleId: string) {
   const rule = getAutomationRule(tenancy, ruleId);
   if (rule === undefined) {
-    throw new Error(`Automation rule "${ruleId}" was not found for tenancy "${tenancy.id}".`);
+    throw new AutomationRuleNotFoundError(tenancy.id, ruleId);
   }
   assertSupportedAutomationRule(ruleId, rule);
   return rule;
@@ -114,6 +121,13 @@ export function assertSupportedAutomationRule(ruleId: string, rule: AutomationRu
   }
   if (rule.source.thresholds === undefined) {
     throw new Error(`Automation rule "${ruleId}" is missing source.thresholds.`);
+  }
+  if (
+    rule.source.thresholds.nearRemainingRatio === undefined
+    && rule.source.thresholds.nearRemainingQuantity === undefined
+    && rule.source.thresholds.overLimitQuantity === undefined
+  ) {
+    throw new Error(`Automation rule "${ruleId}" must configure at least one source.thresholds value.`);
   }
   if (rule.action.templateId === undefined) {
     throw new Error(`Automation rule "${ruleId}" is missing action.templateId.`);

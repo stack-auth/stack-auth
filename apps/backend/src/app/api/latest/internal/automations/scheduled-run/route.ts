@@ -2,6 +2,7 @@ import {
   normalizeScheduledAutomationRunPageLimit,
   runScheduledAutomationRulePage,
 } from "@/lib/automations/scheduler";
+import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
 import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
@@ -42,7 +43,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ body }, fullReq) => {
     await ensureUpstashSignature(fullReq);
-    const scheduledAt = body.scheduledAtMillis === undefined ? new Date() : new Date(body.scheduledAtMillis);
+    const scheduledAt = parseAutomationScheduledAtMillis(body.scheduledAtMillis, "scheduledAtMillis");
     const result = await runScheduledAutomationRulePage({
       tenancyId: body.tenancyId,
       ruleId: body.ruleId,
