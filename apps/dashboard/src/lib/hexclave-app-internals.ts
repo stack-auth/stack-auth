@@ -125,6 +125,8 @@ export async function sendAdminInternalRequestOrThrow(
   requestOptions: RequestInit,
 ): Promise<Response> {
   return await getInternalsSendRequestOrThrow(adminApp)(path, requestOptions, "admin");
+}
+
 function getMetricsQueryString(includeAnonymous: boolean, filters?: AnalyticsOverviewFilters): string {
   const params = new URLSearchParams();
   if (includeAnonymous) {
