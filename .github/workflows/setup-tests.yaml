@@ -15,8 +15,27 @@ env:
   SHELL: /usr/bin/bash
 
 jobs:
-  setup-tests:
+  wait-for-fast-fail:
+    name: wait-for-fast-fail
     if: ${{ (github.head_ref || github.ref_name) == 'dev' }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/wait-for-check
+        with:
+          check-name: fast-fail-tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  setup-tests:
+    needs: wait-for-fast-fail
+    # `success()` is required because the custom `if` otherwise overrides the
+    # implicit success() gate from `needs`, letting this run even if the gate failed.
+    if: ${{ (github.head_ref || github.ref_name) == 'dev' && success() }}
     runs-on: ubicloud-standard-16
     env:
       HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
