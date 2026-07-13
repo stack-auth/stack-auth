@@ -113,7 +113,9 @@ teamId: string
 
 Returns: ServerTeam | null
 
-Find in listTeams() by id.
+GET /api/v1/teams/{teamId} [server-only]
+
+Returns the team with the requested ID, or null if it does not exist.
 
 Does not error.
 

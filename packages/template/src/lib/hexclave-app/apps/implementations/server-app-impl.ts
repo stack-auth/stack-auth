@@ -86,6 +86,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   ], TeamsCrud['Server']['List']>(async ([userId, orderBy, desc, cursor, limit, query]) => {
     return await this._interface.listServerTeamsPaginated({ userId, orderBy, desc, cursor, limit, query });
   });
+  private readonly _serverTeamCache = createCache<string[], TeamsCrud['Server']['Read'] | null>(async ([teamId]) => {
+    try {
+      return await this._interface.getServerTeam(teamId);
+    } catch (error) {
+      if (KnownErrors.TeamNotFound.isInstance(error)) {
+        return null;
+      }
+      throw error;
+    }
+  });
 
   protected async _refreshTeamMembership(teamId: string, userId: string) {
     await Promise.all([
@@ -709,15 +719,15 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
       async getTeam(teamId: string) {
-        const teams = await this.listTeams();
-        return teams.find((t) => t.id === teamId) ?? null;
+        const team = Result.orThrow(await app._serverTeamCache.getOrWait([teamId], "write-only"));
+        return team == null ? null : app._serverTeamFromCrud(team);
       },
       // IF_PLATFORM react-like
       useTeam(teamId: string) {
-        const teams = this.useTeams();
+        const team = useAsyncCache(app._serverTeamCache, [teamId], "user.useTeam()");
         return useMemo(() => {
-          return teams.find((t) => t.id === teamId) ?? null;
-        }, [teams, teamId]);
+          return team == null ? null : app._serverTeamFromCrud(team);
+        }, [team]);
       },
       // END_PLATFORM
       async listTeams(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }> {
@@ -1038,6 +1048,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async update(update: Partial<ServerTeamUpdateOptions>) {
         await app._interface.updateServerTeam(crud.id, serverTeamUpdateOptionsToCrud(update));
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1045,6 +1056,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async delete() {
         await app._interface.deleteServerTeam(crud.id);
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1543,6 +1555,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
+    await this._serverTeamCache.refresh([team.id]);
     await this._serverTeamsCache.refreshWhere(() => true);
     return this._serverTeamFromCrud(team);
   }
@@ -1586,8 +1599,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this._getTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = await this.listTeams();
-      return teams.find((t) => t.id === teamId) ?? null;
+      if (teamId == null) {
+        return null;
+      }
+      const team = Result.orThrow(await this._serverTeamCache.getOrWait([teamId], "write-only"));
+      return team == null ? null : this._serverTeamFromCrud(team);
     }
   }
 
@@ -1599,10 +1615,13 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return this._useTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = this.useTeams();
+      if (teamId == null) {
+        return null;
+      }
+      const team = useAsyncCache(this._serverTeamCache, [teamId], "serverApp.useTeam()");
       return useMemo(() => {
-        return teams.find((t) => t.id === teamId) ?? null;
-      }, [teams, teamId]);
+        return team == null ? null : this._serverTeamFromCrud(team);
+      }, [team]);
     }
   }
   // END_PLATFORM
