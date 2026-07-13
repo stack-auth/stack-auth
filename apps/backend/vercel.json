@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "rewrites": [
+    { "source": "/api/:version/internal/config/github/apply", "destination": "/api/config-github-apply" },
+    { "source": "/api/:version/internal/config/github/commit", "destination": "/api/config-github-commit" },
     { "source": "/(.*)", "destination": "/api" }
   ],
   "crons": [

@@ -178,6 +178,33 @@ import.meta.vitest?.test("API version migrations do not expose their internal re
   }
 });
 
+import.meta.vitest?.test("uncaught dispatch errors use the global sanitized error boundary", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
+
+  try {
+    const response = await app.handle(new Request("http://localhost/api/v1"));
+
+    expect({
+      status: response.status,
+      body: await response.text(),
+      contentType: response.headers.get("content-type"),
+      contentTypeOptions: response.headers.get("x-content-type-options"),
+    }).toMatchInlineSnapshot(`
+      {
+        "body": "Internal Server Error",
+        "contentType": "text/plain; charset=utf-8",
+        "contentTypeOptions": "nosniff",
+        "status": 500,
+      }
+    `);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 function homeHtml() {
   const devStatsLink = getNodeEnvironment() === "development"
     ? `<br><a href="/dev-stats">Dev Stats</a><br>`
