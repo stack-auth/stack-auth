@@ -1,12 +1,13 @@
 import { httpMethodNames, routeModules } from "@/generated/route-modules";
 import { SmartRouter } from "@/smart-router";
+import type { NextRequest } from "next/server";
 
 export type HttpMethod = typeof httpMethodNames[number];
 export type RouteParams = Record<string, string | string[]>;
 export type RouteHandlerOptions = { params: Promise<RouteParams> };
-export type RouteHandler = (request: Request, options: RouteHandlerOptions) => Promise<Response> | Response;
+export type RouteHandler = (request: NextRequest, options: RouteHandlerOptions) => Promise<Response> | Response;
 export type UnknownRouteModule = Partial<Record<HttpMethod, unknown>>;
-type UnknownRouteFunction = (request: Request, options: RouteHandlerOptions) => unknown;
+type UnknownRouteFunction = (request: NextRequest, options: RouteHandlerOptions) => unknown;
 
 type RouteEntry = {
   methods: Map<HttpMethod, RouteHandler>,

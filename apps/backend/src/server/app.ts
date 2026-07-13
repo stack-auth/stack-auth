@@ -1,13 +1,13 @@
 import { httpMethodNames } from "@/generated/route-modules";
-import { serializeSetCookie } from "@/lib/runtime/headers";
-import { NextNotFoundError } from "@/lib/runtime/navigation";
-import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
+import { serializeSetCookie } from "@/lib/next-compat/headers";
+import { NextNotFoundError } from "@/lib/next-compat/navigation";
+import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/next-compat/request-context";
 import { node } from "@elysiajs/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { Elysia } from "elysia";
-import { createBackendRequest } from "./backend-request";
 import { handleUncaughtBackendError } from "./error-handler";
 import { runRequestPipeline } from "./middleware";
+import { createNextRequestShim } from "./next-request-shim";
 import { MalformedRouteParamError, matchRoute } from "./registry";
 
 const globalSecurityHeaders = {
@@ -71,7 +71,7 @@ export async function dispatch(request: Request) {
     }));
   }
 
-  const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
+  const nextRequest = createNextRequestShim(request, pipeline.mergedHeaders, pipeline.originalUrl);
   const context: RequestContext = {
     headers: pipeline.mergedHeaders,
     incomingCookies: parseCookieHeader(pipeline.mergedHeaders.get("cookie")),
@@ -81,7 +81,7 @@ export async function dispatch(request: Request) {
 
   const response = await requestContextALS.run(context, async () => {
     try {
-      return await handler(backendRequest, {
+      return await handler(nextRequest, {
         params: Promise.resolve(match.params),
       });
     } catch (error) {

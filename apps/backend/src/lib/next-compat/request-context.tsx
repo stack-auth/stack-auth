@@ -29,7 +29,7 @@ export const requestContextALS = new AsyncLocalStorage<RequestContext>();
 export function getRequestContext() {
   const context = requestContextALS.getStore();
   if (context == null) {
-    throw new Error("Backend request context is only available while handling a backend request");
+    throw new Error("next-compat request context is only available while handling a backend request");
   }
   return context;
 }

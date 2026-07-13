@@ -18,6 +18,9 @@ export default mergeConfig(
     resolve: {
       alias: {
         '@': resolve(__dirname, './src'),
+        'next/headers': resolve(__dirname, './src/lib/next-compat/headers.tsx'),
+        'next/navigation': resolve(__dirname, './src/lib/next-compat/navigation.tsx'),
+        'next/server': resolve(__dirname, './src/lib/next-compat/server.tsx'),
       }
     },
     envDir: __dirname,

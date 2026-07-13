@@ -20,6 +20,15 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "next/headers": [
+        "./src/lib/next-compat/headers.tsx"
+      ],
+      "next/navigation": [
+        "./src/lib/next-compat/navigation.tsx"
+      ],
+      "next/server": [
+        "./src/lib/next-compat/server.tsx"
       ]
     },
     "skipLibCheck": true,

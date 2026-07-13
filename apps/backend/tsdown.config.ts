@@ -54,10 +54,24 @@ function packageNameFromSpecifier(specifier: string) {
 }
 
 function shouldBundleDependency(specifier: string) {
+  if (specifier === "next" || specifier.startsWith("next/")) {
+    return true;
+  }
   return customNoExternal.has(packageNameFromSpecifier(specifier));
 }
 
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
+const nextCompatAliases = new Map([
+  ["next/headers", resolve(backendDir, "src/lib/next-compat/headers.tsx")],
+  ["next/navigation", resolve(backendDir, "src/lib/next-compat/navigation.tsx")],
+  ["next/server", resolve(backendDir, "src/lib/next-compat/server.tsx")],
+]);
+const nextCompatPlugin: Rolldown.Plugin = {
+  name: "backend-next-compat-aliases",
+  resolveId(source) {
+    return nextCompatAliases.get(source) ?? null;
+  },
+};
 // Sentry release names may not contain slashes/whitespace, so sanitize the scoped package name.
 const sentryRelease = process.env.SENTRY_RELEASE ?? `${packageJson.name}@${packageJson.version}`.replace(/[/\s]/g, "-");
 const shouldUploadSourcemaps = process.env.SENTRY_ORG != null
@@ -65,6 +79,7 @@ const shouldUploadSourcemaps = process.env.SENTRY_ORG != null
   && process.env.SENTRY_AUTH_TOKEN != null;
 const plugins = [
   basePlugin,
+  nextCompatPlugin,
   ...(shouldUploadSourcemaps ? [
     sentryRollupPlugin({
       org: process.env.SENTRY_ORG,
@@ -97,6 +112,7 @@ export default defineConfig({
   sourcemap: true,
   alias: {
     "@": resolve(backendDir, "src"),
+    ...Object.fromEntries(nextCompatAliases),
   },
   banner: {
     js: `import { createRequire as __createRequire } from 'module';
