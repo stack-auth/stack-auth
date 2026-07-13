@@ -19,6 +19,7 @@ import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
@@ -87,6 +88,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     return await this._interface.listServerTeamsPaginated({ userId, orderBy, desc, cursor, limit, query });
   });
   private readonly _serverTeamCache = createCache<string[], TeamsCrud['Server']['Read'] | null>(async ([teamId]) => {
+    // The previous list-and-find implementation treated unknown or malformed IDs as null; preserve that behavior without making an invalid request.
+    if (!isUuid(teamId)) {
+      return null;
+    }
     try {
       return await this._interface.getServerTeam(teamId);
     } catch (error) {
