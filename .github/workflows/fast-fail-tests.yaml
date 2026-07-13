@@ -119,30 +119,26 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
 
           if [ -z "${OPENAI_API_KEY:-}" ]; then
-            echo "::warning::OPENAI_API_KEY is not set; skipping AI test selection (full suites will still run)."
-            echo '{"test_files":[]}' > codex-out.json
-            exit 0
+            echo "::error::OPENAI_API_KEY is not set. Add it as a repository Actions secret (Settings -> Secrets and variables -> Actions)."
+            exit 1
           fi
 
           # `codex exec` runs non-interactively. We keep it read-only and never
           # prompt for approvals so it can't hang CI. It's given the diff + test
           # list directly in the prompt, so it doesn't need to explore the repo.
-          if ! codex exec \
-              --skip-git-repo-check \
-              -s read-only \
-              -c approval_policy="never" \
-              --output-schema schema.json \
-              --output-last-message codex-out.json \
-              "$(cat prompt.txt)"; then
-            echo "::warning::Codex invocation failed; skipping AI test selection (full suites will still run)."
-            echo '{"test_files":[]}' > codex-out.json
-          fi
+          codex exec \
+            --skip-git-repo-check \
+            -s read-only \
+            -c approval_policy="never" \
+            --output-schema schema.json \
+            --output-last-message codex-out.json \
+            "$(cat prompt.txt)"
 
           echo "Codex raw output:"
-          cat codex-out.json || true
+          cat codex-out.json
 
       - name: Parse selected test files
         id: select
