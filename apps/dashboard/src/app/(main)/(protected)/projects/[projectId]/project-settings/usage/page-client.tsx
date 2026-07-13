@@ -288,16 +288,18 @@ function UsageBody({
   planUsage,
   analyticsTimeoutRow,
   onUpgrade,
+  arePlanLimitsEnforced,
 }: {
   planUsage: PlanUsageData,
   analyticsTimeoutRow: UsageRow | undefined,
   onUpgrade: (() => void) | undefined,
+  arePlanLimitsEnforced: boolean,
 }) {
   const overageRows = getOverageRows(planUsage.rows);
 
   return (
     <div className="flex flex-col gap-4">
-      {overageRows.length > 0 && (
+      {arePlanLimitsEnforced && overageRows.length > 0 && (
         <div
           role="alert"
           className="relative grid w-full gap-4 rounded-2xl border border-amber-500/40 bg-amber-500/[0.08] p-4 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
@@ -370,6 +372,7 @@ export default function PageClient() {
         planUsage={planUsageForDisplay}
         analyticsTimeoutRow={analyticsTimeoutRow}
         onUpgrade={handleUpgrade}
+        arePlanLimitsEnforced={planUsage.arePlanLimitsEnforced}
       />
     </PageLayout>
   );

@@ -1,3 +1,4 @@
+import { US_CENTER } from '@/hooks/use-viewer-location';
 import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
@@ -359,7 +360,7 @@ type SatelliteHandle = {
   lastCountryCheckAt: number,
 };
 
-export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, children?: React.ReactNode}) {
+export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
@@ -372,6 +373,7 @@ export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, sa
         activeUsersByCountry={activeUsersByCountry ?? {}}
         satelliteCount={satelliteCount ?? 2}
         interactive={interactive ?? false}
+        initialPointOfView={initialPointOfView}
       />
     </Suspense>
   );
@@ -466,7 +468,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
@@ -676,7 +678,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     setBorderSizeFromGlobe(visualDiameter);
     resumeRender();
   }, [cameraDistance, shouldShowGlobe, squareSize, interactive]);
-
 
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
   const totalPopulationInCountries = countries.features.reduce((acc, curr) => acc + curr.properties.POP_EST, 0);
@@ -1156,8 +1157,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         controls.enableZoom = interactive;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
-                        // Little Saint James Island, U.S. Virgin Islands
-                        current.pointOfView({ lat: 18.3076, lng: -64.8267 }, 0);
+                        current.pointOfView({ lat: initialPointOfView?.lat ?? US_CENTER.lat, lng: initialPointOfView?.lng ?? US_CENTER.lng }, 0);
 
                         // Fix z-fighting: Enable proper depth testing
                         const renderer = current.renderer();

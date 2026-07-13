@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -1447,6 +1448,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
+  protected async _refreshItemCache(customerType: "user" | "team" | "custom", customerId: string, itemId: string): Promise<void> {
+    if (customerType === "user") {
+      await this._serverUserItemsCache.refresh([customerId, itemId]);
+    } else if (customerType === "team") {
+      await this._serverTeamItemsCache.refresh([customerId, itemId]);
+    } else {
+      await this._serverCustomItemsCache.refresh([customerId, itemId]);
+    }
+  }
+
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
     if ("userId" in options) {
       const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
@@ -1648,6 +1659,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await this._interface.activateEmailCapacityBoost();
     // Refresh the cache so UI updates immediately
     await this._emailDeliveryInfoCache.refresh([]);
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {

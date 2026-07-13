@@ -181,7 +181,13 @@ function UserHeader({ user }: UserHeaderProps) {
           ]}
         />
         <RestrictionDialog user={user} open={restrictionDialogOpen} onOpenChange={setRestrictionDialogOpen} />
-        <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${hexclaveAdminApp.projectId}/users`} />
+        <DeleteUserDialog
+          user={user}
+          open={isDeleteModalOpen}
+          onOpenChange={setIsDeleteModalOpen}
+          profileHref={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`}
+          redirectTo={`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users`}
+        />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
     </div>
