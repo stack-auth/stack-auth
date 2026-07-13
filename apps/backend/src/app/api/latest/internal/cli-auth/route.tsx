@@ -3,11 +3,12 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClien
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
+const recentAttemptLimit = 50;
+const activeTokenAttemptLimit = 200;
+
 type CliAuthAttemptRow = {
   id: string,
-  pollingCode: string,
-  loginCode: string,
-  refreshToken: string | null,
+  status: "pending" | "completed" | "expired" | "used",
   expiresAt: Date,
   usedAt: Date | null,
   createdAt: Date,
@@ -42,12 +43,14 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       summary: yupObject({
-        total_attempts: yupNumber().integer().defined(),
-        completed_attempts: yupNumber().integer().defined(),
-        used_attempts: yupNumber().integer().defined(),
-        expired_attempts: yupNumber().integer().defined(),
-        pending_attempts: yupNumber().integer().defined(),
-        active_tokens: yupNumber().integer().defined(),
+        attempts_in_window: yupNumber().integer().defined(),
+        completed_attempts_in_window: yupNumber().integer().defined(),
+        used_attempts_in_window: yupNumber().integer().defined(),
+        expired_attempts_in_window: yupNumber().integer().defined(),
+        pending_attempts_in_window: yupNumber().integer().defined(),
+        active_tokens_in_lookup_window: yupNumber().integer().defined(),
+        attempt_window_limit: yupNumber().integer().defined(),
+        active_token_lookup_window_limit: yupNumber().integer().defined(),
       }).defined(),
       recent_attempts: yupArray(yupObject({
         id: yupString().defined(),
@@ -73,72 +76,72 @@ export const GET = createSmartRouteHandler({
     const schema = await getPrismaSchemaForTenancy(tenancy);
     const now = new Date();
 
-    // Fetch recent CLI auth attempts (last 50)
+    // These dashboard metrics intentionally describe a bounded recent window.
+    // Exact all-time aggregates would scan unbounded history on every page load.
     const recentAttempts = await prisma.$replica().$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
       SELECT
         "id",
-        "pollingCode",
-        "loginCode",
-        "refreshToken",
+        CASE
+          WHEN "usedAt" IS NOT NULL THEN 'used'
+          WHEN "expiresAt" < ${now} THEN 'expired'
+          WHEN "refreshToken" IS NOT NULL THEN 'completed'
+          ELSE 'pending'
+        END AS "status",
         "expiresAt",
         "usedAt",
         "createdAt"
       FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
       WHERE "tenancyId" = ${tenancy.id}::UUID
-      ORDER BY "createdAt" DESC
-      LIMIT 50
+      ORDER BY "createdAt" DESC, "id" DESC
+      LIMIT ${recentAttemptLimit}
     `);
 
-    // Compute summary stats
     let used = 0;
     let completed = 0;
     let expired = 0;
     let pending = 0;
     for (const attempt of recentAttempts) {
-      if (attempt.usedAt != null) {
-        used++;
-      } else if (attempt.expiresAt < now) {
-        expired++;
-      } else if (attempt.refreshToken != null) {
-        completed++;
-      } else {
-        pending++;
+      switch (attempt.status) {
+        case "used": {
+          used++;
+          break;
+        }
+        case "completed": {
+          completed++;
+          break;
+        }
+        case "expired": {
+          expired++;
+          break;
+        }
+        case "pending": {
+          pending++;
+          break;
+        }
       }
     }
 
-    // Format recent attempts with status
     const formattedAttempts = recentAttempts.map((attempt) => {
-      let status: "pending" | "completed" | "expired" | "used";
-      if (attempt.usedAt != null) {
-        status = "used";
-      } else if (attempt.refreshToken != null && attempt.expiresAt >= now) {
-        status = "completed";
-      } else if (attempt.expiresAt < now) {
-        status = "expired";
-      } else {
-        status = "pending";
-      }
       return {
         id: attempt.id,
-        status,
+        status: attempt.status,
         created_at: attempt.createdAt.toISOString(),
         expires_at: attempt.expiresAt.toISOString(),
         used_at: attempt.usedAt?.toISOString() ?? null,
       };
     });
 
-    // Find active CLI tokens: tokens that were created via CLI auth (by looking
-    // at CliAuthAttempt rows that have a non-null refreshToken and usedAt).
-    // We join with the global ProjectUserRefreshToken table to find active sessions.
-    // Bounded to most recent 200 to avoid scanning entire history for high-usage tenants.
+    // Active-session discovery is also bounded: it considers refresh tokens
+    // attached to the most recently used CLI attempts, then checks which of
+    // those sessions still exist in the canonical refresh-token table.
     const cliRefreshTokens = await prisma.$replica().$queryRaw<{ refreshToken: string }[]>(Prisma.sql`
       SELECT "refreshToken"
       FROM ${sqlQuoteIdent(schema)}."CliAuthAttempt"
       WHERE "tenancyId" = ${tenancy.id}::UUID
         AND "refreshToken" IS NOT NULL
         AND "usedAt" IS NOT NULL
-      ORDER BY "createdAt" DESC
-      LIMIT 200
+      ORDER BY "createdAt" DESC, "id" DESC
+      LIMIT ${activeTokenAttemptLimit}
     `);
 
     let activeCliUsers: Array<{
@@ -150,15 +153,12 @@ export const GET = createSmartRouteHandler({
       expires_at: string | null,
       is_expired: boolean,
     }> = [];
-
     let activeTokenCount = 0;
 
     if (cliRefreshTokens.length > 0) {
-      const tokenValues = cliRefreshTokens.map((r) => r.refreshToken);
-
-      // Get accurate total count of active (non-expired) tokens separately from the display list
+      const tokenValues = cliRefreshTokens.map((row) => row.refreshToken);
       const countResult = await globalPrismaClient.$replica().$queryRaw<{ count: bigint }[]>(Prisma.sql`
-        SELECT COUNT(*) as count
+        SELECT COUNT(*) AS count
         FROM "ProjectUserRefreshToken"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "refreshToken" = ANY(${tokenValues})
@@ -166,7 +166,6 @@ export const GET = createSmartRouteHandler({
       `);
       activeTokenCount = Number(countResult[0]?.count ?? 0n);
 
-      // Look up which tokens are still active in the global refresh token table (limited for display)
       const activeTokens = await globalPrismaClient.$replica().$queryRaw<ActiveCliTokenRow[]>(Prisma.sql`
         SELECT
           "id",
@@ -182,11 +181,7 @@ export const GET = createSmartRouteHandler({
       `);
 
       if (activeTokens.length > 0) {
-        // Fetch user info for the active tokens
-        const userIds = [...new Set(activeTokens.map((t) => t.projectUserId))];
-        // ProjectUser has no email column; the primary email lives in ContactChannel
-        // (type = EMAIL, isPrimary = TRUE). isPrimary/type are Postgres enums, so we
-        // cast to text for a schema-agnostic comparison.
+        const userIds = [...new Set(activeTokens.map((token) => token.projectUserId))];
         const userRows = await prisma.$replica().$queryRaw<ProjectUserRow[]>(Prisma.sql`
           SELECT
             pu."projectUserId",
@@ -201,11 +196,10 @@ export const GET = createSmartRouteHandler({
           WHERE pu."tenancyId" = ${tenancy.id}::UUID
             AND pu."projectUserId" = ANY(${userIds}::UUID[])
         `);
-        const userMap = new Map(userRows.map((u) => [u.projectUserId, u]));
+        const usersById = new Map(userRows.map((user) => [user.projectUserId, user]));
 
         activeCliUsers = activeTokens.map((token) => {
-          const user = userMap.get(token.projectUserId);
-          const isExpired = token.expiresAt != null && token.expiresAt < now;
+          const user = usersById.get(token.projectUserId);
           return {
             user_id: token.projectUserId,
             display_name: user?.displayName ?? null,
@@ -213,7 +207,7 @@ export const GET = createSmartRouteHandler({
             token_created_at: token.createdAt.toISOString(),
             last_active_at: token.lastActiveAt.toISOString(),
             expires_at: token.expiresAt?.toISOString() ?? null,
-            is_expired: isExpired,
+            is_expired: token.expiresAt != null && token.expiresAt < now,
           };
         });
       }
@@ -224,12 +218,14 @@ export const GET = createSmartRouteHandler({
       bodyType: "json" as const,
       body: {
         summary: {
-          total_attempts: recentAttempts.length,
-          completed_attempts: completed,
-          used_attempts: used,
-          expired_attempts: expired,
-          pending_attempts: pending,
-          active_tokens: activeTokenCount,
+          attempts_in_window: recentAttempts.length,
+          completed_attempts_in_window: completed,
+          used_attempts_in_window: used,
+          expired_attempts_in_window: expired,
+          pending_attempts_in_window: pending,
+          active_tokens_in_lookup_window: activeTokenCount,
+          attempt_window_limit: recentAttemptLimit,
+          active_token_lookup_window_limit: activeTokenAttemptLimit,
         },
         recent_attempts: formattedAttempts,
         active_cli_users: activeCliUsers,
