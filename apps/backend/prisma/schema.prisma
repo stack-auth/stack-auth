@@ -1141,6 +1141,7 @@ model CliAuthAttempt {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, id])
+  @@index([tenancyId, createdAt(sort: Desc), id(sort: Desc)], name: "CliAuthAttempt_tenancyId_createdAt_id_idx")
 }
 
 model UserNotificationPreference {

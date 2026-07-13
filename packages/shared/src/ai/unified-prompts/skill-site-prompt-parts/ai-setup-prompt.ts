@@ -1007,7 +1007,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks." : ""}
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks. Do not run `npm run dev:inner`, as that will skip past the Hexclave server." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
