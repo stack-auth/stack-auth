@@ -1,5 +1,6 @@
 import { isShallowEqual } from "@hexclave/shared/dist/utils/arrays";
 import { inspect } from "node:util";
+import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan } from "../../otel.js";
 import { DatabaseSeq } from "../index.js";
 import type { LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
@@ -23,12 +24,23 @@ async function fromAsync<T>(iterable: AsyncIterable<T>): Promise<T[]> {
  * piledriverObjectEquals) is needed on top of a compareGroupKeys ordering: two group keys map
  * to the same string iff they are piledriverObjectEquals-equal. Object keys are sorted so that
  * key insertion order does not matter.
+ *
+ * Memoized by object identity: this function is called from B-tree comparators (twice per key
+ * comparison, O(log n) comparisons per tree operation), and CPU profiling showed it at ~5% of
+ * process CPU during backfills. Piledriver objects are immutable, so caching by identity is
+ * safe; the WeakMap lets group key objects be collected normally.
  */
+const canonicalGroupKeyStringCache = new WeakMap<object, string>();
 function canonicalGroupKeyString(groupKey: PiledriverObject): string {
   if (groupKey !== null && typeof groupKey === "object") {
+    const cached = canonicalGroupKeyStringCache.get(groupKey);
+    if (cached !== undefined) return cached;
     if (isPiledriverHeapObjectSymbol in groupKey) throw new Error("Group keys must not contain heap objects");
-    if (Array.isArray(groupKey)) return "[" + groupKey.map(canonicalGroupKeyString).join(",") + "]";
-    return "{" + Object.entries(groupKey).sort(([a], [b]) => compareStrings(a, b)).map(([k, v]) => JSON.stringify(k) + ":" + canonicalGroupKeyString(v)).join(",") + "}";
+    const result = Array.isArray(groupKey)
+      ? "[" + groupKey.map(canonicalGroupKeyString).join(",") + "]"
+      : "{" + Object.entries(groupKey).sort(([a], [b]) => compareStrings(a, b)).map(([k, v]) => JSON.stringify(k) + ":" + canonicalGroupKeyString(v)).join(",") + "}";
+    canonicalGroupKeyStringCache.set(groupKey, result);
+    return result;
   }
   return JSON.stringify(groupKey);
 }
@@ -217,6 +229,7 @@ function logSnapshotMutationDebugInfo(value: {
   rowsSetOrDeleted: number,
   debugInfo: BulldozerSnapshotMutationDebugInfo,
 }) {
+  if (shouldSuppressPeriodicBulldozerLogs) return;
   if (value.rowsSetOrDeleted <= 0) return;
   console.debug("bulldozer-js snapshot mutation", inspect(value, {
     depth: null,
@@ -887,15 +900,61 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     options: { replicated: boolean },
   ) => {
     return await traceSpan({ description: "bulldozer-js.bulldozer.withSnapshot", attributes: { "bulldozer.replicated": options.replicated } }, async () => {
+      const startedAt = performance.now();
+      let writeLockWaitMs = 0;
+      let getSnapshotMs = 0;
+      let updateSnapshotMs = 0;
+      let toPiledriverObjectMs = 0;
+      let setRootMs = 0;
+      let waitUntilAvailableMs = 0;
+      let waitUntilReplicatedMs = 0;
+      let mutationDebugInfo: BulldozerSnapshotMutationDebugInfo | undefined;
+      const writeLockWaitStartedAt = performance.now();
       const result = await withWriteLock(async () => {
+        writeLockWaitMs = performance.now() - writeLockWaitStartedAt;
+        const getSnapshotStartedAt = performance.now();
         const { snapshot } = await getSnapshot();
+        getSnapshotMs = performance.now() - getSnapshotStartedAt;
+        const updateSnapshotStartedAt = performance.now();
         const updateResult = await updateSnapshot(snapshot);
+        updateSnapshotMs = performance.now() - updateSnapshotStartedAt;
+        mutationDebugInfo = updateResult instanceof BulldozerDatabaseSnapshot ? undefined : updateResult.debugInfo;
         const newSnapshot = updateResult instanceof BulldozerDatabaseSnapshot ? updateResult : updateResult.newSnapshot;
-        const { seq } = await setRoot({ snapshot: newSnapshot.toPiledriverObject() });
+        const toPiledriverObjectStartedAt = performance.now();
+        const newSnapshotPiledriverObject = newSnapshot.toPiledriverObject();
+        toPiledriverObjectMs = performance.now() - toPiledriverObjectStartedAt;
+        const setRootStartedAt = performance.now();
+        const { seq } = await setRoot({ snapshot: newSnapshotPiledriverObject });
+        setRootMs = performance.now() - setRootStartedAt;
+        const waitUntilAvailableStartedAt = performance.now();
         await piledriverDatabase.waitUntilAvailable(seq);
+        waitUntilAvailableMs = performance.now() - waitUntilAvailableStartedAt;
         return { snapshot: newSnapshot, seq };
       });
-      if (options.replicated) await piledriverDatabase.waitUntilReplicated(result.seq);
+      if (options.replicated) {
+        const waitUntilReplicatedStartedAt = performance.now();
+        await piledriverDatabase.waitUntilReplicated(result.seq);
+        waitUntilReplicatedMs = performance.now() - waitUntilReplicatedStartedAt;
+      }
+      if (!shouldSuppressPeriodicBulldozerLogs) {
+        console.debug("bulldozer-js withSnapshot timing", inspect({
+          replicated: options.replicated,
+          elapsedMs: performance.now() - startedAt,
+          writeLockWaitMs,
+          getSnapshotMs,
+          updateSnapshotMs,
+          toPiledriverObjectMs,
+          setRootMs,
+          waitUntilAvailableMs,
+          waitUntilReplicatedMs,
+          mutation: mutationDebugInfo === undefined ? undefined : {
+            operation: mutationDebugInfo.operation,
+            sourceTableId: mutationDebugInfo.sourceTableId,
+            rowsSetOrDeleted: mutationDebugInfo.rowsSetOrDeleted,
+            durationMs: mutationDebugInfo.durationMs,
+          },
+        }, { depth: null, maxArrayLength: null }));
+      }
       return result;
     });
   };
@@ -2313,7 +2372,11 @@ export function declareLeftJoinTable(options: {
       const addRight = async (row: InputRow) => {
         const right: StoredRow = { ...row, joinKey: await options.rightJoinKeyExtractor(row) };
         const lefts = await leftMatches(right.joinKey);
-        if (!(await state.rightByJoinKey.getAll(right.joinKey)).length) for (const left of lefts) await deleteOutput(left, null);
+        // hasAny (O(depth)) instead of getAll().length: many rows can share one join key (e.g.
+        // a null-ish key on most rows), and materializing all of them per inserted row makes
+        // bulk ingestion O(n^2). The check is only needed when there are matching lefts whose
+        // left-with-null output row must be retracted.
+        if (lefts.length > 0 && !(await state.rightByJoinKey.hasAny(right.joinKey))) for (const left of lefts) await deleteOutput(left, null);
         state = { ...state, rightRows: await state.rightRows.set(right.rowIdentifier, right), rightByJoinKey: await state.rightByJoinKey.add(right.joinKey, right.rowIdentifier, right.rowIdentifier) };
         for (const left of lefts) await addOutput(left, right);
       };
@@ -2323,7 +2386,7 @@ export function declareLeftJoinTable(options: {
         const lefts = await leftMatches(right.joinKey);
         for (const left of lefts) await deleteOutput(left, right);
         state = { ...state, rightRows: await state.rightRows.delete(right.rowIdentifier), rightByJoinKey: await state.rightByJoinKey.delete(right.joinKey, right.rowIdentifier) };
-        if (!(await state.rightByJoinKey.getAll(right.joinKey)).length) for (const left of lefts) await addOutput(left, null);
+        if (lefts.length > 0 && !(await state.rightByJoinKey.hasAny(right.joinKey))) for (const left of lefts) await addOutput(left, null);
       };
 
       for (const row of changedRowsFromTableChanges(changes.left)) {

@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
   "crons": [
     {
       "path": "/api/latest/internal/email-queue-step",

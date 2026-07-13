@@ -466,7 +466,13 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
 
   const continueOnError = args.includes("--continue-on-error");
 
-  const batchSizeArg = readArg("batch-size");
+  // Accept both `--batch-size=500` and the space form `--batch-size 500`. The
+  // space form arrives as two separate argv tokens, so `readArg` (which only
+  // matches the `name=` prefix) would miss it and we'd silently fall back to the
+  // default — a nasty footgun. Read the following token in that case, and fail
+  // loudly if `--batch-size` is present but has no usable value.
+  const bareBatchSizeIndex = args.indexOf("--batch-size");
+  const batchSizeArg = readArg("batch-size") ?? (bareBatchSizeIndex === -1 ? undefined : args[bareBatchSizeIndex + 1]);
   let batchSize: number | undefined = undefined;
   if (batchSizeArg !== undefined) {
     const parsed = Number(batchSizeArg);
@@ -474,6 +480,8 @@ export function parseBackfillResumeOptions(args: string[]): BackfillResumeOption
       throw new Error(`--batch-size must be a positive integer (got "${batchSizeArg}")`);
     }
     batchSize = parsed;
+  } else if (bareBatchSizeIndex !== -1) {
+    throw new Error("--batch-size requires a value, e.g. --batch-size=500 or --batch-size 500");
   }
   // Common options that apply regardless of whether a resume cursor was passed.
   const base: BackfillResumeOptions = { continueOnError, ...(batchSize !== undefined ? { batchSize } : {}) };
@@ -646,6 +654,22 @@ import.meta.vitest?.describe("parseBackfillResumeOptions", (test) => {
   test("parses --batch-size on its own", ({ expect }) => {
     expect(parseBackfillResumeOptions(["--batch-size=1000"]))
       .toEqual({ continueOnError: false, batchSize: 1000 });
+  });
+
+  test("parses the space form --batch-size 100 (two argv tokens)", ({ expect }) => {
+    expect(parseBackfillResumeOptions(["--batch-size", "100"]))
+      .toEqual({ continueOnError: false, batchSize: 100 });
+    // ...including after the command token, as it arrives via the CLI.
+    expect(parseBackfillResumeOptions(["backfill-bulldozer-from-prisma", "--batch-size", "100"]))
+      .toEqual({ continueOnError: false, batchSize: 100 });
+  });
+
+  test("throws (never silently defaults) when --batch-size has no value", ({ expect }) => {
+    expect(() => parseBackfillResumeOptions(["--batch-size"]))
+      .toThrow("--batch-size requires a value");
+    // A following flag is not a value → still a positive-integer failure, loud.
+    expect(() => parseBackfillResumeOptions(["--batch-size", "--continue-on-error"]))
+      .toThrow("--batch-size must be a positive integer");
   });
 
   test("parses --batch-size alongside resume flags", ({ expect }) => {

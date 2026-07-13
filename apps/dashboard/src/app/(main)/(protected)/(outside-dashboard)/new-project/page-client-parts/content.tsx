@@ -27,7 +27,7 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import { type AdminOwnedProject } from "@hexclave/next";
 import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
@@ -112,6 +112,87 @@ function PageClientInner() {
     const query = params.toString();
     router.replace(query.length > 0 ? `/new-project?${query}` : "/new-project");
   }, [router, searchParams]);
+
+  const createProject = useCallback(async () => {
+    if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
+      return;
+    }
+
+    try {
+      const trimmedProjectName = projectName.trim();
+      if (trimmedProjectName.length === 0) {
+        throw new Error("Project name is required.");
+      }
+
+      const firstTeam = teams.at(0);
+      const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
+      if (teamId === undefined) {
+        throw new Error("Select a team before creating the project.");
+      }
+
+      const newProject = await user.createProject({
+        displayName: trimmedProjectName,
+        teamId,
+        onboardingStatus: "config_choice",
+      });
+
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, "config_choice");
+        return next;
+      });
+      setProjectOnboardingStates((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, null);
+        return next;
+      });
+
+      if (redirectToNeonConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      if (redirectToConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      updateSearchParams({
+        project_id: newProject.id,
+        mode: null,
+      });
+    } finally {
+      endPendingAction(creatingProjectRef, setCreatingProject);
+    }
+  }, [projectName, redirectToConfirmWith, redirectToNeonConfirmWith, router, selectedTeamId, teams, updateSearchParams, user]);
+
+  const handleCreateProjectSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!hasProjectName || creatingProject) {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(createProject());
+  }, [createProject, creatingProject, hasProjectName]);
+
+  const handleProjectNameKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!hasProjectName || creatingProject) {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(createProject());
+  }, [createProject, creatingProject, hasProjectName]);
 
   const selectedProject = useMemo(() => {
     if (selectedProjectId == null) {
@@ -278,108 +359,52 @@ function PageClientInner() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-5 px-6 py-6">
-              <div className="space-y-2">
-                <Label htmlFor="project-name">Project name</Label>
-                <DesignInput
-                  id="project-name"
-                  value={projectName}
-                  onChange={(event) => setProjectName(event.target.value)}
-                  placeholder="My Project"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="team-id">Team</Label>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <DesignSelectorDropdown
-                    value={selectedTeamId ?? ""}
-                    onValueChange={setSelectedTeamId}
-                    placeholder="Select a team"
-                    size="md"
-                    className="w-full"
-                    options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+            <form onSubmit={handleCreateProjectSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div className="space-y-2">
+                  <Label htmlFor="project-name">Project name</Label>
+                  <DesignInput
+                    id="project-name"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    onKeyDown={handleProjectNameKeyDown}
+                    placeholder="My Project"
                   />
-                  <DesignButton variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
-                    <PlusCircleIcon className="mr-2 h-4 w-4" />
-                    Create Team
-                  </DesignButton>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="team-id">Team</Label>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <DesignSelectorDropdown
+                      value={selectedTeamId ?? ""}
+                      onValueChange={setSelectedTeamId}
+                      placeholder="Select a team"
+                      size="md"
+                      className="w-full"
+                      options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+                    />
+                    <DesignButton type="button" variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
+                      <PlusCircleIcon className="mr-2 h-4 w-4" />
+                      Create Team
+                    </DesignButton>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
-              <DesignButton variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
-                Cancel
-              </DesignButton>
-              <DesignButton
-                className="rounded-xl"
-                disabled={!hasProjectName || creatingProject}
-                loading={creatingProject}
-                onClick={() => {
-                  if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
-                    return;
-                  }
-
-                  return runAsynchronouslyWithAlert(async () => {
-                    const trimmedProjectName = projectName.trim();
-                    if (trimmedProjectName.length === 0) {
-                      throw new Error("Project name is required.");
-                    }
-
-                    const firstTeam = teams.at(0);
-                    const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
-                    if (teamId === undefined) {
-                      throw new Error("Select a team before creating the project.");
-                    }
-
-                    try {
-                      const newProject = await user.createProject({
-                        displayName: trimmedProjectName,
-                        teamId,
-                        onboardingStatus: "config_choice",
-                      });
-
-                      setProjectStatuses((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, "config_choice");
-                        return next;
-                      });
-                      setProjectOnboardingStates((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, null);
-                        return next;
-                      });
-
-                      if (redirectToNeonConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      if (redirectToConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      updateSearchParams({
-                        project_id: newProject.id,
-                        mode: null,
-                      });
-                    } finally {
-                      endPendingAction(creatingProjectRef, setCreatingProject);
-                    }
-                  });
-                }}
-              >
-                Create Project
-              </DesignButton>
-            </DialogFooter>
+              <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
+                <DesignButton type="button" variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
+                  Cancel
+                </DesignButton>
+                <DesignButton
+                  type="submit"
+                  className="rounded-xl"
+                  disabled={!hasProjectName || creatingProject}
+                  loading={creatingProject}
+                >
+                  Create Project
+                </DesignButton>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
 

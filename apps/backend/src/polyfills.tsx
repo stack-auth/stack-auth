@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@sentry/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@hexclave/shared/dist/utils/errors";
 import * as util from "util";
