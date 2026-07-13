@@ -1620,10 +1620,8 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return this._useTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      if (teamId == null) {
-        return null;
-      }
-      const team = useAsyncCache(this._serverTeamCache, [teamId], "serverApp.useTeam()");
+      // "" is never a valid UUID, so the cache resolves a nullish id to null while keeping the hook call order stable.
+      const team = useAsyncCache(this._serverTeamCache, [teamId ?? ""], "serverApp.useTeam()");
       return useMemo(() => {
         return team == null ? null : this._serverTeamFromCrud(team);
       }, [team]);
