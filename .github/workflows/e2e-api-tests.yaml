@@ -132,13 +132,10 @@ jobs:
       - name: Backfill Bulldozer from Postgres
         run: pnpm run db:backfill-bulldozer-from-prisma
 
-      # The built server (node dist/server.mjs) does not auto-load .env files the way
-      # `next start` used to, so it must be wrapped in with-env:test to pick up
-      # .env.test.local (mirrors the e2e-fallback-tests workflow).
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
-          run: pnpm -C apps/backend run with-env:test pnpm run start &
+          run: pnpm run start:backend --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true

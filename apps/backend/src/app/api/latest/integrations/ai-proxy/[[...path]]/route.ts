@@ -4,6 +4,7 @@ import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
@@ -37,7 +38,7 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(parsed));
 }
 
-async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path?: string[] }> }) {
+async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ path?: string[] }> }) {
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
@@ -48,7 +49,7 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
     : undefined;
 
   if (apiKey === "FORWARD_TO_PRODUCTION") {
-    const targetUrl = `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${new URL(req.url).search}`;
+    const targetUrl = `${PRODUCTION_AI_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`;
     const headers: Record<string, string> = {};
     if (contentType) {
       headers["Content-Type"] = contentType;
@@ -69,7 +70,7 @@ async function proxyToOpenRouter(req: Request, options: { params: Promise<{ path
     });
   }
 
-  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${new URL(req.url).search}`;
+  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${req.nextUrl.search}`;
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${apiKey}`,
     "anthropic-version": "2023-06-01",

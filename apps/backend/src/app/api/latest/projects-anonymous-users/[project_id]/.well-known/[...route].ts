@@ -2,7 +2,7 @@
 // redirect to projects/.well-known/[...route]?include_anonymous=true
 
 import { yupNever, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { redirect } from "@/lib/runtime/navigation";
+import { redirect } from "next/navigation";
 import { createSmartRouteHandler } from "../../../../../../route-handlers/smart-route-handler";
 
 const handler = createSmartRouteHandler({

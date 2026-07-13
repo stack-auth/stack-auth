@@ -12,8 +12,8 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
 import { getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { cookies } from "@/lib/runtime/headers";
-import { redirect } from "@/lib/runtime/navigation";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { generators } from "openid-client";
 import type { InferType, Schema } from "yup";
 

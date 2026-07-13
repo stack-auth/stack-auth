@@ -5,6 +5,8 @@ import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
 import './polyfills';
 
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { SmartRouter } from './smart-router';
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
@@ -63,7 +65,7 @@ const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllow
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
 // This function can be marked `async` if using `await` inside
-export async function proxy(request: Request) {
+export async function proxy(request: NextRequest) {
   const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
@@ -96,7 +98,7 @@ export async function proxy(request: Request) {
       const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
       const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
 
-      const response = Response.json({
+      const response = NextResponse.json({
         message: 'Artificial development rate limit triggered. Wait before retrying.',
       }, {
         status: 429,
@@ -171,11 +173,9 @@ export async function proxy(request: Request) {
     }
   }
 
-  const newUrl = new URL(request.url);
+  const newUrl = request.nextUrl.clone();
   newUrl.pathname = pathname;
-  const rewriteHeaders = new Headers(responseInit?.headers);
-  rewriteHeaders.set("x-middleware-rewrite", newUrl.toString());
-  return new Response(null, { ...responseInit, headers: rewriteHeaders });
+  return NextResponse.rewrite(newUrl, responseInit);
 }
 
 // See "Matching Paths" below to learn more
