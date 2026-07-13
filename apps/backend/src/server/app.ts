@@ -4,6 +4,7 @@ import { NextNotFoundError } from "@/lib/runtime/navigation";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
 import { node } from "@elysiajs/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Elysia } from "elysia";
 import { runRequestPipeline } from "./middleware";
 import { createBackendRequest } from "./backend-request";
@@ -38,6 +39,13 @@ export const app = new Elysia({
     const elapsedMilliseconds = startTime == null ? "unknown" : (performance.now() - startTime).toFixed(1);
     const pathname = new URL(request.url).pathname;
     console.log(`[Elysia] ${request.method} ${pathname} ${set.status} ${elapsedMilliseconds}ms`);
+  })
+  .onError(({ error }) => {
+    // Smart route handlers sanitize their own errors. This is the final boundary
+    // for errors from raw routes and framework code, which Elysia would otherwise
+    // return to the client verbatim.
+    captureError("elysia-request-handler", error);
+    return internalServerErrorResponse();
   })
   .get("/", () => htmlResponse(homeHtml()))
   .get("/dev-stats", () => htmlResponse(devStatsHtml()))
@@ -132,9 +140,6 @@ export async function dispatch(request: Request) {
       finalResponse.headers.set(key, value);
     }
   }
-  if (pipeline.middlewareRewrite != null) {
-    finalResponse.headers.set("x-middleware-rewrite", pipeline.middlewareRewrite);
-  }
   return withGlobalHeaders(finalResponse);
 }
 
@@ -163,6 +168,38 @@ function htmlResponse(body: string, status = 200) {
     },
   }));
 }
+
+function internalServerErrorResponse() {
+  return withGlobalHeaders(new Response("Internal Server Error", {
+    status: 500,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+    },
+  }));
+}
+
+import.meta.vitest?.test("unhandled errors do not expose their message", async ({ expect }) => {
+  const response = internalServerErrorResponse();
+
+  expect(response.status).toBe(500);
+  expect(await response.text()).toBe("Internal Server Error");
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+});
+
+import.meta.vitest?.test("API version migrations do not expose their internal rewrite", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+
+  try {
+    const response = await app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
 
 function homeHtml() {
   const devStatsLink = getNodeEnvironment() === "development"

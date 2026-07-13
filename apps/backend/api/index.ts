@@ -5,6 +5,7 @@ export const config = {
   maxDuration: 60,
 };
 
-export default function handler(request: Request): Response | Promise<Response> {
-  return app.handle(request);
-}
+// Vercel treats a default-exported function as the legacy Node.js `(request,
+// response)` handler contract. Export the Elysia app itself so Vercel detects
+// its Web-standard `fetch` handler and forwards the returned Response.
+export default app;

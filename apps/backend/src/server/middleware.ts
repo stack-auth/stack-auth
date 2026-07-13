@@ -51,7 +51,6 @@ export type PipelineResult = {
   corsHeadersInit?: HeadersInit,
   dispatchPath: string,
   mergedHeaders: Headers,
-  middlewareRewrite?: string,
   originalUrl: string,
   shortCircuitResponse?: Response,
 };
@@ -133,7 +132,6 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
     corsHeadersInit,
     dispatchPath,
     mergedHeaders,
-    middlewareRewrite: dispatchPath === url.pathname ? undefined : dispatchPath,
     originalUrl: request.url,
   };
 }
