@@ -475,7 +475,9 @@ function InfiniteScrollSentinel({
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0]?.isIntersecting) onIntersectRef.current(); },
+      (entries) => {
+        if (entries[0]?.isIntersecting) onIntersectRef.current();
+      },
       { root: rootRef?.current ?? null, rootMargin: "200px" },
     );
     observer.observe(el);

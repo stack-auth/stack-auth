@@ -122,10 +122,19 @@ function useAsyncDataSource<TRow>(opts: {
   const [error, setError] = useState<Error | null>(null);
 
   const cursorRef = useRef<unknown>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
+  const inFlightFetchRef = useRef<AbortController | null>(null);
   const pageIndexRef = useRef(0);
   const hasDataRef = useRef(false);
   const hasMountedServerPaginationRef = useRef(false);
+  // Effects can be replayed when a descendant suspends. Only a completed
+  // fetch is safe to reuse; an aborted fetch may have reset the cursor without
+  // ever replacing the visible rows.
+  const lastCompletedNonAppendFetchKeyRef = useRef<{
+    dataSource: DataGridDataSource<TRow>,
+    sortingKey: string,
+    quickSearchKey: string,
+    pageSize: number,
+  } | null>(null);
 
   const latestArgsRef = useRef({
     dataSource,
@@ -141,6 +150,10 @@ function useAsyncDataSource<TRow>(opts: {
 
   const fetchPage = useCallback(
     async (append: boolean) => {
+      if (append && inFlightFetchRef.current != null) {
+        return;
+      }
+
       const {
         dataSource: currentDataSource,
         getRowId: currentGetRowId,
@@ -149,9 +162,15 @@ function useAsyncDataSource<TRow>(opts: {
         pagination: currentPagination,
       } = latestArgsRef.current;
 
-      abortRef.current?.abort();
+      inFlightFetchRef.current?.abort();
       const controller = new AbortController();
-      abortRef.current = controller;
+      inFlightFetchRef.current = controller;
+      const fetchKey = {
+        dataSource: currentDataSource,
+        sortingKey: JSON.stringify(currentSorting),
+        quickSearchKey: currentQuickSearch,
+        pageSize: currentPagination.pageSize,
+      };
 
       if (append) {
         setIsLoadingMore(true);
@@ -207,6 +226,9 @@ function useAsyncDataSource<TRow>(opts: {
           hasDataRef.current = true;
           pageIndexRef.current++;
         }
+        if (!append) {
+          lastCompletedNonAppendFetchKeyRef.current = fetchKey;
+        }
       } catch (err) {
         if (controller.signal.aborted) return;
         // Surface the error on the result so consumers can render retry UI.
@@ -216,7 +238,12 @@ function useAsyncDataSource<TRow>(opts: {
         console.error("[DataGrid] Data source error:", err);
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
-        if (!controller.signal.aborted) {
+        // Only the owning fetch resets the loading flags; if this fetch was
+        // replaced by a newer one, that fetch manages them instead. This also
+        // covers cleanup-initiated aborts, which would otherwise leave
+        // `isLoadingMore` stuck and block all future loadMore calls.
+        if (inFlightFetchRef.current === controller) {
+          inFlightFetchRef.current = null;
           setIsLoading(false);
           setIsRefetching(false);
           setIsLoadingMore(false);
@@ -227,8 +254,18 @@ function useAsyncDataSource<TRow>(opts: {
   );
 
   useEffect(() => {
-    fetchPage(false).catch(() => {});
-    return () => abortRef.current?.abort();
+    const lastCompletedKey = lastCompletedNonAppendFetchKeyRef.current;
+    const isSameCompletedFetch = hasDataRef.current
+      && lastCompletedKey?.dataSource === dataSource
+      && lastCompletedKey.sortingKey === sortingKey
+      && lastCompletedKey.quickSearchKey === quickSearchKey
+      && lastCompletedKey.pageSize === pagination.pageSize;
+    if (!isSameCompletedFetch) {
+      fetchPage(false).catch(() => {});
+    }
+    // Always return the abort cleanup (even when the fetch is skipped) so an
+    // in-flight append is cancelled on unmount.
+    return () => inFlightFetchRef.current?.abort();
     // Also refetches when `dataSource` identity changes — consumers encode
     // external filter state into the generator's closure, so a new
     // generator reference is the signal that the query changed.
@@ -247,6 +284,11 @@ function useAsyncDataSource<TRow>(opts: {
   }, [fetchPage, paginationMode, pagination.pageIndex]);
 
   const loadMore = useCallback(() => {
+    // Keep pagination single-flight. In particular, do not let the sentinel
+    // start an append against a cursor that a concurrent reset is replacing.
+    if (inFlightFetchRef.current != null) {
+      return;
+    }
     if (!isLoadingMore && hasMore && paginationMode === "infinite") {
       fetchPage(true).catch(() => {});
     }

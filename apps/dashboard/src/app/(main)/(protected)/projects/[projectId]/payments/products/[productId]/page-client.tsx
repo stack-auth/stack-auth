@@ -1552,9 +1552,13 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       width: 200,
       renderCell: ({ row }) => (
         row.customerType === 'user' ? (
-          <UserCell userId={row.customerId} />
+          <Suspense fallback={<CustomerAvatarSkeleton />}>
+            <UserCell userId={row.customerId} />
+          </Suspense>
         ) : row.customerType === 'team' ? (
-          <TeamCell teamId={row.customerId} />
+          <Suspense fallback={<CustomerAvatarSkeleton />}>
+            <TeamCell teamId={row.customerId} />
+          </Suspense>
         ) : (
           <div className="flex items-center gap-2">
             <AvatarCell fallback="?" />
@@ -1635,6 +1639,15 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function CustomerAvatarSkeleton() {
+  return (
+    <div className="flex items-center gap-2">
+      <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+      <Skeleton className="h-4 w-24" />
     </div>
   );
 }
