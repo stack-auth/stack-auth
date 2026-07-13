@@ -126,6 +126,11 @@ jobs:
             exit 1
           fi
 
+          # This Codex version does not pick up OPENAI_API_KEY automatically for
+          # `codex exec`; it must be logged in explicitly first, otherwise every
+          # request is sent unauthenticated and fails with 401.
+          printenv OPENAI_API_KEY | codex login --with-api-key
+
           # `codex exec` runs non-interactively. We keep it read-only and never
           # prompt for approvals so it can't hang CI. It's given the diff + test
           # list directly in the prompt, so it doesn't need to explore the repo.
