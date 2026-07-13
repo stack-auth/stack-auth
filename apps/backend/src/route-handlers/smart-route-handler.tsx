@@ -1,7 +1,7 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
-import * as Sentry from "@sentry/node";
+import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@hexclave/shared/dist/crud";
 import { KnownError, KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
