@@ -731,6 +731,13 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
                 WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
               }}
             />
+            {/* Opaque underlay for dark mode. Table/page content scrolls under this sticky
+                header; without a solid base, the translucent fill + backdrop-filter composite
+                a bright seam along the bottom edge whenever rows pass behind it. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 hidden rounded-2xl bg-background dark:block"
+            />
             <div className="relative flex h-14 items-center justify-between px-5 dark:bg-foreground/5 dark:px-4 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm dark:rounded-2xl">
               {/* Left section: Logo + Menu + Project Switcher */}
               <div className="flex grow-1 items-center gap-2">
