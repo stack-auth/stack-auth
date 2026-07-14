@@ -1,4 +1,4 @@
-import { flushSentry, initSentry } from "./lib/sentry.js";
+import { captureFatalError, initSentry } from "./lib/sentry.js";
 initSentry();
 
 import { Command } from "commander";
@@ -49,9 +49,7 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-    const { captureError } = await import("@hexclave/shared/dist/utils/errors");
-    captureError("stack-cli-fatal", err);
-    await flushSentry(2000);
+    await captureFatalError("stack-cli-fatal", err);
     console.error(err);
     process.exit(1);
   }
