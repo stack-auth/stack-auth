@@ -21,7 +21,6 @@ export async function runList(program: Command, opts: ProjectListFlags) {
 
 export async function runCreate(program: Command, opts: { cloud?: boolean, displayName?: string }) {
   if (!opts.cloud) throw new CliError("hexclave project create currently only creates cloud projects. Pass --cloud to confirm.");
-  const [{ getInternalUser }, { resolveLoginConfig, resolveSessionAuth }, { createProjectInteractively }] = await Promise.all([import("../lib/app.js"), import("../lib/auth.js"), import("../lib/create-project.js")]);
   const auth = resolveSessionAuth();
   const user = await getInternalUser(auth);
   const { dashboardUrl } = resolveLoginConfig();

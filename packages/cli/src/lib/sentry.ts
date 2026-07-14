@@ -64,14 +64,20 @@ async function initializeSentry(): Promise<void> {
 }
 
 export function initSentry(): void {
-  registrationPromise ??= import("@hexclave/shared/dist/utils/errors").then(({ registerErrorSink }) => registerErrorSink((location, error, level) => {
-    capturePromise = (async () => {
-      await initializeSentry();
-      const Sentry = await loadSentry();
-      Sentry.captureException(error, { extra: { location }, level });
-      await Sentry.flush(2000);
-    })();
-  }));
+  registrationPromise ??= import("@hexclave/shared/dist/utils/errors")
+    .then(({ registerErrorSink }) => registerErrorSink((location, error, level) => {
+      capturePromise = (async () => {
+        await initializeSentry();
+        const Sentry = await loadSentry();
+        Sentry.captureException(error, { extra: { location }, level });
+        await Sentry.flush(2000);
+      })().catch(() => {
+        // Optional telemetry failures must not create unhandled rejections or affect CLI errors.
+      });
+    }))
+    .catch(() => {
+      // Optional telemetry registration failures must not create unhandled rejections or affect CLI errors.
+    });
 }
 
 export async function captureFatalError(location: string, error: unknown, timeoutMs = 2000): Promise<void> {

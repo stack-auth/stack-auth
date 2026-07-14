@@ -135,7 +135,7 @@ function buildConfigPushSource(configFilePath: string, flags: SourceFlagOptions)
       repo: repository.repo,
       branch,
       commit_hash: sha,
-      config_file_path: configFilePath,
+      config_file_path: normalizeRepoRelativePath(configFilePath, "--config-file"),
     };
   }
 

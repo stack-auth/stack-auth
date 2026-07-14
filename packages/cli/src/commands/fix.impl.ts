@@ -4,11 +4,7 @@ import { randomBytes } from "node:crypto";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { CliError } from "../lib/errors.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
-
-type FixOptions = {
-  error?: string,
-  yes?: boolean,
-};
+import type { FixOptions } from "./fix.js";
 
 const MAX_ERROR_LENGTH = 8000;
 const MAX_STDIN_BYTES = MAX_ERROR_LENGTH * 4;

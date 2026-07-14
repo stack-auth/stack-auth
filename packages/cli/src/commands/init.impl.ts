@@ -20,7 +20,7 @@ import { isNonInteractiveEnv } from "../lib/interactive.js";
 const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
 type InitMode = typeof VALID_INIT_MODES[number];
 
-type InitOptions = {
+export type InitOptions = {
   mode?: InitMode, apps?: string, configFile?: string, selectProjectId?: string, outputDir?: string, agent?: boolean, displayName?: string,
 };
 
