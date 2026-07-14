@@ -271,13 +271,13 @@ export function DataGridToolbar<TRow>({
   ctx,
   extra,
   extraLeading,
-  extraActions,
   hideQuickSearch,
 }: {
   ctx: DataGridToolbarContext<TRow>;
-  /** Extra content in the leading cluster, after search / `extraLeading`
-   *  (filters, status badges, row counts). Stays with the search side so
-   *  it doesn't compete with the trailing icon actions. */
+  /** Extra content rendered inside the toolbar row, to the left of the
+   *  built-in columns / export actions. Use this to add table-specific
+   *  affordances (refresh, custom toggles, row counts) without giving up
+   *  the default actions. */
   extra?: React.ReactNode;
   /** Extra content rendered at the START of the toolbar row — occupies
    *  the same position as the built-in quick search (after it, if the
@@ -285,10 +285,6 @@ export function DataGridToolbar<TRow>({
    *  to fully replace the quick search with a custom input, e.g. an
    *  AI-powered search bar. */
   extraLeading?: React.ReactNode;
-  /** Extra content in the trailing action cluster, immediately before
-   *  the built-in columns / export buttons (e.g. a labeled Refresh).
-   *  When present, a hairline divider separates it from those icons. */
-  extraActions?: React.ReactNode;
   /** Whether to hide the built-in quick-search input. When `true`,
    *  callers are expected to provide their own search UI via
    *  `extraLeading`. */
@@ -332,7 +328,7 @@ export function DataGridToolbar<TRow>({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2 px-2.5 py-2.5 pr-3 border-b border-foreground/[0.06] sm:flex-row sm:items-center sm:gap-2">
+    <div className="flex w-full min-w-0 flex-col gap-2 px-2.5 py-2.5 border-b border-foreground/[0.06] sm:flex-row sm:items-center sm:gap-2">
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         {!hideQuickSearch && (
           <QuickSearch
@@ -344,16 +340,7 @@ export function DataGridToolbar<TRow>({
         {extraLeading}
         {extra}
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-1.5">
-        {extraActions != null && (
-          <>
-            {extraActions}
-            <div
-              className="mx-0.5 hidden h-4 w-px bg-foreground/[0.1] sm:block"
-              aria-hidden
-            />
-          </>
-        )}
+      <div className="flex shrink-0 items-center justify-end gap-2">
         <div className="relative shrink-0" ref={columnPopover.ref}>
           <ToolbarButton
             onClick={() => columnPopover.setOpen(!columnPopover.open)}
