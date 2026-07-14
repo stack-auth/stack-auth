@@ -29,6 +29,11 @@ let sentryModule: typeof import("@sentry/node") | undefined;
 let initPromise: Promise<void> | undefined;
 let capturePromise: Promise<void> | undefined;
 
+function ignoreUnhandledRejection(promise: Promise<unknown>): void {
+  // Keep this local to avoid eagerly importing the heavy shared promises module; telemetry failures must not affect CLI output or exit codes.
+  promise.catch(() => {});
+}
+
 async function loadSentry(): Promise<typeof import("@sentry/node")> {
   sentryModule ??= await import("@sentry/node");
   return sentryModule;
@@ -71,13 +76,10 @@ export function initSentry(): void {
         const Sentry = await loadSentry();
         Sentry.captureException(error, { extra: { location }, level });
         await Sentry.flush(2000);
-      })().catch(() => {
-        // Optional telemetry failures must not create unhandled rejections or affect CLI errors.
-      });
-    }))
-    .catch(() => {
-      // Optional telemetry registration failures must not create unhandled rejections or affect CLI errors.
-    });
+      })();
+      ignoreUnhandledRejection(capturePromise);
+    }));
+  ignoreUnhandledRejection(registrationPromise);
 }
 
 export async function captureFatalError(location: string, error: unknown, timeoutMs = 2000): Promise<void> {
