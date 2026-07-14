@@ -71,6 +71,12 @@ type UsageEmailAutomationRule = {
   },
 };
 
+type ConfigUpdater<TAdminApp> = (options: {
+  adminApp: TAdminApp,
+  configUpdate: Parameters<ReturnType<typeof useUpdateConfig>>[0]["configUpdate"],
+  pushable: boolean,
+}) => Promise<unknown>;
+
 type RuleEntry = {
   ruleId: string,
   rule: UsageEmailAutomationRule,
@@ -383,6 +389,41 @@ function formatTemplate(templateOptions: SelectorOption[], templateId: string) {
   return templateOptions.find((template) => template.value === templateId)?.label ?? templateId;
 }
 
+const unsafeAutomationRuleConfigPathKeys = new Set(["__proto__", "constructor", "prototype"]);
+
+function assertSafeAutomationRuleConfigPathId(ruleId: string) {
+  if (!isValidUserSpecifiedId(ruleId) || unsafeAutomationRuleConfigPathKeys.has(ruleId)) {
+    throw new Error(`Unsafe usage email rule ID "${ruleId}" cannot be used in a config path.`);
+  }
+}
+
+export async function saveUsageEmailAutomationRule<TAdminApp>(options: {
+  applyConfigUpdate: ConfigUpdater<TAdminApp>,
+  adminApp: TAdminApp,
+  ruleId: string,
+  rule: UsageEmailAutomationRule,
+}) {
+  assertSafeAutomationRuleConfigPathId(options.ruleId);
+  await options.applyConfigUpdate({
+    adminApp: options.adminApp,
+    configUpdate: { [`automations.rules.${options.ruleId}`]: options.rule },
+    pushable: true,
+  });
+}
+
+export async function deleteUsageEmailAutomationRule<TAdminApp>(options: {
+  applyConfigUpdate: ConfigUpdater<TAdminApp>,
+  adminApp: TAdminApp,
+  ruleId: string,
+}) {
+  assertSafeAutomationRuleConfigPathId(options.ruleId);
+  await options.applyConfigUpdate({
+    adminApp: options.adminApp,
+    configUpdate: { [`automations.rules.${options.ruleId}`]: null },
+    pushable: true,
+  });
+}
+
 function requireStringFromRecord(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string") {
@@ -499,18 +540,19 @@ export default function PageClient() {
   const paymentsItemsHref = urlString`/projects/${hexclaveAdminApp.projectId}/payments/products`;
 
   const saveRule = async (ruleId: string, rule: UsageEmailAutomationRule) => {
-    await updateConfig({
+    await saveUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
       adminApp: hexclaveAdminApp,
-      configUpdate: { [`automations.rules.${ruleId}`]: rule },
-      pushable: true,
+      ruleId,
+      rule,
     });
   };
 
   const deleteRule = async (ruleId: string) => {
-    await updateConfig({
+    await deleteUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
       adminApp: hexclaveAdminApp,
-      configUpdate: { [`automations.rules.${ruleId}`]: null },
-      pushable: true,
+      ruleId,
     });
   };
 

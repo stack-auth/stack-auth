@@ -4,15 +4,21 @@ import {
   AutomationRuleExecutionStatePrisma,
   createPrismaAutomationRuleExecutionStateStore,
 } from "@/lib/automations/execution-state-store";
-import { AutomationActionAdapter, AutomationSourceAdapter, AutomationSourceDecision } from "@/lib/automations/rule-evaluator";
+import { AutomationSourceDecision } from "@/lib/automations/rule-evaluator";
 import {
   AutomationRuleExecutionStateStore,
   automationRunResultToApiBody,
   runAutomationRuleForRoute,
 } from "@/lib/automations/run-route";
 import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
+import {
+  automationRouteTestRuleId as ruleId,
+  createAutomationRouteTestActionAdapter,
+  createAutomationRouteTestSourceAdapter,
+  createAutomationRouteTestSourceDecision,
+  createAutomationRouteTestTenancy,
+} from "../test-helpers";
 
-const ruleId = "low-api-credits";
 const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
 
 describe("automation scheduled timestamp parsing", () => {
@@ -30,110 +36,6 @@ describe("automation scheduled timestamp parsing", () => {
       .toThrowErrorMatchingInlineSnapshot(`[StatusError: scheduledAtMillis must be a valid JavaScript timestamp in milliseconds.]`);
   });
 });
-
-function createTenancy(options: {
-  enabled?: boolean,
-  ruleExists?: boolean,
-} = {}) {
-  return {
-    id: "tenancy-1",
-    project: {
-      display_name: "Acme App",
-    },
-    config: {
-      automations: {
-        rules: options.ruleExists === false ? {} : {
-          [ruleId]: {
-            enabled: options.enabled ?? true,
-            source: {
-              type: "payments-item-quota",
-              itemId: "api_credits",
-              customerType: "user",
-              thresholds: {
-                nearRemainingQuantity: 10,
-              },
-            },
-            action: {
-              type: "send-email",
-              templateId: "8c6f6960-7a87-4ebd-b2a6-bfd06d68e2d1",
-              notificationCategoryName: "Marketing",
-            },
-            cooldown: {
-              days: 7,
-            },
-          },
-        },
-      },
-    },
-  };
-}
-
-function createDecision(options: {
-  userId?: string,
-  kind?: "near" | "over",
-} = {}): AutomationSourceDecision {
-  const kind = options.kind ?? "near";
-  return {
-    subject: {
-      type: "user",
-      id: options.userId ?? "user-1",
-    },
-    signal: {
-      key: `api_credits:${kind}`,
-      kind,
-    },
-    sourceSnapshot: {
-      sourceType: "payments-item-quota",
-      itemId: "api_credits",
-      itemDisplayName: "API credits",
-      currentQuantity: kind === "over" ? 0 : 7,
-      entitlementQuantity: 100,
-      thresholdKind: kind,
-      ownedProductIds: ["pro"],
-      activeSubscriptionIds: ["sub_1"],
-    },
-  };
-}
-
-function createSourceAdapter(decisionFactory: () => AutomationSourceDecision = createDecision): AutomationSourceAdapter {
-  const evaluate: AutomationSourceAdapter["evaluate"] = async () => ({
-    evaluatedCount: 1,
-    nextCursor: "cursor-2",
-    decisions: [decisionFactory()],
-  });
-  return {
-    evaluate: vi.fn(evaluate),
-  };
-}
-
-function createActionAdapter(): AutomationActionAdapter {
-  const buildPlan: AutomationActionAdapter["buildPlan"] = async (options) => ({
-    type: "send-email",
-    recipient: {
-      type: "user-primary-email",
-      userId: options.decision.subject.id,
-    },
-    tsxSource: "export function EmailTemplate() { return null; }",
-    templateId: options.rule.action.templateId,
-    themeId: null,
-    notificationCategoryName: "Marketing",
-    notificationCategoryId: "4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
-    createdWith: {
-      type: "programmatic-call",
-      templateId: options.rule.action.templateId,
-    },
-    isHighPriority: false,
-    shouldSkipDeliverabilityCheck: false,
-    variables: {
-      automationRuleId: options.ruleId,
-      ...options.decision.sourceSnapshot,
-      projectDisplayName: "Acme App",
-    },
-  });
-  return {
-    buildPlan: vi.fn(buildPlan),
-  };
-}
 
 type InMemoryExecutionState = {
   lastTriggeredAt: Date,
@@ -211,8 +113,8 @@ async function runWithFakes(options: {
   cursor?: string | null,
   ruleEnabled?: boolean,
 } = {}) {
-  const sourceAdapter = createSourceAdapter(options.decisionFactory);
-  const actionAdapter = createActionAdapter();
+  const sourceAdapter = createAutomationRouteTestSourceAdapter(options.decisionFactory, { evaluatedCount: 1 });
+  const actionAdapter = createAutomationRouteTestActionAdapter();
   const emailSender = vi.fn(options.emailSender ?? (async () => {}));
   let createdStore: ReturnType<typeof createInMemoryStateStore> | undefined;
   let stateStore = options.stateStore;
@@ -222,7 +124,7 @@ async function runWithFakes(options: {
   }
 
   const result = await runAutomationRuleForRoute({
-    tenancy: createTenancy(options.ruleEnabled === undefined ? {} : { enabled: options.ruleEnabled }),
+    tenancy: createAutomationRouteTestTenancy(options.ruleEnabled === undefined ? {} : { enabled: options.ruleEnabled }),
     ruleId,
     limit: options.limit,
     cursor: options.cursor,
@@ -245,13 +147,13 @@ async function runWithFakes(options: {
 
 describe("automation real-send route helpers", () => {
   it("returns 404 for missing manual rules before evaluating, claiming state, or sending email", async () => {
-    const sourceAdapter = createSourceAdapter();
-    const actionAdapter = createActionAdapter();
+    const sourceAdapter = createAutomationRouteTestSourceAdapter();
+    const actionAdapter = createAutomationRouteTestActionAdapter();
     const emailSender = vi.fn(async () => {});
     const { stateStore } = createInMemoryStateStore();
 
     const resultPromise = runAutomationRuleForRoute({
-      tenancy: createTenancy({ ruleExists: false }),
+      tenancy: createAutomationRouteTestTenancy({ ruleExists: false }),
       ruleId,
       scheduledAt,
       now: new Date("2026-07-01T12:00:00.000Z"),
@@ -271,13 +173,13 @@ describe("automation real-send route helpers", () => {
   });
 
   it("refuses disabled rules before evaluating, claiming state, or sending email", async () => {
-    const sourceAdapter = createSourceAdapter();
-    const actionAdapter = createActionAdapter();
+    const sourceAdapter = createAutomationRouteTestSourceAdapter();
+    const actionAdapter = createAutomationRouteTestActionAdapter();
     const emailSender = vi.fn(async () => {});
     const { stateStore } = createInMemoryStateStore();
 
     await expect(runAutomationRuleForRoute({
-      tenancy: createTenancy({ enabled: false }),
+      tenancy: createAutomationRouteTestTenancy({ enabled: false }),
       ruleId,
       scheduledAt,
       now: new Date("2026-07-01T12:00:00.000Z"),
@@ -353,7 +255,7 @@ describe("automation real-send route helpers", () => {
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
       lastEmailOutboxId: null,
-      lastSourceSnapshot: createDecision().sourceSnapshot,
+      lastSourceSnapshot: createAutomationRouteTestSourceDecision().sourceSnapshot,
     });
 
     const second = await runWithFakes({
@@ -381,7 +283,7 @@ describe("automation real-send route helpers", () => {
     const near = await runWithFakes({ stateStore });
     const over = await runWithFakes({
       stateStore,
-      decisionFactory: () => createDecision({ kind: "over" }),
+      decisionFactory: () => createAutomationRouteTestSourceDecision({ kind: "over" }),
       now: new Date("2026-07-02T12:00:00.000Z"),
     });
 
@@ -607,7 +509,7 @@ function createClaimOptions(options: {
     signalKey: "api_credits:near",
     lastTriggeredAt: options.lastTriggeredAt ?? new Date("2026-07-01T12:00:00.000Z"),
     cooldownDays: 7,
-    sourceSnapshot: createDecision().sourceSnapshot,
+    sourceSnapshot: createAutomationRouteTestSourceDecision().sourceSnapshot,
   };
 }
 

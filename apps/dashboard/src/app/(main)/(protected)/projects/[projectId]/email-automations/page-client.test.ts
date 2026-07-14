@@ -5,6 +5,8 @@ import {
   parseAutomationRouteResult,
   readRules,
   readUserItemOptions,
+  deleteUsageEmailAutomationRule,
+  saveUsageEmailAutomationRule,
 } from "./page-client";
 
 vi.mock("@/components/design-components", () => ({
@@ -377,5 +379,90 @@ describe("usage email automation dashboard helpers", () => {
         },
       ],
     })).toThrowErrorMatchingInlineSnapshot(`[Error: Automation response threshold_kind "future-threshold" is unsupported]`);
+  });
+
+  it("writes valid rule IDs to automations.rules config paths", async () => {
+    const updateConfig = vi.fn(async () => true);
+    const adminApp = {
+      getProject: async () => {
+        throw new Error("getProject should not be called by config path helper tests");
+      },
+    };
+    const rule = buildRuleFromDraft({
+      ruleId: "usage-upgrade",
+      displayName: "Usage upgrade",
+      enabled: true,
+      itemId: "credits",
+      nearRemainingRatio: "0.25",
+      nearRemainingQuantity: "",
+      overLimitQuantity: "",
+      templateId: "00000000-0000-0000-0000-000000000001",
+      themeId: "__project_default__",
+      subject: "",
+      cooldownDays: "7",
+    });
+
+    await saveUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
+      adminApp,
+      ruleId: "usage-upgrade",
+      rule,
+    });
+    await deleteUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
+      adminApp,
+      ruleId: "usage-upgrade",
+    });
+
+    expect(updateConfig).toHaveBeenNthCalledWith(1, {
+      adminApp,
+      configUpdate: {
+        "automations.rules.usage-upgrade": rule,
+      },
+      pushable: true,
+    });
+    expect(updateConfig).toHaveBeenNthCalledWith(2, {
+      adminApp,
+      configUpdate: {
+        "automations.rules.usage-upgrade": null,
+      },
+      pushable: true,
+    });
+  });
+
+  it.each(["bad.path", "__proto__", "constructor", "prototype"])("rejects unsafe rule ID %s before updating config", async (ruleId) => {
+    const updateConfig = vi.fn(async () => true);
+    const adminApp = {
+      getProject: async () => {
+        throw new Error("getProject should not be called by config path helper tests");
+      },
+    };
+    const rule = buildRuleFromDraft({
+      ruleId: "usage-upgrade",
+      displayName: "Usage upgrade",
+      enabled: true,
+      itemId: "credits",
+      nearRemainingRatio: "0.25",
+      nearRemainingQuantity: "",
+      overLimitQuantity: "",
+      templateId: "00000000-0000-0000-0000-000000000001",
+      themeId: "__project_default__",
+      subject: "",
+      cooldownDays: "7",
+    });
+
+    await expect(saveUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
+      adminApp,
+      ruleId,
+      rule,
+    })).rejects.toThrow(`Unsafe usage email rule ID "${ruleId}" cannot be used in a config path.`);
+    await expect(deleteUsageEmailAutomationRule({
+      applyConfigUpdate: updateConfig,
+      adminApp,
+      ruleId,
+    })).rejects.toThrow(`Unsafe usage email rule ID "${ruleId}" cannot be used in a config path.`);
+
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 });

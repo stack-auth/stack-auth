@@ -1,104 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { AutomationActionAdapter, AutomationSourceAdapter } from "@/lib/automations/rule-evaluator";
 import { evaluateAutomationRuleDryRunForRoute } from "@/lib/automations/dry-run-route";
 import { createPrismaAutomationRuleExecutionStateReader } from "@/lib/automations/execution-state-store";
+import {
+  automationRouteTestRuleId as ruleId,
+  createAutomationRouteTestActionAdapter,
+  createAutomationRouteTestSourceAdapter,
+  createAutomationRouteTestTenancy,
+} from "../test-helpers";
 
-const ruleId = "low-api-credits";
 const now = new Date("2026-07-01T00:00:00.000Z");
-
-function createTenancy(options: {
-  enabled?: boolean,
-  ruleExists?: boolean,
-} = {}) {
-  return {
-    id: "tenancy-1",
-    project: {
-      display_name: "Acme App",
-    },
-    config: {
-      automations: {
-        rules: options.ruleExists === false ? {} : {
-          [ruleId]: {
-            enabled: options.enabled ?? true,
-            source: {
-              type: "payments-item-quota",
-              itemId: "api_credits",
-              customerType: "user",
-              thresholds: {
-                nearRemainingQuantity: 10,
-              },
-            },
-            action: {
-              type: "send-email",
-              templateId: "8c6f6960-7a87-4ebd-b2a6-bfd06d68e2d1",
-              notificationCategoryName: "Marketing",
-            },
-            cooldown: {
-              days: 7,
-            },
-          },
-        },
-      },
-    },
-  };
-}
-
-function createSourceAdapter(): AutomationSourceAdapter {
-  const evaluate: AutomationSourceAdapter["evaluate"] = async () => ({
-    evaluatedCount: 2,
-    nextCursor: "cursor-2",
-    decisions: [{
-      subject: {
-        type: "user",
-        id: "user-1",
-      },
-      signal: {
-        key: "api_credits:near",
-        kind: "near",
-      },
-      sourceSnapshot: {
-        sourceType: "payments-item-quota",
-        itemId: "api_credits",
-        itemDisplayName: "API credits",
-        currentQuantity: 7,
-        entitlementQuantity: 100,
-        thresholdKind: "near",
-        ownedProductIds: ["pro"],
-        activeSubscriptionIds: ["sub_1"],
-      },
-    }],
-  });
-  return {
-    evaluate: vi.fn(evaluate),
-  };
-}
-
-function createActionAdapter(): AutomationActionAdapter {
-  const buildPlan: AutomationActionAdapter["buildPlan"] = async (options) => ({
-    type: "send-email",
-    recipient: {
-      type: "user-primary-email",
-      userId: options.decision.subject.id,
-    },
-    tsxSource: "export function EmailTemplate() { return null; }",
-    templateId: options.rule.action.templateId,
-    themeId: null,
-    notificationCategoryName: "Marketing",
-    notificationCategoryId: "4f6f8873-3d04-46bd-8bef-18338b1a1b4c",
-    createdWith: {
-      type: "programmatic-call",
-      templateId: options.rule.action.templateId,
-    },
-    isHighPriority: false,
-    shouldSkipDeliverabilityCheck: false,
-    variables: {
-      automationRuleId: options.ruleId,
-    },
-  });
-  return {
-    buildPlan: vi.fn(buildPlan),
-  };
-}
 
 function createFakePrisma(options: {
   lastActionAt?: Date | null,
@@ -122,11 +32,11 @@ function createFakePrisma(options: {
 describe("automation dry-run route helpers", () => {
   it("returns 404 for missing rules before evaluating or writing state", async () => {
     const fakePrisma = createFakePrisma();
-    const sourceAdapter = createSourceAdapter();
-    const actionAdapter = createActionAdapter();
+    const sourceAdapter = createAutomationRouteTestSourceAdapter();
+    const actionAdapter = createAutomationRouteTestActionAdapter();
 
     const resultPromise = evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy({ ruleExists: false }),
+      tenancy: createAutomationRouteTestTenancy({ ruleExists: false }),
       ruleId,
       prisma: fakePrisma,
       sourceAdapter,
@@ -149,11 +59,11 @@ describe("automation dry-run route helpers", () => {
 
   it("allows disabled rules to be previewed without writing automation state or email outbox rows", async () => {
     const fakePrisma = createFakePrisma();
-    const sourceAdapter = createSourceAdapter();
-    const actionAdapter = createActionAdapter();
+    const sourceAdapter = createAutomationRouteTestSourceAdapter();
+    const actionAdapter = createAutomationRouteTestActionAdapter();
 
     await expect(evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy({ enabled: false }),
+      tenancy: createAutomationRouteTestTenancy({ enabled: false }),
       ruleId,
       prisma: fakePrisma,
       sourceAdapter,
@@ -190,15 +100,15 @@ describe("automation dry-run route helpers", () => {
 
   it("returns the dry-run API response without writing automation state or email outbox rows", async () => {
     const fakePrisma = createFakePrisma();
-    const sourceAdapter = createSourceAdapter();
-    const actionAdapter = createActionAdapter();
+    const sourceAdapter = createAutomationRouteTestSourceAdapter();
+    const actionAdapter = createAutomationRouteTestActionAdapter();
     const recipientStatusReader = vi.fn(async () => new Map([["user-1", {
       userExists: true,
       hasPrimaryEmail: true,
     }]]));
 
     await expect(evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy(),
+      tenancy: createAutomationRouteTestTenancy(),
       ruleId,
       limit: 25,
       cursor: "cursor-1",
@@ -271,11 +181,11 @@ describe("automation dry-run route helpers", () => {
     const fakePrisma = createFakePrisma({ lastActionAt });
 
     await expect(evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy(),
+      tenancy: createAutomationRouteTestTenancy(),
       ruleId,
       prisma: fakePrisma,
-      sourceAdapter: createSourceAdapter(),
-      actionAdapter: createActionAdapter(),
+      sourceAdapter: createAutomationRouteTestSourceAdapter(),
+      actionAdapter: createAutomationRouteTestActionAdapter(),
       recipientStatusReader: async () => new Map(),
       executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
       now,
@@ -304,11 +214,11 @@ describe("automation dry-run route helpers", () => {
     });
 
     await expect(evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy(),
+      tenancy: createAutomationRouteTestTenancy(),
       ruleId,
       prisma: fakePrisma,
-      sourceAdapter: createSourceAdapter(),
-      actionAdapter: createActionAdapter(),
+      sourceAdapter: createAutomationRouteTestSourceAdapter(),
+      actionAdapter: createAutomationRouteTestActionAdapter(),
       recipientStatusReader: async () => new Map(),
       executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
       now,
@@ -332,11 +242,11 @@ describe("automation dry-run route helpers", () => {
     const fakePrisma = createFakePrisma();
 
     await expect(evaluateAutomationRuleDryRunForRoute({
-      tenancy: createTenancy(),
+      tenancy: createAutomationRouteTestTenancy(),
       ruleId,
       prisma: fakePrisma,
-      sourceAdapter: createSourceAdapter(),
-      actionAdapter: createActionAdapter(),
+      sourceAdapter: createAutomationRouteTestSourceAdapter(),
+      actionAdapter: createAutomationRouteTestActionAdapter(),
       recipientStatusReader: async () => new Map(),
       executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
       now,

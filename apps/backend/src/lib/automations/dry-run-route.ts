@@ -3,6 +3,7 @@ import { automationCooldownStatusToApiBody, type AutomationCooldownStatus } from
 import { AutomationRuleExecutionStateReader } from "./execution-state-store";
 import { AutomationActionAdapter, AutomationEvaluationResult, AutomationSourceAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 import { AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
+import { PaymentsItemQuotaSourceApiBody, paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
 
 export type AutomationDryRunRecipientStatus = {
   userExists: boolean,
@@ -18,15 +19,7 @@ export type AutomationDryRunRecipientStatusReader<TPrisma> = (options: {
 type AutomationDryRunDecisionApiItem = {
   subject_type: "user",
   subject_id: string,
-  source: {
-    type: "payments-item-quota",
-    item_id: string,
-    current_quantity: number,
-    entitlement_quantity: number | null,
-    threshold_kind: "near" | "over",
-    owned_product_ids: string[],
-    active_subscription_ids: string[],
-  },
+  source: PaymentsItemQuotaSourceApiBody,
   action: {
     type: "send-email",
     template_id: string,
@@ -141,15 +134,7 @@ function automationDryRunDecisionToApiItem(
   return {
     subject_type: decision.subject.type,
     subject_id: decision.subject.id,
-    source: {
-      type: "payments-item-quota",
-      item_id: getStringSourceSnapshotValue(decision, "itemId"),
-      current_quantity: getNumberSourceSnapshotValue(decision, "currentQuantity"),
-      entitlement_quantity: getNullableNumberSourceSnapshotValue(decision, "entitlementQuantity"),
-      threshold_kind: decision.signal.kind,
-      owned_product_ids: getStringArraySourceSnapshotValue(decision, "ownedProductIds"),
-      active_subscription_ids: getStringArraySourceSnapshotValue(decision, "activeSubscriptionIds"),
-    },
+    source: paymentsItemQuotaSourceSnapshotToApiBody(decision, "Automation dry-run decision"),
     action: {
       type: decision.action.type,
       template_id: decision.action.templateId,
@@ -161,36 +146,4 @@ function automationDryRunDecisionToApiItem(
       has_primary_email: recipientStatus.hasPrimaryEmail,
     },
   };
-}
-
-function getStringSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (typeof value !== "string") {
-    throw new Error(`Automation dry-run decision sourceSnapshot.${key} must be a string.`);
-  }
-  return value;
-}
-
-function getNumberSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (typeof value !== "number") {
-    throw new Error(`Automation dry-run decision sourceSnapshot.${key} must be a number.`);
-  }
-  return value;
-}
-
-function getNullableNumberSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (value !== null && typeof value !== "number") {
-    throw new Error(`Automation dry-run decision sourceSnapshot.${key} must be a number or null.`);
-  }
-  return value;
-}
-
-function getStringArraySourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new Error(`Automation dry-run decision sourceSnapshot.${key} must be an array of strings.`);
-  }
-  return value;
 }

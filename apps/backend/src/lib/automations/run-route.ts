@@ -1,6 +1,7 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { AutomationJson, AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { AutomationActionPlan, AutomationEvaluationResult, AutomationSourceAdapter, AutomationActionAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
+import { paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
 
 export type AutomationRuleExecutionClaimResult =
   | {
@@ -183,15 +184,7 @@ export function automationRunResultToApiBody(result: AutomationRunResult) {
       subject_id: resultDecision.decision.subject.id,
       signal_key: resultDecision.decision.signal.key,
       sent: resultDecision.sent,
-      source: {
-        type: "payments-item-quota",
-        item_id: getStringSourceSnapshotValue(resultDecision.decision, "itemId"),
-        current_quantity: getNumberSourceSnapshotValue(resultDecision.decision, "currentQuantity"),
-        entitlement_quantity: getNullableNumberSourceSnapshotValue(resultDecision.decision, "entitlementQuantity"),
-        threshold_kind: resultDecision.decision.signal.kind,
-        owned_product_ids: getStringArraySourceSnapshotValue(resultDecision.decision, "ownedProductIds"),
-        active_subscription_ids: getStringArraySourceSnapshotValue(resultDecision.decision, "activeSubscriptionIds"),
-      },
+      source: paymentsItemQuotaSourceSnapshotToApiBody(resultDecision.decision, "Automation run decision"),
       action: {
         type: resultDecision.decision.action.type,
         template_id: resultDecision.decision.action.templateId,
@@ -223,36 +216,4 @@ function getBlockedCooldownDetails(lastActionAt: Date | null, cooldownDays: numb
     lastActionAtMillis: lastActionAt.getTime(),
     nextEligibleAtMillis,
   };
-}
-
-function getStringSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (typeof value !== "string") {
-    throw new Error(`Automation run decision sourceSnapshot.${key} must be a string.`);
-  }
-  return value;
-}
-
-function getNumberSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (typeof value !== "number") {
-    throw new Error(`Automation run decision sourceSnapshot.${key} must be a number.`);
-  }
-  return value;
-}
-
-function getNullableNumberSourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (value !== null && typeof value !== "number") {
-    throw new Error(`Automation run decision sourceSnapshot.${key} must be a number or null.`);
-  }
-  return value;
-}
-
-function getStringArraySourceSnapshotValue(decision: EvaluatedAutomationDecision, key: string) {
-  const value = decision.sourceSnapshot[key];
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new Error(`Automation run decision sourceSnapshot.${key} must be an array of strings.`);
-  }
-  return value;
 }
