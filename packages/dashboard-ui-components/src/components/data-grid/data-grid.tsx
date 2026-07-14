@@ -376,6 +376,15 @@ function hashStringToInt(value: string): number {
   return Math.abs(hash);
 }
 
+/**
+ * Column flex fractions used when the grid is loading before any schema is
+ * known (e.g. QueryDataGrid discovers columns from the first result page).
+ * Without these, `SkeletonRow` would render zero cells and the body looks
+ * like an empty black void instead of a shimmer.
+ */
+const SCHEMA_PENDING_COL_FRACTIONS = [0.18, 0.16, 0.34, 0.2, 0.12] as const;
+const SCHEMA_PENDING_SKELETON_ROWS = 10;
+
 function SkeletonRow({
   columns,
   height,
@@ -399,6 +408,72 @@ function SkeletonRow({
           style={{ width: `calc(var(--col-${col.id}-size) * 1px)` }}
         >
           <DesignSkeleton className="h-3.5 rounded-md" style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Sticky header shimmer when columns haven't been discovered yet. */
+function SchemaPendingHeaderCells({ showCheckbox }: { showCheckbox?: boolean }) {
+  return (
+    <>
+      {showCheckbox && (
+        <div
+          className="flex shrink-0 items-center justify-center border-r border-foreground/[0.04]"
+          style={{ width: 44 }}
+        />
+      )}
+      {SCHEMA_PENDING_COL_FRACTIONS.map((frac, colIdx) => (
+        <div
+          key={colIdx}
+          className="flex items-center px-3 border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0"
+          style={{ width: `${frac * 100}%` }}
+        >
+          <DesignSkeleton
+            className="h-3 rounded-md"
+            style={{ width: `${45 + (colIdx * 13) % 30}%` }}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Full-width body shimmer when columns haven't been discovered yet. */
+function SchemaPendingSkeleton({
+  rowHeight,
+  showCheckbox,
+}: {
+  rowHeight: number,
+  showCheckbox?: boolean,
+}) {
+  return (
+    <div className="w-full" data-data-grid-schema-pending-skeleton="" role="status" aria-label="Loading">
+      {Array.from({ length: SCHEMA_PENDING_SKELETON_ROWS }).map((_, rowIdx) => (
+        <div
+          key={rowIdx}
+          className="flex w-full border-b border-black/[0.04] dark:border-white/[0.04]"
+          style={{ height: rowHeight }}
+          role="row"
+        >
+          {showCheckbox && (
+            <div className="flex shrink-0 items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]" style={{ width: 44 }}>
+              <DesignSkeleton className="h-4 w-4 rounded" />
+            </div>
+          )}
+          {SCHEMA_PENDING_COL_FRACTIONS.map((frac, colIdx) => (
+            <div
+              key={colIdx}
+              className="flex items-center px-3 border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0"
+              style={{ width: `${frac * 100}%` }}
+            >
+              <DesignSkeleton
+                className="h-3.5 rounded-md"
+                style={{ width: `${50 + ((rowIdx * 7 + colIdx * 19) % 40)}%` }}
+              />
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -1138,30 +1213,36 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             >
               <div
                 className="flex"
-                style={{ height: headerHeight, minWidth: totalContentWidth }}
+                style={{ height: headerHeight, minWidth: totalContentWidth || undefined, width: visibleColumns.length === 0 ? "100%" : undefined }}
                 role="row"
               >
-                {selectionMode !== "none" && (
-                  <div
-                    className="flex items-center justify-center border-r border-foreground/[0.04]"
-                    style={{ width: 44 }}
-                  >
-                    {selectionMode === "multiple" && (
-                      <SelectionCheckbox
-                        checked={allSelected}
-                        indeterminate={someSelected}
-                        onChange={handleSelectAll}
-                        ariaLabel="Select all rows on this page"
-                        title="Select all rows on this page"
-                      />
+                {isLoading && visibleColumns.length === 0 ? (
+                  <SchemaPendingHeaderCells showCheckbox={selectionMode !== "none"} />
+                ) : (
+                  <>
+                    {selectionMode !== "none" && (
+                      <div
+                        className="flex items-center justify-center border-r border-foreground/[0.04]"
+                        style={{ width: 44 }}
+                      >
+                        {selectionMode === "multiple" && (
+                          <SelectionCheckbox
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={handleSelectAll}
+                            ariaLabel="Select all rows on this page"
+                            title="Select all rows on this page"
+                          />
+                        )}
+                      </div>
                     )}
-                  </div>
+                    {visibleColumns.map((col) => {
+                      const header = headerByColId.get(col.id);
+                      if (!header) return null;
+                      return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
+                    })}
+                  </>
                 )}
-                {visibleColumns.map((col) => {
-                  const header = headerByColId.get(col.id);
-                  if (!header) return null;
-                  return <HeaderCell key={col.id} header={header} col={col} resizable={resizable} />;
-                })}
               </div>
             </div>
           </div>
@@ -1190,15 +1271,27 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             }}
           >
             {isLoading && (
-              <div style={{ minWidth: totalContentWidth }}>
-                {loadingState ?? Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow
-                    key={i}
-                    columns={visibleColumns}
-                    height={estimatedRowHeight}
-                    showCheckbox={selectionMode !== "none"}
-                  />
-                ))}
+              <div style={{ minWidth: totalContentWidth || undefined, width: visibleColumns.length === 0 ? "100%" : undefined }}>
+                {loadingState ?? (
+                  visibleColumns.length === 0 ? (
+                    // Schema not known yet (common for query grids that discover
+                    // columns from the first page) — fall back to a full-width
+                    // shimmer so loading never looks like an empty black pane.
+                    <SchemaPendingSkeleton
+                      rowHeight={estimatedRowHeight}
+                      showCheckbox={selectionMode !== "none"}
+                    />
+                  ) : (
+                    Array.from({ length: 8 }).map((_, i) => (
+                      <SkeletonRow
+                        key={i}
+                        columns={visibleColumns}
+                        height={estimatedRowHeight}
+                        showCheckbox={selectionMode !== "none"}
+                      />
+                    ))
+                  )
+                )}
               </div>
             )}
 
