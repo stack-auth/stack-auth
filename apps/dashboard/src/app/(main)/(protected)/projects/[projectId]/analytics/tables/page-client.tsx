@@ -9,13 +9,13 @@ import { useCallback, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { AnalyticsEventLimitBanner } from "../shared";
+import { AiQueryBar } from "./ai-query-bar";
+import { AiQueryDialog } from "./ai-query-dialog";
 import {
   QueryDataGrid,
   type QueryDataGridMode,
 } from "./query-data-grid";
-import { getValidatedTableFilterQuery } from "./search-bar-logic";
-import { TableSearchBar } from "./table-search-bar";
-import { useAiTableFilterChat } from "./use-ai-table-filter-chat";
+import { useAiQueryChat } from "./use-ai-query-chat";
 
 // ─── Available tables ───────────────────────────────────────────────
 
@@ -143,43 +143,56 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
 
 function TableContent({ tableId }: { tableId: TableId }) {
   const tableConfig = AVAILABLE_TABLES.get(tableId) ?? throwErr(`Unknown analytics table: ${tableId}`);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  // AI thread behind the search bar — constrained to row filters over this
-  // table, so the grid's columns never change.
-  const filterChat = useAiTableFilterChat(tableId);
+  // Shared AI chat state — feeds both the search bar and the eye
+  // dialog, so they operate on a single conversation thread.
+  const chat = useAiQueryChat();
 
-  const rawFilterQuery = filterChat.latestQuery;
-  // Defense-in-depth: the system prompt promises `SELECT * FROM <table>
-  // WHERE ...`, but the model could still emit anything — validate the shape
-  // before letting it drive the grid, otherwise the columns could change.
-  const filterQuery = rawFilterQuery == null ? null : getValidatedTableFilterQuery(rawFilterQuery, tableId);
-  const filterRejected = rawFilterQuery != null && filterQuery == null;
+  const aiQuery = chat.latestQuery;
+  const isAiActive = aiQuery != null;
 
-  const effectiveQuery = filterQuery ?? tableConfig.baseQuery;
-  const effectiveMode: QueryDataGridMode = filterQuery != null ? "one-shot" : "paginated";
+  // When the AI has committed a query, it becomes the source of
+  // truth; otherwise fall back to the table's own default query.
+  const effectiveQuery = aiQuery ?? tableConfig.baseQuery;
+  const effectiveMode: QueryDataGridMode = isAiActive ? "one-shot" : "paginated";
 
-  const renderToolbarExtra = useCallback(
-    (ctx: { rowCount: number, hasMore: boolean }) => (
-      <span className="hidden h-[22px] shrink-0 items-center rounded-full bg-foreground/[0.04] px-2 text-[10px] tabular-nums text-muted-foreground ring-1 ring-foreground/[0.06] sm:inline-flex">
-        {ctx.hasMore
-          ? `${ctx.rowCount.toLocaleString()}+ rows`
-          : `${ctx.rowCount.toLocaleString()} rows`}
-      </span>
-    ),
-    [],
+  // Default sort / search only apply while the AI is inactive — an
+  // AI-generated aggregate won't have an `event_at` column to sort on.
+  const defaultOrderBy = isAiActive ? undefined : tableConfig.defaultOrderBy;
+  const defaultOrderDir = isAiActive ? undefined : tableConfig.defaultOrderDir;
+
+  const handleResetChat = useCallback(() => {
+    chat.clearMessages();
+  }, [chat]);
+
+  const aiSearchBar = (
+    <AiQueryBar
+      chat={chat}
+      isActive={isAiActive}
+      onOpenDialog={() => setDialogOpen(true)}
+      onReset={handleResetChat}
+    />
   );
 
-  const renderToolbarActions = useCallback(
-    (ctx: { reload: () => void }) => (
-      <Button
-        variant="ghost"
-        onClick={ctx.reload}
-        className="h-7 gap-1.5 px-2.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-        title="Refresh"
-      >
-        <ArrowClockwiseIcon className="h-3.5 w-3.5" />
-        Refresh
-      </Button>
+  const renderToolbarExtra = useCallback(
+    (ctx: { rowCount: number, hasMore: boolean, reload: () => void }) => (
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={ctx.reload}
+          className="h-7 w-7"
+          title="Refresh"
+        >
+          <ArrowClockwiseIcon className="h-3.5 w-3.5" />
+        </Button>
+        <span className="hidden sm:inline px-1 text-[11px] tabular-nums text-muted-foreground">
+          {ctx.hasMore
+            ? `${ctx.rowCount.toLocaleString()}+ rows`
+            : `${ctx.rowCount.toLocaleString()} rows`}
+        </span>
+      </div>
     ),
     [],
   );
@@ -191,25 +204,22 @@ function TableContent({ tableId }: { tableId: TableId }) {
       <QueryDataGrid
         query={effectiveQuery}
         mode={effectiveMode}
-        defaultOrderBy={tableConfig.defaultOrderBy}
-        defaultOrderDir={tableConfig.defaultOrderDir}
-        searchBar={(ctx) => (
-          <TableSearchBar
-            ctx={ctx}
-            queryKey={effectiveQuery}
-            chat={filterChat}
-            activeFilterQuery={filterQuery}
-            filterRejected={filterRejected}
-            onAiSubmit={(text) => filterChat.sendMessage({ text })}
-            onClearFilter={filterChat.clearMessages}
-          />
-        )}
+        defaultOrderBy={defaultOrderBy}
+        defaultOrderDir={defaultOrderDir}
+        enableQuickSearchFilter={!isAiActive}
+        searchBar={aiSearchBar}
         toolbarExtra={renderToolbarExtra}
-        toolbarActions={renderToolbarActions}
         exportFilename={`${tableId}-export`}
         fillHeight
         stickyTop={0}
         horizontalScrollbarPosition="top"
+      />
+
+      <AiQueryDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        chat={chat}
+        currentQuery={aiQuery}
       />
     </div>
   );
@@ -230,7 +240,7 @@ export default function PageClient() {
 
           {/* Match the primary nav's dark:rounded-2xl so the gap junction mirrors
               the same radius on both sides (nav top-right ↔ tables top-left). */}
-          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl rounded-tr-2xl lg:ml-0.5">
+          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl rounded-tr-2xl lg:-ml-2">
             {/* Use the same surface treatment as the primary sidebar so equal radii render
                 identically. Omit the right border to keep the sidebar/grid junction divider-free. */}
             <div className="hidden w-48 min-h-0 flex-shrink-0 flex-col overflow-hidden rounded-l-2xl bg-black/[0.03] dark:border dark:border-r-0 dark:border-foreground/5 dark:bg-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm lg:flex">
@@ -276,7 +286,7 @@ export default function PageClient() {
                 // Toolbar row only (first child of sticky chrome) — analytics layout
                 "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
                 "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
-                "[&_[role=grid]_.sticky>div:first-child>div]:pr-3",
+                "[&_[role=grid]_.sticky>div:first-child>div]:pr-0",
                 "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
               )}
               style={{
