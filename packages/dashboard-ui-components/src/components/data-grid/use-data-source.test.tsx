@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe("useDataSource infinite pagination", () => {
-  it("does not start loadMore while the initial fetch is in flight", async () => {
+  it("defers loadMore during the initial fetch and replays it once settled", async () => {
     const calls: Array<{ cursor: unknown }> = [];
     let resolveInitial: (value: void) => void = () => {};
     const initialFetch = new Promise<void>((resolve) => {
@@ -71,12 +71,16 @@ describe("useDataSource infinite pagination", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
 
     fireEvent.click(getByRole("button", { name: "Load more" }));
+    // Not started concurrently — queued behind the in-flight initial fetch.
     expect(calls).toHaveLength(1);
 
     await act(async () => {
       resolveInitial();
     });
-    await waitFor(() => expect(getByRole("button", { name: "Load more" })).toBeTruthy());
+    // The queued loadMore replays automatically with the completed cursor,
+    // so a sentinel that fired during the fetch is not silently dropped.
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toEqual({ cursor: "cursor-1" });
   });
 
   it("uses the completed page cursor for the next loadMore fetch", async () => {

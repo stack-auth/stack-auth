@@ -123,6 +123,14 @@ function useAsyncDataSource<TRow>(opts: {
 
   const cursorRef = useRef<unknown>(undefined);
   const inFlightFetchRef = useRef<AbortController | null>(null);
+  // The infinite-scroll sentinel's IntersectionObserver only fires on
+  // intersection *changes* (by design, to avoid auto-loading the whole
+  // dataset). If `loadMore` is called while another fetch is in flight we
+  // can't just drop it: the sentinel won't fire again until the user scrolls
+  // away and back. Remember the request and replay it once the in-flight
+  // fetch settles.
+  const pendingLoadMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
   const pageIndexRef = useRef(0);
   const hasDataRef = useRef(false);
   const hasMountedServerPaginationRef = useRef(false);
@@ -209,7 +217,8 @@ function useAsyncDataSource<TRow>(opts: {
           if (result.nextCursor !== undefined) {
             cursorRef.current = result.nextCursor;
           }
-          setHasMore(result.hasMore !== false);
+          hasMoreRef.current = result.hasMore !== false;
+          setHasMore(hasMoreRef.current);
 
           if (append) {
             setRows((prev) => {
@@ -247,6 +256,18 @@ function useAsyncDataSource<TRow>(opts: {
           setIsLoading(false);
           setIsRefetching(false);
           setIsLoadingMore(false);
+          // Replay a loadMore that was requested (and deferred) while this
+          // fetch was in flight. Skip if this fetch was aborted by unmount
+          // cleanup — `inFlightFetchRef.current === controller` with an
+          // aborted signal only happens then.
+          const shouldChainLoadMore =
+            pendingLoadMoreRef.current
+            && !controller.signal.aborted
+            && hasMoreRef.current;
+          pendingLoadMoreRef.current = false;
+          if (shouldChainLoadMore) {
+            fetchPage(true).catch(() => {});
+          }
         }
       }
     },
@@ -284,15 +305,18 @@ function useAsyncDataSource<TRow>(opts: {
   }, [fetchPage, paginationMode, pagination.pageIndex]);
 
   const loadMore = useCallback(() => {
-    // Keep pagination single-flight. In particular, do not let the sentinel
-    // start an append against a cursor that a concurrent reset is replacing.
-    if (inFlightFetchRef.current != null) {
+    if (paginationMode !== "infinite" || !hasMore) {
       return;
     }
-    if (!isLoadingMore && hasMore && paginationMode === "infinite") {
-      fetchPage(true).catch(() => {});
+    // Keep pagination single-flight. In particular, do not let the sentinel
+    // start an append against a cursor that a concurrent reset is replacing.
+    // Queue the request instead of dropping it (see pendingLoadMoreRef).
+    if (inFlightFetchRef.current != null) {
+      pendingLoadMoreRef.current = true;
+      return;
     }
-  }, [isLoadingMore, hasMore, paginationMode, fetchPage]);
+    fetchPage(true).catch(() => {});
+  }, [hasMore, paginationMode, fetchPage]);
 
   const reload = useCallback(() => {
     fetchPage(false).catch(() => {});
