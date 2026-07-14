@@ -58,8 +58,6 @@ export const resetPasswordVerificationCodeHandler = createVerificationCodeHandle
       throw passwordError;
     }
 
-    // The code embeds user_id at issuance time, so the user may have been deleted before
-    // redemption; surface that as the client-safe UserNotFound instead of a wrapped 500.
     await usersCrudHandlers.adminUpdate({
       tenancy,
       user_id: data.user_id,
