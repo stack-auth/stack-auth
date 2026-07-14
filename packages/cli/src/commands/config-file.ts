@@ -287,8 +287,8 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
-      const { createJiti } = await import("jiti");
-      const jiti = createJiti(import.meta.url);
+      const { createConfigFileJiti } = await import("../lib/config-jiti.js");
+      const jiti = createConfigFileJiti(filePath);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = parseConfigOverride(configModule.config);

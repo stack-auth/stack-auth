@@ -3,6 +3,31 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assertConfigPullTarget, buildConfigPushSource, resolveConfigFilePathForPull } from "./config-file.js";
+import { createConfigFileJiti } from "../lib/config-jiti.js";
+
+describe("createConfigFileJiti", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hexclave-cli-config-jiti-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("loads config authoring imports when the project has no SDK installed", async () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(
+      configPath,
+      'import { defineHexclaveConfig } from "@hexclave/js/config";\nexport const config = defineHexclaveConfig({ auth: { allowSignUp: true } });\n',
+    );
+
+    const configModule = await createConfigFileJiti(configPath).import<{ config: { auth: { allowSignUp: boolean } } }>(configPath);
+
+    expect(configModule.config).toEqual({ auth: { allowSignUp: true } });
+  });
+});
 
 describe("resolveConfigFilePathForPull", () => {
   let tmpDir: string;
