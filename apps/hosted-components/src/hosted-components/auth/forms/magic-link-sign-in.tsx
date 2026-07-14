@@ -67,7 +67,6 @@ function MagicLinkOtp(props: {
           maxLength={6}
           type="text"
           inputMode="text"
-          autoComplete="one-time-code"
           pattern="^[a-zA-Z0-9]+$"
           value={otp}
           onChange={(value) => setOtp(value.toUpperCase())}
