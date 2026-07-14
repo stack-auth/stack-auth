@@ -1,6 +1,5 @@
-import "@/instrument";
-import "@/polyfills";
-import { app } from "./server/app";
-import "./server/env-expand";
+// Vercel detects native Elysia entrypoints by a direct framework import.
+import "elysia";
+import app from "../dist/vercel.mjs";
 
 export default app;

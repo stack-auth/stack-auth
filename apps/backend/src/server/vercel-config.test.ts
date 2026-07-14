@@ -1,39 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-describe("Vercel function durations", () => {
-  it("preserves inherited and route-specific limits from the Next.js deployment", async () => {
-    const [vercelJson, defaultEntry, applyEntry, commitEntry, cancelEntry] = await Promise.all([
+describe("Vercel deployment configuration", () => {
+  it("uses native Elysia routing and inherits the project function duration", async () => {
+    const [vercelJson, entry] = await Promise.all([
       readFile(new URL("../../vercel.json", import.meta.url), "utf8"),
-      readFile(new URL("../../api/index.ts", import.meta.url), "utf8"),
-      readFile(new URL("../../api/config-github-apply.ts", import.meta.url), "utf8"),
-      readFile(new URL("../../api/config-github-commit.ts", import.meta.url), "utf8"),
-      readFile(new URL("../../api/config-github-cancel.ts", import.meta.url), "utf8"),
+      readFile(new URL("../index.ts", import.meta.url), "utf8"),
     ]);
 
-    expect(JSON.parse(vercelJson)).toMatchObject({
-      rewrites: [
-        {
-          source: "/api/:version/internal/config/github/apply",
-          destination: "/api/config-github-apply",
-        },
-        {
-          source: "/api/:version/internal/config/github/commit",
-          destination: "/api/config-github-commit",
-        },
-        {
-          source: "/api/:version/internal/config/github/cancel",
-          destination: "/api/config-github-cancel",
-        },
-        {
-          source: "/(.*)",
-          destination: "/api",
-        },
-      ],
-    });
-    expect(defaultEntry).not.toContain("maxDuration");
-    expect(applyEntry).toContain("maxDuration: 800");
-    expect(commitEntry).toContain("maxDuration: 120");
-    expect(cancelEntry).toContain("maxDuration: 60");
+    const config = JSON.parse(vercelJson);
+    expect(config.framework).toBe("elysia");
+    expect(config).not.toHaveProperty("rewrites");
+    expect(config).not.toHaveProperty("functions");
+    expect(entry).toContain('import "elysia"');
+    expect(entry).toContain('from "../dist/vercel.mjs"');
+    expect(entry).not.toContain("maxDuration");
   });
 });

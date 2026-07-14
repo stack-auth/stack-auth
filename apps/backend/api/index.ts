@@ -1,8 +1,0 @@
-import app from "../dist/vercel.mjs";
-
-// Preserve the project-level duration inherited by routes without a pre-Elysia override.
-export const config = {
-  runtime: "nodejs",
-};
-
-export default app;
