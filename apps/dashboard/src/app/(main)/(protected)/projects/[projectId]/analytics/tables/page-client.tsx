@@ -27,6 +27,8 @@ type TableConfig = {
 };
 
 type TableId = string;
+const ANALYTICS_TABLES_STICKY_TOP = "var(--analytics-tables-sticky-top)";
+const ANALYTICS_TABLES_SIDEBAR_HEIGHT = "var(--analytics-tables-sidebar-height)";
 
 const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   [
@@ -198,9 +200,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
   );
 
   return (
-    // fillHeight grid owns its own scrollport below the page header, so rows never
-    // paint under the sticky translucent header (the dark-mode seam bug).
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-col">
       <QueryDataGrid
         query={effectiveQuery}
         mode={effectiveMode}
@@ -210,9 +210,8 @@ function TableContent({ tableId }: { tableId: TableId }) {
         searchBar={aiSearchBar}
         toolbarExtra={renderToolbarExtra}
         exportFilename={`${tableId}-export`}
-        fillHeight
-        stickyTop={0}
-        horizontalScrollbarPosition="top"
+        fillHeight={false}
+        stickyTop={ANALYTICS_TABLES_STICKY_TOP}
       />
 
       <AiQueryDialog
@@ -230,83 +229,70 @@ export default function PageClient() {
 
   return (
     <AppEnabledGuard appId="analytics">
-      {/* containedHeight: page fills the shell under the header and scrolls internally,
-          so table rows cannot travel behind the floating dark-mode header. */}
-      <PageLayout fillWidth noPadding containedHeight>
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0">
-            <AnalyticsEventLimitBanner />
+      <PageLayout fillWidth noPadding>
+        <AnalyticsEventLimitBanner />
+        <div className="flex w-full min-w-0 items-stretch lg:-ml-2 [--analytics-tables-sticky-top:3.5rem] [--analytics-tables-sidebar-height:calc(100vh-3.5rem)] dark:[--analytics-tables-sticky-top:5rem] dark:[--analytics-tables-sidebar-height:calc(100vh-6rem)]">
+          {/* Left sidebar — hidden on mobile */}
+          <div
+            className="hidden lg:flex w-48 min-h-0 flex-shrink-0 self-start flex-col overflow-hidden border-r border-border/50 pl-2 sticky"
+            style={{
+              top: ANALYTICS_TABLES_STICKY_TOP,
+              height: ANALYTICS_TABLES_SIDEBAR_HEIGHT,
+            }}
+          >
+            <div className="px-4 py-4">
+              <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">
+                Tables
+              </Typography>
+              <div className="space-y-1">
+                {[...AVAILABLE_TABLES.entries()].map(([id, config]) => (
+                  <button
+                    key={id}
+                    onClick={() => setSelectedTable(id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:transition-none",
+                      selectedTable === id
+                        ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {config.displayName}
+                  </button>
+                ))}
+              </div>
+
+              <Link
+                href="./queries"
+                className="mt-4 flex items-center gap-2 border-t border-border/50 px-3 pt-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
+              >
+                <CodeIcon className="h-4 w-4" />
+                Queries
+              </Link>
+            </div>
           </div>
 
-          {/* Match the primary nav's dark:rounded-2xl so the gap junction mirrors
-              the same radius on both sides (nav top-right ↔ tables top-left). */}
-          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl rounded-tr-2xl lg:-ml-2">
-            {/* Use the same surface treatment as the primary sidebar so equal radii render
-                identically. Omit the right border to keep the sidebar/grid junction divider-free. */}
-            <div className="hidden w-48 min-h-0 flex-shrink-0 flex-col overflow-hidden rounded-l-2xl bg-black/[0.03] dark:border dark:border-r-0 dark:border-foreground/5 dark:bg-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm lg:flex">
-              <div className="min-h-0 flex-1 overflow-y-auto pl-2">
-                <div className="min-h-full px-4 py-4">
-                  <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">
-                    Tables
-                  </Typography>
-                  <div className="space-y-1">
-                    {[...AVAILABLE_TABLES.entries()].map(([id, config]) => (
-                      <button
-                        key={id}
-                        onClick={() => setSelectedTable(id)}
-                        className={cn(
-                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:transition-none",
-                        selectedTable === id
-                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                      >
-                        {config.displayName}
-                      </button>
-                    ))}
-                  </div>
-
-                  <Link
-                    href="./queries"
-                    className="mt-4 flex items-center gap-2 border-t border-border/50 px-3 pt-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
-                  >
-                    <CodeIcon className="h-4 w-4" />
-                    Queries
-                  </Link>
-                </div>
+          {/* Right content — flush to card edge; companion gap is on <main> in sidebar-layout */}
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col",
+              "[&_[role=grid]]:rounded-r-none",
+              "[&_[role=grid]_.sticky]:rounded-t-none",
+              // Toolbar row only (first child of sticky chrome) — analytics layout
+              "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pr-0",
+              "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
+            )}
+          >
+            {selectedTable ? (
+              <TableContent key={selectedTable} tableId={selectedTable} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <Typography variant="secondary">
+                  Select a table to view its contents
+                </Typography>
               </div>
-            </div>
-
-            {/* Right content — grid fills remaining height and scrolls internally */}
-            <div
-              className={cn(
-                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-                "[&_[role=grid]]:rounded-none",
-                "[&_[role=grid]_.sticky]:rounded-none",
-                // Toolbar row only (first child of sticky chrome) — analytics layout
-                "[&_[role=grid]_.sticky>div:first-child>div]:pt-3",
-                "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
-                "[&_[role=grid]_.sticky>div:first-child>div]:pr-0",
-                "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
-              )}
-              style={{
-                // Outer top-right corner of the block. Same clip-path trick as the
-                // sidebar: the grid's sticky chrome is its own composited layer and
-                // paints square over the parent's rounded overflow clip without this.
-                borderTopRightRadius: "1rem",
-                clipPath: "inset(0 round 0 1rem 0 0)",
-              }}
-            >
-              {selectedTable ? (
-                <TableContent key={selectedTable} tableId={selectedTable} />
-              ) : (
-                <div className="flex flex-1 items-center justify-center">
-                  <Typography variant="secondary">
-                    Select a table to view its contents
-                  </Typography>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </PageLayout>

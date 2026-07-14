@@ -133,8 +133,6 @@ export type QueryDataGridProps = {
   fillHeight?: boolean,
   /** Sticky top offset forwarded to the underlying DataGrid. */
   stickyTop?: number | string,
-  /** Where the horizontal scrollbar is shown when columns overflow. */
-  horizontalScrollbarPosition?: "top" | "bottom",
 };
 
 export type QueryDataGridHandle = {
@@ -331,7 +329,6 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       footer = false,
       fillHeight = true,
       stickyTop,
-      horizontalScrollbarPosition,
     },
     ref,
   ) {
@@ -657,7 +654,6 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               selectionMode="none"
               fillHeight={fillHeight}
               stickyTop={stickyTop}
-              horizontalScrollbarPosition={horizontalScrollbarPosition}
               toolbar={resolvedToolbar}
               toolbarExtra={resolvedToolbarExtra}
               footer={footer ? undefined : false}

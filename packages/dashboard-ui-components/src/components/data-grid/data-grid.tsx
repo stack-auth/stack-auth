@@ -640,7 +640,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     maxHeight,
     fillHeight = true,
     stickyTop,
-    horizontalScrollbarPosition = "bottom",
     toolbar,
     toolbarExtra,
     emptyState,
@@ -971,54 +970,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     };
   }, []);
 
-  // Keep header + body horizontal offsets locked. When the scrollbar lives under
-  // the column headers (`horizontalScrollbarPosition="top"`), the header is the
-  // scroll owner and the body mirrors it (and vice versa for the default bottom bar).
-  const isSyncingHorizontalScrollRef = useRef(false);
-  const syncHorizontalScroll = useCallback((source: "header" | "body") => {
+  const handleBodyScroll = useCallback(() => {
     const body = scrollContainerRef.current;
     const header = headerScrollRef.current;
-    if (body == null || header == null || isSyncingHorizontalScrollRef.current) return;
-    const from = source === "header" ? header : body;
-    const to = source === "header" ? body : header;
-    if (to.scrollLeft === from.scrollLeft) return;
-    isSyncingHorizontalScrollRef.current = true;
-    to.scrollLeft = from.scrollLeft;
-    isSyncingHorizontalScrollRef.current = false;
+    if (body && header) header.scrollLeft = body.scrollLeft;
   }, []);
-
-  const handleBodyScroll = useCallback(() => {
-    syncHorizontalScroll("body");
-  }, [syncHorizontalScroll]);
-
-  const handleHeaderScroll = useCallback(() => {
-    syncHorizontalScroll("header");
-  }, [syncHorizontalScroll]);
-
-  const horizontalScrollbarAtTop = horizontalScrollbarPosition === "top";
-  // Shared thin thumb styling. When the bar is on top, the header scrollport shows
-  // it; the body keeps overflow-x hidden so a second thumb doesn't appear at the bottom.
-  const headerScrollbarClassName = cn(
-    "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-    "[&::-webkit-scrollbar-track]:bg-transparent",
-    "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-    "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-  );
-  const bodyScrollbarClassName = cn(
-    "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-    "[&::-webkit-scrollbar-track]:bg-transparent",
-    "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-    "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-  );
-
-  // Trackpad / shift-wheel horizontal gestures land on the body; with the top
-  // scrollbar the body has overflow-x:hidden, so forward deltaX to the header.
-  const handleBodyWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!horizontalScrollbarAtTop || event.deltaX === 0) return;
-    const header = headerScrollRef.current;
-    if (header == null) return;
-    header.scrollLeft += event.deltaX;
-  }, [horizontalScrollbarAtTop]);
 
   // ── Toolbar / Footer context ─────────────────────────────────
   const toolbarCtx: DataGridToolbarContext<TRow> = useMemo(
@@ -1128,13 +1084,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             )}
             <div
               ref={headerScrollRef}
-              className={cn(
-                "w-full min-w-0 shrink-0 border-b border-foreground/[0.06]",
-                horizontalScrollbarAtTop
-                  ? cn("overflow-x-auto overflow-y-hidden", headerScrollbarClassName)
-                  : "overflow-hidden",
-              )}
-              onScroll={horizontalScrollbarAtTop ? handleHeaderScroll : undefined}
+              className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
             >
               <div
                 className="flex"
@@ -1170,15 +1120,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         <div
           ref={scrollContainerRef}
           className={cn(
-          "relative z-0 w-full min-w-0 bg-transparent",
-          // Top scrollbar: body is y-only so the horizontal thumb isn't duplicated
-          // under the rows. scrollLeft is still set programmatically from the header.
-          horizontalScrollbarAtTop ? "overflow-y-auto overflow-x-hidden" : "overflow-auto",
+          "relative z-0 w-full min-w-0 overflow-auto bg-transparent",
           isBounded ? "min-h-0 flex-1" : "flex-none",
-          bodyScrollbarClassName,
+          "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
+          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
+          "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
         )}
           onScroll={handleBodyScroll}
-          onWheel={horizontalScrollbarAtTop ? handleBodyWheel : undefined}
         >
           <div
             ref={rowsClipRef}

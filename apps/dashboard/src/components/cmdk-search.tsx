@@ -1005,21 +1005,20 @@ export function CmdKSearch({
 // Trigger button component that can be placed in the header
 export function CmdKTrigger() {
   const mouseCursorRef = useRef<HTMLDivElement>(null);
+  const mouseCursorParentRef = useRef<HTMLDivElement>(null);
   const modifierKeyLabel = getShortcutModifierKeyLabel();
 
-  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    const cursor = mouseCursorRef.current;
-    if (cursor == null) {
-      return;
-    }
-
-    // Keep this glow local to the trigger. A document-level mousemove listener used to
-    // reposition a blurred layer under the translucent header on every cursor move across
-    // the page, continuously recompositing the sticky header while table rows scrolled
-    // behind it and making the header's bottom edge flicker.
-    const rect = event.currentTarget.getBoundingClientRect();
-    cursor.style.left = `${event.clientX - rect.left}px`;
-    cursor.style.top = `${event.clientY - rect.top}px`;
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (mouseCursorRef.current && mouseCursorParentRef.current) {
+        const rect = mouseCursorParentRef.current.getBoundingClientRect();
+        mouseCursorRef.current.style.left = `${e.clientX - rect.left}px`;
+        mouseCursorRef.current.style.top = `${e.clientY - rect.top}px`;
+        mouseCursorRef.current.style.display = "block";
+      }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   return (
@@ -1027,7 +1026,6 @@ export function CmdKTrigger() {
       <button
         data-walkthrough-nav="cmdk-trigger"
         onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
-        onMouseMove={handleMouseMove}
         className={cn(
           "group relative flex items-center gap-3 h-9 px-4 min-w-[240px]",
           "rounded-[12px]",
@@ -1037,9 +1035,10 @@ export function CmdKTrigger() {
         )}
       >
         <div
+          ref={mouseCursorParentRef}
           className={cn(
             "absolute inset-[2px] overflow-hidden rounded-[10px] -z-20",
-            "opacity-0 group-hover:opacity-100 transition-opacity duration-300 group-hover:transition-none",
+            "group-hover:opacity-100 transition-opacity duration-300 group-hover:transition-none",
           )}
         >
           <div
@@ -1050,6 +1049,7 @@ export function CmdKTrigger() {
               "rounded-full",
               "pointer-events-none",
               "-translate-x-1/2 -translate-y-1/2",
+              "hidden",
             )}
           />
         </div>

@@ -345,13 +345,6 @@ export type DataGridProps<TRow> = {
   fillHeight?: boolean;
   /** Top offset for the sticky toolbar + header (px or CSS string). */
   stickyTop?: number | string;
-  /**
-   * Where the horizontal scrollbar is shown when columns overflow.
-   * - `"bottom"` (default): on the row scrollport, under the last visible rows.
-   * - `"top"`: under the column headers (top of the table body), so wide
-   *   tables stay reachable without scrolling to the bottom first.
-   */
-  horizontalScrollbarPosition?: "top" | "bottom";
 
   // ── Callbacks ──────────────────────────────────────────────────
 } & DataGridCallbacks<TRow> & {
