@@ -1,6 +1,6 @@
 import type { ThreadMessage } from "@assistant-ui/react";
 import { describe, expect, it } from "vitest";
-import { extractLatestQuery } from "./use-ai-query-chat";
+import { extractLatestQuery } from "./use-ai-table-filter-chat";
 
 const fixture = (messages: Array<{
   id: string,
