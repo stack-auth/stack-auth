@@ -9,7 +9,7 @@ const DEFAULT_CONFIG_IMPORT_PACKAGE = "@hexclave/js";
  * so projects pinned to the last legacy release still render a config file
  * that compiles against their installed SDK.
  */
-const CONFIG_IMPORT_PACKAGES = [
+export const CONFIG_IMPORT_PACKAGES = [
   "@hexclave/next",
   "@hexclave/react",
   "@hexclave/tanstack-start",
@@ -20,6 +20,17 @@ const CONFIG_IMPORT_PACKAGES = [
   "@stackframe/js",
   "@stackframe/template",
 ] as const;
+
+/**
+ * The module specifier from which a given SDK package exposes the
+ * `HexclaveConfig` type and the `defineHexclaveConfig` helper. Hexclave-branded
+ * packages expose them from a lightweight `/config` entrypoint (free of
+ * framework runtime code); legacy `@stackframe/*` releases predate `/config`
+ * and expose them from the package root.
+ */
+export function configImportSpecifierForPackage(pkg: string): string {
+  return pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
+}
 
 /**
  * Given a list of dependency names (from package.json), returns the SDK
@@ -53,7 +64,7 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
     throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
   }
   const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
-  const importSpecifier = pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
+  const importSpecifier = configImportSpecifierForPackage(pkg);
   const importLine = `import type { HexclaveConfig } from "${importSpecifier}";`;
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }

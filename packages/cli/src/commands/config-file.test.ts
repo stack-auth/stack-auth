@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { assertConfigPullTarget, buildConfigPushSource, resolveConfigFilePathForPull } from "./config-file.js";
+import { assertConfigPullTarget, buildConfigImportAlias, buildConfigPushSource, resolveConfigFilePathForPull } from "./config-file.js";
 
 describe("resolveConfigFilePathForPull", () => {
   let tmpDir: string;
@@ -77,6 +77,60 @@ describe("assertConfigPullTarget", () => {
     const configPath = path.join(tmpDir, "hexclave.config.ts");
     fs.writeFileSync(configPath, "export const config = {};\n");
     expect(() => assertConfigPullTarget(configPath, { overwrite: true })).not.toThrow();
+  });
+});
+
+describe("buildConfigImportAlias", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-alias-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("aliases unresolvable SDK config entrypoints to the CLI's own @hexclave/js/config", () => {
+    const alias = buildConfigImportAlias(tmpDir);
+    // The CLI never depends on `@hexclave/next`, so its `/config` entrypoint is
+    // never resolvable from the config file's directory and must be aliased.
+    expect(alias["@hexclave/next/config"]).toBeDefined();
+    // Every aliased specifier points to the same single real file — the CLI's
+    // bundled `@hexclave/js/config`.
+    const targets = new Set(Object.values(alias));
+    expect(targets.size).toBe(1);
+    const target = [...targets][0];
+    expect(fs.existsSync(target)).toBe(true);
+    // Only known SDK config specifiers are aliased.
+    for (const specifier of Object.keys(alias)) {
+      expect(specifier === "@stackframe/stack" || specifier === "@stackframe/react" || specifier === "@stackframe/js" || specifier === "@stackframe/template" || specifier.endsWith("/config")).toBe(true);
+    }
+  });
+
+  it("lets jiti evaluate a config that imports defineHexclaveConfig without the SDK installed", async () => {
+    // Reproduces the CI sync workflow: the repo is checked out but its
+    // dependencies aren't installed, so `@hexclave/js/config` is unresolvable
+    // from the config file's directory.
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(
+      configPath,
+      [
+        `import { defineHexclaveConfig } from "@hexclave/js/config";`,
+        ``,
+        `export const config = defineHexclaveConfig({`,
+        `  auth: { allowSignUp: true },`,
+        `});`,
+        ``,
+      ].join("\n"),
+    );
+
+    const { createJiti } = await import("jiti");
+    const jiti = createJiti(import.meta.url, {
+      alias: buildConfigImportAlias(path.dirname(configPath)),
+    });
+    const mod: { config?: unknown } = await jiti.import(configPath);
+    expect(mod.config).toEqual({ auth: { allowSignUp: true } });
   });
 });
 
