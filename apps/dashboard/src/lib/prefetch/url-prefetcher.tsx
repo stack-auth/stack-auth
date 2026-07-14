@@ -81,7 +81,7 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
   ],
   "/projects/*/teams": [
     ([_, projectId]) => {
-      useAdminApp(projectId).useTeams();
+      useAdminApp(projectId).useTeams({ limit: 1 });
     },
   ],
   "/projects/*/teams/*": [
@@ -212,16 +212,6 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
     },
     () => {
       useDashboardInternalUser();
-    },
-    ([_, projectId]) => {
-      const project = useAdminApp(projectId).useProject();
-      const teams = useDashboardInternalUser().useTeams();
-      const ownerTeam = teams.find((team) => team.id === project.ownerTeamId);
-      if (ownerTeam) {
-        return [() => {
-          ownerTeam.useUsers();
-        }];
-      }
     },
   ],
   "/projects/*/payments/**": [
