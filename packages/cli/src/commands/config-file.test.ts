@@ -93,9 +93,11 @@ describe("buildConfigImportAlias", () => {
 
   it("aliases unresolvable SDK config entrypoints to the CLI's own @hexclave/js/config", () => {
     const alias = buildConfigImportAlias(tmpDir);
-    // The CLI never depends on `@hexclave/next`, so its `/config` entrypoint is
-    // never resolvable from the config file's directory and must be aliased.
-    expect(alias["@hexclave/next/config"]).toBeDefined();
+    // The legacy `@stackframe/*` packages are not part of this monorepo, so
+    // they're never resolvable from the config file's directory and must be
+    // aliased. (`@hexclave/*` packages may or may not resolve depending on the
+    // environment's module resolution, so we don't assert on those here.)
+    expect(alias["@stackframe/stack"]).toBeDefined();
     // Every aliased specifier points to the same single real file — the CLI's
     // bundled `@hexclave/js/config`.
     const targets = new Set(Object.values(alias));
