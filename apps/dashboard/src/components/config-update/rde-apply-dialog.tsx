@@ -65,8 +65,15 @@ export function RdeApplyDialog({ open, adminApp, configUpdate, onSettle }: RdeAp
         }
         // "redirecting": the browser secret flow took over; treat as not-applied.
         if (result === "updated") {
-          const project = await adminApp.getProject();
-          await project.refreshConfig();
+          // The apply already succeeded at this point; a failed cache refresh
+          // must not surface as a failed apply (which would prompt a retry of
+          // an already-applied mutation), so report it separately.
+          try {
+            const project = await adminApp.getProject();
+            await project.refreshConfig();
+          } catch (refreshError) {
+            captureError("config-update-rde-refresh", refreshError);
+          }
         }
         onSettle(result === "updated");
       } catch (error) {
