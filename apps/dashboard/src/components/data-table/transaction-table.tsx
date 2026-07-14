@@ -5,7 +5,7 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Skeleton } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, AvatarCellSkeleton, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ReceiptXIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import { DataGrid, DataGridToolbar, useDataGridUrlState, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridExportField, type DataGridExportScope } from '@hexclave/dashboard-ui-components';
@@ -150,15 +150,6 @@ function TeamAvatarCell({ teamId }: { teamId: string }) {
         {team.displayName}
       </div>
     </Link>
-  );
-}
-
-function CustomerAvatarSkeleton() {
-  return (
-    <div className="flex items-center gap-2 max-w-40">
-      <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
-      <Skeleton className="h-4 w-24" />
-    </div>
   );
 }
 
@@ -521,14 +512,14 @@ function TransactionTableBody(props: {
         const summary = summaryByIdRef.current.get(row.id);
         if (summary?.customerType === 'user' && summary.customerId) {
           return (
-            <Suspense fallback={<CustomerAvatarSkeleton />}>
+            <Suspense fallback={<AvatarCellSkeleton className="max-w-40" />}>
               <UserAvatarCell userId={summary.customerId} />
             </Suspense>
           );
         }
         if (summary?.customerType === 'team' && summary.customerId) {
           return (
-            <Suspense fallback={<CustomerAvatarSkeleton />}>
+            <Suspense fallback={<AvatarCellSkeleton className="max-w-40" />}>
               <TeamAvatarCell teamId={summary.customerId} />
             </Suspense>
           );
