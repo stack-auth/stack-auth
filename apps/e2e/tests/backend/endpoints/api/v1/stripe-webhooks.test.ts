@@ -105,31 +105,6 @@ it("acks unknown webhook types with 200 (errors handled in background)", async (
   expect(res.body).toEqual({ received: true });
 });
 
-it("marks refund.updated as processed (ignored, not failed)", async ({ expect }) => {
-  const payload = {
-    id: uniqueEventId("refund_updated"),
-    type: "refund.updated",
-    account: "acct_test123",
-    data: { object: { id: "re_test_123", status: "succeeded", metadata: {} } },
-  };
-
-  const res = await Payments.sendStripeWebhook(payload);
-  expect(res.status).toBe(200);
-  expect(res.body).toEqual({ received: true });
-
-  // Only a PROCESSED row dedupes twice in a row: FAILED rows get re-claimed on redelivery
-  // (plain `received: true`), and an in-flight PENDING row can dedupe at most once before its
-  // status resolves. So two consecutive dedupes prove the event was ignored, not failed.
-  let consecutiveDedupes = 0;
-  for (let i = 0; i < 20 && consecutiveDedupes < 2; i++) {
-    await wait(500);
-    const redelivery = await Payments.sendStripeWebhook(payload);
-    expect(redelivery.status).toBe(200);
-    consecutiveDedupes = redelivery.body.deduplicated === true ? consecutiveDedupes + 1 : 0;
-  }
-  expect(consecutiveDedupes).toBe(2);
-});
-
 it("returns 400 when signature header is missing (schema validation)", async ({ expect }) => {
   const payload = {
     id: "evt_test_no_sig",

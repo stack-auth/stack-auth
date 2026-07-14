@@ -1,4 +1,3 @@
-import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 
@@ -16,10 +15,6 @@ export async function enqueueExternalDbSync(tenancyId: string): Promise<void> {
   await enqueueExternalDbSyncBatch([tenancyId]);
 }
 
-function isDeadlockError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" && error.meta?.code === "40P01";
-}
-
 // Queues sync requests for multiple tenants in a single query.
 // Only inserts for tenants that don't already have a pending request.
 export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<void> {
@@ -31,32 +26,23 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
 
   const sortedTenancyIds = [...new Set(tenancyIds)].sort();
 
-  for (let attempt = 1; ; attempt++) {
-    try {
-      // Use unnest to pass array of UUIDs and insert all in one query
-      await globalPrismaClient.$executeRaw`
-        INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
-        SELECT
-          gen_random_uuid(),
-          NOW(),
-          json_build_object(
-            'url',  '/api/latest/internal/external-db-sync/sync-engine',
-            'body', json_build_object('tenancyId', t.tenancy_id),
-            'flowControl', json_build_object('key', 'sentinel-sync-key', 'parallelism', 20)
-          ),
-          NULL,
-          'sentinel-sync-key-' || t.tenancy_id
-        FROM unnest(${sortedTenancyIds}::uuid[]) AS t(tenancy_id)
-        ORDER BY t.tenancy_id
-        ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
-      `;
-      return;
-    } catch (error) {
-      if (attempt >= 2 || !isDeadlockError(error)) {
-        throw error;
-      }
-    }
-  }
+  // Use unnest to pass array of UUIDs and insert all in one query
+  await globalPrismaClient.$executeRaw`
+    INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
+    SELECT
+      gen_random_uuid(),
+      NOW(),
+      json_build_object(
+        'url',  '/api/latest/internal/external-db-sync/sync-engine',
+        'body', json_build_object('tenancyId', t.tenancy_id),
+        'flowControl', json_build_object('key', 'sentinel-sync-key', 'parallelism', 20)
+      ),
+      NULL,
+      'sentinel-sync-key-' || t.tenancy_id
+    FROM unnest(${sortedTenancyIds}::uuid[]) AS t(tenancy_id)
+    ORDER BY t.tenancy_id
+    ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
+  `;
 }
 
 export type RecoverStaleResult = { resetIds: string[], deletedIds: string[] };
