@@ -189,21 +189,28 @@ function useAsyncDataSource<TRow>(opts: {
         } else {
           setIsLoading(true);
         }
-        cursorRef.current = undefined;
-        pageIndexRef.current = 0;
       }
       // Clear previous error at the start of a new attempt; we'll set it
       // again if this attempt fails.
       setError(null);
+
+      // Cursor/page-index state is tracked locally and only committed to the
+      // shared refs when this fetch actually delivers a result. An aborted
+      // reset must not clobber the committed pagination state: if it did, a
+      // later effect run that skips via `lastCompletedNonAppendFetchKeyRef`
+      // would keep the old rows but leave `cursorRef === undefined`, and the
+      // next loadMore would silently restart from page one.
+      let cursor = append ? cursorRef.current : undefined;
+      let pageIndex = append ? pageIndexRef.current : 0;
 
       try {
         const params: DataGridFetchParams = {
           sorting: currentSorting,
           quickSearch: currentQuickSearch,
           pagination: append
-            ? { pageIndex: pageIndexRef.current, pageSize: currentPagination.pageSize }
+            ? { pageIndex, pageSize: currentPagination.pageSize }
             : currentPagination,
-          cursor: cursorRef.current,
+          cursor,
         };
 
         const gen = currentDataSource(params);
@@ -215,8 +222,9 @@ function useAsyncDataSource<TRow>(opts: {
             setTotalRowCount(result.totalRowCount);
           }
           if (result.nextCursor !== undefined) {
-            cursorRef.current = result.nextCursor;
+            cursor = result.nextCursor;
           }
+          cursorRef.current = cursor;
           hasMoreRef.current = result.hasMore !== false;
           setHasMore(hasMoreRef.current);
 
@@ -229,11 +237,16 @@ function useAsyncDataSource<TRow>(opts: {
               return [...prev, ...newRows];
             });
           } else {
+            // The visible rows now belong to this (possibly still incomplete)
+            // reset, so the previously completed fetch key no longer describes
+            // them and must not allow a skip.
+            lastCompletedNonAppendFetchKeyRef.current = null;
             setRows(result.rows);
           }
 
           hasDataRef.current = true;
-          pageIndexRef.current++;
+          pageIndex++;
+          pageIndexRef.current = pageIndex;
         }
         if (!append) {
           lastCompletedNonAppendFetchKeyRef.current = fetchKey;

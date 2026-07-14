@@ -83,6 +83,55 @@ describe("useDataSource infinite pagination", () => {
     expect(calls[1]).toEqual({ cursor: "cursor-1" });
   });
 
+  it("keeps the committed cursor when an aborted reset is followed by a skipped refetch", async () => {
+    const callsA: Array<{ cursor: unknown }> = [];
+    const dataSourceA: DataGridDataSource<Row> = async function* (params) {
+      callsA.push({ cursor: params.cursor });
+      if (callsA.length === 1) {
+        yield {
+          rows: [{ id: "row-1", name: "Row 1" }],
+          nextCursor: "cursor-1",
+          hasMore: true,
+        };
+        return;
+      }
+      yield {
+        rows: [{ id: "row-2", name: "Row 2" }],
+        nextCursor: null,
+        hasMore: false,
+      };
+    };
+    // Stays in flight until we resolve it, after the switch back to A has
+    // already aborted it.
+    let resolveB: (value: void) => void = () => {};
+    const dataSourceB: DataGridDataSource<Row> = async function* () {
+      await new Promise<void>((resolve) => {
+        resolveB = resolve;
+      });
+    };
+
+    const { getByRole, getByTestId, rerender } = render(
+      <DataSourceHarness dataSource={dataSourceA} />,
+    );
+    await waitFor(() => expect(getByTestId("row-count").textContent).toBe("1"));
+
+    // Unstable dataSource identity flipping away and back to a completed
+    // reference: the B reset starts (and used to wipe cursor/pageIndex
+    // immediately), then gets aborted; the A effect run matches the
+    // completed-fetch key and skips.
+    rerender(<DataSourceHarness dataSource={dataSourceB} />);
+    rerender(<DataSourceHarness dataSource={dataSourceA} />);
+    await act(async () => {
+      resolveB();
+    });
+
+    fireEvent.click(getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(getByTestId("row-count").textContent).toBe("2"));
+    // The append must continue from the committed cursor, not restart from
+    // the beginning with cursor === undefined.
+    expect(callsA).toEqual([{ cursor: undefined }, { cursor: "cursor-1" }]);
+  });
+
   it("uses the completed page cursor for the next loadMore fetch", async () => {
     const calls: Array<{ cursor: unknown }> = [];
     const dataSource: DataGridDataSource<Row> = async function* (params) {
