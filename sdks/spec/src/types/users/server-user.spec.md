@@ -113,9 +113,7 @@ teamId: string
 
 Returns: ServerTeam | null
 
-GET /api/v1/teams/{teamId} [server-only]
-
-Returns the team with the requested ID, or null if it does not exist.
+Find in listTeams() by id. This is deliberately scoped to the user's own team memberships (unlike the app-level getTeam), so it returns null for teams the user is not a member of.
 
 Does not error.
 

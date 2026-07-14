@@ -723,16 +723,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
+      // Unlike the app-level getTeam/useTeam (which fetch any team by id),
+      // the user-scoped variants search the user's own team list on purpose:
+      // they must return null for teams the user is not a member of, and some
+      // callers rely on that as a membership check.
       async getTeam(teamId: string) {
-        const team = Result.orThrow(await app._serverTeamCache.getOrWait([teamId], "write-only"));
-        return team == null ? null : app._serverTeamFromCrud(team);
+        const teams = await this.listTeams();
+        return teams.find((t) => t.id === teamId) ?? null;
       },
       // IF_PLATFORM react-like
       useTeam(teamId: string) {
-        const team = useAsyncCache(app._serverTeamCache, [teamId], "user.useTeam()");
+        const teams = this.useTeams();
         return useMemo(() => {
-          return team == null ? null : app._serverTeamFromCrud(team);
-        }, [team]);
+          return teams.find((t) => t.id === teamId) ?? null;
+        }, [teams, teamId]);
       },
       // END_PLATFORM
       async listTeams(options?: ServerListTeamsOptions): Promise<ServerTeam[] & { nextCursor: string | null }> {
