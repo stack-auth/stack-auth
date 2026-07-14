@@ -1,8 +1,8 @@
 "use client";
 
-import { createAnalyticsTableFilterChatAdapter } from "@/components/vibe-coding";
+import { createAnalyticsQueryChatAdapter } from "@/components/vibe-coding";
 import { getPublicEnvVar } from "@/lib/env";
-import { useLocalThreadRuntime, type ThreadMessage, type ToolCallContentPart } from "@assistant-ui/react";
+import { useLocalThreadRuntime, type AssistantRuntime, type ThreadMessage, type ToolCallContentPart } from "@assistant-ui/react";
 import { useUser } from "@hexclave/next";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,50 +58,20 @@ export function extractLatestQuery(messages: readonly ThreadMessage[]): {
   return null;
 }
 
-/**
- * Extracts the trailing text of the last assistant message, so the UI can
- * surface what the AI said when it answered without committing a query
- * (e.g. "that's an aggregation, which this search can't display").
- */
-function extractLastAssistantText(messages: readonly ThreadMessage[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]!;
-    if (msg.role !== "assistant") continue;
-    for (let j = msg.content.length - 1; j >= 0; j--) {
-      const part = msg.content[j]!;
-      if (part.type === "text" && part.text.trim().length > 0) {
-        return part.text.trim();
-      }
-    }
-  }
-  return null;
-}
-
-export type AiTableFilterChat = {
+export type AiQueryChat = {
+  runtime: AssistantRuntime,
   messages: readonly ThreadMessage[],
   isResponding: boolean,
   error: Error | null,
   sendMessage: (input: { text: string }) => void,
   clearMessages: () => void,
-  /** The last query the AI committed via the queryAnalytics tool (unvalidated). */
+  stop: () => void,
   latestQuery: string | null,
-  /**
-   * Set when the last run finished WITHOUT committing a new query — holds the
-   * assistant's text reply (or null if there was none / a query was
-   * committed). Cleared on the next send/clear or via `dismissAssistantNote`.
-   */
-  assistantNote: string | null,
-  dismissAssistantNote: () => void,
+  queryGeneration: number,
+  rewindToQuery: (query: string) => void,
 };
 
-/**
- * AI chat thread backing the analytics table search bar's AI fallback. Uses
- * the constrained `filter-analytics-table` system prompt scoped to the given
- * table, so the AI only produces `SELECT * FROM <table> WHERE ...` row
- * filters (callers still validate the shape before applying — see
- * `getValidatedTableFilterQuery`).
- */
-export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
+export function useAiQueryChat(): AiQueryChat {
   const currentUser = useUser();
   const projectId = useProjectId();
   const backendBaseUrl =
@@ -112,14 +82,13 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
   const [error, setError] = useState<Error | null>(null);
 
   const adapter = useMemo(
-    () => createAnalyticsTableFilterChatAdapter(
+    () => createAnalyticsQueryChatAdapter(
       backendBaseUrl,
       currentUser ?? undefined,
       projectId,
-      tableName,
       setError,
     ),
-    [backendBaseUrl, currentUser, projectId, tableName],
+    [backendBaseUrl, currentUser, projectId],
   );
 
   const runtime = useLocalThreadRuntime(adapter, { maxSteps: 1 });
@@ -149,7 +118,6 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
     query: string,
     generation: number,
   } | null>(null);
-  const [assistantNote, setAssistantNote] = useState<string | null>(null);
   const wasRespondingRef = useRef(false);
   const lastCommittedGenRef = useRef(0);
 
@@ -159,18 +127,10 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
     if (!justFinished) return;
 
     const latest = extractLatestQuery(messages);
-    if (latest == null || latest.toolCallIndex <= lastCommittedGenRef.current) {
-      // The run ended without committing a new query — surface the
-      // assistant's text (if any) so callers can show WHY nothing changed.
-      // This must live here (not in a consuming component) because child
-      // effects run before this one; a child comparing commit state on the
-      // same falling edge would race the commit below.
-      setAssistantNote(extractLastAssistantText(messages));
-      return;
-    }
+    if (latest == null) return;
+    if (latest.toolCallIndex <= lastCommittedGenRef.current) return;
     lastCommittedGenRef.current = latest.toolCallIndex;
     setCommitted({ query: latest.query, generation: latest.toolCallIndex });
-    setAssistantNote(null);
   }, [isResponding, messages]);
 
   useEffect(() => {
@@ -183,7 +143,6 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
   const sendMessage = useCallback(
     ({ text }: { text: string }) => {
       setError(null);
-      setAssistantNote(null);
       runtime.thread.append({
         role: "user",
         content: [{ type: "text", text }],
@@ -194,22 +153,30 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
 
   const clearMessages = useCallback(() => {
     setError(null);
-    setAssistantNote(null);
     runtime.thread.import({ messages: [], headId: null });
   }, [runtime]);
 
-  const dismissAssistantNote = useCallback(() => {
-    setAssistantNote(null);
+  const stop = useCallback(() => {
+    runtime.thread.cancelRun();
+  }, [runtime]);
+
+  const rewindToQuery = useCallback((query: string) => {
+    setCommitted((prev) => ({
+      query,
+      generation: (prev?.generation ?? 0) + 1,
+    }));
   }, []);
 
   return {
+    runtime,
     messages,
     isResponding,
     error,
     sendMessage,
     clearMessages,
+    stop,
     latestQuery: committed?.query ?? null,
-    assistantNote,
-    dismissAssistantNote,
+    queryGeneration: committed?.generation ?? 0,
+    rewindToQuery,
   };
 }
