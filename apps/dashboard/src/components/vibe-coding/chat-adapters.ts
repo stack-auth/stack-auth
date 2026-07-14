@@ -108,35 +108,21 @@ export function createChatAdapter(
   });
 }
 
-/**
- * Chat adapter for the analytics table search bar's AI fallback. Uses the
- * `filter-analytics-table` system prompt, which constrains the AI to row
- * filters of the shape `SELECT * FROM <table> WHERE ...` so the grid's
- * columns never change. The table being viewed is injected as a leading
- * context exchange, mirroring the source-context pattern in
- * `createChatAdapter` above.
- */
-export function createAnalyticsTableFilterChatAdapter(
+export function createAnalyticsQueryChatAdapter(
   backendBaseUrl: string,
   currentUser: CurrentUser | undefined,
   projectId: string | undefined,
-  tableName: string,
   onError?: (error: Error) => void,
 ): ChatModelAdapter {
   return createUnifiedAiChatAdapter({
     backendBaseUrl,
     currentUser,
-    systemPrompt: "filter-analytics-table",
+    systemPrompt: "build-analytics-query",
     tools: ["sql-query"],
     quality: "smart",
     speed: "fast",
     projectId,
     sanitizeContent: sanitizeAiContent,
-    transformMessages: (messages) => [
-      { role: "user", content: `The table I'm viewing is \`${tableName}\`.` },
-      { role: "assistant", content: `Got it — I'll only generate row filters of the form SELECT * FROM ${tableName} WHERE ... so the grid's columns stay the same.` },
-      ...messages,
-    ],
     onError: () => {
       const wrapped = new Error("Failed to get AI response. Please try again.");
       onError?.(wrapped);
