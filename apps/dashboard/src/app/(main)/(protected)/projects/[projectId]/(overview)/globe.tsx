@@ -533,6 +533,8 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   selectedCountryRef.current = selectedCountry;
 
   const pendingCountryClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHoverHitTestRafRef = useRef<number | null>(null);
+  const latestPointerPositionRef = useRef<{ clientX: number, clientY: number } | null>(null);
   const clearPendingCountryClear = () => {
     if (pendingCountryClearTimeoutRef.current != null) {
       clearTimeout(pendingCountryClearTimeoutRef.current);
@@ -589,6 +591,14 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     updateSelectedCountry(findCountryAt(globeCoords.lat, globeCoords.lng, countries.features));
   };
 
+  const cancelPendingHoverHitTest = () => {
+    if (pendingHoverHitTestRafRef.current != null) {
+      cancelAnimationFrame(pendingHoverHitTestRafRef.current);
+      pendingHoverHitTestRafRef.current = null;
+    }
+    latestPointerPositionRef.current = null;
+  };
+
   useEffect(() => {
     if (selectedCountry) {
       setPreviousSelectedCountry(selectedCountry);
@@ -600,6 +610,10 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
       if (pendingCountryClearTimeoutRef.current != null) {
         clearTimeout(pendingCountryClearTimeoutRef.current);
       }
+      if (pendingHoverHitTestRafRef.current != null) {
+        cancelAnimationFrame(pendingHoverHitTestRafRef.current);
+      }
+      latestPointerPositionRef.current = null;
     };
   }, []);
 
@@ -1107,13 +1121,25 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
               }}
               onMouseMoveCapture={(e) => {
                 resumeRender();
-                updateSelectedCountryFromPointerPosition(e.clientX, e.clientY);
+                latestPointerPositionRef.current = { clientX: e.clientX, clientY: e.clientY };
+                // Mousemove can fire many times between paints; coalesce the expensive
+                // globe raycast and country scan to one hit-test per animation frame.
+                if (pendingHoverHitTestRafRef.current == null) {
+                  pendingHoverHitTestRafRef.current = requestAnimationFrame(() => {
+                    pendingHoverHitTestRafRef.current = null;
+                    const pointerPosition = latestPointerPositionRef.current;
+                    if (pointerPosition != null) {
+                      updateSelectedCountryFromPointerPosition(pointerPosition.clientX, pointerPosition.clientY);
+                    }
+                  });
+                }
                 if (tooltipRef.current) {
                   tooltipRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
                 }
               }}
               onMouseLeave={() => {
                 // Only clear when leaving the entire globe area
+                cancelPendingHoverHitTest();
                 updateSelectedCountry(null, { immediateClear: true });
                 if (globeRef.current) {
                   //globeRef.current.controls().autoRotate = true;
