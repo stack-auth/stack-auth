@@ -1,8 +1,6 @@
-import { initSentry } from "./lib/sentry.js";
+import { flushSentry, initSentry } from "./lib/sentry.js";
 initSentry();
 
-import * as Sentry from "@sentry/node";
-import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { Command } from "commander";
 import { cliVersion } from "./lib/own-package.js";
 import { AuthError, CliError } from "./lib/errors.js";
@@ -51,8 +49,9 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
+    const { captureError } = await import("@hexclave/shared/dist/utils/errors");
     captureError("stack-cli-fatal", err);
-    await Sentry.flush(2000);
+    await flushSentry(2000);
     console.error(err);
     process.exit(1);
   }

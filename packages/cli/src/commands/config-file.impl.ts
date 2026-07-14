@@ -1,14 +1,14 @@
-import { Command } from "commander";
-import * as fs from "fs";
+import { replaceConfigObject } from "@hexclave/shared-backend";
+import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
+import { isValidConfig } from "@hexclave/shared/dist/config/format";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import * as path from "path";
-import { CliError } from "../lib/errors.js";
+import { getAdminProject } from "../lib/app.js";
+import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-
-function throwErr(message: string): never {
-  throw new Error(message);
-}
-
-type EnvironmentConfigOverrideOverride = Record<string, unknown>;
+import { CliError } from "../lib/errors.js";
+import * as fs from "fs";
 
 const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
 
@@ -69,7 +69,7 @@ function normalizeRepoRelativePath(value: string, flagName: string): string {
   return normalized;
 }
 
-export function buildConfigPushSource(configFilePath: string, flags: SourceFlagOptions): BranchConfigSourceApi {
+function buildConfigPushSource(configFilePath: string, flags: SourceFlagOptions): BranchConfigSourceApi {
   const dependentFlags: Array<[string, string | undefined]> = [
     ["--source-repo", flags.sourceRepo],
     ["--source-path", flags.sourcePath],
@@ -143,6 +143,58 @@ export function buildConfigPushSource(configFilePath: string, flags: SourceFlagO
 }
 
 
+async function pushConfigWithSecretServerKey(
+  auth: ProjectAuthWithSecretServerKey,
+  config: EnvironmentConfigOverrideOverride,
+  source: BranchConfigSourceApi,
+) {
+  const endpoint = `${auth.apiUrl.replace(/\/$/, "")}/api/v1/internal/config/override/branch`;
+  const response = await fetch(endpoint, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      "x-stack-project-id": auth.projectId,
+      "x-stack-access-type": "server",
+      "x-stack-secret-server-key": auth.secretServerKey,
+    },
+    body: JSON.stringify({
+      config_string: JSON.stringify(config),
+      source,
+    }),
+  });
+
+  if (response.ok) {
+    return;
+  }
+
+  const responseText = await response.text();
+  const message = responseText.length > 0
+    ? responseText
+    : `Request failed with status ${response.status}.`;
+  throw new CliError(`Failed to push config with STACK_SECRET_SERVER_KEY: ${message}`);
+}
+
+function sourceToSdkSource(source: BranchConfigSourceApi):
+  { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string, workflowPath?: string }
+  | { type: "pushed-from-unknown" }
+  | { type: "unlinked" } {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commitHash: source.commit_hash,
+      configFilePath: source.config_file_path,
+      workflowPath: source.workflow_path,
+    };
+  }
+  if (source.type === "pushed-from-unknown") {
+    return { type: "pushed-from-unknown" };
+  }
+  return { type: "unlinked" };
+}
+
 // Resolve the path for `config pull` when `--config-file` was omitted. Prefer
 // an existing config file in cwd, otherwise use the Hexclave default path so a
 // prod-to-local pull can create the local config file without extra flags.
@@ -182,14 +234,73 @@ export function assertConfigPullTarget(filePath: string, opts: { overwrite?: boo
 }
 
 
-export function registerConfigCommand(program: Command) {
-  const config = program.command("config").description("Manage project configuration files");
-  config.command("pull").description("Pull branch config to a local file").option("--cloud-project-id <id>", "Cloud project ID to pull config from (defaults to the STACK_PROJECT_ID env var)").option("--config-file <path>", "Path to write config file (.ts); defaults to ./hexclave.config.ts in the current directory").option("--overwrite", "Replace the config file if one already exists at the target path").action(async (opts) => {
-    const { runPull } = await import("./config-file.impl.js");
-    await runPull(opts);
+export async function runPull(opts: { cloudProjectId?: string, configFile?: string, overwrite?: boolean }) {
+
+  const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
+  if (!isProjectAuthWithRefreshToken(auth)) {
+    throw new CliError("`hexclave config pull` requires `hexclave login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+  }
+  // Resolve and validate the target file before any network work so we fail fast (e.g. when the
+  // target already exists without --overwrite) instead of paying for a wasted round-trip.
+  const filePath = resolveConfigFilePathForPull(opts, process.cwd());
+  const ext = path.extname(filePath);
+  if (ext !== ".ts") {
+    throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
+  }
+      assertConfigPullTarget(filePath, opts);
+
+      const project = await getAdminProject(auth);
+
+      const configOverride = await project.getConfigOverride("branch");
+      if (!isValidConfig(configOverride)) {
+        throw new CliError("Pulled branch config is not a valid local config object.");
+      }
+      await replaceConfigObject(filePath, configOverride);
+      console.log(`Config written to ${filePath}`);
+}
+
+export async function runPush(opts: { cloudProjectId?: string, configFile: string, source?: string, sourceRepo?: string, sourcePath?: string, sourceWorkflowPath?: string }) {
+
+  const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
+
+  const filePath = resolveConfigFilePathOption(opts.configFile, { mustExist: true });
+  const ext = path.extname(filePath);
+
+  if (ext !== ".js" && ext !== ".ts") {
+    throw new CliError("Config file must have a .js or .ts extension.");
+  }
+
+  const { createJiti } = await import("jiti");
+  const jiti = createJiti(import.meta.url);
+  const configModule: { config?: unknown } = await jiti.import(filePath);
+
+  const config = parseConfigOverride(configModule.config);
+  if (config == null) {
+    const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
+    // The lightweight `/config` entrypoint only exists on Hexclave-branded packages;
+    // legacy `@stackframe/*` releases predate it, so import from their root.
+    const exampleImport = examplePkg.startsWith("@hexclave/") ? `${examplePkg}/config` : examplePkg;
+    throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
+  }
+
+  const source = buildConfigPushSource(opts.configFile, {
+    source: opts.source,
+    sourceRepo: opts.sourceRepo,
+    sourcePath: opts.sourcePath,
+    sourceWorkflowPath: opts.sourceWorkflowPath,
   });
-  config.command("push").description("Push a local config file to branch config").option("--cloud-project-id <id>", "Cloud project ID to push config to (defaults to the STACK_PROJECT_ID env var)").requiredOption("--config-file <path>", "Path to config file (.js or .ts)").option("--source <type>", "Explicit source type for this push. Only 'github' is supported.").option("--source-repo <owner/repo>", "GitHub repository in 'owner/repo' format. Only allowed with --source github.").option("--source-path <path>", "Path to the config file within the source repository. Only allowed with --source github.").option("--source-workflow-path <path>", "Path to the syncing workflow file within the source repository. Only allowed with --source github.").action(async (opts) => {
-    const { runPush } = await import("./config-file.impl.js");
-    await runPush(opts);
-  });
+
+  if (isProjectAuthWithSecretServerKey(auth)) {
+    await pushConfigWithSecretServerKey(auth, config, source);
+  } else {
+    if (!isProjectAuthWithRefreshToken(auth)) {
+      throw new CliError("`hexclave config push` requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
+    }
+    const project = await getAdminProject(auth);
+    await project.pushConfig(config, {
+      source: sourceToSdkSource(source),
+    });
+  }
+
+      console.log("Config pushed successfully.");
 }

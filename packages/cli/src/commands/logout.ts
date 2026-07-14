@@ -1,12 +1,8 @@
 import { Command } from "commander";
-import { removeConfigValue } from "../lib/config.js";
 
 export function registerLogoutCommand(program: Command) {
-  program
-    .command("logout")
-    .description("Log out of Hexclave")
-    .action(() => {
-      removeConfigValue("STACK_CLI_REFRESH_TOKEN");
-      console.log("Logged out successfully.");
-    });
+  program.command("logout").description("Log out of Hexclave").action(async () => {
+    const { run } = await import("./logout.impl.js");
+    await run();
+  });
 }
