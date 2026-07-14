@@ -120,6 +120,21 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
+  "agent-auth": {
+    icon: FingerprintSimpleIcon,
+    href: "agent-auth-app",
+    navigationItems: [
+      { displayName: "Agents", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Agent Auth gives AI agents their own identity, key material, and scoped capabilities.</p>
+        <p>Use it to register hosts and agents, inspect granted capabilities, and review agent-attributed audit events.</p>
+        <p>It is designed for live, real tenancy data rather than synthetic demos.</p>
+      </>
+    ),
+  },
   "fraud-protection": {
     icon: ShieldCheckIcon,
     href: "sign-up-rules",

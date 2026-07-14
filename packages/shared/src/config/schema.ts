@@ -5,7 +5,7 @@
 // OTHERWISE THINGS WILL GO BOOM!!
 
 import * as yup from "yup";
-import { ALL_APPS } from "../apps/apps-config";
+import { ALL_APPS, type App } from "../apps/apps-config";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
@@ -293,6 +293,13 @@ const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
 });
 
+function isIncludedInDefaultInstalledApps(app: App) {
+  return app.includedInDefaultInstalledApps !== false;
+}
+
+const installedAppIdsByDefault = typedEntries(ALL_APPS)
+  .filter(([, app]) => isIncludedInDefaultInstalledApps(app))
+  .map(([appId]) => appId);
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   "sourceOfTruth",
@@ -745,7 +752,7 @@ const organizationConfigDefaults = {
   },
 
   apps: {
-    installed: typedFromEntries(appIds.map(appId => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
+    installed: typedFromEntries(installedAppIdsByDefault.map((appId) => [appId, { enabled: false }])) as Record<string, { enabled: boolean } | undefined>,
   },
 
   teams: {

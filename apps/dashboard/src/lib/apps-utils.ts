@@ -1,13 +1,7 @@
 "use client";
 
 import { ALL_APPS_FRONTEND, hasNavigationItems } from "@/lib/apps-frontend";
-import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
-
-type InstalledAppConfig = {
-  enabled?: boolean,
-} | undefined;
-
-export type InstalledAppsMap = Record<string, InstalledAppConfig>;
+import { ALL_APPS, isAppEnabledInInstalledApps, type AppId, type InstalledAppsMap } from "@hexclave/shared/dist/apps/apps-config";
 
 /**
  * Get all available app IDs, filtering out alpha apps in production
@@ -25,15 +19,10 @@ export function getAllAvailableAppIds(): AppId[] {
 
 /**
  * Determines whether an app is enabled.
- * - Regular apps are enabled via their own config entry.
- * - Sub-apps are enabled when their parent app is enabled.
+ * Uses the shared app registry enablement rules.
  */
 export function isAppEnabled(installedApps: InstalledAppsMap, appId: AppId): boolean {
-  const parentAppId = getParentAppId(appId);
-  if (parentAppId != null) {
-    return installedApps[parentAppId]?.enabled ?? false;
-  }
-  return installedApps[appId]?.enabled ?? false;
+  return isAppEnabledInInstalledApps(installedApps, appId);
 }
 
 /**
@@ -61,4 +50,3 @@ export function getUninstalledAppIds(installedApps: AppId[]): AppId[] {
   const installedSet = new Set(installedApps);
   return getAllAvailableAppIds().filter(appId => !installedSet.has(appId));
 }
-

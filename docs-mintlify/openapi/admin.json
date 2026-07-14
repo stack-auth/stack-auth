@@ -4110,6 +4110,179 @@
         }
       }
     },
+    "/agent-auth/agents": {
+      "get": {
+        "summary": "GET /agent-auth/agents",
+        "description": "No documentation available for this endpoint.",
+        "parameters": [],
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/agent-auth/agents",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-auth/agents/register": {
+      "post": {
+        "summary": "POST /agent-auth/agents/register",
+        "description": "No documentation available for this endpoint.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host_public_jwk": {
+                    "type": "object"
+                  },
+                  "agent_public_jwk": {
+                    "type": "object"
+                  },
+                  "host_name": {
+                    "type": "string"
+                  },
+                  "agent_name": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "delegated"
+                    ]
+                  },
+                  "user_id": {
+                    "type": "string"
+                  },
+                  "requested_capabilities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "constraints": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "host_name",
+                  "agent_name",
+                  "mode",
+                  "user_id",
+                  "requested_capabilities"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/agent-auth/agents/register",
+        "responses": {
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-auth/agents/{agentId}": {
+      "get": {
+        "summary": "GET /agent-auth/agents/{agentId}",
+        "description": "No documentation available for this endpoint.",
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/agent-auth/agents/{agentId}",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent-auth/capabilities/execute": {
+      "post": {
+        "summary": "POST /agent-auth/capabilities/execute",
+        "description": "No documentation available for this endpoint.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "capability": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "capability"
+                ],
+                "example": {}
+              }
+            }
+          }
+        },
+        "tags": [
+          "Others"
+        ],
+        "x-full-url": "https://api.hexclave.com/api/v1/agent-auth/capabilities/execute",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/mfa/sign-in": {
       "post": {
         "summary": "MFA sign in",

@@ -334,6 +334,9 @@ model ProjectUser {
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
   authMethods              AuthMethod[]
+  agentHosts               AgentHost[]               @relation("AgentHostProjectUser")
+  agents                   Agent[]                   @relation("AgentProjectUser")
+  agentCapabilityGrantsGranted AgentCapabilityGrant[] @relation("AgentCapabilityGrantGrantedByProjectUser")
 
   // some backlinks for the unique constraints on some auth methods
   passwordAuthMethod         PasswordAuthMethod[]
@@ -781,6 +784,118 @@ model ProjectApiKey {
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
   @@id([tenancyId, id])
+}
+
+enum AgentHostStatus {
+  ACTIVE
+  PENDING
+  REVOKED
+  REJECTED
+}
+
+enum AgentMode {
+  DELEGATED
+  AUTONOMOUS
+}
+
+enum AgentStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REVOKED
+  REJECTED
+  CLAIMED
+}
+
+enum AgentCapabilityGrantStatus {
+  ACTIVE
+  PENDING
+  DENIED
+}
+
+model AgentHost {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastUsedAt DateTime?
+
+  projectUserId String? @db.Uuid
+  projectUser ProjectUser? @relation("AgentHostProjectUser", fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  name String
+  publicJwk Json
+  jwkThumbprint String
+  status AgentHostStatus @default(PENDING)
+  defaultCapabilities String[] @default([])
+
+  agents Agent[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, jwkThumbprint])
+}
+
+model Agent {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastUsedAt DateTime?
+
+  hostId String @db.Uuid
+  host AgentHost @relation(fields: [tenancyId, hostId], references: [tenancyId, id], onDelete: Cascade)
+
+  name String
+  mode AgentMode
+
+  projectUserId String? @db.Uuid
+  projectUser ProjectUser? @relation("AgentProjectUser", fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  publicJwk Json
+  jwkThumbprint String
+  status AgentStatus @default(PENDING)
+  reason String?
+
+  expiresAt DateTime
+  maxLifetimeEndsAt DateTime
+  absoluteLifetimeEndsAt DateTime
+
+  capabilityGrants AgentCapabilityGrant[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, jwkThumbprint])
+  @@index([tenancyId, hostId])
+  @@index([tenancyId, projectUserId])
+}
+
+model AgentCapabilityGrant {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentId String @db.Uuid
+  agent Agent @relation(fields: [tenancyId, agentId], references: [tenancyId, id], onDelete: Cascade)
+
+  capability String
+  status AgentCapabilityGrantStatus @default(PENDING)
+  constraints Json?
+
+  grantedByProjectUserId String? @db.Uuid
+  grantedByProjectUser ProjectUser? @relation("AgentCapabilityGrantGrantedByProjectUser", fields: [tenancyId, grantedByProjectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  reason String?
+  expiresAt DateTime?
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, agentId, capability])
+  @@index([tenancyId, agentId])
 }
 
 enum EmailTemplateType {

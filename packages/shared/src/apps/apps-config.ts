@@ -40,15 +40,23 @@ export const ALL_APP_TAGS = {
 
 type ParentAppId = "authentication" | "analytics";
 
-type App = {
+export type App = {
   displayName: string,
   subtitle: string,
   tags: (keyof typeof ALL_APP_TAGS)[],
   stage: "alpha" | "beta" | "stable",
   parentAppId?: ParentAppId,
+  independentlyEnableable?: boolean,
+  includedInDefaultInstalledApps?: boolean,
 };
 
 export type AppId = keyof typeof ALL_APPS;
+
+export type InstalledAppConfig = {
+  enabled?: boolean,
+} | undefined;
+
+export type InstalledAppsMap = Record<string, InstalledAppConfig>;
 
 export const ALL_APPS = {
   "authentication": {
@@ -56,6 +64,15 @@ export const ALL_APPS = {
     subtitle: "User sign-in and account management",
     tags: ["auth", "security"],
     stage: "stable",
+  },
+  "agent-auth": {
+    displayName: "Agent Auth",
+    subtitle: "Register, authorize, and audit AI agent identities",
+    tags: ["auth", "security", "developers"],
+    stage: "alpha",
+    parentAppId: "authentication",
+    independentlyEnableable: true,
+    includedInDefaultInstalledApps: false,
   },
   "fraud-protection": {
     displayName: "Fraud Protection",
@@ -198,4 +215,18 @@ export const ALL_APPS = {
 export function getParentAppId(appId: AppId): AppId | null {
   const app = ALL_APPS[appId];
   return "parentAppId" in app ? app.parentAppId : null;
+}
+
+export function isAppEnabledInInstalledApps(installedApps: InstalledAppsMap, appId: AppId): boolean {
+  const app = ALL_APPS[appId];
+  if ("independentlyEnableable" in app) {
+    return installedApps[appId]?.enabled === true;
+  }
+
+  const parentAppId = getParentAppId(appId);
+  if (parentAppId != null) {
+    return isAppEnabledInInstalledApps(installedApps, parentAppId);
+  }
+
+  return installedApps[appId]?.enabled === true;
 }
