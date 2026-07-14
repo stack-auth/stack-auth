@@ -34,6 +34,7 @@ function DataSourceHarness({ dataSource }: { dataSource: DataGridDataSource<Row>
     <>
       <button onClick={gridData.loadMore}>Load more</button>
       <span data-testid="row-count">{gridData.rows.length}</span>
+      <span data-testid="error">{gridData.error?.message ?? ""}</span>
     </>
   );
 }
@@ -130,6 +131,35 @@ describe("useDataSource infinite pagination", () => {
     // The append must continue from the committed cursor, not restart from
     // the beginning with cursor === undefined.
     expect(callsA).toEqual([{ cursor: undefined }, { cursor: "cursor-1" }]);
+  });
+
+  it("does not replay a deferred loadMore after the in-flight fetch errors", async () => {
+    const calls: Array<{ cursor: unknown }> = [];
+    let rejectInitial: (err: Error) => void = () => {};
+    const initialFetch = new Promise<void>((_resolve, reject) => {
+      rejectInitial = reject;
+    });
+    const dataSource: DataGridDataSource<Row> = async function* (params) {
+      calls.push({ cursor: params.cursor });
+      await initialFetch;
+      yield { rows: [], nextCursor: null, hasMore: false };
+    };
+
+    const { getByRole, getByTestId } = render(<DataSourceHarness dataSource={dataSource} />);
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    // Deferred while the (soon-to-fail) fetch is in flight.
+    fireEvent.click(getByRole("button", { name: "Load more" }));
+
+    await act(async () => {
+      rejectInitial(new Error("fetch failed"));
+    });
+
+    // The failed fetch must surface its error and must NOT chain the deferred
+    // append (which would fetch against inconsistent state and clear the
+    // error again via setError(null)).
+    await waitFor(() => expect(getByTestId("error").textContent).toBe("fetch failed"));
+    expect(calls).toHaveLength(1);
   });
 
   it("uses the completed page cursor for the next loadMore fetch", async () => {

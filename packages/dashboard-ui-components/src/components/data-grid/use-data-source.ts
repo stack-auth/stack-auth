@@ -202,6 +202,7 @@ function useAsyncDataSource<TRow>(opts: {
       // next loadMore would silently restart from page one.
       let cursor = append ? cursorRef.current : undefined;
       let pageIndex = append ? pageIndexRef.current : 0;
+      let failed = false;
 
       try {
         const params: DataGridFetchParams = {
@@ -258,6 +259,7 @@ function useAsyncDataSource<TRow>(opts: {
         // consumer to wire up error rendering.
         // eslint-disable-next-line no-console
         console.error("[DataGrid] Data source error:", err);
+        failed = true;
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         // Only the owning fetch resets the loading flags; if this fetch was
@@ -270,11 +272,14 @@ function useAsyncDataSource<TRow>(opts: {
           setIsRefetching(false);
           setIsLoadingMore(false);
           // Replay a loadMore that was requested (and deferred) while this
-          // fetch was in flight. Skip if this fetch was aborted by unmount
-          // cleanup — `inFlightFetchRef.current === controller` with an
-          // aborted signal only happens then.
+          // fetch was in flight — but only if this fetch succeeded. Skip on
+          // failure (the append would run against inconsistent state and its
+          // setError(null) would hide this fetch's error) and on
+          // unmount-cleanup aborts — `inFlightFetchRef.current === controller`
+          // with an aborted signal only happens then.
           const shouldChainLoadMore =
             pendingLoadMoreRef.current
+            && !failed
             && !controller.signal.aborted
             && hasMoreRef.current;
           pendingLoadMoreRef.current = false;
