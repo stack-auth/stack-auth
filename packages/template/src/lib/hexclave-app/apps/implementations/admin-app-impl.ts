@@ -254,6 +254,9 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       async getConfig() {
         return app._adminConfigFromCrud(await app._interface.getConfig());
       },
+      async refreshConfig() {
+        await app._refreshProjectConfig();
+      },
       // IF_PLATFORM react-like
       useConfig() {
         const config = useAsyncCache(app._configOverridesCache, [], "project.useConfig()");

@@ -513,6 +513,7 @@ export default function PageClient() {
   const [pillShowLabels, setPillShowLabels] = useState(true);
   const [pillWithIcons, setPillWithIcons] = useState(true);
   const [pillSelected, setPillSelected] = useState("a");
+  const [pillDisabled, setPillDisabled] = useState(false);
 
   // Selector Dropdown
   const [selSize, setSelSize] = useState<Size3>("sm");
@@ -1233,6 +1234,7 @@ export default function PageClient() {
           onSelect={setPillSelected}
           size={pillSize}
           glassmorphic={pillGlass}
+          disabled={pillDisabled}
           showLabels={pillShowLabels}
         />
       );
@@ -2137,6 +2139,9 @@ export default function PageClient() {
           <PropField label="Show Labels">
             <BoolToggle value={pillShowLabels} onChange={setPillShowLabels} on="Show" off="Hide" />
           </PropField>
+          <PropField label="Disabled">
+            <BoolToggle value={pillDisabled} onChange={setPillDisabled} on="Yes" off="No" />
+          </PropField>
         </div>
       );
     }
@@ -2493,6 +2498,7 @@ export default function PageClient() {
   selected="${pillSelected}"
   onSelect={setPillSelected}
   size="${pillSize}"${pillGlass === undefined ? "" : `\n  glassmorphic={${pillGlass}}`}
+  disabled={${pillDisabled}}
   showLabels={${pillShowLabels}}
 />`;
     }

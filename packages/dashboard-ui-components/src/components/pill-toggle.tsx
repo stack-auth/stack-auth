@@ -21,6 +21,7 @@ export type DesignPillToggleProps = {
   size?: DesignPillToggleSize,
   glassmorphic?: boolean,
   gradient?: DesignPillToggleGradient,
+  disabled?: boolean,
   /** When false, hides labels and shows a tooltip on hover instead. Defaults to true. */
   showLabels?: boolean,
   className?: string,
@@ -69,6 +70,7 @@ export function DesignPillToggle({
   size = "md",
   glassmorphic: glassmorphicProp,
   gradient = "default",
+  disabled = false,
   showLabels = true,
   className,
 }: DesignPillToggleProps) {
@@ -83,6 +85,7 @@ export function DesignPillToggle({
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const handleClick = (optionId: string) => {
+    if (disabled) return;
     const result = onSelect(optionId);
     if (result && typeof (result as Promise<void>).then === "function") {
       setLoadingOptionId(optionId);
@@ -171,12 +174,13 @@ export function DesignPillToggle({
               }
             }}
             onClick={() => handleClick(option.id)}
-            disabled={loadingOptionId !== null}
+            disabled={disabled || loadingOptionId !== null}
             aria-label={showLabels ? undefined : option.label}
             className={cn(
               "relative z-10 flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
               showLabels ? sizeClass.button : sizeClass.iconOnlyButton,
               !showLabels && "justify-center p-0",
+              disabled && "cursor-not-allowed opacity-60",
               isActive
                 ? cn("text-foreground", glassmorphic && "dark:text-[hsl(240,71%,90%)]")
                 : cn(

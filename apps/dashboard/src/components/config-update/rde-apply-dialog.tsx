@@ -64,6 +64,10 @@ export function RdeApplyDialog({ open, adminApp, configUpdate, onSettle }: RdeAp
           return;
         }
         // "redirecting": the browser secret flow took over; treat as not-applied.
+        if (result === "updated") {
+          const project = await adminApp.getProject();
+          await project.refreshConfig();
+        }
         onSettle(result === "updated");
       } catch (error) {
         if (controller.signal.aborted) {

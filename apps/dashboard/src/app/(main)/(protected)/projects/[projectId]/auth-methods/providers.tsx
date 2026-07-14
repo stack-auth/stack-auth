@@ -41,6 +41,7 @@ type Props = {
   provider?: AdminProject['config']['oauthProviders'][number],
   updateProvider: (provider: AdminProject['config']['oauthProviders'][number]) => Promise<void>,
   deleteProvider: (id: string) => Promise<void>,
+  isDevelopmentEnvironment?: boolean,
 };
 
 function toTitle(id: string) {
@@ -99,9 +100,11 @@ function ProviderHeader({ providerId }: { providerId: string }) {
 function PillToggleControl({
   form,
   hasSharedKeys,
+  isDevelopmentEnvironment,
 }: {
   form: UseFormReturn<ProviderFormValues>,
   hasSharedKeys: boolean,
+  isDevelopmentEnvironment: boolean,
 }) {
   if (!hasSharedKeys) {
     return (
@@ -119,11 +122,16 @@ function PillToggleControl({
           <FormControl>
             <DesignPillToggle
               selected={field.value ? "shared" : "custom"}
-              onSelect={(id) => field.onChange(id === "shared")}
+              onSelect={(id) => {
+                if (!isDevelopmentEnvironment) {
+                  field.onChange(id === "shared");
+                }
+              }}
               options={[
                 { id: "shared", label: "Shared keys" },
                 { id: "custom", label: "Own credentials" },
               ]}
+              disabled={isDevelopmentEnvironment}
               size="sm"
               gradient="default"
               glassmorphic
@@ -262,6 +270,7 @@ function OAuthProviderSettingsForm(props: {
   form: UseFormReturn<ProviderFormValues>,
   providerId: string,
   hasSharedKeys: boolean,
+  isDevelopmentEnvironment: boolean,
 }) {
   const shared = useWatch({ control: props.form.control, name: "shared" });
 
@@ -270,8 +279,15 @@ function OAuthProviderSettingsForm(props: {
       <ProviderHeader providerId={props.providerId} />
       <div className="flex flex-col gap-2">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Credential source</span>
-        <PillToggleControl form={props.form} hasSharedKeys={props.hasSharedKeys} />
+        <PillToggleControl form={props.form} hasSharedKeys={props.hasSharedKeys} isDevelopmentEnvironment={props.isDevelopmentEnvironment} />
       </div>
+      {props.isDevelopmentEnvironment && (
+        <DesignAlert
+          variant="info"
+          title="Own credentials unavailable in a development environment"
+          description="Own OAuth credentials and provider-specific settings are environment-specific. Configure them in your production deployment."
+        />
+      )}
       {shared && <WarningInline />}
       {!shared && (
         <>
@@ -292,10 +308,13 @@ function OAuthProviderSettingsForm(props: {
 
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
   const hasSharedKeys = sharedProviders.includes(props.id as any);
+  // Development environments lock the credential-source toggle, so the
+  // effective mode must also control whether the form can be submitted.
+  const effectiveShared = props.provider ? props.provider.type === 'shared' : hasSharedKeys;
   const bundleIdsArray = (props.provider as any)?.appleBundleIds ?? [];
 
   const defaultValues = {
-    shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
+    shared: effectiveShared,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
@@ -328,12 +347,16 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
       onClose={props.onClose}
       title={`${toTitle(props.id)} OAuth provider`}
       cancelButton
-      okButton={{ label: 'Save' }}
+      okButton={{
+        label: 'Save',
+        props: { disabled: props.isDevelopmentEnvironment && !effectiveShared },
+      }}
       render={(form) => (
         <OAuthProviderSettingsForm
           form={form}
           providerId={props.id}
           hasSharedKeys={hasSharedKeys}
+          isDevelopmentEnvironment={props.isDevelopmentEnvironment ?? false}
         />
       )}
     />

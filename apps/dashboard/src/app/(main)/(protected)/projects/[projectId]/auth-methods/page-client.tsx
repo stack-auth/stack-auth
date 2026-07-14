@@ -179,9 +179,20 @@ function adminProviderToConfigProvider(
   }
 }
 
+function adminProviderToBranchConfigProvider(
+  provider: AdminOAuthProviderConfig,
+): Pick<CompleteConfig['auth']['oauth']['providers'][string], 'type' | 'allowSignIn' | 'allowConnectedAccounts'> {
+  const configProvider = adminProviderToConfigProvider(provider, undefined);
+  return {
+    type: configProvider.type,
+    allowSignIn: configProvider.allowSignIn,
+    allowConnectedAccounts: configProvider.allowConnectedAccounts,
+  };
+}
+
 // ─── Plan gating ─────────────────────────────────────────────────────────
 
-function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
+function AddCustomOidcButton({ onClick, isDevelopmentEnvironment }: { onClick: () => void, isDevelopmentEnvironment: boolean }) {
   const project = useAdminApp().useProject();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
@@ -191,7 +202,7 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
   );
 
   if (ownerTeam == null) {
-    return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
+    return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} isDevelopmentEnvironment={isDevelopmentEnvironment} />;
   }
 
   // The plan check reads the internal project's owned products from bulldozer.
@@ -199,42 +210,45 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
   // read failure (or while it loads) we report it and fall back to the locked
   // (non-Team) state, which is the same safe default as having no owner team.
   return (
-    <ErrorBoundary errorComponent={({ error }) => <AddCustomOidcButtonPlanReadFailed onClick={onClick} error={error} />}>
-      <Suspense fallback={<AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />}>
-        <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />
+    <ErrorBoundary errorComponent={({ error }) => <AddCustomOidcButtonPlanReadFailed onClick={onClick} error={error} isDevelopmentEnvironment={isDevelopmentEnvironment} />}>
+      <Suspense fallback={<AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} isDevelopmentEnvironment={isDevelopmentEnvironment} />}>
+        <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} isDevelopmentEnvironment={isDevelopmentEnvironment} />
       </Suspense>
     </ErrorBoundary>
   );
 }
 
-function AddCustomOidcButtonPlanReadFailed({ onClick, error }: { onClick: () => void, error: unknown }) {
+function AddCustomOidcButtonPlanReadFailed({ onClick, error, isDevelopmentEnvironment }: { onClick: () => void, error: unknown, isDevelopmentEnvironment: boolean }) {
   useEffect(() => {
     captureError("auth-methods:custom-oidc-plan-gate", error);
   }, [error]);
-  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
+  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} isDevelopmentEnvironment={isDevelopmentEnvironment} />;
 }
 
 function AddCustomOidcButtonInner({
   team,
   onClick,
+  isDevelopmentEnvironment,
 }: {
   team: { useProducts: () => Array<{ id: string | null, type?: string }> },
   onClick: () => void,
+  isDevelopmentEnvironment: boolean,
 }) {
   const products = team.useProducts();
   const planId = resolvePlanId(products);
   const isTeamPlanOrAbove = planId === "team" || planId === "growth";
 
-  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={isTeamPlanOrAbove} />;
+  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={isTeamPlanOrAbove} isDevelopmentEnvironment={isDevelopmentEnvironment} />;
 }
 
-function AddCustomOidcButtonDisabled({ onClick, isTeamPlanOrAbove }: { onClick: () => void, isTeamPlanOrAbove: boolean }) {
+function AddCustomOidcButtonDisabled({ onClick, isTeamPlanOrAbove, isDevelopmentEnvironment }: { onClick: () => void, isTeamPlanOrAbove: boolean, isDevelopmentEnvironment: boolean }) {
+  const isEnabled = isTeamPlanOrAbove && !isDevelopmentEnvironment;
   return (
-    <SimpleTooltip tooltip={!isTeamPlanOrAbove ? "Custom OIDC providers require a Team plan or above." : undefined}>
+    <SimpleTooltip tooltip={isDevelopmentEnvironment ? "Custom OIDC providers are environment-specific and read-only in a development environment." : !isTeamPlanOrAbove ? "Custom OIDC providers require a Team plan or above." : undefined}>
       <DesignButton
         onClick={onClick}
         variant="secondary"
-        disabled={!isTeamPlanOrAbove}
+        disabled={!isEnabled}
       >
         <GlobeIcon size={16} className="mr-1.5" />
         Add Custom OIDC
@@ -307,7 +321,8 @@ function CustomOidcProviderDialog({
   existing?: CustomOidcConfigEntry,
 }) {
   const hexclaveAdminApp = useAdminApp();
-  const config = hexclaveAdminApp.useProject().useConfig();
+  const project = hexclaveAdminApp.useProject();
+  const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
   const defaultValues: CustomOidcFormValues = {
@@ -364,9 +379,19 @@ function CustomOidcProviderDialog({
       onClose={onClose}
       title={isEditing ? `Edit ${existing.displayName || "Custom OIDC Provider"}` : "Add Custom OIDC Provider"}
       cancelButton
-      okButton={{ label: isEditing ? "Save" : "Add Provider" }}
+      okButton={{
+        label: isEditing ? "Save" : "Add Provider",
+        props: { disabled: project.isDevelopmentEnvironment },
+      }}
       render={(form) => (
         <div className="flex flex-col gap-4 w-full">
+          {project.isDevelopmentEnvironment && (
+            <DesignAlert
+              variant="info"
+              title="Custom OIDC is read-only in a development environment"
+              description="Custom OIDC credentials are environment-specific and cannot be changed here. Configure them in your production deployment."
+            />
+          )}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-9 h-9 rounded-xl ring-1 ring-black/[0.08] dark:ring-white/[0.08] shadow-sm bg-foreground/[0.04]">
               <GlobeIcon size={18} className="text-foreground/70" />
@@ -485,6 +510,7 @@ function CustomOidcProviderDialog({
 
 function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigEntry }) {
   const hexclaveAdminApp = useAdminApp();
+  const project = hexclaveAdminApp.useProject();
   const updateConfig = useUpdateConfig();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [turnOffDialogOpen, setTurnOffDialogOpen] = useState(false);
@@ -495,7 +521,7 @@ function CustomOidcProviderInlineRow({ provider }: { provider: CustomOidcConfigE
       configUpdate: {
         [`auth.oauth.providers.${provider.id}`]: null,
       },
-      pushable: false,
+      pushable: project.isDevelopmentEnvironment,
     });
   };
 
@@ -597,13 +623,16 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
             key={id}
             id={id}
             provider={provider}
+            isDevelopmentEnvironment={project.isDevelopmentEnvironment}
             updateProvider={async (provider) => {
               await updateConfig({
                 adminApp: hexclaveAdminApp,
                 configUpdate: {
-                  [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
+                  [`auth.oauth.providers.${provider.id}`]: project.isDevelopmentEnvironment
+                    ? adminProviderToBranchConfigProvider(provider)
+                    : adminProviderToConfigProvider(provider, config.auth.oauth.providers[provider.id]),
                 },
-                pushable: false,
+                pushable: project.isDevelopmentEnvironment,
               });
             }}
             deleteProvider={async (id) => {
@@ -612,7 +641,7 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
                 configUpdate: {
                   [`auth.oauth.providers.${id}`]: null,
                 },
-                pushable: false,
+                pushable: project.isDevelopmentEnvironment,
               });
             }}
           />;
@@ -630,7 +659,8 @@ function DisabledProvidersDialog({ open, onOpenChange }: { open?: boolean, onOpe
 
 function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
   const hexclaveAdminApp = useAdminApp();
-  const completeConfig = hexclaveAdminApp.useProject().useConfig();
+  const project = hexclaveAdminApp.useProject();
+  const completeConfig = project.useConfig();
   const updateConfig = useUpdateConfig();
   const [turnOffProviderDialogOpen, setTurnOffProviderDialogOpen] = useState(false);
   const [providerSettingDialogOpen, setProviderSettingDialogOpen] = useState(false);
@@ -639,9 +669,11 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
     await updateConfig({
       adminApp: hexclaveAdminApp,
       configUpdate: {
-        [`auth.oauth.providers.${provider.id}`]: adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
+        [`auth.oauth.providers.${provider.id}`]: project.isDevelopmentEnvironment
+          ? adminProviderToBranchConfigProvider(provider)
+          : adminProviderToConfigProvider(provider, completeConfig.auth.oauth.providers[provider.id]),
       },
-      pushable: false,
+      pushable: project.isDevelopmentEnvironment,
     });
   };
 
@@ -651,7 +683,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
       configUpdate: {
         [`auth.oauth.providers.${id}`]: null,
       },
-      pushable: false,
+      pushable: project.isDevelopmentEnvironment,
     });
   };
 
@@ -688,6 +720,7 @@ function OAuthActionCell({ config }: { config: AdminOAuthProviderConfig }) {
         provider={config}
         updateProvider={updateProvider}
         deleteProvider={deleteProvider}
+        isDevelopmentEnvironment={project.isDevelopmentEnvironment}
       />
 
       <DesignMenu
@@ -1154,7 +1187,10 @@ export default function PageClient() {
                   <PlusCircleIcon size={16} className="mr-1.5" />
                   Add SSO providers
                 </DesignButton>
-                <AddCustomOidcButton onClick={() => setCustomOidcDialogOpen(true)} />
+                <AddCustomOidcButton
+                  onClick={() => setCustomOidcDialogOpen(true)}
+                  isDevelopmentEnvironment={project.isDevelopmentEnvironment}
+                />
               </div>
             </DesignCard>
             <DesignCard

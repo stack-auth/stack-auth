@@ -52,6 +52,7 @@ export type AdminProject = {
   delete(this: AdminProject): Promise<void>,
 
   getConfig(this: AdminProject): Promise<CompleteConfig>,
+  refreshConfig(this: AdminProject): Promise<void>,
   // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): CompleteConfig,
 
