@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
+  DATA_GRID_DEFAULT_STRINGS,
   DataGrid,
+  DataGridToolbar,
   isDataGridInteractiveRowClickTarget,
   useDataSource,
   type DataGridColumnDef,
@@ -48,6 +50,41 @@ const wideColumns: DataGridColumnDef<Row>[] = [
     type: "string",
   },
 ];
+
+describe("DataGridToolbar action divider", () => {
+  const ctx = {
+    state: createDefaultDataGridState(columns),
+    onChange: vi.fn(),
+    columns,
+    visibleColumns: columns,
+    totalRowCount: 1,
+    selectedRowCount: 0,
+    strings: DATA_GRID_DEFAULT_STRINGS,
+    exportCsv: vi.fn(),
+  };
+
+  afterEach(cleanup);
+
+  it("does not render a divider for an empty React node", () => {
+    const { container } = render(
+      <DataGridToolbar ctx={ctx} extraActions={false} />,
+    );
+
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).toBeNull();
+  });
+
+  it("renders the divider when an action is visible", () => {
+    const { container, getByRole } = render(
+      <DataGridToolbar
+        ctx={ctx}
+        extraActions={<button type="button">Refresh</button>}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Refresh" })).not.toBeNull();
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).not.toBeNull();
+  });
+});
 
 type ObserverRecord = {
   options?: IntersectionObserverInit,

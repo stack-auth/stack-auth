@@ -77,9 +77,11 @@ function escapeRegExp(value: string): string {
 /**
  * Validates that an AI-committed query is a pure row filter over the given
  * table, i.e. it cannot change the grid's columns. Accepts
- * `SELECT * FROM [default.]<table>` optionally followed by
- * WHERE/PREWHERE/ORDER BY/LIMIT — anything else (column lists, JOINs at the
- * top level, other tables) returns null and must not be applied to the grid.
+ * `SELECT * FROM [default.]<table>` optionally followed by a WHERE/PREWHERE
+ * row filter — anything else (column lists, JOINs, sorting, pagination, other
+ * tables) returns null and must not be applied to the grid. Sorting and
+ * pagination stay grid-owned so an AI filter cannot silently truncate or
+ * reorder the result set before the grid processes it.
  * Subqueries inside the WHERE condition are fine: the `SELECT *` prefix on
  * the outer query is what guarantees the column set stays identical.
  *
@@ -95,7 +97,7 @@ export function getValidatedTableFilterQuery(
   const collapsed = normalized.replace(/\s+/g, " ");
   const table = escapeRegExp(tableName);
   const pattern = new RegExp(
-    `^select \\* from (?:default\\.)?\`?${table}\`?(?: (?:where|prewhere|order by|limit)\\b.*)?$`,
+    `^select \\* from (?:default\\.)?\`?${table}\`?(?: (?:where|prewhere)\\b.*)?$`,
     "i",
   );
   return pattern.test(collapsed) ? normalized : null;

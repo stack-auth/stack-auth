@@ -70,6 +70,24 @@ describe("getValidatedTableFilterQuery", () => {
     expect(getValidatedTableFilterQuery(query, "users")).toBe(query);
   });
 
+  it("rejects top-level sorting and pagination while allowing them in subqueries", () => {
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users ORDER BY signed_up_at DESC",
+        "users",
+      ),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery("SELECT * FROM users LIMIT 100", "users"),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE toString(id) IN (SELECT user_id FROM events ORDER BY event_at DESC LIMIT 100)",
+        "users",
+      ),
+    ).not.toBeNull();
+  });
+
   it("rejects queries on a different table", () => {
     expect(getValidatedTableFilterQuery("SELECT * FROM events", "users")).toBe(null);
     // prefix of another table name must not match

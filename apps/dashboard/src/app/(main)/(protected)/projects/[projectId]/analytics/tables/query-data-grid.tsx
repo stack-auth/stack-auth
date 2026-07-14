@@ -578,11 +578,10 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
      *
      * Priority:
      *  1. `toolbar` (full override)  — caller owns the whole row
-     *  2. `searchBar` provided       — render our own DataGridToolbar
-     *     wrapper that hides the built-in quick search and slots the
-     *     caller's node where it used to live; keeps Columns/Export
-     *     intact. `toolbarExtra` / `toolbarActions` (if provided) are
-     *     passed through to the leading / trailing slots.
+     *  2. `searchBar` or `toolbarActions` provided — render our own
+     *     DataGridToolbar wrapper. The built-in quick search is hidden only
+     *     when `searchBar` replaces it; Columns/Export stay intact and the
+     *     leading/trailing extension slots are passed through.
      *  3. neither                    — undefined, so the DataGrid
      *     falls back to its default toolbar behaviour (built-in
      *     quick search, extras, columns, export).
@@ -610,7 +609,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             extra={extras}
             extraLeading={leading}
             extraActions={actions}
-            hideQuickSearch
+            hideQuickSearch={searchBar !== undefined}
           />
         );
       },
@@ -627,7 +626,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
 
     const resolvedToolbar = toolbar
       ? renderForwardedToolbar
-      : searchBar !== undefined
+      : searchBar !== undefined || toolbarActions !== undefined
         ? renderCustomToolbar
         : undefined;
 
@@ -635,11 +634,11 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       // When we've already built a custom toolbar above for the
       // `searchBar` case, the `toolbarExtra` prop is consumed inside
       // that custom toolbar — don't also pass it to DataGrid.
-      if (toolbar || searchBar !== undefined) return undefined;
+      if (toolbar || searchBar !== undefined || toolbarActions !== undefined) return undefined;
       if (toolbarExtra === undefined) return undefined;
       if (typeof toolbarExtra !== "function") return toolbarExtra;
       return (ctx: DataGridToolbarContext<RowData>) => toolbarExtra(extendCtx(ctx));
-    }, [toolbar, searchBar, toolbarExtra, extendCtx]);
+    }, [toolbar, searchBar, toolbarActions, toolbarExtra, extendCtx]);
 
     return (
       <div className={fillHeight ? "flex flex-1 min-h-0 flex-col" : "flex flex-col"}>

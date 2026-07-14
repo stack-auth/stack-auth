@@ -62,6 +62,12 @@ import type {
 // (no `fillHeight`, no `maxHeight`). Leaves ~16rem of room for the top bar, page header, and grid
 // toolbar. See the `effectiveMaxHeight` comment in DataGrid for why an infinite grid must be bounded.
 const DEFAULT_INFINITE_MAX_HEIGHT = "calc(100dvh - 16rem)";
+const DATA_GRID_SCROLLBAR_CLASS_NAME = cn(
+  "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
+  "[&::-webkit-scrollbar-track]:bg-transparent",
+  "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
+  "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
+);
 
 // ─── Row click target ────────────────────────────────────────────────
 
@@ -1073,19 +1079,6 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const horizontalScrollbarAtTop = horizontalScrollbarPosition === "top";
   // Shared thin thumb styling. When the bar is on top, the header scrollport shows
   // it; the body keeps overflow-x hidden so a second thumb doesn't appear at the bottom.
-  const headerScrollbarClassName = cn(
-    "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-    "[&::-webkit-scrollbar-track]:bg-transparent",
-    "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-    "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-  );
-  const bodyScrollbarClassName = cn(
-    "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-    "[&::-webkit-scrollbar-track]:bg-transparent",
-    "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-    "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-  );
-
   // Trackpad / shift-wheel horizontal gestures land on the body; with the top
   // scrollbar the body has overflow-x:hidden, so forward deltaX to the header.
   const handleBodyWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -1206,7 +1199,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               className={cn(
                 "w-full min-w-0 shrink-0 border-b border-foreground/[0.06]",
                 horizontalScrollbarAtTop
-                  ? cn("overflow-x-auto overflow-y-hidden", headerScrollbarClassName)
+                  ? cn("overflow-x-auto overflow-y-hidden", DATA_GRID_SCROLLBAR_CLASS_NAME)
                   : "overflow-hidden",
               )}
               onScroll={horizontalScrollbarAtTop ? handleHeaderScroll : undefined}
@@ -1256,7 +1249,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           // under the rows. scrollLeft is still set programmatically from the header.
           horizontalScrollbarAtTop ? "overflow-y-auto overflow-x-hidden" : "overflow-auto",
           isBounded ? "min-h-0 flex-1" : "flex-none",
-          bodyScrollbarClassName,
+          DATA_GRID_SCROLLBAR_CLASS_NAME,
         )}
           onScroll={handleBodyScroll}
           onWheel={horizontalScrollbarAtTop ? handleBodyWheel : undefined}

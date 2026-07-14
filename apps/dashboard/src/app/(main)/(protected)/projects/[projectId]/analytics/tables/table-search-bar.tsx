@@ -238,19 +238,9 @@ export function TableSearchBar({
     applyQuickSearch("");
   }, [applyQuickSearch]);
 
-  // Chip label: the natural-language request that produced the active filter.
-  const activeFilterLabel = useMemo(() => {
-    if (activeFilterQuery == null) return null;
-    for (let i = chat.messages.length - 1; i >= 0; i--) {
-      const msg = chat.messages[i]!;
-      if (msg.role !== "user") continue;
-      const part = msg.content.find((p) => p.type === "text");
-      if (part?.type === "text" && part.text.trim().length > 0) {
-        return part.text.trim();
-      }
-    }
-    return "AI filter";
-  }, [activeFilterQuery, chat.messages]);
+  // Stored with the committed query so a rejected/text-only refinement cannot
+  // relabel the still-active filter with the newer request.
+  const activeFilterLabel = activeFilterQuery == null ? null : chat.latestQueryLabel;
 
   const rejectionMessage = filterRejected
     ? "The AI answered with a query that would change this table's columns, so it wasn't applied. Try rephrasing your request."

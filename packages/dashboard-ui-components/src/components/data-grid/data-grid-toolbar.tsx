@@ -330,6 +330,7 @@ export function DataGridToolbar<TRow>({
     () => columns.some((c) => c.type === "date" || c.type === "dateTime"),
     [columns],
   );
+  const hasExtraActions = React.Children.toArray(extraActions).length > 0;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-2 px-2.5 py-2.5 pr-3 border-b border-foreground/[0.06] sm:flex-row sm:items-center sm:gap-2">
@@ -345,7 +346,7 @@ export function DataGridToolbar<TRow>({
         {extra}
       </div>
       <div className="flex shrink-0 items-center justify-end gap-1.5">
-        {extraActions != null && (
+        {hasExtraActions && (
           <>
             {extraActions}
             <div

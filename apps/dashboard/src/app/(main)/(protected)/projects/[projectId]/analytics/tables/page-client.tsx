@@ -1,6 +1,7 @@
 "use client";
 
 import { Link } from "@/components/link";
+import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowClockwiseIcon, CodeIcon } from "@phosphor-icons/react";
@@ -13,7 +14,6 @@ import {
   QueryDataGrid,
   type QueryDataGridMode,
 } from "./query-data-grid";
-import { getValidatedTableFilterQuery } from "./search-bar-logic";
 import { TableSearchBar } from "./table-search-bar";
 import { useAiTableFilterChat } from "./use-ai-table-filter-chat";
 
@@ -139,6 +139,10 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   ],
 ]);
 
+const AVAILABLE_TABLE_OPTIONS = [...AVAILABLE_TABLES.entries()].map(
+  ([value, config]) => ({ value, label: config.displayName }),
+);
+
 // ─── Per-table content ──────────────────────────────────────────────
 
 function TableContent({ tableId }: { tableId: TableId }) {
@@ -148,12 +152,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
   // table, so the grid's columns never change.
   const filterChat = useAiTableFilterChat(tableId);
 
-  const rawFilterQuery = filterChat.latestQuery;
-  // Defense-in-depth: the system prompt promises `SELECT * FROM <table>
-  // WHERE ...`, but the model could still emit anything — validate the shape
-  // before letting it drive the grid, otherwise the columns could change.
-  const filterQuery = rawFilterQuery == null ? null : getValidatedTableFilterQuery(rawFilterQuery, tableId);
-  const filterRejected = rawFilterQuery != null && filterQuery == null;
+  const filterQuery = filterChat.latestQuery;
 
   const effectiveQuery = filterQuery ?? tableConfig.baseQuery;
   const effectiveMode: QueryDataGridMode = filterQuery != null ? "one-shot" : "paginated";
@@ -199,7 +198,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
             queryKey={effectiveQuery}
             chat={filterChat}
             activeFilterQuery={filterQuery}
-            filterRejected={filterRejected}
+            filterRejected={filterChat.filterRejected}
             onAiSubmit={(text) => filterChat.sendMessage({ text })}
             onClearFilter={filterChat.clearMessages}
           />
@@ -228,9 +227,25 @@ export default function PageClient() {
             <AnalyticsEventLimitBanner />
           </div>
 
-          {/* Match the primary nav's dark:rounded-2xl so the gap junction mirrors
-              the same radius on both sides (nav top-right ↔ tables top-left). */}
-          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl rounded-tr-2xl lg:ml-0.5">
+          <div className="shrink-0 px-3 py-2 lg:hidden">
+            <label htmlFor="analytics-table-selector" className="sr-only">
+              Table
+            </label>
+            <DesignSelectorDropdown
+              value={selectedTable ?? "events"}
+              onValueChange={setSelectedTable}
+              options={AVAILABLE_TABLE_OPTIONS}
+              placeholder="Select a table"
+              size="sm"
+              triggerId="analytics-table-selector"
+            />
+          </div>
+
+          {/* Dark: match the primary nav's rounded-2xl so the gap junction mirrors
+              the same radius on both sides (nav top-right ↔ tables top-left).
+              Light: only round the left edge — the shell card already owns the
+              top-right radius, so an inner tr curve reads as a stray notch. */}
+          <div className="flex min-h-0 flex-1 overflow-hidden rounded-l-2xl dark:rounded-tr-2xl lg:ml-0.5">
             {/* Use the same surface treatment as the primary sidebar so equal radii render
                 identically. Omit the right border to keep the sidebar/grid junction divider-free. */}
             <div className="hidden w-48 min-h-0 flex-shrink-0 flex-col overflow-hidden rounded-l-2xl bg-black/[0.03] dark:border dark:border-r-0 dark:border-foreground/5 dark:bg-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm lg:flex">
@@ -267,7 +282,11 @@ export default function PageClient() {
               </div>
             </div>
 
-            {/* Right content — grid fills remaining height and scrolls internally */}
+            {/* Right content — grid fills remaining height and scrolls internally.
+                Sticky chrome is its own composited layer and paints square over a
+                parent's overflow:hidden radius, so dark mode clips the panel itself.
+                Below lg the tables sidebar is hidden and the grid owns both top
+                corners; at lg+ the sidebar owns the left radius. */}
             <div
               className={cn(
                 "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
@@ -278,14 +297,9 @@ export default function PageClient() {
                 "[&_[role=grid]_.sticky>div:first-child>div]:pb-2.5",
                 "[&_[role=grid]_.sticky>div:first-child>div]:pr-3",
                 "[&_[role=grid]_.sticky>div:first-child>div]:pl-2.5",
+                "max-lg:dark:rounded-t-2xl max-lg:dark:[clip-path:inset(0_round_1rem_1rem_0_0)]",
+                "lg:dark:rounded-tr-2xl lg:dark:[clip-path:inset(0_round_0_1rem_0_0)]",
               )}
-              style={{
-                // Outer top-right corner of the block. Same clip-path trick as the
-                // sidebar: the grid's sticky chrome is its own composited layer and
-                // paints square over the parent's rounded overflow clip without this.
-                borderTopRightRadius: "1rem",
-                clipPath: "inset(0 round 0 1rem 0 0)",
-              }}
             >
               {selectedTable ? (
                 <TableContent key={selectedTable} tableId={selectedTable} />
