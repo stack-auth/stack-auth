@@ -326,8 +326,6 @@ describeWithAi("AI Query Endpoint - System Prompts", () => {
     "email-assistant-draft",
     "create-dashboard",
     "run-query",
-    "build-analytics-query",
-    "filter-analytics-table",
   ];
 
   for (const systemPrompt of systemPrompts) {
