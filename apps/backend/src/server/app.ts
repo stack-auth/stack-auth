@@ -4,6 +4,7 @@ import { NextNotFoundError } from "@/lib/runtime/navigation";
 import { parseCookieHeader, requestContextALS, type RequestContext } from "@/lib/runtime/request-context";
 import { node } from "@elysiajs/node";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
+import * as Sentry from "@sentry/elysia";
 import { Elysia } from "elysia";
 import { createBackendRequest } from "./backend-request";
 import { handleUncaughtBackendError } from "./error-handler";
@@ -22,8 +23,12 @@ const knownHttpMethods = new Set<string>(httpMethodNames);
 const developmentRequestStartTimes = new WeakMap<Request, number>();
 const shouldLogDevelopmentRequests = getNodeEnvironment() === "development";
 
-export const app = new Elysia({
+export const app = Sentry.withElysia(new Elysia({
   adapter: node(),
+}), {
+  // The global backend error boundary adds location metadata before capturing errors.
+  // Keep it as the single capture owner so the framework integration does not emit duplicates.
+  shouldHandleError: () => false,
 })
   .onRequest(({ request }) => {
     if (shouldLogDevelopmentRequests) {
