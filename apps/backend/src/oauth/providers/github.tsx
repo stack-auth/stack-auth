@@ -32,6 +32,8 @@ async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
         jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
       });
     }
+    // Release the intermediate 401 response's connection instead of holding it until GC
+    await rawUserInfoRes.body?.cancel();
     await wait(USER_INFO_401_RETRY_DELAYS_MS[attempt - 1]);
   }
 }
