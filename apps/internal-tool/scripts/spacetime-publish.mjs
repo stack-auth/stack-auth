@@ -5,6 +5,16 @@
 
 import { spawnSync } from "node:child_process";
 
+// Dual-read shim for the HEXCLAVE_/STACK_ env var prefix migration (same as examples/demo/cli-sim.mjs).
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 const target = process.argv[2]; // "local" or "prod"
 const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
 
