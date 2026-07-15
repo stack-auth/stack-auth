@@ -74,6 +74,119 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const FORBIDDEN_TOP_LEVEL_FILTER_WORDS = new Set([
+  "format",
+  "having",
+  "join",
+  "limit",
+  "offset",
+  "qualify",
+  "sample",
+  "settings",
+  "union",
+  "window",
+]);
+
+const FORBIDDEN_TOP_LEVEL_FILTER_PAIRS = new Set([
+  "group by",
+  "into outfile",
+  "order by",
+  "with fill",
+  "with totals",
+]);
+
+/**
+ * Returns the words visible at SQL parenthesis depth zero, ignoring quoted
+ * strings/identifiers. This is deliberately narrower than a SQL parser: the
+ * filter contract only needs to distinguish clauses owned by the outer grid
+ * from equivalent clauses inside permitted subqueries.
+ */
+function getTopLevelSqlWords(sql: string): string[] | null {
+  const words: string[] = [];
+  let currentWord = "";
+  let depth = 0;
+  let quote: "'" | "\"" | "`" | null = null;
+
+  const flushWord = () => {
+    if (currentWord.length === 0) return;
+    words.push(currentWord.toLowerCase());
+    currentWord = "";
+  };
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i]!;
+
+    if (quote != null) {
+      if (char === "\\") {
+        i += 1;
+        continue;
+      }
+      if (char === quote) {
+        if (sql[i + 1] === quote) {
+          i += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+
+    if (char === "'" || char === "\"" || char === "`") {
+      flushWord();
+      quote = char;
+      continue;
+    }
+
+    // Comments are unnecessary in generated row filters and complicate the
+    // security boundary by allowing clause-like text to be hidden from this
+    // small scanner, so reject them instead of trying to interpret them.
+    if (
+      char === "#"
+      || (char === "-" && sql[i + 1] === "-")
+      || (char === "/" && sql[i + 1] === "*")
+    ) {
+      return null;
+    }
+
+    if (char === "(") {
+      flushWord();
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      flushWord();
+      depth -= 1;
+      if (depth < 0) return null;
+      continue;
+    }
+
+    if (depth === 0 && /[a-z_]/i.test(char)) {
+      currentWord += char;
+    } else {
+      flushWord();
+    }
+  }
+
+  flushWord();
+  return depth === 0 && quote == null ? words : null;
+}
+
+function hasOnlyTopLevelRowFilterClause(filterClause: string): boolean {
+  const words = getTopLevelSqlWords(filterClause);
+  if (words == null) return false;
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i]!;
+    if (FORBIDDEN_TOP_LEVEL_FILTER_WORDS.has(word)) return false;
+  }
+  for (let i = 1; i < words.length - 1; i++) {
+    if (FORBIDDEN_TOP_LEVEL_FILTER_PAIRS.has(`${words[i]!} ${words[i + 1]!}`)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Validates that an AI-committed query is a pure row filter over the given
  * table, i.e. it cannot change the grid's columns. Accepts
@@ -96,9 +209,17 @@ export function getValidatedTableFilterQuery(
   if (normalized.length === 0) return null;
   const collapsed = normalized.replace(/\s+/g, " ");
   const table = escapeRegExp(tableName);
-  const pattern = new RegExp(
-    `^select \\* from (?:default\\.)?\`?${table}\`?(?: (?:where|prewhere)\\b.*)?$`,
+  const bareQueryPattern = new RegExp(
+    `^select \\* from (?:default\\.)?\`?${table}\`?$`,
     "i",
   );
-  return pattern.test(collapsed) ? normalized : null;
+  if (bareQueryPattern.test(collapsed)) return normalized;
+
+  const filterQueryPattern = new RegExp(
+    `^select \\* from (?:default\\.)?\`?${table}\`? ((?:where|prewhere)\\b.*)$`,
+    "i",
+  );
+  const match = filterQueryPattern.exec(collapsed);
+  if (match == null) return null;
+  return hasOnlyTopLevelRowFilterClause(match[1]!) ? normalized : null;
 }

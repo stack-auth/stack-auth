@@ -355,10 +355,6 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     // read the latest column list without being re-created every time
     // the schema updates.
     const discoveredColumnsRef = useRef<string[]>([]);
-    const queryRef = useRef(query);
-    queryRef.current = query;
-    const modeRef = useRef(mode);
-    modeRef.current = mode;
     const enableSearchFilterRef = useRef(enableQuickSearchFilter);
     enableSearchFilterRef.current = enableQuickSearchFilter;
     const defaultOrderByRef = useRef(defaultOrderBy);
@@ -442,10 +438,9 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       [discoveredColumns],
     );
 
-    // `query` / `mode` are in the dep list so the generator identity changes
-    // when the SQL changes — useDataSource keys off that to refetch. The
-    // generator still reads through refs so a single in-flight page always
-    // sees the latest values.
+    // Capture `query` and `mode` so the generator identity and the SQL it
+    // executes change together. useDataSource keys off that identity to
+    // refetch when either input changes.
     const dataSource = useMemo<DataGridDataSource<RowData>>(() => {
       return async function* (params) {
         setError(null);
@@ -468,8 +463,8 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
           const applyFilter = enableSearchFilterRef.current;
 
           const finalQuery = buildFinalQuery({
-            baseQuery: queryRef.current,
-            mode: modeRef.current,
+            baseQuery: query,
+            mode,
             orderBy,
             orderDir,
             search: applyFilter ? search : "",

@@ -70,7 +70,7 @@ describe("getValidatedTableFilterQuery", () => {
     expect(getValidatedTableFilterQuery(query, "users")).toBe(query);
   });
 
-  it("rejects top-level sorting and pagination while allowing them in subqueries", () => {
+  it("rejects top-level sorting and pagination before or after a row filter", () => {
     expect(
       getValidatedTableFilterQuery(
         "SELECT * FROM users ORDER BY signed_up_at DESC",
@@ -82,7 +82,28 @@ describe("getValidatedTableFilterQuery", () => {
     ).toBeNull();
     expect(
       getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE primary_email_verified = 1 ORDER BY signed_up_at DESC",
+        "users",
+      ),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users PREWHERE primary_email_verified = 1 LIMIT 100",
+        "users",
+      ),
+    ).toBeNull();
+  });
+
+  it("allows result-shaping clauses inside row-filter subqueries and strings", () => {
+    expect(
+      getValidatedTableFilterQuery(
         "SELECT * FROM users WHERE toString(id) IN (SELECT user_id FROM events ORDER BY event_at DESC LIMIT 100)",
+        "users",
+      ),
+    ).not.toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users PREWHERE primary_email ILIKE '%order by recent%'",
         "users",
       ),
     ).not.toBeNull();
