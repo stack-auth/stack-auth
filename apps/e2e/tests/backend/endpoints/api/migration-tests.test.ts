@@ -27,6 +27,7 @@ describe("SmartRouteHandler", () => {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
+      expect(response.headers.get("access-control-allow-origin")).toMatchInlineSnapshot(`"*"`);
     });
   });
 
