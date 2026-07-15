@@ -75,8 +75,10 @@ function escapeRegExp(value: string): string {
 }
 
 const FORBIDDEN_TOP_LEVEL_FILTER_WORDS = new Set([
+  "except",
   "format",
   "having",
+  "intersect",
   "join",
   "limit",
   "offset",
@@ -101,15 +103,27 @@ const FORBIDDEN_TOP_LEVEL_FILTER_PAIRS = new Set([
  * filter contract only needs to distinguish clauses owned by the outer grid
  * from equivalent clauses inside permitted subqueries.
  */
-function getTopLevelSqlWords(sql: string): string[] | null {
-  const words: string[] = [];
+type TopLevelSqlWord = {
+  value: string,
+  followedByOpenParen: boolean,
+};
+
+function getTopLevelSqlWords(sql: string): TopLevelSqlWord[] | null {
+  const words: TopLevelSqlWord[] = [];
   let currentWord = "";
   let depth = 0;
   let quote: "'" | "\"" | "`" | null = null;
 
-  const flushWord = () => {
+  const flushWord = (nextCharacterIndex: number) => {
     if (currentWord.length === 0) return;
-    words.push(currentWord.toLowerCase());
+    let nextNonWhitespaceIndex = nextCharacterIndex;
+    while (/\s/.test(sql[nextNonWhitespaceIndex] ?? "")) {
+      nextNonWhitespaceIndex += 1;
+    }
+    words.push({
+      value: currentWord.toLowerCase(),
+      followedByOpenParen: sql[nextNonWhitespaceIndex] === "(",
+    });
     currentWord = "";
   };
 
@@ -132,7 +146,7 @@ function getTopLevelSqlWords(sql: string): string[] | null {
     }
 
     if (char === "'" || char === "\"" || char === "`") {
-      flushWord();
+      flushWord(i);
       quote = char;
       continue;
     }
@@ -142,6 +156,7 @@ function getTopLevelSqlWords(sql: string): string[] | null {
     // small scanner, so reject them instead of trying to interpret them.
     if (
       char === "#"
+      || char === ";"
       || (char === "-" && sql[i + 1] === "-")
       || (char === "/" && sql[i + 1] === "*")
     ) {
@@ -149,12 +164,12 @@ function getTopLevelSqlWords(sql: string): string[] | null {
     }
 
     if (char === "(") {
-      flushWord();
+      flushWord(i);
       depth += 1;
       continue;
     }
     if (char === ")") {
-      flushWord();
+      flushWord(i);
       depth -= 1;
       if (depth < 0) return null;
       continue;
@@ -163,11 +178,11 @@ function getTopLevelSqlWords(sql: string): string[] | null {
     if (depth === 0 && /[a-z_]/i.test(char)) {
       currentWord += char;
     } else {
-      flushWord();
+      flushWord(i);
     }
   }
 
-  flushWord();
+  flushWord(sql.length);
   return depth === 0 && quote == null ? words : null;
 }
 
@@ -177,10 +192,21 @@ function hasOnlyTopLevelRowFilterClause(filterClause: string): boolean {
 
   for (let i = 1; i < words.length; i++) {
     const word = words[i]!;
-    if (FORBIDDEN_TOP_LEVEL_FILTER_WORDS.has(word)) return false;
+    const isAllowedFormatFunction =
+      word.value === "format" && word.followedByOpenParen;
+    if (
+      FORBIDDEN_TOP_LEVEL_FILTER_WORDS.has(word.value)
+      && !isAllowedFormatFunction
+    ) {
+      return false;
+    }
   }
   for (let i = 1; i < words.length - 1; i++) {
-    if (FORBIDDEN_TOP_LEVEL_FILTER_PAIRS.has(`${words[i]!} ${words[i + 1]!}`)) {
+    if (
+      FORBIDDEN_TOP_LEVEL_FILTER_PAIRS.has(
+        `${words[i]!.value} ${words[i + 1]!.value}`,
+      )
+    ) {
       return false;
     }
   }

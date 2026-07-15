@@ -109,6 +109,63 @@ describe("getValidatedTableFilterQuery", () => {
     ).not.toBeNull();
   });
 
+  it("allows format() calls while rejecting a top-level FORMAT clause", () => {
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE format('{}', primary_email) = 'alice@example.com'",
+        "users",
+      ),
+    ).not.toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE format ('{}', primary_email) = 'alice@example.com'",
+        "users",
+      ),
+    ).not.toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE primary_email != '' FORMAT JSON",
+        "users",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects top-level set operations", () => {
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE 1 UNION SELECT * FROM users",
+        "users",
+      ),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE 1 EXCEPT SELECT * FROM users",
+        "users",
+      ),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE 1 INTERSECT SELECT * FROM users",
+        "users",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects internal semicolons without rejecting semicolons in strings", () => {
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE 1; DROP TABLE users",
+        "users",
+      ),
+    ).toBeNull();
+    expect(
+      getValidatedTableFilterQuery(
+        "SELECT * FROM users WHERE primary_email = 'alice;bob@example.com'",
+        "users",
+      ),
+    ).not.toBeNull();
+  });
+
   it("rejects queries on a different table", () => {
     expect(getValidatedTableFilterQuery("SELECT * FROM events", "users")).toBe(null);
     // prefix of another table name must not match
