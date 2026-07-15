@@ -21,7 +21,8 @@ async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
     // Retry only 401s: GitHub sometimes rejects freshly-issued tokens for 1-3s until they
     // propagate across its infrastructure (https://github.com/orgs/community/discussions/162975).
     if (rawUserInfoRes.status !== 401 || attempt > USER_INFO_401_RETRY_DELAYS_MS.length) {
-      throw new HexclaveAssertionError(`Error fetching user info from GitHub provider: Status code ${rawUserInfoRes.status} (attempt ${attempt})`, {
+      // `attempt` is only in the extras, not the message, so Sentry keeps one grouping per status.
+      throw new HexclaveAssertionError(`Error fetching user info from GitHub provider: Status code ${rawUserInfoRes.status}`, {
         rawUserInfoRes,
         rawUserInfoResText: await rawUserInfoRes.text(),
         attempt,
@@ -121,30 +122,34 @@ export class GithubProvider extends OAuthBaseProvider {
   }
 }
 
-const testTokenSet: TokenSet = { accessToken: "ghu_test_token", accessTokenExpiredAt: null };
+// ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("fetchRawGithubUserInfo returns user info on first success without retrying", async ({ expect }) => {
-  const vi = import.meta.vitest!.vi;
-  const fetchMock = vi.fn(async () => Response.json({ id: 123, name: "Test" }));
-  vi.stubGlobal("fetch", fetchMock);
-  try {
+import.meta.vitest?.describe("fetchRawGithubUserInfo(...)", () => {
+  const { vi, test, afterEach } = import.meta.vitest!;
+
+  const testTokenSet: TokenSet = { accessToken: "ghu_test_token", accessTokenExpiredAt: null };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test("returns user info on first success without retrying", async ({ expect }) => {
+    const fetchMock = vi.fn(async () => Response.json({ id: 123, name: "Test" }));
+    vi.stubGlobal("fetch", fetchMock);
     const result = await fetchRawGithubUserInfo(testTokenSet);
     expect(result).toEqual({ id: 123, name: "Test" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  } finally {
-    vi.unstubAllGlobals();
-  }
-});
+  });
 
-import.meta.vitest?.test("fetchRawGithubUserInfo retries 401s with 1s then 2s delays and succeeds", async ({ expect }) => {
-  const vi = import.meta.vitest!.vi;
-  vi.useFakeTimers();
-  let callCount = 0;
-  const fetchMock = vi.fn(async () => ++callCount <= 2
-    ? new Response("Bad credentials", { status: 401 })
-    : Response.json({ id: 123 }));
-  vi.stubGlobal("fetch", fetchMock);
-  try {
+  test("retries 401s with 1s then 2s delays and succeeds", async ({ expect }) => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const fetchMock = vi.fn(async () => ++callCount <= 2
+      ? new Response("Bad credentials", { status: 401 })
+      : Response.json({ id: 123 }));
+    vi.stubGlobal("fetch", fetchMock);
     const promise = fetchRawGithubUserInfo(testTokenSet);
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -157,37 +162,29 @@ import.meta.vitest?.test("fetchRawGithubUserInfo retries 401s with 1s then 2s de
     await vi.advanceTimersByTimeAsync(1);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(await promise).toEqual({ id: 123 });
-  } finally {
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  }
-});
+  });
 
-import.meta.vitest?.test("fetchRawGithubUserInfo throws with attempt count after 401 retries are exhausted", async ({ expect }) => {
-  const vi = import.meta.vitest!.vi;
-  vi.useFakeTimers();
-  const fetchMock = vi.fn(async () => new Response("Bad credentials", { status: 401 }));
-  vi.stubGlobal("fetch", fetchMock);
-  try {
+  test("throws with the attempt count in extras after 401 retries are exhausted", async ({ expect }) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response("Bad credentials", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
     const promise = fetchRawGithubUserInfo(testTokenSet);
-    const rejection = expect(promise).rejects.toThrow("Error fetching user info from GitHub provider: Status code 401 (attempt 3)");
+    const rejection = expect(promise).rejects.toMatchObject({
+      message: expect.stringContaining("Error fetching user info from GitHub provider: Status code 401"),
+      extraData: expect.objectContaining({ attempt: 3 }),
+    });
     await vi.advanceTimersByTimeAsync(3000);
     await rejection;
     expect(fetchMock).toHaveBeenCalledTimes(3);
-  } finally {
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  }
-});
+  });
 
-import.meta.vitest?.test("fetchRawGithubUserInfo does not retry non-401 statuses", async ({ expect }) => {
-  const vi = import.meta.vitest!.vi;
-  const fetchMock = vi.fn(async () => new Response("Forbidden", { status: 403 }));
-  vi.stubGlobal("fetch", fetchMock);
-  try {
-    await expect(fetchRawGithubUserInfo(testTokenSet)).rejects.toThrow("Error fetching user info from GitHub provider: Status code 403 (attempt 1)");
+  test("does not retry non-401 statuses", async ({ expect }) => {
+    const fetchMock = vi.fn(async () => new Response("Forbidden", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchRawGithubUserInfo(testTokenSet)).rejects.toMatchObject({
+      message: expect.stringContaining("Error fetching user info from GitHub provider: Status code 403"),
+      extraData: expect.objectContaining({ attempt: 1 }),
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  });
 });
