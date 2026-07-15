@@ -4,15 +4,9 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
 
-// GitHub occasionally rejects a freshly-issued access token with 401 "Bad credentials" because
-// token issuance and the REST API run on separate infrastructure, and new tokens reportedly take
-// 1-3 seconds to propagate (https://github.com/orgs/community/discussions/162975). The delays
-// below are chosen so the final attempt lands ~3s after the first, covering that window while
-// staying well under the serverless request watchdog.
 const USER_INFO_401_RETRY_DELAYS_MS = [1000, 2000];
 
-// Returns `any` because fetch's json() is `any` and the shape is validated by validateUserInfo
-// at the call site; typing GitHub's response here would be pretend-precision.
+// `any` because fetch's json() is `any`; the shape is validated by validateUserInfo at the call site
 async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
   for (let attempt = 1; ; attempt++) {
     const rawUserInfoRes = await fetch("https://api.github.com/user", {
@@ -24,14 +18,8 @@ async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
     if (rawUserInfoRes.ok) {
       return await rawUserInfoRes.json();
     }
-    // Only 401 is retried: it's the propagation-lag symptom, while other statuses are
-    // deterministic and retrying them would just add latency. A 401 that survives all retries
-    // deliberately stays a HexclaveAssertionError (500) rather than a 4xx: the other candidate
-    // cause is a racing duplicate callback whose second code exchange invalidates the first
-    // token, and we can't distinguish the two from here. If Sentry keeps reporting this error
-    // (with the attempt count below) after the retries shipped, that's evidence for the
-    // invalidation race, and the surviving 401s can then confidently be mapped to a
-    // "please try signing in again" 4xx.
+    // Retry only 401s: GitHub sometimes rejects freshly-issued tokens for 1-3s until they
+    // propagate across its infrastructure (https://github.com/orgs/community/discussions/162975).
     if (rawUserInfoRes.status !== 401 || attempt > USER_INFO_401_RETRY_DELAYS_MS.length) {
       throw new HexclaveAssertionError(`Error fetching user info from GitHub provider: Status code ${rawUserInfoRes.status} (attempt ${attempt})`, {
         rawUserInfoRes,
