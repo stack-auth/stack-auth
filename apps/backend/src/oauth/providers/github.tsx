@@ -1,7 +1,51 @@
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
+
+// GitHub occasionally rejects a freshly-issued access token with 401 "Bad credentials" because
+// token issuance and the REST API run on separate infrastructure, and new tokens reportedly take
+// 1-3 seconds to propagate (https://github.com/orgs/community/discussions/162975). The delays
+// below are chosen so the final attempt lands ~3s after the first, covering that window while
+// staying well under the serverless request watchdog.
+const USER_INFO_401_RETRY_DELAYS_MS = [1000, 2000];
+
+// Returns `any` because fetch's json() is `any` and the shape is validated by validateUserInfo
+// at the call site; typing GitHub's response here would be pretend-precision.
+async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
+  for (let attempt = 1; ; attempt++) {
+    const rawUserInfoRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (rawUserInfoRes.ok) {
+      return await rawUserInfoRes.json();
+    }
+    // Only 401 is retried: it's the propagation-lag symptom, while other statuses are
+    // deterministic and retrying them would just add latency. A 401 that survives all retries
+    // deliberately stays a HexclaveAssertionError (500) rather than a 4xx: the other candidate
+    // cause is a racing duplicate callback whose second code exchange invalidates the first
+    // token, and we can't distinguish the two from here. If Sentry keeps reporting this error
+    // (with the attempt count below) after the retries shipped, that's evidence for the
+    // invalidation race, and the surviving 401s can then confidently be mapped to a
+    // "please try signing in again" 4xx.
+    if (rawUserInfoRes.status !== 401 || attempt > USER_INFO_401_RETRY_DELAYS_MS.length) {
+      throw new HexclaveAssertionError(`Error fetching user info from GitHub provider: Status code ${rawUserInfoRes.status} (attempt ${attempt})`, {
+        rawUserInfoRes,
+        rawUserInfoResText: await rawUserInfoRes.text(),
+        attempt,
+        hasAccessToken: !!tokenSet.accessToken,
+        hasRefreshToken: !!tokenSet.refreshToken,
+        accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
+        jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
+      });
+    }
+    await wait(USER_INFO_401_RETRY_DELAYS_MS[attempt - 1]);
+  }
+}
 
 export class GithubProvider extends OAuthBaseProvider {
   private constructor(
@@ -40,23 +84,7 @@ export class GithubProvider extends OAuthBaseProvider {
   }
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
-    const rawUserInfoRes = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${tokenSet.accessToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (!rawUserInfoRes.ok) {
-      throw new HexclaveAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
-        rawUserInfoRes,
-        rawUserInfoResText: await rawUserInfoRes.text(),
-        hasAccessToken: !!tokenSet.accessToken,
-        hasRefreshToken: !!tokenSet.refreshToken,
-        accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
-        jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
-      });
-    }
-    const rawUserInfo = await rawUserInfoRes.json();
+    const rawUserInfo = await fetchRawGithubUserInfo(tokenSet);
 
     const emailsRes = await fetch("https://api.github.com/user/emails", {
       headers: {
@@ -104,3 +132,74 @@ export class GithubProvider extends OAuthBaseProvider {
     return res.ok;
   }
 }
+
+const testTokenSet: TokenSet = { accessToken: "ghu_test_token", accessTokenExpiredAt: null };
+
+import.meta.vitest?.test("fetchRawGithubUserInfo returns user info on first success without retrying", async ({ expect }) => {
+  const vi = import.meta.vitest!.vi;
+  const fetchMock = vi.fn(async () => Response.json({ id: 123, name: "Test" }));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    const result = await fetchRawGithubUserInfo(testTokenSet);
+    expect(result).toEqual({ id: 123, name: "Test" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+import.meta.vitest?.test("fetchRawGithubUserInfo retries 401s with 1s then 2s delays and succeeds", async ({ expect }) => {
+  const vi = import.meta.vitest!.vi;
+  vi.useFakeTimers();
+  let callCount = 0;
+  const fetchMock = vi.fn(async () => ++callCount <= 2
+    ? new Response("Bad credentials", { status: 401 })
+    : Response.json({ id: 123 }));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    const promise = fetchRawGithubUserInfo(testTokenSet);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await promise).toEqual({ id: 123 });
+  } finally {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});
+
+import.meta.vitest?.test("fetchRawGithubUserInfo throws with attempt count after 401 retries are exhausted", async ({ expect }) => {
+  const vi = import.meta.vitest!.vi;
+  vi.useFakeTimers();
+  const fetchMock = vi.fn(async () => new Response("Bad credentials", { status: 401 }));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    const promise = fetchRawGithubUserInfo(testTokenSet);
+    const rejection = expect(promise).rejects.toThrow("Error fetching user info from GitHub provider: Status code 401 (attempt 3)");
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});
+
+import.meta.vitest?.test("fetchRawGithubUserInfo does not retry non-401 statuses", async ({ expect }) => {
+  const vi = import.meta.vitest!.vi;
+  const fetchMock = vi.fn(async () => new Response("Forbidden", { status: 403 }));
+  vi.stubGlobal("fetch", fetchMock);
+  try {
+    await expect(fetchRawGithubUserInfo(testTokenSet)).rejects.toThrow("Error fetching user info from GitHub provider: Status code 403 (attempt 1)");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
