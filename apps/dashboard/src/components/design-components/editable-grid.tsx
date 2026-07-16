@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -10,29 +13,23 @@ import {
   Spinner,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useAsyncCallback } from "@hexclave/shared/dist/hooks/use-async-callback";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { ArrowCounterClockwise, Check, FloppyDisk, X } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
-import { DesignButton, useDesignEditMode, DesignInput } from "@hexclave/dashboard-ui-components";
+import { DesignButton, useDesignEditMode } from "@hexclave/dashboard-ui-components";
+import {
+  CaretDown,
+  Check,
+  PencilSimple,
+  X,
+} from "@phosphor-icons/react";
+import { useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 
 export type DesignEditableGridSize = "sm" | "md";
 
-const sizeConfig = {
-  sm: { height: "h-7", minHeight: "min-h-7", padding: "px-2", customPl: "pl-2", gapX: "gap-x-1.5", interColPl: "lg:[&>*:nth-child(4n+3)]:pl-3" },
-  md: { height: "h-8", minHeight: "min-h-8", padding: "px-3", customPl: "pl-3", gapX: "gap-x-3", interColPl: "lg:[&>*:nth-child(4n+3)]:pl-5" },
-} as const;
-
-// Ghost mode: hide visual decorations (bg, border, shadow, ring) by default
-const ghostFieldClasses = "bg-transparent dark:bg-transparent border-transparent dark:border-transparent shadow-none ring-0";
-// Ghost mode: reveal visual decorations on hover
-const ghostFieldHoverClasses = "hover:bg-white/80 dark:hover:bg-foreground/[0.03] hover:border-black/[0.08] dark:hover:border-white/[0.06] hover:shadow-sm hover:ring-1 hover:ring-black/[0.08] dark:hover:ring-white/[0.06]";
-
 type BaseItemProps = {
   itemKey?: string,
-  icon: React.ReactNode,
+  icon: ReactNode,
   name: string,
+  description?: string,
   tooltip?: string,
 };
 
@@ -43,6 +40,7 @@ type TextItem = BaseItemProps & {
   normalizeInput?: (value: string) => string,
   readOnly?: boolean,
   placeholder?: string,
+  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"],
 };
 
 type BooleanItem = BaseItemProps & {
@@ -54,7 +52,7 @@ type BooleanItem = BaseItemProps & {
   falseLabel?: string,
 };
 
-type DropdownOption = {
+export type DesignEditableGridDropdownOption = {
   value: string,
   label: string,
   disabled?: boolean,
@@ -64,19 +62,20 @@ type DropdownOption = {
 type DropdownItem = BaseItemProps & {
   type: "dropdown",
   value: string,
-  options: DropdownOption[],
+  options: DesignEditableGridDropdownOption[],
   onUpdate?: (value: string) => Promise<void>,
   readOnly?: boolean,
+  placeholder?: string,
   extraAction?: {
     label: string,
-    onClick: () => void,
+    onClick: () => void | Promise<void>,
   },
 };
 
 type CustomDropdownItem = BaseItemProps & {
   type: "custom-dropdown",
-  triggerContent: React.ReactNode,
-  popoverContent: React.ReactNode,
+  triggerContent: ReactNode,
+  popoverContent: ReactNode,
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
   disabled?: boolean,
@@ -84,14 +83,14 @@ type CustomDropdownItem = BaseItemProps & {
 
 type CustomButtonItem = BaseItemProps & {
   type: "custom-button",
-  children: React.ReactNode,
-  onClick: () => void,
+  children: ReactNode,
+  onClick: () => void | Promise<void>,
   disabled?: boolean,
 };
 
 type CustomContentItem = BaseItemProps & {
   type: "custom",
-  children: React.ReactNode,
+  children: ReactNode,
 };
 
 export type DesignEditableGridItem =
@@ -102,7 +101,7 @@ export type DesignEditableGridItem =
   | CustomButtonItem
   | CustomContentItem;
 
-type DesignEditableGridProps = {
+export type DesignEditableGridProps = {
   items: DesignEditableGridItem[],
   columns?: 1 | 2,
   size?: DesignEditableGridSize,
@@ -112,564 +111,538 @@ type DesignEditableGridProps = {
   hasChanges?: boolean,
   onSave?: () => Promise<void>,
   onDiscard?: () => void,
-  externalModifiedKeys?: Set<string>,
+  externalModifiedKeys?: ReadonlySet<string>,
+  "aria-label"?: string,
 };
 
-type DesignEditableInputProps = {
-  value: string,
-  onUpdate?: (value: string) => Promise<void>,
-  normalizeInput?: (value: string) => string,
-  readOnly?: boolean,
-  placeholder?: string,
-  inputClassName?: string,
-  shiftTextToLeft?: boolean,
-  mode?: "text" | "password",
+type FieldSizeConfig = {
+  control: "sm" | "md",
+  controlHeight: string,
+  controlPadding: string,
+  controlText: string,
+  labelHeight: string,
+  iconSize: string,
+  gapX: string,
+  gapY: string,
 };
 
-function DesignEditableInput({
-  value,
-  onUpdate,
-  normalizeInput,
-  readOnly,
-  placeholder,
-  inputClassName,
-  shiftTextToLeft,
-  mode = "text",
-  editMode,
-  sz,
-}: DesignEditableInputProps & { editMode: boolean, sz: typeof sizeConfig[DesignEditableGridSize] }) {
-  const [editValue, setEditValue] = useState<string | null>(null);
-  const [hasChanged, setHasChanged] = useState(false);
-  const editing = editValue !== null;
-  const forceAllowBlur = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const acceptRef = useRef<HTMLButtonElement>(null);
-  const [handleUpdate, isLoading] = useAsyncCallback(async (nextValue: string) => {
-    await onUpdate?.(nextValue);
-  }, [onUpdate]);
+const sizeConfig = new Map<DesignEditableGridSize, FieldSizeConfig>([
+  ["sm", {
+    control: "sm",
+    controlHeight: "h-8",
+    controlPadding: "px-2.5",
+    controlText: "text-sm",
+    labelHeight: "min-h-8",
+    iconSize: "h-6 w-6",
+    gapX: "gap-x-3",
+    gapY: "gap-y-3",
+  }],
+  ["md", {
+    control: "md",
+    controlHeight: "h-9",
+    controlPadding: "px-3",
+    controlText: "text-sm",
+    labelHeight: "min-h-9",
+    iconSize: "h-7 w-7",
+    gapX: "gap-x-4",
+    gapY: "gap-y-4",
+  }],
+]);
 
-  return <div
-    ref={containerRef}
-    className="flex items-center relative w-full"
-    onFocus={() => {
-      if (!readOnly) {
-        setEditValue(editValue ?? value);
-      }
-    }}
-    onBlur={() => {
-      if (forceAllowBlur.current) return;
-      if (!hasChanged) {
-        setEditValue(null);
-      } else if (confirm("You have unapplied changes. Would you like to save them?")) {
-        acceptRef.current?.click();
-      } else {
-        setEditValue(null);
-        setHasChanged(false);
-      }
-    }}
-    onMouseDown={(ev) => {
-      if (containerRef.current?.contains(ev.target as Node)) {
-        ev.preventDefault();
-        return false;
-      }
-    }}
-  >
-    <DesignInput
-      type={mode === "password" ? "password" : "text"}
-      ref={inputRef}
-      readOnly={readOnly}
-      disabled={isLoading}
-      placeholder={placeholder}
-      tabIndex={readOnly ? -1 : undefined}
-      size="sm"
-      className={cn(
-        "w-full text-sm", sz.height, sz.padding,
-        !readOnly && "hover:cursor-pointer",
-        !readOnly && "focus:cursor-[unset]",
-        readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
-        shiftTextToLeft && "ml-[-7px]",
-        !editMode && ghostFieldClasses,
-        !editMode && !readOnly && ghostFieldHoverClasses,
-        inputClassName,
-      )}
-      value={editValue ?? value}
-      autoComplete="off"
-      style={{ textOverflow: "ellipsis" }}
-      onChange={(e) => {
-        setEditValue(normalizeInput?.(e.target.value) ?? e.target.value);
-        setHasChanged(true);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          acceptRef.current?.click();
-        }
-      }}
-      onMouseDown={(ev) => {
-        ev.stopPropagation();
-      }}
-    />
-    <div
-      className="flex gap-1 overflow-hidden transition-all duration-200 ease-in-out"
-      style={{
-        width: editing ? "4rem" : 0,
-        marginLeft: editing ? "0.5rem" : 0,
-        opacity: editing ? 1 : 0,
-      }}
-    >
-      {["accept", "reject"].map((action) => (
-        <DesignButton
-          ref={action === "accept" ? acceptRef : undefined}
-          key={action}
-          disabled={isLoading}
-          type="button"
-          variant="plain"
-          size="icon"
-          className={cn(
-            "h-7 w-7 rounded-lg flex items-center justify-center backdrop-blur-sm",
-            "border border-black/[0.08] dark:border-white/[0.08]",
-            "bg-white/75 dark:bg-foreground/[0.04]",
-            "shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
-            "transition-colors duration-150 hover:transition-none",
-            action === "accept"
-              ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] hover:ring-emerald-500/30"
-              : "text-red-600 dark:text-red-400 hover:bg-red-500/[0.12] hover:ring-red-500/30",
-          )}
-          onClick={() => runAsynchronouslyWithAlert(async () => {
-            try {
-              forceAllowBlur.current = true;
-              inputRef.current?.blur();
-              if (action === "accept") {
-                await handleUpdate(editValue ?? throwErr("No value to update"));
-              }
-              setEditValue(null);
-              setHasChanged(false);
-            } finally {
-              forceAllowBlur.current = false;
-            }
-          })}
-        >
-          {action === "accept"
-            ? <Check weight="bold" className="h-3.5 w-3.5" />
-            : <X weight="bold" className="h-3.5 w-3.5" />}
-        </DesignButton>
-      ))}
-    </div>
-  </div>;
+/**
+ * Shared editable control surface for DesignEditableGrid and page-local
+ * custom triggers that sit inside a grid value cell. White / neutral only —
+ * never tinted theme backgrounds that read as purple on glass pages.
+ */
+export const designEditableGridControlClassName = cn(
+  "rounded-lg border border-black/[0.1] bg-white text-foreground shadow-none",
+  "hover:bg-zinc-50 hover:border-black/[0.16]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/[0.12]",
+  "dark:border-white/[0.1] dark:bg-zinc-950 dark:hover:bg-zinc-900 dark:hover:border-white/[0.18]",
+  "dark:focus-visible:ring-white/[0.16]",
+  "transition-colors duration-150 hover:transition-none",
+);
+
+export const designEditableGridPopoverClassName = cn(
+  "w-64 rounded-xl border border-black/[0.1] bg-white p-3 shadow-lg",
+  "dark:border-white/[0.1] dark:bg-zinc-950",
+);
+
+function getSizeConfig(size: DesignEditableGridSize) {
+  const config = sizeConfig.get(size);
+  if (config == null) {
+    throw new Error(`DesignEditableGrid does not define styles for size "${size}".`);
+  }
+  return config;
 }
 
-function GridLabel({
-  icon,
-  name,
-  tooltip,
-  isModified,
-  sz,
+function ReadOnlyValue({
+  children,
+  placeholder,
 }: {
-  icon: React.ReactNode,
-  name: string,
-  tooltip?: string,
-  isModified?: boolean,
-  sz: typeof sizeConfig[DesignEditableGridSize],
+  children: ReactNode,
+  placeholder?: string,
 }) {
-  const label = (
-    <span className={cn("flex items-center gap-2 text-xs font-semibold text-foreground", sz.height)}>
-      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-foreground/[0.04] text-muted-foreground">
-        {icon}
-      </span>
-      <span className="whitespace-nowrap">{name}</span>
-      <span className={cn("h-1.5 w-1.5 rounded-full bg-amber-500 transition-opacity duration-150", isModified ? "opacity-100" : "opacity-0")} />
+  const hasValue = children !== "";
+
+  return (
+    <span className={cn(
+      "block min-w-0 truncate text-sm",
+      hasValue ? "text-foreground" : "text-muted-foreground/70",
+    )}>
+      {hasValue ? children : (placeholder ?? "—")}
     </span>
   );
-
-  if (tooltip) {
-    return (
-      <SimpleTooltip tooltip={tooltip}>
-        {label}
-      </SimpleTooltip>
-    );
-  }
-
-  return label;
 }
 
-function EditableBooleanField({
-  value,
-  onUpdate,
-  readOnly,
-  trueLabel = "Yes",
-  falseLabel = "No",
+function EditableTextField({
+  item,
   editMode,
-  sz,
+  size,
 }: {
-  value: boolean,
-  onUpdate?: (value: boolean) => Promise<void>,
-  readOnly?: boolean,
-  trueLabel?: string,
-  falseLabel?: string,
+  item: TextItem,
   editMode: boolean,
-  sz: typeof sizeConfig[DesignEditableGridSize],
+  size: FieldSizeConfig,
 }) {
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftValue, setDraftValue] = useState(item.value);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const canEdit = item.readOnly !== true && item.onUpdate != null;
 
-  const handleChange = async (newValue: string) => {
-    if (!onUpdate) return;
-    setIsUpdating(true);
+  const beginEditing = () => {
+    if (!canEdit) {
+      return;
+    }
+    setDraftValue(item.value);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setDraftValue(item.value);
+    setEditing(false);
+  };
+
+  const save = async () => {
+    if (item.onUpdate == null) {
+      throw new Error(`Editable text item "${item.name}" requires an onUpdate handler.`);
+    }
+
+    setIsSaving(true);
     try {
-      await onUpdate(newValue === "true");
+      await item.onUpdate(draftValue);
+      setEditing(false);
     } finally {
-      setIsUpdating(false);
+      setIsSaving(false);
     }
   };
 
-  if (readOnly) {
+  if (!canEdit && !editing) {
     return (
-      <span className={cn(
-        "flex w-full items-center rounded-xl text-sm text-muted-foreground", sz.height, sz.padding,
-        editMode
-          ? "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]"
-          : "border border-transparent"
-      )}>
-        {value ? trueLabel : falseLabel}
-      </span>
+      <div className={cn("flex w-full items-center", size.controlHeight, size.controlPadding)}>
+        <ReadOnlyValue placeholder={item.placeholder}>{item.value}</ReadOnlyValue>
+      </div>
     );
   }
 
+  // Idle and edit share the same shell so height/width/radius never jump —
+  // only the border weight and trailing actions change.
   return (
-    <div className="relative w-full">
-      <Select
-        value={value ? "true" : "false"}
-        onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
-        disabled={isUpdating}
-      >
-        <SelectTrigger
+    <div
+      role={editing ? undefined : "button"}
+      tabIndex={editing ? undefined : 0}
+      aria-label={editing ? undefined : `Edit ${item.name}`}
+      className={cn(
+        "flex w-full min-w-0 items-center gap-1",
+        size.controlHeight,
+        size.controlPadding,
+        designEditableGridControlClassName,
+        editing
+          ? "border-black/[0.28] dark:border-white/[0.32]"
+          : editMode && "border-black/[0.18] dark:border-white/[0.22]",
+        !editing && "cursor-text",
+      )}
+      onClick={() => {
+        if (!editing) {
+          beginEditing();
+        } else {
+          inputRef.current?.focus();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (editing) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          beginEditing();
+        }
+      }}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          autoFocus
+          aria-label={item.name}
+          autoComplete="off"
+          disabled={isSaving}
+          inputMode={item.inputMode}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setDraftValue(item.normalizeInput?.(nextValue) ?? nextValue);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              runAsynchronouslyWithAlert(save());
+            }
+            if (event.key === "Escape") {
+              cancelEditing();
+            }
+          }}
+          placeholder={item.placeholder}
+          value={draftValue}
           className={cn(
-            "w-full rounded-xl text-sm text-foreground", sz.height, sz.padding,
-            "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-            "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-            "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
-            "transition-colors duration-150 hover:transition-none",
-            "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50",
-            isUpdating && "[&_span]:invisible",
-            !editMode && ghostFieldClasses,
-            !editMode && ghostFieldHoverClasses,
-            !editMode && "[&>svg]:opacity-0 hover:[&>svg]:opacity-50",
+            "min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none",
+            "placeholder:text-muted-foreground/70",
+            "disabled:cursor-not-allowed disabled:opacity-50",
           )}
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="true">{trueLabel}</SelectItem>
-          <SelectItem value="false">{falseLabel}</SelectItem>
-        </SelectContent>
-      </Select>
-      {isUpdating && (
-        <Spinner
-          size={14}
-          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        />
+      ) : (
+        <span className="min-w-0 flex-1">
+          <ReadOnlyValue placeholder={item.placeholder}>{item.value}</ReadOnlyValue>
+        </span>
+      )}
+      {editing ? (
+        <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+          <DesignButton
+            aria-label={`Save ${item.name}`}
+            className="h-6 w-6 rounded-md p-0 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+            disabled={draftValue === item.value || isSaving}
+            loading={isSaving}
+            onClick={save}
+            size="icon"
+            variant="ghost"
+          >
+            <Check aria-hidden className="h-3.5 w-3.5" weight="bold" />
+          </DesignButton>
+          <DesignButton
+            aria-label={`Cancel editing ${item.name}`}
+            className="h-6 w-6 rounded-md p-0 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            disabled={isSaving}
+            onClick={cancelEditing}
+            size="icon"
+            variant="ghost"
+          >
+            <X aria-hidden className="h-3.5 w-3.5" weight="bold" />
+          </DesignButton>
+        </div>
+      ) : (
+        <PencilSimple
+          aria-hidden
+          className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
         />
       )}
     </div>
   );
 }
 
-function EditableDropdownField({
+function AsyncSelectField({
   value,
   options,
   onUpdate,
   readOnly,
-  extraAction,
+  placeholder,
+  name,
   editMode,
-  sz,
+  size,
+  extraAction,
 }: {
   value: string,
-  options: DropdownOption[],
+  options: DesignEditableGridDropdownOption[],
   onUpdate?: (value: string) => Promise<void>,
   readOnly?: boolean,
-  extraAction?: { label: string, onClick: () => void },
+  placeholder?: string,
+  name: string,
   editMode: boolean,
-  sz: typeof sizeConfig[DesignEditableGridSize],
+  size: FieldSizeConfig,
+  extraAction?: DropdownItem["extraAction"],
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const selectedOption = options.find((option) => option.value === value);
+  const canEdit = readOnly !== true && onUpdate != null;
 
-  const handleChange = async (newValue: string) => {
-    if (!onUpdate) return;
+  if (!canEdit) {
+    return (
+      <div className={cn("flex w-full items-center", size.controlHeight, size.controlPadding)}>
+        <ReadOnlyValue placeholder={placeholder}>{selectedOption?.label ?? value}</ReadOnlyValue>
+      </div>
+    );
+  }
+
+  const updateValue = async (nextValue: string) => {
     setIsUpdating(true);
     try {
-      await onUpdate(newValue);
+      await onUpdate(nextValue);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const selectedOption = options.find(option => option.value === value);
-
-  if (readOnly) {
-    return (
-      <span className={cn(
-        "flex w-full items-center rounded-xl text-sm text-muted-foreground", sz.height, sz.padding,
-        editMode
-          ? "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]"
-          : "border border-transparent"
-      )}>
-        {selectedOption?.label ?? value}
-      </span>
-    );
-  }
-
   return (
     <div className="relative w-full">
       <Select
-        value={value}
-        onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
         disabled={isUpdating}
+        onValueChange={(nextValue) => runAsynchronouslyWithAlert(updateValue(nextValue))}
+        value={value}
       >
         <SelectTrigger
+          aria-label={name}
           className={cn(
-            "w-full rounded-xl text-sm text-foreground", sz.height, sz.padding,
-            "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-            "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-            "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
-            "transition-colors duration-150 hover:transition-none",
-            "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50",
-            isUpdating && "[&_span]:invisible",
-            !editMode && ghostFieldClasses,
-            !editMode && ghostFieldHoverClasses,
-            !editMode && "[&>svg]:opacity-0 hover:[&>svg]:opacity-50",
+            "w-full shadow-none ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50",
+            size.controlHeight,
+            size.controlPadding,
+            size.controlText,
+            designEditableGridControlClassName,
+            editMode && "border-black/[0.18] dark:border-white/[0.22]",
+            isUpdating && "[&>span]:opacity-0",
           )}
         >
-          <SelectValue />
+          <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="bg-white dark:bg-zinc-950 border-black/[0.1] dark:border-white/[0.1]">
           {options.map((option) => {
-            const optionItem = (
+            const optionContent = (
               <SelectItem
+                className={option.disabled ? "opacity-50" : undefined}
+                disabled={option.disabled}
                 key={option.value}
                 value={option.value}
-                disabled={option.disabled}
-                className={option.disabled ? "opacity-50" : undefined}
               >
                 {option.label}
               </SelectItem>
             );
-            if (option.disabled && option.disabledReason) {
+
+            if (option.disabled && option.disabledReason != null) {
               return (
                 <SimpleTooltip key={option.value} tooltip={option.disabledReason}>
-                  <div>{optionItem}</div>
+                  <div>{optionContent}</div>
                 </SimpleTooltip>
               );
             }
-            return optionItem;
+            return optionContent;
           })}
-          {extraAction && (
+          {extraAction != null && (
             <>
-              <div className="h-px bg-border my-1" />
-              <button
-                type="button"
-                className="w-full px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm cursor-pointer"
-                onClick={(e) => {
-                e.preventDefault();
-                extraAction.onClick();
-                }}
+              <div className="my-1 h-px bg-black/[0.08] dark:bg-white/[0.1]" />
+              <DesignButton
+                className="h-8 w-full justify-start rounded-md px-2 text-xs"
+                onClick={extraAction.onClick}
+                size="sm"
+                variant="ghost"
               >
                 {extraAction.label}
-              </button>
+              </DesignButton>
             </>
           )}
         </SelectContent>
       </Select>
       {isUpdating && (
         <Spinner
+          aria-label={`Updating ${name}`}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
           size={14}
-          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
         />
       )}
     </div>
   );
 }
 
-function CustomButtonField({
-  children,
-  onClick,
-  disabled,
-  editMode,
-  sz,
-}: {
-  children: React.ReactNode,
-  onClick: () => void | Promise<void>,
-  disabled?: boolean,
-  editMode: boolean,
-  sz: typeof sizeConfig[DesignEditableGridSize],
-}) {
-  return (
-    <DesignButton
-      variant="outline"
-      size="sm"
-      className={cn(
-        "w-full rounded-xl text-left text-sm text-foreground truncate justify-start", sz.height, sz.padding,
-        "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-        "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-        !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
-        "transition-colors duration-150 hover:transition-none",
-        disabled && "opacity-50 cursor-not-allowed",
-        !editMode && ghostFieldClasses,
-        !editMode && !disabled && ghostFieldHoverClasses,
-      )}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </DesignButton>
-  );
-}
-
 function CustomDropdownField({
-  triggerContent,
-  disabled,
+  item,
   editMode,
-  sz,
+  size,
 }: {
-  triggerContent: React.ReactNode,
-  disabled?: boolean,
+  item: CustomDropdownItem,
   editMode: boolean,
-  sz: typeof sizeConfig[DesignEditableGridSize],
+  size: FieldSizeConfig,
 }) {
   return (
-    <button
-      disabled={disabled}
-      className={cn(
-        "w-full rounded-xl text-left text-sm text-foreground truncate", sz.height, sz.padding,
-        "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-        "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-        !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
-        "transition-colors duration-150 hover:transition-none",
-        disabled && "opacity-50 cursor-not-allowed",
-        !editMode && ghostFieldClasses,
-        !editMode && !disabled && ghostFieldHoverClasses,
-      )}
-    >
-      {triggerContent}
-    </button>
+    <Popover open={item.open} onOpenChange={item.onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={item.name}
+          disabled={item.disabled}
+          className={cn(
+            "flex w-full items-center justify-between gap-2 text-left font-normal",
+            size.controlHeight,
+            size.controlPadding,
+            size.controlText,
+            designEditableGridControlClassName,
+            editMode && "border-black/[0.18] dark:border-white/[0.22]",
+            item.disabled && "cursor-not-allowed opacity-50",
+          )}
+        >
+          <span className="min-w-0 truncate">{item.triggerContent}</span>
+          <CaretDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className={designEditableGridPopoverClassName}>
+        {item.popoverContent}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-function GridItemValue({ item, editMode, sz }: { item: DesignEditableGridItem, editMode: boolean, sz: typeof sizeConfig[DesignEditableGridSize] }) {
+function ItemValue({
+  item,
+  editMode,
+  size,
+}: {
+  item: DesignEditableGridItem,
+  editMode: boolean,
+  size: FieldSizeConfig,
+}) {
   switch (item.type) {
     case "text": {
-      return (
-        <DesignEditableInput
-          value={item.value}
-          onUpdate={item.onUpdate}
-          normalizeInput={item.normalizeInput}
-          readOnly={item.readOnly}
-          placeholder={item.placeholder}
-          editMode={editMode}
-          sz={sz}
-        />
-      );
+      return <EditableTextField editMode={editMode} item={item} size={size} />;
     }
     case "boolean": {
+      const onUpdate = item.onUpdate;
       return (
-        <EditableBooleanField
-          value={item.value}
-          onUpdate={item.onUpdate}
-          readOnly={item.readOnly}
-          trueLabel={item.trueLabel}
-          falseLabel={item.falseLabel}
+        <AsyncSelectField
           editMode={editMode}
-          sz={sz}
+          name={item.name}
+          onUpdate={onUpdate == null ? undefined : async (value) => await onUpdate(value === "true")}
+          options={[
+            { value: "true", label: item.trueLabel ?? "Yes" },
+            { value: "false", label: item.falseLabel ?? "No" },
+          ]}
+          readOnly={item.readOnly}
+          size={size}
+          value={item.value ? "true" : "false"}
         />
       );
     }
     case "dropdown": {
       return (
-        <EditableDropdownField
-          value={item.value}
-          options={item.options}
-          onUpdate={item.onUpdate}
-          readOnly={item.readOnly}
-          extraAction={item.extraAction}
+        <AsyncSelectField
           editMode={editMode}
-          sz={sz}
+          extraAction={item.extraAction}
+          name={item.name}
+          onUpdate={item.onUpdate}
+          options={item.options}
+          placeholder={item.placeholder}
+          readOnly={item.readOnly}
+          size={size}
+          value={item.value}
         />
       );
     }
     case "custom-dropdown": {
-      return (
-        <CustomDropdownField
-          triggerContent={item.triggerContent}
-          disabled={item.disabled}
-          editMode={editMode}
-          sz={sz}
-        />
-      );
+      return <CustomDropdownField editMode={editMode} item={item} size={size} />;
     }
     case "custom-button": {
       return (
-        <CustomButtonField
-          onClick={item.onClick}
+        <button
+          type="button"
           disabled={item.disabled}
-          editMode={editMode}
-          sz={sz}
+          onClick={() => runAsynchronouslyWithAlert(item.onClick())}
+          className={cn(
+            "flex w-full items-center justify-start gap-2 text-left font-normal",
+            size.controlHeight,
+            size.controlPadding,
+            size.controlText,
+            designEditableGridControlClassName,
+            editMode && "border-black/[0.18] dark:border-white/[0.22]",
+            item.disabled && "cursor-not-allowed opacity-50",
+          )}
         >
-          {item.children}
-        </CustomButtonField>
+          <span className="min-w-0 truncate">{item.children}</span>
+        </button>
       );
     }
     case "custom": {
-      return <div className={cn("w-full", sz.customPl)}>{item.children}</div>;
+      return <div className="min-w-0 w-full text-sm text-foreground">{item.children}</div>;
     }
   }
 }
 
-function GridItemContent({ item, isModified, editMode, sz }: { item: DesignEditableGridItem, isModified?: boolean, editMode: boolean, sz: typeof sizeConfig[DesignEditableGridSize] }) {
-  return (
-    <>
-      <GridLabel icon={item.icon} name={item.name} tooltip={item.tooltip} isModified={isModified} sz={sz} />
-      <div className={cn("min-w-0 w-full flex items-center", sz.minHeight)}>
-        <GridItemValue item={item} editMode={editMode} sz={sz} />
-      </div>
-    </>
+function ItemLabel({
+  item,
+  isModified,
+  size,
+}: {
+  item: DesignEditableGridItem,
+  isModified: boolean,
+  size: FieldSizeConfig,
+}) {
+  const label = (
+    <div className={cn("flex min-w-0 items-center gap-2", size.labelHeight)}>
+      <span className={cn(
+        "flex shrink-0 items-center justify-center rounded-md bg-zinc-100 text-muted-foreground",
+        "dark:bg-zinc-900",
+        size.iconSize,
+      )}>
+        {item.icon}
+      </span>
+      <span className="min-w-0">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-xs font-semibold text-foreground">{item.name}</span>
+          {isModified && (
+            <span
+              aria-label="Modified"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+            />
+          )}
+        </span>
+        {item.description != null && (
+          <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+            {item.description}
+          </span>
+        )}
+      </span>
+    </div>
   );
+
+  if (item.tooltip == null) {
+    return label;
+  }
+
+  return <SimpleTooltip tooltip={item.tooltip}>{label}</SimpleTooltip>;
 }
 
-function DesignInlineSaveDiscard({
-  hasChanges,
-  onSave,
+function SaveBar({
   onDiscard,
+  onSave,
 }: {
-  hasChanges: boolean,
-  onSave: () => Promise<void>,
   onDiscard: () => void,
+  onSave: () => Promise<void>,
 }) {
-  const [handleSave, isSaving] = useAsyncCallback(onSave, [onSave]);
-
   return (
     <div
-      className={cn(
-        "flex items-center justify-end gap-2 transition-all duration-200 ease-out",
-        hasChanges ? "opacity-100 max-h-12 pt-1.5" : "opacity-0 max-h-0 overflow-hidden pt-0"
-      )}
+      aria-live="polite"
+      className="flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between dark:border-amber-500/20 dark:bg-amber-500/[0.08]"
     >
-      <DesignButton
-        variant="ghost"
-        size="sm"
-        onClick={onDiscard}
-        disabled={isSaving}
-        className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg transition-colors duration-150 hover:transition-none gap-1.5"
-      >
-        <ArrowCounterClockwise className="h-3 w-3" />
-        <span>Discard</span>
-      </DesignButton>
-      <DesignButton
-        size="sm"
-        onClick={handleSave}
-        disabled={isSaving}
-        className="h-8 px-4 text-xs font-medium rounded-lg gap-1.5"
-      >
-        <FloppyDisk className="h-3 w-3" />
-        <span>Save</span>
-      </DesignButton>
+      <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+        <span className="h-2 w-2 rounded-full bg-amber-500" />
+        Unsaved changes
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
+        <DesignButton
+          className="h-8 rounded-lg px-3 text-xs text-muted-foreground"
+          onClick={onDiscard}
+          size="sm"
+          variant="ghost"
+        >
+          Discard
+        </DesignButton>
+        <DesignButton className="h-8 rounded-lg px-3 text-xs" onClick={onSave} size="sm">
+          Save changes
+        </DesignButton>
+      </div>
     </div>
   );
 }
@@ -681,44 +654,54 @@ export function DesignEditableGrid({
   className,
   editMode: editModeProp,
   deferredSave = true,
-  hasChanges,
+  hasChanges = false,
   onSave,
   onDiscard,
   externalModifiedKeys,
+  "aria-label": ariaLabel = "Editable settings",
 }: DesignEditableGridProps) {
   const contextEditMode = useDesignEditMode();
   const editMode = editModeProp ?? contextEditMode;
-  const sz = sizeConfig[size];
+  const resolvedSize = getSizeConfig(size);
+
+  if ((onSave == null) !== (onDiscard == null)) {
+    throw new Error("DesignEditableGrid requires both onSave and onDiscard when either callback is provided.");
+  }
+  if (deferredSave && hasChanges && (onSave == null || onDiscard == null)) {
+    throw new Error("DesignEditableGrid cannot display pending changes without onSave and onDiscard callbacks.");
+  }
 
   const gridCols = columns === 1
-    ? "grid-cols-[min-content_1fr]"
-    : "grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr]";
+    ? "grid-cols-[minmax(7.5rem,max-content)_minmax(0,1fr)]"
+    : "grid-cols-[minmax(7.5rem,max-content)_minmax(0,1fr)] lg:grid-cols-[minmax(7.5rem,max-content)_minmax(0,1fr)_minmax(7.5rem,max-content)_minmax(0,1fr)]";
 
   return (
-    <div className="space-y-2">
-      <div className={cn(
-        "grid text-sm items-center",
-        editMode ? cn(sz.gapX, "gap-y-3") : cn(sz.gapX, "gap-y-0.5"),
-        columns === 2 && sz.interColPl,
-        gridCols,
-        className
-      )}>
-        {items.map((item, index) => (
-          <GridItemContent
-            key={index}
-            item={item}
-            isModified={item.itemKey ? externalModifiedKeys?.has(item.itemKey) : false}
-            editMode={editMode}
-            sz={sz}
-          />
-        ))}
+    <div aria-label={ariaLabel} className="space-y-3" role="group">
+      <div
+        className={cn(
+          "grid items-center text-sm",
+          resolvedSize.gapX,
+          resolvedSize.gapY,
+          columns === 2 && "lg:[&>*:nth-child(4n+3)]:pl-4",
+          gridCols,
+          className,
+        )}
+      >
+        {items.map((item, index) => {
+          const isModified = item.itemKey != null && externalModifiedKeys?.has(item.itemKey) === true;
+          const key = item.itemKey ?? `${item.type}-${item.name}-${index}`;
+          return (
+            <div key={key} className="contents">
+              <ItemLabel isModified={isModified} item={item} size={resolvedSize} />
+              <div className="min-w-0 w-full">
+                <ItemValue editMode={editMode} item={item} size={resolvedSize} />
+              </div>
+            </div>
+          );
+        })}
       </div>
-      {deferredSave && onSave && onDiscard && (
-        <DesignInlineSaveDiscard
-          hasChanges={!!hasChanges}
-          onSave={onSave}
-          onDiscard={onDiscard}
-        />
+      {deferredSave && hasChanges && onSave != null && onDiscard != null && (
+        <SaveBar onDiscard={onDiscard} onSave={onSave} />
       )}
     </div>
   );

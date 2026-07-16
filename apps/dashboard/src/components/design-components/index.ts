@@ -14,7 +14,8 @@ export type {
 } from "../../../../../packages/dashboard-ui-components/src/components/dialog";
 export * from "./analytics-card";
 export * from "./design-tokens";
-export * from "./editable-grid";
+export * from "./editable-grid.tsx";
+export type * from "./editable-grid.tsx";
 export * from "./list";
 export * from "./menu";
 export * from "./select";
