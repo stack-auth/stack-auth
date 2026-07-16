@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, grantProductToCustomer, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionInEffect } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getApplicationFeePercentOrUndefined } from "@/lib/payments/platform-fees";
@@ -113,14 +113,19 @@ export const POST = createSmartRouteHandler({
       });
       // ownedProducts keys use '__null__' for inline products (null productId),
       // so we normalize subscription productIds to match.
-      const activeSubProductIds = new Set(
-        Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId ?? "__null__")
+      // In-effect (not active): this set classifies owned products as
+      // sub-backed vs OTP. A canceled-at-period-end sub still backs its
+      // product until `endedAt`; treating it as an OTP here would wrongly
+      // block switching for the rest of the paid-through window.
+      const nowMillis = Date.now();
+      const subBackedProductIds = new Set(
+        Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => s.productId ?? "__null__")
       );
       const hasOtpInProductLine = Object.entries(ownedProducts).some(
         ([productId, p]) => productId !== body.from_product_id
           && p.productLineId === fromProduct.productLineId
           && p.quantity > 0
-          && !activeSubProductIds.has(productId)
+          && !subBackedProductIds.has(productId)
       );
       if (hasOtpInProductLine) {
         throw new StatusError(400, "Customer already has a one-time purchase in this product line");

@@ -116,9 +116,42 @@ export async function ensureProductIdOrInlineProduct(
 // getCustomerPurchaseContext, OwnedProduct type, getOwnedProductsForCustomerLegacy
 // were removed. All reads now go through customer-data.ts backed by Bulldozer.
 
+/**
+ * Lifecycle/actionability predicate: the subscription is in a state where it
+ * will renew and can be acted on (canceled, switched). This is deliberately
+ * NOT the same question as "does the customer currently have the product" —
+ * a locally-canceled sub keeps entitling the customer until `endedAt` (we
+ * model cancel-at-period-end as `status: canceled` + future `endedAt`). Use
+ * `isSubscriptionInEffect` for entitlement questions; using this one there
+ * makes still-paid-for products masquerade as one-time purchases.
+ */
 export function isActiveSubscription(subscription: { status: string }): boolean {
   const s = subscription.status;
   return s === "active" || s === SubscriptionStatus.active || s === "trialing" || s === SubscriptionStatus.trialing;
+}
+
+/**
+ * Entitlement predicate: the subscription still confers its product/items on
+ * the customer, regardless of whether it will renew. Mirrors Bulldozer's
+ * grant semantics (subscription-start emits on row insert regardless of
+ * status; subscription-end emits at `endedAtMillis`), which is why it is
+ * deliberately status-agnostic: `canceled` subs stay in effect until their
+ * future `endedAt` passes, and `incomplete`/`past_due`/`unpaid` subs that
+ * arrive mid-Stripe-flow count too (they either transition to `active` or to
+ * a terminal status with `endedAt` set — every terminal writer sets
+ * `endedAt`, so `endedAt == null` means "no end scheduled").
+ *
+ * Accepts both row shapes so Bulldozer reads (`endedAtMillis`) and Prisma
+ * reads (`endedAt`) can share the one definition.
+ */
+export function isSubscriptionInEffect(
+  subscription: { endedAtMillis?: number | null, endedAt?: Date | null },
+  nowMillis: number,
+): boolean {
+  const endedAtMillis = subscription.endedAtMillis != null
+    ? subscription.endedAtMillis
+    : subscription.endedAt != null ? subscription.endedAt.getTime() : null;
+  return endedAtMillis == null || endedAtMillis > nowMillis;
 }
 
 /**

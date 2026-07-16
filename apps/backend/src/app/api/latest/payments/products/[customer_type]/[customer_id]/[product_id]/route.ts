@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
+import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription, isSubscriptionInEffect } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
@@ -116,7 +116,17 @@ export const DELETE = createSmartRouteHandler({
         s.productId === params.product_id && isActiveSubscription(s)
       );
       if (subscriptions.length === 0) {
-        // Customer owns the product but via OTP, not subscription
+        // Owned but with no active sub: either it's already winding down
+        // (canceled with a future endedAt — still in effect, not
+        // re-cancelable), or the customer owns it via OTP. Distinguish the
+        // two so a double-cancel doesn't claim the product is an OTP.
+        const nowMillis = Date.now();
+        const windingDown = allSubs.find(s =>
+          s.productId === params.product_id && isSubscriptionInEffect(s, nowMillis)
+        );
+        if (windingDown) {
+          throw new StatusError(400, "This subscription is already canceled and ends at the end of the current billing period.");
+        }
         throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
       }
     }
@@ -126,7 +136,13 @@ export const DELETE = createSmartRouteHandler({
     for (const subscription of subscriptions) {
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
-        await stripeClient.subscriptions.cancel(subscription.stripeSubscriptionId);
+        // Cancel at period end (not `subscriptions.cancel()`, which ends the
+        // sub immediately) — the confirm dialog promises the customer keeps
+        // what they paid for until the period ends, and the local-sub branch
+        // below implements the same semantics via a future `endedAt`. The
+        // Stripe webhook syncs the local row (and flips it to `canceled`
+        // with `endedAt` set when Stripe ends it at the period boundary).
+        await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
         continue;
       }
       await prisma.subscription.update({

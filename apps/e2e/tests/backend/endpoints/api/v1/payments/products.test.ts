@@ -221,12 +221,81 @@ it("should allow a signed-in user to cancel their own subscription product", asy
               "stackable": false,
             },
             "quantity": 1,
-            "subscription": null,
-            "type": "one_time",
+            "subscription": {
+              "cancel_at_period_end": true,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": false,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },
       },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should report a canceled-at-period-end subscription as still in effect, and reject a second cancel", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // The product must NOT masquerade as a one-time purchase during the
+  // paid-through window (it used to: the list route only recognized
+  // active/trialing subs, so a canceled-with-future-endedAt sub fell through
+  // to the OTP branch).
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(listResponse.status).toBe(200);
+  const item = (listResponse.body as { items: Array<{ id: string, type: string, subscription: { cancel_at_period_end: boolean, is_cancelable: boolean } | null }> }).items.find((i) => i.id === "pro-plan");
+  expect(item?.type).toBe("subscription");
+  expect(item?.subscription?.cancel_at_period_end).toBe(true);
+  expect(item?.subscription?.is_cancelable).toBe(false);
+
+  // Canceling again must not claim the product is a one-time purchase, nor
+  // silently rewrite the wind-down state.
+  const secondCancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(secondCancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This subscription is already canceled and ends at the end of the current billing period.",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -401,8 +470,13 @@ it("should cancel all stackable subscription quantities", async ({ expect }) => 
               "stackable": true,
             },
             "quantity": 2,
-            "subscription": null,
-            "type": "one_time",
+            "subscription": {
+              "cancel_at_period_end": true,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": false,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -1018,8 +1092,13 @@ it("should allow canceling an inline product subscription via subscription_id", 
               "stackable": false,
             },
             "quantity": 1,
-            "subscription": null,
-            "type": "one_time",
+            "subscription": {
+              "cancel_at_period_end": true,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": false,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },

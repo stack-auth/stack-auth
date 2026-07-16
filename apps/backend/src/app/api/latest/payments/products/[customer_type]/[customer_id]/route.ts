@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionInEffect, productToInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -65,11 +65,16 @@ export const GET = createSmartRouteHandler({
         customerId: params.customer_id,
       }),
     ]);
-    // Deprecated: map productId → active subscription for backward-compat fields.
+    // Deprecated: map productId → subscription for backward-compat fields.
     // ownedProducts keys use '__null__' for inline products (null productId),
     // so we normalize subscription productIds to match.
-    const activeSubByProductId = new Map(
-      Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => [s.productId ?? "__null__", s] as const)
+    // In-effect (not active): a canceled-at-period-end sub still backs its
+    // owned product until `endedAt`, and must keep rendering as a
+    // subscription ("Ends on <date>") rather than falling through to the
+    // one-time-purchase branch below.
+    const nowMillis = Date.now();
+    const inEffectSubByProductId = new Map(
+      Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => [s.productId ?? "__null__", s] as const)
     );
 
     // Build switch options per product line (available plan upgrades/downgrades)
@@ -108,7 +113,7 @@ export const GET = createSmartRouteHandler({
           ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== productId)
           : undefined;
         // Deprecated fields for backward compat
-        const sub = activeSubByProductId.get(productId);
+        const sub = inEffectSubByProductId.get(productId);
         const type = sub ? "subscription" as const : "one_time" as const;
 
         return {
@@ -128,7 +133,10 @@ export const GET = createSmartRouteHandler({
               subscription_id: sub.id,
               current_period_end: sub.currentPeriodEndMillis ? new Date(sub.currentPeriodEndMillis).toISOString() : null,
               cancel_at_period_end: sub.cancelAtPeriodEnd,
-              is_cancelable: true,
+              // A sub that's already winding down (locally canceled, or a
+              // Stripe sub with cancel_at_period_end set) can't be canceled
+              // again — the DELETE route would 400 on it anyway.
+              is_cancelable: isActiveSubscription(sub) && !sub.cancelAtPeriodEnd,
             } : null,
             switch_options: switchOptions,
           },
