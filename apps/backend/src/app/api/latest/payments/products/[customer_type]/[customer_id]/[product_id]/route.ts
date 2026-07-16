@@ -116,10 +116,9 @@ export const DELETE = createSmartRouteHandler({
         s.productId === params.product_id && isActiveSubscription(s)
       );
       if (subscriptions.length === 0) {
-        // Owned but with no active sub: either it's already winding down
-        // (canceled with a future endedAt — still in effect, not
-        // re-cancelable), or the customer owns it via OTP. Distinguish the
-        // two so a double-cancel doesn't claim the product is an OTP.
+        // Owned but no active sub: either already winding down (canceled
+        // with a future endedAt) or owned via OTP — don't claim the former
+        // is a one-time purchase.
         const nowMillis = Date.now();
         const windingDown = allSubs.find(s =>
           s.productId === params.product_id && isSubscriptionInEffect(s, nowMillis)
@@ -136,12 +135,9 @@ export const DELETE = createSmartRouteHandler({
     for (const subscription of subscriptions) {
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
-        // Cancel at period end (not `subscriptions.cancel()`, which ends the
-        // sub immediately) — the confirm dialog promises the customer keeps
-        // what they paid for until the period ends, and the local-sub branch
-        // below implements the same semantics via a future `endedAt`. The
-        // Stripe webhook syncs the local row (and flips it to `canceled`
-        // with `endedAt` set when Stripe ends it at the period boundary).
+        // Cancel at period end, not `subscriptions.cancel()` (immediate) —
+        // matches the confirm dialog and the local-sub branch below. The
+        // webhook syncs the local row when Stripe ends it.
         await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
         continue;
       }

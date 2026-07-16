@@ -273,10 +273,7 @@ it("should report a canceled-at-period-end subscription as still in effect, and 
   });
   expect(cancelResponse.status).toBe(200);
 
-  // The product must NOT masquerade as a one-time purchase during the
-  // paid-through window (it used to: the list route only recognized
-  // active/trialing subs, so a canceled-with-future-endedAt sub fell through
-  // to the OTP branch).
+  // Must not masquerade as a one-time purchase during the paid-through window
   const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
   });
@@ -286,8 +283,6 @@ it("should report a canceled-at-period-end subscription as still in effect, and 
   expect(item?.subscription?.cancel_at_period_end).toBe(true);
   expect(item?.subscription?.is_cancelable).toBe(false);
 
-  // Canceling again must not claim the product is a one-time purchase, nor
-  // silently rewrite the wind-down state.
   const secondCancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
     method: "DELETE",
     accessType: "client",

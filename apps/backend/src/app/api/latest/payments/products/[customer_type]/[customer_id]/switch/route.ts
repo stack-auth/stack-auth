@@ -112,11 +112,8 @@ export const POST = createSmartRouteHandler({
         customerId: params.customer_id,
       });
       // ownedProducts keys use '__null__' for inline products (null productId),
-      // so we normalize subscription productIds to match.
-      // In-effect (not active): this set classifies owned products as
-      // sub-backed vs OTP. A canceled-at-period-end sub still backs its
-      // product until `endedAt`; treating it as an OTP here would wrongly
-      // block switching for the rest of the paid-through window.
+      // so we normalize subscription productIds to match. In-effect (not
+      // active): a canceled-at-period-end sub is still sub-backed, not an OTP.
       const nowMillis = Date.now();
       const subBackedProductIds = new Set(
         Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => s.productId ?? "__null__")

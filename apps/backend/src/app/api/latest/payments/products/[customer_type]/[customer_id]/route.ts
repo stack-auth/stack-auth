@@ -67,11 +67,9 @@ export const GET = createSmartRouteHandler({
     ]);
     // Deprecated: map productId → subscription for backward-compat fields.
     // ownedProducts keys use '__null__' for inline products (null productId),
-    // so we normalize subscription productIds to match.
-    // In-effect (not active): a canceled-at-period-end sub still backs its
-    // owned product until `endedAt`, and must keep rendering as a
-    // subscription ("Ends on <date>") rather than falling through to the
-    // one-time-purchase branch below.
+    // so we normalize subscription productIds to match. In-effect (not
+    // active): a canceled-at-period-end sub still backs its owned product
+    // and must not fall through to the one-time-purchase branch below.
     const nowMillis = Date.now();
     const inEffectSubByProductId = new Map(
       Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => [s.productId ?? "__null__", s] as const)
@@ -133,9 +131,7 @@ export const GET = createSmartRouteHandler({
               subscription_id: sub.id,
               current_period_end: sub.currentPeriodEndMillis ? new Date(sub.currentPeriodEndMillis).toISOString() : null,
               cancel_at_period_end: sub.cancelAtPeriodEnd,
-              // A sub that's already winding down (locally canceled, or a
-              // Stripe sub with cancel_at_period_end set) can't be canceled
-              // again — the DELETE route would 400 on it anyway.
+              // Already-winding-down subs can't be canceled again
               is_cancelable: isActiveSubscription(sub) && !sub.cancelAtPeriodEnd,
             } : null,
             switch_options: switchOptions,

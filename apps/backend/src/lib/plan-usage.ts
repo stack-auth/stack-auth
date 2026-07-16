@@ -159,9 +159,7 @@ export async function readBillingSubscriptionMapOrSkip(
 
 function resolveActivePlanSubscription(subscriptions: Record<string, SubscriptionRow>): SubscriptionRow | null {
   // In-effect (not active): a canceled-at-period-end plan sub keeps its item
-  // grants until `endedAt`, so usage limits must be judged against that plan
-  // — otherwise this page reports "Free" while the customer's actual quotas
-  // are still the paid plan's.
+  // grants until `endedAt`, so usage must be judged against that plan.
   const nowMillis = Date.now();
   const inEffectSubscriptions = Object.values(subscriptions).filter((candidate) => isSubscriptionInEffect(candidate, nowMillis));
   for (const planId of BASE_PLAN_IDS_BY_TIER) {
