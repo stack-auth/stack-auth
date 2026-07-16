@@ -1,10 +1,14 @@
 "use client";
 
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { Checkbox, cn } from "@hexclave/ui";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { DesignAlert } from "../alert";
 import { DesignButton } from "../button";
 import { DesignDialog } from "../dialog";
+import { DesignPillToggle } from "../pill-toggle";
+import { DesignProgressBar } from "../progress-bar";
 import { formatGridDate, resolveColumnValue } from "./state";
 import type {
   DataGridColumnDef,
@@ -185,16 +189,32 @@ export function DataGridExportDialog<TRow>({
     }
   };
 
+  const footer = isExporting ? (
+    <DesignButton variant="secondary" disabled>
+      Cancel
+    </DesignButton>
+  ) : (
+    <>
+      <DesignButton variant="secondary" onClick={closeDialog}>
+        Cancel
+      </DesignButton>
+      <DesignButton onClick={handleExport} className="gap-2">
+        <DownloadSimpleIcon className="h-4 w-4" />
+        Export {titleCase(entityNamePlural)}
+      </DesignButton>
+    </>
+  );
+
   return (
     <DesignDialog
       open={open}
       onOpenChange={handleOpenChange}
+      icon={DownloadSimpleIcon}
       title={isExporting ? progressTitle : title}
       description={isExporting ? `Preparing export for ${progressSubjectLabel}.` : description}
-      size="2xl"
-      variant="plain"
-      headerClassName={isExporting ? "sr-only" : undefined}
+      size="lg"
       hideTopCloseButton={isExporting}
+      footer={footer}
     >
       {isExporting ? (
         <ExportProgressContent
@@ -203,93 +223,114 @@ export function DataGridExportDialog<TRow>({
           subjectLabel={progressSubjectLabel}
         />
       ) : (
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor={`${filenamePrefix}-export-format`}>
-              Export Format
-            </label>
-            <select
-              id={`${filenamePrefix}-export-format`}
-              value={format}
-              onChange={(event) => setFormat(event.currentTarget.value === "json" ? "json" : "csv")}
-              className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm dark:bg-background"
-            >
-              <option value="csv">CSV (Comma-separated values)</option>
-              <option value="json">JSON (JavaScript Object Notation)</option>
-            </select>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-foreground">Format</span>
+            <DesignPillToggle
+              options={[
+                { id: "csv", label: "CSV" },
+                { id: "json", label: "JSON" },
+              ]}
+              selected={format}
+              onSelect={(id) => setFormat(id === "json" ? "json" : "csv")}
+              size="sm"
+              gradient="default"
+              glassmorphic={false}
+            />
           </div>
 
           {hasServerExport ? (
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Export Scope</legend>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name={`${filenamePrefix}-export-scope`}
-                  value="all"
-                  checked={scope === "all"}
-                  onChange={() => setScope("all")}
-                />
-                <span>{allScopeLabel}</span>
-              </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name={`${filenamePrefix}-export-scope`}
-                  value="filtered"
-                  checked={scope === "filtered"}
-                  onChange={() => setScope("filtered")}
-                />
-                <span>{filteredScopeLabel}</span>
-              </label>
-            </fieldset>
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-foreground">Scope</span>
+              <div className="space-y-1" role="radiogroup" aria-label="Export scope">
+                <ScopeOption
+                  selected={scope === "all"}
+                  onSelect={() => setScope("all")}
+                >
+                  {allScopeLabel}
+                </ScopeOption>
+                <ScopeOption
+                  selected={scope === "filtered"}
+                  onSelect={() => setScope("filtered")}
+                >
+                  {filteredScopeLabel}
+                </ScopeOption>
+              </div>
+            </div>
           ) : null}
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium">Fields to Export</label>
-              <div className="flex gap-2">
-                <DesignButton type="button" variant="ghost" size="sm" onClick={selectAllFields} className="h-7 text-xs">
-                  Select All
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-foreground">Fields</span>
+              <div className="flex items-center gap-1">
+                <DesignButton type="button" variant="ghost" size="sm" onClick={selectAllFields} className="h-7 px-2 text-xs text-muted-foreground">
+                  Select all
                 </DesignButton>
-                <DesignButton type="button" variant="ghost" size="sm" onClick={deselectAllFields} className="h-7 text-xs">
-                  Deselect All
+                <DesignButton type="button" variant="ghost" size="sm" onClick={deselectAllFields} className="h-7 px-2 text-xs text-muted-foreground">
+                  Clear
                 </DesignButton>
               </div>
             </div>
-            <div className="grid max-h-[300px] grid-cols-1 gap-3 overflow-y-auto rounded-lg border border-border p-4 sm:grid-cols-2">
+            <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-xl border border-foreground/[0.08] p-1.5">
               {fields.map((field) => (
-                <label key={field.key} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
-                  <input
-                    type="checkbox"
+                <label
+                  key={field.key}
+                  className="flex h-8 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm text-foreground transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
+                >
+                  <Checkbox
                     checked={field.enabled}
-                    onChange={() => toggleField(field.key)}
+                    onCheckedChange={() => toggleField(field.key)}
+                    className="border-foreground/25 shadow-none"
                   />
-                  <span>{field.label}</span>
+                  <span className="min-w-0 truncate">{field.label}</span>
                 </label>
               ))}
             </div>
           </div>
 
           {errorMessage != null ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <div className="font-medium">{exportOptions?.emptyExportTitle ?? "Export unavailable"}</div>
-              <div>{errorMessage}</div>
-            </div>
+            <DesignAlert
+              variant="error"
+              title={exportOptions?.emptyExportTitle ?? "Export unavailable"}
+              description={errorMessage}
+            />
           ) : null}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <DesignButton variant="outline" onClick={closeDialog}>
-              Cancel
-            </DesignButton>
-            <DesignButton onClick={handleExport}>
-              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
-              Export {titleCase(entityNamePlural)}
-            </DesignButton>
-          </div>
         </div>
       )}
     </DesignDialog>
+  );
+}
+
+function ScopeOption({
+  selected,
+  onSelect,
+  children,
+}: {
+  selected: boolean,
+  onSelect: () => void,
+  children: React.ReactNode,
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-foreground/[0.04] hover:transition-none"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+          selected
+            ? "border-foreground bg-foreground"
+            : "border-foreground/30 bg-transparent",
+        )}
+      >
+        {selected ? <span className="h-1.5 w-1.5 rounded-full bg-background" /> : null}
+      </span>
+      <span className="min-w-0 text-sm text-foreground">{children}</span>
+    </button>
   );
 }
 
@@ -311,39 +352,32 @@ function ExportProgressContent(props: {
       ? `Preparing ${fileLabel}`
       : `Fetching ${subjectLabel}`;
   const countLabel = `${progress.fetched.toLocaleString()} ${isComplete ? "exported" : "fetched"}`;
+  const progressValue = isComplete ? 100 : progress.phase === "generating" ? 72 : 36;
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold leading-snug">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-
-      <div className="rounded-xl border border-border bg-muted/35 p-4">
+    <div className="space-y-5">
+      <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.025] p-4">
         <div className="mb-3 flex items-center justify-between gap-4 text-sm">
           <span className="font-medium text-foreground">{statusLabel}</span>
           <span className="shrink-0 tabular-nums text-muted-foreground">
             {countLabel}
           </span>
         </div>
-        <div className="relative h-2 overflow-hidden rounded-full bg-foreground/10">
-          {isComplete ? (
-            <div className="h-full w-full rounded-full bg-emerald-500/80" />
-          ) : (
-            <div className="data-grid-export-progress-shimmer absolute inset-y-0 left-0 w-2/5 rounded-full bg-gradient-to-r from-transparent via-foreground/65 to-transparent" />
-          )}
-        </div>
+        <DesignProgressBar
+          value={progressValue}
+          gradient={isComplete ? "green" : "default"}
+          size="sm"
+        />
+        <p className="mt-3 text-xs text-muted-foreground">{description}</p>
       </div>
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-        Do not reload this page until the export finishes. The download will start automatically.
-      </div>
-
-      <div className="flex justify-end gap-3 pt-2">
-        <DesignButton variant="outline" disabled>
-          Cancel
-        </DesignButton>
-      </div>
+      <DesignAlert
+        variant={isComplete ? "success" : "warning"}
+        title={title}
+        description={isComplete
+          ? "The download should begin automatically."
+          : "Keep this page open until the export finishes. The download will start automatically."}
+      />
     </div>
   );
 }

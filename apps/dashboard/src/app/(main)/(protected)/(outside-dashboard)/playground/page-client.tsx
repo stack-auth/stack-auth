@@ -933,6 +933,14 @@ export default function PageClient() {
             selectionMode={dgSelectionMode}
             rowHeight={dgRowHeight}
             toolbar={dgShowToolbar ? undefined : false}
+            exportOptions={{
+              title: "Export users",
+              description: "Configure and download user data from this grid.",
+              entityName: "user",
+              entityNamePlural: "users",
+              filenamePrefix: "playground-users",
+              fetchRows: () => Promise.resolve(DEMO_GRID_USERS),
+            }}
             maxHeight={400}
           />
         </div>
@@ -2318,6 +2326,12 @@ export default function PageClient() {
   selectionMode="${dgSelectionMode}"
   rowHeight={${dgRowHeight}}
   toolbar={${dgShowToolbar ? "undefined" : "false"}}
+  exportOptions={{
+    title: "Export users",
+    entityName: "user",
+    entityNamePlural: "users",
+    filenamePrefix: "users",
+  }}
   maxHeight={400}
 />`;
     }
