@@ -42,7 +42,14 @@ function serializeSteps(steps: ReadonlyArray<StepResult<ToolSet>>): string {
     })));
   } catch (e) {
     captureError("ai-query-steps-serialize", e);
-    return JSON.stringify({ _serializationFailed: true, stepCount: steps.length });
+    // Must stay array-shaped: UsageDetail JSON.parses this as StepEntry[] and
+    // calls .map on it unguarded, so an object here crashes the analytics view.
+    return JSON.stringify([{
+      step: 0,
+      text: `[serialization of ${steps.length} steps failed]`,
+      toolCalls: [],
+      toolResults: [],
+    }]);
   }
 }
 
@@ -71,6 +78,7 @@ export function logAiQuery(args: LogAiQueryArgs): void {
         errorMessage: undefined,
       };
     } else {
+      captureError("ai-query-upstream", args.err);
       entry = {
         ...args.common,
         stepsJson: args.partialSteps && args.partialSteps.length > 0 ? serializeSteps(args.partialSteps) : "[]",

@@ -24,7 +24,7 @@ import { exportJWK, generateKeyPair } from "jose";
 // placeholder in .env.development, and Next loads it before the dev server
 // mints its first token.
 const ENV_LOCAL = resolve(".env.local");
-const SIGNING_KEY_VAR = "STACK_SPACETIMEDB_SIGNING_KEY_JWK";
+const SIGNING_KEY_VAR = "HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK";
 
 async function ensureSigningKey() {
   const existing = existsSync(ENV_LOCAL) ? readFileSync(ENV_LOCAL, "utf8") : "";

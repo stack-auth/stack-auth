@@ -5,22 +5,12 @@
 
 import { spawnSync } from "node:child_process";
 
-// Dual-read shim for the HEXCLAVE_/STACK_ env var prefix migration (same as examples/demo/cli-sim.mjs).
-function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
-  const hexclaveValue = process.env[hexclaveName];
-  const stackValue = process.env[stackName];
-  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
-    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
-  }
-  return hexclaveValue || stackValue || undefined;
-}
-
 const target = process.argv[2]; // "local" or "prod"
-const dbName = process.env.STACK_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
+const dbName = process.env.HEXCLAVE_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
 
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
-  const publishUrl = resolveHexclaveStackEnvVar("HEXCLAVE_SPACETIME_PUBLISH_URL", "STACK_SPACETIME_PUBLISH_URL");
+  const publishUrl = process.env.HEXCLAVE_SPACETIME_PUBLISH_URL;
   if (publishUrl) {
     return publishUrl;
   }
@@ -49,8 +39,8 @@ if (!args) {
   process.exit(1);
 }
 
-if (target === "prod" && !process.env.STACK_SPACETIMEDB_ALLOWED_ISSUERS && !process.env.STACK_SPACETIMEDB_TOKEN_ISSUER) {
-  console.error("Error: STACK_SPACETIMEDB_TOKEN_ISSUER (or STACK_SPACETIMEDB_ALLOWED_ISSUERS) must be set for prod publish — the deployed internal tool's public URL, which serves the OIDC discovery document SpacetimeDB validates tokens against.");
+if (target === "prod" && !process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS && !process.env.HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER) {
+  console.error("Error: HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER (or HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS) must be set for prod publish — the deployed internal tool's public URL, which serves the OIDC discovery document SpacetimeDB validates tokens against.");
   process.exit(1);
 }
 

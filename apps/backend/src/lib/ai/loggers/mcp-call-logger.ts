@@ -26,8 +26,16 @@ function buildInnerToolCallsJson(steps: ReadonlyArray<StepResult<ToolSet>>): str
       }
     }
     return JSON.stringify(items);
-  } catch {
-    return JSON.stringify({ _serializationFailed: true, stepCount: steps.length });
+  } catch (e) {
+    captureError("mcp-call-serialize", e);
+    return JSON.stringify([{
+      type: "tool-call",
+      toolName: "_serializationFailed",
+      toolCallId: "_serializationFailed",
+      args: { stepCount: steps.length },
+      argsText: JSON.stringify({ stepCount: steps.length }),
+      result: null,
+    }]);
   }
 }
 

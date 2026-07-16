@@ -50,7 +50,7 @@ const qaReviewSchema = z.object({
 
 function createOpenRouterProvider() {
   return createOpenRouter({
-    apiKey: getEnvVariable("STACK_OPENROUTER_API_KEY"),
+    apiKey: getEnvVariable("HEXCLAVE_OPENROUTER_API_KEY"),
   });
 }
 

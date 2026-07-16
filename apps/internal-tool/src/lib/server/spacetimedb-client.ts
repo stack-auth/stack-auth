@@ -14,7 +14,7 @@ function requiredEnv(name: string): string {
 }
 
 function httpBase(): string {
-  return requiredEnv("STACK_SPACETIMEDB_URL");
+  return requiredEnv("HEXCLAVE_SPACETIMEDB_URL");
 }
 
 // All calls authenticate with a token minted by the internal tool (a signed-in
@@ -24,7 +24,7 @@ function httpBase(): string {
 // full read/write.
 export async function callReducerStrict(accessToken: string, reducer: string, args: unknown[]): Promise<void> {
   const base = httpBase();
-  const dbName = requiredEnv("STACK_SPACETIMEDB_DB_NAME");
+  const dbName = requiredEnv("HEXCLAVE_SPACETIMEDB_DB_NAME");
   const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/call/${encodeURIComponent(reducer)}`, {
     method: "POST",
     headers: {
@@ -58,7 +58,7 @@ export function opt<T>(value: T | null | undefined): { some: T } | { none: [] } 
 
 export async function callSql(accessToken: string, sql: string): Promise<Record<string, unknown>[]> {
   const base = httpBase();
-  const dbName = requiredEnv("STACK_SPACETIMEDB_DB_NAME");
+  const dbName = requiredEnv("HEXCLAVE_SPACETIMEDB_DB_NAME");
   const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/sql`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${accessToken}` },

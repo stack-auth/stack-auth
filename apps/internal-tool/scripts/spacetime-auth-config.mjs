@@ -8,9 +8,9 @@
 // document + JWKS and mints SpacetimeDB tokens after verifying the caller's
 // Stack Auth session (see src/lib/server/spacetimedb-token.ts).
 //
-// - STACK_SPACETIMEDB_ALLOWED_ISSUERS: comma-separated issuer URLs. Defaults
-//   to STACK_SPACETIMEDB_TOKEN_ISSUER, then the local dev internal tool.
-// - STACK_SPACETIMEDB_EXPECTED_AUDIENCE: JWT audience. Defaults to
+// - HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS: comma-separated issuer URLs. Defaults
+//   to HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER, then the local dev internal tool.
+// - HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE: JWT audience. Defaults to
 //   "spacetimedb".
 
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from "node:fs";
@@ -27,13 +27,13 @@ function defaultDevIssuer() {
 }
 
 function allowedIssuers() {
-  const raw = process.env.STACK_SPACETIMEDB_ALLOWED_ISSUERS || process.env.STACK_SPACETIMEDB_TOKEN_ISSUER;
+  const raw = process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS || process.env.HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER;
   if (!raw) return [defaultDevIssuer()];
   return raw.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter((s) => s !== "");
 }
 
 function expectedAudience() {
-  return process.env.STACK_SPACETIMEDB_EXPECTED_AUDIENCE || "spacetimedb";
+  return process.env.HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE || "spacetimedb";
 }
 
 const action = process.argv[2];

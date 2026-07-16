@@ -18,8 +18,8 @@ export async function getVerifiedQaContext(): Promise<string> {
   const result = await Result.fromPromise(getVerifiedQaContextInner());
   if (result.status === "error") {
     captureError("verified-qa", result.error);
-    // Serve stale content over nothing if we have it.
-    return cached?.value ?? "";
+    cached = { value: cached?.value ?? "", expiresAtMillis: Date.now() + CACHE_TTL_MILLIS };
+    return cached.value;
   }
   cached = { value: result.data, expiresAtMillis: Date.now() + CACHE_TTL_MILLIS };
   return result.data;

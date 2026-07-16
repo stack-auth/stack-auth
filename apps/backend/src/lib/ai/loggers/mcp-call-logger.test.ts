@@ -75,7 +75,7 @@ describe("logIfMcpToolCall", () => {
         "correlationId": "correlation-1",
         "durationMs": "<duration>",
         "errorMessage": undefined,
-        "innerToolCallsJson": "{"_serializationFailed":true,"stepCount":1}",
+        "innerToolCallsJson": "[{"type":"tool-call","toolName":"_serializationFailed","toolCallId":"_serializationFailed","args":{"stepCount":1},"argsText":"{\\"stepCount\\":1}","result":null}]",
         "modelId": "model-1",
         "question": "{"_serializationFailed":true}",
         "reason": "review",

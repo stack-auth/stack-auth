@@ -16,21 +16,21 @@ import * as jose from "jose";
 const USER_TOKEN_TTL = "10m";
 
 export function spacetimeTokenIssuer(): string {
-  const issuer = getEnvVariable("STACK_SPACETIMEDB_TOKEN_ISSUER", "").trim().replace(/\/+$/, "");
+  const issuer = getEnvVariable("HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER", "").trim().replace(/\/+$/, "");
   if (issuer === "") {
-    throw new HexclaveAssertionError("STACK_SPACETIMEDB_TOKEN_ISSUER is not configured for the internal tool.");
+    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER is not configured for the internal tool.");
   }
   return issuer;
 }
 
 export function spacetimeTokenAudience(): string {
-  return getEnvVariable("STACK_SPACETIMEDB_EXPECTED_AUDIENCE", "spacetimedb");
+  return getEnvVariable("HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE", "spacetimedb");
 }
 
 function privateJwk(): jose.JWK & { kid?: string, alg?: string } {
-  const raw = getEnvVariable("STACK_SPACETIMEDB_SIGNING_KEY_JWK", "");
+  const raw = getEnvVariable("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK", "");
   if (raw.trim() === "") {
-    throw new HexclaveAssertionError("STACK_SPACETIMEDB_SIGNING_KEY_JWK is not configured for the internal tool.");
+    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK is not configured for the internal tool.");
   }
   return JSON.parse(raw) as jose.JWK;
 }
