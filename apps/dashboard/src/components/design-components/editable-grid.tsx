@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Checkbox,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -348,6 +349,71 @@ function EditableTextField({
   );
 }
 
+function EditableBooleanField({
+  item,
+  editMode,
+  size,
+}: {
+  item: BooleanItem,
+  editMode: boolean,
+  size: FieldSizeConfig,
+}) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const canEdit = item.readOnly !== true && item.onUpdate != null;
+  const trueLabel = item.trueLabel ?? "Yes";
+  const falseLabel = item.falseLabel ?? "No";
+  const statusLabel = item.value ? trueLabel : falseLabel;
+
+  if (!canEdit) {
+    return (
+      <div className={cn("flex w-full items-center", size.controlHeight, size.controlPadding)}>
+        <ReadOnlyValue>{statusLabel}</ReadOnlyValue>
+      </div>
+    );
+  }
+
+  const updateValue = async (nextValue: boolean) => {
+    if (item.onUpdate == null) {
+      throw new Error(`Editable boolean item "${item.name}" requires an onUpdate handler.`);
+    }
+    setIsUpdating(true);
+    try {
+      await item.onUpdate(nextValue);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return (
+    <label
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-2.5",
+        size.controlHeight,
+        size.controlPadding,
+        designEditableGridControlClassName,
+        editMode && "border-black/[0.18] dark:border-white/[0.22]",
+        isUpdating && "opacity-70",
+      )}
+    >
+      <Checkbox
+        aria-label={item.name}
+        checked={item.value}
+        disabled={isUpdating}
+        onCheckedChange={(checked) => {
+          if (checked === "indeterminate") {
+            return;
+          }
+          runAsynchronouslyWithAlert(updateValue(checked));
+        }}
+        className="border-black/[0.2] shadow-none data-[state=checked]:border-foreground data-[state=checked]:bg-foreground data-[state=checked]:text-background dark:border-white/[0.25] dark:data-[state=checked]:border-white dark:data-[state=checked]:bg-white dark:data-[state=checked]:text-zinc-950"
+      />
+      <span className={cn("min-w-0 truncate", size.controlText, "text-foreground")}>
+        {statusLabel}
+      </span>
+    </label>
+  );
+}
+
 function AsyncSelectField({
   value,
   options,
@@ -510,21 +576,7 @@ function ItemValue({
       return <EditableTextField editMode={editMode} item={item} size={size} />;
     }
     case "boolean": {
-      const onUpdate = item.onUpdate;
-      return (
-        <AsyncSelectField
-          editMode={editMode}
-          name={item.name}
-          onUpdate={onUpdate == null ? undefined : async (value) => await onUpdate(value === "true")}
-          options={[
-            { value: "true", label: item.trueLabel ?? "Yes" },
-            { value: "false", label: item.falseLabel ?? "No" },
-          ]}
-          readOnly={item.readOnly}
-          size={size}
-          value={item.value ? "true" : "false"}
-        />
-      );
+      return <EditableBooleanField editMode={editMode} item={item} size={size} />;
     }
     case "dropdown": {
       return (

@@ -1,13 +1,15 @@
 "use client";
 
 import {
+  DesignBadge,
   DesignEditableGrid,
   DesignButton,
   DesignInput,
+  DesignMenu,
   DesignSelectorDropdown,
+  type DesignBadgeColor,
   type DesignEditableGridItem,
 } from "@/components/design-components";
-import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
@@ -26,10 +28,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Input,
   Label,
   Select,
@@ -45,7 +43,8 @@ import {
 } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
 import { useUpdateConfig } from "@/components/config-update";
-import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, Check, ClockIcon, CopyIcon, CurrencyDollarIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, ShoppingCartIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, X } from "@phosphor-icons/react";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
 import type { CustomerType } from "@/components/payments/customer-selector";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
@@ -54,8 +53,7 @@ import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@hexclave/shared/dist/utils/numbers";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { CreateProductLineDialog } from "../create-product-line-dialog";
@@ -73,6 +71,16 @@ const CUSTOMER_TYPE_COLORS = {
   team: 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 ring-emerald-500/30',
   custom: 'bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/30',
 } as const;
+
+const CUSTOMER_TYPE_BADGE_COLORS = new Map<string, DesignBadgeColor>([
+  ["user", "blue"],
+  ["team", "green"],
+  ["custom", "orange"],
+]);
+
+function getCustomerTypeBadgeColor(customerType: string): DesignBadgeColor {
+  return CUSTOMER_TYPE_BADGE_COLORS.get(customerType) ?? "blue";
+}
 
 export default function PageClient({ productId }: { productId: string }) {
   const adminApp = useAdminApp();
@@ -116,15 +124,15 @@ function ProductPage({ productId, product, config }: ProductPageProps) {
     <PageLayout>
       <div className="flex flex-col gap-6">
         {canGoBack && (
-          <Button
+          <DesignButton
             variant="ghost"
             size="sm"
-            className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
+            className="w-fit -ml-2 h-8 gap-1.5 rounded-lg px-2 text-muted-foreground hover:text-foreground"
             onClick={() => router.back()}
           >
-            <ArrowLeftIcon className="h-4 w-4 mr-1" />
+            <ArrowLeftIcon className="h-4 w-4" />
             Back
-          </Button>
+          </DesignButton>
         )}
         <ProductHeader productId={productId} product={product} productLineName={productLineName} />
         <Separator />
@@ -144,119 +152,240 @@ type ProductHeaderProps = {
   productLineName: string | null,
 };
 
+function ProductTitleEditor({
+  productId,
+  displayName,
+  storedDisplayName,
+}: {
+  productId: string,
+  displayName: string,
+  storedDisplayName: string,
+}) {
+  const adminApp = useAdminApp();
+  const updateConfig = useUpdateConfig();
+  const [editing, setEditing] = useState(false);
+  const [draftValue, setDraftValue] = useState(storedDisplayName);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const beginEditing = () => {
+    setDraftValue(storedDisplayName);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setDraftValue(storedDisplayName);
+    setEditing(false);
+  };
+
+  const save = async () => {
+    setIsSaving(true);
+    try {
+      const success = await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`payments.products.${productId}.displayName`]: draftValue || null,
+        },
+        pushable: true,
+      });
+      if (success) {
+        toast({ title: "Product name updated" });
+        setEditing(false);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div
+      role={editing ? undefined : "button"}
+      tabIndex={editing ? undefined : 0}
+      aria-label={editing ? undefined : "Edit display name"}
+      className={cn(
+        "group flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2.5",
+        "border-black/[0.1] bg-white cursor-text",
+        "hover:border-black/[0.16] hover:bg-zinc-50",
+        "dark:border-white/[0.1] dark:bg-zinc-950 dark:hover:border-white/[0.18] dark:hover:bg-zinc-900",
+        "transition-colors duration-150 hover:transition-none",
+        editing && "border-black/[0.28] dark:border-white/[0.32]",
+      )}
+      onClick={() => {
+        if (!editing) {
+          beginEditing();
+        } else {
+          inputRef.current?.focus();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (editing) {
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          beginEditing();
+        }
+      }}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          autoFocus
+          aria-label="Display name"
+          autoComplete="off"
+          disabled={isSaving}
+          value={draftValue}
+          placeholder={productId}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setDraftValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              runAsynchronouslyWithAlert(save());
+            }
+            if (event.key === "Escape") {
+              cancelEditing();
+            }
+          }}
+          className="min-w-0 flex-1 bg-transparent text-lg font-semibold leading-none tracking-tight text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+        />
+      ) : (
+        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold leading-none tracking-tight text-foreground">
+          {displayName}
+        </h1>
+      )}
+      {editing ? (
+        <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+          <DesignButton
+            aria-label="Save display name"
+            className="h-6 w-6 rounded-md p-0 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400"
+            disabled={draftValue === storedDisplayName || isSaving}
+            loading={isSaving}
+            onClick={save}
+            size="icon"
+            variant="ghost"
+          >
+            <Check aria-hidden className="h-3.5 w-3.5" weight="bold" />
+          </DesignButton>
+          <DesignButton
+            aria-label="Cancel editing display name"
+            className="h-6 w-6 rounded-md p-0 text-red-600 hover:bg-red-500/10 hover:text-red-700 dark:text-red-400"
+            disabled={isSaving}
+            onClick={cancelEditing}
+            size="icon"
+            variant="ghost"
+          >
+            <X aria-hidden className="h-3.5 w-3.5" weight="bold" />
+          </DesignButton>
+        </div>
+      ) : (
+        <PencilSimpleIcon
+          aria-hidden
+          className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors duration-150 group-hover:text-foreground group-hover:transition-none"
+        />
+      )}
+    </div>
+  );
+}
+
 function ProductHeader({ productId, product, productLineName }: ProductHeaderProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const updateConfig = useUpdateConfig();
   const router = useRouter();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const displayName = product.displayName || productId;
-  const isAddOn = product.isAddOnTo !== false && typeof product.isAddOnTo === 'object';
+  const isAddOn = product.isAddOnTo !== false && typeof product.isAddOnTo === "object";
 
-  // Find add-on parent products
   const addOnParents = useMemo(() => {
-    if (product.isAddOnTo === false || typeof product.isAddOnTo !== 'object') return [];
-    return Object.keys(product.isAddOnTo).map((parentId: string) => ({
+    if (product.isAddOnTo === false || typeof product.isAddOnTo !== "object") {
+      return [];
+    }
+    return Object.keys(product.isAddOnTo).map((parentId) => ({
       id: parentId,
       displayName: config.payments.products[parentId].displayName || parentId,
     }));
   }, [product.isAddOnTo, config.payments.products]);
 
   return (
-    <div className="flex gap-4 items-start">
-      <div className={cn(
-        "flex h-16 w-16 items-center justify-center rounded-xl shrink-0",
-        "bg-gradient-to-br from-primary/20 to-primary/5",
-        "border border-primary/20"
-      )}>
+    <div className="flex items-start gap-4">
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-black/[0.1] bg-white text-muted-foreground dark:border-white/[0.1] dark:bg-zinc-950">
         {isAddOn ? (
-          <PuzzlePieceIcon className="h-8 w-8 text-primary" />
+          <PuzzlePieceIcon className="h-7 w-7" />
         ) : (
-          <PackageIcon className="h-8 w-8 text-primary" />
+          <PackageIcon className="h-7 w-7" />
         )}
       </div>
-      <div className="flex-grow min-w-0 flex flex-col">
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0">
-            <EditableInput
-              value={displayName}
-              initialEditValue={product.displayName || ""}
-              placeholder={productId}
-              shiftTextToLeft
-              inputClassName="text-2xl font-semibold tracking-tight w-full"
-              onUpdate={async (newName) => {
-                const success = await updateConfig({ adminApp, configUpdate: {
-                  [`payments.products.${productId}.displayName`]: newName || null,
-                }, pushable: true });
-                if (success) {
-                  toast({ title: "Product name updated" });
-                }
-              }}
+          <ProductTitleEditor
+            productId={productId}
+            displayName={displayName}
+            storedDisplayName={product.displayName || ""}
+          />
+          <div className="flex shrink-0 items-center">
+            <CreateCheckoutDialog
+              open={isCheckoutOpen}
+              onOpenChange={setIsCheckoutOpen}
+              customerType={product.customerType as CustomerType}
+              productId={productId}
+              lockProduct
+            />
+            <DesignMenu
+              variant="actions"
+              trigger="icon"
+              triggerLabel="Product actions"
+              align="end"
+              withIcons
+              items={[
+                {
+                  id: "checkout",
+                  label: "Create checkout",
+                  icon: <ShoppingCartIcon className="h-4 w-4" />,
+                  onClick: () => setIsCheckoutOpen(true),
+                },
+                {
+                  id: "product-lines",
+                  label: "View in Product Lines",
+                  icon: <FolderOpenIcon className="h-4 w-4" />,
+                  onClick: () => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`),
+                },
+              ]}
             />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 gap-1.5"
-            onClick={() => router.push(`/projects/${projectId}/payments/products/${productId}/edit`)}
-          >
-            <PencilSimpleIcon className="h-4 w-4" />
-            Edit
-          </Button>
-          <CreateCheckoutDialog
-            open={isCheckoutOpen}
-            onOpenChange={setIsCheckoutOpen}
-            customerType={product.customerType as CustomerType}
-            productId={productId}
-            lockProduct
-          />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0">
-                <DotsThreeIcon className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem icon={<ShoppingCartIcon className="h-4 w-4" />} onClick={() => setIsCheckoutOpen(true)}>
-                Create checkout
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`)}>
-                View in Product Lines
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
-        <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
-          <span className={cn(
-            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-            CUSTOMER_TYPE_COLORS[product.customerType as keyof typeof CUSTOMER_TYPE_COLORS]
-          )}>
-            {product.customerType}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <DesignBadge
+            label={product.customerType.toUpperCase()}
+            color={getCustomerTypeBadgeColor(product.customerType)}
+            size="sm"
+            contentMode="text"
+          />
+          <span className="inline-flex items-center rounded-md border border-black/[0.08] bg-white px-2 py-0.5 font-mono text-[11px] text-muted-foreground dark:border-white/[0.1] dark:bg-zinc-950">
+            ID: {productId}
           </span>
-          <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">ID: {productId}</span>
-          {productLineName && (
-            <>
-              <span>•</span>
-              <span>Product Line: {productLineName}</span>
-            </>
+          {productLineName != null && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="text-muted-foreground/40">·</span>
+              Product Line: <span className="font-medium text-foreground">{productLineName}</span>
+            </span>
           )}
           {addOnParents.length > 0 && (
-            <>
-              <span>•</span>
-              <span className="flex items-center gap-1">
-                Add-on to{' '}
-                {addOnParents.map((p: { id: string, displayName: string }, i: number) => (
-                  <span key={p.id}>
-                    {i > 0 && ", "}
-                    <StyledLink href={`/projects/${adminApp.projectId}/payments/products/${p.id}`}>
-                      {p.displayName}
-                    </StyledLink>
-                  </span>
-                ))}
-              </span>
-            </>
+            <span className="inline-flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              <span className="text-muted-foreground/40">·</span>
+              Add-on to{" "}
+              {addOnParents.map((parent, index) => (
+                <span key={parent.id} className="inline-flex items-center">
+                  {index > 0 && <span className="mr-1 text-muted-foreground/50">,</span>}
+                  <StyledLink href={`/projects/${adminApp.projectId}/payments/products/${parent.id}`}>
+                    {parent.displayName}
+                  </StyledLink>
+                </span>
+              ))}
+            </span>
           )}
         </div>
       </div>
