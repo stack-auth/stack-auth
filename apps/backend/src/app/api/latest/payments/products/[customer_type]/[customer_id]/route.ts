@@ -1,5 +1,6 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionInEffect, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionCancelable, isSubscriptionInEffect, productToInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
+import type { SubscriptionRow } from "@/lib/payments/schema/types";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -70,10 +71,19 @@ export const GET = createSmartRouteHandler({
     // so we normalize subscription productIds to match. In-effect (not
     // active): a canceled-at-period-end sub still backs its owned product
     // and must not fall through to the one-time-purchase branch below.
+    // When several in-effect subs share a productId (e.g. one quantity of a
+    // stackable product was canceled by subscription_id), prefer an active
+    // one so the winding-down sub can't shadow it and hide the cancel button.
     const nowMillis = Date.now();
-    const inEffectSubByProductId = new Map(
-      Object.values(subMap).filter(s => isSubscriptionInEffect(s, nowMillis)).map(s => [s.productId ?? "__null__", s] as const)
-    );
+    const inEffectSubByProductId = new Map<string, SubscriptionRow>();
+    for (const s of Object.values(subMap)) {
+      if (!isSubscriptionInEffect(s, nowMillis)) continue;
+      const key = s.productId ?? "__null__";
+      const existing = inEffectSubByProductId.get(key);
+      if (existing == null || (!isActiveSubscription(existing) && isActiveSubscription(s))) {
+        inEffectSubByProductId.set(key, s);
+      }
+    }
 
     // Build switch options per product line (available plan upgrades/downgrades)
     const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
@@ -131,8 +141,7 @@ export const GET = createSmartRouteHandler({
               subscription_id: sub.id,
               current_period_end: sub.currentPeriodEndMillis ? new Date(sub.currentPeriodEndMillis).toISOString() : null,
               cancel_at_period_end: sub.cancelAtPeriodEnd,
-              // Already-winding-down subs can't be canceled again
-              is_cancelable: isActiveSubscription(sub) && !sub.cancelAtPeriodEnd,
+              is_cancelable: isSubscriptionCancelable(sub),
             } : null,
             switch_options: switchOptions,
           },

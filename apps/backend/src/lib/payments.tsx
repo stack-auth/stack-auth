@@ -127,16 +127,26 @@ export function isActiveSubscription(subscription: { status: string }): boolean 
 }
 
 /**
+ * The subscription can be canceled (again): it is active and not already
+ * winding down. Keep this in sync between the product list's `is_cancelable`
+ * field and the cancel route's filter, so `is_cancelable: false` always
+ * implies the DELETE returns 400.
+ */
+export function isSubscriptionCancelable(subscription: { status: string, cancelAtPeriodEnd: boolean }): boolean {
+  return isActiveSubscription(subscription) && !subscription.cancelAtPeriodEnd;
+}
+
+/**
  * The subscription still confers its product/items, regardless of whether it
  * will renew. Deliberately status-agnostic and `endedAt`-based, mirroring
  * Bulldozer's grant timefold (grants run from row insert until
  * `endedAtMillis`; every terminal writer sets `endedAt`).
  */
 export function isSubscriptionInEffect(
-  subscription: { endedAtMillis?: number | null, endedAt?: Date | null },
+  subscription: { endedAtMillis: number | null } | { endedAt: Date | null },
   nowMillis: number,
 ): boolean {
-  const endedAtMillis = subscription.endedAtMillis != null
+  const endedAtMillis = "endedAtMillis" in subscription
     ? subscription.endedAtMillis
     : subscription.endedAt != null ? subscription.endedAt.getTime() : null;
   return endedAtMillis == null || endedAtMillis > nowMillis;
@@ -462,12 +472,20 @@ export async function validatePurchaseSession(options: {
   // a duplicate request during lag would slip past it and silently re-grant.
   // We query Prisma directly so the sub guard is symmetric with the OTP guard
   // and works for products with no productLineId.
-  const activeSubs = await prisma.subscription.findMany({
+  // Includes canceled-at-period-end subs (canceled with a future endedAt) —
+  // they still back their product, so a purchase in the same line must treat
+  // them as replaceable conflicts, not as OTPs. Deliberately narrower than
+  // isSubscriptionInEffect: incomplete/past_due subs are excluded so a retry
+  // after a failed payment isn't rejected as ProductAlreadyGranted below.
+  const replaceableSubs = await prisma.subscription.findMany({
     where: {
       tenancyId,
       customerType: typedToUppercase(customerType),
       customerId,
-      status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+      OR: [
+        { status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] } },
+        { status: SubscriptionStatus.canceled, endedAt: { gt: new Date() } },
+      ],
     },
     select: { id: true, stripeSubscriptionId: true, productId: true, product: true },
   });
@@ -483,13 +501,13 @@ export async function validatePurchaseSession(options: {
       },
       select: { id: true },
     });
-    if (activeOtp || activeSubs.some(s => s.productId === productId)) {
+    if (activeOtp || replaceableSubs.some(s => s.productId === productId)) {
       throw new KnownErrors.ProductAlreadyGranted(productId, customerId);
     }
   }
 
   if (productLineId) {
-    conflictingSubscriptions = activeSubs
+    conflictingSubscriptions = replaceableSubs
       .filter(s =>
         (s.product as Product).productLineId === productLineId
         && !addOnBaseProductIds.includes(s.productId ?? "")
@@ -501,14 +519,14 @@ export async function validatePurchaseSession(options: {
     // backing it, the customer owns via OTP — which can't be replaced by a switch.
     // (We still rely on bulldozer here because OTPs aren't part of the duplicate-
     // request race we're guarding above and OTP propagation lag is low-stakes.)
-    const activeSubProductIds = new Set(activeSubs.map(s => s.productId ?? "__null__"));
+    const subBackedProductIds = new Set(replaceableSubs.map(s => s.productId ?? "__null__"));
     const otpInProductLine = Object.entries(ownedProducts).some(
       ([pid, p]) =>
         p.productLineId === productLineId
         && p.quantity > 0
         && !addOnBaseProductIds.includes(pid)
         && !isStackableSelfMatch(pid)
-        && !activeSubProductIds.has(pid),
+        && !subBackedProductIds.has(pid),
     );
     if (otpInProductLine && conflictingSubscriptions.length === 0) {
       // TODO: reconsider the coupling here between products and purchases. OTPs can

@@ -267,6 +267,11 @@ export const POST = createSmartRouteHandler({
         payment_behavior: "error_if_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
         default_payment_method: resolvedPaymentMethodId,
+        // Paying to switch plans is an explicit "keep me subscribed": clear a
+        // pending cancel-at-period-end, otherwise the new plan the customer
+        // just paid for still dies at the period boundary. Stripe persists
+        // the flag across item updates unless reset.
+        cancel_at_period_end: false,
         items: [{
           id: existingItem.id,
           price_data: {
@@ -310,6 +315,10 @@ export const POST = createSmartRouteHandler({
           currentPeriodStart: sanitizedUpdateDates.start,
           currentPeriodEnd: sanitizedUpdateDates.end,
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
+          // Clear the wind-down marks the cancel route wrote eagerly —
+          // without this the reactivated sub still ends at the old boundary.
+          canceledAt: null,
+          endedAt: null,
         },
       });
       // dual write - prisma and bulldozer

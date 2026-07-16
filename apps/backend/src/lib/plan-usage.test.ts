@@ -1,6 +1,6 @@
 import { ITEM_IDS, UNLIMITED } from "@hexclave/shared/dist/plans";
 import type { SubscriptionRow } from "./payments/schema/types";
-import { buildUsageRow, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip } from "./plan-usage";
+import { buildUsageRow, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip, resolveInEffectPlanSubscription } from "./plan-usage";
 import { describe, expect, it } from "vitest";
 
 function createSubscriptionPeriod(startMillis: number, endMillis: number): SubscriptionRow {
@@ -187,5 +187,46 @@ describe("billing period selection", () => {
         "start": "2026-06-01T00:00:00.000Z",
       }
     `);
+  });
+});
+
+describe("resolveInEffectPlanSubscription", () => {
+  const futureMillis = Date.now() + 30 * 86400000;
+  const pastMillis = Date.now() - 86400000;
+
+  it("keeps resolving a canceled-at-period-end plan sub until its endedAt passes", () => {
+    const windingDownTeam: SubscriptionRow = {
+      ...createSubscriptionPeriod(pastMillis, futureMillis),
+      id: "sub_team",
+      productId: "team",
+      status: "canceled",
+      cancelAtPeriodEnd: true,
+      canceledAtMillis: pastMillis,
+      endedAtMillis: futureMillis,
+    };
+    const activeFree: SubscriptionRow = {
+      ...createSubscriptionPeriod(pastMillis, futureMillis),
+      id: "sub_free",
+      productId: "free",
+    };
+    expect(resolveInEffectPlanSubscription({ sub_team: windingDownTeam, sub_free: activeFree })?.id).toBe("sub_team");
+  });
+
+  it("falls back to the free plan sub once the canceled sub has ended", () => {
+    const endedTeam: SubscriptionRow = {
+      ...createSubscriptionPeriod(pastMillis - 86400000, pastMillis),
+      id: "sub_team",
+      productId: "team",
+      status: "canceled",
+      cancelAtPeriodEnd: true,
+      canceledAtMillis: pastMillis - 86400000,
+      endedAtMillis: pastMillis,
+    };
+    const activeFree: SubscriptionRow = {
+      ...createSubscriptionPeriod(pastMillis, futureMillis),
+      id: "sub_free",
+      productId: "free",
+    };
+    expect(resolveInEffectPlanSubscription({ sub_team: endedTeam, sub_free: activeFree })?.id).toBe("sub_free");
   });
 });

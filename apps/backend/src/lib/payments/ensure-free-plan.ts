@@ -151,11 +151,7 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   // comment for why gating on `status` here would (and did) cause the free
   // plan to be double-granted on top of a just-created incomplete paid sub).
   const nowMillis = Date.now();
-  const productLineStillOccupiedBy = (sub: {
-    product: ProductSnapshot,
-    endedAtMillis?: number | null,
-    endedAt?: Date | null,
-  }): boolean => {
+  const productLineStillOccupiedBy = (sub: { product: ProductSnapshot } & ({ endedAtMillis: number | null } | { endedAt: Date | null })): boolean => {
     if (sub.product.productLineId !== freeProductLineId) return false;
     if (isAddOnProduct(sub.product)) return false;
     return isSubscriptionInEffect(sub, nowMillis);

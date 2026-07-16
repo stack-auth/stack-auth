@@ -296,6 +296,128 @@ it("should report a canceled-at-period-end subscription as still in effect, and 
   `);
 });
 
+it("should keep the active sub's cancel button when one quantity of a stackable product is canceled", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "seats-plan": {
+        displayName: "Seats Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: true,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const firstGrant = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "seats-plan" },
+  });
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "seats-plan" },
+  });
+
+  // Cancel only the first quantity by subscription id — the second sub stays active
+  const firstSubscriptionId = (firstGrant.body as { subscription_id: string }).subscription_id;
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/seats-plan?subscription_id=${encodeURIComponent(firstSubscriptionId)}`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // The winding-down sub must not shadow the active one: the product stays cancelable
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  const item = (listResponse.body as { items: Array<{ id: string, type: string, quantity: number, subscription: { subscription_id: string, cancel_at_period_end: boolean, is_cancelable: boolean } | null }> }).items.find((i) => i.id === "seats-plan");
+  expect(item?.type).toBe("subscription");
+  expect(item?.subscription?.cancel_at_period_end).toBe(false);
+  expect(item?.subscription?.is_cancelable).toBe(true);
+  expect(item?.subscription?.subscription_id).not.toBe(firstSubscriptionId);
+
+  // Double-canceling the already-canceled quantity returns the dedicated error
+  const secondCancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/seats-plan?subscription_id=${encodeURIComponent(firstSubscriptionId)}`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(secondCancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This subscription is already canceled and ends at the end of the current billing period.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow granting another plan in the same product line while the old one winds down", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    productLines: {
+      plans: { displayName: "Plans", customerType: "user" },
+    },
+    products: {
+      "plan-a": {
+        displayName: "Plan A",
+        customerType: "user",
+        productLineId: "plans",
+        serverOnly: false,
+        stackable: false,
+        prices: { monthly: { USD: "1000", interval: [1, "month"] } },
+        includedItems: {},
+      },
+      "plan-b": {
+        displayName: "Plan B",
+        customerType: "user",
+        productLineId: "plans",
+        serverOnly: false,
+        stackable: false,
+        prices: { monthly: { USD: "2000", interval: [1, "month"] } },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "plan-a" },
+  });
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/plan-a`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse.status).toBe(200);
+
+  // The winding-down plan-a sub must count as a replaceable conflict, not as
+  // a one-time purchase blocking the line
+  const grantBResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "plan-b" },
+  });
+  expect(grantBResponse.status).toBe(200);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  const items = (listResponse.body as { items: Array<{ id: string, type: string }> }).items;
+  expect(items.find((i) => i.id === "plan-b")?.type).toBe("subscription");
+});
+
 it("should reject a client canceling someone else's subscription product", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();

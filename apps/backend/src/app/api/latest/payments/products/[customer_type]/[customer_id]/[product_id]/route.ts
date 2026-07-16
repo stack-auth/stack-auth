@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription, isSubscriptionInEffect } from "@/lib/payments";
+import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isSubscriptionCancelable, isSubscriptionInEffect } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
@@ -80,13 +80,26 @@ export const DELETE = createSmartRouteHandler({
     });
     const allSubs = Object.values(subMap);
 
+    const nowMillis = Date.now();
+    // Explains why a matched-but-uncancelable sub can't be canceled: already
+    // winding down (double cancel), or in-effect in a state we don't cancel
+    // from (e.g. past_due). No-op when no in-effect sub matches.
+    const throwIfUncancelableButInEffect = (candidates: typeof allSubs): void => {
+      const inEffect = candidates.find(s => isSubscriptionInEffect(s, nowMillis));
+      if (!inEffect) return;
+      if (inEffect.status === "canceled" || inEffect.cancelAtPeriodEnd) {
+        throw new StatusError(400, "This subscription is already canceled and ends at the end of the current billing period.");
+      }
+      throw new StatusError(400, "This subscription cannot be canceled in its current state.");
+    };
+
     let subscriptions;
     if (query.subscription_id) {
       // Cancel by subscription DB ID (used for inline products that have no product_id)
-      subscriptions = allSubs.filter(s =>
-        s.id === query.subscription_id && isActiveSubscription(s)
-      );
+      const matching = allSubs.filter(s => s.id === query.subscription_id);
+      subscriptions = matching.filter(s => isSubscriptionCancelable(s));
       if (subscriptions.length === 0) {
+        throwIfUncancelableButInEffect(matching);
         throw new StatusError(400, "No active subscription found with this ID for the given customer.");
       }
     } else {
@@ -111,21 +124,13 @@ export const DELETE = createSmartRouteHandler({
         throw new StatusError(400, "Customer does not have this product.");
       }
 
-      // Find the active subscription to cancel
-      subscriptions = allSubs.filter(s =>
-        s.productId === params.product_id && isActiveSubscription(s)
-      );
+      // Find the cancelable subscriptions for this product
+      const matching = allSubs.filter(s => s.productId === params.product_id);
+      subscriptions = matching.filter(s => isSubscriptionCancelable(s));
       if (subscriptions.length === 0) {
-        // Owned but no active sub: either already winding down (canceled
-        // with a future endedAt) or owned via OTP — don't claim the former
-        // is a one-time purchase.
-        const nowMillis = Date.now();
-        const windingDown = allSubs.find(s =>
-          s.productId === params.product_id && isSubscriptionInEffect(s, nowMillis)
-        );
-        if (windingDown) {
-          throw new StatusError(400, "This subscription is already canceled and ends at the end of the current billing period.");
-        }
+        // Owned but nothing cancelable: winding down / uncancelable state,
+        // or owned via OTP — don't claim the former is a one-time purchase.
+        throwIfUncancelableButInEffect(matching);
         throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
       }
     }
@@ -133,32 +138,46 @@ export const DELETE = createSmartRouteHandler({
     const hasStripeSubscription = subscriptions.some((subscription) => subscription.stripeSubscriptionId);
     const stripe = hasStripeSubscription ? await getStripeForAccount({ tenancy: auth.tenancy }) : undefined;
     for (const subscription of subscriptions) {
+      let updatedSub;
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
         // Cancel at period end, not `subscriptions.cancel()` (immediate) —
-        // matches the confirm dialog and the local-sub branch below. The
-        // webhook syncs the local row when Stripe ends it.
+        // matches the confirm dialog and the local-sub branch below. Update
+        // the local row eagerly (mirroring the refund route) so the product
+        // list reflects the wind-down before the webhook sync arrives; the
+        // Stripe sub stays `active` with cancel_at_period_end until Stripe
+        // ends it at the period boundary.
         await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
-        continue;
-      }
-      await prisma.subscription.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: auth.tenancy.id,
-            id: subscription.id,
+        updatedSub = await prisma.subscription.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: auth.tenancy.id,
+              id: subscription.id,
+            },
           },
-        },
-        data: {
-          status: SubscriptionStatus.canceled,
-          cancelAtPeriodEnd: true,
-          canceledAt: new Date(),
-          endedAt: new Date(subscription.currentPeriodEndMillis),
-        },
-      });
+          data: {
+            cancelAtPeriodEnd: true,
+            canceledAt: new Date(),
+            endedAt: new Date(subscription.currentPeriodEndMillis),
+          },
+        });
+      } else {
+        updatedSub = await prisma.subscription.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: auth.tenancy.id,
+              id: subscription.id,
+            },
+          },
+          data: {
+            status: SubscriptionStatus.canceled,
+            cancelAtPeriodEnd: true,
+            canceledAt: new Date(),
+            endedAt: new Date(subscription.currentPeriodEndMillis),
+          },
+        });
+      }
       // dual write - prisma and bulldozer
-      const updatedSub = await prisma.subscription.findUniqueOrThrow({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
-      });
       await bulldozerWriteSubscription(updatedSub);
     }
 

@@ -157,7 +157,7 @@ export async function readBillingSubscriptionMapOrSkip(
   }
 }
 
-function resolveActivePlanSubscription(subscriptions: Record<string, SubscriptionRow>): SubscriptionRow | null {
+export function resolveInEffectPlanSubscription(subscriptions: Record<string, SubscriptionRow>): SubscriptionRow | null {
   // In-effect (not active): a canceled-at-period-end plan sub keeps its item
   // grants until `endedAt`, so usage must be judged against that plan.
   const nowMillis = Date.now();
@@ -424,9 +424,9 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
     customerType: "team",
     customerId: ownerTeamId,
   }));
-  const activePlanSubscription = resolveActivePlanSubscription(subscriptions);
-  const planId = resolveActivePlanId(activePlanSubscription);
-  const period = getPlanUsagePeriod(activePlanSubscription, now);
+  const inEffectPlanSubscription = resolveInEffectPlanSubscription(subscriptions);
+  const planId = resolveActivePlanId(inEffectPlanSubscription);
+  const period = getPlanUsagePeriod(inEffectPlanSubscription, now);
 
   const [ownerTeamDisplayName, ownedScope, dashboardAdmins] = await Promise.all([
     getOwnerTeamDisplayName(internalTenancy, ownerTeamId),
@@ -444,7 +444,7 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
     owner_team_id: ownerTeamId,
     owner_team_display_name: ownerTeamDisplayName,
     plan_id: planId,
-    plan_display_name: activePlanSubscription?.product.displayName ?? getPlanLabel(planId),
+    plan_display_name: inEffectPlanSubscription?.product.displayName ?? getPlanLabel(planId),
     period_start_millis: period.start.getTime(),
     period_end_millis: period.end.getTime(),
     next_plan_id: getNextPlanId(planId),
