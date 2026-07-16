@@ -47,11 +47,21 @@ function withHexclaveHeaderAliases(headers: string[]): string[] {
 const corsAllowedRequestHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedRequestHeaders);
 const corsAllowedResponseHeadersWithAliases = withHexclaveHeaderAliases(corsAllowedResponseHeaders);
 
+export function getCorsHeadersInit(request: Request): HeadersInit | undefined {
+  return new URL(request.url).pathname.startsWith("/api/") ? {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Headers": corsAllowedRequestHeadersWithAliases.join(", "),
+    "Access-Control-Expose-Headers": corsAllowedResponseHeadersWithAliases.join(", "),
+    "Vary": corsAllowedRequestHeadersWithAliases.join(", "),
+  } : undefined;
+}
+
 export type PipelineResult = {
   corsHeadersInit?: HeadersInit,
   dispatchPath: string,
   mergedHeaders: Headers,
-  middlewareRewrite?: string,
   originalUrl: string,
   shortCircuitResponse?: Response,
 };
@@ -60,27 +70,21 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
   const url = new URL(request.url);
   const mergedHeaders = mergeHexclaveHeaderAliases(request.headers);
   ensureForwardedForHeader(mergedHeaders, request);
+  const artificialDevelopmentBehaviorDisabled = isArtificialDevelopmentBehaviorDisabled(mergedHeaders);
   const delay = +getEnvVariable("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
   if (delay) {
     if (getNodeEnvironment().includes("production")) {
       throw new Error("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS environment variable is only allowed in development");
     }
-    if (!request.headers.get("x-stack-disable-artificial-development-delay")) {
+    if (!artificialDevelopmentBehaviorDisabled) {
       await wait(delay);
     }
   }
 
   const isApiRequest = url.pathname.startsWith("/api/");
-  const corsHeadersInit = isApiRequest ? {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Max-Age": "86400",
-    "Access-Control-Allow-Headers": corsAllowedRequestHeadersWithAliases.join(", "),
-    "Access-Control-Expose-Headers": corsAllowedResponseHeadersWithAliases.join(", "),
-    "Vary": corsAllowedRequestHeadersWithAliases.join(", "),
-  } : undefined;
+  const corsHeadersInit = getCorsHeadersInit(request);
 
-  if (isApiRequest && !request.headers.get("x-stack-disable-artificial-development-delay") && getNodeEnvironment() === "development" && request.method !== "OPTIONS" && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
+  if (isApiRequest && !artificialDevelopmentBehaviorDisabled && getNodeEnvironment() === "development" && request.method !== "OPTIONS" && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
     const now = performance.now();
     while (devRateLimitMarks.length > 0 && now - devRateLimitMarks[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitMarks.shift();
@@ -133,7 +137,6 @@ export async function runRequestPipeline(request: Request): Promise<PipelineResu
     corsHeadersInit,
     dispatchPath,
     mergedHeaders,
-    middlewareRewrite: dispatchPath === url.pathname ? undefined : dispatchPath,
     originalUrl: request.url,
   };
 }
@@ -147,6 +150,18 @@ function mergeHexclaveHeaderAliases(headers: Headers) {
   }
   return newRequestHeaders;
 }
+
+function isArtificialDevelopmentBehaviorDisabled(headers: Headers) {
+  return Boolean(headers.get("x-stack-disable-artificial-development-delay"));
+}
+
+import.meta.vitest?.test("Hexclave header aliases control artificial development behavior", ({ expect }) => {
+  const mergedHeaders = mergeHexclaveHeaderAliases(new Headers({
+    "x-hexclave-disable-artificial-development-delay": "true",
+  }));
+
+  expect(isArtificialDevelopmentBehaviorDisabled(mergedHeaders)).toBe(true);
+});
 
 const clientIpForwardingHeaders = ["x-forwarded-for", "x-real-ip", "x-vercel-forwarded-for", "cf-connecting-ip"];
 

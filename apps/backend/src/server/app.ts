@@ -7,7 +7,7 @@ import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/
 import { Elysia } from "elysia";
 import { createBackendRequest } from "./backend-request";
 import { handleUncaughtBackendError } from "./error-handler";
-import { runRequestPipeline } from "./middleware";
+import { getCorsHeadersInit, runRequestPipeline } from "./middleware";
 import { MalformedRouteParamError, matchRoute } from "./registry";
 
 const globalSecurityHeaders = {
@@ -30,7 +30,7 @@ export const app = new Elysia({
       developmentRequestStartTimes.set(request, performance.now());
     }
   })
-  .onAfterResponse(({ request, set }) => {
+  .onAfterResponse(({ request, response, set }) => {
     if (!shouldLogDevelopmentRequests) {
       return;
     }
@@ -38,9 +38,9 @@ export const app = new Elysia({
     const startTime = developmentRequestStartTimes.get(request);
     const elapsedMilliseconds = startTime == null ? "unknown" : (performance.now() - startTime).toFixed(1);
     const pathname = new URL(request.url).pathname;
-    console.log(`[Elysia] ${request.method} ${pathname} ${set.status} ${elapsedMilliseconds}ms`);
+    console.log(`[Elysia] ${request.method} ${pathname} ${getLoggedResponseStatus(response, set.status)} ${elapsedMilliseconds}ms`);
   })
-  .onError(({ error }) => withGlobalHeaders(handleUncaughtBackendError(error)))
+  .onError(({ error, request }) => withResponseHeaders(handleUncaughtBackendError(error), getCorsHeadersInit(request)))
   .get("/", () => htmlResponse(homeHtml()))
   .get("/dev-stats", () => htmlResponse(devStatsHtml()))
   .get("/health/error-handler-debug", () => htmlResponse(errorHandlerDebugHtml()))
@@ -54,7 +54,7 @@ export const app = new Elysia({
 export async function dispatch(request: Request) {
   const pipeline = await runRequestPipeline(request);
   if (pipeline.shortCircuitResponse != null) {
-    return withGlobalHeaders(pipeline.shortCircuitResponse);
+    return withResponseHeaders(pipeline.shortCircuitResponse, pipeline.corsHeadersInit);
   }
 
   let match;
@@ -62,30 +62,30 @@ export async function dispatch(request: Request) {
     match = matchRoute(pipeline.dispatchPath);
   } catch (error) {
     if (error instanceof MalformedRouteParamError) {
-      return withGlobalHeaders(new Response("Bad Request", { status: 400 }));
+      return withResponseHeaders(new Response("Bad Request", { status: 400 }), pipeline.corsHeadersInit);
     }
     throw error;
   }
   if (match == null) {
-    return withGlobalHeaders(new Response("<div>404 Not Found</div>", {
+    return withResponseHeaders(new Response("<div>404 Not Found</div>", {
       status: 404,
       headers: {
         "content-type": "text/html; charset=utf-8",
       },
-    }));
+    }), pipeline.corsHeadersInit);
   }
 
   const method = request.method.toUpperCase();
   if (!isHttpMethod(method)) {
-    return withGlobalHeaders(new Response(null, {
+    return withResponseHeaders(new Response(null, {
       status: 405,
-    }));
+    }), pipeline.corsHeadersInit);
   }
   const handler = match.methods.get(method) ?? (method === "HEAD" ? match.methods.get("GET") : undefined);
   if (handler == null) {
-    return withGlobalHeaders(new Response(null, {
+    return withResponseHeaders(new Response(null, {
       status: 405,
-    }));
+    }), pipeline.corsHeadersInit);
   }
 
   const backendRequest = createBackendRequest(request, pipeline.mergedHeaders, pipeline.originalUrl);
@@ -129,16 +129,17 @@ export async function dispatch(request: Request) {
   for (const cookie of context.deletedCookies) {
     finalResponse.headers.append("Set-Cookie", serializeSetCookie(cookie.name, cookie.value, cookie.options));
   }
-  if (pipeline.corsHeadersInit != null) {
-    for (const [key, value] of Object.entries(pipeline.corsHeadersInit)) {
-      finalResponse.headers.set(key, value);
-    }
-  }
-  if (pipeline.middlewareRewrite != null) {
-    finalResponse.headers.set("x-middleware-rewrite", pipeline.middlewareRewrite);
-  }
-  return withGlobalHeaders(finalResponse);
+  return withResponseHeaders(finalResponse, pipeline.corsHeadersInit);
 }
+
+function getLoggedResponseStatus(response: unknown, fallbackStatus: number | string | undefined) {
+  return response instanceof Response ? response.status : fallbackStatus;
+}
+
+import.meta.vitest?.test("development logging uses the returned Response status", ({ expect }) => {
+  expect(getLoggedResponseStatus(new Response(null, { status: 404 }), 200)).toBe(404);
+  expect(getLoggedResponseStatus("response body", 201)).toBe(201);
+});
 
 function isRedirectError(error: unknown): error is { redirectStatus: 307 | 308, redirectUrl: string } {
   if (!(error instanceof Error) || !("digest" in error) || !("redirectUrl" in error) || !("redirectStatus" in error)) {
@@ -157,6 +158,15 @@ function withGlobalHeaders(response: Response) {
   return response;
 }
 
+function withResponseHeaders(response: Response, corsHeadersInit?: HeadersInit) {
+  if (corsHeadersInit != null) {
+    for (const [key, value] of new Headers(corsHeadersInit)) {
+      response.headers.set(key, value);
+    }
+  }
+  return withGlobalHeaders(response);
+}
+
 function htmlResponse(body: string, status = 200) {
   return withGlobalHeaders(new Response(body, {
     status,
@@ -165,6 +175,83 @@ function htmlResponse(body: string, status = 200) {
     },
   }));
 }
+
+import.meta.vitest?.test("API version migrations do not expose their internal rewrite", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+
+  try {
+    const response = await app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+import.meta.vitest?.test("dispatcher-generated API errors retain CORS headers", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "0");
+
+  try {
+    const [notFound, methodNotAllowed] = await Promise.all([
+      app.handle(new Request("http://localhost/api/latest/this-route-does-not-exist")),
+      app.handle(new Request("http://localhost/api/v2beta1/migration-tests/smart-route-handler", {
+        method: "POST",
+      })),
+    ]);
+
+    expect([
+      { status: notFound.status, allowOrigin: notFound.headers.get("access-control-allow-origin") },
+      { status: methodNotAllowed.status, allowOrigin: methodNotAllowed.headers.get("access-control-allow-origin") },
+    ]).toMatchInlineSnapshot(`
+      [
+        {
+          "allowOrigin": "*",
+          "status": 404,
+        },
+        {
+          "allowOrigin": "*",
+          "status": 405,
+        },
+      ]
+    `);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+import.meta.vitest?.test("uncaught dispatch errors use the global sanitized error boundary", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("HEXCLAVE_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
+  vi.stubEnv("STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS", "1");
+
+  try {
+    const response = await app.handle(new Request("http://localhost/api/v1"));
+
+    expect({
+      status: response.status,
+      body: await response.text(),
+      accessControlAllowOrigin: response.headers.get("access-control-allow-origin"),
+      contentType: response.headers.get("content-type"),
+      contentTypeOptions: response.headers.get("x-content-type-options"),
+    }).toMatchInlineSnapshot(`
+      {
+        "accessControlAllowOrigin": "*",
+        "body": "Internal Server Error",
+        "contentType": "text/plain; charset=utf-8",
+        "contentTypeOptions": "nosniff",
+        "status": 500,
+      }
+    `);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
 
 function homeHtml() {
   const devStatsLink = getNodeEnvironment() === "development"
