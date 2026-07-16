@@ -43,8 +43,8 @@ async function fetchGenerationOnce(
     if (!isOpenRouterGenerationResponse(json)) return null;
     const data = json.data;
     return {
-      inputTokens: data.tokens_prompt ?? undefined,
-      outputTokens: data.tokens_completion ?? undefined,
+      inputTokens: data.native_tokens_prompt ?? data.tokens_prompt ?? undefined,
+      outputTokens: data.native_tokens_completion ?? data.tokens_completion ?? undefined,
       cachedInputTokens: data.native_tokens_cached ?? undefined,
       costUsd: data.total_cost,
       cacheDiscountUsd: data.cache_discount ?? undefined,

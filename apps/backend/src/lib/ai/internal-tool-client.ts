@@ -21,15 +21,15 @@ const ASSERTION_TTL_MILLIS = 5 * 60 * 1000;
 const ASSERTION_REFRESH_MARGIN_MILLIS = 60 * 1000;
 
 function toolBase(): string | null {
-  const base = getEnvVariable("STACK_INTERNAL_TOOL_URL", "").trim().replace(/\/+$/, "");
+  const base = getEnvVariable("HEXCLAVE_INTERNAL_TOOL_URL", "").trim().replace(/\/+$/, "");
   return base === "" ? null : base;
 }
 
-// The Stack Auth project the internal tool runs on — its id is the assertion
+// The Hexclave project the internal tool runs on — its id is the assertion
 // audience (the public JWKS endpoint serves keys per project id, so the tool
 // can verify without any shared secret).
 function internalToolProjectId(): string {
-  return getEnvVariable("STACK_INTERNAL_TOOL_PROJECT_ID");
+  return getEnvVariable("HEXCLAVE_INTERNAL_TOOL_PROJECT_ID");
 }
 
 let cachedAssertion: { token: string, expiresAtMillis: number } | null = null;
@@ -55,12 +55,13 @@ async function getAssertion(): Promise<string> {
 
 /**
  * Calls an internal-tool ingest route. Returns `null` (without doing
- * anything) when `STACK_INTERNAL_TOOL_URL` is unset — telemetry is disabled,
+ * anything) when `HEXCLAVE_INTERNAL_TOOL_URL` is unset — telemetry is disabled,
  * mirroring the old "no SpacetimeDB configured" behavior. Throws on non-2xx.
  */
 export async function callInternalTool<T = unknown>(path: string, options?: {
   method?: "GET" | "POST",
   body?: unknown,
+  timeoutMs?: number,
 }): Promise<T | null> {
   const base = toolBase();
   if (!base) return null;
@@ -73,7 +74,7 @@ export async function callInternalTool<T = unknown>(path: string, options?: {
       ...options?.body !== undefined ? { "Content-Type": "application/json" } : {},
     },
     ...options?.body !== undefined ? { body: JSON.stringify(options.body) } : {},
-    signal: AbortSignal.timeout(INTERNAL_TOOL_FETCH_TIMEOUT_MS),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? INTERNAL_TOOL_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const preview = (await res.text()).slice(0, 200);
@@ -91,11 +92,12 @@ export async function callInternalTool<T = unknown>(path: string, options?: {
 export async function callInternalToolStrict<T = unknown>(path: string, options?: {
   method?: "GET" | "POST",
   body?: unknown,
+  timeoutMs?: number,
 }): Promise<T> {
   const result = await callInternalTool<T>(path, options);
   if (result === null) {
     throw new HexclaveAssertionError(
-      `Internal tool is not configured; ${path} cannot run. Check STACK_INTERNAL_TOOL_URL.`,
+      `Internal tool is not configured; ${path} cannot run. Check HEXCLAVE_INTERNAL_TOOL_URL.`,
     );
   }
   return result;

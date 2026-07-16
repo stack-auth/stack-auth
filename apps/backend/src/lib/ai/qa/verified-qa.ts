@@ -24,9 +24,10 @@ export async function getVerifiedQaContext(): Promise<string> {
   cached = { value: result.data, expiresAtMillis: Date.now() + CACHE_TTL_MILLIS };
   return result.data;
 }
+const VERIFIED_QA_FETCH_TIMEOUT_MS = 2_000;
 
 async function getVerifiedQaContextInner(): Promise<string> {
-  const response = await callInternalTool<{ context: string }>("/api/backend/verified-qa", { method: "GET" });
+  const response = await callInternalTool<{ context: string }>("/api/backend/verified-qa", { method: "GET", timeoutMs: VERIFIED_QA_FETCH_TIMEOUT_MS });
   // Telemetry/internal tool not configured — prompts simply omit the block.
   if (response == null) return "";
   if (typeof response.context !== "string") {

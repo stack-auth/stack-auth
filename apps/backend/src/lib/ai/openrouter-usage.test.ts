@@ -82,6 +82,64 @@ describe("OpenRouter generation usage refinement", () => {
     });
   });
 
+  it("prefers native token counts when both native and normalized are present", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      data: {
+        tokens_prompt: 95,
+        tokens_completion: 20,
+        native_tokens_prompt: 130,
+        native_tokens_completion: 42,
+        native_tokens_cached: 50,
+        total_cost: 0.02,
+        cache_discount: null,
+      },
+    }));
+
+    const promise = refineGenerationUsage({ generationId: "gen-both", correlationId: "corr-both" });
+    await vi.advanceTimersByTimeAsync(1500);
+    await promise;
+
+    expect(callInternalTool).toHaveBeenCalledWith("/api/backend/update-ai-query-usage", {
+      body: {
+        correlationId: "corr-both",
+        inputTokens: 130,
+        outputTokens: 42,
+        cachedInputTokens: 50,
+        costUsd: 0.02,
+        cacheDiscountUsd: undefined,
+      },
+    });
+  });
+
+  it("falls back to normalized token counts when native counts are null", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({
+      data: {
+        tokens_prompt: 130,
+        tokens_completion: 42,
+        native_tokens_prompt: null,
+        native_tokens_completion: null,
+        native_tokens_cached: null,
+        total_cost: 0.0456,
+        cache_discount: null,
+      },
+    }));
+
+    const promise = refineGenerationUsage({ generationId: "gen-normalized", correlationId: "corr-normalized" });
+    await vi.advanceTimersByTimeAsync(1500);
+    await promise;
+
+    expect(callInternalTool).toHaveBeenCalledWith("/api/backend/update-ai-query-usage", {
+      body: {
+        correlationId: "corr-normalized",
+        inputTokens: 130,
+        outputTokens: 42,
+        cachedInputTokens: undefined,
+        costUsd: 0.0456,
+        cacheDiscountUsd: undefined,
+      },
+    });
+  });
+
   it("retries when generation metadata is not ready yet", async () => {
     fetchMock
       .mockResolvedValueOnce(new Response("not ready", { status: 404 }))

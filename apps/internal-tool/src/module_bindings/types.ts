@@ -120,3 +120,4 @@ export const Sessions = __t.object("Sessions", {
   expiresAt: __t.timestamp(),
 });
 export type Sessions = __Infer<typeof Sessions>;
+

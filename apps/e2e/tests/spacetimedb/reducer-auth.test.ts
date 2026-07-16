@@ -43,12 +43,26 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
   });
 
   it("an identity without Stack Auth claims sees zero rows in my_visible_mcp_call_log", async ({ expect }) => {
-    // Seed a row so the underlying qa/mcp tables are definitely non-empty —
-    // otherwise a 0-row result could be a false positive from an empty table.
+    // Seed mcp_call_log itself (the table the view projects) so it is
+    // definitely non-empty — otherwise a 0-row result could be a false
+    // positive from an empty table.
     const memberToken = await signMemberToken();
     const seedMarker = uniqueMarker("reducer-auth-seed");
     scope.trackMcpQuestion(seedMarker);
-    const seed = await callReducer(memberToken, "add_manual_qa", [seedMarker, "a", false, seedMarker]);
+    const seed = await callReducer(memberToken, "log_mcp_call", [
+      seedMarker, // correlationId
+      opt(null), // conversationId
+      "reducer-auth-seed-tool",
+      "reason",
+      "prompt",
+      seedMarker, // question — cleanup looks rows up by this marker
+      "response",
+      0, // stepCount
+      "[]", // innerToolCallsJson
+      0n, // durationMs
+      "model",
+      opt(null), // errorMessage
+    ]);
     expect(seed.ok, seed.body).toBe(true);
 
     const stranger = await mintIdentity();

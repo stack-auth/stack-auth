@@ -298,6 +298,8 @@ services:
     pull_policy: always
     ports:
       - "${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}39:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: start
 
   spacetimedb-issuer-proxy:

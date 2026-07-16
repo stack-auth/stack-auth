@@ -4,8 +4,9 @@ import {
   callReducer,
   createCleanupScope,
   decodeOptional,
+  findCorrelationIdByQuestion,
   findManualQaEntryIdByQuestion,
-  isSpacetimedbReachable, signMemberToken,
+  isSpacetimedbReachable, opt, signMemberToken,
   sqlQuery,
   touchSession,
   type CleanupScope,
@@ -96,15 +97,21 @@ describe.skipIf(!canRun)("qa_entries CRUD invariants", () => {
     const qaId = await findManualQaEntryIdByQuestion(reviewerToken, marker);
     expect(qaId).toBeDefined();
 
-    const beforeQa = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_qa_entries")).rows.length;
-    const beforeMcp = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
+    // Seed an mcp_call_log row of our own and assert it survives the qa-entry
+    // delete. Scoped by marker (NOT global row counts): the spacetimedb test
+    // files run concurrently against the shared DB, so other tests inserting
+    // or deleting their own rows would race a count-based assertion.
+    const mcpMarker = uniqueMarker("delete-scope-mcp");
+    scope.trackMcpQuestion(mcpMarker);
+    const seedMcp = await callReducer(reviewerToken, "log_mcp_call", [
+      mcpMarker, opt(null), "delete-scope-tool", "reason", "prompt", mcpMarker, "response", 0, "[]", 0n, "model", opt(null),
+    ]);
+    expect(seedMcp.ok, seedMcp.body).toBe(true);
 
     const del = await callReducer(reviewerToken, "delete_qa_entry", [qaId!]);
     expect(del.ok, del.body).toBe(true);
 
-    const afterQa = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_qa_entries")).rows.length;
-    const afterMcp = (await sqlQuery(reviewerToken, "SELECT * FROM my_visible_mcp_call_log")).rows.length;
-    expect(afterQa).toBe(beforeQa - 1);
-    expect(afterMcp).toBe(beforeMcp);
+    expect(await findManualQaEntryIdByQuestion(reviewerToken, marker)).toBeUndefined();
+    expect(await findCorrelationIdByQuestion(reviewerToken, mcpMarker)).toBe(mcpMarker);
   });
 });

@@ -35,3 +35,4 @@ export type UpdateMcpQaReviewParams = __Infer<typeof UpdateMcpQaReviewReducer>;
 export type UpdateQaEntryWithPublishParams = __Infer<typeof UpdateQaEntryWithPublishReducer>;
 export type UpsertQaFromCallParams = __Infer<typeof UpsertQaFromCallReducer>;
 export type UpsertQaFromCallAndMarkReviewedParams = __Infer<typeof UpsertQaFromCallAndMarkReviewedReducer>;
+
