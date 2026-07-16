@@ -34,10 +34,14 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
 
   const response = await fetch(targetUrl, { method: req.method, headers: forwardHeaders, body });
 
-  const responseHeaders = {
+  const responseHeaders: Record<string, string> = {
     "Content-Type": response.headers.get("Content-Type") ?? "application/json",
     "Cache-Control": "no-store",
   };
+  const generationIdHeader = response.headers.get("X-Generation-Id");
+  if (generationIdHeader != null) {
+    responseHeaders["X-Generation-Id"] = generationIdHeader;
+  }
 
   const passthrough = () => new Response(response.body, { status: response.status, headers: responseHeaders });
 
