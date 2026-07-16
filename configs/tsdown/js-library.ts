@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { defineConfig, type Rolldown } from 'tsdown';
+import { defineConfig, type NormalizedFormat, type Rolldown } from 'tsdown';
 import { createBasePlugin } from './plugins.ts';
 
 
@@ -42,24 +42,64 @@ const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
 });
 
 
-export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined }) {
-  return defineConfig({
+export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | ((...args: unknown[]) => void) | undefined }) {
+  return defineConfig((inlineConfig) => ({
     entry: ['src/**/*.(ts|tsx|js|jsx)'],
     sourcemap: true,
     clean: false,
-    noExternal: [...customNoExternal],
-    inlineOnly: false,
-    dts: true,
-    format: {
-      esm: {
-        outDir: 'dist/esm',
-        outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-      },
-      cjs: {
-        outDir: 'dist',
-        outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-      },
+    deps: {
+      alwaysBundle: [...customNoExternal],
+      onlyBundle: false,
     },
+    // In watch mode, DTS and CJS are disabled to keep the rolldown watcher count
+    // at 11 (one per package). The DTS plugin doubles the watcher count, and
+    // dual format (ESM+CJS) doubles it again — either of which pushes us past
+    // rolldown's concurrency limit, causing a deadlock in rolldown 1.1.2
+    // (rolldown/tsdown#789, rolldown/rolldown#8643).
+    // TypeScript's language server provides type checking during dev anyway,
+    // and CJS dist isn't needed during development.
+    dts: inlineConfig.watch ? false : true,
+    onSuccess: _options.onSuccess,
+    // Some source files use `import.meta` inside platform-specific branches (e.g.
+    // `import.meta.env?.SSR` for the TanStack Start build in src/lib/cookie.ts).
+    // `import.meta` isn't valid in CJS, so rolldown emits an [EMPTY_IMPORT_META]
+    // warning for it once per package during the dual-format build, spamming the
+    // dev output. Only the ESM build is ever loaded by the runtimes that read
+    // `import.meta`; the CJS build's auto-replacement of `import.meta` with `{}`
+    // is exactly the behaviour we want, so silence just that warning for CJS.
+    inputOptions: (options: Rolldown.InputOptions, format: NormalizedFormat) => {
+      if (format !== 'cjs') {
+        return options;
+      }
+      const previousOnLog = options.onLog;
+      options.onLog = (level, log, defaultHandler) => {
+        if (log.code === 'EMPTY_IMPORT_META') {
+          return;
+        }
+        if (previousOnLog != null) {
+          previousOnLog(level, log, defaultHandler);
+        } else {
+          defaultHandler(level, log);
+        }
+      };
+      return options;
+    },
+    ...(inlineConfig.watch ? {
+      format: 'esm',
+      outDir: 'dist/esm',
+      outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+    } : {
+      format: {
+        esm: {
+          outDir: 'dist/esm',
+          outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+        },
+        cjs: {
+          outDir: 'dist',
+          outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+        },
+      },
+    }),
     plugins: [
       fixImportExtensions(),
       createBasePlugin({}),
@@ -77,5 +117,5 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
         },
       }
     ],
-  });
+  }));
 }

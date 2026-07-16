@@ -222,8 +222,17 @@
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper {
-    z-index: 9999 !important;
+    z-index: 2147483647 !important;
     overflow: visible !important;
+  }
+
+  .analytics-card-tooltip-escape:has(.recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    z-index: 2147483647 !important;
+  }
+
+  main:has(.analytics-card-tooltip-escape .recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    position: relative;
+    z-index: 60;
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper > * {
@@ -417,6 +426,21 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   }
 }
 
+@keyframes data-grid-export-progress-shimmer {
+  0% {
+    transform: translateX(-105%);
+  }
+
+  100% {
+    transform: translateX(245%);
+  }
+}
+
+.data-grid-export-progress-shimmer {
+  animation: data-grid-export-progress-shimmer 1.35s ease-in-out infinite;
+  will-change: transform;
+}
+
 @keyframes rainbow-beam {
   0% {
     background-position: 0% 50%;
@@ -437,6 +461,10 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   100% {
     transform: scale(1.6);
     opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+  .data-grid-export-progress-shimmer {
+    animation: none;
+    transform: translateX(75%);
   }
 }
 
@@ -463,4 +491,29 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
 
 :where([data-pacifica-children-min-width-0] > *) {
   min-width: 0;
+}
+
+
+/* Config-agent commit-preview diff (Pierre `@pierre/diffs`).
+ *
+ * Pierre renders into a shadow-DOM `diffs-container`. We can't reach inside with
+ * normal selectors, but CSS custom properties inherit through the shadow
+ * boundary, so setting Pierre's documented override hooks on the light-DOM
+ * wrapper recolors the diff chrome. Syntax-token colors still come from the
+ * shiki github-light/github-dark themes (chosen via `themeType`).
+ *
+ * We only set the *base* surface/accent/number colors and let Pierre derive the
+ * row tints, emphasis, gutters and separators from them (`color-mix` over the
+ * base). The project tokens already flip between light and dark via `.dark`, so
+ * both `light-dark()` branches are pointed at the same token. */
+.config-agent-diff {
+  --diffs-light-bg: hsl(var(--background));
+  --diffs-dark-bg: hsl(var(--background));
+  --diffs-light: hsl(var(--foreground));
+  --diffs-dark: hsl(var(--foreground));
+
+  --diffs-fg-number-override: hsl(var(--muted-foreground));
+
+  --diffs-addition-color-override: hsl(var(--success));
+  --diffs-deletion-color-override: hsl(var(--destructive));
 }

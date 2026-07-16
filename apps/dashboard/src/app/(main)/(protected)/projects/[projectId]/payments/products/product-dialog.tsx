@@ -239,8 +239,8 @@ export function ProductDialog({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className={cn(
           "max-w-2xl rounded-2xl",
-          "bg-background/95 backdrop-blur-xl",
-          "border border-border/50 dark:border-foreground/[0.1]",
+          "bg-white/95 backdrop-blur-xl dark:bg-background/95",
+          "border border-black/[0.08] dark:border-foreground/[0.1]",
           "shadow-2xl"
         )}>
           <Stepper currentStep={currentStep} onStepChange={setCurrentStep} className="min-h-[400px]">

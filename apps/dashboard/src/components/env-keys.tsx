@@ -1,7 +1,86 @@
-import { getPublicEnvVar } from '@/lib/env';
-import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
+"use client";
 
-function getEnvFileContent(props: {
+import { codePanelHeaderClasses, codePanelShellClasses } from '@/components/code-block';
+import { getPublicEnvVar } from '@/lib/env';
+import { Button, CopyButton, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
+import React, { useState } from "react";
+import { EyeIcon, EyeSlashIcon, FileTextIcon } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+
+type EnvFileViewerProps = {
+  filename: string;
+  value: string;
+}
+
+export function EnvFileViewer({ filename, value }: EnvFileViewerProps) {
+  const [revealAll, setRevealAll] = useState(false);
+
+  const lines = value.split("\n").map((line, idx) => {
+    const eqIndex = line.indexOf("=");
+    if (eqIndex === -1) return { key: `comment_${idx}`, val: line, isComment: true };
+    const key = line.substring(0, eqIndex);
+    const val = line.substring(eqIndex + 1);
+    return { key, val, isComment: false };
+  });
+
+  return (
+    <div className={cn(codePanelShellClasses, "w-full flex flex-col")}>
+      <div className={codePanelHeaderClasses}>
+        <h5 className="font-medium flex items-center gap-2">
+          <FileTextIcon className="w-4 h-4" />
+          {filename}
+        </h5>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-6 w-6 p-1"
+            onClick={() => setRevealAll(!revealAll)}
+            title={revealAll ? "Mask values" : "Reveal values"}
+            aria-label={revealAll ? "Mask values" : "Reveal values"}
+          >
+            {revealAll ? <EyeSlashIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
+          </Button>
+          <CopyButton content={value} variant="secondary" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto p-4 font-mono text-xs select-text">
+        <table className="w-full border-collapse">
+          <tbody>
+            {lines.map((line, idx) => {
+              return (
+                <tr key={idx} className="group hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors leading-relaxed">
+                  <td className="py-0.5 w-full">
+                    <div className="flex items-center justify-between gap-4 w-full">
+                      <div className="flex items-center flex-wrap whitespace-pre">
+                        {line.isComment ? (
+                          <span className="text-muted-foreground/50 italic">{line.val}</span>
+                        ) : (
+                          <>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-medium select-all">{line.key}</span>
+                            <span className="text-muted-foreground/50 mx-1">=</span>
+                            {revealAll ? (
+                              <span className="text-teal-600 dark:text-teal-400 font-medium break-all select-all">{line.val}</span>
+                            ) : (
+                              <span className="text-muted-foreground/45 tracking-[0.25em] font-sans text-xs select-none">••••••••••••••••••••</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function getEnvFileContent(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
@@ -91,6 +170,7 @@ export function APIEnvKeys(props: {
         <CopyField
           type="input"
           monospace
+          isSecret
           value={props.secretServerKey}
           label="Secret Server Key"
           helper="This key is used on the server-side and can be used to perform actions on behalf of your users. Keep it safe."
@@ -100,6 +180,7 @@ export function APIEnvKeys(props: {
         <CopyField
           type="input"
           monospace
+          isSecret
           value={props.superSecretAdminKey}
           label="Super Secret Admin Key"
           helper="This key is for administrative use only. Anyone owning this key will be able to create unlimited new keys and revoke any other keys. Be careful!"
@@ -118,13 +199,7 @@ export function NextJsEnvKeys(props: {
   const envFileContent = getEnvFileContent(props);
 
   return (
-    <CopyField
-      type="textarea"
-      monospace
-      height={envFileContent.split("\n").length * 26}
-      value={envFileContent}
-      fixedSize
-    />
+    <EnvFileViewer filename=".env.local" value={envFileContent} />
   );
 }
 
@@ -142,12 +217,6 @@ export function ViteEnvKeys(props: {
     .join("\n");
 
   return (
-    <CopyField
-      type="textarea"
-      monospace
-      height={envFileContent.split("\n").length * 26}
-      value={envFileContent}
-      fixedSize
-    />
+    <EnvFileViewer filename=".env" value={envFileContent} />
   );
 }

@@ -1,11 +1,10 @@
 import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@hexclave/shared/dist/utils/env';
-import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { HexclaveAssertionError, captureError } from '@hexclave/shared/dist/utils/errors';
 import { Result } from '@hexclave/shared/dist/utils/results';
 import { Sandbox } from '@vercel/sandbox';
-import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
+import { Freestyle as FreestyleClient } from 'freestyle';
 
 export type ExecuteJavascriptOptions = {
   nodeModules?: Record<string, string>,
@@ -28,7 +27,7 @@ function createFreestyleEngine(): JsEngine {
       let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
 
       if (apiKey === "mock_stack_freestyle_key") {
-        if (!["development", "test"].includes(getNodeEnvironment()) && !isLocalEmulatorEnabled()) {
+        if (!["development", "test"].includes(getNodeEnvironment())) {
           throw new HexclaveAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
         }
         if (!baseUrl) {
@@ -150,7 +149,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
 
       return await runWithFallback(code, options);
     } else {
-      if (getNodeEnvironment().includes("prod") && !isLocalEmulatorEnabled()) {
+      if (getNodeEnvironment().includes("prod")) {
         throw new HexclaveAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 

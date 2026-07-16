@@ -27,15 +27,7 @@ export const convexSetupPrompt = deindent`
     </Step>
 
     <Step title="Install and configure Hexclave">
-      Install Hexclave in the app. If you have not already completed the SDK setup steps above, run the setup wizard:
-
-      \`\`\`sh
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Create or select a Hexclave project in the dashboard. Copy the Hexclave environment variables into the app's \`.env.local\` file.
-
-      Also add the same Hexclave environment variables to the Convex deployment environment in the Convex dashboard.
+      Install Hexclave in the app. If you have not already completed the SDK setup steps above, follow the instructions in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Configure Convex auth providers">
@@ -135,31 +127,7 @@ export const supabaseSetupPrompt = deindent`
     </Step>
 
     <Step title="Install Hexclave and Supabase dependencies">
-      If you are starting from scratch with Next.js, you can use Supabase's template and then initialize Hexclave:
-
-      \`\`\`sh
-      npx create-next-app@latest -e with-supabase hexclave-supabase
-      cd hexclave-supabase
-      npx @hexclave/cli@latest init
-      \`\`\`
-
-      Add the Supabase environment variables to \`.env.local\`:
-
-      \`\`\`.env .env.local
-      NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
-      NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-      SUPABASE_JWT_SECRET=<your-supabase-jwt-secret>
-      \`\`\`
-
-      Also add the Hexclave environment variables:
-
-      \`\`\`.env .env.local
-      # The project ID is the only client-exposed Hexclave variable; in Next.js it must
-      # be prefixed with NEXT_PUBLIC_. HEXCLAVE_SECRET_SERVER_KEY is server-only and must
-      # NEVER be prefixed or exposed to the client.
-      NEXT_PUBLIC_HEXCLAVE_PROJECT_ID=<your-hexclave-project-id>
-      HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
-      \`\`\`
+      First, follow the instructions on how to get started with Hexclave for your framework in the [Getting Started Guide](https://docs.hexclave.com/guides/getting-started/setup).
     </Step>
 
     <Step title="Mint Supabase JWTs from Hexclave users">
@@ -591,7 +559,9 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     };
     \`\`\`
 
-    Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add handler/auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
+    For some OAuth providers like Google and GitHub, Hexclave automatically provides a client ID and secret, so no extra provider setup is needed.
+
+    Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
   "fraud-protection": deindent`
     Key concepts: sign-up rules are ordered checks that decide whether a sign-up should be allowed, rejected, restricted, or logged; rule priority decides which matching rule wins when multiple rules apply.
@@ -813,6 +783,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isMaybeTanstackStart = isDefinitelyTanstackStart || mainType === "ai-prompt";
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
+  const isDefinitelyVite = isDefinitelyTanstackStart;
+  const isMaybeNoBundler = mainType === "js" || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -871,6 +843,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           - React: \`@hexclave/react\`
           - TanStack Start: \`@hexclave/tanstack-start\`
           - Other & vanilla JS: \`@hexclave/js\`
+            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\` in a \`<script type="module">\` tag (see the "Browser \`<script>\` tag" section below). This is significantly less preferred than installing the npm package with a bundler, and environment variables do not work with it.
 
           You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`
@@ -903,6 +876,44 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             },
           });
           \`\`\`
+        ` : ""}
+
+        ${isMaybeFrontend && isMaybeNoBundler ? deindent`
+          #### Browser \`<script>\` tag (no bundler)
+
+          <Note>
+            This approach is significantly less preferred than installing the \`@hexclave/js\` npm package and using a bundler. Reach for it only for quick prototypes, static HTML pages, or environments where you genuinely cannot run a build step. Prefer the npm setup above whenever possible.
+          </Note>
+
+          If you cannot use npm or a bundler, load the SDK directly from [esm.sh](https://esm.sh) inside a \`<script type="module">\` tag and expose the app on the global scope:
+
+          \`\`\`html
+          <script type="module">
+            // Pin a specific version so a new release cannot unexpectedly break your page.
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
+
+            globalThis.hexclaveClientApp = new HexclaveClientApp({
+              // Environment variables are NOT read with this approach, so the project ID
+              // (and the publishable client key, if the project has requirePublishableClientKey
+              // enabled) MUST be passed explicitly here.
+              projectId: "your-project-id",
+              tokenStore: "cookie",
+              urls: {
+                default: {
+                  type: "hosted",
+                },
+              },
+            });
+          </script>
+          \`\`\`
+
+          Any other script on the page can then use the app through the global, for example \`await globalThis.hexclaveClientApp.getUser()\`.
+
+          Important caveats for this approach:
+
+          - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
+          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -996,7 +1007,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks. Do not run `npm run dev:inner`, as that will skip past the Hexclave server." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">
@@ -1015,7 +1026,8 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               Some projects have the \`requirePublishableClientKey\` config option enabled. In that case, a publishable client key will also be necessary. However, this is extremely uncommon; for most projects this is not true, so don't ask the user for one unless you have confirmation that the publishable client key is required. If it's not required, the project ID is the only environment variable required to use Hexclave on a client.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? "# note: prefix the environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so" : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             \`\`\`
 
             Alternatively, you can also just set the project ID in the \`hexclave/client.ts\` file:
@@ -1037,7 +1049,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             ${isAiPrompt ? `${deindent`
               If the \`requirePublishableClientKey\` config option is enabled as described above, a publishable client key will also be necessary. Otherwise, these two are the only environment variables required to use Hexclave on a server.
             `}\n\n` : ""}\`\`\`.env .env.local
-            HEXCLAVE_PROJECT_ID=<your-project-id>
+            ${!isDefinitelyNextjs && !isDefinitelyVite ? deindent`
+              # as above, prefix the project ID environment variable with NEXT_PUBLIC_ or VITE_ if your framework requires you to do so
+              # do NOT prefix the secret server key environment variable with NEXT_PUBLIC_ or VITE_ as it is server-only
+            ` : ""}
+            ${isDefinitelyNextjs ? "NEXT_PUBLIC_" : (isDefinitelyVite ? "VITE_" : "")}HEXCLAVE_PROJECT_ID=<your-project-id>
             HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
             \`\`\`
 
@@ -1197,32 +1213,6 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             Note: Keep the loading indicator simple. Avoid copy like "Getting Hexclave ready..." — a simple spinner, skeleton, or "Loading..." message is enough. Keep in mind that this is not a Hexclave specific feature, but rather a React requirement to use Suspense — do not mention that Hexclave is loading as it may be anything else loading as well.
           ` : ""}
         </Step>
-
-        ${isMaybeTanstackStart ? deindent`
-          <Step title="${!isDefinitelyTanstackStart ? "TanStack Start: " : ""}Add the Hexclave handler route">
-            Hexclave's auth flows (sign-in, sign-up, OAuth callbacks, password reset, etc.) are rendered by a single \`HexclaveHandler\` component mounted at \`/handler/*\`. In TanStack Start, expose it as a splat file route at \`src/routes/handler/$.tsx\`:
-
-            \`\`\`tsx src/routes/handler/$.tsx
-            import { HexclaveHandler } from "${isDefinitelyTanstackStart ? packageName : "@hexclave/tanstack-start"}";
-            import { createFileRoute, useLocation } from "@tanstack/react-router";
-
-            export const Route = createFileRoute("/handler/$")({
-              ssr: false,
-              component: HandlerPage,
-            });
-
-            function HandlerPage() {
-              const { pathname } = useLocation();
-              return <HexclaveHandler fullPage location={pathname} />;
-            }
-            \`\`\`
-
-            Two TanStack-specific notes:
-
-            - The route is opted out of SSR with \`ssr: false\`. The handler runs browser-only auth flows (cookies, redirects, popups), so rendering it on the server provides no benefit and can fight with hydration. Other routes can opt into or out of SSR per-route the same way.
-            - Hexclave resolves the current user during SSR by reading TanStack Start's request cookies through \`@hexclave/tanstack-start\`'s server context. No extra wiring is required — \`useUser()\` "just works" on both server and client routes as long as \`tokenStore: "cookie"\` is set on \`HexclaveClientApp\`.
-          </Step>
-        ` : ""}
       ` : ""}
 
       ${isMaybeBackend && !isDefinitelyNextjs ? deindent`

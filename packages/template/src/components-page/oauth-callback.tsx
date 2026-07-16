@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
+import { hexclaveAppInternalsSymbol } from "../lib/hexclave-app/common";
 import { useTranslation } from "../lib/translations";
 import { ErrorPage } from "./error-page";
 
@@ -22,6 +23,11 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
     if (called.current) return;
     called.current = true;
     try {
+      // The startup handler in StackClientApp's constructor may have already consumed the
+      // one-time OAuth params (code + state cookie) via a microtask that fires before this
+      // macrotask-scheduled useEffect. Await its completion so we don't race: if it succeeds
+      // it will redirect and this page tears down; if it fails we fall through below.
+      await app[hexclaveAppInternalsSymbol].awaitPendingAuthResolutions();
       const hasRedirected = await app.callOAuthCallback();
       if (!hasRedirected) {
         await app.redirectToSignIn({ noRedirectBack: true });

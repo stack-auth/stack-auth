@@ -224,6 +224,39 @@ it("ignores expired changes", async ({ expect }) => {
   expect(get.body.quantity).toBe(0);
 });
 
+it("counts a grant with a future expiry in the current balance", async ({ expect }) => {
+  // Regression: a manual grant with a future expires_at must count toward the current balance. The
+  // item-quantities fold materializes the grant's future-dated expire marker eagerly, so reading the
+  // fold's final row (rather than the balance "as of now") would wrongly report the grant as already
+  // expired and cause spurious ItemQuantityInsufficientAmount rejections until the expiry passes.
+  await Project.createAndSwitch();
+  await updateEnvironmentConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const post = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=false`, {
+    method: "POST",
+    accessType: "admin",
+    body: { delta: 4, expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+  });
+  expect(post.status).toBe(200);
+
+  const get = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
+    accessType: "client",
+  });
+  expect(get.status).toBe(200);
+  expect(get.body.quantity).toBe(4);
+});
+
 it("sums multiple non-expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateEnvironmentConfig({

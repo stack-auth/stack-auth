@@ -1,1 +1,1 @@
-export type { AuthenticationResponseJSON, RegistrationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON } from "@simplewebauthn/types";
+export type { AuthenticationResponseJSON, RegistrationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, AuthenticatorAttestationResponseJSON } from "@simplewebauthn/browser";

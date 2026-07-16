@@ -754,7 +754,7 @@ export default function PageClient() {
                 )}
                 {showTooltip && analyticsCardHoveredIndex !== null && (
                   <div
-                    className="absolute z-20 -top-2 -translate-x-1/2 -translate-y-full rounded-xl bg-background/95 border border-foreground/[0.1] shadow-lg px-3 py-2 min-w-[170px]"
+                    className="absolute z-20 -top-2 -translate-x-1/2 -translate-y-full rounded-xl bg-white/95 border border-black/[0.08] shadow-lg ring-1 ring-black/[0.06] px-3 py-2 min-w-[170px] dark:bg-background/95 dark:border-white/[0.08] dark:ring-white/[0.08]"
                     style={{ left: `${tooltipLeftPercent}%` }}
                   >
                     <div className="text-[10px] font-medium text-muted-foreground">{hoveredPoint.date}</div>

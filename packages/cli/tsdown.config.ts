@@ -6,7 +6,9 @@ const config: UserConfig = {
   clean: false,
   dts: true,
   outDir: 'dist',
-  external: ['@anthropic-ai/claude-agent-sdk'],
+  deps: {
+    neverBundle: ['@anthropic-ai/claude-agent-sdk'],
+  },
   define: {
     __STACK_CLI_SENTRY_DSN__: JSON.stringify(process.env.STACK_CLI_SENTRY_DSN_BUILD ?? ''),
   },

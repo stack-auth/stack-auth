@@ -369,7 +369,7 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
       return;
     }
 
-    const issueMessage = issue.messages.join("\n");
+    const issueMessage = "Hexclave config " + issue.kind + ": " + issue.messages.join("\n");
     const issueKey = `${app.projectId}:${issue.kind}:${issueMessage}`;
     const issueLabel = issue.kind === "error" ? "error" : "warning";
     const issueTitle = issue.kind === "error"
@@ -528,7 +528,10 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
     });
   };
 
-  refresh();
+  // This is mounted from the base client-app constructor, which also runs
+  // before subclass field initializers. Defer the first app call so overridden
+  // methods like adminApp.getProject() can safely touch subclass caches.
+  queueMicrotask(refresh);
   const interval = setInterval(refresh, REFRESH_INTERVAL_MS);
 
   const cleanup = () => {

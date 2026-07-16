@@ -72,3 +72,46 @@ it("should list only anonymous users when onlyAnonymous is true", async ({ expec
   expect(anonymousOnlyUserIds).toContain(anonymousUser2.id);
   expect(anonymousOnlyUserIds).not.toContain(regularUser.id);
 });
+
+it("should exclude users by primary email domain", async ({ expect }) => {
+  const { serverApp } = await createApp();
+
+  const gmailUser = await serverApp.createUser({
+    primaryEmail: "blocked@gmail.com",
+    primaryEmailVerified: true,
+  });
+  const yahooUser = await serverApp.createUser({
+    primaryEmail: "blocked@yahoo.com",
+    primaryEmailVerified: true,
+  });
+  const companyUser = await serverApp.createUser({
+    primaryEmail: "kept@company.example",
+    primaryEmailVerified: true,
+  });
+  const secondaryMatchUser = await serverApp.createUser({
+    primaryEmail: "secondary@company.example",
+    primaryEmailVerified: true,
+  });
+  await secondaryMatchUser.createContactChannel({
+    type: "email",
+    value: "secondary@gmail.com",
+    isVerified: true,
+    usedForAuth: false,
+  });
+  const noEmailUser = await serverApp.createUser({
+    displayName: "No Email",
+  });
+
+  const users = await serverApp.listUsers({
+    includeRestricted: true,
+    excludedEmailDomains: ["gmail.com", "YAHOO.com"],
+    orderBy: "signedUpAt",
+  });
+  const userIds = users.map((user) => user.id);
+
+  expect(userIds).not.toContain(gmailUser.id);
+  expect(userIds).not.toContain(yahooUser.id);
+  expect(userIds).toContain(companyUser.id);
+  expect(userIds).toContain(secondaryMatchUser.id);
+  expect(userIds).toContain(noEmailUser.id);
+});

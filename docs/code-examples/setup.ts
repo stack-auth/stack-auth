@@ -6,7 +6,7 @@ export const setupExamples = {
       {
         language: 'JavaScript',
         framework: 'Next.js',
-        code: `npx @stackframe/stack-cli@latest init`,
+        code: `Follow the setup prompt for your framework.`,
         highlightLanguage: 'bash',
         filename: 'Terminal'
       }
