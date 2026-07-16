@@ -614,7 +614,7 @@ function SidebarContent({
       </div>
 
       <div className={cn(
-        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl",
+        "sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 bg-black/[0.03] dark:bg-foreground/[0.06] dark:backdrop-blur-xl",
         !isDrawer && "dark:rounded-b-2xl",
         isCollapsed ? "px-2" : "px-3",
       )}>

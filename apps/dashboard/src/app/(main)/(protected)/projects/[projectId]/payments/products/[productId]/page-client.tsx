@@ -1,6 +1,12 @@
 "use client";
 
-import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
+import {
+  DesignEditableGrid,
+  DesignButton,
+  DesignInput,
+  DesignSelectorDropdown,
+  type DesignEditableGridItem,
+} from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
@@ -26,9 +32,6 @@ import {
   DropdownMenuTrigger,
   Input,
   Label,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -647,69 +650,54 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       ) : 'No',
     },
     {
-      type: 'custom',
+      type: 'custom-dropdown',
       itemKey: 'freeTrial',
       icon: <ClockIcon size={16} />,
       name: "Free Trial",
       tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
-      children: (
-        <Popover open={freeTrialPopoverOpen} onOpenChange={setFreeTrialPopoverOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "w-full px-1 py-0 h-[unset] border-transparent rounded text-left text-foreground",
-                "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-                "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50",
-                "transition-colors duration-150 hover:transition-none"
-              )}
+      open: freeTrialPopoverOpen,
+      onOpenChange: setFreeTrialPopoverOpen,
+      triggerContent: localFreeTrialDisplayText,
+      popoverContent: (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <DesignInput
+              className="w-20 bg-white dark:bg-zinc-950"
+              type="number"
+              min={1}
+              value={freeTrialCount}
+              onChange={(e) => setFreeTrialCount(parseInt(e.target.value) || 1)}
+            />
+            <DesignSelectorDropdown
+              className="w-28"
+              triggerClassName="bg-white dark:bg-zinc-950 border-black/[0.1] dark:border-white/[0.1]"
+              value={freeTrialUnit}
+              onValueChange={(v) => setFreeTrialUnit(v as DayInterval[1])}
+              options={DEFAULT_INTERVAL_UNITS.map((unit) => ({
+                value: unit,
+                label: `${unit}${freeTrialCount !== 1 ? 's' : ''}`,
+              }))}
+            />
+          </div>
+          <div className="flex gap-2">
+            <DesignButton
+              size="sm"
+              className="flex-1"
+              onClick={() => handleFreeTrialSave(freeTrialCount, freeTrialUnit)}
             >
-              {localFreeTrialDisplayText}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64 p-3">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Input
-                  className="w-20"
-                  type="number"
-                  min={1}
-                  value={freeTrialCount}
-                  onChange={(e) => setFreeTrialCount(parseInt(e.target.value) || 1)}
-                />
-                <Select value={freeTrialUnit} onValueChange={(v) => setFreeTrialUnit(v as DayInterval[1])}>
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEFAULT_INTERVAL_UNITS.map((unit) => (
-                      <SelectItem key={unit} value={unit}>
-                        {unit}{freeTrialCount !== 1 ? 's' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleFreeTrialSave(freeTrialCount, freeTrialUnit)}
-                >
-                  Apply
-                </Button>
-                {localFreeTrial && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRemoveFreeTrial}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+              Apply
+            </DesignButton>
+            {localFreeTrial && (
+              <DesignButton
+                size="sm"
+                variant="outline"
+                onClick={handleRemoveFreeTrial}
+              >
+                Remove
+              </DesignButton>
+            )}
+          </div>
+        </div>
       ),
     },
     {
