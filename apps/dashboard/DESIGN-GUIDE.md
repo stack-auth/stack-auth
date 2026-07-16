@@ -520,14 +520,22 @@ Use for:
 Props:
 
 - `items` (typed union: `text`, `boolean`, `dropdown`, `custom-dropdown`, `custom-button`, `custom`)
+- shared item metadata: `itemKey`, `icon`, `name`, optional `description` and `tooltip`
 - `columns`: `1 | 2`
+- `size`: `"sm" | "md"`
 - `deferredSave`, `hasChanges`, `onSave`, `onDiscard`
 - `externalModifiedKeys`
 
 Rules:
 
 - prefer this for config forms that are row-based and editable inline
+- layout is a flat label/value grid (no per-field cards); editable values use white controls in light mode
 - use deferred save mode when many fields should be committed together
+- text values enter an explicit edit state; Enter saves and Escape cancels
+- omit `onUpdate` or set `readOnly` for a non-editable value
+- use `description` for persistent context and `tooltip` only for secondary details
+- `custom-dropdown` owns its popover; provide both `triggerContent` and `popoverContent`
+- for page-local editable triggers outside the typed union, reuse `designEditableGridControlClassName` / `designEditableGridPopoverClassName`
 
 ### 4.12 `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
