@@ -241,7 +241,9 @@ function ProductTitleEditor({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
-              runAsynchronouslyWithAlert(save());
+              if (draftValue !== storedDisplayName && !isSaving) {
+                runAsynchronouslyWithAlert(save());
+              }
             }
             if (event.key === "Escape") {
               cancelEditing();
@@ -351,6 +353,12 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
                   label: "View in Product Lines",
                   icon: <FolderOpenIcon className="h-4 w-4" />,
                   onClick: () => router.push(`/projects/${projectId}/payments/product-lines#product-${productId}`),
+                },
+                {
+                  id: "edit",
+                  label: "Edit full details",
+                  icon: <PencilSimpleIcon className="h-4 w-4" />,
+                  onClick: () => router.push(`/projects/${projectId}/payments/products/${productId}/edit`),
                 },
               ]}
             />
@@ -690,6 +698,14 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     setFreeTrialPopoverOpen(false);
   };
 
+  const handleFreeTrialPopoverOpenChange = (open: boolean) => {
+    setFreeTrialPopoverOpen(open);
+    if (open) {
+      setFreeTrialCount(localFreeTrial ? localFreeTrial[0] : 7);
+      setFreeTrialUnit(localFreeTrial ? localFreeTrial[1] : 'day');
+    }
+  };
+
   // ===== PRICES HANDLERS (for deferred save) =====
   const handlePricesChange = (newPrices: Product['prices']) => {
     // Clear the "needs at least one price" error as soon as the user adds one back.
@@ -785,7 +801,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       name: "Free Trial",
       tooltip: "Free trial period before billing starts. Customers won't be charged during this period.",
       open: freeTrialPopoverOpen,
-      onOpenChange: setFreeTrialPopoverOpen,
+      onOpenChange: handleFreeTrialPopoverOpenChange,
       triggerContent: localFreeTrialDisplayText,
       popoverContent: (
         <div className="space-y-3">
@@ -795,7 +811,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
               type="number"
               min={1}
               value={freeTrialCount}
-              onChange={(e) => setFreeTrialCount(parseInt(e.target.value) || 1)}
+              onChange={(e) => setFreeTrialCount(Math.max(1, parseInt(e.target.value) || 1))}
             />
             <DesignSelectorDropdown
               className="w-28"

@@ -296,7 +296,9 @@ function EditableTextField({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
-              runAsynchronouslyWithAlert(save());
+              if (draftValue !== item.value && !isSaving) {
+                runAsynchronouslyWithAlert(save());
+              }
             }
             if (event.key === "Escape") {
               cancelEditing();
@@ -598,10 +600,10 @@ function ItemValue({
     }
     case "custom-button": {
       return (
-        <button
-          type="button"
+        <DesignButton
+          variant="plain"
           disabled={item.disabled}
-          onClick={() => runAsynchronouslyWithAlert(item.onClick())}
+          onClick={() => item.onClick()}
           className={cn(
             "flex w-full items-center justify-start gap-2 text-left font-normal",
             size.controlHeight,
@@ -609,11 +611,10 @@ function ItemValue({
             size.controlText,
             designEditableGridControlClassName,
             editMode && "border-black/[0.18] dark:border-white/[0.22]",
-            item.disabled && "cursor-not-allowed opacity-50",
           )}
         >
           <span className="min-w-0 truncate">{item.children}</span>
-        </button>
+        </DesignButton>
       );
     }
     case "custom": {
@@ -673,6 +674,17 @@ function SaveBar({
   onDiscard: () => void,
   onSave: () => Promise<void>,
 }) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSave();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div
       aria-live="polite"
@@ -685,13 +697,19 @@ function SaveBar({
       <div className="flex items-center justify-end gap-1.5">
         <DesignButton
           className="h-8 rounded-lg px-3 text-xs text-muted-foreground"
+          disabled={isSaving}
           onClick={onDiscard}
           size="sm"
           variant="ghost"
         >
           Discard
         </DesignButton>
-        <DesignButton className="h-8 rounded-lg px-3 text-xs" onClick={onSave} size="sm">
+        <DesignButton
+          className="h-8 rounded-lg px-3 text-xs"
+          loading={isSaving}
+          onClick={handleSave}
+          size="sm"
+        >
           Save changes
         </DesignButton>
       </div>
@@ -734,7 +752,7 @@ export function DesignEditableGrid({
           "grid items-center text-sm",
           resolvedSize.gapX,
           resolvedSize.gapY,
-          columns === 2 && "lg:[&>*:nth-child(4n+3)]:pl-4",
+          columns === 2 && "lg:[&>div:nth-child(even)>:first-child]:pl-4",
           gridCols,
           className,
         )}
