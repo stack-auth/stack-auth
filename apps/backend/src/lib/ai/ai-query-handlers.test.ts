@@ -49,10 +49,12 @@ vi.mock("ai", async (importOriginal) => {
 });
 
 import { logAiQuery } from "@/lib/ai/loggers/ai-query-logger";
+import { logIfMcpToolCall } from "@/lib/ai/loggers/mcp-call-logger";
 import { handleStreamMode } from "./ai-query-handlers";
 import type { CommonLogFields } from "./types";
 
 const mockedLogAiQuery = vi.mocked(logAiQuery);
+const mockedLogIfMcpToolCall = vi.mocked(logIfMcpToolCall);
 
 const baseCommon: CommonLogFields = {
   correlationId: "test-correlation-id",
@@ -89,6 +91,7 @@ function makeCtx(): Parameters<typeof handleStreamMode>[0] {
 beforeEach(() => {
   hoisted.capturedCallbacks.current = undefined;
   mockedLogAiQuery.mockClear();
+  mockedLogIfMcpToolCall.mockClear();
 });
 
 describe("handleStreamMode terminal callback logging", () => {
@@ -179,5 +182,40 @@ describe("handleStreamMode terminal callback logging", () => {
     hoisted.capturedCallbacks.current!.onAbort!();
     expect(mockedLogAiQuery).toHaveBeenCalledTimes(1);
     expect(mockedLogAiQuery).toHaveBeenCalledWith(expect.objectContaining({ type: "failure" }));
+  });
+
+  // --- MCP call logging on stream failure ---------------------------------
+  // A failed MCP-backed question must still land in mcp_call_log (with its
+  // error) so it appears in the MCP Review workflow instead of vanishing.
+
+  const mcpCtx = () => ({
+    ...makeCtx(),
+    mcpCallMetadata: { toolName: "ask_hexclave", reason: "test", userPrompt: "prompt" },
+    conversationIdForLog: "conversation-1",
+  });
+
+  it("logs the MCP call with the error when a stream with mcpCallMetadata errors", () => {
+    handleStreamMode(mcpCtx());
+    hoisted.capturedCallbacks.current!.onError!({ error: new Error("upstream model error") });
+    expect(mockedLogIfMcpToolCall).toHaveBeenCalledTimes(1);
+    expect(mockedLogIfMcpToolCall).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: expect.stringContaining("upstream model error"),
+    }));
+  });
+
+  it("logs the MCP call with the error when a stream with mcpCallMetadata aborts", () => {
+    handleStreamMode(mcpCtx());
+    hoisted.capturedCallbacks.current!.onAbort!();
+    expect(mockedLogIfMcpToolCall).toHaveBeenCalledTimes(1);
+    expect(mockedLogIfMcpToolCall).toHaveBeenCalledWith(expect.objectContaining({
+      errorMessage: expect.stringContaining("Stream aborted"),
+    }));
+  });
+
+  it("logs the MCP call at most once on rapid-fire abort+error", () => {
+    handleStreamMode(mcpCtx());
+    hoisted.capturedCallbacks.current!.onAbort!();
+    hoisted.capturedCallbacks.current!.onError!({ error: new DOMException("aborted", "AbortError") });
+    expect(mockedLogIfMcpToolCall).toHaveBeenCalledTimes(1);
   });
 });

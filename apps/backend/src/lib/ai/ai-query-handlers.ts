@@ -48,6 +48,23 @@ export function handleStreamMode(ctx: ModeContext & {
   // SpacetimeDB and trip the UNIQUE(correlation_id) constraint on the second
   // insert. Guard with a single boolean — the first terminal callback wins.
   let logged = false;
+  const logStreamFailure = (err: unknown) => {
+    clearTimeout(timeoutId);
+    if (logged) return;
+    logged = true;
+    logAiQuery({ type: "failure", common, startedAt, err, partialSteps: completedSteps });
+    logIfMcpToolCall({
+      mcpCallMetadata,
+      conversationIdForLog,
+      correlationId,
+      messages,
+      steps: completedSteps,
+      text: "",
+      startedAt,
+      modelId: String(model.modelId),
+      errorMessage: err instanceof Error ? err.stack ?? `${err.name}: ${err.message}` : String(err),
+    });
+  };
   const result = streamText({
     model,
     messages: messagesWithCachedSystemPrompt,
@@ -80,24 +97,8 @@ export function handleStreamMode(ctx: ModeContext & {
         modelId: String(model.modelId),
       });
     },
-    onError: ({ error }) => {
-      clearTimeout(timeoutId);
-      if (logged) return;
-      logged = true;
-      logAiQuery({ type: "failure", common, startedAt, err: error, partialSteps: completedSteps });
-    },
-    onAbort: () => {
-      clearTimeout(timeoutId);
-      if (logged) return;
-      logged = true;
-      logAiQuery({
-        type: "failure",
-        common,
-        startedAt,
-        err: new Error("Stream aborted (client disconnect or timeout)"),
-        partialSteps: completedSteps,
-      });
-    },
+    onError: ({ error }) => logStreamFailure(error),
+    onAbort: () => logStreamFailure(new Error("Stream aborted (client disconnect or timeout)")),
   });
   return {
     statusCode: 200,
