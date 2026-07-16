@@ -1,6 +1,7 @@
 export type DatabaseSeq = (readonly (string | number)[] & { __brand: "hexclave-low-level-kv-store-seq" });
 
 export type Database = {
+  getDebugInfo(): any,
   /**
    * Returns a promise that resolves once it is guaranteed that queries made from this database client will see the
    * given seq.

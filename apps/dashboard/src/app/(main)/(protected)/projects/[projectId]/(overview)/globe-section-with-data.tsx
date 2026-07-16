@@ -1,5 +1,6 @@
 'use client';
 
+import { useViewerLocation } from '@/hooks/use-viewer-location';
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { cn } from "@/lib/utils";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
@@ -33,6 +34,7 @@ function GlobeErrorComponent(props: { error: Error }) {
 function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAnonymous: boolean, interactive?: boolean }) {
   const adminApp = useAdminApp();
   const data = (adminApp as any)[hexclaveAppInternalsSymbol].useMetrics(includeAnonymous);
+  const viewerLocation = useViewerLocation();
 
   return (
     <>
@@ -42,6 +44,7 @@ function GlobeSectionWithMetrics({ includeAnonymous, interactive }: { includeAno
         totalUsers={data.total_users}
         activeUsersByCountry={data.active_users_by_country ?? {}}
         interactive={interactive}
+        initialPointOfView={viewerLocation}
       />
     </>
   );

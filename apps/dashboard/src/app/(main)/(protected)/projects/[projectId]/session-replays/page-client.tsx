@@ -19,7 +19,7 @@ import {
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -29,6 +29,7 @@ import { useAdminApp, useServerApp } from "../use-admin-app";
 import { SessionReplayLimitBanner } from "../analytics/shared";
 import {
   ALLOWED_PLAYER_SPEEDS,
+  areStatesRenderEquivalent,
   createInitialState,
   replayReducer,
   type ChunkRange,
@@ -256,6 +257,63 @@ function getInitialReplaySettings(): ReplaySettings {
   return { playerSpeed: 1, skipInactivity: true, followActiveTab: false };
 }
 
+// Memoized so the markers (potentially thousands of DOM nodes) only re-render
+// when the markers themselves change — never from playback-time updates.
+const TimelineMarkersLane = React.memo(function TimelineMarkersLane({
+  markers,
+  totalTimeMs,
+  onSeek,
+}: {
+  markers: TimelineMarker[],
+  totalTimeMs: number,
+  onSeek: (timeOffset: number) => void,
+}) {
+  const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
+  const hoveredMarker = hoveredMarkerIndex !== null ? markers[hoveredMarkerIndex] ?? null : null;
+
+  return (
+    <div className="relative h-3.5 mb-0.5">
+      {markers.map((marker, i) => {
+        const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
+        if (left < 0 || left > 100) return null;
+        const isClick = marker.eventType === "$click";
+        return (
+          <div
+            key={i}
+            className={cn(
+              "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
+              "transition-colors",
+              isClick
+                ? "bg-blue-500/70 hover:bg-blue-400"
+                : "bg-emerald-500/70 hover:bg-emerald-400",
+            )}
+            style={{ left: `${left}%`, marginLeft: "-1.5px" }}
+            onMouseEnter={() => setHoveredMarkerIndex(i)}
+            onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
+            onClick={() => onSeek(marker.timeMs)}
+          />
+        );
+      })}
+
+      {/* Custom tooltip */}
+      {hoveredMarker && (() => {
+        const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
+        return (
+          <div
+            className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
+            style={{ left: `${left}%` }}
+          >
+            <div className="max-w-52 whitespace-nowrap rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs text-foreground shadow-md ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-primary dark:text-primary-foreground dark:ring-white/[0.08]">
+              <div className="truncate">{hoveredMarker.label}</div>
+              <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+});
+
 function Timeline({
   getCurrentTimeMs,
   playerIsPlaying,
@@ -275,21 +333,29 @@ function Timeline({
   onSpeedChange: (speed: number) => void,
   markers?: TimelineMarker[],
 }) {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const timeLabelRef = useRef<HTMLSpanElement | null>(null);
+  const progressFillRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
+  // The current time is written straight to the DOM every frame instead of
+  // going through React state — a setState here would re-render the whole
+  // transport bar (incl. the markers lane) at 60fps.
   useEffect(() => {
     function tick() {
-      setCurrentTime(getCurrentTimeMs());
+      const currentTime = getCurrentTimeMs();
+      if (timeLabelRef.current) {
+        timeLabelRef.current.textContent = formatTimelineMs(currentTime);
+      }
+      if (progressFillRef.current) {
+        const progress = totalTimeMs > 0 ? Math.min(currentTime / totalTimeMs, 1) : 0;
+        progressFillRef.current.style.width = `${progress * 100}%`;
+      }
       rafRef.current = requestAnimationFrame(tick);
     }
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [getCurrentTimeMs]);
-
-  const progress = totalTimeMs > 0 ? Math.min(currentTime / totalTimeMs, 1) : 0;
+  }, [getCurrentTimeMs, totalTimeMs]);
 
   const handleTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const el = trackRef.current;
@@ -301,7 +367,6 @@ function Timeline({
   }, [totalTimeMs, onSeek]);
 
   const hasMarkers = (markers?.length ?? 0) > 0;
-  const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
 
   return (
     <div className={cn(replaysTransportBarClass, hasMarkers ? "py-1.5" : "py-2")}>
@@ -314,52 +379,14 @@ function Timeline({
         {playerIsPlaying ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
       </Button>
 
-      <span className="text-xs text-muted-foreground tabular-nums w-10 shrink-0 text-right">
-        {formatTimelineMs(currentTime)}
+      <span ref={timeLabelRef} className="text-xs text-muted-foreground tabular-nums w-10 shrink-0 text-right">
+        {formatTimelineMs(0)}
       </span>
 
       <div className="flex-1 flex flex-col justify-center">
         {/* Event markers lane */}
-        {hasMarkers && (
-          <div className="relative h-3.5 mb-0.5">
-            {markers?.map((marker, i) => {
-              const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
-              if (left < 0 || left > 100) return null;
-              const isClick = marker.eventType === "$click";
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
-                    "transition-colors",
-                    isClick
-                      ? "bg-blue-500/70 hover:bg-blue-400"
-                      : "bg-emerald-500/70 hover:bg-emerald-400",
-                  )}
-                  style={{ left: `${left}%`, marginLeft: "-1.5px" }}
-                  onMouseEnter={() => setHoveredMarkerIndex(i)}
-                  onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
-                  onClick={() => onSeek(marker.timeMs)}
-                />
-              );
-            })}
-
-            {/* Custom tooltip */}
-            {hoveredMarker && (() => {
-              const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
-              return (
-                <div
-                  className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
-                  style={{ left: `${left}%` }}
-                >
-                  <div className="max-w-52 whitespace-nowrap rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs text-foreground shadow-md ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-primary dark:text-primary-foreground dark:ring-white/[0.08]">
-                    <div className="truncate">{hoveredMarker.label}</div>
-                    <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+        {hasMarkers && markers && (
+          <TimelineMarkersLane markers={markers} totalTimeMs={totalTimeMs} onSeek={onSeek} />
         )}
 
         {/* Progress bar track (clickable) */}
@@ -370,8 +397,9 @@ function Timeline({
         >
           <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
             <div
+              ref={progressFillRef}
               className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
-              style={{ width: `${progress * 100}%` }}
+              style={{ width: "0%" }}
             />
           </div>
         </div>
@@ -464,9 +492,15 @@ function useReplayMachine(initialSettings: ReplaySettings) {
   const [, forceRender] = useState(0);
 
   const dispatch = useCallback((action: ReplayAction): ReplayEffect[] => {
-    const { state, effects } = replayReducer(stateRef.current, action);
+    const previousState = stateRef.current;
+    const { state, effects } = replayReducer(previousState, action);
     stateRef.current = state;
-    forceRender(v => v + 1);
+    // Only re-render when a render-relevant field changed — the TICK loop
+    // dispatches several times per second and would otherwise re-render the
+    // entire page each time (the UI reads playback time imperatively).
+    if (!areStatesRenderEquivalent(previousState, state)) {
+      forceRender(v => v + 1);
+    }
     return effects;
   }, []);
 
@@ -953,6 +987,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
           const activeKey = msRef.current.activeTabKey;
           for (const [tabKey, r] of replayerByTabRef.current.entries()) {
             if (tabKey === activeKey) continue;
+            // Only sync tabs that are actually rendered as mini thumbnails —
+            // rrweb's pause(offset) is a full synchronous seek, so seeking
+            // hidden tabs is pure wasted main-thread time.
+            if (!containerByTabRef.current.get(tabKey)) continue;
             const stream = msRef.current.streams.find(s => s.tabKey === tabKey);
             if (!stream) continue;
             const localOffset = globalOffsetToLocalOffset(
@@ -966,6 +1004,10 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
               // ignore
             }
           }
+          // Mini-tab visibility derives from the current playback time, which
+          // no longer triggers React renders on its own — refresh it here, at
+          // the (throttled) mini-tab sync cadence.
+          setUiVersion(v => v + 1);
           break;
         }
         case "schedule_buffer_poll": {
@@ -1055,12 +1097,24 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     fullStreamsRef.current = [];
 
     // Helper: process a batch of chunk_events into the replayer state machine.
-    function processChunkEvents(
+    // Yields to the event loop between chunks so that feeding a large batch
+    // into live replayers (addEvent) doesn't block the main thread while the
+    // replay is already playing.
+    async function processChunkEvents(
       chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
       allStreams: TabStream<ChunkRow>[],
       chunkIdToTabKey: Map<string, TabKey>,
     ) {
+      let isFirstChunk = true;
       for (const ce of chunkEvents) {
+        // Only yield while the tab is visible: yielding exists purely to keep
+        // the visible UI responsive, and browsers clamp setTimeout-backed
+        // waits in hidden tabs (up to ~1s each), which would make large
+        // replay loads crawl in the background.
+        if (!isFirstChunk && !document.hidden) {
+          await wait(0);
+        }
+        isFirstChunk = false;
         if (msRef.current.generation !== gen) return;
 
         const tabKey = chunkIdToTabKey.get(ce.chunkId);
@@ -1186,7 +1240,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
       }
 
       // Process the initial batch of events.
-      processChunkEvents(initialResponse.chunkEvents, allStreams, chunkIdToTabKey);
+      await processChunkEvents(initialResponse.chunkEvents, allStreams, chunkIdToTabKey);
 
       // Phase 2: Background loading of remaining chunks.
       const totalChunks = allChunkRows.length;
@@ -1198,7 +1252,7 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         const batchResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
         if (msRef.current.generation !== gen) return;
 
-        processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);
+        await processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);
 
         offset += BACKGROUND_CHUNK_BATCH;
       }

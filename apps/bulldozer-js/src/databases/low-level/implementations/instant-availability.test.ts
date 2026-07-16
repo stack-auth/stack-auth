@@ -38,6 +38,16 @@ function createSlowSetDatabase() {
     },
   };
   const db: LowLevelDatabase = {
+    getDebugInfo() {
+      return {
+        backend: "slow-set-test",
+        releaseSets,
+        setCallCount,
+        committed,
+        seqToPromise,
+        initialSeq,
+      };
+    },
     declareKvStore: () => store,
     declareKvDump: () => {
       throw new Error("not implemented");

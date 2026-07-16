@@ -644,6 +644,133 @@ describe("StackClientApp cross-domain auth", () => {
     expect(redirectedUrl).toBe("/settings?tab=profile");
   });
 
+  it("restores a dropped after_auth_return_to from the sessionStorage mirror when redirecting after sign-in", async () => {
+    const previousWindow = globalThis.window;
+    const previousDocument = globalThis.document;
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    const sessionStorageMap = new Map<string, string>();
+    const windowMock = {
+      location: {
+        href: "https://demo.example.test/handler/sign-in?after_auth_return_to=%2Fmusic%3Ftrack%3D1",
+      },
+      sessionStorage: {
+        getItem: (key: string) => sessionStorageMap.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          sessionStorageMap.set(key, value);
+        },
+        removeItem: (key: string) => {
+          sessionStorageMap.delete(key);
+        },
+      },
+    };
+    Reflect.set(globalThis, "window", windowMock);
+    globalThis.document = createMockDocument();
+
+    try {
+      // The constructor mirrors the redirect-back state from the arrival URL into sessionStorage.
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId: "00000000-0000-4000-8000-000000000011",
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "window",
+        noAutomaticPrefetch: true,
+      });
+
+      // Intermediate hops (MFA, magic link, OAuth round-trips, ...) dropped the query params.
+      windowMock.location.href = "https://demo.example.test/handler/mfa";
+
+      const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("afterSignIn");
+      expect(redirectUrl).toBe("/music?track=1");
+
+      // noRedirectBack opts out of the mirror just like it opts out of the query param.
+      const noRedirectBackUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("afterSignIn", { noRedirectBack: true });
+      expect(new URL(noRedirectBackUrl, "https://demo.example.test").pathname).toBe("/");
+    } finally {
+      globalThis.document = previousDocument;
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
+  it("restores dropped cross-domain handoff state from the sessionStorage mirror when redirecting after sign-in", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000012";
+    const previousWindow = globalThis.window;
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    const sessionStorageMap = new Map<string, string>();
+
+    const handoffState = "mirror-handoff-state";
+    const handoffCodeChallenge = "abcdefghijklmnopqrstuvwxyzABCDEFG_0123456789-._~";
+    const handoffAfterCallbackRedirect = "https://demo.example.test/dashboard";
+    const redirectBackUrl = new URL("https://demo.example.test/handler/oauth-callback");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_auth", "1");
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    redirectBackUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
+
+    const arrivalUrl = new URL(`https://${projectId}.built-with-stack-auth.com/handler/sign-in`);
+    arrivalUrl.searchParams.set("after_auth_return_to", redirectBackUrl.toString());
+    arrivalUrl.searchParams.set("hexclave_cross_domain_state", handoffState);
+    arrivalUrl.searchParams.set("hexclave_cross_domain_code_challenge", handoffCodeChallenge);
+    arrivalUrl.searchParams.set("hexclave_cross_domain_after_callback_redirect_url", handoffAfterCallbackRedirect);
+
+    const previousDocument = globalThis.document;
+    const windowMock = {
+      location: {
+        href: arrivalUrl.toString(),
+      },
+      sessionStorage: {
+        getItem: (key: string) => sessionStorageMap.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          sessionStorageMap.set(key, value);
+        },
+        removeItem: (key: string) => {
+          sessionStorageMap.delete(key);
+        },
+      },
+    };
+    Reflect.set(globalThis, "window", windowMock);
+    globalThis.document = createMockDocument();
+
+    try {
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId,
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "window",
+        noAutomaticPrefetch: true,
+      });
+      const crossDomainAuthorizeRedirect = "https://demo.example.test/handler/oauth-callback?code=minted-code&state=mirror-handoff-state";
+      const createCrossDomainAuthRedirectUrlSpy = vi
+        .spyOn(clientApp as any, "_createCrossDomainAuthRedirectUrl")
+        .mockResolvedValue(crossDomainAuthorizeRedirect);
+
+      // All redirect-back query params were dropped before the after-sign-in redirect.
+      windowMock.location.href = `https://${projectId}.built-with-stack-auth.com/handler/sign-in`;
+
+      const redirectUrl = await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("afterSignIn");
+
+      expect(createCrossDomainAuthRedirectUrlSpy).toHaveBeenCalledWith(expect.objectContaining({
+        redirectUri: redirectBackUrl.toString(),
+        state: handoffState,
+        codeChallenge: handoffCodeChallenge,
+        afterCallbackRedirectUrl: handoffAfterCallbackRedirect,
+      }));
+      expect(redirectUrl).toBe(crossDomainAuthorizeRedirect);
+    } finally {
+      globalThis.document = previousDocument;
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("ignores stale session callbacks after a newer refresh token owns the token store", async () => {
     const clientApp = new StackClientApp({
       baseUrl: "http://localhost:12345",
