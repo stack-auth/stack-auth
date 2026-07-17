@@ -8,6 +8,8 @@ Sometimes you need to give a customer a product without charging them - free tri
 ## Granting a configured product
 
 ```typescript
+import { hexclaveServerApp } from "@/hexclave/server";
+
 // Grant a pre-configured product to a user
 await hexclaveServerApp.grantProduct({
   userId: "user-id",
@@ -34,6 +36,8 @@ If you already have a reference to a **server** user or team object (for example
 You can also grant products with an **inline definition** - no pre-configured product needed. This is useful for one-off grants like bonus credits:
 
 ```typescript
+import { hexclaveServerApp } from "@/hexclave/server";
+
 await hexclaveServerApp.grantProduct({
   userId: "user-id",
   product: {

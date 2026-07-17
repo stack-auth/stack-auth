@@ -27,7 +27,7 @@ You typically combine **one or more** of:
   <Tab title="Middleware (route prefix)">
     ```tsx title="middleware.ts"
     import { NextRequest, NextResponse } from "next/server";
-    import { hexclaveServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/hexclave/server";
 
     export async function middleware(request: NextRequest) {
       const user = await hexclaveServerApp.getUser();
@@ -48,7 +48,7 @@ You typically combine **one or more** of:
   </Tab>
   <Tab title="Server Component">
     ```tsx title="app/app/dashboard/page.tsx"
-    import { hexclaveServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/hexclave/server";
 
     export default async function DashboardPage() {
       await hexclaveServerApp.getUser({ or: "redirect" });
@@ -76,7 +76,7 @@ You typically combine **one or more** of:
 - **`{ or: "throw" }`** — use in **server actions**, **route handlers**, and other places where redirecting would be wrong; map errors to `401`/`403` responses yourself.
 
 ```tsx title="app/api/me/route.ts"
-import { hexclaveServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/hexclave/server";
 import { NextResponse } from "next/server";
 
 export async function GET() {

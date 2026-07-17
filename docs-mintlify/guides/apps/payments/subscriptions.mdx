@@ -57,6 +57,8 @@ export default function UpgradeButton() {
   </Tab>
   <Tab title="Server">
     ```typescript
+    import { hexclaveServerApp } from "@/hexclave/server";
+
     // Cancel for the current user
     await hexclaveServerApp.cancelSubscription({ productId: "prod_pro" });
 

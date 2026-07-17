@@ -32,7 +32,7 @@ The `createCheckoutUrl` method is available on both user and team objects.
   </Tab>
   <Tab title="Server Component">
     ```typescript title="app/purchase/page.tsx"
-    import { hexclaveServerApp } from "@/stack/server";
+    import { hexclaveServerApp } from "@/hexclave/server";
 
     export default async function PurchasePage() {
       const user = await hexclaveServerApp.getUser({ or: 'redirect' });

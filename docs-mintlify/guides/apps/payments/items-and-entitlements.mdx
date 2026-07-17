@@ -50,7 +50,7 @@ export default function CreditsWidget() {
 When your app needs to consume credits (e.g. when a user sends an AI request), use `tryDecreaseQuantity` on the server. It's a single transactional operation - it returns `false` and does nothing if the balance would go negative, so concurrent requests can't overspend.
 
 ```typescript title="lib/credits.ts"
-import { hexclaveServerApp } from "@/stack/server";
+import { hexclaveServerApp } from "@/hexclave/server";
 
 export async function consumeCredits(userId: string, amount: number) {
   const user = await hexclaveServerApp.getUser(userId);
