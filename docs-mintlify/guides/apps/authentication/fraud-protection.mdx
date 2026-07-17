@@ -38,7 +38,9 @@ Open **Authentication → Sign-up Rules → Add rule**. The rule builder is the 
 Send borderline accounts to a restricted state instead of blocking outright, so support can review them:
 
 - Condition: `riskScores.free_trial_abuse >= 60`
-- Action: **Restrict** - see [Sign-up Rules → Restrict](./sign-up-rules#restrict) for how restricted users appear in JWTs and the dashboard.
+- Action: **Restrict**
+
+**What Restrict means:** the account is created, but marked restricted (`isRestricted`). Hexclave treats restricted users like unauthenticated users in most SDK calls until an admin clears the restriction or they finish whatever verification is required. See [Restricted Users](./restricted-users) for SDK handling and JWT claims, and [Sign-up Rules → Restrict](./sign-up-rules#restrict) for how the action behaves in the rule engine.
 
 ### Combine signals with email and geo
 
@@ -120,4 +122,5 @@ The banner also exposes the same restriction action button so you can manage it 
 
 - [Authentication Overview](./overview) - parent app.
 - [Sign-up Rules](./sign-up-rules) - the enforcement layer that consumes these signals.
+- [Restricted Users](./restricted-users) - what restricted accounts can and can't do.
 - [JWT Tokens](./jwts) - how the `Restrict` action surfaces in user tokens.
