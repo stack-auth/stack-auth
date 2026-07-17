@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { declareInMemoryLowLevelDatabase } from "../low-level/implementations/in-memory.js";
+import { declareInstantAvailabilityLowLevelDatabase } from "../low-level/implementations/instant-availability.js";
+import { declareLmdbLowLevelDatabase } from "../low-level/implementations/lmdb.js";
 import { declarePiledriverDatabase, PiledriverObject } from "../piledriver/index.js";
 import { ConcatTreeList } from "../piledriver/data-structures/concat-tree-list.js";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
@@ -85,6 +90,45 @@ describe("Bulldozer", () => {
       { groupKey: null, rowIdentifier: "a", rowSortKey: null, rowData: 1 },
       { groupKey: null, rowIdentifier: "b", rowSortKey: null, rowData: 2 },
     ]);
+  });
+
+  it("retains the latest write sequence after instant-availability cache eviction", async () => {
+    const path = await mkdtemp(join(tmpdir(), "bulldozer-durability-barrier-"));
+    const lmdb = declareLmdbLowLevelDatabase({ path, dbId: "durability-barrier" });
+    const instant = declareInstantAvailabilityLowLevelDatabase(lmdb, { dbId: "instant-durability-barrier" });
+    const db = declareBulldozerDatabase(declarePiledriverDatabase(instant), {
+      migrations: [[{ type: "initTable", tableId: "store", table: defineStoredTable(), inputTables: {} }]],
+    });
+    let releaseDurability: (() => void) | undefined;
+    const durabilityGate = new Promise<void>((resolve) => {
+      releaseDurability = resolve;
+    });
+    try {
+      await db.applyRemainingMigrations();
+
+      const originalWaitUntilDurable = lmdb.waitUntilDurable.bind(lmdb);
+      lmdb.waitUntilDurable = async (seq) => {
+        if (seq !== lmdb.initialSeq) await durabilityGate;
+        await originalWaitUntilDurable(seq);
+      };
+
+      const write = await db.withSnapshot(async snapshot => await set(snapshot, "store", "a", 1));
+      await instant.waitUntilUnderlyingAvailable(write.seq);
+
+      const barrier = db.waitUntilCurrentStateDurable();
+      expect(await Promise.race([
+        barrier.then(() => "resolved"),
+        Promise.resolve("pending"),
+      ])).toBe("pending");
+
+      if (releaseDurability === undefined) throw new Error("Durability gate was not initialized");
+      releaseDurability();
+      await barrier;
+    } finally {
+      if (releaseDurability !== undefined) releaseDurability();
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
   });
 
   it("does not expose stored rows through non-null groups", async () => {
