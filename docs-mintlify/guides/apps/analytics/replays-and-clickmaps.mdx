@@ -6,7 +6,7 @@ description: "Record real user sessions and visualize where users click"
 Beyond raw events and SQL, Analytics ships two visual debugging tools: **Session Replays** (watch a real user's session play back) and **Clickmaps** (see where users actually click on a page). Both are sub-apps of Analytics - they turn on with the Analytics app and are captured automatically by the Hexclave client SDK, so there's no separate script tag to install.
 
 <Info>
-  Hexclave's spatial click visualization is called a **Clickmap** - it aggregates clicks per on-page element (with dead-click detection), rather than rendering a coordinate-density "heatmap." If you're looking for "heatmaps," this is the feature you want.
+  A **Clickmap** aggregates how many times each on-page element was clicked (with dead-click detection). Clicks are tied to DOM elements, not pixel coordinates.
 </Info>
 
 ## Requirements
