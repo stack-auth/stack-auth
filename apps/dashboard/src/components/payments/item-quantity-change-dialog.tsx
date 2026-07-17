@@ -44,11 +44,9 @@ export function ItemQuantityChangeDialog(props: Props) {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Snapshot of the quantity at the moment the dialog was opened. The live
-  // prop updates as soon as the SDK refreshes the item cache after a
-  // successful submit — i.e. while the dialog is still open (and during its
-  // close animation) — which would make the "X → Y" preview flicker to the
-  // post-change values right before closing.
+  // Snapshot the quantity at dialog open: the live prop updates mid-submit
+  // (the SDK refreshes the item cache before resolving), which would flip the
+  // "X → Y" preview to the post-change values right before the dialog closes.
   const [quantityAtOpen, setQuantityAtOpen] = useState(props.currentQuantity);
 
   // Reset the form whenever the dialog is (re)opened so stale input doesn't
@@ -60,9 +58,7 @@ export function ItemQuantityChangeDialog(props: Props) {
       setError(null);
       setQuantityAtOpen(props.currentQuantity);
     }
-    // We intentionally only re-snapshot on open, not when currentQuantity
-    // changes while the dialog is already showing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot only on open
   }, [props.open]);
 
   const parsedQuantity = parseQuantityChange(quantityText);
