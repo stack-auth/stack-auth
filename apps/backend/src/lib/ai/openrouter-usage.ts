@@ -7,8 +7,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 type OpenRouterGenerationResponse = {
   data: OpenRouterGenerationData,
 };
-
-const GENERATION_RETRY_DELAYS_MS = [1500, 4000];
+const GENERATION_RETRY_DELAYS_MS = [1500, 4000, 10000];
 const GENERATION_PER_REQUEST_TIMEOUT_MS = 5000;
 
 function isOpenRouterGenerationResponse(value: unknown): value is OpenRouterGenerationResponse {
@@ -58,11 +57,18 @@ export async function refineGenerationUsage(opts: {
   generationId: string,
   correlationId: string,
 }): Promise<void> {
+  // Tracks how the final attempt failed so exhaustion is never silent: the
+  // not_ready path used to fall out of the loop without any error report,
+  // leaving rows permanently missing cost data with no trace of why.
+  let sawNotReadyOnLastAttempt = false;
   for (let attempt = 0; attempt < GENERATION_RETRY_DELAYS_MS.length; attempt++) {
     await new Promise(r => setTimeout(r, GENERATION_RETRY_DELAYS_MS[attempt]));
     try {
       const result = await fetchGenerationOnce(opts.generationId);
-      if (result === "not_ready") continue;
+      if (result === "not_ready") {
+        sawNotReadyOnLastAttempt = true;
+        continue;
+      }
       if (result == null) return;
       await callInternalTool("/api/backend/update-ai-query-usage", {
         body: {
@@ -76,9 +82,15 @@ export async function refineGenerationUsage(opts: {
       });
       return;
     } catch (err) {
+      sawNotReadyOnLastAttempt = false;
       if (attempt === GENERATION_RETRY_DELAYS_MS.length - 1) {
         captureError("openrouter-generation-usage-refine", err);
       }
     }
+  }
+  if (sawNotReadyOnLastAttempt) {
+    captureError("openrouter-generation-usage-refine", new Error(
+      `OpenRouter generation ${opts.generationId} was still not ready after ${GENERATION_RETRY_DELAYS_MS.length} attempts; usage for AI query ${opts.correlationId} was not refined (no cost data recorded)`,
+    ));
   }
 }

@@ -11,9 +11,15 @@ import * as jose from "jose";
 // tokens can't be validated by SpacetimeDB directly; this shim can be deleted
 // if that ever ships — see the module's ALLOWED_ISSUERS.)
 
-// Matches the ~10min lifetime of Stack Auth access tokens; the frontend
-// reconnects with a fresh token every 8 minutes.
-const USER_TOKEN_TTL = "10m";
+// The frontend reconnects with a fresh token every 8 minutes, so this TTL is
+// deliberately much longer than one refresh cycle: browsers throttle timers in
+// backgrounded tabs, and if the session row expired server-side before the
+// (delayed) refresh landed, the module's my_visible_* views would return
+// empty and delete every row out from under still-connected subscribers. The
+// wide margin tolerates several missed cycles; the token still expires well
+// within the day, and authorization is project membership (not per-token
+// grants), so the longer lifetime doesn't widen what a holder can do.
+const USER_TOKEN_TTL = "30m";
 
 export function spacetimeTokenIssuer(): string {
   const issuer = getEnvVariable("HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER", "").trim().replace(/\/+$/, "");

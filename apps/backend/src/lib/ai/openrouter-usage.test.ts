@@ -21,7 +21,13 @@ vi.mock("@/lib/ai/internal-tool-client", () => ({
   callInternalTool: vi.fn(),
 }));
 
+vi.mock("@hexclave/shared/dist/utils/errors", async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  captureError: vi.fn(),
+}));
+
 import { callInternalTool } from "@/lib/ai/internal-tool-client";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { refineGenerationUsage } from "./openrouter-usage";
 
 const fetchMock = vi.fn();
@@ -38,6 +44,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   fetchMock.mockReset();
   vi.mocked(callInternalTool).mockReset();
+  vi.mocked(captureError).mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
 
@@ -173,15 +180,71 @@ describe("OpenRouter generation usage refinement", () => {
     });
   });
 
-  it("keeps 429 failures best-effort and does not throw into callers", async () => {
+  it("keeps 429 failures best-effort, captures the last error, and does not throw into callers", async () => {
     fetchMock.mockImplementation(() => Promise.resolve(new Response("too many requests", { status: 429 })));
 
     const promise = refineGenerationUsage({ generationId: "gen-3", correlationId: "corr-3" });
     await vi.advanceTimersByTimeAsync(1500);
     await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10000);
     await expect(promise).resolves.toBeUndefined();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(callInternalTool).not.toHaveBeenCalled();
+    expect(captureError).toHaveBeenCalledTimes(1);
+  });
+
+  it("succeeds on the final attempt after repeated not-ready responses", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("not ready", { status: 404 }))
+      .mockResolvedValueOnce(new Response("not ready", { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          tokens_prompt: 5,
+          tokens_completion: 3,
+          native_tokens_prompt: null,
+          native_tokens_completion: null,
+          native_tokens_cached: null,
+          total_cost: 0.0007,
+          cache_discount: null,
+        },
+      }));
+
+    const promise = refineGenerationUsage({ generationId: "gen-slow", correlationId: "corr-slow" });
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10000);
+    await promise;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(callInternalTool).toHaveBeenCalledWith("/api/backend/update-ai-query-usage", {
+      body: {
+        correlationId: "corr-slow",
+        inputTokens: 5,
+        outputTokens: 3,
+        cachedInputTokens: undefined,
+        costUsd: 0.0007,
+        cacheDiscountUsd: undefined,
+      },
+    });
+    expect(captureError).not.toHaveBeenCalled();
+  });
+
+  it("reports loudly (instead of silently giving up) when the generation never becomes ready", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response("not ready", { status: 404 })));
+
+    const promise = refineGenerationUsage({ generationId: "gen-never", correlationId: "corr-never" });
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10000);
+    await expect(promise).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(callInternalTool).not.toHaveBeenCalled();
+    expect(captureError).toHaveBeenCalledTimes(1);
+    const [location, err] = vi.mocked(captureError).mock.calls[0];
+    expect(location).toBe("openrouter-generation-usage-refine");
+    expect(String(err)).toContain("gen-never");
+    expect(String(err)).toContain("corr-never");
   });
 });

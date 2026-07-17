@@ -132,8 +132,9 @@ describe("signSpacetimeToken", () => {
     expect(payload.name).toBe("Ada Lovelace");
     expect(payload.iat).toBeDefined();
     expect(payload.exp).toBeDefined();
-    // Default TTL is 10 minutes.
-    expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(10 * 60);
+    // Default TTL is 30 minutes (see USER_TOKEN_TTL for why it's much longer
+    // than the frontend's 8-minute refresh interval).
+    expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(30 * 60);
   });
 
   it("omits the name claim when name is not provided or empty", async () => {
