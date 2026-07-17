@@ -18,13 +18,13 @@ See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session
 
 ## How Analytics Works
 
-Stack records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
+Hexclave records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
 
-User activity in your app flows into Stack event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
+User activity in your app flows into Hexclave event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
 
 ### What Gets Tracked
 
-Stack collects both client-side and server-side analytics events:
+Hexclave collects both client-side and server-side analytics events:
 
 - **Client-side events**: browser interaction events like `$page-view` and `$click`
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
@@ -46,7 +46,7 @@ To use analytics in your project:
 4. Open the app and navigate/click around
 5. Check **Analytics -> Tables** to confirm events are arriving
 
-After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+After setup, Hexclave automatically captures client-side `$page-view` and `$click` events.
 
 Session replay recording is also on by default once Analytics is enabled. See [Replays & Clickmaps](./replays-and-clickmaps) to tune privacy or opt out.
 
