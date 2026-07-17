@@ -96,7 +96,7 @@ Recorded replay data is stored privately (the DOM recording is gzipped and kept 
 
 ## Clickmaps
 
-A clickmap overlays your live site with the **number of clicks each element received**, so you can see what users interact with - and spot "dead clicks" on things that look clickable but aren't. Click data comes from the same `$click` events the SDK already captures, so there's nothing extra to instrument.
+A clickmap overlays your live site with the **number of clicks each element received**, so you can see what users interact with - and spot "dead clicks" on things that look clickable but aren't. Clicks are tied to DOM elements (not pixel coordinates): a marker appearing in the middle of an element does not mean the user clicked that exact point. Click data comes from the same `$click` events the SDK already captures, so there's nothing extra to instrument.
 
 ### Enabling
 

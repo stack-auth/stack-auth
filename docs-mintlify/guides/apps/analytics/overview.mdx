@@ -12,7 +12,7 @@ Analytics is organized into four areas in the dashboard:
 - **Tables**: Browse rows across tables (events, users, contact channels, and more) with sorting, search, and incremental loading
 - **Queries**: Run and save reusable ClickHouse SQL queries
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
-- **Clickmaps**: Visualize where users click across your pages
+- **Clickmaps**: See which elements get clicks on your pages (element-tied, not coordinate heatmaps)
 
 See [Replays & Clickmaps](./replays-and-clickmaps) for the full guide to session replays and clickmaps.
 
@@ -99,7 +99,7 @@ export const hexclaveClientApp = new HexclaveClientApp({
   tokenStore: "cookie", // use "nextjs-cookie" in Next.js
   analytics: {
     replays: {
-      // Enabled by default; set to false to opt out.
+      // Optional. Defaults to true when the Analytics app is enabled; set to false to opt out.
       enabled: true,
       // Optional. Defaults to true.
       maskAllInputs: true,
@@ -128,7 +128,8 @@ This stops the SDK from sending `$page-view` and `$click` events. If you'd rathe
 
 ## Best Practices
 
-1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
+1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent rows (events, users, and more) without writing SQL.
 2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
 3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
-4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
+4. **Use Clickmaps for UI friction and attention**: overlay click counts on your live pages to see whether a flow takes unnecessary clicks, whether a control looks interactable, or how variants compare in an A/B test. Clicks are tied to DOM elements (not pixel coordinates), so a marker in the middle of a button does not mean the user clicked the middle of that button. See [Replays & Clickmaps](./replays-and-clickmaps).
+5. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
