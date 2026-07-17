@@ -74,6 +74,10 @@ function createLowLevelDatabase(): LowLevelDatabase {
 const bulldozerDb = declareBulldozerDatabase(
   declarePiledriverDatabase(createLowLevelDatabase(), {
     disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+    // Both default off, keeping behavior identical unless an operator opts in to run the GC. When
+    // enabling, set HEAP_REFERENCE_MAX_AGE_MS (M) below the GC's root-history retention window.
+    heapReferenceMaxAgeMs: readOptionalNonNegativeNumberEnv("HEXCLAVE_BULLDOZER_JS_HEAP_REFERENCE_MAX_AGE_MS"),
+    enableRootHistory: process.env.HEXCLAVE_BULLDOZER_JS_ENABLE_ROOT_HISTORY === "1",
   }),
   { migrations: schema.migrations },
 );

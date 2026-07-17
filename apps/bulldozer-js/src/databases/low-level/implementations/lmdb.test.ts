@@ -70,6 +70,25 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("supports deleting dump entries (for garbage collection)", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "dump-delete" });
+      const dump = db.declareKvDump("heap");
+      const { keys, seq } = await dump.insertAll([buffer("keep"), buffer("collect")]);
+      await db.waitUntilAvailable(seq);
+      expect(text((await dump.get(keys[0])).buffer)).toBe("keep");
+      expect(text((await dump.get(keys[1])).buffer)).toBe("collect");
+
+      const deleted = await dump.deleteAll([keys[1]]);
+      await db.waitUntilAvailable(deleted.seq);
+      expect(text((await dump.get(keys[0])).buffer)).toBe("keep");
+      expect(text((await dump.get(keys[1])).buffer)).toBe(null);
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("batches store and dump writes", async () => {
     const path = await tempLmdbPath();
     try {

@@ -10,8 +10,41 @@ export type PiledriverHeapObject = {
   [isPiledriverHeapObjectSymbol]: true,
 };
 
+// Per-in-memory-heap-reference bookkeeping shared (as a mutable box) between the read-cache entry
+// and the handle it describes. `referencedAt` is a `performance.now()` timestamp of the most recent
+// moment we *knew* this heap object was reachable from a live root: it is stamped when the handle is
+// created while reading a fresh root and refreshed whenever the same key is re-read from, or
+// re-committed into, a root. Once it is older than the configured `heapReferenceMaxAgeMs` (M), the
+// handle's `.get()` refuses to read (the object may already have been collected) and the read cache
+// evicts the entry. See the garbage collector (`gc.ts`) for the matching root-retention window.
+type HeapReferenceState = { referencedAt: number };
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+// Low-level store/dump ids used by a Piledriver database. Exported so the standalone GC can open the
+// exact same stores/dump without importing the high-level database implementation.
+export const PILEDRIVER_ROOT_STORE_ID = "root";
+export const PILEDRIVER_HEAP_DUMP_ID = "heap";
+export const PILEDRIVER_ROOT_HISTORY_STORE_ID = "root-history";
+// The marker used as the first element of a serialized heap reference array: `["heap-reference", key]`.
+export const PILEDRIVER_HEAP_REFERENCE_MARKER = "heap-reference";
+
+// Root-history keys embed a WALL-CLOCK timestamp (Date.now(), not performance.now()) because the GC
+// runs in a *separate process* and must compare these timestamps against its own wall clock;
+// performance.now() is only monotonic within a single process. The zero-padded prefix keeps keys
+// lexicographically time-ordered; the random hex suffix disambiguates commits within the same
+// millisecond. Total length stays well under the 64-byte key limit.
+const ROOT_HISTORY_TIMESTAMP_DIGITS = 16;
+export function encodeRootHistoryKey(wallClockMs: number): ArrayBuffer {
+  const suffix = [...crypto.getRandomValues(new Uint8Array(8))].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  return textEncoder.encode(`${Math.floor(wallClockMs).toString().padStart(ROOT_HISTORY_TIMESTAMP_DIGITS, "0")}-${suffix}`).buffer;
+}
+export function decodeRootHistoryKeyTimestamp(keyUtf8: string): number {
+  const millis = Number.parseInt(keyUtf8.slice(0, keyUtf8.indexOf("-")), 10);
+  if (!Number.isFinite(millis)) throw new Error(`Malformed Piledriver root-history key (expected "<paddedMillis>-<hex>"): ${keyUtf8}`);
+  return millis;
+}
 
 const heapObjectsMapNullSentinel = { __heapObjectsMapNullSentinel: true };
 const heapObjectsByObject = new WeakMap<PiledriverObject & object, PiledriverHeapObject>();
@@ -68,6 +101,25 @@ export type PiledriverDatabaseDebugSnapshot = {
 };
 export type PiledriverDatabaseOptions = {
   disableHeapReadCache?: boolean,
+  /**
+   * M: the maximum age (in ms, measured with `performance.now()`) of an in-memory heap reference,
+   * counted from the last moment we knew it was referenced from a live root. Past this age, a
+   * handle's `.get()` throws (its object may have been garbage-collected under the matching GC
+   * retention window) and the read cache evicts the entry. Defaults to `Infinity` (never expire,
+   * i.e. the previous behavior). Callers that also run the GC MUST set this below the GC's root
+   * retention window so that any object reachable from a still-usable handle is still retained.
+   */
+  heapReferenceMaxAgeMs?: number,
+  /** How often to sweep expired entries out of the read cache. Defaults to a fraction of M. */
+  heapReferenceCacheSweepIntervalMs?: number,
+  /**
+   * When true, every committed root is also appended (with a wall-clock timestamp) to an
+   * append-only `root-history` store. The standalone GC keeps every heap object reachable from any
+   * root committed within its retention window; without this history it could only see the current
+   * root and would collect objects that in-flight readers/writers can still reach. Defaults to
+   * false so callers that don't run the GC don't pay for the extra writes.
+   */
+  enableRootHistory?: boolean,
 };
 
 // Tracks the chain of *heap objects* currently being serialized, so heap cycles fail fast with
@@ -245,19 +297,40 @@ function serializationBranchStatsByKey(stats: PiledriverSerializationTimingStats
 export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options: PiledriverDatabaseOptions = {}): PiledriverDatabase {
   // TODO actually support cycles both for heap and non-heap objects (right now they are detected and rejected)
 
-  const rootStore = lowLevelDb.declareKvStore("root");
-  const heapDump = lowLevelDb.declareKvDump("heap");
+  const rootStore = lowLevelDb.declareKvStore(PILEDRIVER_ROOT_STORE_ID);
+  const heapDump = lowLevelDb.declareKvDump(PILEDRIVER_HEAP_DUMP_ID);
+  const rootHistoryStore = options.enableRootHistory === true ? lowLevelDb.declareKvStore(PILEDRIVER_ROOT_HISTORY_STORE_ID) : null;
 
-  const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq }>();
+  const heapReferenceMaxAgeMs = options.heapReferenceMaxAgeMs ?? Infinity;
+  if (!(heapReferenceMaxAgeMs === Infinity || (Number.isFinite(heapReferenceMaxAgeMs) && heapReferenceMaxAgeMs > 0))) {
+    throw new Error(`heapReferenceMaxAgeMs must be a positive number or Infinity, got ${heapReferenceMaxAgeMs}`);
+  }
+
+  const heapObjectsByHeapKeyBase64 = new Map<string, { refIdentity: string, object: WeakRef<PiledriverHeapObject>, seq: DatabaseSeq, state: HeapReferenceState }>();
   const heapObjectsByHeapKeyFinalizer = new FinalizationRegistry(([keyBase64, refIdentity]: [string, string]) => heapObjectsByHeapKeyBase64.get(keyBase64)?.refIdentity === refIdentity && heapObjectsByHeapKeyBase64.delete(keyBase64));
-  const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>>();
+  const heapKeysAndSeqByHeapObjects = new WeakMap<PiledriverHeapObject, { promise: Promise<{ key: ArrayBuffer, seq: DatabaseSeq }>, state: HeapReferenceState }>();
 
-  const cacheHeapObjectByKey = (key: ArrayBuffer, heapObj: PiledriverHeapObject, seq: DatabaseSeq) => {
+  const cacheHeapObjectByKey = (key: ArrayBuffer, heapObj: PiledriverHeapObject, seq: DatabaseSeq, state: HeapReferenceState) => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const refIdentity = crypto.randomUUID();
-    heapObjectsByHeapKeyBase64.set(keyBase64, { refIdentity, object: new WeakRef(heapObj), seq });
+    heapObjectsByHeapKeyBase64.set(keyBase64, { refIdentity, object: new WeakRef(heapObj), seq, state });
     heapObjectsByHeapKeyFinalizer.register(heapObj, [keyBase64, refIdentity]);
   };
+
+  // The read cache (heapObjectsByHeapKeyBase64) is a pure performance optimization now — correctness
+  // is enforced by each handle's own M-check in .get() and by the GC's root-history retention — so we
+  // can safely evict entries we haven't re-confirmed live within M. This also bounds the map's size.
+  if (Number.isFinite(heapReferenceMaxAgeMs)) {
+    const sweepIntervalMs = options.heapReferenceCacheSweepIntervalMs ?? Math.max(1_000, Math.min(heapReferenceMaxAgeMs, 60_000));
+    const sweepTimer = setInterval(() => {
+      const now = performance.now();
+      for (const [keyBase64, entry] of heapObjectsByHeapKeyBase64) {
+        if (now - entry.state.referencedAt > heapReferenceMaxAgeMs) heapObjectsByHeapKeyBase64.delete(keyBase64);
+      }
+    }, sweepIntervalMs);
+    // Don't keep the process alive just for cache sweeping.
+    sweepTimer.unref();
+  }
 
   // Deduplicates and drops initial seqs before delegating to the low-level combineSeqs. This is
   // important for performance: each low-level combined seq allocates promises/map entries, so we
@@ -276,7 +349,16 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     if (heapPath.has(heapObj)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
 
     const existing = heapKeysAndSeqByHeapObjects.get(heapObj);
-    if (existing) {
+    // Only reuse a cached key while the handle is still within M of when we last knew it was
+    // referenced from a live root. Once it is older than M, the referenced object may already have
+    // been garbage-collected (it was unreachable from every retained root for the whole grace
+    // window), so reusing its key would create a dangling reference. Falling through to the miss
+    // path re-inserts under a fresh key; for a lazily-loaded handle that path calls `.get()`, which
+    // itself throws past M — i.e. you cannot resurrect an object through a stale reader handle.
+    if (existing && performance.now() - existing.state.referencedAt <= heapReferenceMaxAgeMs) {
+      // Reusing this heap object in the root we're committing now re-confirms it as referenced from
+      // a (soon-to-be) live root, so refresh its liveness timestamp.
+      existing.state.referencedAt = performance.now();
       if (serializationTimingStats !== undefined) {
         serializationTimingStats.heapObjectCacheHits++;
         const branch = branchKey === undefined ? undefined : serializationBranchStatsByKey(serializationTimingStats, branchKey);
@@ -284,7 +366,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       }
       const cacheHitAwaitStartedAt = performance.now();
       try {
-        return await existing;
+        return await existing.promise;
       } finally {
         if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectCacheHitAwaitTotalMs += performance.now() - cacheHitAwaitStartedAt;
       }
@@ -295,6 +377,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       if (branch !== undefined) branch.heapObjectCacheMisses++;
     }
 
+    const state: HeapReferenceState = { referencedAt: performance.now() };
     const promise = (async () => {
       const childHeapPath = new Set(heapPath).add(heapObj);
       return await traceSpanHot("bulldozer-js.piledriver.heap.serializeAndInsert", async () => {
@@ -321,28 +404,36 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         return { key: inserted.keys[0], seq: inserted.seq };
       });
     })();
-    heapKeysAndSeqByHeapObjects.set(heapObj, promise);
+    heapKeysAndSeqByHeapObjects.set(heapObj, { promise, state });
     let result;
     const cacheMissAwaitStartedAt = performance.now();
     try {
       result = await promise;
     } catch (error) {
       // Don't leave a poisoned rejected promise in the cache; a later retry may succeed.
-      if (heapKeysAndSeqByHeapObjects.get(heapObj) === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
+      if (heapKeysAndSeqByHeapObjects.get(heapObj)?.promise === promise) heapKeysAndSeqByHeapObjects.delete(heapObj);
       throw error;
     } finally {
       if (serializationTimingStats !== undefined) serializationTimingStats.heapObjectCacheMissAwaitTotalMs += performance.now() - cacheMissAwaitStartedAt;
     }
-    cacheHeapObjectByKey(result.key, heapObj, result.seq);
+    cacheHeapObjectByKey(result.key, heapObj, result.seq, state);
     return result;
   };
 
-  const getHeapObjectByKey = (key: ArrayBuffer, seq: DatabaseSeq): { object: PiledriverHeapObject, seq: DatabaseSeq } => {
+  // `referencedAt` is the `performance.now()` timestamp at which the enclosing root/heap object was
+  // known to be referenced from a live root. It is inherited from the parent (NOT re-stamped to
+  // `now` for each child) so that a snapshot read from a root that is already close to expiring
+  // cannot indefinitely refresh its descendants by lazily loading them later — otherwise a stale
+  // reader could still walk into objects the GC has collected.
+  const getHeapObjectByKey = (key: ArrayBuffer, seq: DatabaseSeq, referencedAt: number): { object: PiledriverHeapObject, seq: DatabaseSeq } => {
     const keyBase64 = encodeBase64(new Uint8Array(key));
     const existingEntry = heapObjectsByHeapKeyBase64.get(keyBase64);
     if (!options.disableHeapReadCache && existingEntry) {
       const existingObject = existingEntry.object.deref();
       if (existingObject) {
+        // Re-observing this key while reading a (fresher) root re-confirms it as live, so bump the
+        // shared liveness timestamp — never regress it to an older value.
+        existingEntry.state.referencedAt = Math.max(existingEntry.state.referencedAt, referencedAt);
         return {
           object: existingObject,
           seq: existingEntry.seq,
@@ -352,13 +443,19 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       }
     }
 
+    const state: HeapReferenceState = { referencedAt };
     let loadPromise: Promise<PiledriverObject> | undefined;
     const heapObj: PiledriverHeapObject = {
       async get() {
+        const age = performance.now() - state.referencedAt;
+        if (age > heapReferenceMaxAgeMs) {
+          throw new Error(`Piledriver heap reference expired: last known referenced from a live root ${age.toFixed(0)}ms ago, which exceeds the configured heapReferenceMaxAgeMs=${heapReferenceMaxAgeMs}ms. This snapshot/handle outlived the garbage-collection grace period and its heap object may have been collected; re-fetch from a fresh root.`);
+        }
         loadPromise ??= traceSpanHot({ description: "bulldozer-js.piledriver.heap.get", attributes: { "bulldozer.piledriver.heap_read_cache_disabled": options.disableHeapReadCache === true } }, async () => {
           const { buffer, seq: heapSeq } = await heapDump.get(key);
           if (buffer === null) throw new Error(`Assertion error: Heap object with base64 key "${keyBase64}" not found`);
-          const deserialized = await deserializePiledriverObject(buffer, heapSeq);
+          // Children inherit this handle's (possibly refreshed) liveness timestamp; see the note above.
+          const deserialized = await deserializePiledriverObject(buffer, heapSeq, state.referencedAt);
           return deserialized.object;
         });
         try {
@@ -370,9 +467,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       },
       [isPiledriverHeapObjectSymbol]: true,
     };
-    heapKeysAndSeqByHeapObjects.set(heapObj, Promise.resolve({ key, seq }));
+    heapKeysAndSeqByHeapObjects.set(heapObj, { promise: Promise.resolve({ key, seq }), state });
     if (!options.disableHeapReadCache) {
-      cacheHeapObjectByKey(key, heapObj, seq);
+      cacheHeapObjectByKey(key, heapObj, seq, state);
     }
     return { object: heapObj, seq };
   };
@@ -452,7 +549,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
             // Fail fast on heap cycles at walk time (resolution would deadlock on the ancestor's
             // own memoized promise otherwise).
             if (heapPath.has(node)) throw new Error("Piledriver objects must not contain cycles (found a cycle of heap objects)");
-            const slot: [string, string | null] = ["heap-reference", null];
+            const slot: [string, string | null] = [PILEDRIVER_HEAP_REFERENCE_MARKER, null];
             pendingSlots.push({ slot, heapObj: node, branchKey });
             return slot;
           } else {
@@ -529,7 +626,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
   // Fully synchronous (getHeapObjectByKey is sync; heap payloads are only fetched lazily on
   // .get()). Seqs are collected into one array and combined once per buffer instead of once per
   // node — see serializePiledriverObject for why this matters.
-  const deserializePiledriverObjectFromJsonableObject = (jsonableObject: unknown, enclosingSeq: DatabaseSeq, seqs: DatabaseSeq[]): PiledriverObject => {
+  const deserializePiledriverObjectFromJsonableObject = (jsonableObject: unknown, enclosingSeq: DatabaseSeq, seqs: DatabaseSeq[], referencedAt: number): PiledriverObject => {
     switch (typeof jsonableObject) {
       case "string":
       case "number":
@@ -544,10 +641,10 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
             case "array": {
               // any: JSON.parse output is structurally validated by the surrounding switch; a malformed
               // payload would throw in the recursive call rather than silently passing through.
-              return jsonableObject[1].map((o: any) => deserializePiledriverObjectFromJsonableObject(o, enclosingSeq, seqs));
+              return jsonableObject[1].map((o: any) => deserializePiledriverObjectFromJsonableObject(o, enclosingSeq, seqs, referencedAt));
             }
-            case "heap-reference": {
-              const heapObjAndSeq = getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer, enclosingSeq);
+            case PILEDRIVER_HEAP_REFERENCE_MARKER: {
+              const heapObjAndSeq = getHeapObjectByKey(decodeBase64(jsonableObject[1]).buffer, enclosingSeq, referencedAt);
               seqs.push(heapObjAndSeq.seq);
               return heapObjAndSeq.object;
             }
@@ -570,7 +667,7 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         } else {
           const result: Record<string, PiledriverObject> = {};
           for (const [k, v] of Object.entries(jsonableObject)) {
-            result[k] = deserializePiledriverObjectFromJsonableObject(v, enclosingSeq, seqs);
+            result[k] = deserializePiledriverObjectFromJsonableObject(v, enclosingSeq, seqs, referencedAt);
           }
           return result;
         }
@@ -581,9 +678,12 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     }
   };
 
-  const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
+  // `referencedAt` is the `performance.now()` moment at which the object being deserialized was known
+  // to be reachable from a live root (see getHeapObjectByKey). Callers reading the current root pass
+  // `performance.now()`; a lazy child load inherits its parent handle's stamp.
+  const deserializePiledriverObject = async (buffer: ArrayBuffer, enclosingSeq: DatabaseSeq, referencedAt: number): Promise<{ object: PiledriverObject, seq: DatabaseSeq }> => {
     const seqs: DatabaseSeq[] = [];
-    const object = deserializePiledriverObjectFromJsonableObject(JSON.parse(textDecoder.decode(buffer)), enclosingSeq, seqs);
+    const object = deserializePiledriverObjectFromJsonableObject(JSON.parse(textDecoder.decode(buffer)), enclosingSeq, seqs, referencedAt);
     return { object, seq: combineSeqsDeduped(seqs) };
   };
 
@@ -615,7 +715,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
       return await traceSpan("bulldozer-js.piledriver.getRootObject", async () => {
         const { buffer, seq: rootSeq } = await rootStore.get(key);
         if (buffer === null) throw new Error("Root object not found");
-        const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer, rootSeq);
+        // Reading the current root confirms its whole closure as live right now, so its handles
+        // (and their lazily-loaded descendants) are stamped with `performance.now()`.
+        const { object, seq: deserializeSeq } = await deserializePiledriverObject(buffer, rootSeq, performance.now());
         return { object, seq: lowLevelDb.combineSeqs(deserializeSeq, rootSeq) };
       });
     },
@@ -632,6 +734,14 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
         const rootStoreSetAllStartedAt = performance.now();
         const { seq: rootSeq } = await rootStore.setAll([{ key, value: buffer }], { requiresSeq: seq });
         const rootStoreSetAllMs = performance.now() - rootStoreSetAllStartedAt;
+        if (rootHistoryStore !== null) {
+          // Append this committed root (same serialized buffer) to the append-only history so the GC
+          // can keep every object reachable from any root committed within its retention window.
+          // requiresSeq: seq ensures the history entry can only become durable once the heap objects
+          // it references are durable. The current root always stays in rootStore; history entries
+          // are pruned by the GC once they age out of the window.
+          await rootHistoryStore.setAll([{ key: encodeRootHistoryKey(Date.now()), value: buffer }], { requiresSeq: seq });
+        }
         const topSerializationBranches = [...timingStats.branchStats.entries()]
           .map(([branch, stats]) => ({
             branch,

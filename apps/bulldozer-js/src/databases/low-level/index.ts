@@ -54,6 +54,10 @@ export type LowLevelKvStore = {
  * If values are never modified, then a KV dump can be significantly more efficient than a KV store, especially in a
  * distributed setting.
  *
+ * A dump *can* delete entries (via `deleteAll`) — immutability only forbids *changing* a value in place, not removing
+ * it once nothing references it anymore. This is what makes garbage collection possible (see `piledriver/gc.ts`).
+ * `setAll` and `compareAndSet` remain omitted: values are content that the dump assigns keys to, so callers must never
+ * choose keys or overwrite existing entries.
  *
  * Keys must be <= 64 bytes and value must be <= 2 GB. These restrictions should be strictly enforced by the
  * implementation.
@@ -61,7 +65,7 @@ export type LowLevelKvStore = {
  * Note that durability of a modifying function is only guaranteed after `waitUntilDurable(seq)` for either the returned
  * `seq` or a `seq` that's greater (determined using `maxSeq`).
  */
-export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSet" | "deleteAll"> & {
+export type LowLevelKvDump = Omit<LowLevelKvStore, "setAll" | "compareAndSet"> & {
   /**
    * Inserts the values and returns their keys in the same order.
    *
