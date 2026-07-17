@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if jq -e '.stop_hook_active == true' >/dev/null 2>&1; then exit 0; fi && (pnpm run typecheck 1>&2 || exit 2) && (pnpm run lint 1>&2 || exit 2)"
+            "command": "if jq -e '.stop_hook_active == true' >/dev/null 2>&1; then exit 0; fi; fail=0; pnpm run typecheck 1>&2 || fail=1; pnpm run lint 1>&2 || fail=1; if [ $fail -ne 0 ]; then printf '\\n%s\\n' 'Only fix typecheck/lint failures caused by changes you made this session. Leave pre-existing or unrelated failures (in code you did not touch) as-is - do not modify unrelated code to satisfy the whole-repo check. If every remaining failure is unrelated to your changes, note that briefly and stop.' 1>&2; exit 2; fi"
           }
         ]
       }

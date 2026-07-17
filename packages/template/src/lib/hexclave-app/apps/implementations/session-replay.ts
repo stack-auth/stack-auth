@@ -1,6 +1,6 @@
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
-import { captureWarning } from "@hexclave/shared/dist/utils/errors";
+import { captureWarning, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 
@@ -106,6 +106,19 @@ const IDLE_TTL_MS = 3 * 60 * 1000;
 const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
+// Uncompressed per-batch target; the transport gzips before sending.
+const MAX_BATCH_UNCOMPRESSED_BYTES = 900_000;
+// The server gunzips the whole batch (envelope + events) and rejects anything
+// whose decompressed size exceeds MAX_DECOMPRESSED_BYTES (8 MiB) in the backend
+// route. Since a single oversized event is sent alone, reserve headroom for the
+// JSON envelope (session/batch ids, timestamps, wrapper keys) so an event that
+// passes this check can't render a batch that trips the server's cap by a few
+// hundred bytes. Keep the server's MAX_DECOMPRESSED_BYTES >= this + the margin.
+const BATCH_ENVELOPE_OVERHEAD_BYTES = 1024;
+const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024 - BATCH_ENVELOPE_OVERHEAD_BYTES;
+
+// Reused across the emit hot path to avoid per-event allocation.
+const textEncoder = new TextEncoder();
 
 export type StoredSession = {
   session_id: string,
@@ -166,6 +179,21 @@ export function isAnalyticsNotEnabledError(error: unknown): boolean {
   return KnownErrors.AnalyticsNotEnabled.isInstance(error);
 }
 
+/**
+ * Whether the error looks like a network failure caused by an ad blocker or
+ * similar extension blocking analytics requests. These are expected in
+ * production and should be silently ignored rather than logged as warnings.
+ */
+export function isAdBlockerNetworkError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.message.includes("Failed to fetch")
+      || error.message.includes("NetworkError")
+      || error.message.includes("Load failed")
+      || error.message.includes("network connection");
+  }
+  return false;
+}
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -174,6 +202,7 @@ export class SessionRecorder {
   private _detachListeners: (() => void) | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: unknown[] = [];
+  private _eventSizes: number[] = [];
   private _approxBytes = 0;
   private _lastPersistActivity = 0;
   private _recording = false;
@@ -224,6 +253,7 @@ export class SessionRecorder {
 
   clearBuffer() {
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
   }
 
@@ -249,37 +279,98 @@ export class SessionRecorder {
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, legacyKey: this._legacyStorageKey, nowMs });
 
-    const batchId = generateUuid();
-    const payload = {
-      browser_session_id: stored.session_id,
-      session_replay_segment_id: this._sessionReplaySegmentId,
-      batch_id: batchId,
-      started_at_ms: stored.created_at_ms,
-      sent_at_ms: nowMs,
-      events: this._events,
-    };
-
+    // Capture all buffered events upfront (before any await) so that
+    // stop() / _stopCurrentRecording() clearing this._events cannot race
+    // with the async send loop below and silently discard overflow batches.
+    const allEvents = this._events;
+    const allSizes = this._eventSizes;
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
+
+    // Non-keepalive flushes gzip before sending, so a single event up to the
+    // server's decompressed budget can be sent alone. Keepalive flushes
+    // (pagehide/visibilitychange/stop) skip async gzip to dispatch before page
+    // tear-down, so they're bound by the server's raw ~1MB body limit; cap their
+    // single-event size at the uncompressed batch target so an oversized event
+    // is dropped rather than 413-ing the flush and losing the events behind it.
+    const maxSingleEventBytes = options.keepalive ? MAX_BATCH_UNCOMPRESSED_BYTES : MAX_SINGLE_EVENT_BYTES;
 
     this._flushInProgress = true;
     try {
-      const res = await this._deps.sendBatch(
-        JSON.stringify(payload),
-        { keepalive: options.keepalive },
-      );
+      let offset = 0;
+      while (offset < allEvents.length) {
+        // A single event over the limit can't be sent (rrweb events aren't
+        // splittable); drop it and move on to the rest of the buffer.
+        const firstSize = allSizes[offset] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
+        if (firstSize > maxSingleEventBytes) {
+          captureWarning(
+            "SessionRecorder.flush",
+            new Error(`Dropping oversized session replay event (${firstSize} bytes > ${maxSingleEventBytes} byte limit); it cannot be sent without exceeding the server's body limit.`),
+          );
+          offset += 1;
+          continue;
+        }
 
-      if (res.status === "error") {
-        if (isAnalyticsNotEnabledError(res.error)) {
-          this._disable();
+        let batchBytes = 0;
+        let batchEnd = offset;
+        for (let i = offset; i < allEvents.length; i++) {
+          const nextSize = allSizes[i] ?? throwErr("_eventSizes out of sync with _events — this should never happen");
+          if (batchBytes + nextSize > MAX_BATCH_UNCOMPRESSED_BYTES && batchEnd > offset) break;
+          batchBytes += nextSize;
+          batchEnd = i + 1;
+        }
+
+        const batchEvents = allEvents.slice(offset, batchEnd);
+        offset = batchEnd;
+
+        const batchId = generateUuid();
+        const payload = {
+          browser_session_id: stored.session_id,
+          session_replay_segment_id: this._sessionReplaySegmentId,
+          batch_id: batchId,
+          started_at_ms: stored.created_at_ms,
+          sent_at_ms: nowMs,
+          events: batchEvents,
+        };
+
+        const res = await this._deps.sendBatch(
+          JSON.stringify(payload),
+          { keepalive: options.keepalive },
+        );
+
+        if (res.status === "error") {
+          if (isAnalyticsNotEnabledError(res.error)) {
+            this._disable();
+            return;
+          }
+          // Ad blockers commonly block analytics endpoints, causing network
+          // errors. These are expected and should not pollute the console.
+          if (isAdBlockerNetworkError(res.error)) {
+            return;
+          }
+          captureWarning("SessionRecorder.flush", res.error);
           return;
         }
-        captureWarning("SessionRecorder.flush", res.error);
-        return;
-      }
 
-      if (!res.data.ok) {
-        captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed: ${res.data.status} ${await res.data.text()}`));
+        if (!res.data.ok) {
+          // On any non-2xx we stop the loop, so this batch and every event still
+          // buffered behind it are dropped (not retried). Count them for the log.
+          const droppedCount = batchEvents.length + (allEvents.length - offset);
+          if (res.data.status === 413) {
+            // The payload exceeded the server's body limit despite the client-side
+            // size caps — most likely a single poorly-compressible event (e.g. an
+            // embedded image/canvas) that gzipped above the wire limit. Distinct
+            // from other failures because the caps are supposed to prevent it.
+            captureWarning(
+              "SessionRecorder.flush",
+              new Error(`Session replay batch rejected with 413 (payload too large) despite client-side size caps; dropping ${droppedCount} buffered event(s). A poorly-compressible event likely exceeded the server's body limit after gzip.`),
+            );
+            return;
+          }
+          captureWarning("SessionRecorder.flush", new Error(`SessionRecorder flush failed (dropping ${droppedCount} buffered event(s)): ${res.data.status} ${await res.data.text()}`));
+          return;
+        }
       }
     } finally {
       this._flushInProgress = false;
@@ -333,8 +424,11 @@ export class SessionRecorder {
           }
         }
 
+        // Measure UTF-8 byte length to match the server's byte limit (.length counts UTF-16 units, undercounting multibyte content).
+        const eventSize = textEncoder.encode(JSON.stringify(event)).byteLength;
         this._events.push(event);
-        this._approxBytes += JSON.stringify(event).length;
+        this._eventSizes.push(eventSize);
+        this._approxBytes += eventSize;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }));
         }
@@ -367,6 +461,7 @@ export class SessionRecorder {
       this._stopRecording = null;
     }
     this._events = [];
+    this._eventSizes = [];
     this._approxBytes = 0;
     this._recording = false;
   }

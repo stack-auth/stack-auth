@@ -7,7 +7,7 @@ import { ALL_APPS_FRONTEND, getAppPath, getItemPath, hasNavigationItems, type Na
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
-import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
+import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import Image from "next/image";
@@ -306,15 +306,6 @@ const PROJECT_SHORTCUTS: ProjectShortcutDefinition[] = [
     description: "Emails",
     href: "/email-themes",
     keywords: ["email themes", "themes", "branding", "style", "templates"],
-    requiredApps: ["emails"],
-  },
-  {
-    id: "emails/outbox",
-    icon: EnvelopeSimpleIcon,
-    label: "Email Outbox",
-    description: "Emails",
-    href: "/email-outbox",
-    keywords: ["email outbox", "outbox", "delivery", "queue", "scheduled emails"],
     requiredApps: ["emails"],
   },
   {

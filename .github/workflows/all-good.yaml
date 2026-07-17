@@ -14,6 +14,9 @@ concurrency:
 jobs:
   all-good:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
     env:
       REPO: ${{ github.repository }}
       COMMIT: ${{ github.sha }}
@@ -26,18 +29,64 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
           echo "Checking check runs for commit ${COMMIT} in repo ${REPO}..."
           
           function get_check_runs() {
             local endpoint=$1
+            local page=1
             local response
-            response=$(curl -s -f -H "Authorization: Bearer ${GITHUB_TOKEN}" "$endpoint")
-            if [ $? -ne 0 ]; then
-              echo "Error fetching from $endpoint" >&2
-              echo "{}"
+            local page_count
+            local responses_file
+            local expected_count
+            local returned_count
+            local combined
+            responses_file=$(mktemp)
+
+            while true; do
+              if ! response=$(curl -sS --fail-with-body \
+                --retry 3 \
+                --retry-all-errors \
+                --connect-timeout 10 \
+                --max-time 30 \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "${endpoint}?filter=latest&per_page=100&page=${page}"); then
+                echo "Error fetching page ${page} from ${endpoint}" >&2
+                rm -f "$responses_file"
+                return 1
+              fi
+
+              printf '%s\n' "$response" >> "$responses_file"
+              if ! page_count=$(jq '.check_runs | length' <<< "$response"); then
+                echo "Invalid Checks API response from ${endpoint}" >&2
+                rm -f "$responses_file"
+                return 1
+              fi
+
+              [ "$page_count" -lt 100 ] && break
+              page=$((page + 1))
+            done
+
+            # Check runs can be added while pagination is in progress. Deduplicate
+            # overlapping pages, then fail closed if the collected pages do not
+            # contain every run promised by the largest observed total_count.
+            expected_count=$(jq -s '[.[].total_count // 0] | max // 0' "$responses_file")
+            combined=$(jq -s '
+              [.[].check_runs[]?] | unique_by(.id) as $runs
+              | { total_count: ($runs | length), check_runs: $runs }
+            ' "$responses_file")
+            returned_count=$(jq '.total_count' <<< "$combined")
+            rm -f "$responses_file"
+
+            if [ "$returned_count" -lt "$expected_count" ]; then
+              echo "Checks API returned ${returned_count} unique runs but reported ${expected_count}; refusing a partial result." >&2
               return 1
             fi
-            echo "$response"
+
+            printf '%s\n' "$combined"
           }
           
           function count_pending_checks() {
@@ -57,6 +106,7 @@ jobs:
             
             # If this is a PR, check the PR's head commit checks
             pr_total=0
+            pr_response='{"total_count":0,"check_runs":[]}'
             if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
               pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs")
               pr_total=$(echo "$pr_response" | jq -r '.total_count // 0')

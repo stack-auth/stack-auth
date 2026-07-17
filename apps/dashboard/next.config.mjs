@@ -1,12 +1,8 @@
 import { withSentryConfig } from "@sentry/nextjs";
-import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const sharedBackendRequire = createRequire(path.join(__dirname, "../../packages/shared-backend/package.json"));
-const claudeAgentSdkDir = path.dirname(sharedBackendRequire.resolve("@anthropic-ai/claude-agent-sdk"));
-const claudeAgentSdkTraceDir = path.relative(__dirname, claudeAgentSdkDir);
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -51,6 +47,15 @@ const withConfiguredSentryConfig = (nextConfig) =>
     }
   );
 
+function resolveHexclaveStackEnvVar(hexclaveName, stackName) {
+  const hexclaveValue = process.env[hexclaveName];
+  const stackValue = process.env[stackName];
+  if (hexclaveValue && stackValue && hexclaveValue !== stackValue) {
+    throw new Error(`Environment variables ${hexclaveName} and ${stackName} are both set to different values. Remove one of them or set them to the same value.`);
+  }
+  return hexclaveValue || stackValue || undefined;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // optionally set output to "standalone" for Docker builds
@@ -58,15 +63,11 @@ const nextConfig = {
   output: process.env.NEXT_CONFIG_OUTPUT,
   distDir: process.env.HEXCLAVE_DASHBOARD_NEXT_DIST_DIR,
   outputFileTracingRoot: path.join(__dirname, "../.."),
-  outputFileTracingIncludes: {
-    "/api/remote-development-environment/config/apply-update": [
-      path.join(claudeAgentSdkTraceDir, "cli.js"),
-      path.join(claudeAgentSdkTraceDir, "manifest.json"),
-      path.join(claudeAgentSdkTraceDir, "manifest.zst.json"),
-      path.join(claudeAgentSdkTraceDir, "resvg.wasm"),
-      path.join(claudeAgentSdkTraceDir, "vendor/**/*"),
-    ],
-  },
+  // The claude-agent-sdk spawns cli.js as a child process (resolved via
+  // import.meta.url). Keeping it external ensures the entire package directory
+  // is included in the standalone trace and hoisted to top-level node_modules/
+  // by copy-runtime-assets — so cli.js, vendor/, etc. survive .pnpm removal.
+  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
@@ -119,7 +120,16 @@ const nextConfig = {
   },
 
   async headers() {
-    const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+    // The development-environment (RDE) dashboard is embedded as an iframe by the
+    // dev tool overlay, which runs inside the customer's own app on a *different*
+    // localhost origin (e.g. http://localhost:3000). A plain X-Frame-Options:
+    // SAMEORIGIN would block that framing, so RDE builds instead scope framing to
+    // localhost origins via CSP frame-ancestors. This only applies to the RDE
+    // build target (build:rde-standalone / dev:rde-production); the hosted and
+    // self-host Docker builds keep X-Frame-Options: SAMEORIGIN.
+    const isRdeBuild = process.env.HEXCLAVE_DASHBOARD_BUILD_FOR_RDE === "true";
+    const allowsFraming = isRdeBuild || resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+    const rdeFrameAncestors = "frame-ancestors 'self' http://localhost:* https://localhost:* http://*.localhost:* https://*.localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:*";
     return [
       {
         source: "/(.*)",
@@ -141,7 +151,7 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          ...process.env.NEXT_PUBLIC_STACK_IS_PREVIEW === "true" ? [] : [{
+          ...allowsFraming ? [] : [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
           }],
@@ -149,7 +159,7 @@ const nextConfig = {
             key: "Content-Security-Policy",
             // Note: *.localhost requires Chrome 117+ and may not work in Firefox
             // without network.dns.localDomains configuration. Fine for dev tool purposes.
-            value: isLocalEmulator ? "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://*.localhost https://*.localhost" : "",
+            value: isRdeBuild ? rdeFrameAncestors : "",
           },
         ],
       },

@@ -2,6 +2,7 @@ import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { AdminOwnedProject } from "@hexclave/next";
 import { ALL_APPS, getParentAppId, type AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
+export type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { sharedProviders } from "@hexclave/shared/dist/utils/oauth";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
@@ -36,6 +37,10 @@ export type ProjectOnboardingState = {
   selected_email_theme_id: string | null,
   selected_payments_country: OnboardingPaymentsCountry,
 };
+
+export type OnboardingProgressUpdate =
+  | { status: ProjectOnboardingStatus, onboardingState?: ProjectOnboardingState | null }
+  | { status?: ProjectOnboardingStatus, onboardingState: ProjectOnboardingState | null };
 
 export type HexclaveAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -94,13 +99,10 @@ export function normalizeProjectOnboardingState(
     .map((method) => method.id)
     .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
   const developmentEnvironment = options?.developmentEnvironment === true;
-  const normalizedSignInMethods = developmentEnvironment
-    ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
-    : selectedSignInMethods;
   return {
     selected_config_choice: developmentEnvironment ? "create-new" : value.selected_config_choice,
     selected_apps: selectedApps,
-    selected_sign_in_methods: normalizedSignInMethods,
+    selected_sign_in_methods: selectedSignInMethods,
     selected_email_theme_id: value.selected_email_theme_id,
     selected_payments_country: value.selected_payments_country,
   };

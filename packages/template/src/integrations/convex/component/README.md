@@ -4,11 +4,9 @@ This component is the official way to integrate Hexclave with your Convex projec
 
 ## Installation
 
-To get started, first install Hexclave using the setup wizard:
+To get started, follow the Hexclave setup prompt and choose Convex for the integration steps:
 
-```bash
-npx @hexclave/cli@latest init
-```
+https://docs.hexclave.com/guides/getting-started/setup
 
 ## Get Started
 

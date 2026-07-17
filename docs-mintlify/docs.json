@@ -269,9 +269,7 @@
     }
   },
   "seo": {
-    "metatags": {
-      "robots": "noindex"
-    }
+    "indexing": "all"
   },
   "settings": {
     "customScripts": ["/apps-sidebar-filter.js", "/code-language-labels.js"]
@@ -344,6 +342,10 @@
     {
       "source": "/guides/apps/payments/guide",
       "destination": "/guides/apps/payments/setup"
+    },
+    {
+      "source": "/guides/going-further/backend-integration",
+      "destination": "/guides/going-further/local-vs-cloud-dashboard"
     }
   ]
 }

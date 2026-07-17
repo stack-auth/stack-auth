@@ -44,7 +44,7 @@ import {
   visualTreeToCel,
   type RuleNode,
 } from "@/lib/cel-visual-parser";
-import { useUpdateConfig } from "@/lib/config-update";
+import { useUpdateConfig } from "@/components/config-update";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -59,6 +59,7 @@ import {
   ClockIcon,
   DotsSixVerticalIcon,
   FlaskIcon,
+  MagnifyingGlassIcon,
   PencilSimpleIcon,
   PlusIcon,
   PulseIcon,
@@ -82,7 +83,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
-import { useAdminApp } from "../use-admin-app";
+import { useAdminApp, useServerApp } from "../use-admin-app";
 import { validateRiskScore } from "@/lib/risk-score-utils";
 import { parseClickHouseDate } from "../analytics/shared";
 
@@ -106,6 +107,16 @@ type RuleTriggerListItem = {
   id: string,
   triggeredAt: string,
   email: string | null,
+};
+
+type AllRuleTriggerListItem = {
+  id: string,
+  triggeredAt: string,
+  ruleId: string | null,
+  action: ActionType | null,
+  email: string | null,
+  authMethod: string | null,
+  oauthProvider: string | null,
 };
 
 type SignUpRuleEntry = {
@@ -180,6 +191,31 @@ ORDER BY event_at DESC
 LIMIT {limit:UInt32}
 OFFSET {offset:UInt32}
 `;
+// Radix Select forbids empty-string item values, so the "all" option uses a sentinel that maps to an empty query param.
+const ALL_FILTER_VALUE = "__all__";
+const ALL_RULE_TRIGGER_EVENTS_QUERY = `
+SELECT
+  event_at AS triggered_at,
+  COALESCE(
+    NULLIF(CAST(data.rule_id, 'Nullable(String)'), ''),
+    NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
+  ) AS rule_id,
+  CAST(data.action, 'Nullable(String)') AS action,
+  CAST(data.email, 'Nullable(String)') AS email,
+  CAST(data.auth_method, 'Nullable(String)') AS auth_method,
+  CAST(data.oauth_provider, 'Nullable(String)') AS oauth_provider
+FROM events
+WHERE event_type = '$sign-up-rule-trigger'
+  AND ({rule_id:String} = '' OR COALESCE(
+    NULLIF(CAST(data.rule_id, 'Nullable(String)'), ''),
+    NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
+  ) = {rule_id:String})
+  AND ({action:String} = '' OR CAST(data.action, 'Nullable(String)') = {action:String})
+  AND ({email_search:String} = '' OR positionCaseInsensitiveUTF8(COALESCE(CAST(data.email, 'Nullable(String)'), ''), {email_search:String}) > 0)
+ORDER BY event_at DESC
+LIMIT {limit:UInt32}
+OFFSET {offset:UInt32}
+`;
 
 const ACTION_LABELS: Record<ActionType, string> = {
   allow: 'Allow',
@@ -205,6 +241,40 @@ function ActionBadge({ type, dim = false, size = "sm" }: { type: ActionType, dim
       <DesignBadge label={ACTION_LABELS[type]} color={ACTION_BADGE_COLOR[type]} size={size} contentMode="text" />
     </span>
   );
+}
+
+// Trigger rows contain user PII (email, auth method), so assertion metadata must only expose
+// non-sensitive diagnostics (which columns and value types came back), never the raw row.
+function triggerRowAssertionExtra(row: Record<string, unknown>, fieldName: string) {
+  const value = row[fieldName];
+  return {
+    fieldName,
+    actualType: value == null ? "null" : typeof value,
+    rowKeys: Object.keys(row),
+  };
+}
+
+function parseNullableStringField(row: Record<string, unknown>, fieldName: string, rowLabel: string): string | null {
+  const value = row[fieldName];
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+
+  throw new HexclaveAssertionError(`Expected ${rowLabel} to include ${fieldName}:null|string`, triggerRowAssertionExtra(row, fieldName));
+}
+
+function parseActionTypeField(row: Record<string, unknown>, fieldName: string): ActionType | null {
+  const value = row[fieldName];
+  if (value == null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new HexclaveAssertionError(`Expected sign-up rule trigger row to include ${fieldName}:null|string`, triggerRowAssertionExtra(row, fieldName));
+  }
+  return isActionType(value) ? value : null;
 }
 
 // Sparkline (kept identical — purely visual + tooltip)
@@ -270,7 +340,7 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
   return resultRows.map((row) => {
     const triggeredAt = row.triggered_at;
     if (typeof triggeredAt !== "string") {
-      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", { row });
+      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", triggerRowAssertionExtra(row, "triggered_at"));
     }
 
     const emailRaw = row.email;
@@ -281,7 +351,26 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
       return { id: generateUuid(), triggeredAt, email: emailRaw };
     }
 
-    throw new HexclaveAssertionError("Expected sign-up rule trigger row to include email:null|string", { row });
+    throw new HexclaveAssertionError("Expected sign-up rule trigger row to include email:null|string", triggerRowAssertionExtra(row, "email"));
+  });
+}
+
+function parseAllRuleTriggerRows(resultRows: Record<string, unknown>[]): AllRuleTriggerListItem[] {
+  return resultRows.map((row) => {
+    const triggeredAt = row.triggered_at;
+    if (typeof triggeredAt !== "string") {
+      throw new HexclaveAssertionError("Expected sign-up rule trigger row to include triggered_at:string", triggerRowAssertionExtra(row, "triggered_at"));
+    }
+
+    return {
+      id: generateUuid(),
+      triggeredAt,
+      ruleId: parseNullableStringField(row, "rule_id", "sign-up rule trigger row"),
+      action: parseActionTypeField(row, "action"),
+      email: parseNullableStringField(row, "email", "sign-up rule trigger row"),
+      authMethod: parseNullableStringField(row, "auth_method", "sign-up rule trigger row"),
+      oauthProvider: parseNullableStringField(row, "oauth_provider", "sign-up rule trigger row"),
+    };
   });
 }
 
@@ -382,6 +471,270 @@ function TriggerRow({ trigger }: { trigger: RuleTriggerListItem }) {
   );
 }
 
+function RecentTriggerRow({
+  trigger,
+  ruleDisplayNameById,
+}: {
+  trigger: AllRuleTriggerListItem,
+  ruleDisplayNameById: Map<string, string>,
+}) {
+  const { date, time, relative } = formatTriggerTime(trigger.triggeredAt);
+  const ruleDisplayName = trigger.ruleId == null ? null : ruleDisplayNameById.get(trigger.ruleId) ?? null;
+  const isDeletedRule = trigger.ruleId != null && ruleDisplayName == null;
+
+  return (
+    <div className="group flex items-start gap-3 px-3 py-2.5 transition-colors duration-150 hover:bg-foreground/[0.03] hover:transition-none">
+      <div className="h-8 w-8 rounded-lg bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center shrink-0 mt-0.5">
+        <ClockIcon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          {ruleDisplayName != null ? (
+            <Typography className="text-xs font-medium truncate" title={ruleDisplayName}>
+              {ruleDisplayName}
+            </Typography>
+          ) : isDeletedRule ? (
+            <Typography
+              variant="secondary"
+              className="text-xs italic truncate"
+              title={trigger.ruleId == null ? undefined : trigger.ruleId}
+            >
+              deleted rule · {trigger.ruleId}
+            </Typography>
+          ) : (
+            <Typography variant="secondary" className="text-xs italic truncate">
+              unknown rule
+            </Typography>
+          )}
+          {trigger.action == null ? null : <ActionBadge type={trigger.action} dim />}
+        </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <UserIcon className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+          {trigger.email != null ? (
+            <Typography className="text-xs font-mono truncate">{trigger.email}</Typography>
+          ) : (
+            <Typography variant="secondary" className="text-xs italic">no email captured</Typography>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+          {trigger.authMethod != null ? <span className="truncate">auth: {trigger.authMethod}</span> : null}
+          {trigger.oauthProvider != null ? <span className="truncate">oauth: {trigger.oauthProvider}</span> : null}
+        </div>
+      </div>
+      <div className="hidden sm:flex flex-col items-end shrink-0 leading-tight mt-0.5">
+        <Typography className="text-xs font-medium tabular-nums">{time}</Typography>
+        <Typography variant="secondary" className="text-[10px] tabular-nums">{date}</Typography>
+      </div>
+      <DesignBadge label={relative} color="blue" size="sm" />
+    </div>
+  );
+}
+
+function RecentTriggersCard({
+  signUpRules,
+  hexclaveAdminApp,
+}: {
+  signUpRules: SignUpRuleEntry[],
+  hexclaveAdminApp: ReturnType<typeof useAdminApp>,
+}) {
+  const [emailSearchInput, setEmailSearchInput] = useState("");
+  const [debouncedEmailSearch, setDebouncedEmailSearch] = useState("");
+  const [ruleFilter, setRuleFilter] = useState(ALL_FILTER_VALUE);
+  const [actionFilter, setActionFilter] = useState(ALL_FILTER_VALUE);
+  const [triggers, setTriggers] = useState<AllRuleTriggerListItem[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const latestRequestIdRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const isInitialLoadingRef = useRef(false);
+  const isLoadingMoreRef = useRef(false);
+
+  const ruleDisplayNameById = useMemo(
+    () => new Map(signUpRules.map((entry) => [entry.id, entry.rule.displayName ?? entry.id] as const)),
+    [signUpRules],
+  );
+  const ruleFilterOptions = useMemo(() => [
+    { value: ALL_FILTER_VALUE, label: "All rules" },
+    ...signUpRules.map((entry) => ({
+      value: entry.id,
+      label: entry.rule.displayName || entry.id,
+    })),
+  ], [signUpRules]);
+
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedEmailSearch(emailSearchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [emailSearchInput]);
+
+  const fetchTriggerPage = React.useCallback(async ({ offset, reset }: { offset: number, reset: boolean }) => {
+    if (!reset && (!hasMoreRef.current || isLoadingMoreRef.current || isInitialLoadingRef.current)) {
+      return;
+    }
+
+    const nextRequestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = nextRequestId;
+    if (reset) {
+      setIsInitialLoading(true);
+      isInitialLoadingRef.current = true;
+      setIsLoadingMore(false);
+      isLoadingMoreRef.current = false;
+      setLoadingError(null);
+      setHasMore(true);
+      hasMoreRef.current = true;
+      setTriggers([]);
+    } else {
+      setIsLoadingMore(true);
+      isLoadingMoreRef.current = true;
+    }
+
+    try {
+      const response = await hexclaveAdminApp.queryAnalytics({
+        query: ALL_RULE_TRIGGER_EVENTS_QUERY,
+        params: {
+          rule_id: ruleFilter === ALL_FILTER_VALUE ? "" : ruleFilter,
+          action: actionFilter === ALL_FILTER_VALUE ? "" : actionFilter,
+          email_search: debouncedEmailSearch,
+          limit: RULE_TRIGGER_EVENTS_PAGE_SIZE,
+          offset,
+        },
+        timeout_ms: 30_000,
+        include_all_branches: false,
+      });
+
+      if (nextRequestId !== latestRequestIdRef.current) return;
+
+      const parsedRows = parseAllRuleTriggerRows(response.result);
+      setTriggers((current) => reset ? parsedRows : [...current, ...parsedRows]);
+      setHasMore(parsedRows.length === RULE_TRIGGER_EVENTS_PAGE_SIZE);
+      hasMoreRef.current = parsedRows.length === RULE_TRIGGER_EVENTS_PAGE_SIZE;
+    } catch (error) {
+      if (nextRequestId !== latestRequestIdRef.current) return;
+      setLoadingError(error instanceof Error ? error.message : "Failed to load triggers");
+    } finally {
+      if (nextRequestId === latestRequestIdRef.current) {
+        if (reset) {
+          setIsInitialLoading(false);
+          isInitialLoadingRef.current = false;
+        } else {
+          setIsLoadingMore(false);
+          isLoadingMoreRef.current = false;
+        }
+      }
+    }
+  }, [actionFilter, debouncedEmailSearch, hexclaveAdminApp, ruleFilter]);
+
+  React.useEffect(() => {
+    runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: 0, reset: true }));
+  }, [fetchTriggerPage]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (event) => {
+    if (!hasMoreRef.current || isInitialLoadingRef.current || isLoadingMoreRef.current) return;
+    const target = event.currentTarget;
+    const remainingScrollPx = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (remainingScrollPx > 120) return;
+    runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: triggers.length, reset: false }));
+  };
+
+  const hasActiveFilters = ruleFilter !== ALL_FILTER_VALUE || actionFilter !== ALL_FILTER_VALUE || emailSearchInput !== "" || debouncedEmailSearch !== "";
+
+  return (
+    <DesignCard
+      title="Recent triggers"
+      subtitle="Across all sign-up rules"
+      icon={PulseIcon}
+      gradient="default"
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <DesignInput
+            value={emailSearchInput}
+            onChange={(event) => setEmailSearchInput(event.target.value)}
+            placeholder="Search by email…"
+            leadingIcon={<MagnifyingGlassIcon className="h-3.5 w-3.5" />}
+            size="sm"
+            className="min-w-0 flex-1 sm:min-w-72"
+          />
+          <DesignSelectorDropdown
+            value={ruleFilter}
+            onValueChange={setRuleFilter}
+            options={ruleFilterOptions}
+            size="sm"
+            className="w-full sm:w-48"
+            placeholder="All rules"
+          />
+          <DesignSelectorDropdown
+            value={actionFilter}
+            onValueChange={setActionFilter}
+            options={[
+              { value: ALL_FILTER_VALUE, label: "All actions" },
+              { value: "allow", label: "Allow" },
+              { value: "reject", label: "Reject" },
+              { value: "restrict", label: "Restrict" },
+              { value: "log", label: "Log" },
+            ]}
+            size="sm"
+            className="w-full sm:w-44"
+            placeholder="All actions"
+          />
+        </div>
+        {!isInitialLoading && triggers.length > 0 && (
+          <div className="flex justify-end">
+            <Typography variant="secondary" className="text-[11px] tabular-nums">
+              showing {triggers.length}{hasMore ? "+" : ""}
+            </Typography>
+          </div>
+        )}
+
+        {loadingError == null ? null : (
+          <DesignAlert variant="error" description={loadingError} />
+        )}
+
+        <div
+          className={cn("max-h-[360px] overflow-auto rounded-xl", ruleCardMutedSurfaceClass)}
+          onScroll={handleScroll}
+        >
+          {isInitialLoading ? (
+            <div className="space-y-2 p-3">
+              {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                <DesignSkeleton key={skeletonId} className="h-12 rounded-lg" />
+              ))}
+            </div>
+          ) : triggers.length === 0 ? (
+            <DesignEmptyState
+              icon={ClockIcon}
+              title="No triggers found"
+              description={
+                hasActiveFilters
+                  ? "Try broadening your search or clearing the filters."
+                  : "No sign-up rule triggers have been recorded yet."
+              }
+            />
+          ) : (
+            <div className="divide-y divide-foreground/[0.06]">
+              {triggers.map((trigger) => (
+                <RecentTriggerRow
+                  key={trigger.id}
+                  trigger={trigger}
+                  ruleDisplayNameById={ruleDisplayNameById}
+                />
+              ))}
+            </div>
+          )}
+          {isLoadingMore ? (
+            <div className="p-3">
+              <DesignSkeleton className="h-10 rounded-lg" />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
 function RuleTriggerHistoryDialog({
   ruleId,
   ruleDisplayName,
@@ -403,7 +756,7 @@ function RuleTriggerHistoryDialog({
   timespanHours: number,
   isSparklineLoading: boolean,
 }) {
-  const hexclaveAdminApp = useAdminApp();
+  const serverApp = useServerApp();
   const [open, setOpen] = useState(false);
   const [triggers, setTriggers] = useState<RuleTriggerListItem[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -430,7 +783,7 @@ function RuleTriggerHistoryDialog({
     }
 
     try {
-      const response = await hexclaveAdminApp.queryAnalytics({
+      const response = await serverApp.queryAnalytics({
         query: RULE_TRIGGER_EVENTS_QUERY,
         params: {
           rule_id: ruleId,
@@ -717,6 +1070,15 @@ function RejectMessageField({ state, size = "sm", className }: { state: RuleEdit
   );
 }
 
+function RejectActionNote({ state }: { state: RuleEditorState }) {
+  if (state.actionType !== 'reject') return null;
+  return (
+    <p className="text-[11px] leading-snug text-muted-foreground/70">
+      Reject will prevent users from signing up completely. Consider using Restrict instead — it still creates the user account but blocks app access, and you can unrestrict users later from the dashboard.
+    </p>
+  );
+}
+
 function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, size?: "sm" | "lg" }) {
   return (
     <>
@@ -797,6 +1159,7 @@ function RuleEditor(props: {
           <ActionDropdown state={state} />
           <RejectMessageField state={state} />
         </div>
+        <RejectActionNote state={state} />
       </NumberedStep>
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-foreground/[0.06]">
         <SaveCancelButtons state={state} />
@@ -1715,6 +2078,10 @@ function PageBody(props: PageBodyProps) {
           value={props.defaultAction}
           onChange={props.onDefaultActionChange}
         />
+
+        <div className="pt-10">
+          <RecentTriggersCard signUpRules={props.signUpRules} hexclaveAdminApp={props.hexclaveAdminApp} />
+        </div>
 
         <div className="pt-10">
           <TestRulesPanel hexclaveAdminApp={props.hexclaveAdminApp} />

@@ -25,11 +25,7 @@ The examples below focus on **Next.js (App Router)**. The same ideas apply on ot
 
 ## 1. Install Hexclave and wire environment variables
 
-The fastest path for JavaScript and TypeScript is the **setup wizard**:
-
-```bash title="Terminal"
-npx @hexclave/cli@latest init
-```
+The fastest path for JavaScript and TypeScript is the [Hexclave setup prompt](/guides/getting-started/setup). Choose **Next.js** in the setup builder, then copy the generated prompt into your coding agent.
 
 Then create or open a project in the dashboard and copy **project ID**, **publishable client key** (if your project uses one), and **secret server key** into your app configuration. For Next.js, that usually means `.env.local`:
 
@@ -39,9 +35,9 @@ NEXT_PUBLIC_HEXCLAVE_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
 HEXCLAVE_SECRET_SERVER_KEY=<your-secret-server-key>
 ```
 
-### What the wizard sets up (Next.js)
+### What the setup prompt creates (Next.js)
 
-After `init`, you should see files similar to:
+After setup, you should see files similar to:
 
 - `app/handler/[...hexclave]/page.tsx` - hosted sign-in, sign-up, account settings, and more
 - `app/layout.tsx` - wraps the app with `HexclaveProvider` and `HexclaveTheme`

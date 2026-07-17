@@ -1,6 +1,5 @@
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
 import { normalizeEmail, sendEmailToMany } from "@/lib/emails";
-import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
@@ -108,10 +107,6 @@ export async function sendSupportFeedbackEmail(options: {
     fields.push({ label: "Type", value: feedbackLabel });
   }
 
-  if (isLocalEmulatorEnabled()) {
-    fields.push({ label: "Environment", value: "Local Emulator" });
-  }
-
   await sendInternalOperationsEmail({
     tenancy: options.tenancy,
     subject: `[${feedbackLabel}] ${options.email}`,
@@ -125,35 +120,59 @@ export async function sendSupportFeedbackEmail(options: {
 }
 
 import.meta.vitest?.test("getInternalFeedbackRecipients()", ({ expect }) => {
+  // getEnvVariable resolves HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS first and
+  // falls back to the legacy STACK_ name, so clear and restore both.
   // eslint-disable-next-line no-restricted-syntax
-  const previousValue = process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
+  const previousValue = process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS;
+  // eslint-disable-next-line no-restricted-syntax
+  const previousLegacyValue = process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
 
   try {
+    // eslint-disable-next-line no-restricted-syntax
+    delete process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS;
     // eslint-disable-next-line no-restricted-syntax
     delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
     expect(() => getInternalFeedbackRecipients()).toThrow("Missing environment variable");
 
     // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@hexclave.com, team@hexclave.com , another@example.com";
+    process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@hexclave.com, team@hexclave.com , another@example.com";
     expect(getInternalFeedbackRecipients()).toEqual([
       "team@hexclave.com",
       "another@example.com",
     ]);
 
     // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "valid@example.com, ";
+    process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = "valid@example.com, ";
     expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
 
     // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = ", ";
+    process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = ", ";
     expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
+
+    // legacy STACK_ name still resolves when the canonical name is unset or empty
+    // eslint-disable-next-line no-restricted-syntax
+    delete process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS;
+    // eslint-disable-next-line no-restricted-syntax
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "legacy@example.com";
+    expect(getInternalFeedbackRecipients()).toEqual(["legacy@example.com"]);
+
+    // eslint-disable-next-line no-restricted-syntax
+    process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = "";
+    expect(getInternalFeedbackRecipients()).toEqual(["legacy@example.com"]);
   } finally {
     if (previousValue === undefined) {
+      // eslint-disable-next-line no-restricted-syntax
+      delete process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS;
+    } else {
+      // eslint-disable-next-line no-restricted-syntax
+      process.env.HEXCLAVE_INTERNAL_FEEDBACK_RECIPIENTS = previousValue;
+    }
+    if (previousLegacyValue === undefined) {
       // eslint-disable-next-line no-restricted-syntax
       delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
     } else {
       // eslint-disable-next-line no-restricted-syntax
-      process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = previousValue;
+      process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = previousLegacyValue;
     }
   }
 });

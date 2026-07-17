@@ -54,8 +54,8 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     steps:
       # First, checkout the current branch to get its migrations
@@ -158,7 +158,29 @@ jobs:
 
       - name: Initialize database
         run: pnpm run db:init
-  
+
+      # This job runs base-branch code, so only start/backfill bulldozer-js when the base
+      # branch actually ships it (skipped on the PR that introduces bulldozer-js). Mirrors
+      # the run-cron-jobs hashFiles guard below.
+      - name: Start bulldozer-js in background
+        if: ${{ hashFiles('apps/bulldozer-js/package.json') != '' }}
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        if: ${{ hashFiles('apps/bulldozer-js/package.json') != '' }}
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:
@@ -255,8 +277,8 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
 
     steps:
       # First, checkout the base branch to get its migrations
@@ -366,6 +388,23 @@ jobs:
       - name: Initialize database
         run: pnpm run db:init
   
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:

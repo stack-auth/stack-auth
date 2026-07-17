@@ -1,5 +1,4 @@
-import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { KnownError, KnownErrors, HexclaveClientInterface } from "@hexclave/shared";
+import { HexclaveClientInterface, KnownError, KnownErrors } from "@hexclave/shared";
 import type { RequestListener } from "@hexclave/shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@hexclave/shared/dist/interface/crud/current-user";
@@ -38,15 +37,16 @@ import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withB
 import { createUrlIfValid, getRelativePart, isRelative } from "@hexclave/shared/dist/utils/urls";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@hexclave/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
+import { envVars } from "../../../../generated/env";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { callOAuthCallback, getNewOAuthProviderOrScopeUrl } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, getCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
-import { envVars } from "../../../../generated/env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, hexclaveAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -57,6 +57,8 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -73,6 +75,7 @@ import { useAsyncCache } from "./common";
 // IF_PLATFORM js-like
 import { mountClickmapOverlay } from "../../../../clickmap";
 import { mountDevTool } from "../../../../dev-tool";
+import { mountPushedConfigErrorOverlay } from "../../../../pushed-config-error-overlay";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -375,7 +378,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         {
           provider,
           redirectUrl: this._getOAuthCallbackRedirectUri(),
-          errorRedirectUrl: this.urls.error,
+          errorRedirectUrl: this._getUrls().error,
           providerScope: mergeScopeStrings(scopeString, (this._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
         },
         session,
@@ -580,7 +583,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         {
           provider: options.providerId,
           redirectUrl: this._getOAuthCallbackRedirectUri(),
-          errorRedirectUrl: this.urls.error,
+          errorRedirectUrl: this._getUrls().error,
           providerScope: mergeScopeStrings(options.scope || "", (this._oauthScopesOnSignIn[options.providerId] ?? []).join(" ")),
         },
         options.session,
@@ -759,17 +762,23 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
+
+      // Mirror any redirect-back state from the page URL into sessionStorage, so the return trip
+      // survives later hops that drop the query params (OAuth provider round-trips, MFA, magic
+      // links, ...). See redirect-back-state.ts for details.
+      saveRedirectBackStateFromUrl({ url: urlAtConstructionTime, projectId: this.projectId });
     }
 
     // IF_PLATFORM js-like
     if (isBrowserLike() && resolvedOptions.devTool !== false) {
-      mountDevTool(this as any);
+      mountDevTool(this as any, resolvedOptions.devTool);
     }
     if (isBrowserLike()) {
       // Independent of the dev tool: the clickmap overlay only ever renders
       // when a dashboard-minted token is handed over, so the listener is
       // mounted unconditionally (the heavy UI is lazy-loaded on demand).
       mountClickmapOverlay(this as any);
+      mountPushedConfigErrorOverlay(this as any);
     }
     // END_PLATFORM
   }
@@ -894,7 +903,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected _getOAuthCallbackRedirectUri(): string {
     if (!this._isOAuthCallbackUrlHosted()) {
-      return this.urls.oauthCallback;
+      return this._getUrls().oauthCallback;
     }
     if (typeof window === "undefined") {
       throw new HexclaveAssertionError("Hosted OAuth callback URLs require a browser environment to use the current URL as the redirect URI");
@@ -1675,6 +1684,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return {
       id: crud.id,
       displayName: crud.display_name,
+      pushedConfigError: crud.pushed_config_error == null ? null : {
+        message: crud.pushed_config_error.message,
+      },
+      configWarnings: crud.config_warnings.map((warning) => ({
+        message: warning.message,
+      })),
       config: {
         signUpEnabled: crud.config.sign_up_enabled,
         credentialEnabled: crud.config.credential_enabled,
@@ -2753,16 +2768,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return clientVersion;
   }
 
-  private _botChallengeSiteKeysWarned = false;
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
     const visibleSiteKey = envVars.HEXCLAVE_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
-      if (!this._botChallengeSiteKeysWarned) {
-        this._botChallengeSiteKeysWarned = true;
-        console.warn("[stack-auth] HEXCLAVE_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
-      }
       return null;
     }
 
@@ -3008,6 +3018,17 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
+    if (this._redirectMethod !== "none" && isBrowserLike()) {
+      const currentUrl = new URL(window.location.href);
+      const targetUrl = new URL(options.url, currentUrl);
+      // Circuit breaker: if this exact redirect keeps repeating, throw so the initiating page
+      // renders its error state instead of bouncing the user between pages forever.
+      recordRedirectAndThrowIfLoopDetected({ currentUrl, targetUrl });
+      // Client-side navigations don't re-run the app constructor, so mirror redirect-back state
+      // on every SDK-driven hop too (see redirect-back-state.ts).
+      saveRedirectBackStateFromUrl({ url: targetUrl, projectId: this.projectId });
+    }
+
     if (this._redirectMethod === "none") {
       return;
       // IF_PLATFORM next
@@ -3066,15 +3087,41 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       overrideTokenStoreInit?: TokenStoreInit,
     },
   ) {
+    await this._redirectTo({
+      url: await this._getRedirectToHandlerUrl(handlerName, options, internalOptions),
+      ...options,
+    });
+  }
+
+  protected async _getRedirectToHandlerUrl(
+    handlerName: keyof HandlerUrls,
+    options?: RedirectToOptions,
+    internalOptions?: {
+      awaitPendingAuthResolutions?: boolean,
+      overrideTokenStoreInit?: TokenStoreInit,
+    },
+  ): Promise<string> {
     const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
     const rawHandlerUrl = rawUrls[handlerName];
     if (!rawHandlerUrl) {
       throw new Error(`No URL for handler name ${handlerName}`);
     }
 
-    const currentUrl = isReactServer || typeof window === "undefined"
+    let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
+    if (
+      currentUrl != null
+      && options?.noRedirectBack !== true
+      && (handlerName === "afterSignIn" || handlerName === "afterSignUp")
+    ) {
+      // If intermediate hops dropped the redirect-back query params, restore them from the
+      // sessionStorage mirror so the user still returns to where they came from instead of
+      // stranding on the default post-auth page (on hosted components, that would be the hosted
+      // welcome page). The restored URL goes through the same _isTrusted / cross-domain-authorize
+      // validation below as one read from query params.
+      currentUrl = augmentUrlWithPersistedRedirectBackState({ currentUrl, projectId: this.projectId });
+    }
     const plan = await planRedirectToHandler({
       handlerName,
       rawHandlerUrl,
@@ -3093,8 +3140,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
         overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       });
-      await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
-      return;
+      return crossDomainRedirectUrl;
     }
 
     const redirectUrl = currentUrl != null && handlerName !== "signOut" && handlerName !== "afterSignOut" && handlerName !== "oauthCallback"
@@ -3105,7 +3151,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       })
       : plan.url;
-    await this._redirectIfTrusted(redirectUrl, options);
+    if (!await this._isTrusted(redirectUrl)) {
+      throw new Error(`Redirect URL ${redirectUrl} is not trusted; should be relative.`);
+    }
+    return redirectUrl;
   }
 
   protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
@@ -3148,13 +3197,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   async redirectToMfa(options?: RedirectToOptions) { return await this._redirectToHandler("mfa", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
-    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
+    return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this._getUrls().passwordReset, "callbackUrl"));
   }
 
   async sendMagicLinkEmail(email: string, options?: {
     callbackUrl?: string,
   }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>> {
-    const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
+    const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this._getUrls().magicLinkCallback, "callbackUrl");
     return await this._executeResultWithBotChallengeFlow({
       action: "send_magic_link_email",
       execute: async (challenge) => {
@@ -3447,7 +3496,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this._interface.authorizeOAuth({
         provider,
         redirectUrl: constructRedirectUrl(this._getOAuthCallbackRedirectUri(), "redirectUrl"),
-        errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
+        errorRedirectUrl: constructRedirectUrl(this._getUrls().error, "errorRedirectUrl"),
         afterCallbackRedirectUrl,
         type: "authenticate",
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
@@ -3567,7 +3616,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
+    const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this._getUrls().emailVerification, "verificationCallbackUrl");
 
     const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
       let result = await this._interface.signUpWithCredential(
@@ -3730,7 +3779,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     // Step 2: Open the browser for the user to authenticate and display the verification code
     const url = buildCliAuthConfirmUrl({
-      cliAuthConfirmUrl: this.urls.cliAuthConfirm,
+      cliAuthConfirmUrl: this._getUrls().cliAuthConfirm,
       appUrl: options.appUrl,
       loginCode,
     });
@@ -4182,9 +4231,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       ) => {
         return await this._interface.sendClientRequest(path, requestOptions, await this._getSession(), requestType);
       },
+      getUrls: () => this._getUrls(),
       getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
       redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
         await this._redirectTo({ url, ...options });
+      },
+      getRedirectToHandlerUrl: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
+        return await this._getRedirectToHandlerUrl(handlerName, options);
       },
       redirectToHandler: async (handlerName: keyof HandlerUrls, options?: RedirectToOptions) => {
         await this._redirectToHandler(handlerName, options);
@@ -4194,6 +4247,12 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       signInWithTokens: async (tokens: { accessToken: string, refreshToken: string }) => {
         await this._signInToAccountWithTokens(tokens);
+      },
+      awaitPendingAuthResolutions: async () => {
+        await this._awaitPendingAuthResolutions();
+      },
+      isTrustedRedirectUrl: async (url: string) => {
+        return await this._isTrusted(url);
       },
     };
   };

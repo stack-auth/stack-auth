@@ -134,13 +134,13 @@ function consumeOAuthCallbackQueryParams(options?: {
     // If the state can't be found in the cookies, then the callback wasn't meant for us.
     // Maybe the website uses another OAuth library?
     console.warn(deindent`
-      Stack found an outer OAuth callback state in the query parameters, but not in cookies.
+      Hexclave found an outer OAuth callback state in the query parameters, but not in cookies.
 
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.
         - The cookie was already consumed by this page, and the user already logged in.
-        - You are using another OAuth client library with the same callback URL as Stack.
+        - You are using another OAuth client library with the same callback URL as Hexclave.
         - The user opened the OAuth callback page from their history.
 
       Either way, it is probably safe to ignore this warning unless you are debugging an OAuth issue.

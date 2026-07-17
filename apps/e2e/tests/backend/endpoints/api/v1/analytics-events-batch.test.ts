@@ -558,9 +558,9 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   let queryRes;
   for (let attempt = 0; attempt < 15; attempt++) {
     await wait(500);
-    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    queryRes = await niceBackendFetch("/api/v1/analytics/query", {
       method: "POST",
-      accessType: "admin",
+      accessType: "server",
       body: {
         query: "SELECT event_type, session_replay_segment_id FROM events WHERE session_replay_segment_id = {segId:String} ORDER BY event_at",
         params: { segId: sessionReplaySegmentId },

@@ -12,15 +12,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
+  wait-for-fast-fail:
+    name: wait-for-fast-fail
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/wait-for-check
+        with:
+          check-name: fast-fail-tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: wait-for-fast-fail
     runs-on: ubicloud-standard-8
     env:
       NODE_ENV: test
-      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:6728/stackframe"
+      HEXCLAVE_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      HEXCLAVE_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:6728/stackframe"
       NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX: "67"
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
-      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      HEXCLAVE_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      HEXCLAVE_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -108,6 +124,23 @@ jobs:
 
       - name: Initialize database
         run: pnpm run db:init
+
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:6746
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
 
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7

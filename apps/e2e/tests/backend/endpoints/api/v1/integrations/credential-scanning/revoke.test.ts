@@ -1,9 +1,12 @@
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import type { MailboxMessage } from "../../../../../../helpers";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, ProjectApiKey, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
 // TODO re-enable these tests when we re-enable credential scanning email notifications
+
+const isSourceOfTruthTest = () => getEnvVariable("STACK_TEST_SOURCE_OF_TRUTH", "") === "true";
 
 it("should send email notification to user when revoking an API key through credential scanning", async ({ expect }: { expect: any }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true, allow_team_api_keys: true, allow_user_api_keys: true } });
@@ -44,7 +47,7 @@ it("should send email notification to user when revoking an API key through cred
     },
   });
 
-  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+  if (isSourceOfTruthTest()) {
     expect(revokeResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 404,
@@ -180,7 +183,7 @@ it("should send email notification to team members when revoking a team API key 
       },
     });
 
-    if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+    if (isSourceOfTruthTest()) {
       expect(revokeResponse).toMatchInlineSnapshot(`
         NiceResponse {
           "status": 404,
@@ -353,7 +356,7 @@ it("should handle already revoked API keys gracefully", async ({ expect }: { exp
     },
   });
 
-  if (process.env.STACK_TEST_SOURCE_OF_TRUTH === "true") {
+  if (isSourceOfTruthTest()) {
     expect(revokeResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 404,

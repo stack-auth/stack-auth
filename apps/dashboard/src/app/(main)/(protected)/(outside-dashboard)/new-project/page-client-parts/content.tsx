@@ -24,20 +24,20 @@ import {
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject, useStackApp } from "@hexclave/next";
+import { type AdminOwnedProject } from "@hexclave/next";
 import { runAsynchronouslyWithAlert, wait } from "@hexclave/shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
   endPendingAction,
   getStackAppInternals,
   isProjectOnboardingState,
-  isProjectOnboardingStatus,
+  type OnboardingProgressUpdate,
   type ProjectOnboardingState,
+  type ProjectOnboardingStatus,
 } from "./shared";
 
 export default function PageClient() {
@@ -55,16 +55,13 @@ export default function PageClient() {
 }
 
 function PageClientInner() {
-  const app = useStackApp();
-  const appInternals = useMemo(() => getStackAppInternals(app), [app]);
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
   const projects = user.useOwnedProjects();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
-  const isDevelopmentEnvironment = isLocalEmulator || isRemoteDevelopmentEnvironment;
+  const isDevelopmentEnvironment = isRemoteDevelopmentEnvironment;
 
   const selectedProjectId = searchParams.get("project_id");
   const displayNameFromSearch = searchParams.get("display_name");
@@ -74,7 +71,6 @@ function PageClientInner() {
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [projectOnboardingStates, setProjectOnboardingStates] = useState<Map<string, ProjectOnboardingState | null>>(new Map());
-  const [loadingStatuses, setLoadingStatuses] = useState(true);
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const hasProjectName = projectName.trim().length > 0;
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -117,57 +113,86 @@ function PageClientInner() {
     router.replace(query.length > 0 ? `/new-project?${query}` : "/new-project");
   }, [router, searchParams]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const createProject = useCallback(async () => {
+    if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
+      return;
+    }
 
-    runAsynchronouslyWithAlert(async () => {
-      setLoadingStatuses(true);
-      try {
-        const response = await appInternals.sendRequest("/internal/projects", {}, "client");
-        if (!response.ok) {
-          throw new Error(`Failed to load projects: ${response.status} ${await response.text()}`);
-        }
-
-        const body = await response.json();
-        if (body == null || typeof body !== "object" || !("items" in body) || !Array.isArray(body.items)) {
-          throw new Error("Project list endpoint returned an invalid response.");
-        }
-
-        const statusMap = new Map<string, ProjectOnboardingStatus>();
-        const onboardingStateMap = new Map<string, ProjectOnboardingState | null>();
-        for (const item of body.items) {
-          if (item == null || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
-            continue;
-          }
-
-          const onboardingStatus = "onboarding_status" in item ? item.onboarding_status : undefined;
-          if (!isProjectOnboardingStatus(onboardingStatus)) {
-            throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
-          }
-          statusMap.set(item.id, onboardingStatus);
-
-          const onboardingState = "onboarding_state" in item ? item.onboarding_state : null;
-          if (onboardingState != null && !isProjectOnboardingState(onboardingState)) {
-            throw new Error(`Project ${item.id} returned an invalid onboarding state.`);
-          }
-          onboardingStateMap.set(item.id, onboardingState);
-        }
-
-        if (!cancelled) {
-          setProjectStatuses(statusMap);
-          setProjectOnboardingStates(onboardingStateMap);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingStatuses(false);
-        }
+    try {
+      const trimmedProjectName = projectName.trim();
+      if (trimmedProjectName.length === 0) {
+        throw new Error("Project name is required.");
       }
-    });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [appInternals, projects.length]);
+      const firstTeam = teams.at(0);
+      const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
+      if (teamId === undefined) {
+        throw new Error("Select a team before creating the project.");
+      }
+
+      const newProject = await user.createProject({
+        displayName: trimmedProjectName,
+        teamId,
+        onboardingStatus: "config_choice",
+      });
+
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, "config_choice");
+        return next;
+      });
+      setProjectOnboardingStates((previous) => {
+        const next = new Map(previous);
+        next.set(newProject.id, null);
+        return next;
+      });
+
+      if (redirectToNeonConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      if (redirectToConfirmWith != null) {
+        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
+        confirmSearchParams.set("default_selected_project_id", newProject.id);
+        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
+        await wait(2000);
+        return;
+      }
+
+      updateSearchParams({
+        project_id: newProject.id,
+        mode: null,
+      });
+    } finally {
+      endPendingAction(creatingProjectRef, setCreatingProject);
+    }
+  }, [projectName, redirectToConfirmWith, redirectToNeonConfirmWith, router, selectedTeamId, teams, updateSearchParams, user]);
+
+  const handleCreateProjectSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!hasProjectName || creatingProject) {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(createProject());
+  }, [createProject, creatingProject, hasProjectName]);
+
+  const handleProjectNameKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!hasProjectName || creatingProject) {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(createProject());
+  }, [createProject, creatingProject, hasProjectName]);
 
   const selectedProject = useMemo(() => {
     if (selectedProjectId == null) {
@@ -177,29 +202,46 @@ function PageClientInner() {
   }, [projects, selectedProjectId]);
 
   const selectedProjectStatus = useMemo(() => {
-    if (selectedProjectId == null) {
+    if (selectedProjectId == null || selectedProject == null) {
       return null;
     }
-    return projectStatuses.get(selectedProjectId) ?? null;
-  }, [projectStatuses, selectedProjectId]);
+    return projectStatuses.get(selectedProjectId) ?? selectedProject.onboardingStatus;
+  }, [projectStatuses, selectedProject, selectedProjectId]);
 
   const selectedProjectOnboardingState = useMemo(() => {
-    if (selectedProjectId == null) {
+    if (selectedProjectId == null || selectedProject == null) {
       return null;
     }
-    return projectOnboardingStates.get(selectedProjectId) ?? null;
-  }, [projectOnboardingStates, selectedProjectId]);
+    if (projectOnboardingStates.has(selectedProjectId)) {
+      return projectOnboardingStates.get(selectedProjectId) ?? null;
+    }
+    const onboardingState = selectedProject.onboardingState;
+    if (onboardingState == null) {
+      return null;
+    }
+    if (!isProjectOnboardingState(onboardingState)) {
+      throw new Error(`Project ${selectedProject.id} returned an invalid onboarding state.`);
+    }
+    return onboardingState;
+  }, [projectOnboardingStates, selectedProject, selectedProjectId]);
 
   useEffect(() => {
-    if (selectedProject == null || loadingStatuses || selectedProjectStatus !== "completed") {
+    if (selectedProject == null || selectedProjectStatus !== "completed") {
       return;
     }
 
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
-  }, [loadingStatuses, router, selectedProject, selectedProjectStatus]);
+  }, [router, selectedProject, selectedProjectStatus]);
 
-  const setSelectedProjectStatus = async (project: AdminOwnedProject, status: ProjectOnboardingStatus) => {
+  const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
+    const body: Record<string, unknown> = {};
+    if (update.status !== undefined) {
+      body.onboarding_status = update.status;
+    }
+    if ("onboardingState" in update) {
+      body.onboarding_state = update.onboardingState ?? null;
+    }
 
     const response = await projectInternals.sendRequest(
       "/internal/projects/current",
@@ -208,52 +250,36 @@ function PageClientInner() {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ onboarding_status: status }),
+        body: JSON.stringify(body),
       },
       "admin",
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to update onboarding status: ${response.status} ${await response.text()}`);
+      throw new Error(`Failed to update onboarding progress: ${response.status} ${await response.text()}`);
     }
 
-    setProjectStatuses((previous) => {
-      const next = new Map(previous);
-      next.set(project.id, status);
-      return next;
-    });
-
-    await appInternals.refreshOwnedProjects();
-  };
-
-  const setSelectedProjectOnboardingState = async (project: AdminOwnedProject, onboardingState: ProjectOnboardingState | null) => {
-    const projectInternals = getStackAppInternals(project.app);
-
-    const response = await projectInternals.sendRequest(
-      "/internal/projects/current",
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ onboarding_state: onboardingState }),
-      },
-      "admin",
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to update onboarding state: ${response.status} ${await response.text()}`);
+    const nextStatus = update.status;
+    if (nextStatus !== undefined) {
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(project.id, nextStatus);
+        return next;
+      });
     }
 
-    setProjectOnboardingStates((previous) => {
-      const next = new Map(previous);
-      next.set(project.id, onboardingState);
-      return next;
-    });
+    if ("onboardingState" in update) {
+      const nextOnboardingState = update.onboardingState ?? null;
+      setProjectOnboardingStates((previous) => {
+        const next = new Map(previous);
+        next.set(project.id, nextOnboardingState);
+        return next;
+      });
+    }
   };
 
   if (isDevelopmentEnvironment && selectedProjectId == null) {
-    const developmentEnvironmentName = isRemoteDevelopmentEnvironment ? "remote development environment" : "local emulator";
+    const developmentEnvironmentName = "development environment";
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
@@ -274,14 +300,6 @@ function PageClientInner() {
     );
   }
 
-  if (loadingStatuses && selectedProjectId != null) {
-    return (
-      <div className="flex w-full flex-grow items-center justify-center">
-        <Spinner size={24} />
-      </div>
-    );
-  }
-
   if (selectedProjectId != null && selectedProject == null) {
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
@@ -298,7 +316,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && !loadingStatuses && selectedProjectStatus === "completed") {
+  if (selectedProject != null && selectedProjectStatus === "completed") {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
         <Spinner size={24} />
@@ -306,7 +324,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && !loadingStatuses && selectedProjectStatus == null) {
+  if (selectedProject != null && selectedProjectStatus == null) {
     throw new Error(`Missing onboarding status for project ${selectedProject.id}.`);
   }
 
@@ -341,108 +359,52 @@ function PageClientInner() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-5 px-6 py-6">
-              <div className="space-y-2">
-                <Label htmlFor="project-name">Project name</Label>
-                <DesignInput
-                  id="project-name"
-                  value={projectName}
-                  onChange={(event) => setProjectName(event.target.value)}
-                  placeholder="My Project"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="team-id">Team</Label>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <DesignSelectorDropdown
-                    value={selectedTeamId ?? ""}
-                    onValueChange={setSelectedTeamId}
-                    placeholder="Select a team"
-                    size="md"
-                    className="w-full"
-                    options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+            <form onSubmit={handleCreateProjectSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div className="space-y-2">
+                  <Label htmlFor="project-name">Project name</Label>
+                  <DesignInput
+                    id="project-name"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    onKeyDown={handleProjectNameKeyDown}
+                    placeholder="My Project"
                   />
-                  <DesignButton variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
-                    <PlusCircleIcon className="mr-2 h-4 w-4" />
-                    Create Team
-                  </DesignButton>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="team-id">Team</Label>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <DesignSelectorDropdown
+                      value={selectedTeamId ?? ""}
+                      onValueChange={setSelectedTeamId}
+                      placeholder="Select a team"
+                      size="md"
+                      className="w-full"
+                      options={teams.map((team) => ({ value: team.id, label: team.displayName }))}
+                    />
+                    <DesignButton type="button" variant="outline" onClick={() => setIsCreateTeamOpen(true)} className="rounded-xl sm:min-w-[152px]">
+                      <PlusCircleIcon className="mr-2 h-4 w-4" />
+                      Create Team
+                    </DesignButton>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
-              <DesignButton variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
-                Cancel
-              </DesignButton>
-              <DesignButton
-                className="rounded-xl"
-                disabled={!hasProjectName || creatingProject}
-                loading={creatingProject}
-                onClick={() => {
-                  if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
-                    return;
-                  }
-
-                  return runAsynchronouslyWithAlert(async () => {
-                    const trimmedProjectName = projectName.trim();
-                    if (trimmedProjectName.length === 0) {
-                      throw new Error("Project name is required.");
-                    }
-
-                    const firstTeam = teams.at(0);
-                    const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
-                    if (teamId === undefined) {
-                      throw new Error("Select a team before creating the project.");
-                    }
-
-                    try {
-                      const newProject = await user.createProject({
-                        displayName: trimmedProjectName,
-                        teamId,
-                        onboardingStatus: "config_choice",
-                      });
-
-                      setProjectStatuses((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, "config_choice");
-                        return next;
-                      });
-                      setProjectOnboardingStates((previous) => {
-                        const next = new Map(previous);
-                        next.set(newProject.id, null);
-                        return next;
-                      });
-
-                      if (redirectToNeonConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      if (redirectToConfirmWith != null) {
-                        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
-                        confirmSearchParams.set("default_selected_project_id", newProject.id);
-                        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
-                        await wait(2000);
-                        return;
-                      }
-
-                      updateSearchParams({
-                        project_id: newProject.id,
-                        mode: null,
-                      });
-                    } finally {
-                      endPendingAction(creatingProjectRef, setCreatingProject);
-                    }
-                  });
-                }}
-              >
-                Create Project
-              </DesignButton>
-            </DialogFooter>
+              <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
+                <DesignButton type="button" variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
+                  Cancel
+                </DesignButton>
+                <DesignButton
+                  type="submit"
+                  className="rounded-xl"
+                  disabled={!hasProjectName || creatingProject}
+                  loading={creatingProject}
+                >
+                  Create Project
+                </DesignButton>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
 
@@ -527,9 +489,7 @@ function PageClientInner() {
         onboardingState={selectedProjectOnboardingState}
         mode={mode}
         setMode={(nextMode) => updateSearchParams({ mode: nextMode })}
-        setStatus={(nextStatus) => setSelectedProjectStatus(selectedProject, nextStatus)}
-        setOnboardingState={(nextState) => setSelectedProjectOnboardingState(selectedProject, nextState)}
-        clearOnboardingState={() => setSelectedProjectOnboardingState(selectedProject, null)}
+        saveOnboardingProgress={(update) => saveSelectedProjectOnboardingProgress(selectedProject, update)}
         onComplete={() => {
           const projectUrl = `/projects/${encodeURIComponent(selectedProject.id)}`;
           if (mode === "link-existing") {

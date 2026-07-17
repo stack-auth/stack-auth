@@ -63,17 +63,31 @@ const envVarsConfig: Record<string, { allowPublic?: boolean, deprecatedLegacyNam
   },
 };
 
+function getEnvVarSnippet(variableName: string) {
+  return deindent`
+    ((typeof process !== "undefined" ? process.env.${variableName} : undefined) || import.meta.env?.${variableName})
+  `;
+}
+
 function generateEnvVarsConstSnippet() {
   const getters: string[] = [];
   for (const [key, config] of Object.entries(envVarsConfig)) {
-    const allVariables = [key, ...(config.deprecatedLegacyNames ?? [])]
-      .flatMap(k => k.startsWith("HEXCLAVE_") ? [k, k.replace("HEXCLAVE_", "STACK_")] : [k])
-      .flatMap(k => config.allowPublic ? [k, `NEXT_PUBLIC_${k}`, `VITE_${k}`] : [k]);
+    const allVariables = [...new Set(
+      [key, ...(config.deprecatedLegacyNames ?? [])]
+        .flatMap(k => k.startsWith("HEXCLAVE_") ? [k, k.replace("HEXCLAVE_", "STACK_")] : [k])
+        .flatMap(k => config.allowPublic ? [k, `NEXT_PUBLIC_${k}`, `VITE_${k}`] : [k])
+    )];
+    // Prefer the canonical HEXCLAVE_* spelling, falling back to the legacy STACK_*
+    // name. Use || (not ??) between candidates so an empty-string env var (e.g. an
+    // empty HEXCLAVE_* placeholder) can't shadow a real value further down the chain.
+    //
+    // IMPORTANT: this getter ships in the customer SDK, so it must NOT throw when
+    // both spellings are set — reading an env var is a hot, side-effect-free path
+    // for SDK consumers. Conflict detection lives only in our own (non-shipped)
+    // env helpers (packages/shared, dashboard inline env, CLI), never here.
     getters.push(deindent`
       get ${key}() {
-        return ${allVariables.map(variableName => deindent`
-          ((typeof process !== "undefined" ? process.env.${variableName} : undefined) ?? import.meta.env?.${variableName})
-        `).join("\n  ?? ")} ?? undefined;
+        return ${allVariables.map(getEnvVarSnippet).join("\n  || ")} || undefined;
       },
     `);
   }

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/skills",
-  "version": "1.0.22",
+  "version": "1.0.52",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hexclave/shared": "workspace:*",
-    "next": "16.2.7",
+    "next": "16.2.9",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -23,6 +23,6 @@
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.3",
     "rimraf": "^5.0.5",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/example-tanstack-start-demo",
-  "version": "1.0.22",
+  "version": "1.0.52",
   "repository": "https://github.com/hexclave/hexclave",
   "description": "TanStack Start demo app for Hexclave",
   "private": true,
@@ -32,7 +32,7 @@
     "postcss": "^8.4.47",
     "rimraf": "^5.0.10",
     "tailwindcss": "^3.4.14",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "vite": "^7.0.0",
     "vite-tsconfig-paths": "^4.3.2"
   },

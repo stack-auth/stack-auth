@@ -1,770 +1,312 @@
 "use client";
 
-import { TeamSearchTable } from "@/components/data-table/team-search-table";
-import { UserPickerTable } from "@/components/data-table/user-picker-table";
-import { SmartFormDialog } from "@/components/form-dialog";
-import { NumberField, SelectField } from "@/components/form-fields";
-import { ItemDialog } from "@/components/payments/item-dialog";
-
+import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
+import { CustomerPaymentsSection, type CustomerType } from "@/components/payments/customer-payments-section";
+import { DesignBadge, type DesignBadgeColor } from "@/components/design-components";
 import {
-  ActionDialog,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Button,
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SimpleTooltip,
-  Skeleton,
-  toast,
   Typography,
 } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
-import { CaretUpDownIcon } from "@phosphor-icons/react";
-import { createDefaultDataGridState, DataGrid, useDataGridUrlState, useDataSource, type DataGridColumnDef } from "@hexclave/dashboard-ui-components";
-import { KnownErrors } from "@hexclave/shared";
-import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
-import { Result } from "@hexclave/shared/dist/utils/results";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useWatch } from "react-hook-form";
-import * as yup from "yup";
+import {
+  DataGrid,
+  useDataGridUrlState,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridDataSource,
+} from "@hexclave/dashboard-ui-components";
+import { ArrowLeftIcon, MagnifyingGlassIcon, ShoppingCartIcon } from "@phosphor-icons/react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
-const DISABLED_GRANT_TOOLTIP = "Select a customer to grant products.";
+const PAGE_SIZE = 25;
+// Custom customers aren't enumerable directly — we derive distinct ids from
+// recent transactions, scanning this many per page.
+const CUSTOM_TX_PAGE_SIZE = 100;
+// Bound the transaction scan so a no-match search (or a project with a very
+// long history) can't walk the entire transaction log page-by-page. Custom
+// customers are derived from the most recent CUSTOM_TX_PAGE_SIZE *
+// MAX_CUSTOM_SCAN_PAGES transactions.
+const MAX_CUSTOM_SCAN_PAGES = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
-type CustomerType = "user" | "team" | "custom";
+type CustomerFilter = "all" | CustomerType;
 
-type SelectedCustomer = {
+type CustomerRow = {
   type: CustomerType,
   id: string,
   label: string,
+  profileImageUrl?: string | null,
 };
 
-type ProductEntry = [string, CompleteConfig["payments"]["products"][string]];
+const TYPE_BADGE: Record<CustomerType, { label: string, color: DesignBadgeColor }> = {
+  user: { label: "User", color: "blue" },
+  team: { label: "Team", color: "purple" },
+  custom: { label: "Custom", color: "orange" },
+};
+
+// Phases walked by the merged ("all") data source. Each fetch produces one
+// page and points the cursor at the next phase once a source is exhausted.
+type Phase = "user" | "team" | "custom";
+
+type CursorState = { phase: Phase, inner?: string, scanned?: number };
 
 export default function PageClient() {
+  const [selected, setSelected] = useState<CustomerRow | null>(null);
+
+  if (selected) {
+    return <CustomerDetailView customer={selected} onBack={() => setSelected(null)} />;
+  }
+  return <CustomerListView onOpen={setSelected} />;
+}
+
+// ─── List view ───────────────────────────────────────────────────────
+
+function CustomerListView({ onOpen }: { onOpen: (customer: CustomerRow) => void }) {
   const adminApp = useAdminApp();
-  const project = adminApp.useProject();
-  const config = project.useConfig();
-  const updateConfig = useUpdateConfig();
+  const [filter, setFilter] = useState<CustomerFilter>("all");
 
-  const [customerType, setCustomerType] = useState<CustomerType>("user");
-  const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(null);
-  const [showItemDialog, setShowItemDialog] = useState(false);
-  const [showGrantProductDialog, setShowGrantProductDialog] = useState(false);
+  const columns = useMemo<DataGridColumnDef<CustomerRow>[]>(() => [
+    {
+      id: "type",
+      header: "Type",
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const badge = TYPE_BADGE[row.type];
+        return <DesignBadge label={badge.label} color={badge.color} size="sm" />;
+      },
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      width: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <div className="flex items-center gap-3 min-w-0">
+          {row.type === "user" ? (
+            <Avatar className="h-6 w-6 shrink-0">
+              <AvatarImage src={row.profileImageUrl ?? undefined} />
+              <AvatarFallback className="text-xs">{row.label.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
+          ) : null}
+          <span className="truncate text-sm font-medium text-foreground" title={row.label}>{row.label}</span>
+        </div>
+      ),
+    },
+    {
+      id: "id",
+      header: "ID",
+      width: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="truncate font-mono text-xs text-muted-foreground" title={row.id}>{row.id}</span>
+      ),
+    },
+  ], []);
 
-  const items = useMemo(() => {
-    const payments = config.payments;
-    return Object.entries(payments.items);
-  }, [config.payments]);
+  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "customers" });
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  const products = useMemo<ProductEntry[]>(() => {
-    const payments = config.payments;
-    return Object.entries(payments.products) as ProductEntry[];
-  }, [config.payments]);
+  // Dedup set for custom customers derived from transactions; reset on each
+  // fresh pagination (cursor-less first page).
+  const seenCustomIdsRef = useRef<Set<string>>(new Set());
 
-  const itemsForType = useMemo(
-    () => items.filter(([, itemConfig]) => itemConfig.customerType === customerType),
-    [items, customerType],
-  );
-
-  const productsForType = useMemo(
-    () => products.filter(([, product]) => product.customerType === customerType),
-    [products, customerType],
-  );
-
-  const paymentsConfigured = Boolean(config.payments);
-
-  const itemDialogTitle = useMemo(() => {
-    if (customerType === "user") {
-      return "Create User Item";
-    }
-    if (customerType === "team") {
-      return "Create Team Item";
-    }
-    return "Create Custom Item";
-  }, [customerType]);
-
-  const handleSaveItem = async (item: { id: string, displayName: string, customerType: "user" | "team" | "custom" }) => {
-    try {
-      const success = await updateConfig({
-        adminApp,
-        configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
-        pushable: true,
-      });
-      if (success) {
-        setShowItemDialog(false);
+  const dataSource = useMemo<DataGridDataSource<CustomerRow>>(
+    () => async function* (params) {
+      const query = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const cursorRaw = typeof params.cursor === "string" ? params.cursor : undefined;
+      if (!cursorRaw) {
+        seenCustomIdsRef.current = new Set();
       }
-      // If success is false (user cancelled), keep dialog open without error
-    } catch (error) {
-      alert("Failed to save item: " + (error instanceof Error ? error.message : "An unexpected error occurred"));
-      // Keep dialog open so user can retry
-    }
-  };
 
-  useEffect(() => {
-    if (!selectedCustomer && showGrantProductDialog) {
-      setShowGrantProductDialog(false);
-    }
-  }, [selectedCustomer, showGrantProductDialog]);
+      const firstPhase: Phase = filter === "all" ? "user" : filter;
+      // The cursor is opaque pagination state we encode ourselves, but guard the
+      // parse anyway so a corrupted value just restarts from the first page
+      // instead of throwing inside the async generator.
+      let state: CursorState;
+      try {
+        state = cursorRaw ? JSON.parse(cursorRaw) as CursorState : { phase: firstPhase };
+      } catch {
+        state = { phase: firstPhase };
+      }
 
-  const grantButtonDisabled = !selectedCustomer;
+      const nextPhase = (phase: Phase): Phase | null => {
+        if (filter !== "all") return null;
+        if (phase === "user") return "team";
+        if (phase === "team") return "custom";
+        return null;
+      };
+
+      const advance = (rows: CustomerRow[], phase: Phase, innerNext?: string) => {
+        if (innerNext) {
+          return { rows, hasMore: true, nextCursor: JSON.stringify({ phase, inner: innerNext } satisfies CursorState) };
+        }
+        const np = nextPhase(phase);
+        if (np) {
+          return { rows, hasMore: true, nextCursor: JSON.stringify({ phase: np } satisfies CursorState) };
+        }
+        return { rows, hasMore: false, nextCursor: undefined };
+      };
+
+      if (state.phase === "user") {
+        const result = await adminApp.listUsers({ limit: PAGE_SIZE, query, cursor: state.inner });
+        const rows: CustomerRow[] = result.map((u) => ({
+          type: "user",
+          id: u.id,
+          label: u.displayName ?? u.primaryEmail ?? u.id,
+          profileImageUrl: u.profileImageUrl,
+        }));
+        yield advance(rows, "user", result.nextCursor ?? undefined);
+        return;
+      }
+
+      if (state.phase === "team") {
+        const result = await adminApp.listTeams({ limit: PAGE_SIZE, orderBy: "createdAt", desc: true, query, cursor: state.inner });
+        const rows: CustomerRow[] = result.map((t) => ({ type: "team", id: t.id, label: t.displayName }));
+        yield advance(rows, "team", result.nextCursor ?? undefined);
+        return;
+      }
+
+      // custom: derive distinct customer ids from the most recent transactions.
+      // Bounded by MAX_CUSTOM_SCAN_PAGES so we never page through the entire
+      // transaction history (e.g. for a search that matches nothing).
+      const scanned = (state.scanned ?? 0) + 1;
+      const result = await adminApp.listTransactions({ limit: CUSTOM_TX_PAGE_SIZE, customerType: "custom", cursor: state.inner });
+      const rows: CustomerRow[] = [];
+      for (const transaction of result.transactions) {
+        if (transaction.customer_type !== "custom" || !transaction.customer_id) continue;
+        const id = transaction.customer_id;
+        if (seenCustomIdsRef.current.has(id)) continue;
+        seenCustomIdsRef.current.add(id);
+        if (query && !id.toLowerCase().includes(query.toLowerCase())) continue;
+        rows.push({ type: "custom", id, label: id });
+      }
+      const innerNext = scanned < MAX_CUSTOM_SCAN_PAGES ? (result.nextCursor ?? undefined) : undefined;
+      if (innerNext) {
+        yield { rows, hasMore: true, nextCursor: JSON.stringify({ phase: "custom", inner: innerNext, scanned } satisfies CursorState) };
+      } else {
+        yield { rows, hasMore: false, nextCursor: undefined };
+      }
+    },
+    [adminApp, filter],
+  );
+
+  const getRowId = useCallback((row: CustomerRow) => `${row.type}:${row.id}`, []);
+
+  const gridData = useDataSource({
+    dataSource,
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: debouncedQuickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
 
   return (
     <PageLayout
       title="Customers"
-      description="Inspect customer items and make adjustments"
-      actions={(
-        <div className="flex gap-2">
-          <SimpleTooltip tooltip={grantButtonDisabled ? DISABLED_GRANT_TOOLTIP : undefined}>
-            <div className="inline-flex">
-              <Button
-                onClick={() => setShowGrantProductDialog(true)}
-                disabled={grantButtonDisabled}
-              >
-                Grant Product
-              </Button>
-            </div>
-          </SimpleTooltip>
-          <Button onClick={() => setShowItemDialog(true)}>{itemDialogTitle}</Button>
-        </div>
-      )}
+      description="Browse every user, team, and custom customer in one place."
     >
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
-        <Select
-          value={customerType}
-          onValueChange={(value: CustomerType) => {
-              setCustomerType(value);
-              setSelectedCustomer(null);
-          }}
-        >
-          <SelectTrigger id="customer-type" className="w-full sm:w-52">
-            <SelectValue placeholder="Select type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <CustomerSelector
-          customerType={customerType}
-          selectedCustomer={selectedCustomer}
-          onSelect={setSelectedCustomer}
-        />
-      </div>
-
-      {!paymentsConfigured && (
-        <Typography variant="secondary">
-          Payments are not configured for this project yet. Set up payments to define items.
-        </Typography>
-      )}
-
-      {paymentsConfigured && itemsForType.length === 0 && (
-        <Typography variant="secondary" className="text-center mt-4">
-          {customerType === "user" && "No user items are configured yet."}
-          {customerType === "team" && "No team items are configured yet."}
-          {customerType === "custom" && "No custom items are configured yet."}
-        </Typography>
-      )}
-
-      {paymentsConfigured && itemsForType.length > 0 && (
-        <Suspense fallback={<ItemTableSkeleton rows={Math.min(itemsForType.length, 5)} />}>
-          <ItemTable items={itemsForType} customer={selectedCustomer} />
-        </Suspense>
-      )}
-
-      <ItemDialog
-        open={showItemDialog}
-        onOpenChange={setShowItemDialog}
-        onSave={handleSaveItem}
-        existingItemIds={items.map(([id]) => id)}
-        forceCustomerType={customerType}
+      <DataGrid
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={getRowId}
+        isLoading={gridData.isLoading}
+        isRefetching={gridData.isRefetching}
+        state={gridState}
+        onChange={setGridState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+        rowHeight="auto"
+        estimatedRowHeight={44}
+        footer={false}
+        fillHeight={false}
+        onRowClick={(row) => onOpen(row)}
+        toolbarExtra={
+          <Select value={filter} onValueChange={(value) => setFilter(value as CustomerFilter)}>
+            <SelectTrigger className="w-[160px] h-8 text-xs" aria-label="Customer type filter">
+              <SelectValue placeholder="All customers" />
+            </SelectTrigger>
+            <SelectContent align="start">
+              <SelectItem value="all">All customers</SelectItem>
+              <SelectItem value="user">Users</SelectItem>
+              <SelectItem value="team">Teams</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+        emptyState={
+          <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <MagnifyingGlassIcon className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div className="text-base font-medium text-foreground">No customers found</div>
+            <p className="text-sm text-muted-foreground">
+              {filter === "custom"
+                ? "Custom customers appear here once they have transactions."
+                : "Try adjusting your search or filter."}
+            </p>
+          </div>
+        }
       />
-      {selectedCustomer && (
-        <GrantProductDialog
-          open={showGrantProductDialog}
-          onOpenChange={setShowGrantProductDialog}
-          customer={selectedCustomer}
-          products={productsForType}
-        />
-      )}
     </PageLayout>
   );
 }
 
-type GrantProductDialogProps = {
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-  customer: SelectedCustomer,
-  products: ProductEntry[],
-};
+// ─── Detail view ─────────────────────────────────────────────────────
 
-function GrantProductDialog(props: GrantProductDialogProps) {
-  const adminApp = useAdminApp();
-
-  const productOptions = useMemo(
-    () => props.products.map(([productId, product]) => ({
-      value: productId,
-      label: product.displayName ? `${product.displayName} (${productId})` : productId,
-    })),
-    [props.products],
-  );
-
-  const hasProducts = productOptions.length > 0;
-
-  const formSchema = useMemo(() => yup.object({
-    productId: yup.string().defined().label("Product").meta({
-      stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
-        <div className="space-y-2">
-          <SelectField
-            {...innerProps}
-            label={innerProps.label}
-            required
-            options={productOptions}
-            placeholder={hasProducts ? "Select product" : "No products available"}
-            disabled={!hasProducts || innerProps.disabled}
-          />
-          {!hasProducts && (
-            <Typography variant="secondary" className="mt-4">
-              No products are configured for this customer type yet
-            </Typography>
-          )}
-        </div>
-      ),
-    }),
-    quantity: yup.number()
-      .default(1)
-      .defined()
-      .label("Quantity")
-      .meta({
-        stackFormFieldPlaceholder: "1",
-        stackFormFieldRender: (innerProps: { control: any, name: string, label: string, disabled: boolean }) => (
-          <StackableQuantityField {...innerProps} products={props.products} />
-        ),
-      })
-      .integer("Quantity must be an integer")
-      .min(1, "Quantity must be at least 1"),
-  }), [hasProducts, productOptions, props.products]);
-
-  const onSubmit = async (values: yup.InferType<typeof formSchema>) => {
-    const customerOptions = customerToMutationOptions(props.customer);
-    const result = await Result.fromPromise(adminApp.grantProduct({
-      ...customerOptions,
-      productId: values.productId,
-      quantity: values.quantity,
-    }));
-
-    if (result.status === "ok") {
-      toast({ title: "Product granted" });
-      const product = props.products.find(([id]) => id === values.productId)?.[1];
-      if (product) {
-        runAsynchronously(Promise.all(
-          Object.keys(product.includedItems).map(itemId => refreshItem(adminApp, props.customer, itemId))
-        ));
-      }
-      return;
-    }
-
-    handleGrantProductError(result.error);
-    return "prevent-close";
-  };
+function CustomerDetailView({ customer, onBack }: { customer: CustomerRow, onBack: () => void }) {
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const badge = TYPE_BADGE[customer.type];
 
   return (
-    <SmartFormDialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      title={`Grant product to ${props.customer.label}`}
-      formSchema={formSchema}
-      okButton={{ label: "Grant product", props: { disabled: !hasProducts } }}
-      cancelButton
-      onSubmit={onSubmit}
-    />
-  );
-}
-
-type StackableQuantityFieldProps = {
-  control: any,
-  name: string,
-  label: string,
-  disabled: boolean,
-  products: ProductEntry[],
-};
-
-function StackableQuantityField(props: StackableQuantityFieldProps) {
-  const selectedProductId = useWatch({ control: props.control, name: "productId" });
-  const selectedProduct = props.products.find(([id]) => id === selectedProductId)?.[1];
-
-  if (!selectedProduct?.stackable) {
-    return null;
-  }
-
-  return (
-    <NumberField
-      control={props.control}
-      name={props.name as any}
-      label={props.label}
-      required
-      disabled={props.disabled}
-      placeholder="1"
-      min={1}
-    />
-  );
-}
-
-type CustomerSelectorProps = {
-  customerType: CustomerType,
-  selectedCustomer: SelectedCustomer | null,
-  onSelect: (customer: SelectedCustomer) => void,
-};
-
-function CustomerSelector(props: CustomerSelectorProps) {
-  const [open, setOpen] = useState(false);
-  const [customIdDraft, setCustomIdDraft] = useState("");
-
-  useEffect(() => {
-    if (open && props.customerType === "custom") {
-      setCustomIdDraft(props.selectedCustomer?.type === "custom" ? props.selectedCustomer.id : "");
-    }
-  }, [open, props.customerType, props.selectedCustomer]);
-
-  const triggerLabel = props.selectedCustomer
-    ? props.selectedCustomer.label
-    : props.customerType === "custom"
-      ? "Select customer"
-      : `Select ${props.customerType}`;
-
-  const handleSelect = (customer: SelectedCustomer) => {
-    props.onSelect(customer);
-    setOpen(false);
-  };
-
-  const dialogTitle = props.customerType === "custom"
-    ? "Select customer"
-    : `Select ${props.customerType}`;
-
-  const dialogContent = () => {
-    if (props.customerType === "user") {
-      return open ? (
-        <UserPickerTable
-          action={(user) => (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                handleSelect({
-                  type: "user",
-                  id: user.id,
-                  label: user.displayName ?? user.primaryEmail ?? user.id,
-                })}
-            >
-              Select
-            </Button>
-          )}
-        />
-      ) : null;
-    }
-    if (props.customerType === "team") {
-      return open ? (
-        <TeamSearchTable
-          action={(team) => (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                handleSelect({
-                  type: "team",
-                  id: team.id,
-                  label: team.displayName,
-                })}
-            >
-              Select
-            </Button>
-          )}
-        />
-      ) : null;
-    }
-    return (
-      <div className="flex flex-col gap-4">
-        <Typography variant="secondary">
-          Enter the identifier for the custom customer.
-        </Typography>
-        <Input
-          value={customIdDraft}
-          onChange={(event) => setCustomIdDraft(event.target.value)}
-          placeholder="customer-123"
-        />
-      </div>
-    );
-  };
-
-  return (
-    <ActionDialog
-      trigger={
-        <Button variant="outline" className="flex justify-between gap-2 overflow-x-auto w-full sm:!w-auto">
-          {triggerLabel}
-          <CaretUpDownIcon className="w-3 h-3" />
+    <PageLayout>
+      <div className="flex flex-col gap-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeftIcon className="h-4 w-4 mr-1" />
+          Back to customers
         </Button>
-      }
-      title={dialogTitle}
-      description={props.customerType === "custom" ? "Provide a custom customer identifier to inspect their balances." : undefined}
-      open={open}
-      onOpenChange={setOpen}
-      cancelButton={{ label: "Close" }}
-      okButton={props.customerType === "custom" ? {
-        label: "Use customer",
-        props: { disabled: customIdDraft.trim().length === 0 },
-        onClick: async () => {
-          const trimmed = customIdDraft.trim();
-          if (!trimmed) {
-            return "prevent-close";
-          }
-          handleSelect({ type: "custom", id: trimmed, label: trimmed });
-        },
-      } : false}
-    >
-      {dialogContent()}
-    </ActionDialog>
-  );
-}
 
-type ItemTableRow = {
-  itemId: string,
-  displayName: string,
-};
-
-// TODO(ui-fixes-minor): `ItemQuantityCell` and `ItemActionsCell` each call
-// `adminApp.useItem(...)` per row. For a customer with N items that's N
-// independent Suspense boundaries + N fetches. Fine at the typical row
-// counts on this page, but if the item list ever grows large, hoist the
-// lookups into the parent (fetch all items in one pass, pass a
-// `Map<itemId, item>` down, read synchronously in `renderCell`). Per the
-// DataGrid iron rules: hooks-in-components-inside-renderCell is legal but
-// expensive — prefer parent-level bulk fetch when feasible.
-function ItemTable(props: {
-  items: Array<[string, { displayName?: string | null }]>,
-  customer: SelectedCustomer | null,
-}) {
-  const data = useMemo<ItemTableRow[]>(
-    () => props.items.map(([itemId, itemConfig]) => ({
-      itemId,
-      displayName: itemConfig.displayName ?? itemId,
-    })),
-    [props.items],
-  );
-
-  const columns = useMemo<DataGridColumnDef<ItemTableRow>[]>(() => [
-    {
-      id: "item",
-      header: "Item",
-      width: 320,
-      accessor: "displayName",
-      renderCell: ({ row }) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="font-medium">{row.displayName}</span>
-          <span className="text-xs font-mono text-muted-foreground">{row.itemId}</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-col gap-1 min-w-0">
+            <Typography type="h2" className="truncate">{customer.label}</Typography>
+            <div className="flex items-center gap-2 flex-wrap">
+              <DesignBadge label={badge.label} color={badge.color} size="sm" />
+              <span className="font-mono text-xs text-muted-foreground">{customer.id}</span>
+            </div>
+          </div>
+          <Button onClick={() => setCheckoutOpen(true)}>
+            <ShoppingCartIcon className="h-4 w-4 mr-1.5" />
+            Create checkout
+          </Button>
         </div>
-      ),
-    },
-    {
-      id: "quantity",
-      header: "Quantity",
-      width: 180,
-      sortable: false,
-      renderCell: ({ row }) => props.customer ? (
-        <Suspense fallback={<Skeleton className="h-4 w-12" />}>
-          <ItemQuantityCell itemId={row.itemId} customer={props.customer} />
-        </Suspense>
-      ) : null,
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      width: 220,
-      align: "right",
-      sortable: false,
-      renderCell: ({ row }) => props.customer ? (
-        <Suspense fallback={<Skeleton className="h-9 w-24" />}>
-          <ItemActionsCell itemId={row.itemId} itemDisplayName={row.displayName} customer={props.customer} />
-        </Suspense>
-      ) : null,
-    },
-  ], [props.customer]);
 
-  const [gridState, setGridState] = useDataGridUrlState(columns, { paramPrefix: "customeritems" });
-  const gridData = useDataSource({
-    data,
-    columns,
-    getRowId: (row) => row.itemId,
-    sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
-    paginationMode: "client",
-  });
-
-  return (
-    <DataGrid
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => row.itemId}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      toolbar={false}
-      footer={false}
-      fillHeight={false}
-    />
-  );
-}
-
-function ItemQuantityCell({ itemId, customer }: { itemId: string, customer: SelectedCustomer }) {
-  const adminApp = useAdminApp();
-  const item = useItemForCustomer(adminApp, customer, itemId);
-  return <span className="font-medium">{item.quantity}</span>;
-}
-
-function ItemActionsCell({ itemId, itemDisplayName, customer }: { itemId: string, itemDisplayName: string, customer: SelectedCustomer }) {
-  const [isAdjustOpen, setIsAdjustOpen] = useState(false);
-  return (
-    <>
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => setIsAdjustOpen(true)}>
-          Adjust
-        </Button>
+        <CustomerPaymentsSection customerType={customer.type} customerId={customer.id} />
       </div>
-      <AdjustItemQuantityDialog
-        open={isAdjustOpen}
-        onOpenChange={setIsAdjustOpen}
-        customer={customer}
-        itemId={itemId}
-        itemLabel={itemDisplayName}
-      />
-    </>
-  );
-}
 
-
-function useItemForCustomer(
-  adminApp: ReturnType<typeof useAdminApp>,
-  customer: SelectedCustomer,
-  itemId: string,
-) {
-  let options: Parameters<typeof adminApp.useItem>[0] = { customCustomerId: customer.id, itemId };
-  if (customer.type === "user") {
-    options = { userId: customer.id, itemId };
-  }
-  if (customer.type === "team") {
-    options = { teamId: customer.id, itemId };
-  }
-  return adminApp.useItem(options);
-}
-
-type QuantityDialogProps = {
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-  customer: SelectedCustomer,
-  itemId: string,
-  itemLabel: string,
-};
-
-function AdjustItemQuantityDialog(props: QuantityDialogProps) {
-  const adminApp = useAdminApp();
-
-  const schema = useMemo(() => yup.object({
-    quantity: yup
-      .number()
-      .defined()
-      .label("Quantity change")
-      .meta({
-        stackFormFieldPlaceholder: "Eg. 5 or -3",
-      })
-      .test("non-zero", "Please enter a non-zero amount", (value) => (value !== 0)),
-    description: yup
-      .string()
-      .optional()
-      .label("Description")
-      .meta({
-        type: "textarea",
-        stackFormFieldPlaceholder: "Optional note for your records",
-        description: "Appears in transaction history for context.",
-      }),
-    expiresAt: yup
-      .date()
-      .optional()
-      .label("Expires at"),
-  }), []);
-
-  const onSubmit = async (values: yup.InferType<typeof schema>) => {
-    const quantity = values.quantity!;
-    const customerOptions = customerToMutationOptions(props.customer);
-    const result = await Result.fromPromise(adminApp.createItemQuantityChange({
-      ...customerOptions,
-      itemId: props.itemId,
-      quantity,
-      description: values.description?.trim() ? values.description.trim() : undefined,
-      expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined,
-    }));
-
-    if (result.status === "ok") {
-      await refreshItem(adminApp, props.customer, props.itemId);
-      toast({ title: "Item quantity updated" });
-      return;
-    }
-
-    handleItemQuantityError(result.error);
-    return "prevent-close";
-  };
-
-  return (
-    <SmartFormDialog
-      open={props.open}
-      onOpenChange={props.onOpenChange}
-      title={`Adjust “${props.itemLabel}”`}
-      description="Increase or decrease the quantity by a specific amount."
-      formSchema={schema}
-      okButton={{ label: "Apply change" }}
-      cancelButton
-      onSubmit={onSubmit}
-    />
-  );
-}
-
-function customerToMutationOptions(customer: SelectedCustomer) {
-  if (customer.type === "user") {
-    return { userId: customer.id } as const;
-  }
-  if (customer.type === "team") {
-    return { teamId: customer.id } as const;
-  }
-  return { customCustomerId: customer.id } as const;
-}
-
-async function refreshItem(
-  adminApp: ReturnType<typeof useAdminApp>,
-  customer: SelectedCustomer,
-  itemId: string,
-) {
-  if (customer.type === "user") {
-    await adminApp.getItem({ userId: customer.id, itemId });
-  } else if (customer.type === "team") {
-    await adminApp.getItem({ teamId: customer.id, itemId });
-  } else {
-    await adminApp.getItem({ customCustomerId: customer.id, itemId });
-  }
-}
-
-function handleGrantProductError(error: unknown) {
-  if (error instanceof KnownErrors.ProductDoesNotExist) {
-    toast({ title: "Product not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.ProductCustomerTypeDoesNotMatch) {
-    toast({
-      title: "Customer type mismatch",
-      description: "This product is not available for the selected customer type.",
-      variant: "destructive",
-    });
-    return;
-  }
-  if (error instanceof KnownErrors.ProductAlreadyGranted) {
-    toast({
-      title: "Product already granted",
-      description: "The customer already owns this product.",
-      variant: "destructive",
-    });
-    return;
-  }
-  if (error instanceof KnownErrors.UserNotFound) {
-    toast({ title: "User not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.TeamNotFound) {
-    toast({ title: "Team not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.CustomerDoesNotExist) {
-    toast({ title: "Customer not found", variant: "destructive" });
-    return;
-  }
-  toast({ title: "Unable to grant product", variant: "destructive" });
-}
-
-function handleItemQuantityError(error: unknown) {
-  if (error instanceof KnownErrors.ItemNotFound) {
-    toast({ title: "Item not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.UserNotFound) {
-    toast({ title: "User not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.TeamNotFound) {
-    toast({ title: "Team not found", variant: "destructive" });
-    return;
-  }
-  if (error instanceof KnownErrors.ItemCustomerTypeDoesNotMatch) {
-    toast({
-      title: "Customer type mismatch",
-      description: "This item is not available for the selected customer type.",
-      variant: "destructive",
-    });
-    return;
-  }
-  if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
-    toast({
-      title: "Quantity too low",
-      description: "This change would reduce the quantity below zero.",
-      variant: "destructive",
-    });
-    return;
-  }
-  toast({ title: "Unable to update quantity", variant: "destructive" });
-}
-
-function ItemTableSkeleton(props: { rows: number }) {
-  const columns = useMemo<DataGridColumnDef<{ id: number }>[]>(() => [
-    { id: "item", header: "Item", width: 320, renderCell: () => (
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-3 w-24" />
-      </div>
-    ) },
-    { id: "quantity", header: "Quantity", width: 180, renderCell: () => <Skeleton className="h-4 w-10" /> },
-    { id: "actions", header: "Actions", width: 220, align: "right", renderCell: () => (
-      <div className="flex justify-end gap-2">
-        <Skeleton className="h-9 w-24" />
-        <Skeleton className="h-9 w-24" />
-      </div>
-    ) },
-  ], []);
-
-  const data = useMemo(() => Array.from({ length: props.rows }, (_, i) => ({ id: i })), [props.rows]);
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
-  const gridData = useDataSource({
-    data,
-    columns,
-    getRowId: (row) => String(row.id),
-    sorting: gridState.sorting,
-    quickSearch: gridState.quickSearch,
-    pagination: gridState.pagination,
-    paginationMode: "client",
-  });
-
-  return (
-    <DataGrid
-      columns={columns}
-      rows={gridData.rows}
-      getRowId={(row) => String(row.id)}
-      totalRowCount={gridData.totalRowCount}
-      state={gridState}
-      onChange={setGridState}
-      toolbar={false}
-      footer={false}
-      fillHeight={false}
-    />
+      <CreateCheckoutDialog open={checkoutOpen} onOpenChange={setCheckoutOpen} customer={customer} />
+    </PageLayout>
   );
 }
