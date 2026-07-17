@@ -56,14 +56,10 @@ const nodeModules = {
   "react": "19.1.1",
   "@react-email/components": "1.0.6",
   "arktype": "2.1.20",
-  // tailwindcss is a transitive dep (@react-email/tailwind wants "^4.1.18") that must be pinned
-  // exactly: executeJavascript runs this bundle on two engines (Freestyle and Vercel Sandbox) that
-  // install node_modules independently, so when a new matching tailwindcss version was published, one
-  // engine picked it up before the other and the rendered HTML differed byte-wise (4.3.3 emits
-  // "margin:0px" where 4.3.2 emitted "margin:0"), tripping the js-execution sanity test on
-  // essentially every run. Pinning it here dedupes the transitive dep onto one exact version on both
-  // engines. Other transitive deps still float via caret ranges; if the sanity test starts firing
-  // again with byte-different HTML, find the drifted package and pin it here the same way.
+  // Transitive dep of @react-email/tailwind (declared as a caret range there). Pinned exactly
+  // because the two js-execution engines install node_modules independently, so a new tailwindcss
+  // release makes them render byte-different HTML and trip the sanity test. If the sanity test
+  // fires again with byte-different HTML, find the drifted transitive dep and pin it here too.
   "tailwindcss": "4.3.3",
 };
 
