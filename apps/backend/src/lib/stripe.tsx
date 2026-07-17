@@ -238,13 +238,10 @@ const TERMINAL_STRIPE_STATUSES = ["canceled", "incomplete_expired", "unpaid"] as
 
 export function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEnd: Date): { endedAt: Date | null } {
   if (!TERMINAL_STRIPE_STATUSES.includes(subscription.status as typeof TERMINAL_STRIPE_STATUSES[number])) {
-    // Non-terminal: reconcile the locally scheduled end with Stripe's flag.
-    // The cancel route eagerly writes endedAt = period end; Stripe is the
-    // authority on both whether that end is still scheduled (the pending
-    // cancel can be reversed via Stripe's Dashboard/API) and on the exact
-    // boundary (the eager write may have used a stale pre-renewal period
-    // end). isSubscriptionInEffect treats endedAt == null as "no end
-    // scheduled", so clearing it here is what reactivates entitlements.
+    // Non-terminal: reconcile the eagerly-written wind-down endedAt with
+    // Stripe's flag — a pending cancel can be reversed via Stripe's
+    // Dashboard/API, and clearing endedAt here is what reactivates
+    // entitlements.
     return { endedAt: subscription.cancel_at_period_end ? sanitizedEnd : null };
   }
   // Prefer Stripe's `ended_at` — real Stripe always sets it on transitions into
@@ -262,18 +259,15 @@ export function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEn
 }
 
 export function getCanceledAtForSync(subscription: Stripe.Subscription): { canceledAt: Date | null } {
-  // Mirror Stripe exactly, including null: reversing a pending cancellation
-  // clears canceled_at on Stripe's side, and the local mark must follow.
+  // Mirror Stripe including null, so reversing a pending cancel clears the local mark
   return { canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null };
 }
 
 /**
  * Sanitized period end of the subscription's first item, or null when the
- * response carries no items (mocked Stripe). Used to eagerly write the
- * wind-down `endedAt` from Stripe's authoritative response instead of a
- * possibly stale (pre-renewal) local or bulldozer period end. Items with
- * invalid period values fall through to sanitizeStripePeriodDates' own
- * now→now+1mo fallback (plus a captureError), not to the caller's fallback.
+ * response has no items (mocked Stripe). Lets wind-down writers take the
+ * boundary from Stripe's authoritative response instead of a possibly stale
+ * (pre-renewal) local period end.
  */
 export function getStripeSubscriptionPeriodEnd(subscription: Stripe.Subscription, context: { tenancyId: string }): Date | null {
   if (subscription.items.data.length === 0) {
@@ -355,17 +349,11 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodEnd: sanitizedDates.end,
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        // Same endedAt/canceledAt derivation as the update branch: the first
-        // sync we see for a sub can already be terminal (out-of-order
-        // webhooks, or a purchase-session sub whose first local write is a
-        // late webhook). Without this, a terminal row is created with
-        // endedAt = null, which isSubscriptionInEffect reads as "entitled
-        // forever". Note: rows created before this derivation existed can
-        // still hold that bad shape (terminal status, endedAt = null) and
-        // only self-heal when another webhook for the same customer sweeps
-        // them — a backfill migration (status IN terminal AND endedAt IS
-        // NULL) is tracked as a follow-up, since it also needs the bulldozer
-        // rows re-emitted.
+        // Same derivation as the update branch: the first sync for a sub can
+        // already be terminal (out-of-order webhooks), and a terminal row
+        // created with endedAt = null reads as "entitled forever" to
+        // isSubscriptionInEffect. Pre-existing rows in that shape need a
+        // backfill (follow-up; also requires re-emitting bulldozer rows).
         ...getEndedAtForSync(subscription, sanitizedDates.end),
         ...getCanceledAtForSync(subscription),
         creationSource: "PURCHASE_PAGE"
@@ -384,20 +372,13 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
 }
 
 /**
- * If a paid invoice belongs to a pending-cancel subscription and was issued
- * AFTER the cancellation, the customer has just paid to keep the sub (the
- * purchase-session conflict-reuse path re-prices the winding-down sub and
- * lets the customer pay via Stripe Elements) — so clear cancel_at_period_end
- * and re-sync, which also clears the local endedAt/canceledAt wind-down
- * marks via getEndedAtForSync/getCanceledAtForSync.
- *
- * The invoice.created > canceledAt guard is what makes this safe: a
- * late-delivered invoice.paid for the ORIGINAL creation invoice predates the
- * cancel and must not undo it, and pending-cancel subs generate no renewal
- * invoices, so a paid invoice issued after canceledAt can only be the
- * re-purchase. We can't clear the flag at session creation instead — that
- * runs before payment (default_incomplete has no rollback), and a declined
- * card would silently reactivate an explicitly-canceled sub.
+ * A paid invoice issued AFTER a sub's cancellation can only be the
+ * purchase-session re-price of a winding-down sub (pending-cancel subs
+ * generate no renewal invoices), so paying it means "keep me subscribed":
+ * clear cancel_at_period_end and re-sync. The created-after-cancel guard
+ * also keeps a late-delivered invoice.paid for the original creation invoice
+ * from undoing a cancel. Clearing at session creation instead would
+ * reactivate on declined cards (default_incomplete has no rollback).
  */
 export async function reactivateSubscriptionIfRepurchasePaid(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
   if (invoice.status !== "paid") {

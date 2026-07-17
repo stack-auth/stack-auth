@@ -2,11 +2,9 @@ import type Stripe from "stripe";
 import { describe, expect, it } from "vitest";
 import { getCanceledAtForSync, getEndedAtForSync } from "./stripe";
 
-// The helpers only read status / cancel_at_period_end / ended_at /
-// canceled_at, but are typed against the full Stripe.Subscription. Building a
-// real Stripe.Subscription in a unit test is impractical, so we cast a
-// minimal object; a missing field the helpers start relying on would surface
-// as a failing assertion here, not as a silent wrong value.
+// Minimal cast: the helpers only read status / cancel_at_period_end /
+// ended_at / canceled_at, and a newly-relied-on field would surface as a
+// failing assertion here rather than a silent wrong value.
 function stripeSub(fields: {
   status: Stripe.Subscription.Status,
   cancelAtPeriodEnd?: boolean,
@@ -25,9 +23,6 @@ describe("getEndedAtForSync", () => {
   const periodEnd = new Date("2026-08-16T00:00:00Z");
 
   it("clears endedAt for a non-terminal sub without a pending cancel (reactivation path)", () => {
-    // Reversing a pending cancellation via Stripe's Dashboard/API must clear
-    // the endedAt the cancel route wrote eagerly — otherwise bulldozer still
-    // ends the grants at the old boundary while Stripe keeps billing.
     expect(getEndedAtForSync(stripeSub({ status: "active" }), periodEnd)).toEqual({ endedAt: null });
   });
 

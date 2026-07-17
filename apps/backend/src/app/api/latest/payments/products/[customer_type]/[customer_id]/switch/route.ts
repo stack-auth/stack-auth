@@ -267,10 +267,9 @@ export const POST = createSmartRouteHandler({
         payment_behavior: "error_if_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
         default_payment_method: resolvedPaymentMethodId,
-        // Paying to switch plans is an explicit "keep me subscribed": clear a
-        // pending cancel-at-period-end, otherwise the new plan the customer
-        // just paid for still dies at the period boundary. Stripe persists
-        // the flag across item updates unless reset.
+        // Paying to switch is "keep me subscribed" — Stripe persists a
+        // pending cancel across item updates unless reset, and the new plan
+        // would otherwise still die at the period boundary.
         cancel_at_period_end: false,
         items: [{
           id: existingItem.id,
@@ -315,10 +314,8 @@ export const POST = createSmartRouteHandler({
           currentPeriodStart: sanitizedUpdateDates.start,
           currentPeriodEnd: sanitizedUpdateDates.end,
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
-          // Clear the wind-down marks the cancel route wrote eagerly. The
-          // webhook sync now reconciles these from Stripe's state anyway;
-          // the manual clear only covers the pre-webhook window so the
-          // products list doesn't show "Ends on" right after a switch.
+          // Clear the eagerly-written wind-down marks; the webhook sync
+          // reconciles these anyway, this just covers the pre-webhook window
           canceledAt: null,
           endedAt: null,
         },

@@ -296,9 +296,8 @@ describe('isSubscriptionCancelable', () => {
 describe('subscriptionDisplayRank', () => {
   it('ranks cancelable above pending-cancel Stripe subs above wound-down subs', () => {
     const cancelable = { status: 'active', cancelAtPeriodEnd: false };
-    // A pending-cancel Stripe sub stays `active` — this is the tier that an
-    // active-only preference gets wrong (it would tie with the cancelable
-    // sibling and shadow it depending on iteration order).
+    // Pending-cancel Stripe subs stay `active` — the tier an active-only
+    // preference gets wrong
     const stripePendingCancel = { status: 'active', cancelAtPeriodEnd: true };
     const localWindingDown = { status: 'canceled', cancelAtPeriodEnd: true };
     expect(subscriptionDisplayRank(cancelable)).toBeGreaterThan(subscriptionDisplayRank(stripePendingCancel));

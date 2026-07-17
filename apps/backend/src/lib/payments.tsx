@@ -127,22 +127,19 @@ export function isActiveSubscription(subscription: { status: string }): boolean 
 }
 
 /**
- * The subscription can be canceled (again): it is active and not already
- * winding down. Keep this in sync between the product list's `is_cancelable`
- * field and the cancel route's filter, so `is_cancelable: false` always
- * implies the DELETE returns 400.
+ * Active and not already winding down. Used by both the product list's
+ * `is_cancelable` and the cancel route's filter — keep them in sync so
+ * `is_cancelable: false` always implies the DELETE returns 400.
  */
 export function isSubscriptionCancelable(subscription: { status: string, cancelAtPeriodEnd: boolean }): boolean {
   return isActiveSubscription(subscription) && !subscription.cancelAtPeriodEnd;
 }
 
 /**
- * Rank for picking the representative subscription when several in-effect
- * subs share a productId (stackable products): cancelable > merely-active >
- * merely-in-effect. Cancelable > active matters for Stripe subs — a
- * pending-cancel Stripe sub stays `active` (with cancelAtPeriodEnd), so an
- * active-only preference would let it shadow a cancelable sibling and report
- * is_cancelable: false while a DELETE would in fact succeed.
+ * Picks the representative sub when several in-effect subs share a productId
+ * (stackable products): cancelable > active > in-effect. The middle tier is
+ * for pending-cancel Stripe subs, which stay `active` and would otherwise
+ * shadow a cancelable sibling.
  */
 export function subscriptionDisplayRank(subscription: { status: string, cancelAtPeriodEnd: boolean }): number {
   return isSubscriptionCancelable(subscription) ? 2 : isActiveSubscription(subscription) ? 1 : 0;
@@ -484,11 +481,10 @@ export async function validatePurchaseSession(options: {
   // a duplicate request during lag would slip past it and silently re-grant.
   // We query Prisma directly so the sub guard is symmetric with the OTP guard
   // and works for products with no productLineId.
-  // Includes canceled-at-period-end subs (canceled with a future endedAt) —
-  // they still back their product, so a purchase in the same line must treat
-  // them as replaceable conflicts, not as OTPs. Deliberately narrower than
-  // isSubscriptionInEffect: incomplete/past_due subs are excluded so a retry
-  // after a failed payment isn't rejected as ProductAlreadyGranted below.
+  // Includes canceled-at-period-end subs: they still back their product, so
+  // a same-line purchase must treat them as replaceable conflicts, not OTPs.
+  // Narrower than isSubscriptionInEffect so a payment retry of an incomplete
+  // sub isn't rejected as ProductAlreadyGranted below.
   const replaceableSubs = await prisma.subscription.findMany({
     where: {
       tenancyId,

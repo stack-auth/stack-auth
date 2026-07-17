@@ -81,9 +81,8 @@ export const DELETE = createSmartRouteHandler({
     const allSubs = Object.values(subMap);
 
     const nowMillis = Date.now();
-    // Explains why a matched-but-uncancelable sub can't be canceled: already
-    // winding down (double cancel), or in-effect in a state we don't cancel
-    // from (e.g. past_due). No-op when no in-effect sub matches.
+    // Gives double-cancels and past_due-style states an honest error; no-op
+    // when no in-effect sub matches.
     const throwIfUncancelableButInEffect = (candidates: typeof allSubs): void => {
       const inEffect = candidates.find(s => isSubscriptionInEffect(s, nowMillis));
       if (!inEffect) return;
@@ -142,18 +141,13 @@ export const DELETE = createSmartRouteHandler({
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
         // Cancel at period end, not `subscriptions.cancel()` (immediate) —
-        // matches the confirm dialog and the local-sub branch below. Update
-        // the local row eagerly (mirroring the refund route) so the product
-        // list reflects the wind-down before the webhook sync arrives; the
-        // Stripe sub stays `active` with cancel_at_period_end until Stripe
-        // ends it at the period boundary.
+        // matches the confirm dialog and the local-sub branch below. The
+        // eager local write (mirroring the refund route) shows the wind-down
+        // before the webhook sync arrives.
         const updated = await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
-        // Take the boundary from Stripe's response, not the bulldozer
-        // snapshot read at request start — around a renewal whose webhook
-        // hasn't synced yet, the snapshot's period end is the previous
-        // (possibly already-past) one. The snapshot fallback only covers
-        // item-less mocked responses; the webhook sync reconciles endedAt
-        // either way.
+        // Stripe's response is the authority on the boundary — the bulldozer
+        // snapshot can be a stale pre-renewal period end. Snapshot fallback
+        // only covers item-less mocked responses.
         const endedAt = getStripeSubscriptionPeriodEnd(updated, { tenancyId: auth.tenancy.id })
           ?? new Date(subscription.currentPeriodEndMillis);
         updatedSub = await prisma.subscription.update({

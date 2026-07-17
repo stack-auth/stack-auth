@@ -68,13 +68,10 @@ export const GET = createSmartRouteHandler({
     ]);
     // Deprecated: map productId → subscription for backward-compat fields.
     // ownedProducts keys use '__null__' for inline products (null productId),
-    // so we normalize subscription productIds to match. In-effect (not
-    // active): a canceled-at-period-end sub still backs its owned product
-    // and must not fall through to the one-time-purchase branch below.
-    // When several in-effect subs share a productId (e.g. one quantity of a
-    // stackable product was canceled by subscription_id), prefer the highest
-    // subscriptionDisplayRank (cancelable > active > in-effect) so a
-    // winding-down sub can't shadow one the customer can still act on.
+    // so we normalize subscription productIds to match. In-effect, not
+    // active-only: a winding-down sub still backs its product and must not
+    // fall through to the one_time branch below; productId ties pick the
+    // highest subscriptionDisplayRank.
     const nowMillis = Date.now();
     const inEffectSubByProductId = new Map<string, SubscriptionRow>();
     for (const s of Object.values(subMap)) {

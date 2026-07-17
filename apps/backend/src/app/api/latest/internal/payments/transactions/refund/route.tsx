@@ -702,8 +702,7 @@ async function handleSubscriptionRefund(options: {
           cancel_at_period_end: true,
         });
         // Same as the cancel route: Stripe's response is the authority on
-        // the period boundary; the local row can be stale around a renewal
-        // whose webhook hasn't synced yet.
+        // the boundary; the local row can be stale around a renewal
         stripePeriodEnd = getStripeSubscriptionPeriodEnd(updated, { tenancyId: tenancy.id });
       } catch (e: unknown) {
         if (!isStripeSubscriptionAlreadyTerminalError(e)) {
