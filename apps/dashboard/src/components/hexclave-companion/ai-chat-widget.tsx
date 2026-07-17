@@ -527,6 +527,7 @@ function AIChatWidgetInner({
           welcome={<AskAiWelcome />}
           composerAttachments
           attachmentAdapter={attachmentAdapter}
+          agentEjectFooter
         />
       </div>
     </AssistantRuntimeProvider>
