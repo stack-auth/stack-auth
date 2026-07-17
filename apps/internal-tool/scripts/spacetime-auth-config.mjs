@@ -29,7 +29,14 @@ function defaultDevIssuer() {
 function allowedIssuers() {
   const raw = process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS || process.env.HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER;
   if (!raw) return [defaultDevIssuer()];
-  return raw.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter((s) => s !== "");
+  const issuers = raw.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter((s) => s !== "");
+  if (issuers.length === 0) {
+    console.error(
+      "HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS (or HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER) is set but contains no issuer URLs after parsing. Refusing to publish a module with an empty trusted-issuer list, as it would reject every token."
+    );
+    process.exit(1);
+  }
+  return issuers;
 }
 
 function expectedAudience() {
@@ -48,8 +55,8 @@ if (action === "inject") {
     console.error("Auth-config placeholders not found in module source.");
     process.exit(1);
   }
-  writeFileSync(BACKUP, content, "utf8");
   const issuersLiteral = allowedIssuers().map((issuer) => JSON.stringify(issuer)).join(", ");
+  writeFileSync(BACKUP, content, "utf8");
   writeFileSync(
     TARGET,
     content
