@@ -24,6 +24,8 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
     assertUuid(id, "tenancyId");
   }
 
+  const sortedTenancyIds = [...new Set(tenancyIds)].sort();
+
   // Use unnest to pass array of UUIDs and insert all in one query
   await globalPrismaClient.$executeRaw`
     INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
@@ -37,7 +39,8 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
       ),
       NULL,
       'sentinel-sync-key-' || t.tenancy_id
-    FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
+    FROM unnest(${sortedTenancyIds}::uuid[]) AS t(tenancy_id)
+    ORDER BY t.tenancy_id
     ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
   `;
 }
