@@ -9,7 +9,7 @@ const bodySchema = z.object({
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),
   cachedInputTokens: z.number().int().nonnegative().optional(),
-  costUsd: z.number().optional(),
+  costUsd: z.number().nonnegative().optional(),
   cacheDiscountUsd: z.number().optional(),
 });
 

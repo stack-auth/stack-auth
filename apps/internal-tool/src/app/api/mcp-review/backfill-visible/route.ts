@@ -42,11 +42,11 @@ async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T
 export async function POST(req: Request): Promise<Response> {
   try {
     const { user } = await requireInternalAiChatReviewer(req);
-    const spacetimeToken = await signSpacetimeToken({ subject: user.id });
     const { items } = bodySchema.parse(await readJsonBody(req));
     after(async () => {
       await runWithConcurrency(items, REVIEW_CONCURRENCY, async (item) => {
         try {
+          const spacetimeToken = await signSpacetimeToken({ subject: user.id });
           await reviewMcpCall(spacetimeToken, item);
         } catch (err) {
           captureError("internal-tool-mcp-review-backfill-visible-item", err);
