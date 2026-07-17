@@ -15,7 +15,7 @@ export function MockCursor({
           className={cn(
             "absolute -top-1 -left-1 h-8 w-8 rounded-full",
             "border-2 border-blue-500",
-            "animate-[walkthrough-pulse-ring_1.4s_ease-out_infinite]",
+            "walkthrough-pulse-ring",
           )}
           aria-hidden
         />
