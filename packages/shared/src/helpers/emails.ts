@@ -254,4 +254,5 @@ export const DEFAULT_TEMPLATE_IDS = {
   sign_in_invitation: EMAIL_TEMPLATE_SIGN_IN_INVITATION_ID,
   payment_receipt: EMAIL_TEMPLATE_PAYMENT_RECEIPT_ID,
   payment_failed: EMAIL_TEMPLATE_PAYMENT_FAILED_ID,
+  usage_email: EMAIL_TEMPLATE_USAGE_EMAIL_ID,
 } as const;

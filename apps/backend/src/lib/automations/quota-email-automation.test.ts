@@ -421,11 +421,13 @@ describe("payments item quota source adapter", () => {
     const tenancy = createSourceTenancy({ itemExists: false });
     const { adapter } = createSourceAdapterFixture({ projectUserIds: ["user-1"] });
 
-    await expect(adapter.evaluate({
+    const evaluationPromise = adapter.evaluate({
       tenancy,
       ruleId,
       rule: getSupportedAutomationRule(tenancy, ruleId),
-    })).rejects.toThrow('Automation rule "low-api-credits" references payments item "api_credits", but that item does not exist.');
+    });
+    await expect(evaluationPromise).rejects.toMatchObject({ reason: "missing-item" });
+    await expect(evaluationPromise).rejects.toThrow('Automation rule "low-api-credits" references payments item "api_credits", but that item does not exist.');
   });
 
   it("rejects a payments item with a non-user customer type", async () => {
@@ -844,11 +846,13 @@ describe("send-email action adapter", () => {
       templateId: "1b477fe1-7479-4d90-ac47-23d0a5048bc8",
     }));
 
-    await expect(buildTestSendEmailActionPlan({
+    const planPromise = buildTestSendEmailActionPlan({
       tenancy,
       ruleId,
       rule: getSupportedAutomationRule(tenancy, ruleId),
       decision: createActionDecision(),
-    })).rejects.toThrow('Automation rule "low-api-credits" references email template "1b477fe1-7479-4d90-ac47-23d0a5048bc8", but that template does not exist.');
+    });
+    await expect(planPromise).rejects.toMatchObject({ reason: "missing-template" });
+    await expect(planPromise).rejects.toThrow('Automation rule "low-api-credits" references email template "1b477fe1-7479-4d90-ac47-23d0a5048bc8", but that template does not exist.');
   });
 });

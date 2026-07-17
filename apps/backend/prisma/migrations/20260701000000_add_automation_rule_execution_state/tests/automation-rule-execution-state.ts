@@ -40,6 +40,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "subjectId",
       "signalKey",
       "lastTriggeredAt",
+      "emailOutboxId",
       "lastSourceSnapshot",
       "createdAt",
       "updatedAt"
@@ -53,6 +54,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       ${projectUserId},
       'credits:near',
       NOW(),
+      ${emailOutboxId}::uuid,
       ${JSON.stringify(initialSnapshot)}::jsonb,
       NOW(),
       NOW()
@@ -67,7 +69,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "subjectId",
       "signalKey",
       "lastActionAt",
-      "lastEmailOutboxId",
+      "emailOutboxId",
       "lastSourceSnapshot"
     FROM "AutomationRuleExecutionState"
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
@@ -83,7 +85,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     subjectId: projectUserId,
     signalKey: "credits:near",
     lastActionAt: null,
-    lastEmailOutboxId: null,
+    emailOutboxId,
   }]);
   expect(JSON.parse(inserted[0].lastSourceSnapshot)).toMatchObject(initialSnapshot);
 
@@ -96,7 +98,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     UPDATE "AutomationRuleExecutionState"
     SET
       "lastActionAt" = NOW(),
-      "lastEmailOutboxId" = ${emailOutboxId}::uuid,
       "lastSourceSnapshot" = ${JSON.stringify(updatedSnapshot)}::jsonb,
       "updatedAt" = NOW()
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
@@ -107,7 +108,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   const updated = await sql`
-    SELECT "lastActionAt", "lastEmailOutboxId", "lastSourceSnapshot"
+    SELECT "lastActionAt", "emailOutboxId", "lastSourceSnapshot"
     FROM "AutomationRuleExecutionState"
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
       AND "ruleId" = 'lowCreditsUpgradeEmail'
@@ -117,7 +118,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
   expect(updated).toHaveLength(1);
   expect(updated[0].lastActionAt).toBeInstanceOf(Date);
-  expect(updated[0].lastEmailOutboxId).toBe(emailOutboxId);
+  expect(updated[0].emailOutboxId).toBe(emailOutboxId);
   expect(JSON.parse(updated[0].lastSourceSnapshot)).toMatchObject(updatedSnapshot);
 
   await expect(sql`
@@ -130,6 +131,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "subjectId",
       "signalKey",
       "lastTriggeredAt",
+      "emailOutboxId",
       "lastSourceSnapshot",
       "createdAt",
       "updatedAt"
@@ -143,6 +145,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       ${projectUserId},
       'credits:near',
       NOW(),
+      ${randomUUID()}::uuid,
       ${JSON.stringify(initialSnapshot)}::jsonb,
       NOW(),
       NOW()

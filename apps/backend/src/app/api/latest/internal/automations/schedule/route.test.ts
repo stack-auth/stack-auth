@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { scheduledAutomationWorkBudgetMs } from "@/lib/automations/scheduler";
 import { maxDuration, parseAutomationScheduleBound } from "./route";
 
 describe("automation schedule route bounds", () => {
   it("keeps the work budget below the route runtime limit", () => {
     expect(maxDuration).toBe(60);
     expect(parseAutomationScheduleBound("45000", "max_duration_ms", 45_000)).toBe(45_000);
+    expect(scheduledAutomationWorkBudgetMs).toBeLessThan(maxDuration * 1000);
   });
 
   it("allows omitted and lower positive integer bounds", () => {

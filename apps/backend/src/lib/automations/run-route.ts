@@ -1,5 +1,5 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { AutomationJson, AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
+import { AutomationJson, AutomationRuleDisabledError, AutomationRuleNotFoundError, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { AutomationActionPlan, AutomationEvaluationResult, AutomationSourceAdapter, AutomationActionAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 import { paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
 
@@ -7,6 +7,7 @@ export type AutomationRuleExecutionClaimResult =
   | {
     claimed: true,
     lastActionAt: Date | null,
+    emailOutboxId: string,
   }
   | {
     claimed: false,
@@ -32,15 +33,34 @@ export type AutomationRuleExecutionStateStore = {
     subjectType: "user",
     subjectId: string,
     signalKey: string,
+    claimTriggeredAt: Date,
     lastActionAt: Date,
-    lastEmailOutboxId: string | null,
+    emailOutboxId: string,
   }) => Promise<void>,
+};
+
+export type AutomationEmailSendResult = {
+  outcome: "created" | "already-enqueued",
 };
 
 export type AutomationEmailSender = (options: {
   action: AutomationActionPlan,
   scheduledAt: Date,
-}) => Promise<void>;
+  emailOutboxId: string,
+}) => Promise<AutomationEmailSendResult>;
+
+export function getSingleAutomationEmailSendResult(result: {
+  createdCount: number,
+  alreadyEnqueuedCount: number,
+}): AutomationEmailSendResult {
+  if (result.createdCount === 1 && result.alreadyEnqueuedCount === 0) {
+    return { outcome: "created" };
+  }
+  if (result.createdCount === 0 && result.alreadyEnqueuedCount === 1) {
+    return { outcome: "already-enqueued" };
+  }
+  throw new Error(`Expected one automation email enqueue result, received ${result.createdCount} created and ${result.alreadyEnqueuedCount} already enqueued.`);
+}
 
 export type AutomationRunDecisionResult = {
   decision: EvaluatedAutomationDecision,
@@ -76,9 +96,9 @@ export async function runAutomationRuleForRoute(options: {
   stateStore: AutomationRuleExecutionStateStore,
   emailSender: AutomationEmailSender,
 }): Promise<AutomationRunResult> {
-  const rule = getSupportedAutomationRuleForRunRoute(options.tenancy, options.ruleId);
+  const rule = getSupportedAutomationRule(options.tenancy, options.ruleId);
   if (!rule.enabled) {
-    throw new StatusError(StatusError.Conflict, `Automation rule "${options.ruleId}" is disabled and cannot be manually sent.`);
+    throw new AutomationRuleDisabledError(options.ruleId);
   }
   const evaluation = await evaluateAutomationRule({
     tenancy: options.tenancy,
@@ -124,6 +144,7 @@ export async function runAutomationRuleForRoute(options: {
     await options.emailSender({
       action: decision.action,
       scheduledAt: options.scheduledAt,
+      emailOutboxId: claim.emailOutboxId,
     });
     await options.stateStore.markActionCompleted({
       tenancyId: options.tenancy.id,
@@ -131,8 +152,9 @@ export async function runAutomationRuleForRoute(options: {
       subjectType: decision.subject.type,
       subjectId: decision.subject.id,
       signalKey: decision.signal.key,
+      claimTriggeredAt: options.now,
       lastActionAt: options.now,
-      lastEmailOutboxId: null,
+      emailOutboxId: claim.emailOutboxId,
     });
 
     decisions.push({
@@ -159,12 +181,17 @@ export async function runAutomationRuleForRoute(options: {
   };
 }
 
-function getSupportedAutomationRuleForRunRoute(tenancy: AutomationRuleTenancy, ruleId: string) {
+export async function runAutomationRuleForManualRoute(
+  options: Parameters<typeof runAutomationRuleForRoute>[0],
+): Promise<AutomationRunResult> {
   try {
-    return getSupportedAutomationRule(tenancy, ruleId);
+    return await runAutomationRuleForRoute(options);
   } catch (error) {
     if (error instanceof AutomationRuleNotFoundError) {
       throw new StatusError(StatusError.NotFound, error.message);
+    }
+    if (error instanceof AutomationRuleDisabledError) {
+      throw new StatusError(StatusError.Conflict, error.message);
     }
     throw error;
   }

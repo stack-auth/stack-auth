@@ -6,7 +6,7 @@
 
 import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
-import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
+import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
@@ -1124,10 +1124,11 @@ const organizationConfigDefaults = {
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 import.meta.vitest?.test("organization defaults include the built-in Usage Email template", ({ expect }) => {
-  expect(organizationConfigDefaults.emails.templates["28a45509-eb75-440d-b657-0a8640c775df"]).toMatchObject({
+  const template = organizationConfigDefaults.emails.templates[DEFAULT_TEMPLATE_IDS.usage_email];
+  expect(template).toMatchObject({
     displayName: "Usage Email",
-    themeId: undefined,
   });
+  expect(template.themeId).toBeUndefined();
 });
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (

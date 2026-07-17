@@ -14,7 +14,9 @@ vi.mock("@/lib/automations/sources/payments-item-quota", () => ({
   paymentsItemQuotaCustomerDataReaders: {},
   prismaPaymentsItemQuotaProjectUserReader: {},
 }));
-vi.mock("@/lib/emails", () => ({ sendEmailToMany: async () => {} }));
+vi.mock("@/lib/emails", () => ({
+  sendEmailToMany: async () => ({ createdCount: 1, alreadyEnqueuedCount: 0 }),
+}));
 vi.mock("@/lib/tenancies", () => ({ getTenancy: async () => null }));
 vi.mock("@/prisma-client", () => ({
   getPrismaClientForTenancy: async () => ({}),
@@ -36,6 +38,7 @@ import {
   runScheduledAutomations,
 } from "./scheduler";
 import type { AutomationRunResult } from "./run-route";
+import { NonRetryableAutomationRuleError } from "./rules";
 
 const ruleId = "low-api-credits";
 
@@ -352,6 +355,39 @@ describe("native cron automation traversal", () => {
 
     expect(captureErrorMock).toHaveBeenCalledWith("automation-scheduler-invalid-rule", expect.any(Error));
     expect(runRule).toHaveBeenCalledWith(expect.objectContaining({ ruleId: validRuleId }));
+  });
+
+  it("advances a deterministic runtime rule failure and runs the next valid rule", async () => {
+    captureErrorMock.mockClear();
+    const state = createStateHarness();
+    const validRuleId = "valid-rule";
+    const runRule = vi.fn(async (options: { ruleId: string }) => {
+      if (options.ruleId === "bad-rule") {
+        throw new NonRetryableAutomationRuleError("missing-template", "Configured template no longer exists.");
+      }
+      return createRunResult(null, { ruleId: options.ruleId });
+    });
+
+    await runScheduledAutomations({
+      prisma: createPrisma(["00000000-0000-4000-8000-000000000010"]),
+      stateStore: state.stateStore,
+      getTenancyById: async (id) => createTenancy(id, {
+        "bad-rule": createRule(),
+        [validRuleId]: createRule(),
+      }),
+      runRule,
+      maxPages: 1,
+    });
+
+    expect(captureErrorMock).toHaveBeenCalledWith("automation-scheduler-non-retryable-rule", expect.any(Error));
+    expect(runRule).toHaveBeenNthCalledWith(1, expect.objectContaining({ ruleId: "bad-rule" }));
+    expect(runRule).toHaveBeenNthCalledWith(2, expect.objectContaining({ ruleId: validRuleId }));
+    expect(state.getCheckpoint()).toMatchObject({
+      activeTenancyId: "00000000-0000-4000-8000-000000000010",
+      completedRuleCursor: validRuleId,
+      activeRuleId: null,
+      nextSubjectCursor: null,
+    });
   });
 
   it("skips disabled rules without executing them", async () => {

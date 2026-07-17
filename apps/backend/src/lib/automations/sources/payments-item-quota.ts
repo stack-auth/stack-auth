@@ -5,7 +5,7 @@ import {
   getSubscriptionMapForCustomer,
 } from "@/lib/payments/customer-data";
 import { AutomationSourceAdapter, AutomationSourceDecision, AutomationSourceEvaluationResult } from "../rule-evaluator";
-import { AutomationRuleTenancy, PaymentsItemQuotaAutomationRule, paymentsItemQuotaSourceType } from "../rules";
+import { AutomationRuleTenancy, NonRetryableAutomationRuleError, PaymentsItemQuotaAutomationRule, paymentsItemQuotaSourceType } from "../rules";
 
 export type PaymentsItemQuotaProjectUserPage = {
   projectUserIds: string[],
@@ -138,10 +138,10 @@ async function evaluatePaymentsItemQuotaSource<TPrisma>(options: {
   const itemId = options.rule.source.itemId;
   const item = options.tenancy.config.payments?.items?.[itemId];
   if (item === undefined) {
-    throw new Error(`Automation rule "${options.ruleId}" references payments item "${itemId}", but that item does not exist.`);
+    throw new NonRetryableAutomationRuleError("missing-item", `Automation rule "${options.ruleId}" references payments item "${itemId}", but that item does not exist.`);
   }
   if (item.customerType !== "user") {
-    throw new Error(`Automation rule "${options.ruleId}" references payments item "${itemId}" with customerType "${item.customerType ?? "<missing>"}"; V1 supports only user items.`);
+    throw new NonRetryableAutomationRuleError("incompatible-item", `Automation rule "${options.ruleId}" references payments item "${itemId}" with customerType "${item.customerType ?? "<missing>"}"; V1 supports only user items.`);
   }
 
   const limit = normalizeLimit(options.limit);

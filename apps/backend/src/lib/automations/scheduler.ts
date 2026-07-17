@@ -15,8 +15,8 @@ import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
-import { runAutomationRuleForRoute, type AutomationRunResult } from "./run-route";
-import { assertSupportedAutomationRule, type AutomationRuleTenancy, listAutomationRules } from "./rules";
+import { getSingleAutomationEmailSendResult, runAutomationRuleForRoute, type AutomationRunResult } from "./run-route";
+import { assertSupportedAutomationRule, type AutomationRuleTenancy, listAutomationRules, NonRetryableAutomationRuleError } from "./rules";
 
 export const scheduledAutomationDiscoveryLimit = 500;
 export const scheduledAutomationRunPageLimit = 100;
@@ -281,10 +281,14 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     try {
       assertSupportedAutomationRule(activeRuleId, ruleEntry.rule);
     } catch (error) {
+      if (!(error instanceof NonRetryableAutomationRuleError)) {
+        throw error;
+      }
       captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${activeRuleId}" for tenancy "${tenancy.id}".`, {
         cause: error,
         tenancyId: tenancy.id,
         ruleId: activeRuleId,
+        reason: error.reason,
       }));
       await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
       rulesProcessed++;
@@ -299,14 +303,30 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     }
     await options.lease.renewIfNeeded();
 
-    const result = await options.runRule({
-      tenancy,
-      ruleId: activeRuleId,
-      cursor: checkpoint.nextSubjectCursor,
-      limit: options.pageLimit,
-      scheduledAt,
-      now: options.now(),
-    });
+    let result: AutomationRunResult;
+    try {
+      result = await options.runRule({
+        tenancy,
+        ruleId: activeRuleId,
+        cursor: checkpoint.nextSubjectCursor,
+        limit: options.pageLimit,
+        scheduledAt,
+        now: options.now(),
+      });
+    } catch (error) {
+      if (!(error instanceof NonRetryableAutomationRuleError)) {
+        throw error;
+      }
+      captureError("automation-scheduler-non-retryable-rule", new HexclaveAssertionError(`Skipping non-retryable scheduled automation rule "${activeRuleId}" for tenancy "${tenancy.id}".`, {
+        cause: error,
+        tenancyId: tenancy.id,
+        ruleId: activeRuleId,
+        reason: error.reason,
+      }));
+      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      rulesProcessed++;
+      continue;
+    }
     pagesProcessed++;
     evaluatedCount += result.evaluatedCount;
     sentCount += result.sentCount;
@@ -361,8 +381,8 @@ async function runProductionScheduledAutomationRulePage(options: {
     sourceAdapter,
     actionAdapter: createSendEmailActionAdapter(),
     stateStore: createPrismaAutomationRuleExecutionStateStore(prisma),
-    emailSender: async ({ action, scheduledAt }) => {
-      await sendEmailToMany({
+    emailSender: async ({ action, scheduledAt, emailOutboxId }) => {
+      const enqueueResult = await sendEmailToMany({
         tenancy,
         recipients: [action.recipient],
         tsxSource: action.tsxSource,
@@ -374,7 +394,9 @@ async function runProductionScheduledAutomationRulePage(options: {
         createdWith: action.createdWith,
         overrideSubject: action.subject,
         overrideNotificationCategoryId: action.notificationCategoryId,
+        emailOutboxIds: [emailOutboxId],
       });
+      return getSingleAutomationEmailSendResult(enqueueResult);
     },
   });
 }

@@ -6,8 +6,11 @@ import {
 } from "@/lib/automations/execution-state-store";
 import { AutomationSourceDecision } from "@/lib/automations/rule-evaluator";
 import {
+  AutomationEmailSender,
   AutomationRuleExecutionStateStore,
   automationRunResultToApiBody,
+  getSingleAutomationEmailSendResult,
+  runAutomationRuleForManualRoute,
   runAutomationRuleForRoute,
 } from "@/lib/automations/run-route";
 import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
@@ -37,15 +40,29 @@ describe("automation scheduled timestamp parsing", () => {
   });
 });
 
+describe("automation email enqueue result classification", () => {
+  it("distinguishes newly created and already-enqueued single-recipient rows", () => {
+    expect(getSingleAutomationEmailSendResult({ createdCount: 1, alreadyEnqueuedCount: 0 })).toEqual({ outcome: "created" });
+    expect(getSingleAutomationEmailSendResult({ createdCount: 0, alreadyEnqueuedCount: 1 })).toEqual({ outcome: "already-enqueued" });
+  });
+
+  it("fails loudly for partial or otherwise invalid single-recipient results", () => {
+    expect(() => getSingleAutomationEmailSendResult({ createdCount: 1, alreadyEnqueuedCount: 1 }))
+      .toThrow(/Expected one automation email enqueue result/);
+  });
+});
+
 type InMemoryExecutionState = {
   lastTriggeredAt: Date,
   lastActionAt: Date | null,
-  lastEmailOutboxId: string | null,
+  emailOutboxId: string,
   lastSourceSnapshot: Record<string, unknown>,
 };
 
 function createInMemoryStateStore() {
   const states = new Map<string, InMemoryExecutionState>();
+  let nextEmailOutboxId = 1;
+  const createEmailOutboxId = () => `00000000-0000-4000-8000-${String(nextEmailOutboxId++).padStart(12, "0")}`;
   const keyFor = (options: {
     tenancyId: string,
     ruleId: string,
@@ -55,7 +72,7 @@ function createInMemoryStateStore() {
   }) => `${options.tenancyId}:${options.ruleId}:${options.subjectType}:${options.subjectId}:${options.signalKey}`;
 
   const stateStore: AutomationRuleExecutionStateStore = {
-    claimExecution: vi.fn(async (options) => {
+    claimExecution: vi.fn(async (options): Promise<Awaited<ReturnType<AutomationRuleExecutionStateStore["claimExecution"]>>> => {
       const key = keyFor(options);
       const existing = states.get(key);
       const cooldownCutoff = new Date(options.lastTriggeredAt.getTime() - options.cooldownDays * 24 * 60 * 60 * 1000);
@@ -73,15 +90,17 @@ function createInMemoryStateStore() {
         };
       }
 
+      const emailOutboxId = existing?.lastActionAt === null ? existing.emailOutboxId : createEmailOutboxId();
       states.set(key, {
         lastTriggeredAt: options.lastTriggeredAt,
         lastActionAt: null,
-        lastEmailOutboxId: null,
+        emailOutboxId,
         lastSourceSnapshot: options.sourceSnapshot,
       });
       return {
         claimed: true,
         lastActionAt: existing?.lastActionAt ?? null,
+        emailOutboxId,
       };
     }),
     markActionCompleted: vi.fn(async (options) => {
@@ -93,7 +112,7 @@ function createInMemoryStateStore() {
       states.set(key, {
         ...existing,
         lastActionAt: options.lastActionAt,
-        lastEmailOutboxId: options.lastEmailOutboxId,
+        emailOutboxId: options.emailOutboxId,
       });
     }),
   };
@@ -115,7 +134,7 @@ async function runWithFakes(options: {
 } = {}) {
   const sourceAdapter = createAutomationRouteTestSourceAdapter(options.decisionFactory, { evaluatedCount: 1 });
   const actionAdapter = createAutomationRouteTestActionAdapter();
-  const emailSender = vi.fn(options.emailSender ?? (async () => {}));
+  const emailSender = vi.fn(options.emailSender ?? (async () => ({ outcome: "created" as const })));
   let createdStore: ReturnType<typeof createInMemoryStateStore> | undefined;
   let stateStore = options.stateStore;
   if (stateStore === undefined) {
@@ -149,10 +168,10 @@ describe("automation real-send route helpers", () => {
   it("returns 404 for missing manual rules before evaluating, claiming state, or sending email", async () => {
     const sourceAdapter = createAutomationRouteTestSourceAdapter();
     const actionAdapter = createAutomationRouteTestActionAdapter();
-    const emailSender = vi.fn(async () => {});
+    const emailSender = vi.fn(async () => ({ outcome: "created" as const }));
     const { stateStore } = createInMemoryStateStore();
 
-    const resultPromise = runAutomationRuleForRoute({
+    const resultPromise = runAutomationRuleForManualRoute({
       tenancy: createAutomationRouteTestTenancy({ ruleExists: false }),
       ruleId,
       scheduledAt,
@@ -175,10 +194,10 @@ describe("automation real-send route helpers", () => {
   it("refuses disabled rules before evaluating, claiming state, or sending email", async () => {
     const sourceAdapter = createAutomationRouteTestSourceAdapter();
     const actionAdapter = createAutomationRouteTestActionAdapter();
-    const emailSender = vi.fn(async () => {});
+    const emailSender = vi.fn(async () => ({ outcome: "created" as const }));
     const { stateStore } = createInMemoryStateStore();
 
-    await expect(runAutomationRuleForRoute({
+    await expect(runAutomationRuleForManualRoute({
       tenancy: createAutomationRouteTestTenancy({ enabled: false }),
       ruleId,
       scheduledAt,
@@ -215,7 +234,7 @@ describe("automation real-send route helpers", () => {
     }));
     expect([...states!.values()]).toMatchObject([{
       lastActionAt: new Date("2026-07-01T12:00:00.000Z"),
-      lastEmailOutboxId: null,
+      emailOutboxId: expect.any(String),
       lastSourceSnapshot: expect.objectContaining({
         itemId: "api_credits",
         thresholdKind: "near",
@@ -254,7 +273,7 @@ describe("automation real-send route helpers", () => {
     states.set("tenancy-1:low-api-credits:user:user-1:api_credits:near", {
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: createAutomationRouteTestSourceDecision().sourceSnapshot,
     });
 
@@ -346,7 +365,7 @@ describe("automation real-send route helpers", () => {
     expect([...states.values()]).toMatchObject([{
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
-      lastEmailOutboxId: null,
+      emailOutboxId: expect.any(String),
     }]);
 
     const immediateRetry = await runWithFakes({
@@ -376,6 +395,54 @@ describe("automation real-send route helpers", () => {
 
     expect(retryAfterStaleClaim.result.sentCount).toBe(1);
     expect(retryAfterStaleClaim.emailSender).toHaveBeenCalledOnce();
+  });
+
+  it("does not enqueue a duplicate when completion fails after the outbox row was created", async () => {
+    const { prisma, rows } = createMockExecutionStatePrisma();
+    const reservedEmailOutboxId = "00000000-0000-4000-8000-000000000001";
+    const prismaStore = createPrismaAutomationRuleExecutionStateStore(prisma, {
+      createEmailOutboxId: () => reservedEmailOutboxId,
+    });
+    let shouldFailCompletion = true;
+    const stateStore: AutomationRuleExecutionStateStore = {
+      claimExecution: prismaStore.claimExecution,
+      markActionCompleted: vi.fn(async (options) => {
+        if (shouldFailCompletion) {
+          shouldFailCompletion = false;
+          throw new Error("completion database write failed");
+        }
+        await prismaStore.markActionCompleted(options);
+      }),
+    };
+    const enqueuedEmailOutboxIds = new Set<string>();
+    const emailSender = vi.fn(async (options: Parameters<AutomationEmailSender>[0]) => {
+      if (enqueuedEmailOutboxIds.has(options.emailOutboxId)) {
+        return { outcome: "already-enqueued" as const };
+      }
+      enqueuedEmailOutboxIds.add(options.emailOutboxId);
+      return { outcome: "created" as const };
+    });
+
+    await expect(runWithFakes({
+      stateStore,
+      emailSender,
+    })).rejects.toThrow("completion database write failed");
+
+    const retry = await runWithFakes({
+      stateStore,
+      emailSender,
+      now: new Date("2026-07-01T12:16:00.000Z"),
+    });
+
+    expect(retry.result.sentCount).toBe(1);
+    expect(emailSender).toHaveBeenCalledTimes(2);
+    expect(emailSender).toHaveBeenNthCalledWith(1, expect.objectContaining({ emailOutboxId: reservedEmailOutboxId }));
+    expect(emailSender).toHaveBeenNthCalledWith(2, expect.objectContaining({ emailOutboxId: reservedEmailOutboxId }));
+    expect(enqueuedEmailOutboxIds).toEqual(new Set([reservedEmailOutboxId]));
+    expect([...rows.values()]).toMatchObject([{
+      emailOutboxId: reservedEmailOutboxId,
+      lastActionAt: new Date("2026-07-01T12:16:00.000Z"),
+    }]);
   });
 
   it("suppresses a second run after an expired cooldown is reclaimed but not completed", async () => {
@@ -411,7 +478,7 @@ type PrismaStoreState = {
   signalKey: string,
   lastTriggeredAt: Date,
   lastActionAt: Date | null,
-  lastEmailOutboxId: string | null,
+  emailOutboxId: string,
   lastSourceSnapshot: Prisma.InputJsonObject,
 };
 
@@ -451,6 +518,7 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
         return row === undefined ? null : {
           lastTriggeredAt: row.lastTriggeredAt,
           lastActionAt: row.lastActionAt,
+          emailOutboxId: row.emailOutboxId,
         };
       }),
       updateMany: vi.fn(async (options) => {
@@ -459,13 +527,16 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
           return { count: 0 };
         }
 
-        const canClaim = options.where.OR.some((clause) => {
-          if ("lastTriggeredAt" in clause) {
-            return row.lastActionAt === null && row.lastTriggeredAt < clause.lastTriggeredAt.lt;
-          }
-          return row.lastActionAt !== null && row.lastActionAt < clause.lastActionAt.lt;
-        });
-        if (!canClaim) {
+        const lastActionMatches = options.where.lastActionAt === null
+          ? row.lastActionAt === null
+          : row.lastActionAt !== null && row.lastActionAt < options.where.lastActionAt.lt;
+        const lastTriggeredMatches = options.where.lastTriggeredAt === undefined
+          || (options.where.lastTriggeredAt instanceof Date
+            ? row.lastTriggeredAt.getTime() === options.where.lastTriggeredAt.getTime()
+            : row.lastTriggeredAt < options.where.lastTriggeredAt.lt);
+        const emailOutboxIdMatches = options.where.emailOutboxId === undefined
+          || row.emailOutboxId === options.where.emailOutboxId;
+        if (!lastActionMatches || !lastTriggeredMatches || !emailOutboxIdMatches) {
           return { count: 0 };
         }
 
@@ -474,18 +545,6 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
           ...options.data,
         });
         return { count: 1 };
-      }),
-      update: vi.fn(async (options) => {
-        const key = keyFor(options.where.tenancyId_ruleId_subjectType_subjectId_signalKey);
-        const row = rows.get(key);
-        if (row === undefined) {
-          throw new Error("Expected automation execution state row to exist before update.");
-        }
-        rows.set(key, {
-          ...row,
-          ...options.data,
-        });
-        return rows.get(key);
       }),
     },
   };
@@ -516,19 +575,22 @@ function createClaimOptions(options: {
 describe("Prisma automation execution state store", () => {
   it("claims a new execution state row with Prisma create", async () => {
     const { prisma, rows } = createMockExecutionStatePrisma();
-    const store = createPrismaAutomationRuleExecutionStateStore(prisma);
+    const store = createPrismaAutomationRuleExecutionStateStore(prisma, {
+      createEmailOutboxId: () => "00000000-0000-4000-8000-000000000001",
+    });
 
     const result = await store.claimExecution(createClaimOptions());
 
     expect(result).toEqual({
       claimed: true,
       lastActionAt: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
     });
     expect(prisma.automationRuleExecutionState.create).toHaveBeenCalledOnce();
     expect([...rows.values()]).toMatchObject([{
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: expect.objectContaining({
         itemId: "api_credits",
       }),
@@ -543,7 +605,7 @@ describe("Prisma automation execution state store", () => {
       actionType: "send-email",
       lastTriggeredAt: new Date("2026-06-01T12:00:00.000Z"),
       lastActionAt: oldActionAt,
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: {
         itemId: "old",
       },
@@ -555,6 +617,7 @@ describe("Prisma automation execution state store", () => {
     expect(result).toEqual({
       claimed: true,
       lastActionAt: oldActionAt,
+      emailOutboxId: expect.any(String),
     });
     expect(prisma.automationRuleExecutionState.updateMany).toHaveBeenCalledOnce();
   });
@@ -567,7 +630,7 @@ describe("Prisma automation execution state store", () => {
       actionType: "send-email",
       lastTriggeredAt: new Date("2026-06-30T12:00:00.000Z"),
       lastActionAt,
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: {
         itemId: "api_credits",
       },
@@ -597,6 +660,7 @@ describe("Prisma automation execution state store", () => {
     expect(first).toEqual({
       claimed: true,
       lastActionAt: null,
+      emailOutboxId: expect.any(String),
     });
     expect(second).toEqual({
       claimed: false,
@@ -608,7 +672,9 @@ describe("Prisma automation execution state store", () => {
 
   it("continues to apply cooldown and retry rules after a claim completes", async () => {
     const { prisma } = createMockExecutionStatePrisma();
-    const store = createPrismaAutomationRuleExecutionStateStore(prisma);
+    const store = createPrismaAutomationRuleExecutionStateStore(prisma, {
+      createEmailOutboxId: () => "00000000-0000-4000-8000-000000000001",
+    });
 
     await store.claimExecution(createClaimOptions({
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
@@ -619,8 +685,9 @@ describe("Prisma automation execution state store", () => {
       subjectType: "user",
       subjectId: "user-1",
       signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
     });
 
     await expect(store.claimExecution(createClaimOptions({
@@ -634,6 +701,7 @@ describe("Prisma automation execution state store", () => {
     }))).resolves.toEqual({
       claimed: true,
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
+      emailOutboxId: expect.any(String),
     });
   });
 
@@ -645,7 +713,7 @@ describe("Prisma automation execution state store", () => {
       actionType: "send-email",
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt,
-      lastEmailOutboxId: null,
+      emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: {
         itemId: "api_credits",
       },
@@ -662,6 +730,7 @@ describe("Prisma automation execution state store", () => {
     expect(first).toEqual({
       claimed: true,
       lastActionAt,
+      emailOutboxId: expect.any(String),
     });
     expect(second).toEqual({
       claimed: false,
@@ -673,14 +742,58 @@ describe("Prisma automation execution state store", () => {
     }]);
   });
 
-  it("marks a claimed action completed with Prisma update", async () => {
+  it("reuses an in-flight reservation after staleness and fences the previous claimant", async () => {
+    const reservedEmailOutboxId = "00000000-0000-4000-8000-000000000001";
+    const { prisma } = createMockExecutionStatePrisma([{
+      ...createClaimOptions(),
+      sourceType: "payments-item-quota",
+      actionType: "send-email",
+      lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      lastActionAt: null,
+      emailOutboxId: reservedEmailOutboxId,
+      lastSourceSnapshot: { itemId: "api_credits" },
+    }]);
+    const store = createPrismaAutomationRuleExecutionStateStore(prisma);
+
+    await expect(store.claimExecution(createClaimOptions({
+      lastTriggeredAt: new Date("2026-07-01T12:16:00.000Z"),
+    }))).resolves.toEqual({
+      claimed: true,
+      lastActionAt: null,
+      emailOutboxId: reservedEmailOutboxId,
+    });
+
+    await expect(store.markActionCompleted({
+      tenancyId: "tenancy-1",
+      ruleId,
+      subjectType: "user",
+      subjectId: "user-1",
+      signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      lastActionAt: new Date("2026-07-01T12:17:00.000Z"),
+      emailOutboxId: reservedEmailOutboxId,
+    })).rejects.toThrow("lost ownership");
+
+    await expect(store.markActionCompleted({
+      tenancyId: "tenancy-1",
+      ruleId,
+      subjectType: "user",
+      subjectId: "user-1",
+      signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:16:00.000Z"),
+      lastActionAt: new Date("2026-07-01T12:16:00.000Z"),
+      emailOutboxId: reservedEmailOutboxId,
+    })).resolves.toBeUndefined();
+  });
+
+  it("marks a claimed action completed with a fenced Prisma updateMany", async () => {
     const { prisma, rows } = createMockExecutionStatePrisma([{
       ...createClaimOptions(),
       sourceType: "payments-item-quota",
       actionType: "send-email",
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
-      lastEmailOutboxId: null,
+      emailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
       lastSourceSnapshot: {
         itemId: "api_credits",
       },
@@ -693,14 +806,26 @@ describe("Prisma automation execution state store", () => {
       subjectType: "user",
       subjectId: "user-1",
       signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
-      lastEmailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
+      emailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
     });
 
-    expect(prisma.automationRuleExecutionState.update).toHaveBeenCalledOnce();
+    expect(prisma.automationRuleExecutionState.updateMany).toHaveBeenCalledOnce();
     expect([...rows.values()]).toMatchObject([{
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
-      lastEmailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
+      emailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
     }]);
+
+    await expect(store.markActionCompleted({
+      tenancyId: "tenancy-1",
+      ruleId,
+      subjectType: "user",
+      subjectId: "user-1",
+      signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
+      emailOutboxId: "9ddfd5da-8cca-48be-944a-f59235892877",
+    })).resolves.toBeUndefined();
   });
 });

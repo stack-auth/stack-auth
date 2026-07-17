@@ -2,7 +2,8 @@ import { createSendEmailActionAdapter } from "@/lib/automations/actions/send-ema
 import { createPrismaAutomationRuleExecutionStateStore } from "@/lib/automations/execution-state-store";
 import {
   automationRunResultToApiBody,
-  runAutomationRuleForRoute,
+  getSingleAutomationEmailSendResult,
+  runAutomationRuleForManualRoute,
 } from "@/lib/automations/run-route";
 import { parseAutomationScheduledAtMillis } from "@/lib/automations/scheduled-at";
 import {
@@ -80,7 +81,7 @@ export const POST = createSmartRouteHandler({
       customerDataReaders: paymentsItemQuotaCustomerDataReaders,
     });
     const scheduledAt = parseAutomationScheduledAtMillis(body.scheduled_at_millis, "scheduled_at_millis");
-    const result = await runAutomationRuleForRoute({
+    const result = await runAutomationRuleForManualRoute({
       tenancy: auth.tenancy,
       ruleId: params.rule_id,
       limit: body.limit,
@@ -90,8 +91,8 @@ export const POST = createSmartRouteHandler({
       sourceAdapter,
       actionAdapter: createSendEmailActionAdapter(),
       stateStore: createPrismaAutomationRuleExecutionStateStore(prisma),
-      emailSender: async ({ action, scheduledAt }) => {
-        await sendEmailToMany({
+      emailSender: async ({ action, scheduledAt, emailOutboxId }) => {
+        const enqueueResult = await sendEmailToMany({
           tenancy: auth.tenancy,
           recipients: [action.recipient],
           tsxSource: action.tsxSource,
@@ -103,7 +104,9 @@ export const POST = createSmartRouteHandler({
           createdWith: action.createdWith,
           overrideSubject: action.subject,
           overrideNotificationCategoryId: action.notificationCategoryId,
+          emailOutboxIds: [emailOutboxId],
         });
+        return getSingleAutomationEmailSendResult(enqueueResult);
       },
     });
 

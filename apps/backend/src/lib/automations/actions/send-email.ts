@@ -1,5 +1,5 @@
 import { AutomationActionAdapter, AutomationActionPlan, AutomationSourceDecision } from "../rule-evaluator";
-import { AutomationRuleTenancy, PaymentsItemQuotaAutomationRule, sendEmailActionType } from "../rules";
+import { AutomationRuleTenancy, NonRetryableAutomationRuleError, PaymentsItemQuotaAutomationRule, sendEmailActionType } from "../rules";
 
 export type SendEmailNotificationCategory = {
   id: string,
@@ -35,15 +35,15 @@ export async function buildSendEmailActionPlan(options: {
 }): Promise<AutomationActionPlan> {
   const template = options.tenancy.config.emails?.templates?.[options.rule.action.templateId];
   if (template === undefined) {
-    throw new Error(`Automation rule "${options.ruleId}" references email template "${options.rule.action.templateId}", but that template does not exist.`);
+    throw new NonRetryableAutomationRuleError("missing-template", `Automation rule "${options.ruleId}" references email template "${options.rule.action.templateId}", but that template does not exist.`);
   }
   if (template.tsxSource === undefined) {
-    throw new Error(`Automation rule "${options.ruleId}" references email template "${options.rule.action.templateId}", but that template is missing tsxSource.`);
+    throw new NonRetryableAutomationRuleError("invalid-template", `Automation rule "${options.ruleId}" references email template "${options.rule.action.templateId}", but that template is missing tsxSource.`);
   }
 
   const notificationCategoryName: string = options.rule.action.notificationCategoryName ?? "Marketing";
   if (notificationCategoryName !== "Marketing") {
-    throw new Error(`Automation rule "${options.ruleId}" has unsupported action.notificationCategoryName "${notificationCategoryName}". V1 supports only "Marketing".`);
+    throw new NonRetryableAutomationRuleError("unsupported-rule", `Automation rule "${options.ruleId}" has unsupported action.notificationCategoryName "${notificationCategoryName}". V1 supports only "Marketing".`);
   }
   const notificationCategoryReader = options.getNotificationCategoryByName ?? getNotificationCategoryByNameFromExistingEmailSystem;
   const notificationCategory = await notificationCategoryReader(notificationCategoryName);
@@ -53,7 +53,7 @@ export async function buildSendEmailActionPlan(options: {
 
   const projectDisplayName = options.tenancy.project?.display_name;
   if (projectDisplayName === undefined) {
-    throw new Error(`Automation rule "${options.ruleId}" cannot build email variables because tenancy.project.display_name is missing.`);
+    throw new NonRetryableAutomationRuleError("invalid-rule-context", `Automation rule "${options.ruleId}" cannot build email variables because tenancy.project.display_name is missing.`);
   }
 
   return {

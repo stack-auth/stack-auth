@@ -1175,7 +1175,8 @@ model AutomationRuleExecutionState {
   signalKey           String
   lastTriggeredAt     DateTime
   lastActionAt        DateTime?
-  lastEmailOutboxId   String?  @db.Uuid
+  // Reserved before enqueue so an ambiguous retry addresses the same EmailOutbox row.
+  emailOutboxId       String   @db.Uuid
   lastSourceSnapshot  Json
 
   createdAt DateTime @default(now())
