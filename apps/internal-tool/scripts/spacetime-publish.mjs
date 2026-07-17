@@ -43,6 +43,7 @@ if (target === "prod" && !process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS && !p
   console.error("Error: HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER (or HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS) must be set for prod publish — the deployed internal tool's public URL, which serves the OIDC discovery document SpacetimeDB validates tokens against.");
   process.exit(1);
 }
+const LOCAL_PUBLISH_TIMEOUT_MS = 60_000;
 
 let exitCode = 1;
 try {
@@ -50,7 +51,14 @@ try {
   if (inject.status !== 0) {
     exitCode = inject.status ?? 1;
   } else {
-    const publish = spawnSync("spacetime", args, { stdio: "inherit" });
+    const publish = spawnSync("spacetime", args, {
+      stdio: "inherit",
+      ...(target === "local" ? { timeout: LOCAL_PUBLISH_TIMEOUT_MS } : {}),
+    });
+    if (publish.error?.code === "ETIMEDOUT") {
+      console.error(`[spacetime-publish] 'spacetime publish' did not finish within ${LOCAL_PUBLISH_TIMEOUT_MS / 1000}s and was killed. The SpacetimeDB container may be unresponsive — try 'pnpm restart-deps'.`);
+    }
+    // On timeout (or any kill-by-signal) status is null, which maps to 1 here.
     exitCode = publish.status ?? 1;
   }
 } finally {
