@@ -43,14 +43,16 @@ To use analytics in your project:
 ## Quick Start
 
 1. Enable Analytics in your Hexclave dashboard (**Apps -> Analytics**)
-2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider`
+2. Initialize Hexclave on your frontend with `HexclaveClientApp`/`HexclaveProvider` and a persistent `tokenStore` (e.g. `"cookie"`, or `"nextjs-cookie"` in Next.js)
 3. Sign in with a real user session
 4. Open the app and navigate/click around
 5. Check **Analytics -> Tables** to confirm events are arriving
 
+SDK analytics capture and session replay recording are **on by default** once the Analytics app is enabled — you do not need to set `analytics.enabled` or `analytics.replays.enabled` unless you want to opt out (pass `analytics: { enabled: false }` or `analytics: { replays: { enabled: false } }`).
+
 After setup, Hexclave automatically captures client-side `$page-view` and `$click` events.
 
-Session replay recording is also on by default once Analytics is enabled. See [Replays & Clickmaps](./replays-and-clickmaps) to tune privacy or opt out.
+See [Replays & Clickmaps](./replays-and-clickmaps) to tune replay privacy or opt out.
 
 ## Tables
 
