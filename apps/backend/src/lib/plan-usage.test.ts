@@ -191,8 +191,10 @@ describe("billing period selection", () => {
 });
 
 describe("resolveInEffectPlanSubscription", () => {
-  const futureMillis = Date.now() + 30 * 86400000;
-  const pastMillis = Date.now() - 86400000;
+  // Fully deterministic now that the resolver takes the clock as a parameter
+  const nowMillis = 1_800_000_000_000;
+  const futureMillis = nowMillis + 30 * 86400000;
+  const pastMillis = nowMillis - 86400000;
 
   it("keeps resolving a canceled-at-period-end plan sub until its endedAt passes", () => {
     const windingDownTeam: SubscriptionRow = {
@@ -209,7 +211,7 @@ describe("resolveInEffectPlanSubscription", () => {
       id: "sub_free",
       productId: "free",
     };
-    expect(resolveInEffectPlanSubscription({ sub_team: windingDownTeam, sub_free: activeFree })?.id).toBe("sub_team");
+    expect(resolveInEffectPlanSubscription({ sub_team: windingDownTeam, sub_free: activeFree }, nowMillis)?.id).toBe("sub_team");
   });
 
   it("falls back to the free plan sub once the canceled sub has ended", () => {
@@ -227,6 +229,6 @@ describe("resolveInEffectPlanSubscription", () => {
       id: "sub_free",
       productId: "free",
     };
-    expect(resolveInEffectPlanSubscription({ sub_team: endedTeam, sub_free: activeFree })?.id).toBe("sub_free");
+    expect(resolveInEffectPlanSubscription({ sub_team: endedTeam, sub_free: activeFree }, nowMillis)?.id).toBe("sub_free");
   });
 });

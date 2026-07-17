@@ -4,7 +4,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriodEnd } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
@@ -147,7 +147,15 @@ export const DELETE = createSmartRouteHandler({
         // list reflects the wind-down before the webhook sync arrives; the
         // Stripe sub stays `active` with cancel_at_period_end until Stripe
         // ends it at the period boundary.
-        await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
+        const updated = await stripeClient.subscriptions.update(subscription.stripeSubscriptionId, { cancel_at_period_end: true });
+        // Take the boundary from Stripe's response, not the bulldozer
+        // snapshot read at request start — around a renewal whose webhook
+        // hasn't synced yet, the snapshot's period end is the previous
+        // (possibly already-past) one. The snapshot fallback only covers
+        // item-less mocked responses; the webhook sync reconciles endedAt
+        // either way.
+        const endedAt = getStripeSubscriptionPeriodEnd(updated, { tenancyId: auth.tenancy.id })
+          ?? new Date(subscription.currentPeriodEndMillis);
         updatedSub = await prisma.subscription.update({
           where: {
             tenancyId_id: {
@@ -158,7 +166,7 @@ export const DELETE = createSmartRouteHandler({
           data: {
             cancelAtPeriodEnd: true,
             canceledAt: new Date(),
-            endedAt: new Date(subscription.currentPeriodEndMillis),
+            endedAt,
           },
         });
       } else {

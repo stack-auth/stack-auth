@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, isAddOnProduct, isSubscriptionCancelable, isSubscriptionInEffect, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isAddOnProduct, isSubscriptionCancelable, isSubscriptionInEffect, productToInlineProduct, subscriptionDisplayRank } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import type { SubscriptionRow } from "@/lib/payments/schema/types";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -72,15 +72,16 @@ export const GET = createSmartRouteHandler({
     // active): a canceled-at-period-end sub still backs its owned product
     // and must not fall through to the one-time-purchase branch below.
     // When several in-effect subs share a productId (e.g. one quantity of a
-    // stackable product was canceled by subscription_id), prefer an active
-    // one so the winding-down sub can't shadow it and hide the cancel button.
+    // stackable product was canceled by subscription_id), prefer the highest
+    // subscriptionDisplayRank (cancelable > active > in-effect) so a
+    // winding-down sub can't shadow one the customer can still act on.
     const nowMillis = Date.now();
     const inEffectSubByProductId = new Map<string, SubscriptionRow>();
     for (const s of Object.values(subMap)) {
       if (!isSubscriptionInEffect(s, nowMillis)) continue;
       const key = s.productId ?? "__null__";
       const existing = inEffectSubByProductId.get(key);
-      if (existing == null || (!isActiveSubscription(existing) && isActiveSubscription(s))) {
+      if (existing == null || subscriptionDisplayRank(s) > subscriptionDisplayRank(existing)) {
         inEffectSubByProductId.set(key, s);
       }
     }

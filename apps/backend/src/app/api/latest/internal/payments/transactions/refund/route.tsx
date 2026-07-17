@@ -7,7 +7,7 @@ import { REFUND_TXN_PREFIX } from "@/lib/payments/refund-txn-id";
 import { resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { ONE_TIME_PURCHASE_PRODUCT_GRANT_ENTRY_INDEX, SUBSCRIPTION_START_PRODUCT_GRANT_ENTRY_INDEX } from "@/lib/payments/transaction-entry-indexes";
 import type { ManualTransactionRow, TransactionEntryData } from "@/lib/payments/schema/types";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStripeForAccount, getStripeSubscriptionPeriodEnd } from "@/lib/stripe";
 import type { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -686,6 +686,7 @@ async function handleSubscriptionRefund(options: {
   } else if (endAtPeriodEnd) {
     // End at period end. Items follow natural lifecycle when sub-end fires
     // at period boundary.
+    let stripePeriodEnd: Date | null = null;
     if (!isTestMode && subscription.stripeSubscriptionId) {
       const stripe = await getStripeForAccount({ tenancy });
       // Idempotent guard, mirroring the endNow branch. The end-at-period-end
@@ -697,9 +698,13 @@ async function handleSubscriptionRefund(options: {
       // `bulldozerWriteManualTransaction` commits the ledger row, leaving the
       // customer refunded with no record.
       try {
-        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        const updated = await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
           cancel_at_period_end: true,
         });
+        // Same as the cancel route: Stripe's response is the authority on
+        // the period boundary; the local row can be stale around a renewal
+        // whose webhook hasn't synced yet.
+        stripePeriodEnd = getStripeSubscriptionPeriodEnd(updated, { tenancyId: tenancy.id });
       } catch (e: unknown) {
         if (!isStripeSubscriptionAlreadyTerminalError(e)) {
           throw e;
@@ -711,7 +716,7 @@ async function handleSubscriptionRefund(options: {
       data: {
         cancelAtPeriodEnd: true,
         canceledAt: subscription.canceledAt ?? now,
-        endedAt: subscription.endedAt ?? subscription.currentPeriodEnd,
+        endedAt: subscription.endedAt ?? stripePeriodEnd ?? subscription.currentPeriodEnd,
       },
     });
   }

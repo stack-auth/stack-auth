@@ -315,8 +315,10 @@ export const POST = createSmartRouteHandler({
           currentPeriodStart: sanitizedUpdateDates.start,
           currentPeriodEnd: sanitizedUpdateDates.end,
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
-          // Clear the wind-down marks the cancel route wrote eagerly —
-          // without this the reactivated sub still ends at the old boundary.
+          // Clear the wind-down marks the cancel route wrote eagerly. The
+          // webhook sync now reconciles these from Stripe's state anyway;
+          // the manual clear only covers the pre-webhook window so the
+          // products list doesn't show "Ends on" right after a switch.
           canceledAt: null,
           endedAt: null,
         },

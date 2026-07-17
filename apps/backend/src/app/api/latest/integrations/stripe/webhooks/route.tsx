@@ -3,7 +3,7 @@ import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-wri
 import { claimStripeEvent, markStripeEventFailed, markStripeEventProcessed } from "@/lib/stripe-webhook-events";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { listPermissions } from "@/lib/permissions";
-import { getHexclaveStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
+import { getHexclaveStripe, getStripeForAccount, reactivateSubscriptionIfRepurchasePaid, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
@@ -340,6 +340,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (event.type.startsWith("invoice.")) {
       const invoice = event.data.object as Stripe.Invoice;
       await upsertStripeInvoice(stripe, accountId, invoice);
+    }
+
+    if (event.type === "invoice.paid") {
+      // A paid invoice issued after a cancel means the customer paid to keep
+      // the sub (purchase-session re-price) — clear the pending cancel.
+      const invoice = event.data.object as Stripe.Invoice;
+      await reactivateSubscriptionIfRepurchasePaid(stripe, accountId, invoice);
     }
 
     if (event.type === "invoice.payment_succeeded") {

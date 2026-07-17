@@ -137,6 +137,18 @@ export function isSubscriptionCancelable(subscription: { status: string, cancelA
 }
 
 /**
+ * Rank for picking the representative subscription when several in-effect
+ * subs share a productId (stackable products): cancelable > merely-active >
+ * merely-in-effect. Cancelable > active matters for Stripe subs — a
+ * pending-cancel Stripe sub stays `active` (with cancelAtPeriodEnd), so an
+ * active-only preference would let it shadow a cancelable sibling and report
+ * is_cancelable: false while a DELETE would in fact succeed.
+ */
+export function subscriptionDisplayRank(subscription: { status: string, cancelAtPeriodEnd: boolean }): number {
+  return isSubscriptionCancelable(subscription) ? 2 : isActiveSubscription(subscription) ? 1 : 0;
+}
+
+/**
  * The subscription still confers its product/items, regardless of whether it
  * will renew. Deliberately status-agnostic and `endedAt`-based, mirroring
  * Bulldozer's grant timefold (grants run from row insert until

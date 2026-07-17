@@ -131,6 +131,14 @@ export const POST = createSmartRouteHandler({
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.confirmation_secret'],
+            // Note: we deliberately do NOT clear cancel_at_period_end here.
+            // This update runs at session creation, before the customer has
+            // paid (default_incomplete leaves the invoice open, and unlike
+            // the switch route's error_if_incomplete there is no rollback on
+            // payment failure) — clearing it now would reactivate an
+            // explicitly-canceled sub on a declined card. The webhook clears
+            // the flag on invoice.paid, once the re-purchase has actually
+            // been paid for.
             items: [{
               id: existingItem.id,
               price_data: {

@@ -1,7 +1,7 @@
 import { KnownErrors } from '@hexclave/shared';
 import { generateUuid } from '@hexclave/shared/dist/utils/uuids';
 import { describe, expect, it } from 'vitest';
-import { isSubscriptionCancelable, isSubscriptionInEffect, validatePurchaseSession } from './payments';
+import { isSubscriptionCancelable, isSubscriptionInEffect, subscriptionDisplayRank, validatePurchaseSession } from './payments';
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { globalPrismaClient } from "@/prisma-client";
 
@@ -290,6 +290,19 @@ describe('isSubscriptionCancelable', () => {
     expect(isSubscriptionCancelable({ status: 'active', cancelAtPeriodEnd: true })).toBe(false);
     expect(isSubscriptionCancelable({ status: 'canceled', cancelAtPeriodEnd: true })).toBe(false);
     expect(isSubscriptionCancelable({ status: 'past_due', cancelAtPeriodEnd: false })).toBe(false);
+  });
+});
+
+describe('subscriptionDisplayRank', () => {
+  it('ranks cancelable above pending-cancel Stripe subs above wound-down subs', () => {
+    const cancelable = { status: 'active', cancelAtPeriodEnd: false };
+    // A pending-cancel Stripe sub stays `active` — this is the tier that an
+    // active-only preference gets wrong (it would tie with the cancelable
+    // sibling and shadow it depending on iteration order).
+    const stripePendingCancel = { status: 'active', cancelAtPeriodEnd: true };
+    const localWindingDown = { status: 'canceled', cancelAtPeriodEnd: true };
+    expect(subscriptionDisplayRank(cancelable)).toBeGreaterThan(subscriptionDisplayRank(stripePendingCancel));
+    expect(subscriptionDisplayRank(stripePendingCancel)).toBeGreaterThan(subscriptionDisplayRank(localWindingDown));
   });
 });
 
