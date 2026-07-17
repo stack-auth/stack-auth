@@ -124,7 +124,8 @@
                 "pages": [
                   "guides/apps/emails/overview",
                   "guides/apps/emails/guide",
-                  "guides/apps/emails/templates-and-themes"
+                  "guides/apps/emails/templates-and-themes",
+                  "guides/apps/emails/drafts"
                 ]
               },
               {
