@@ -4,7 +4,7 @@ description: "Detect bots, free-trial abuse, and other fraudulent sign-ups."
 sidebarTitle: "Fraud Protection"
 ---
 
-Fraud Protection is a sub-app of [Authentication](./overview). It isn't a separate page or a separate toggle - it's the name we give to the **risk signals** that the Authentication app already attaches to every sign-up attempt (bot score, free-trial abuse score, and geo-IP country), and the conditions you can write against them in [Sign-up Rules](./sign-up-rules).
+Fraud Protection is a sub-app of [Authentication](./overview). It isn't a separate page or a separate toggle - it's the name we give to the **risk signals** that the Authentication app already attaches to every sign-up attempt (bot score, free-trial abuse score, and country), and the conditions you can write against them in [Sign-up Rules](./sign-up-rules).
 
 In the dashboard, Fraud Protection appears as its own tile (grouped under the Authentication category) with a **Go to Authentication** button that takes you straight to **Authentication → Sign-up Rules**. There's nothing to configure on a separate screen - everything happens in the rule builder.
 
@@ -18,9 +18,9 @@ Every sign-up attempt is scored with the following fields. They're always availa
 
 | Field | Type | Operators | Description |
 |---|---|---|---|
-| `countryCode` | string (ISO-3166-1 alpha-2) | `equals`, `not_equals`, `in_list` | Geo-IP country of the request (e.g. `"US"`, `"DE"`, `"NG"`). Empty if it can't be resolved. |
-| `riskScores.bot` | number (0-100) | `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal` | Confidence that the sign-up is automated. Higher = more likely a bot. |
-| `riskScores.free_trial_abuse` | number (0-100) | same as `riskScores.bot` | Confidence that the user is attempting to abuse a free-trial / new-account incentive. |
+| `countryCode` | string (ISO-3166-1 alpha-2) | `equals`, `not_equals`, `in_list` | Country associated with the sign-up attempt (e.g. `"US"`, `"DE"`, `"NG"`). Empty if unavailable. |
+| `riskScores.bot` | number (0-100) | `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal` | Bot risk score. Higher means more likely automated. |
+| `riskScores.free_trial_abuse` | number (0-100) | same as `riskScores.bot` | Free-trial abuse risk score. Higher means more likely abuse. |
 
 These fields evaluate together with the rest of the sign-up context, so a single rule can combine them freely.
 
