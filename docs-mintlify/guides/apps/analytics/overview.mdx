@@ -22,6 +22,8 @@ Hexclave records analytics events and replay chunks, then exposes them through t
 
 User activity in your app flows into Hexclave event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
 
+Analytics isn't only client events. Hexclave also exposes product data from the rest of your project — users, contact channels, teams, permissions, email outbox, and more — in the same read-only ClickHouse dataset, so you can join product state with behavior in one place. See [Queries & Tables](./queries-and-tables) for the full table list.
+
 ### What Gets Tracked
 
 Hexclave collects both client-side and server-side analytics events:
