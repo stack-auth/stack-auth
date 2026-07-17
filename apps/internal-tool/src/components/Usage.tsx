@@ -15,6 +15,7 @@ type PageSize = typeof PAGE_SIZES[number];
 type Props = {
   rows: AiQueryLogRow[],
   connectionState: "connecting" | "connected" | "error",
+  connectionErrorMessage: string | null,
   onSelect: (row: AiQueryLogRow) => void,
   selectedId?: bigint,
 };
@@ -32,7 +33,7 @@ const ALL_SYSTEM_PROMPTS = [
   "rewrite-template-source",
 ];
 
-export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
+export function Usage({ rows, connectionState, connectionErrorMessage, onSelect, selectedId }: Props) {
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [systemPromptFilter, setSystemPromptFilter] = useState<Set<string>>(new Set());
   const [modelFilter, setModelFilter] = useState<Set<string>>(new Set());
@@ -321,6 +322,19 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
 
   return (
     <div className="space-y-4">
+      {connectionState === "error" && (
+        <div className="text-red-600 text-sm rounded-lg border border-red-200 bg-red-50/50 p-4">
+          <p>
+            Failed to connect to SpacetimeDB. Check the browser session response below, then verify the{" "}
+            <code>hexclave-ai-analytics</code> module is published and the local SpacetimeDB container is reachable.
+          </p>
+          {connectionErrorMessage != null && connectionErrorMessage !== "" && (
+            <pre className="mt-3 whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 font-mono text-xs text-red-800">
+              {connectionErrorMessage}
+            </pre>
+          )}
+        </div>
+      )}
       {/* Filter bar */}
       <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2 sticky top-0 z-10">
         <div className="flex items-center gap-2 flex-wrap">

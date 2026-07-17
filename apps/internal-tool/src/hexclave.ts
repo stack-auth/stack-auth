@@ -1,9 +1,5 @@
 import { HexclaveClientApp } from "@hexclave/next";
-import { envOrDevDefault } from "./lib/env";
-
-function publicEnv(hexclaveName: string, legacyStackName: string): string | undefined {
-  return process.env[hexclaveName] ?? process.env[legacyStackName];
-}
+import { envOrDevDefault, publicEnv } from "./lib/env";
 
 const portPrefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
 

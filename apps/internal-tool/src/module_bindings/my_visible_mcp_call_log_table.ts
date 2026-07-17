@@ -42,4 +42,5 @@ export default __t.row({
   humanCorrectedAnswer: __t.option(__t.string()).name("human_corrected_answer"),
   publishedToQa: __t.bool().name("published_to_qa"),
   publishedAt: __t.option(__t.timestamp()).name("published_at"),
+  qaReviewRequestedAt: __t.timestamp().name("qa_review_requested_at"),
 });

@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { McpCallLogRow, QaEntriesRow } from "../types";
-import { toDate } from "../utils";
+import { QA_REVIEW_FAILED_THRESHOLD_MS, qaReviewStartedAt, toDate } from "../utils";
 import { ConversationReplay } from "./ConversationReplay";
 import { markdownComponents } from "./markdown-components";
 
@@ -259,11 +259,6 @@ function InnerToolCall({ call }: { call: { toolName: string; toolCallId: string;
 
 type QaFlag = { type: string; severity: string; explanation: string };
 
-// Rows older than this without a score or error are treated as failed-to-review:
-// the QA pass never wrote a result, either because it was skipped silently
-// (e.g., missing OpenRouter key) or because the background task died.
-const QA_REVIEW_FAILED_THRESHOLD_MS = 2 * 60 * 1000;
-
 function RetryReviewButton({ row, onRetryReview, label = "Retry review", tone = "indigo" }: {
   row: McpCallLogRow;
   onRetryReview: (correlationId: string, payload: { question: string; reason: string; response: string }) => Promise<void> | void;
@@ -322,8 +317,8 @@ function QaReviewCard({ row, onRetryReview }: {
   }
 
   if (row.qaOverallScore == null) {
-    const reviewStartedAt = row.qaReviewedAt ?? row.createdAt;
-    const ageMs = Date.now() - toDate(reviewStartedAt).getTime();
+    const reviewStartedAt = qaReviewStartedAt(row);
+    const ageMs = Date.now() - reviewStartedAt.getTime();
     const reviewFailed = ageMs > QA_REVIEW_FAILED_THRESHOLD_MS;
 
     if (reviewFailed) {
@@ -337,7 +332,7 @@ function QaReviewCard({ row, onRetryReview }: {
             {onRetryReview && <RetryReviewButton row={row} onRetryReview={onRetryReview} />}
           </div>
           <p className="text-xs text-amber-700">
-            No review completed in {formatDistanceToNow(toDate(reviewStartedAt))}. The reviewer was likely skipped (missing OpenRouter key) or the background task died — click retry to re-run.
+            No review completed in {formatDistanceToNow(reviewStartedAt)}. The reviewer was likely skipped (missing OpenRouter key) or the background task died — click retry to re-run.
           </p>
         </div>
       );

@@ -146,6 +146,14 @@ const mcpCallLog = table(
     humanCorrectedAnswer: t.string().optional(),
     publishedToQa: t.bool().index('btree'),
     publishedAt: t.timestamp().optional(),
+    // When the pending QA review was requested: insert time initially,
+    // re-stamped by clear_mcp_qa_review on retry. Trailing + default-annotated
+    // because that's the only column shape SpacetimeDB can auto-migrate (no
+    // prod data wipe). Not optional: the SDK drops falsy default annotations
+    // (`if (meta.defaultValue)` in table.ts), so an option column can't
+    // default to none — readers treat the epoch-0 sentinel (pre-migration
+    // rows) as unknown via max(createdAt, qaReviewRequestedAt).
+    qaReviewRequestedAt: t.timestamp().default(Timestamp.UNIX_EPOCH),
   }
 );
 
@@ -427,6 +435,7 @@ export const log_mcp_call = spacetimedb.reducer(
       modelId: args.modelId,
       errorMessage: args.errorMessage,
       publishedToQa: false,
+      qaReviewRequestedAt: ctx.timestamp,
     } as Parameters<typeof ctx.db.mcpCallLog.insert>[0]);
   }
 );
@@ -479,6 +488,7 @@ export const clear_mcp_qa_review = spacetimedb.reducer(
     ctx.db.mcpCallLog.id.update({
       ...row,
       qaReviewedAt: undefined,
+      qaReviewRequestedAt: ctx.timestamp,
       qaNeedsHumanReview: undefined,
       qaAnswerCorrect: undefined,
       qaAnswerRelevant: undefined,

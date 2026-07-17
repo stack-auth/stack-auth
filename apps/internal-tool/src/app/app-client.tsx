@@ -10,7 +10,6 @@ import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
 import { type GetSpacetimeToken, useAiQueryLogs, useMcpCallLogs, useQaEntries } from "../hooks/useSpacetimeDB";
 import { retryReview } from "../lib/mcp-review-api";
-import type { DbConnection } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "usage";
@@ -26,13 +25,6 @@ function readInitialTab(): Tab {
     return saved as Tab;
   }
   return "calls";
-}
-
-function requireConn(conn: DbConnection | null): DbConnection {
-  if (conn == null) {
-    throw new Error("Not connected to SpacetimeDB yet. Try again in a moment.");
-  }
-  return conn;
 }
 
 export default function App() {
@@ -65,13 +57,17 @@ export default function App() {
     return token;
   }, []);
 
-  const { rows, connectionState, connectionErrorMessage, conn: mcpConn } = useMcpCallLogs(getSpacetimeToken);
-  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(getSpacetimeToken);
+  const { rows, connectionState, connectionErrorMessage, callReducer: callMcpReducer } = useMcpCallLogs(getSpacetimeToken);
+  const {
+    rows: usageRows,
+    connectionState: usageConnectionState,
+    connectionErrorMessage: usageConnectionErrorMessage,
+  } = useAiQueryLogs(getSpacetimeToken);
   const {
     rows: qaRows,
     connectionState: qaConnectionState,
     connectionErrorMessage: qaConnectionErrorMessage,
-    conn: qaConn,
+    callReducer: callQaReducer,
   } = useQaEntries(getSpacetimeToken);
 
   const currentSelectedRow = selectedRow
@@ -142,12 +138,12 @@ export default function App() {
         <AddManualQa
           onClose={() => setShowAddQa(false)}
           onSave={async (question, answer, publish, requestId) => {
-            await requireConn(qaConn).reducers.addManualQa({
+            await callQaReducer(conn => conn.reducers.addManualQa({
               question,
               answer,
               publish,
               requestId,
-            });
+            }));
           }}
         />
       )}
@@ -173,18 +169,18 @@ export default function App() {
                   qaEntries={qaRows}
                   onClose={() => setSelectedRow(null)}
                   onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
-                    requireConn(mcpConn).reducers.upsertQaFromCallAndMarkReviewed({
+                    callMcpReducer(conn => conn.reducers.upsertQaFromCallAndMarkReviewed({
                       correlationId,
                       question: correctedQuestion,
                       answer: correctedAnswer,
                       publish,
-                    })
+                    }))
                   }
                   onSetReviewed={(correlationId, reviewed) =>
-                    requireConn(mcpConn).reducers.setHumanReviewed({
+                    callMcpReducer(conn => conn.reducers.setHumanReviewed({
                       correlationId,
                       reviewed,
-                    })
+                    }))
                   }
                   onRetryReview={(correlationId, payload) =>
                     retryReview({ correlationId, ...payload })
@@ -203,15 +199,15 @@ export default function App() {
                 connectionState={qaConnectionState}
                 connectionErrorMessage={qaConnectionErrorMessage}
                 onSave={(qaId, question, answer, publish) =>
-                  requireConn(qaConn).reducers.updateQaEntryWithPublish({
+                  callQaReducer(conn => conn.reducers.updateQaEntryWithPublish({
                     qaId,
                     question,
                     answer,
                     publish,
-                  })
+                  }))
                 }
                 onDelete={(qaId) =>
-                  requireConn(qaConn).reducers.deleteQaEntry({ qaId })
+                  callQaReducer(conn => conn.reducers.deleteQaEntry({ qaId }))
                 }
               />
             </div>
@@ -225,6 +221,7 @@ export default function App() {
                 <Usage
                   rows={usageRows}
                   connectionState={usageConnectionState}
+                  connectionErrorMessage={usageConnectionErrorMessage}
                   onSelect={setSelectedUsageRow}
                   selectedId={selectedUsageRow?.id}
                 />

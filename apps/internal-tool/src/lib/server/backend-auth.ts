@@ -4,10 +4,10 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import * as jose from "jose";
 import { envOrDevDefault } from "../env";
 
-// Authenticates the Stack Auth backend to this app's /api/backend/* ingest
+// Authenticates the Hexclave backend to this app's /api/backend/* ingest
 // routes with a short-lived JWT assertion — no shared secret. The backend
-// signs it with the Stack Auth project keys it inherently holds (derived from
-// STACK_SERVER_SECRET); we verify against the project's public JWKS endpoint.
+// signs it with the Hexclave project keys it inherently holds (derived from
+// HEXCLAVE_SERVER_SECRET); we verify against the project's public JWKS endpoint.
 // A stolen ordinary user access token cannot be replayed here: `sub` must be
 // the reserved `__internal_tool_backend__` (real users always get UUID
 // subjects) and the `token_use` claim must match.
@@ -25,7 +25,11 @@ function apiUrl(): string {
 }
 
 function projectId(): string {
-  return envOrDevDefault(process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, "internal", "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID");
+  return envOrDevDefault(
+    process.env.NEXT_PUBLIC_HEXCLAVE_PROJECT_ID,
+    "internal",
+    "NEXT_PUBLIC_HEXCLAVE_PROJECT_ID",
+  );
 }
 
 let cachedJwks: ReturnType<typeof jose.createRemoteJWKSet> | null = null;

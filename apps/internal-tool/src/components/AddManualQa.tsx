@@ -26,11 +26,11 @@ export function AddManualQa({ onClose, onSave }: {
     try {
       await onSave(question.trim(), answer.trim(), publish, requestId);
       pendingRequestIdRef.current = null;
+      setQuestion("");
+      setAnswer("");
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
-        setQuestion("");
-        setAnswer("");
         if (publish) {
           onClose();
         }

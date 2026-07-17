@@ -1,6 +1,7 @@
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState, useRef } from "react";
+import { createPendingCallRegistry } from "../lib/pending-call-registry";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
@@ -104,6 +105,10 @@ function useTableSubscription<Row extends { id: bigint }>(
   const [connectionErrorMessage, setConnectionErrorMessage] = useState<string | null>(null);
   const [conn, setConn] = useState<DbConnection | null>(null);
   const connRef = useRef<DbConnection | null>(null);
+  // One registry per hook instance, shared across connection generations:
+  // every teardown force-rejects whatever is still in flight on the old
+  // connection (see callReducer below for why the SDK can't do this itself).
+  const [pendingCalls] = useState(createPendingCallRegistry);
 
   useEffect(() => {
     if (requireAuth && !getToken) {
@@ -145,11 +150,10 @@ function useTableSubscription<Row extends { id: bigint }>(
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (cancelled) return;
-        // Proactive teardown + reconnect: fetches a fresh access token in
-        // connect(). Rows are kept until the new subscription applies, so the
-        // UI doesn't flicker.
         connRef.current?.disconnect();
         connRef.current = null;
+        setConn(null);
+        pendingCalls.rejectAll(new Error("SpacetimeDB connection was closed while the call was in flight. The change may or may not have been applied — check the list and retry if needed."));
         runAsynchronously(() => connect());
       }, TOKEN_RECONNECT_INTERVAL_MS);
     }
@@ -270,10 +274,18 @@ function useTableSubscription<Row extends { id: bigint }>(
         connRef.current = null;
       }
       setConn(null);
+      pendingCalls.rejectAll(new Error("SpacetimeDB connection was closed while the call was in flight. The change may or may not have been applied — check the list and retry if needed."));
     };
-  }, [binding, getToken, requireAuth]);
+  }, [binding, getToken, requireAuth, pendingCalls]);
 
-  return { rows, connectionState, connectionErrorMessage, conn };
+  const callReducer = async <T>(call: (conn: DbConnection) => Promise<T>): Promise<T> => {
+    if (conn == null) {
+      throw new Error("Not connected to SpacetimeDB yet. Try again in a moment.");
+    }
+    return await pendingCalls.track(call(conn));
+  };
+
+  return { rows, connectionState, connectionErrorMessage, callReducer };
 }
 
 const mcpBinding: TableBinding<McpCallLogRow> = {

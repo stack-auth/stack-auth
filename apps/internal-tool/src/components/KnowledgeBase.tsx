@@ -1,4 +1,5 @@
 import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { clsx } from "clsx";
@@ -110,14 +111,12 @@ export function KnowledgeBase({ rows, connectionState, connectionErrorMessage, o
               isEditing={editingId === row.id}
               onStartEdit={() => setEditingId(row.id)}
               onCancelEdit={() => setEditingId(null)}
-              onSave={(question, answer, publish) => {
-                Promise.resolve(onSave(row.id, question, answer, publish))
-                  .catch(err => captureError("knowledge-base-save", err));
-                setEditingId(null);
+              onSave={async (question, answer, publish) => {
+                await onSave(row.id, question, answer, publish);
+                setEditingId(prev => (prev === row.id ? null : prev));
               }}
-              onDelete={() => {
-                Promise.resolve(onDelete(row.id))
-                  .catch(err => captureError("knowledge-base-delete", err));
+              onDelete={async () => {
+                await onDelete(row.id);
               }}
             />
           ))}
@@ -161,22 +160,54 @@ function ConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfi
   );
 }
 
+type BusyAction = "save-draft" | "save-publish" | "publish" | "unpublish" | "delete";
+
+const BUSY_ACTION_LABELS: ReadonlyMap<BusyAction, string> = new Map([
+  ["save-draft", "save draft"],
+  ["save-publish", "save & publish"],
+  ["publish", "publish"],
+  ["unpublish", "unpublish"],
+  ["delete", "delete"],
+]);
+
 function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }: {
   row: QaEntriesRow;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSave: (question: string, answer: string, publish: boolean) => void;
-  onDelete: () => void;
+  onSave: (question: string, answer: string, publish: boolean) => Promise<void>;
+  onDelete: () => Promise<void>;
 }) {
   const isManual = row.sourceMcpCorrelationId == null;
 
   const [editQuestion, setEditQuestion] = useState(row.question);
   const [editAnswer, setEditAnswer] = useState(row.answer);
   const [pending, setPending] = useState<PendingAction>(null);
+  const [busy, setBusy] = useState<BusyAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const runAction = async (action: BusyAction, fn: () => Promise<void>) => {
+    if (busy != null) return;
+    setBusy(action);
+    setActionError(null);
+    try {
+      await fn();
+    } catch (err) {
+      captureError(`knowledge-base-${action}`, err);
+      const label = BUSY_ACTION_LABELS.get(action) ?? action;
+      setActionError(`Failed to ${label}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const cardBorder = row.published ? "border-green-200" : "border-amber-200";
   const cardBg = row.published ? "bg-green-50/30" : "bg-amber-50/30";
+
+  const errorBanner = actionError && (
+    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+      {actionError}
+    </div>
+  );
 
   if (isEditing) {
     return (
@@ -198,24 +229,28 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
             onChange={(e) => setEditAnswer(e.target.value)}
           />
         </div>
+        {errorBanner}
         <div className="flex items-center gap-2 justify-end">
           <button
             onClick={onCancelEdit}
-            className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+            disabled={busy != null}
+            className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 disabled:text-gray-300"
           >
             Cancel
           </button>
           <button
-            onClick={() => onSave(editQuestion, editAnswer, false)}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            onClick={() => runAsynchronously(runAction("save-draft", () => onSave(editQuestion, editAnswer, false)))}
+            disabled={busy != null}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 disabled:text-gray-400 disabled:bg-gray-50"
           >
-            Save Draft
+            {busy === "save-draft" ? "Saving…" : "Save Draft"}
           </button>
           <button
-            onClick={() => onSave(editQuestion, editAnswer, true)}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            onClick={() => runAsynchronously(runAction("save-publish", () => onSave(editQuestion, editAnswer, true)))}
+            disabled={busy != null}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-300"
           >
-            {row.published ? "Update & Publish" : "Save & Publish"}
+            {busy === "save-publish" ? "Saving…" : row.published ? "Update & Publish" : "Save & Publish"}
           </button>
         </div>
       </div>
@@ -251,36 +286,41 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
         <div className="flex items-center gap-1">
           <button
             onClick={() => setPending("edit")}
-            className="px-2 py-0.5 text-[10px] text-blue-600 hover:text-blue-800"
+            disabled={busy != null}
+            className="px-2 py-0.5 text-[10px] text-blue-600 hover:text-blue-800 disabled:text-gray-300"
           >
             Edit
           </button>
           {row.published ? (
             <button
               onClick={() => setPending("unpublish")}
-              className="px-2 py-0.5 text-[10px] text-amber-600 hover:text-amber-800"
+              disabled={busy != null}
+              className="px-2 py-0.5 text-[10px] text-amber-600 hover:text-amber-800 disabled:text-gray-300"
             >
-              Unpublish
+              {busy === "unpublish" ? "Unpublishing…" : "Unpublish"}
             </button>
           ) : (
             <button
               onClick={() => setPending("publish")}
-              className="px-2 py-0.5 text-[10px] text-green-600 hover:text-green-800"
+              disabled={busy != null}
+              className="px-2 py-0.5 text-[10px] text-green-600 hover:text-green-800 disabled:text-gray-300"
             >
-              Publish
+              {busy === "publish" ? "Publishing…" : "Publish"}
             </button>
           )}
           <button
             onClick={() => setPending("delete")}
-            className="px-2 py-0.5 text-[10px] text-red-500 hover:text-red-700"
+            disabled={busy != null}
+            className="px-2 py-0.5 text-[10px] text-red-500 hover:text-red-700 disabled:text-gray-300"
           >
-            Delete
+            {busy === "delete" ? "Deleting…" : "Delete"}
           </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="px-4 py-3 space-y-1">
+        {errorBanner}
         <p className="text-sm font-medium text-gray-900">{row.question}</p>
         <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap">{row.answer}</p>
       </div>
@@ -306,7 +346,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);
-            onSave(row.question, row.answer, true);
+            runAsynchronously(runAction("publish", () => onSave(row.question, row.answer, true)));
           }}
         />
       )}
@@ -319,7 +359,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);
-            onSave(row.question, row.answer, false);
+            runAsynchronously(runAction("unpublish", () => onSave(row.question, row.answer, false)));
           }}
         />
       )}
@@ -332,7 +372,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
           onCancel={() => setPending(null)}
           onConfirm={() => {
             setPending(null);
-            onDelete();
+            runAsynchronously(runAction("delete", () => onDelete()));
           }}
         />
       )}

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import type { McpCallLogRow } from "../types";
-import { toDate } from "../utils";
+import { QA_REVIEW_FAILED_THRESHOLD_MS, qaReviewStartedAt, toDate } from "../utils";
 import { reviewVisible } from "../lib/mcp-review-api";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -20,15 +20,9 @@ type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "ok" | "error";
 type QaFilter = "all" | "pending" | "review-failed" | "pass" | "warn" | "fail" | "error" | "needs-review" | "human-reviewed" | "not-reviewed";
 
-// Rows older than this without a score or error are treated as failed-to-review:
-// the QA pass never wrote a result, either because it was skipped silently
-// (e.g., missing OpenRouter key) or because the background task died.
-const QA_REVIEW_FAILED_THRESHOLD_MS = 2 * 60 * 1000;
-
 function isQaReviewFailed(row: McpCallLogRow): boolean {
   if (row.qaOverallScore != null || row.qaErrorMessage) return false;
-  const reviewStartedAt = row.qaReviewedAt ?? row.createdAt;
-  return Date.now() - toDate(reviewStartedAt).getTime() > QA_REVIEW_FAILED_THRESHOLD_MS;
+  return Date.now() - qaReviewStartedAt(row).getTime() > QA_REVIEW_FAILED_THRESHOLD_MS;
 }
 const PAGE_SIZES = [25, 50, 100, 500] as const;
 type PageSize = typeof PAGE_SIZES[number];

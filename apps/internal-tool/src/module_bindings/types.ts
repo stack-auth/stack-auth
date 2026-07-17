@@ -73,6 +73,7 @@ export const McpCallLog = __t.object("McpCallLog", {
   humanCorrectedAnswer: __t.option(__t.string()),
   publishedToQa: __t.bool(),
   publishedAt: __t.option(__t.timestamp()),
+  qaReviewRequestedAt: __t.timestamp(),
 });
 export type McpCallLog = __Infer<typeof McpCallLog>;
 
@@ -112,6 +113,12 @@ export const QaEntries = __t.object("QaEntries", {
   lastPublishedAt: __t.option(__t.timestamp()),
 });
 export type QaEntries = __Infer<typeof QaEntries>;
+
+export const SessionGcSchedule = __t.object("SessionGcSchedule", {
+  id: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type SessionGcSchedule = __Infer<typeof SessionGcSchedule>;
 
 export const Sessions = __t.object("Sessions", {
   identity: __t.identity(),
