@@ -371,50 +371,6 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
 }
 
-/**
- * A paid invoice issued AFTER a sub's cancellation can only be the
- * purchase-session re-price of a winding-down sub (pending-cancel subs
- * generate no renewal invoices), so paying it means "keep me subscribed":
- * clear cancel_at_period_end and re-sync. The created-after-cancel guard
- * also keeps a late-delivered invoice.paid for the original creation invoice
- * from undoing a cancel. Clearing at session creation instead would
- * reactivate on declined cards (default_incomplete has no rollback).
- */
-export async function reactivateSubscriptionIfRepurchasePaid(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
-  if (invoice.status !== "paid") {
-    return;
-  }
-  const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
-  const invoiceSubscriptionIds = invoiceLines
-    .map((line) => line.parent?.subscription_item_details?.subscription)
-    .filter((subscription): subscription is string => !!subscription);
-  if (invoiceSubscriptionIds.length !== 1) {
-    return;
-  }
-  const stripeSubscriptionId = invoiceSubscriptionIds[0];
-  const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
-  const prisma = await getPrismaClientForTenancy(tenancy);
-  const localSub = await prisma.subscription.findUnique({
-    where: {
-      tenancyId_stripeSubscriptionId: {
-        tenancyId: tenancy.id,
-        stripeSubscriptionId,
-      },
-    },
-    select: { cancelAtPeriodEnd: true, canceledAt: true },
-  });
-  if (localSub == null || !localSub.cancelAtPeriodEnd) {
-    return;
-  }
-  if (localSub.canceledAt == null || invoice.created * 1000 <= localSub.canceledAt.getTime()) {
-    return;
-  }
-  await stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: false });
-  if (typeof invoice.customer === "string") {
-    await syncStripeSubscriptions(stripe, stripeAccountId, invoice.customer);
-  }
-}
-
 export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
   const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
   const invoiceSubscriptionIds = invoiceLines

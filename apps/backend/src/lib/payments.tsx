@@ -425,7 +425,7 @@ export async function validatePurchaseSession(options: {
   quantity: number,
 }): Promise<{
   selectedPrice: SelectedPrice | undefined,
-  conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null }>,
+  conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null, status: SubscriptionStatus, cancelAtPeriodEnd: boolean }>,
 }> {
   const { prisma, tenancyId, customerType, customerId, product, productId, priceId, quantity } = options;
 
@@ -471,7 +471,7 @@ export async function validatePurchaseSession(options: {
   //     conflict.
   // TODO: swap this for bulldozer read when it's consistent
   // Read subs from Prisma (not the bulldozer view) — the view can lag, so a duplicate request would otherwise miss the just-granted sub.
-  let conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null }> = [];
+  let conflictingSubscriptions: Array<{ id: string, stripeSubscriptionId: string | null, status: SubscriptionStatus, cancelAtPeriodEnd: boolean }> = [];
   const productLineId = product.productLineId;
   const addOnBaseProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
   const isStackableSelfMatch = (pid: string) =>
@@ -495,7 +495,7 @@ export async function validatePurchaseSession(options: {
         { status: SubscriptionStatus.canceled, endedAt: { gt: new Date() } },
       ],
     },
-    select: { id: true, stripeSubscriptionId: true, productId: true, product: true },
+    select: { id: true, stripeSubscriptionId: true, productId: true, product: true, status: true, cancelAtPeriodEnd: true },
   });
   if (productId != null && product.stackable !== true) {
     const activeOtp = await prisma.oneTimePurchase.findFirst({
@@ -521,7 +521,7 @@ export async function validatePurchaseSession(options: {
         && !addOnBaseProductIds.includes(s.productId ?? "")
         && !isStackableSelfMatch(s.productId ?? ""),
       )
-      .map(s => ({ id: s.id, stripeSubscriptionId: s.stripeSubscriptionId }));
+      .map(s => ({ id: s.id, stripeSubscriptionId: s.stripeSubscriptionId, status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd }));
 
     // If ownedProducts shows a same-line holding but there's no active subscription
     // backing it, the customer owns via OTP — which can't be replaced by a switch.
