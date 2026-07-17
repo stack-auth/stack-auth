@@ -1123,6 +1123,13 @@ const organizationConfigDefaults = {
   }),
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
+import.meta.vitest?.test("organization defaults include the built-in Usage Email template", ({ expect }) => {
+  expect(organizationConfigDefaults.emails.templates["28a45509-eb75-440d-b657-0a8640c775df"]).toMatchObject({
+    displayName: "Usage Email",
+    themeId: undefined,
+  });
+});
+
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
   (
     & /* keys that are both in T and U, *and* the key's value in U is not a subtype of the key's value in T */ { [K in { [Ki in keyof T & keyof U]: U[Ki] extends T[Ki] ? never : Ki }[keyof T & keyof U]]: DeepOmitDefaults<T[K], U[K] & object> }

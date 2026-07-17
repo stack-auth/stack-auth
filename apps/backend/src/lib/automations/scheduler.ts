@@ -1,9 +1,10 @@
 import { createSendEmailActionAdapter } from "@/lib/automations/actions/send-email";
 import { createPrismaAutomationRuleExecutionStateStore } from "@/lib/automations/execution-state-store";
 import {
-  AutomationRunResult,
-  runAutomationRuleForRoute,
-} from "@/lib/automations/run-route";
+  createPrismaAutomationSchedulerStateStore,
+  type AutomationSchedulerCheckpoint,
+  type AutomationSchedulerLease,
+} from "@/lib/automations/scheduler-state";
 import {
   createPaymentsItemQuotaSourceAdapter,
   paymentsItemQuotaCustomerDataReaders,
@@ -13,88 +14,63 @@ import { sendEmailToMany } from "@/lib/emails";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { captureError, HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
-import { assertSupportedAutomationRule, AutomationRuleTenancy, getAutomationRule, listAutomationRules } from "./rules";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
+import { runAutomationRuleForRoute, type AutomationRunResult } from "./run-route";
+import { assertSupportedAutomationRule, type AutomationRuleTenancy, listAutomationRules } from "./rules";
 
 export const scheduledAutomationDiscoveryLimit = 500;
 export const scheduledAutomationRunPageLimit = 100;
-export const scheduledAutomationRunRoutePath = "/api/latest/internal/automations/scheduled-run";
-
-type AutomationScheduleTarget = {
-  tenancyId: string,
-  ruleId: string,
-};
-
-export type AutomationScheduleDiscoveryResult = {
-  scannedTenancyCount: number,
-  targets: AutomationScheduleTarget[],
-  nextCursor: string | null,
-};
-
-export type AutomationScheduledRunPayload = {
-  tenancyId: string,
-  ruleId: string,
-  cursor: string | null,
-  limit: number,
-  scheduledAtMillis: number,
-};
-
-export type AutomationScheduledRunResult =
-  | {
-    status: "skipped",
-    reason: "tenancy-not-found" | "rule-not-found" | "rule-disabled",
-  }
-  | {
-    status: "ran",
-    result: AutomationRunResult,
-    enqueuedContinuation: boolean,
-  };
+export const scheduledAutomationMaxPages = 10;
+export const scheduledAutomationDefaultPages = 5;
+export const scheduledAutomationWorkBudgetMs = 45_000;
 
 type AutomationDiscoveryPrisma = {
   tenancy: {
     findMany: (options: {
       where: {
-        id?: {
-          gt: string,
-        },
+        id?: { gt: string },
       },
-      orderBy: {
-        id: "asc",
-      },
+      orderBy: { id: "asc" },
       take: number,
-      select: {
-        id: true,
-      },
+      select: { id: true },
     }) => Promise<Array<{ id: string }>>,
   },
 };
 
-type AutomationQueuePrisma = {
-  outgoingRequest: {
-    createMany: (options: {
-      data: Array<{
-        qstashOptions: {
-          url: string,
-          body: AutomationScheduledRunPayload,
-          flowControl: {
-            key: string,
-            parallelism: number,
-          },
-        },
-        deduplicationKey: string,
-      }>,
-      skipDuplicates: true,
-    }) => Promise<{ count: number }>,
-  },
-};
-
-type ScheduledAutomationRunner = (options: {
-  tenancy: AutomationRuleTenancy,
+type ScheduledAutomationRunner<TTenancy extends AutomationRuleTenancy> = (options: {
+  tenancy: TTenancy,
   ruleId: string,
   cursor: string | null,
   limit: number,
   scheduledAt: Date,
   now: Date,
 }) => Promise<AutomationRunResult>;
+
+type AutomationSchedulerStateStore = {
+  acquire: () => Promise<AutomationSchedulerLease | null>,
+};
+
+type ScheduledAutomationOptions = {
+  prisma?: AutomationDiscoveryPrisma,
+  stateStore?: AutomationSchedulerStateStore,
+  now?: () => Date,
+  elapsedNow?: () => number,
+  pageLimit?: number,
+  maxPages?: number,
+  maxTenancies?: number,
+  workBudgetMs?: number,
+};
+
+export type ScheduledAutomationCronResult = {
+  status: "ran" | "lease-held",
+  tenanciesScanned: number,
+  rulesProcessed: number,
+  pagesProcessed: number,
+  evaluatedCount: number,
+  sentCount: number,
+  suppressedCount: number,
+  cycleCompleted: boolean,
+};
 
 export function normalizeScheduledAutomationDiscoveryLimit(limit: number | undefined) {
   if (limit === undefined) return scheduledAutomationDiscoveryLimit;
@@ -106,227 +82,260 @@ export function normalizeScheduledAutomationRunPageLimit(limit: number | undefin
   return Math.max(1, Math.min(Math.floor(limit), scheduledAutomationRunPageLimit));
 }
 
-export async function discoverEnabledScheduledAutomationRules(options: {
-  prisma?: AutomationDiscoveryPrisma,
-  getTenancyById?: (tenancyId: string) => Promise<AutomationRuleTenancy | null>,
-  limit?: number,
-  cursor?: string | null,
-} = {}): Promise<AutomationScheduleDiscoveryResult> {
-  const prisma = options.prisma ?? globalPrismaClient;
-  const limit = normalizeScheduledAutomationDiscoveryLimit(options.limit);
-  const tenancyRows = await prisma.tenancy.findMany({
-    where: {
-      ...(options.cursor == null ? {} : {
-        id: {
-          gt: options.cursor,
-        },
-      }),
-    },
-    orderBy: {
-      id: "asc",
-    },
-    take: limit,
-    select: {
-      id: true,
-    },
-  });
-  const getTenancyById = options.getTenancyById ?? getTenancy;
-  const targets: AutomationScheduleTarget[] = [];
+export function normalizeScheduledAutomationMaxPages(limit: number | undefined) {
+  if (limit === undefined) return scheduledAutomationDefaultPages;
+  return Math.max(1, Math.min(Math.floor(limit), scheduledAutomationMaxPages));
+}
 
-  for (const row of tenancyRows) {
-    const tenancy = await getTenancyById(row.id);
+export function normalizeScheduledAutomationWorkBudgetMs(value: number | undefined) {
+  if (value === undefined) return scheduledAutomationWorkBudgetMs;
+  return Math.max(1, Math.min(Math.floor(value), scheduledAutomationWorkBudgetMs));
+}
+
+export function runScheduledAutomations(
+  options?: ScheduledAutomationOptions & {
+    getTenancyById?: undefined,
+    runRule?: undefined,
+  },
+): Promise<ScheduledAutomationCronResult>;
+export function runScheduledAutomations<TTenancy extends AutomationRuleTenancy>(
+  options: ScheduledAutomationOptions & {
+    getTenancyById: (tenancyId: string) => Promise<TTenancy | null>,
+    runRule: ScheduledAutomationRunner<TTenancy>,
+  },
+): Promise<ScheduledAutomationCronResult>;
+export async function runScheduledAutomations(options: ScheduledAutomationOptions & {
+  getTenancyById?: (tenancyId: string) => Promise<AutomationRuleTenancy | null>,
+  runRule?: ScheduledAutomationRunner<AutomationRuleTenancy>,
+} = {}): Promise<ScheduledAutomationCronResult> {
+  if (options.getTenancyById === undefined && options.runRule === undefined) {
+    return await runScheduledAutomationsWithDependencies(options, {
+      getTenancyById: getTenancy,
+      runRule: runProductionScheduledAutomationRulePage,
+    });
+  }
+  if (options.getTenancyById === undefined || options.runRule === undefined) {
+    throw new Error("Automation scheduler test dependencies must provide both getTenancyById and runRule.");
+  }
+  return await runScheduledAutomationsWithDependencies(options, {
+    getTenancyById: options.getTenancyById,
+    runRule: options.runRule,
+  });
+}
+
+async function runScheduledAutomationsWithDependencies<TTenancy extends AutomationRuleTenancy>(
+  options: ScheduledAutomationOptions,
+  dependencies: {
+    getTenancyById: (tenancyId: string) => Promise<TTenancy | null>,
+    runRule: ScheduledAutomationRunner<TTenancy>,
+  },
+): Promise<ScheduledAutomationCronResult> {
+  const prisma = options.prisma ?? globalPrismaClient;
+  const stateStore = options.stateStore ?? createPrismaAutomationSchedulerStateStore({
+    prisma: globalPrismaClient,
+  });
+  const lease = await stateStore.acquire();
+  if (lease === null) {
+    return emptyCronResult("lease-held");
+  }
+
+  try {
+    const result = await runWithLease({
+      prisma,
+      lease,
+      getTenancyById: dependencies.getTenancyById,
+      runRule: dependencies.runRule,
+      now: options.now ?? (() => new Date()),
+      elapsedNow: options.elapsedNow ?? (() => performance.now()),
+      pageLimit: normalizeScheduledAutomationRunPageLimit(options.pageLimit),
+      maxPages: normalizeScheduledAutomationMaxPages(options.maxPages),
+      maxTenancies: normalizeScheduledAutomationDiscoveryLimit(options.maxTenancies),
+      workBudgetMs: normalizeScheduledAutomationWorkBudgetMs(options.workBudgetMs),
+    });
+    await lease.release();
+    return result;
+  } catch (error) {
+    try {
+      await lease.release();
+    } catch (releaseError) {
+      captureError("automation-scheduler-release-after-failure", new HexclaveAssertionError("Failed to release the automation scheduler lease after an execution failure.", {
+        cause: releaseError,
+      }));
+    }
+    throw error;
+  }
+}
+
+async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
+  prisma: AutomationDiscoveryPrisma,
+  lease: AutomationSchedulerLease,
+  getTenancyById: (tenancyId: string) => Promise<TTenancy | null>,
+  runRule: ScheduledAutomationRunner<TTenancy>,
+  now: () => Date,
+  elapsedNow: () => number,
+  pageLimit: number,
+  maxPages: number,
+  maxTenancies: number,
+  workBudgetMs: number,
+}): Promise<ScheduledAutomationCronResult> {
+  const startedAt = options.now();
+  const startedElapsedAt = options.elapsedNow();
+  const scheduledAt = startedAt;
+  let checkpoint = options.lease.checkpoint;
+  let tenanciesScanned = 0;
+  let rulesProcessed = 0;
+  let pagesProcessed = 0;
+  let evaluatedCount = 0;
+  let sentCount = 0;
+  let suppressedCount = 0;
+  let cycleCompleted = false;
+  let discoveredTenancyIds: string[] = [];
+
+  const saveCheckpoint = async (next: AutomationSchedulerCheckpoint) => {
+    await options.lease.saveCheckpoint(next);
+    checkpoint = next;
+  };
+
+  while (
+    pagesProcessed < options.maxPages
+    && tenanciesScanned < options.maxTenancies
+    && options.elapsedNow() - startedElapsedAt < options.workBudgetMs
+  ) {
+    if (checkpoint.activeTenancyId === null) {
+      if (discoveredTenancyIds.length === 0) {
+        const rows = await options.prisma.tenancy.findMany({
+          where: checkpoint.completedTenancyCursor === null ? {} : {
+            id: { gt: checkpoint.completedTenancyCursor },
+          },
+          orderBy: { id: "asc" },
+          take: Math.min(
+            scheduledAutomationDiscoveryLimit,
+            options.maxTenancies - tenanciesScanned,
+          ),
+          select: { id: true },
+        });
+        if (rows.length === 0) {
+          await saveCheckpoint(emptyCheckpoint());
+          cycleCompleted = true;
+          break;
+        }
+        discoveredTenancyIds = rows.map((row) => row.id);
+      }
+
+      const nextTenancyId = discoveredTenancyIds.shift();
+      if (nextTenancyId === undefined) {
+        throw new Error("Automation scheduler discovery returned no next tenancy unexpectedly.");
+      }
+      await saveCheckpoint({
+        ...checkpoint,
+        activeTenancyId: nextTenancyId,
+        completedRuleCursor: null,
+        activeRuleId: null,
+        nextSubjectCursor: null,
+      });
+      tenanciesScanned++;
+    }
+
+    const activeTenancyId = checkpoint.activeTenancyId;
+    if (activeTenancyId === null) {
+      throw new Error("Automation scheduler checkpoint lost its active tenancy unexpectedly.");
+    }
+    const tenancy = await options.getTenancyById(activeTenancyId);
     if (tenancy === null) {
+      await saveCheckpoint(completeActiveTenancy(checkpoint));
       continue;
     }
 
-    for (const { ruleId, rule } of listAutomationRules(tenancy)) {
-      if (!rule.enabled) {
+    const sortedRules = listAutomationRules(tenancy)
+      .sort((left, right) => stringCompare(left.ruleId, right.ruleId));
+    if (checkpoint.activeRuleId === null) {
+      const nextRule = sortedRules.find(({ ruleId }) => (
+        checkpoint.completedRuleCursor === null || stringCompare(ruleId, checkpoint.completedRuleCursor) > 0
+      ));
+      if (nextRule === undefined) {
+        await saveCheckpoint(completeActiveTenancy(checkpoint));
         continue;
       }
-      try {
-        assertSupportedAutomationRule(ruleId, rule);
-      } catch (error) {
-        captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${ruleId}" for tenancy "${tenancy.id}".`, {
-          cause: error,
-          tenancyId: tenancy.id,
-          ruleId,
-        }));
-        continue;
-      }
-      targets.push({
+      await saveCheckpoint({
+        ...checkpoint,
+        activeRuleId: nextRule.ruleId,
+        nextSubjectCursor: null,
+      });
+    }
+
+    const activeRuleId = checkpoint.activeRuleId;
+    if (activeRuleId === null) {
+      throw new Error("Automation scheduler checkpoint lost its active rule unexpectedly.");
+    }
+    const ruleEntry = sortedRules.find(({ ruleId }) => ruleId === activeRuleId);
+    if (ruleEntry === undefined) {
+      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      rulesProcessed++;
+      continue;
+    }
+    if (!ruleEntry.rule.enabled) {
+      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      rulesProcessed++;
+      continue;
+    }
+    try {
+      assertSupportedAutomationRule(activeRuleId, ruleEntry.rule);
+    } catch (error) {
+      captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${activeRuleId}" for tenancy "${tenancy.id}".`, {
+        cause: error,
         tenancyId: tenancy.id,
-        ruleId,
+        ruleId: activeRuleId,
+      }));
+      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      rulesProcessed++;
+      continue;
+    }
+
+    if (
+      pagesProcessed >= options.maxPages
+      || options.elapsedNow() - startedElapsedAt >= options.workBudgetMs
+    ) {
+      break;
+    }
+    await options.lease.renewIfNeeded();
+
+    const result = await options.runRule({
+      tenancy,
+      ruleId: activeRuleId,
+      cursor: checkpoint.nextSubjectCursor,
+      limit: options.pageLimit,
+      scheduledAt,
+      now: options.now(),
+    });
+    pagesProcessed++;
+    evaluatedCount += result.evaluatedCount;
+    sentCount += result.sentCount;
+    suppressedCount += result.suppressedCount;
+
+    if (result.nextCursor === null) {
+      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      rulesProcessed++;
+    } else {
+      await saveCheckpoint({
+        ...checkpoint,
+        nextSubjectCursor: result.nextCursor,
       });
     }
   }
 
   return {
-    scannedTenancyCount: tenancyRows.length,
-    targets,
-    nextCursor: tenancyRows.length === limit ? tenancyRows[tenancyRows.length - 1]?.id ?? null : null,
-  };
-}
-
-export async function enqueueScheduledAutomationRuns(options: {
-  prisma?: AutomationQueuePrisma,
-  targets: AutomationScheduleTarget[],
-  limit?: number,
-  cursor?: string | null,
-  scheduledAt: Date,
-}): Promise<{ enqueuedCount: number }> {
-  if (options.targets.length === 0) {
-    return { enqueuedCount: 0 };
-  }
-
-  const prisma = options.prisma ?? globalPrismaClient;
-  const limit = normalizeScheduledAutomationRunPageLimit(options.limit);
-  const cursor = options.cursor ?? null;
-  const createResult = await prisma.outgoingRequest.createMany({
-    data: options.targets.map((target) => ({
-      qstashOptions: {
-        url: scheduledAutomationRunRoutePath,
-        body: {
-          tenancyId: target.tenancyId,
-          ruleId: target.ruleId,
-          cursor,
-          limit,
-          scheduledAtMillis: options.scheduledAt.getTime(),
-        },
-        flowControl: {
-          key: getScheduledAutomationFlowControlKey(target.tenancyId),
-          parallelism: 1,
-        },
-      },
-      deduplicationKey: getScheduledAutomationDeduplicationKey({
-        ...target,
-        cursor,
-      }),
-    })),
-    skipDuplicates: true,
-  });
-
-  return {
-    enqueuedCount: createResult.count,
-  };
-}
-
-export async function enqueueScheduledAutomationContinuation(options: {
-  tenancyId: string,
-  ruleId: string,
-  cursor: string,
-  limit: number,
-  scheduledAt: Date,
-  prisma?: AutomationQueuePrisma,
-}): Promise<{ enqueuedCount: number }> {
-  return await enqueueScheduledAutomationRuns({
-    prisma: options.prisma,
-    targets: [{
-      tenancyId: options.tenancyId,
-      ruleId: options.ruleId,
-    }],
-    cursor: options.cursor,
-    limit: options.limit,
-    scheduledAt: options.scheduledAt,
-  });
-}
-
-export async function runScheduledAutomationRulePage(options: {
-  tenancyId: string,
-  ruleId: string,
-  cursor?: string | null,
-  limit?: number,
-  scheduledAt: Date,
-  now: Date,
-  getTenancyById?: (tenancyId: string) => Promise<AutomationRuleTenancy | null>,
-  runRule?: ScheduledAutomationRunner,
-  enqueueContinuation?: typeof enqueueScheduledAutomationContinuation,
-}): Promise<AutomationScheduledRunResult> {
-  const getTenancyById = options.getTenancyById ?? getTenancy;
-  const tenancy = await getTenancyById(options.tenancyId);
-  if (tenancy === null) {
-    return {
-      status: "skipped",
-      reason: "tenancy-not-found",
-    };
-  }
-
-  const rule = getAutomationRule(tenancy, options.ruleId);
-  if (rule === undefined) {
-    return {
-      status: "skipped",
-      reason: "rule-not-found",
-    };
-  }
-  if (!rule.enabled) {
-    return {
-      status: "skipped",
-      reason: "rule-disabled",
-    };
-  }
-  assertSupportedAutomationRule(options.ruleId, rule);
-
-  const limit = normalizeScheduledAutomationRunPageLimit(options.limit);
-  const result = options.runRule === undefined
-    ? await runProductionScheduledAutomationRulePage({
-      tenancyId: options.tenancyId,
-      ruleId: options.ruleId,
-      cursor: options.cursor ?? null,
-      limit,
-      scheduledAt: options.scheduledAt,
-      now: options.now,
-    })
-    : await options.runRule({
-      tenancy,
-      ruleId: options.ruleId,
-      cursor: options.cursor ?? null,
-      limit,
-      scheduledAt: options.scheduledAt,
-      now: options.now,
-    });
-
-  let enqueuedContinuation = false;
-  if (result.nextCursor !== null) {
-    const enqueueContinuation = options.enqueueContinuation ?? enqueueScheduledAutomationContinuation;
-    const enqueueResult = await enqueueContinuation({
-      tenancyId: options.tenancyId,
-      ruleId: options.ruleId,
-      cursor: result.nextCursor,
-      limit,
-      scheduledAt: options.scheduledAt,
-    });
-    enqueuedContinuation = enqueueResult.enqueuedCount > 0;
-  }
-
-  return {
     status: "ran",
-    result,
-    enqueuedContinuation,
+    tenanciesScanned,
+    rulesProcessed,
+    pagesProcessed,
+    evaluatedCount,
+    sentCount,
+    suppressedCount,
+    cycleCompleted,
   };
 }
 
 async function runProductionScheduledAutomationRulePage(options: {
-  tenancyId: string,
-  ruleId: string,
-  cursor: string | null,
-  limit: number,
-  scheduledAt: Date,
-  now: Date,
-}) {
-  const tenancy = await getTenancy(options.tenancyId);
-  if (tenancy === null) {
-    throw new Error(`Tenancy "${options.tenancyId}" disappeared between scheduled automation validation and execution.`);
-  }
-  return await runAutomationRuleForScheduledWorker({
-    tenancy,
-    ruleId: options.ruleId,
-    cursor: options.cursor,
-    limit: options.limit,
-    scheduledAt: options.scheduledAt,
-    now: options.now,
-  });
-}
-
-async function runAutomationRuleForScheduledWorker(options: {
   tenancy: Tenancy,
   ruleId: string,
   cursor: string | null,
@@ -334,7 +343,8 @@ async function runAutomationRuleForScheduledWorker(options: {
   scheduledAt: Date,
   now: Date,
 }): Promise<AutomationRunResult> {
-  const prisma = await getPrismaClientForTenancy(options.tenancy);
+  const tenancy = options.tenancy;
+  const prisma = await getPrismaClientForTenancy(tenancy);
   const sourceAdapter = createPaymentsItemQuotaSourceAdapter({
     prisma,
     projectUserReader: prismaPaymentsItemQuotaProjectUserReader,
@@ -342,7 +352,7 @@ async function runAutomationRuleForScheduledWorker(options: {
   });
 
   return await runAutomationRuleForRoute({
-    tenancy: options.tenancy,
+    tenancy,
     ruleId: options.ruleId,
     limit: options.limit,
     cursor: options.cursor,
@@ -353,7 +363,7 @@ async function runAutomationRuleForScheduledWorker(options: {
     stateStore: createPrismaAutomationRuleExecutionStateStore(prisma),
     emailSender: async ({ action, scheduledAt }) => {
       await sendEmailToMany({
-        tenancy: options.tenancy,
+        tenancy,
         recipients: [action.recipient],
         tsxSource: action.tsxSource,
         extraVariables: action.variables,
@@ -369,14 +379,47 @@ async function runAutomationRuleForScheduledWorker(options: {
   });
 }
 
-function getScheduledAutomationFlowControlKey(tenancyId: string) {
-  return `automation-rule-run:${tenancyId}`;
+function completeActiveRule(checkpoint: AutomationSchedulerCheckpoint, ruleId: string): AutomationSchedulerCheckpoint {
+  return {
+    ...checkpoint,
+    completedRuleCursor: ruleId,
+    activeRuleId: null,
+    nextSubjectCursor: null,
+  };
 }
 
-export function getScheduledAutomationDeduplicationKey(options: {
-  tenancyId: string,
-  ruleId: string,
-  cursor: string | null,
-}) {
-  return `automation-rule-run:${options.tenancyId}:${options.ruleId}:${options.cursor ?? "start"}`;
+function completeActiveTenancy(checkpoint: AutomationSchedulerCheckpoint): AutomationSchedulerCheckpoint {
+  if (checkpoint.activeTenancyId === null) {
+    throw new Error("Cannot complete an automation scheduler tenancy without an active tenancy.");
+  }
+  return {
+    completedTenancyCursor: checkpoint.activeTenancyId,
+    activeTenancyId: null,
+    completedRuleCursor: null,
+    activeRuleId: null,
+    nextSubjectCursor: null,
+  };
+}
+
+function emptyCheckpoint(): AutomationSchedulerCheckpoint {
+  return {
+    completedTenancyCursor: null,
+    activeTenancyId: null,
+    completedRuleCursor: null,
+    activeRuleId: null,
+    nextSubjectCursor: null,
+  };
+}
+
+function emptyCronResult(status: "lease-held"): ScheduledAutomationCronResult {
+  return {
+    status,
+    tenanciesScanned: 0,
+    rulesProcessed: 0,
+    pagesProcessed: 0,
+    evaluatedCount: 0,
+    sentCount: 0,
+    suppressedCount: 0,
+    cycleCompleted: false,
+  };
 }

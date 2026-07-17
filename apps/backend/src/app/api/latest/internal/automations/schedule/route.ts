@@ -1,8 +1,9 @@
 import {
-  discoverEnabledScheduledAutomationRules,
-  enqueueScheduledAutomationRuns,
-  normalizeScheduledAutomationDiscoveryLimit,
-  normalizeScheduledAutomationRunPageLimit,
+  runScheduledAutomations,
+  scheduledAutomationDiscoveryLimit,
+  scheduledAutomationMaxPages,
+  scheduledAutomationRunPageLimit,
+  scheduledAutomationWorkBudgetMs,
 } from "@/lib/automations/scheduler";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupBoolean, yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
@@ -11,11 +12,12 @@ import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+export const maxDuration = 60;
 
 export const GET = createSmartRouteHandler({
   metadata: {
-    summary: "Schedule automation rule runs",
-    description: "Internal endpoint invoked by cron to enqueue bounded scheduled automation rule runs.",
+    summary: "Run scheduled automation rules",
+    description: "Internal endpoint invoked by cron to execute bounded scheduled automation work.",
     tags: ["Automations"],
     hidden: true,
   },
@@ -26,9 +28,10 @@ export const GET = createSmartRouteHandler({
       authorization: yupTuple([yupString().defined()]).optional(),
     }).defined(),
     query: yupObject({
-      cursor: yupString().optional(),
       max_tenancies: yupString().optional(),
       limit: yupString().optional(),
+      max_pages: yupString().optional(),
+      max_duration_ms: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -36,10 +39,14 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       ok: yupBoolean().defined(),
+      status: yupString().oneOf(["ran", "lease-held"]).defined(),
       tenancies_scanned: yupNumber().integer().defined(),
-      rules_found: yupNumber().integer().defined(),
-      runs_enqueued: yupNumber().integer().defined(),
-      next_cursor: yupString().nullable().defined(),
+      rules_processed: yupNumber().integer().defined(),
+      pages_processed: yupNumber().integer().defined(),
+      evaluated_count: yupNumber().integer().defined(),
+      sent_count: yupNumber().integer().defined(),
+      suppressed_count: yupNumber().integer().defined(),
+      cycle_completed: yupBoolean().defined(),
     }).defined(),
   }),
   handler: async ({ auth, headers, query }) => {
@@ -49,14 +56,11 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
-    const discovery = await discoverEnabledScheduledAutomationRules({
-      limit: parseOptionalPositiveInteger(query.max_tenancies, "max_tenancies"),
-      cursor: query.cursor,
-    });
-    const enqueueResult = await enqueueScheduledAutomationRuns({
-      targets: discovery.targets,
-      limit: parseOptionalPositiveInteger(query.limit, "limit"),
-      scheduledAt: new Date(),
+    const result = await runScheduledAutomations({
+      maxTenancies: parseAutomationScheduleBound(query.max_tenancies, "max_tenancies", scheduledAutomationDiscoveryLimit),
+      pageLimit: parseAutomationScheduleBound(query.limit, "limit", scheduledAutomationRunPageLimit),
+      maxPages: parseAutomationScheduleBound(query.max_pages, "max_pages", scheduledAutomationMaxPages),
+      workBudgetMs: parseAutomationScheduleBound(query.max_duration_ms, "max_duration_ms", scheduledAutomationWorkBudgetMs),
     });
 
     return {
@@ -64,24 +68,26 @@ export const GET = createSmartRouteHandler({
       bodyType: "json",
       body: {
         ok: true,
-        tenancies_scanned: discovery.scannedTenancyCount,
-        rules_found: discovery.targets.length,
-        runs_enqueued: enqueueResult.enqueuedCount,
-        next_cursor: discovery.nextCursor,
+        status: result.status,
+        tenancies_scanned: result.tenanciesScanned,
+        rules_processed: result.rulesProcessed,
+        pages_processed: result.pagesProcessed,
+        evaluated_count: result.evaluatedCount,
+        sent_count: result.sentCount,
+        suppressed_count: result.suppressedCount,
+        cycle_completed: result.cycleCompleted,
       },
     };
   },
 });
 
-function parseOptionalPositiveInteger(value: string | null | undefined, label: "max_tenancies" | "limit") {
+export function parseAutomationScheduleBound(value: string | null | undefined, label: string, maximum: number) {
   if (value == null || value === "") {
     return undefined;
   }
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1 || String(parsed) !== value) {
-    throw new StatusError(400, `${label} must be a positive integer`);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > maximum || String(parsed) !== value) {
+    throw new StatusError(400, `${label} must be an integer between 1 and ${maximum}`);
   }
-  return label === "max_tenancies"
-    ? normalizeScheduledAutomationDiscoveryLimit(parsed)
-    : normalizeScheduledAutomationRunPageLimit(parsed);
+  return parsed;
 }

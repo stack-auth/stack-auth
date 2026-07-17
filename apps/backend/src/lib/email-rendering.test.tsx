@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { LightEmailTheme } from '@hexclave/shared/dist/helpers/emails';
+import { usageEmailTemplateSource } from '../../../../packages/shared/src/helpers/usage-email-template';
 import { renderEmailsForTenancyBatched, renderEmailWithTemplate, type RenderEmailRequestForTenancy } from './email-rendering';
 
 describe('renderEmailsForTenancyBatched', () => {
@@ -533,6 +535,47 @@ describe('renderEmailWithTemplate', () => {
     }
   `;
 
+  it.each([
+    {
+      thresholdKind: 'near',
+      currentQuantity: -1,
+      expectedCopy: 'Your remaining usage is low.',
+      unexpectedCopy: 'Your quota is at or below its limit.',
+    },
+    {
+      thresholdKind: 'over',
+      currentQuantity: 999,
+      expectedCopy: 'Your quota is at or below its limit.',
+      unexpectedCopy: 'Your remaining usage is low.',
+    },
+  ])('renders the built-in Usage Email from thresholdKind=$thresholdKind', async ({
+    thresholdKind,
+    currentQuantity,
+    expectedCopy,
+    unexpectedCopy,
+  }) => {
+    const result = await renderEmailWithTemplate(usageEmailTemplateSource, LightEmailTheme, {
+      user: { displayName: 'QA User' },
+      project: { displayName: 'QA Project' },
+      variables: {
+        projectDisplayName: 'QA Project',
+        itemDisplayName: 'API requests',
+        currentQuantity,
+        thresholdKind,
+      },
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.subject).toBe('API requests usage alert');
+      expect(result.data.notificationCategory).toBe('Marketing');
+      expect(result.data.html).toContain(expectedCopy);
+      expect(result.data.text).toContain(expectedCopy);
+      expect(result.data.html).not.toContain(unexpectedCopy);
+      expect(result.data.text).toContain(`Current API requests quantity: ${currentQuantity}`);
+    }
+  });
+
   it('preview mode: uses default user and project when not provided', async () => {
     const result = await renderEmailWithTemplate(simpleTemplate, simpleTheme, {
       previewMode: true,
@@ -685,4 +728,3 @@ describe('renderEmailWithTemplate', () => {
     `);
   });
 });
-

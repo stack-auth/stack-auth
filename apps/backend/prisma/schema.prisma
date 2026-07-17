@@ -1187,6 +1187,23 @@ model AutomationRuleExecutionState {
   @@index([tenancyId, ruleId, lastTriggeredAt], name: "AutomationRuleExecutionState_tenancy_rule_triggered_idx")
 }
 
+model AutomationSchedulerState {
+  key String @id
+
+  completedTenancyCursor String? @db.Uuid
+  activeTenancyId         String? @db.Uuid
+  completedRuleCursor     String?
+  activeRuleId            String?
+  // Continuation cursor passed to the next source-adapter page.
+  nextSubjectCursor       String? @db.Uuid
+
+  leaseOwner     String?   @db.Uuid
+  leaseExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Conversation {
   id            String @default(uuid()) @db.Uuid
   tenancyId     String @db.Uuid
