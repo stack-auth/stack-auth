@@ -461,6 +461,9 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   100% {
     transform: scale(1.6);
     opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .data-grid-export-progress-shimmer {
     animation: none;
