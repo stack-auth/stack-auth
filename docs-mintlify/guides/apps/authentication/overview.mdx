@@ -6,7 +6,7 @@ sidebarTitle: "Overview"
 
 <Visibility for="agents">
 <Note>
-  **For agents/LLMs:** This is a high-level *marketing* overview of the Authentication app, not an implementation reference. To actually build auth, use [Setup](/guides/getting-started/setup), [Auth providers](./auth-providers), [JWTs & session verification](./jwts), [Sign-up rules](./sign-up-rules), and [Connected accounts](./connected-accounts).
+  **For agents/LLMs:** This is a high-level *marketing* overview of the Authentication app, not an implementation reference. To actually build auth, use [Setup](/guides/getting-started/setup), [Hosted vs. Handler](/guides/going-further/hosted-vs-handler), [Auth providers](./auth-providers), [JWTs & session verification](./jwts), [Sign-up rules](./sign-up-rules), and [Connected accounts](./connected-accounts).
 </Note>
 </Visibility>
 
@@ -16,7 +16,7 @@ Authentication is the foundation every other Hexclave app builds on. You get hos
 
 ## Can I add sign-in without building forms?
 
-Yes. Mount one catch-all route and you get a fully styled, accessible, maintained auth experience: sign-in, sign-up, password reset, OAuth callbacks, email verification, and account settings - all of it.
+Yes. Prefer **hosted components** (`urls: { default: { type: "hosted" } }` in [Setup](/guides/getting-started/setup)) — Hexclave hosts the sign-in UI and keeps it updated. Or mount `<HexclaveHandler />` on your own `/handler/[...]` route if you want auth pages on your domain. See [Hosted vs. Handler](/guides/going-further/hosted-vs-handler).
 
 ```tsx title="app/handler/[...hexclave]/page.tsx"
 import { HexclaveHandler } from "@hexclave/next"; // replace `next` with your framework SDK
@@ -84,8 +84,8 @@ Yes. Hexclave is open source (MIT client, AGPLv3 server). Run it fully self-host
 
 ## Start here
 
-1. [Set up Hexclave](/guides/getting-started/setup) in your project (a few minutes).
-2. Mount `<HexclaveHandler />` at `/handler/[...]` and turn on the auth methods you want.
+1. [Set up Hexclave](/guides/getting-started/setup) in your project (a few minutes) — prefer hosted components; see [Hosted vs. Handler](/guides/going-further/hosted-vs-handler).
+2. Turn on the auth methods you want (and mount `<HexclaveHandler />` only if you chose the own-handler path).
 3. Use `useUser()` / `getUser()` to read the session and protect routes.
 
 Everything else - [teams](../teams/overview), [payments](../payments/overview), [emails](../emails/overview), [analytics](../analytics/overview) - keys off this same user directory.

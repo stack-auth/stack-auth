@@ -77,6 +77,7 @@
             "pages": [
               "guides/going-further/cli",
               "guides/going-further/local-vs-cloud-dashboard",
+              "guides/going-further/hosted-vs-handler",
               "guides/going-further/hexclave-config"
             ]
           },
