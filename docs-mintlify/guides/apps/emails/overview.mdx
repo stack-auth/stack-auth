@@ -52,7 +52,23 @@ Hexclave also ships ready-made templates for the common flows - email verificati
 
 ## Can I match my brand?
 
-Yes. Themes wrap every email in a consistent layout - header, footer, logo, background. Use the built-in Light, Dark, and Colorful themes, or write your own as a TSX component. Set a project default, override per-email with `themeId`, or send with no theme at all.
+Yes. Themes wrap every email in a consistent layout - header, footer, logo, background. Use the built-in Light, Dark, and Colorful themes, or write your own as a TSX component:
+
+```tsx
+import { ThemeProps, ProjectLogo } from "@hexclave/emails";
+
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
+  return (
+    <>
+      <ProjectLogo data={projectLogos} mode="light" />
+      {children}
+      {unsubscribeLink && <a href={unsubscribeLink}>Unsubscribe</a>}
+    </>
+  );
+}
+```
+
+Set a project default, override per-email with `themeId`, or send with no theme at all. See [Templates & themes](./templates-and-themes) for the full theme API and built-in themes.
 
 ## Can I respect unsubscribes and preferences?
 
