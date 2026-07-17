@@ -1,5 +1,5 @@
 import { requireBackendAssertion } from "@/lib/server/backend-auth";
-import { handleApiError, readJsonBody, successResponse } from "@/lib/server/route-utils";
+import { handleApiError, readJsonBody, successResponse, zJsonArrayString } from "@/lib/server/route-utils";
 import { callReducerStrict, opt } from "@/lib/server/spacetimedb-client";
 import { getServiceSpacetimeToken } from "@/lib/server/spacetimedb-token";
 import { z } from "zod";
@@ -14,9 +14,9 @@ const bodySchema = z.object({
   isAuthenticated: z.boolean(),
   projectId: z.string().optional(),
   userId: z.string().optional(),
-  requestedToolsJson: z.string(),
-  messagesJson: z.string(),
-  stepsJson: z.string(),
+  requestedToolsJson: zJsonArrayString,
+  messagesJson: zJsonArrayString,
+  stepsJson: zJsonArrayString,
   finalText: z.string(),
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),

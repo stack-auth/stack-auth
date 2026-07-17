@@ -58,7 +58,13 @@ export async function signSpacetimeToken(options: { subject: string, expiresIn?:
 
 /** The public half of the signing key, served by the JWKS route. */
 export function publicJwks(): { keys: jose.JWK[] } {
-  const { d: _privateScalar, ...publicJwk } = privateJwk();
+  const jwk = privateJwk();
+  if (jwk.kty !== "EC" || jwk.crv !== "P-256" || jwk.x == null || jwk.y == null) {
+    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK must be an EC P-256 JWK (kty, crv, x, y).");
+  }
+  const publicJwk: jose.JWK = { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y };
+  if (jwk.kid != null) publicJwk.kid = jwk.kid;
+  if (jwk.alg != null) publicJwk.alg = jwk.alg;
   return { keys: [publicJwk] };
 }
 

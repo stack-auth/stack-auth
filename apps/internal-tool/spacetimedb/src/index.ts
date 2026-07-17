@@ -1,5 +1,5 @@
 import { schema, t, table, SenderError } from 'spacetimedb/server';
-import { Timestamp, type Identity } from 'spacetimedb';
+import { ScheduleAt, Timestamp, type Identity } from 'spacetimedb';
 
 // Injected at publish time by scripts/spacetime-auth-config.mjs (non-secret).
 // SpacetimeDB validates the JWT signature via OIDC discovery on the token's
@@ -14,6 +14,7 @@ const EXPECTED_AUDIENCE = '__SPACETIMEDB_EXPECTED_AUDIENCE__';
 // Fallback session lifetime when a JWT carries no `exp` claim. Stack Auth
 // access tokens always carry one (~10min), so this is defensive only.
 const FALLBACK_SESSION_TTL_MICROS = 15n * 60n * 1000n * 1000n;
+const SESSION_GC_INTERVAL_MICROS = 60n * 1000n * 1000n;
 
 type SenderAuthLike = Readonly<{
   isInternal: boolean,
@@ -87,6 +88,11 @@ function removeExpiredSessions(ctx: {
   }
 }
 
+// Presence of a (non-expired) session row IS the authorization. This can't
+// check `expiresAt` itself because view callbacks have no timestamp; instead,
+// expired rows are actively deleted — on every connect/`touch_session` via
+// `removeExpiredSessions`, and at most SESSION_GC_INTERVAL_MICROS later by the
+// scheduled `session_gc` reducer — which re-evaluates the dependent views.
 function hasMemberSession(ctx: {
   sender: Identity,
   db: {
@@ -181,7 +187,9 @@ const aiQueryLog = table(
 // each connecting identity to the grants its token carried. Self-enrolled
 // only — there is no reducer that can write to this table on behalf of
 // someone else. Rows expire with the token's `exp` and are garbage-collected
-// opportunistically on subsequent connects.
+// opportunistically on subsequent connects, plus periodically by the
+// scheduled `session_gc` reducer so expired rows can't outlive their token
+// just because nobody reconnects.
 const sessions = table(
   { name: 'sessions', public: false },
   {
@@ -189,6 +197,21 @@ const sessions = table(
     stackUserId: t.string(),
     connectedAt: t.timestamp(),
     expiresAt: t.timestamp(),
+  }
+);
+
+// Drives the periodic `session_gc` sweep (see SESSION_GC_INTERVAL_MICROS).
+// Holds exactly one repeating-interval row, inserted by
+// `ensureSessionGcScheduled`. The thunk's `any` return type breaks a type
+// cycle the SDK can't express: the table references the reducer via
+// `scheduled`, while the reducer's arg type references this table's rowType.
+// A wrong reference would still fail loudly at publish time — the SDK
+// validates that `scheduled` resolves to an exported reducer.
+const sessionGcSchedule = table(
+  { name: 'session_gc_schedule', public: false, scheduled: (): any => session_gc },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    scheduledAt: t.scheduleAt(),
   }
 );
 
@@ -211,12 +234,35 @@ const qaEntries = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog, aiQueryLog, sessions, qaEntries });
+const spacetimedb = schema({ mcpCallLog, aiQueryLog, sessions, sessionGcSchedule, qaEntries });
 export default spacetimedb;
 
 type SessionRow = typeof sessions.rowType.type;
+type SessionGcScheduleRow = typeof sessionGcSchedule.rowType.type;
 
-type SessionCtx = {
+type SessionGcScheduleCtx = {
+  db: {
+    sessionGcSchedule: {
+      iter: () => Iterable<SessionGcScheduleRow>,
+      insert: (row: SessionGcScheduleRow) => void,
+    },
+  },
+};
+
+// Idempotently arms the repeating GC schedule. Called from `init` (fresh
+// databases) AND from `upsertSessionFromJwt` (every connect/`touch_session`):
+// `init` does not re-run when an existing database gets a module update, so
+// already-deployed databases only pick up the schedule row through the
+// connect path.
+function ensureSessionGcScheduled(ctx: SessionGcScheduleCtx): void {
+  for (const _row of ctx.db.sessionGcSchedule.iter()) return;
+  ctx.db.sessionGcSchedule.insert({
+    id: 0n,
+    scheduledAt: ScheduleAt.interval(SESSION_GC_INTERVAL_MICROS),
+  });
+}
+
+type SessionCtx = SessionGcScheduleCtx & {
   sender: Identity,
   timestamp: Timestamp,
   senderAuth: SenderAuthLike,
@@ -234,6 +280,7 @@ type SessionCtx = {
 };
 
 function upsertSessionFromJwt(ctx: SessionCtx): void {
+  ensureSessionGcScheduled(ctx);
   removeExpiredSessions(ctx);
   const jwt = ctx.senderAuth.jwt;
   // Tokenless clients may connect — they can only see `published_qa`.
@@ -273,6 +320,19 @@ export const onConnect = spacetimedb.clientConnected((ctx) => {
 export const touch_session = spacetimedb.reducer({}, (ctx, _args) => {
   upsertSessionFromJwt(ctx);
 });
+
+// Scheduled sweep of expired session rows (see sessionGcSchedule). Without it,
+// a long-lived WebSocket subscriber whose token expired would keep passing
+// `hasMemberSession` indefinitely, since the opportunistic GC in
+// `upsertSessionFromJwt` only runs when someone (re)connects. Scheduled
+// reducers are private in SpacetimeDB v2 (only the scheduler and the database
+// owner can invoke them), and the sweep is idempotent anyway.
+export const session_gc = spacetimedb.reducer(
+  { row: sessionGcSchedule.rowType },
+  (ctx, _args) => {
+    removeExpiredSessions(ctx);
+  }
+);
 
 export const myVisibleMcpCallLog = spacetimedb.view(
   { name: 'my_visible_mcp_call_log', public: true },
@@ -733,4 +793,6 @@ export const delete_ai_query_log = spacetimedb.reducer(
   }
 );
 
-export const init = spacetimedb.init(_ctx => {});
+export const init = spacetimedb.init(ctx => {
+  ensureSessionGcScheduled(ctx);
+});

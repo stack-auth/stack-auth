@@ -47,3 +47,16 @@ export function handleApiError(scope: string, err: unknown): Response {
 export function successResponse(): Response {
   return Response.json({ success: true });
 }
+
+export const zJsonArrayString = z.string().superRefine((value, ctx) => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Must be a valid JSON string." });
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Must be a JSON array." });
+  }
+});

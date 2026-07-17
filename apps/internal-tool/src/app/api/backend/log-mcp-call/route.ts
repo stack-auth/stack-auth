@@ -1,5 +1,5 @@
 import { requireBackendAssertion } from "@/lib/server/backend-auth";
-import { handleApiError, readJsonBody, successResponse } from "@/lib/server/route-utils";
+import { handleApiError, readJsonBody, successResponse, zJsonArrayString } from "@/lib/server/route-utils";
 import { callReducerStrict, opt } from "@/lib/server/spacetimedb-client";
 import { getServiceSpacetimeToken } from "@/lib/server/spacetimedb-token";
 import { z } from "zod";
@@ -13,7 +13,7 @@ const bodySchema = z.object({
   question: z.string(),
   response: z.string(),
   stepCount: z.number().int().nonnegative(),
-  innerToolCallsJson: z.string(),
+  innerToolCallsJson: zJsonArrayString,
   durationMs: z.number().int().nonnegative(),
   modelId: z.string(),
   errorMessage: z.string().optional(),
