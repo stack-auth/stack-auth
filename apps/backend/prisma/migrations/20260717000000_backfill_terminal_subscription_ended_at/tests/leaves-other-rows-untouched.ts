@@ -18,7 +18,7 @@ const insertSubscription = async (sql: Sql, options: {
       ${sql.json({ displayName: 'Test Product', customerType: 'team' })}, 1,
       ${`sub_${id}`}, ${options.status}::"SubscriptionStatus",
       '2026-01-01', '2026-02-01',
-      false, ${options.endedAt}, 'PURCHASE_PAGE', NOW(), NOW()
+      false, ${options.endedAt}, 'PURCHASE_PAGE', NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
     )
   `;
   return id;

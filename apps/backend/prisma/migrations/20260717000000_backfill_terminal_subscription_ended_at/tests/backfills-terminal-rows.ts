@@ -19,7 +19,7 @@ const insertSubscription = async (sql: Sql, options: {
       ${sql.json({ displayName: 'Test Product', customerType: 'team' })}, 1,
       ${`sub_${id}`}, ${options.status}::"SubscriptionStatus",
       '2026-01-01', ${options.currentPeriodEnd},
-      false, ${options.endedAt ?? null}, 'PURCHASE_PAGE', NOW(), NOW()
+      false, ${options.endedAt ?? null}, 'PURCHASE_PAGE', NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
     )
   `;
   return id;
@@ -40,22 +40,21 @@ export const preMigration = async (sql: Sql) => {
   const futurePeriodEnd = new Date('2100-01-01T00:00:00Z');
   const futureCanceledId = await insertSubscription(sql, { tenancyId, status: 'canceled', currentPeriodEnd: futurePeriodEnd });
 
-  // The DB's own clock, so the post-migration bound check compares
-  // apples-to-apples (the Subscription timestamp columns have no time zone,
-  // so JS-side Date comparisons would be off by the session's tz offset).
-  const [{ now: dbNowBeforeMigration }] = await sql`SELECT NOW() AS now`;
-
-  return { tenancyId, canceledId, incompleteExpiredId, unpaidId, futureCanceledId, dbNowBeforeMigration: dbNowBeforeMigration as Date };
+  return { tenancyId, canceledId, incompleteExpiredId, unpaidId, futureCanceledId };
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
-  // Compare in SQL so stored values never round-trip through JS Dates.
+  // All comparisons stay server-side in the naive-UTC domain (createdAt was
+  // inserted with NOW() AT TIME ZONE 'UTC', matching the migration's write) —
+  // values never round-trip through JS Dates, whose parse/serialize is
+  // tz-offset-asymmetric for timezone-less columns, and no JS clock is
+  // compared against the server clock.
   const rows = await sql`
     SELECT
       "id",
       ("endedAt" IS NOT NULL) AS "hasEndedAt",
       ("endedAt" = "currentPeriodEnd") AS "matchesPeriodEnd",
-      ("endedAt" >= ${ctx.dbNowBeforeMigration} AND "endedAt" <= NOW() AND "endedAt" < "currentPeriodEnd") AS "cappedAtNow"
+      ("endedAt" >= "createdAt" AND "endedAt" <= NOW() AT TIME ZONE 'UTC' AND "endedAt" < "currentPeriodEnd") AS "cappedAtNow"
     FROM "Subscription" WHERE "tenancyId" = ${ctx.tenancyId}::uuid
   `;
   const byId = new Map(rows.map((row) => [row.id, row]));
