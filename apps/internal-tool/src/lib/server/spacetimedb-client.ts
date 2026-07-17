@@ -46,10 +46,8 @@ export async function callReducerStrict(accessToken: string, reducer: string, ar
 }
 
 function spacetimeDbError(label: string, status: number, preview: string): Error {
-  const detail = `${label} (${status}): ${preview}`;
-  if (status >= 400 && status < 500) return new StatusError(status, detail);
-  if (status >= 500) return new StatusError(StatusError.BadGateway, `${label} (upstream ${status})`);
-  return new HexclaveAssertionError(detail);
+  if (status >= 500) return new StatusError(StatusError.BadGateway, `${label} (upstream ${status}): ${preview}`);
+  return new HexclaveAssertionError(`${label} (upstream ${status}): ${preview}`);
 }
 
 export function opt<T>(value: T | null | undefined): { some: T } | { none: [] } {
