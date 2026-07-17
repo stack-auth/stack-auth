@@ -5,6 +5,7 @@ import { shouldSuppressPeriodicBulldozerLogs } from "../../../logging.js";
 import { traceSpanHot } from "../../../otel.js";
 import { DatabaseSeq } from "../../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugEntry, LowLevelKvDump, LowLevelKvStore } from "../index.js";
+import { unwrapLmdbCommitError } from "../unwrap-commit-error.js";
 
 type LmdbSeq = readonly [dbId: string, seqId: string] & { __brand: "hexclave-low-level-kv-store-seq" };
 type BinaryDatabase = lmdb.Database<Buffer, Uint8Array>;
@@ -206,44 +207,54 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   const getDurabilityPromise = (seqId: string) => {
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
   };
+  // LMDB may reject with an opaque "Commit failed" wrapper whose real status
+  // lives on `.commitError` (a Promise). Unwrap before surfacing to callers.
+  const awaitLmdbPromise = (promise: Promise<unknown>) => promise.catch(async (error) => {
+    throw await unwrapLmdbCommitError(error);
+  });
   const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      await awaitLmdbPromise(promise);
       activityStats.waitUntilAvailableResolveTotalMs += performance.now() - insertedAt;
       activityStats.waitUntilAvailableResolves++;
       seqToAvailability.delete(seqId);
-    }));
+    });
     availability.catch(() => {});
     seqToAvailability.set(seqId, availability);
   };
   const rememberDurability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(async () => await root.flushed).then(() => {
+    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      await awaitLmdbPromise(promise);
+      await root.flushed;
       activityStats.waitUntilDurableResolveTotalMs += performance.now() - insertedAt;
       activityStats.waitUntilDurableResolves++;
       seqToDurability.delete(seqId);
-    }));
+    });
     durability.catch(() => {});
     seqToDurability.set(seqId, durability);
   };
   const rememberCombinedAvailability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      await awaitLmdbPromise(promise);
       activityStats.combinedSeqAvailabilityResolveTotalMs += performance.now() - insertedAt;
       activityStats.combinedSeqAvailabilityResolves++;
       combinedSeqToAvailability.delete(seqId);
       combinedSeqDependencies.delete(seqId);
-    }));
+    });
     availability.catch(() => {});
     combinedSeqToAvailability.set(seqId, availability);
   };
   const rememberCombinedDurability = (seqId: string, promise: Promise<unknown>) => {
     const insertedAt = performance.now();
-    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => await promise.then(() => {
+    const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+      await awaitLmdbPromise(promise);
       activityStats.combinedSeqDurabilityResolveTotalMs += performance.now() - insertedAt;
       activityStats.combinedSeqDurabilityResolves++;
       combinedSeqToDurability.delete(seqId);
-    }));
+    });
     durability.catch(() => {});
     combinedSeqToDurability.set(seqId, durability);
   };
@@ -285,8 +296,9 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       });
       for (const operation of operations) operation.resolve();
     } catch (error) {
-      for (const operation of operations) operation.reject(error);
-      throw error;
+      const unwrapped = await unwrapLmdbCommitError(error);
+      for (const operation of operations) operation.reject(unwrapped);
+      throw unwrapped;
     }
   };
   const flushPendingCommits = async () => {
