@@ -121,7 +121,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
     // reconciled. We deliberately don't block any caller on this (no fsync on the
     // hot path); other awaiters of `underlyingAvailable` handle the rejection
     // themselves, this handler exists purely to report + avoid an unhandled
-    // rejection.
+    // rejection. (LMDB unwraps opaque commit failures in the low-level layer.)
     underlyingAvailable.catch(error => captureError("bulldozer-js:instant-availability-durable-commit", error));
     const record = { underlyingSeq, underlyingAvailable, isSettled: false };
     createdSeqRecords++;
