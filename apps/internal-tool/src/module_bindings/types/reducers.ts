@@ -18,7 +18,6 @@ import TouchSessionReducer from "../touch_session_reducer";
 import UpdateAiQueryUsageReducer from "../update_ai_query_usage_reducer";
 import UpdateMcpQaReviewReducer from "../update_mcp_qa_review_reducer";
 import UpdateQaEntryWithPublishReducer from "../update_qa_entry_with_publish_reducer";
-import UpsertQaFromCallReducer from "../upsert_qa_from_call_reducer";
 import UpsertQaFromCallAndMarkReviewedReducer from "../upsert_qa_from_call_and_mark_reviewed_reducer";
 
 export type AddManualQaParams = __Infer<typeof AddManualQaReducer>;
@@ -33,6 +32,5 @@ export type TouchSessionParams = __Infer<typeof TouchSessionReducer>;
 export type UpdateAiQueryUsageParams = __Infer<typeof UpdateAiQueryUsageReducer>;
 export type UpdateMcpQaReviewParams = __Infer<typeof UpdateMcpQaReviewReducer>;
 export type UpdateQaEntryWithPublishParams = __Infer<typeof UpdateQaEntryWithPublishReducer>;
-export type UpsertQaFromCallParams = __Infer<typeof UpsertQaFromCallReducer>;
 export type UpsertQaFromCallAndMarkReviewedParams = __Infer<typeof UpsertQaFromCallAndMarkReviewedReducer>;
 

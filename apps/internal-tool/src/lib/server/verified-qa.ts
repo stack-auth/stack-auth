@@ -16,11 +16,16 @@ export async function getVerifiedQaContext(accessToken: string): Promise<string>
 async function getVerifiedQaContextInner(accessToken: string): Promise<string> {
   const rows = await callSql(
     accessToken,
-    "SELECT question, answer FROM published_qa"
+    "SELECT id, question, answer FROM published_qa"
   );
   if (rows.length === 0) return "";
+  const sorted = [...rows].sort((a, b) => {
+    const aId = readId(a);
+    const bId = readId(b);
+    return aId < bId ? -1 : aId > bId ? 1 : 0;
+  });
 
-  const formatted = rows.map((row, i) =>
+  const formatted = sorted.map((row, i) =>
     `${i + 1}. Q: ${readString(row, "question")}\n   A: ${readString(row, "answer")}`
   ).join("\n\n");
 
@@ -35,6 +40,14 @@ RULES:
 4. Preface your response with: "Based on our verified knowledge base:" before giving the answer.
 
 ${formatted}`;
+}
+
+
+function readId(row: Record<string, unknown>): bigint {
+  const value = row["id"];
+  if (typeof value === "number" && Number.isSafeInteger(value)) return BigInt(value);
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) return BigInt(value);
+  throw new Error(`published_qa.id must be a u64 number or numeric string, got: ${typeof value}`);
 }
 
 function readString(row: Record<string, unknown>, key: string): string {

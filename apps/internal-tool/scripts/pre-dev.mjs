@@ -28,7 +28,7 @@ const SIGNING_KEY_VAR = "HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK";
 
 async function ensureSigningKey() {
   const existing = existsSync(ENV_LOCAL) ? readFileSync(ENV_LOCAL, "utf8") : "";
-  const line = existing.split(/\r?\n/).find((l) => l.startsWith(`${SIGNING_KEY_VAR}=`));
+  const line = existing.split(/\r?\n/).filter((l) => l.startsWith(`${SIGNING_KEY_VAR}=`)).at(-1);
   const value = line ? line.slice(SIGNING_KEY_VAR.length + 1).trim() : "";
   if (value !== "" && value !== "REPLACE_ME") return;
 

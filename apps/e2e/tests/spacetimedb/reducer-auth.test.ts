@@ -26,7 +26,6 @@ const ALL_MUTATING_REDUCERS: Array<{ name: string, args: unknown[] }> = [
     args: ["corr", "chat", "sys", "q", "s", "model", false, opt(null), opt(null), "[]", "[]", "[]", "text", opt(null), opt(null), opt(null), opt(null), opt(null), opt(null), opt(null), 0, 0n, opt(null), opt(null)],
   },
   { name: "update_ai_query_usage", args: ["corr", opt(null), opt(null), opt(null), opt(null), opt(null)] },
-  { name: "upsert_qa_from_call", args: ["corr", "q", "a", false] },
   { name: "delete_mcp_call_log", args: ["corr"] },
   { name: "delete_ai_query_log", args: ["corr"] },
   { name: "clear_mcp_qa_review", args: ["corr"] },

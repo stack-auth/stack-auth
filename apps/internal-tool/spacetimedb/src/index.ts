@@ -451,25 +451,6 @@ export const set_human_reviewed = spacetimedb.reducer(
   }
 );
 
-export const upsert_qa_from_call = spacetimedb.reducer(
-  {
-    correlationId: t.string(),
-    question: t.string(),
-    answer: t.string(),
-    publish: t.bool(),
-  },
-  (ctx, args) => {
-    requireProjectMember(ctx.senderAuth);
-    upsertQaEntryFromCall(ctx, {
-      correlationId: args.correlationId,
-      question: args.question,
-      answer: args.answer,
-      publish: args.publish,
-      editedBy: actorName(ctx.senderAuth),
-    });
-  }
-);
-
 export const upsert_qa_from_call_and_mark_reviewed = spacetimedb.reducer(
   {
     correlationId: t.string(),
