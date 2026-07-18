@@ -2,6 +2,11 @@
 
 ---
 
+## 7/17/26
+
+- Added "Continue in your own agent" links to AI chats.
+- Improved onboarding walkthrough visuals and setup guidance.
+
 ## 7/10/26
 
 - New CLI Auth dashboard app and a browser `<script>` setup path that works without a bundler.
