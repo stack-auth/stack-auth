@@ -16,6 +16,7 @@ import { declareInMemoryLowLevelDatabase } from "./databases/low-level/implement
 import { declareInstantAvailabilityLowLevelDatabase } from "./databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "./databases/low-level/implementations/lmdb.js";
 import type { LowLevelDatabase } from "./databases/low-level/index.js";
+import { declareBatchedPiledriverDatabase, type BatchedPiledriverDatabase } from "./databases/piledriver/batched.js";
 import { declarePiledriverDatabase, type PiledriverObject } from "./databases/piledriver/index.js";
 import "./load-env.js";
 import { instrumentation, traceSpan } from "./otel.js";
@@ -35,6 +36,12 @@ const HEAP_GC_MAX_PASSES = 5;
 const HEAP_GC_FINALIZATION_DELAY_MS = 20;
 const HEAP_GC_RETRY_COOLDOWN_MS = 60_000;
 const TICK_LOOP_SLOW_MS = 500;
+// Coalescing root writes into at most one underlying commit+replication per interval trades a small
+// durability window (bounded by this interval, and drained on graceful shutdown) for much higher
+// write throughput. A payments-workload sweep (lmdb-instant, median of 3) put 100 ms at the knee:
+// it keeps ~all the throughput win of larger windows while cutting the worst-case in-memory-only
+// window (and per-request latency for durability-awaiting callers) well below 200/400 ms.
+const DEFAULT_PILEDRIVER_BATCH_INTERVAL_MS = 100;
 type BulldozerSnapshot = Awaited<ReturnType<BulldozerDatabase["getSnapshot"]>>["snapshot"];
 type OwnedProductsRow = { ownedProducts: Record<string, unknown> };
 type SubscriptionMapRow = { subscriptions: Record<string, SubscriptionRow> };
@@ -70,12 +77,27 @@ function createLowLevelDatabase(): LowLevelDatabase {
   }));
 }
 
-const bulldozerDb = declareBulldozerDatabase(
-  declarePiledriverDatabase(createLowLevelDatabase(), {
-    disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
-  }),
-  { migrations: schema.migrations },
-);
+// Returns the configured batch interval in ms, or null to disable batching (write straight through).
+// `off` or `0` disables it; any other value must be a non-negative finite number.
+function resolvePiledriverBatchIntervalMs(): number | null {
+  const raw = process.env.HEXCLAVE_BULLDOZER_JS_BATCH_INTERVAL_MS;
+  if (raw === undefined || raw.length === 0) return DEFAULT_PILEDRIVER_BATCH_INTERVAL_MS;
+  if (raw === "off") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`HEXCLAVE_BULLDOZER_JS_BATCH_INTERVAL_MS must be a non-negative finite number or "off", got ${JSON.stringify(raw)}`);
+  // 0 means "no batching" rather than "flush on a zero-delay timer" (which would still defer a tick).
+  if (parsed === 0) return null;
+  return parsed;
+}
+
+const rootPiledriverDb = declarePiledriverDatabase(createLowLevelDatabase(), {
+  disableHeapReadCache: process.env.HEXCLAVE_BULLDOZER_JS_DISABLE_PILEDRIVER_HEAP_READ_CACHE === "1",
+});
+const piledriverBatchIntervalMs = resolvePiledriverBatchIntervalMs();
+const batchedPiledriverDb: BatchedPiledriverDatabase | null = piledriverBatchIntervalMs === null
+  ? null
+  : declareBatchedPiledriverDatabase(rootPiledriverDb, { batchIntervalMs: piledriverBatchIntervalMs });
+const bulldozerDb = declareBulldozerDatabase(batchedPiledriverDb ?? rootPiledriverDb, { migrations: schema.migrations });
 (globalThis as any).bulldozerDb = bulldozerDb;
 console.log(`Stored bulldozerDb in globalThis for pid ${process.pid}. Run \`kill -USR1 ${process.pid} && node inspect 127.0.0.1:9229\` and then \`exec("globalThis.bulldozerDb")\` to inspect it.`);
 await traceSpan("bulldozer-js.applyRemainingMigrations", async () => await bulldozerDb.applyRemainingMigrations());
@@ -1031,6 +1053,30 @@ const app = new Elysia({ adapter: node() })
   .listen(port);
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
+
+// Drain pending batched root writes (and cancel flush timers) before the process exits, so the
+// in-memory durability window isn't lost on deploy/restart. Errors are captured (not swallowed), and
+// we still exit afterward so the orchestrator's shutdown isn't blocked.
+if (batchedPiledriverDb !== null) {
+  const db = batchedPiledriverDb;
+  let shuttingDown = false;
+  const flushAndExit = (signal: NodeJS.Signals) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    runAsynchronously(async () => {
+      try {
+        await db.close();
+        logBulldozerService("graceful-flush-complete", { signal });
+      } catch (error) {
+        captureError("bulldozer-js:graceful-flush", error);
+      } finally {
+        process.exit(0);
+      }
+    });
+  };
+  process.once("SIGTERM", flushAndExit);
+  process.once("SIGINT", flushAndExit);
+}
 const startupFields = {
   port: app.server?.port ?? port,
   pid: process.pid,
