@@ -167,4 +167,48 @@ describe("declareBatchedPiledriverDatabase", () => {
 
     await batched.close();
   });
+
+  it("re-buffers a failed flush for retry instead of dropping the write", async () => {
+    const base = createCountingBase();
+    let failNext = true;
+    const originalSet = base.setRootObject.bind(base);
+    base.setRootObject = async (key, value) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("boom");
+      }
+      return await originalSet(key, value);
+    };
+    const batched = declareBatchedPiledriverDatabase(base, { batchIntervalMs: 10_000 });
+    const key = keyOf("root");
+
+    await batched.setRootObject(key, { value: 7 });
+    // The first flush fails loud, but the write must not be dropped.
+    await expect(batched.flushAll()).rejects.toThrow("boom");
+    expect((await batched.getRootObject(key)).object).toEqual({ value: 7 });
+
+    // The next flush retries the still-buffered write and persists it.
+    await batched.flushAll();
+    expect(base.setCount).toBe(1);
+    expect((await base.getRootObject(key)).object).toEqual({ value: 7 });
+
+    await batched.close();
+  });
+
+  it("snapshots the key so caller-side mutation before flush does not corrupt the write", async () => {
+    const base = createCountingBase();
+    const batched = declareBatchedPiledriverDatabase(base, { batchIntervalMs: 10_000 });
+    const key = keyOf("root");
+
+    await batched.setRootObject(key, { value: 1 });
+    // Mutate the caller-owned buffer before the timer-driven flush fires.
+    new Uint8Array(key).fill(0);
+    await batched.flushAll();
+
+    // The write persisted under the ORIGINAL key bytes, not the mutated ones.
+    const { object } = await base.getRootObject(keyOf("root"));
+    expect(object).toEqual({ value: 1 });
+
+    await batched.close();
+  });
 });

@@ -54,6 +54,9 @@ type LatestState =
   | { present: false, seq: DatabaseSeq };
 
 type KeyEntry = {
+  // A defensive copy of the caller's key. Callers own the ArrayBuffer they pass in and may reuse or
+  // mutate it before our timer-driven flush fires, so we snapshot the bytes to keep the key we flush
+  // under consistent with the base64 key we index by.
   key: ArrayBuffer,
   latest: LatestState | undefined,
   // The un-flushed write for this key (null when everything has been flushed), plus the deferred
@@ -110,7 +113,8 @@ export function declareBatchedPiledriverDatabase(basePiledriverDb: PiledriverDat
   const getOrCreateEntry = (keyBase64: string, key: ArrayBuffer): KeyEntry => {
     let entry = entries.get(keyBase64);
     if (entry === undefined) {
-      entry = { key, latest: undefined, pending: null, pendingDeferred: null, flushTimer: null, inFlight: Promise.resolve() };
+      // slice(0) copies the bytes so a later caller-side mutation of `key` can't change what we flush.
+      entry = { key: key.slice(0), latest: undefined, pending: null, pendingDeferred: null, flushTimer: null, inFlight: Promise.resolve() };
       entries.set(keyBase64, entry);
     }
     return entry;
@@ -140,6 +144,18 @@ export function declareBatchedPiledriverDatabase(basePiledriverDb: PiledriverDat
     } catch (error) {
       flushError ??= error;
       deferred.reject(error);
+      // Re-buffer the failed write for retry unless a newer write has already superseded it, so a
+      // transient backend error doesn't silently drop a value that `latest` still serves. The next
+      // flushAll/close (or a subsequent write's timer) retries it. Callers that awaited this batch's
+      // durability still saw the rejection above (fail loud); the retry uses a fresh deferred.
+      if (entry.pending === null) {
+        entry.pending = pending;
+        if (entry.pendingDeferred === null) {
+          const retryDeferred = createDeferred<DatabaseSeq>();
+          retryDeferred.promise.catch(() => {});
+          entry.pendingDeferred = retryDeferred;
+        }
+      }
     }
   };
 
@@ -186,7 +202,14 @@ export function declareBatchedPiledriverDatabase(basePiledriverDb: PiledriverDat
       settled.push(entry.inFlight.catch(() => {}));
     }
     await Promise.all(settled);
-    if (flushError !== undefined) throw flushError;
+    // Surface (once) the first error any flush hit, then clear it so a later flushAll after a
+    // successful retry doesn't keep throwing a stale error. Individual waiters already saw their own
+    // rejection via the per-write deferred, so this is only a backstop for un-awaited writes.
+    if (flushError !== undefined) {
+      const error = flushError;
+      flushError = undefined;
+      throw error;
+    }
   };
 
   const result: BatchedPiledriverDatabase = {
