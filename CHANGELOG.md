@@ -4,7 +4,8 @@
 
 ## 7/17/26
 
-- _(entries added throughout the week)_
+- Added "Continue in your own agent" links to AI chats.
+- Improved onboarding walkthrough visuals and setup guidance.
 
 ## 7/10/26
 
