@@ -557,6 +557,50 @@ const Composer: FC<{ placeholder?: ComposerPlaceholder, autoFocus?: boolean }> =
   );
 };
 
+/**
+ * Canonical link to the "set up the Hexclave MCP server" docs. Uses the docs
+ * base URL when configured (so it points at localhost:8104 in dev) and falls
+ * back to the public docs site otherwise.
+ */
+function getMcpDocsUrl(): string {
+  const base = (getPublicEnvVar("NEXT_PUBLIC_STACK_DOCS_BASE_URL") ?? "https://docs.hexclave.com").replace(/\/$/, "");
+  return `${base}/guides/getting-started/ai-integration#option-3-mcp`;
+}
+
+/**
+ * Empty-state variant of the agent-eject CTA: an "or" divider followed by a
+ * card inviting the user to continue the chat in their own coding agent via
+ * the Hexclave MCP server. Rendered inside the welcome node of general-purpose
+ * dashboard AI chats, where there is no transcript to copy yet.
+ */
+export const AgentEjectWelcomeCta: FC = () => {
+  const mcpDocsUrl = useMemo(() => getMcpDocsUrl(), []);
+
+  return (
+    <div className="mt-8 flex w-full max-w-[280px] flex-col items-center">
+      <div className="flex w-full items-center gap-3 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground/40">
+        <div className="h-px flex-1 bg-border/60" />
+        <span>or</span>
+        <div className="h-px flex-1 bg-border/60" />
+      </div>
+      <a
+        href={mcpDocsUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group mt-4 inline-flex items-center gap-2.5 rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 text-center text-xs leading-snug text-muted-foreground transition-colors hover:transition-none hover:border-border hover:bg-muted/50 hover:text-foreground"
+      >
+        <PlugsConnectedIcon className="h-4 w-4 shrink-0 text-purple-400" weight="bold" />
+        <span>
+          Chat with Hexclave in your own agent with our{" "}
+          <span className="font-medium text-foreground/80 underline decoration-foreground/20 underline-offset-2 group-hover:decoration-foreground/40">
+            MCP server
+          </span>
+        </span>
+      </a>
+    </div>
+  );
+};
+
 function serializeThreadToMarkdown(messages: readonly ThreadMessage[]): string {
   const blocks: string[] = [];
   for (const message of messages) {
@@ -589,10 +633,7 @@ const AgentEjectFooter: FC = () => {
     return threadRuntime.subscribe(sync);
   }, [threadRuntime]);
 
-  const mcpDocsUrl = useMemo(() => {
-    const base = (getPublicEnvVar("NEXT_PUBLIC_STACK_DOCS_BASE_URL") ?? "https://docs.hexclave.com").replace(/\/$/, "");
-    return `${base}/guides/getting-started/ai-integration#option-3-mcp`;
-  }, []);
+  const mcpDocsUrl = useMemo(() => getMcpDocsUrl(), []);
 
   const hasMessages = messageCount > 0;
 

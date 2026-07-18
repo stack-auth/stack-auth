@@ -4,7 +4,7 @@ import { cn } from "@/components/ui";
 import { createUnifiedAiChatAdapter, getFriendlyAiErrorMessage } from "@/components/assistant-ui/chat-stream";
 import { ImageAttachmentAdapter } from "@/components/assistant-ui/image-attachment-adapter";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { Thread } from "@/components/assistant-ui/thread";
+import { AgentEjectWelcomeCta, Thread } from "@/components/assistant-ui/thread";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import {
   createConversation,
@@ -547,6 +547,7 @@ function AskAiWelcome() {
         <p className="text-xs text-muted-foreground text-center max-w-[260px] leading-relaxed">
           Get AI-powered answers about Hexclave, your project, and analytics.
         </p>
+        <AgentEjectWelcomeCta />
       </div>
     </div>
   );
