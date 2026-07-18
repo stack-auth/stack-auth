@@ -1,25 +1,36 @@
-import { getLLMText } from 'lib/get-llm-text';
 import { apiSource, source } from 'lib/source';
 
 // cached forever
 export const revalidate = false;
 
+function formatPageListItem(page: {
+  data: {
+    title: string;
+    description?: string;
+  };
+  url: string;
+}) {
+  const description = page.data.description?.trim();
+  const notes = description ? `: ${description.replace(/\n+/g, ' ')}` : '';
+  return `- [${page.data.title}](https://docs.hexclave.com${page.url}.md)${notes}`;
+}
+
 export async function GET() {
-  // Get all pages from both main docs and API docs
   const docsPages = source.getPages();
   const apiPages = apiSource.getPages();
 
-  // Process all pages
-  const docsPromises = docsPages.map(getLLMText);
-  const apiPromises = apiPages.map(getLLMText);
+  const docs = docsPages.map(formatPageListItem).join('\n');
+  const api = apiPages.map(formatPageListItem).join('\n');
 
-  const [docsContent, apiContent] = await Promise.all([
-    Promise.all(docsPromises),
-    Promise.all(apiPromises)
-  ]);
+  return new Response(`# Hexclave
 
-  // Combine all content
-  const allContent = [...docsContent, ...apiContent];
+> Hexclave is an authentication and user management platform for SaaS apps, with teams, RBAC, payments, and analytics. Formerly Stack Auth.
 
-  return new Response(allContent.join('\n\n'));
+## Docs
+
+${docs}
+
+## API Reference
+
+${api}`);
 }
