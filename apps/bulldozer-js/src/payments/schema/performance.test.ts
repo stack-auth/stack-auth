@@ -4,6 +4,7 @@ import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
 import { declareBatchedPiledriverDatabase, declarePiledriverDatabase, PiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
+import { DatabaseSeq } from "../../databases/index.js";
 import { createPaymentsSchema } from "./index.js";
 import type { ProductSnapshot, SubscriptionRow } from "./types.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -13,9 +14,12 @@ import { join } from "node:path";
 type Metric = { name: string, count: number, elapsedMs: number, opsPerSecond: number };
 type Snapshot = Awaited<ReturnType<ReturnType<typeof declareBulldozerDatabase>["getSnapshot"]>>["snapshot"];
 
-const USER_COUNT = 6;
-const ITEM_UPDATES_PER_USER = 10;
-const PREFILL_USER_COUNT = 200;
+// Iteration counts are env-overridable so the same workload can be scaled up for benchmarking (where
+// each phase should take several seconds so per-op cost dominates over fixed batching latency). The
+// defaults are kept small so the committed test stays fast in CI.
+const USER_COUNT = Number(process.env.BULLDOZER_PERF_USER_COUNT ?? 6);
+const ITEM_UPDATES_PER_USER = Number(process.env.BULLDOZER_PERF_ITEM_UPDATES_PER_USER ?? 10);
+const PREFILL_USER_COUNT = Number(process.env.BULLDOZER_PERF_PREFILL_USER_COUNT ?? 200);
 const PREFILL_ITEM_UPDATES_PER_USER = 4;
 const PREFILL_SOURCE_FACT_COUNT = PREFILL_USER_COUNT * (2 + PREFILL_ITEM_UPDATES_PER_USER);
 const MONTH_MS = 2_592_000_000;
@@ -121,9 +125,19 @@ const newPiledriverDb = (): PiledriverDatabase => {
 };
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
-  const db = declareBulldozerDatabase(newPiledriverDb(), { migrations: schema.migrations });
+  const piledriver = newPiledriverDb();
+  const db = declareBulldozerDatabase(piledriver, { migrations: schema.migrations });
   await db.applyRemainingMigrations();
-  return { db, schema };
+  return { db, schema, piledriver };
+};
+// Waits until every write made during a phase is replicated (durable + on all replicas), the way a
+// high-throughput caller that needs durability would. Batching only pays off if this end-of-phase
+// wait is included in the timing: otherwise a batched write just defers its durability cost and
+// looks artificially fast. All bulldozer writes go to the same piledriver root key, so combining the
+// per-write seqs and waiting once reflects the amortized cost of the coalesced flushes.
+const waitPhaseReplicated = async (piledriver: PiledriverDatabase, seqs: DatabaseSeq[]) => {
+  if (seqs.length === 0) return;
+  await piledriver.waitUntilReplicated(piledriver.combineSeqs(...seqs));
 };
 
 describe("payments schema performance", () => {
@@ -132,44 +146,52 @@ describe("payments schema performance", () => {
     let initialized!: Awaited<ReturnType<typeof newPaymentsDb>>;
 
     initialized = await measure(metrics, "initialize schema", 1, newPaymentsDb);
-    const { db, schema } = initialized;
+    const { db, schema, piledriver } = initialized;
 
     await measure(metrics, "prefill baseline rows", PREFILL_SOURCE_FACT_COUNT, async () => {
+      const seqs: DatabaseSeq[] = [];
       for (let i = 0; i < PREFILL_USER_COUNT; i++) {
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `prefill-sub-${i}`, newRowData: subscription(i, "prefill-") as unknown as PiledriverObject }));
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `prefill-otp-${i}`, newRowData: oneTimePurchase(i, "prefill-") as unknown as PiledriverObject }));
+        seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `prefill-sub-${i}`, newRowData: subscription(i, "prefill-") as unknown as PiledriverObject }))).seq);
+        seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `prefill-otp-${i}`, newRowData: oneTimePurchase(i, "prefill-") as unknown as PiledriverObject }))).seq);
         for (let updateIndex = 0; updateIndex < PREFILL_ITEM_UPDATES_PER_USER; updateIndex++) {
-          await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+          seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
             tableId: schema.manualItemQuantityChanges,
             rowIdentifier: `prefill-miqc-${i}-${updateIndex}`,
             newRowData: manualItemQuantityChange(i, updateIndex, "prefill-"),
-          }));
+          }))).seq);
         }
       }
+      await waitPhaseReplicated(piledriver, seqs);
     });
 
     await measure(metrics, "write subscriptions", USER_COUNT, async () => {
+      const seqs: DatabaseSeq[] = [];
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }));
+        seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.subscriptions, rowIdentifier: `sub-${i}`, newRowData: subscription(i) as unknown as PiledriverObject }))).seq);
       }
+      await waitPhaseReplicated(piledriver, seqs);
     });
 
     await measure(metrics, "write one-time purchases", USER_COUNT, async () => {
+      const seqs: DatabaseSeq[] = [];
       for (let i = 0; i < USER_COUNT; i++) {
-        await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }));
+        seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({ tableId: schema.oneTimePurchases, rowIdentifier: `otp-${i}`, newRowData: oneTimePurchase(i) as unknown as PiledriverObject }))).seq);
       }
+      await waitPhaseReplicated(piledriver, seqs);
     });
 
     await measure(metrics, "write manual item quantity changes", USER_COUNT * ITEM_UPDATES_PER_USER, async () => {
+      const seqs: DatabaseSeq[] = [];
       for (let userIndex = 0; userIndex < USER_COUNT; userIndex++) {
         for (let updateIndex = 0; updateIndex < ITEM_UPDATES_PER_USER; updateIndex++) {
-          await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
+          seqs.push((await db.withSnapshot(async snapshot => await snapshot.setOrDeleteRow({
             tableId: schema.manualItemQuantityChanges,
             rowIdentifier: `miqc-${userIndex}-${updateIndex}`,
             newRowData: manualItemQuantityChange(userIndex, updateIndex),
-          }));
+          }))).seq);
         }
       }
+      await waitPhaseReplicated(piledriver, seqs);
     });
 
     const { snapshot } = await db.getSnapshot();
