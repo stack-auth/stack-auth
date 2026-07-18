@@ -1,12 +1,10 @@
 import { replaceConfigObject } from "@hexclave/shared-backend";
 import { detectImportPackageFromDir } from "@hexclave/shared/dist/config-eval";
-import { CONFIG_IMPORT_PACKAGES, configImportSpecifierForPackage } from "@hexclave/shared/dist/config-rendering";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { Command } from "commander";
 import * as fs from "fs";
-import { createRequire } from "module";
 import * as path from "path";
 import { getAdminProject } from "../lib/app.js";
 import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
@@ -235,35 +233,6 @@ export function assertConfigPullTarget(filePath: string, opts: { overwrite?: boo
   }
 }
 
-// Typed config files import `defineHexclaveConfig` (a runtime helper) and the
-// `HexclaveConfig` type from an SDK's lightweight `/config` entrypoint, e.g.
-// `@hexclave/js/config`. `config push` runs from the generated GitHub sync
-// workflow, which checks out the repo and runs the CLI via `npx` WITHOUT
-// installing the repo's dependencies — so jiti cannot resolve that import and
-// evaluating the config fails with MODULE_NOT_FOUND. The CLI bundles
-// `@hexclave/js`, and every SDK `/config` entrypoint just re-exports the same
-// identity helper + types from `@hexclave/shared/config`, so we resolve those
-// imports to the CLI's own copy as a fallback. We only alias specifiers that
-// don't already resolve from the config file's directory, so a project that
-// does have its SDK installed keeps using its own copy.
-export function buildConfigImportAlias(configFileDir: string): Record<string, string> {
-  const fallbackTarget = createRequire(import.meta.url).resolve("@hexclave/js/config");
-  // `createRequire` needs a file path to anchor resolution; the file need not
-  // exist, it only seeds the module search paths (node_modules lookup walks up
-  // from this directory).
-  const fromConfigDir = createRequire(path.join(configFileDir, "__hexclave_config_resolver__.cjs"));
-  const alias: Record<string, string> = {};
-  for (const pkg of CONFIG_IMPORT_PACKAGES) {
-    const specifier = configImportSpecifierForPackage(pkg);
-    try {
-      fromConfigDir.resolve(specifier);
-    } catch {
-      alias[specifier] = fallbackTarget;
-    }
-  }
-  return alias;
-}
-
 export function registerConfigCommand(program: Command) {
   const config = program
     .command("config")
@@ -318,18 +287,16 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
+      // The generated GitHub sync workflow installs the repo's dependencies
+      // before running the CLI, so jiti resolves the config's SDK import (e.g.
+      // `@hexclave/js`) from the project's own node_modules.
       const { createJiti } = await import("jiti");
-      const jiti = createJiti(import.meta.url, {
-        alias: buildConfigImportAlias(path.dirname(filePath)),
-      });
+      const jiti = createJiti(import.meta.url);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = parseConfigOverride(configModule.config);
       if (config == null) {
-        const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
-        // The lightweight `/config` entrypoint only exists on Hexclave-branded packages;
-        // legacy `@stackframe/*` releases predate it, so import from their root.
-        const exampleImport = examplePkg.startsWith("@hexclave/") ? `${examplePkg}/config` : examplePkg;
+        const exampleImport = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
         throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
       }
 

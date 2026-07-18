@@ -22,17 +22,6 @@ export const CONFIG_IMPORT_PACKAGES = [
 ] as const;
 
 /**
- * The module specifier from which a given SDK package exposes the
- * `HexclaveConfig` type and the `defineHexclaveConfig` helper. Hexclave-branded
- * packages expose them from a lightweight `/config` entrypoint (free of
- * framework runtime code); legacy `@stackframe/*` releases predate `/config`
- * and expose them from the package root.
- */
-export function configImportSpecifierForPackage(pkg: string): string {
-  return pkg.startsWith("@hexclave/") ? `${pkg}/config` : pkg;
-}
-
-/**
  * Given a list of dependency names (from package.json), returns the SDK
  * package that should be used for the `HexclaveConfig` import, or `undefined`
  * if none of the known packages are installed.
@@ -64,8 +53,7 @@ export function renderConfigFileContent(config: unknown, importPackage?: string)
     throw new Error(`Config has conflicting keys that would be dropped during normalization: ${droppedKeys.map(k => JSON.stringify(k)).join(", ")}`);
   }
   const pkg = importPackage ?? DEFAULT_CONFIG_IMPORT_PACKAGE;
-  const importSpecifier = configImportSpecifierForPackage(pkg);
-  const importLine = `import type { HexclaveConfig } from "${importSpecifier}";`;
+  const importLine = `import type { HexclaveConfig } from "${pkg}";`;
   return `${importLine}\n\nexport const config: HexclaveConfig = ${JSON.stringify(normalizedConfig, null, 2)};\n`;
 }
 
@@ -102,15 +90,15 @@ import.meta.vitest?.test("renderConfigFileContent rejects invalid config exports
 
 import.meta.vitest?.test("renderConfigFileContent uses custom import package", ({ expect }) => {
   const content = renderConfigFileContent({}, "@hexclave/next");
-  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/next/config";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/next";');
 });
 
 import.meta.vitest?.test("renderConfigFileContent defaults to @hexclave/js", ({ expect }) => {
   const content = renderConfigFileContent({});
-  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js/config";');
+  expect(content).toContain('import type { HexclaveConfig } from "@hexclave/js";');
 });
 
-import.meta.vitest?.test("renderConfigFileContent keeps legacy @stackframe packages on their root entrypoint", ({ expect }) => {
+import.meta.vitest?.test("renderConfigFileContent imports from the SDK package root", ({ expect }) => {
   const content = renderConfigFileContent({}, "@stackframe/next");
   expect(content).toContain('import type { HexclaveConfig } from "@stackframe/next";');
 });
