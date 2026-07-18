@@ -10,9 +10,13 @@ function formatPageListItem(page: {
   };
   url: string;
 }) {
+  const title = page.data.title
+    .replace(/\\/g, '\\\\')
+    .replace(/[\[\]]/g, (match) => `\\${match}`)
+    .replace(/\n+/g, ' ');
   const description = page.data.description?.trim();
   const notes = description ? `: ${description.replace(/\n+/g, ' ')}` : '';
-  return `- [${page.data.title}](https://docs.hexclave.com${page.url}.md)${notes}`;
+  return `- [${title}](https://docs.hexclave.com${page.url}.md)${notes}`;
 }
 
 export async function GET() {
