@@ -3,6 +3,9 @@ import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
 
+export { declareBatchedPiledriverDatabase } from "./batched.js";
+export type { BatchedPiledriverDatabase, BatchedPiledriverDatabaseOptions } from "./batched.js";
+
 export const isPiledriverHeapObjectSymbol = Symbol.for("hexclave-piledriver-heap-object-symbol");
 export type PiledriverHeapObject = {
   get(): Promise<PiledriverObject>,

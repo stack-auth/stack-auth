@@ -3,7 +3,7 @@ import { declareInMemoryLowLevelDatabase } from "../../databases/low-level/imple
 import { declareInstantAvailabilityLowLevelDatabase } from "../../databases/low-level/implementations/instant-availability.js";
 import { declareLmdbLowLevelDatabase } from "../../databases/low-level/implementations/lmdb.js";
 import { declareBulldozerDatabase } from "../../databases/bulldozer/index.js";
-import { declarePiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
+import { declareBatchedPiledriverDatabase, declarePiledriverDatabase, PiledriverDatabase, PiledriverObject } from "../../databases/piledriver/index.js";
 import { createPaymentsSchema } from "./index.js";
 import type { ProductSnapshot, SubscriptionRow } from "./types.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -106,9 +106,22 @@ const newLowLevelDb = () => {
   }
   return declareInMemoryLowLevelDatabase(crypto.randomUUID());
 };
+// Databases whose pending writes must be drained (and timers cancelled) before afterAll removes the
+// temp dirs, so no batched flush fires against a deleted LMDB directory after the test finishes.
+const databasesToClose: { close(): Promise<void> }[] = [];
+const newPiledriverDb = (): PiledriverDatabase => {
+  const base = declarePiledriverDatabase(newLowLevelDb());
+  if (process.env.BULLDOZER_BATCHED === "1") {
+    const batchIntervalMs = Number(process.env.BULLDOZER_BATCH_INTERVAL_MS ?? 200);
+    const batched = declareBatchedPiledriverDatabase(base, { batchIntervalMs });
+    databasesToClose.push(batched);
+    return batched;
+  }
+  return base;
+};
 const newPaymentsDb = async () => {
   const schema = createPaymentsSchema();
-  const db = declareBulldozerDatabase(declarePiledriverDatabase(newLowLevelDb()), { migrations: schema.migrations });
+  const db = declareBulldozerDatabase(newPiledriverDb(), { migrations: schema.migrations });
   await db.applyRemainingMigrations();
   return { db, schema };
 };
@@ -239,6 +252,8 @@ describe("transactions listing performance", () => {
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
+  // Drain batched writes and cancel flush timers before deleting the temp dirs they write into.
+  for (const db of databasesToClose) await db.close();
   for (const path of tempPaths) rmSync(path, { recursive: true, force: true });
 });
