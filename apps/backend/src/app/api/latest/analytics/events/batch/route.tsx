@@ -1,3 +1,4 @@
+import { MAX_CUSTOM_EVENT_NAME_LENGTH, isReservedEventName, validateCustomEventPayload } from "@/lib/analytics-custom-events";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
@@ -70,7 +71,7 @@ function maybeDecodeBinaryBody(value: unknown): unknown {
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Upload analytics event batch",
-    description: "Uploads a batch of auto-captured analytics events ($page-view, $click).",
+    description: "Uploads a batch of analytics events: auto-captured reserved events ($page-view, $click) and customer-defined custom events (bounded names that never start with $, size-limited properties, optional finite numeric value).",
     tags: ["Analytics Events"],
     hidden: true,
   },
@@ -87,9 +88,16 @@ export const POST = createSmartRouteHandler({
       sent_at_ms: yupNumber().defined().integer().min(0),
       events: yupArray(
         yupObject({
-          event_type: yupString().defined().oneOf(["$page-view", "$click"]),
+          // Either one of the accepted reserved types or a customer event name;
+          // the handler decides which (yup can't express the union cleanly, and
+          // custom names have validation rules beyond a regex — see
+          // validateCustomEventPayload).
+          event_type: yupString().defined().min(1).max(MAX_CUSTOM_EVENT_NAME_LENGTH),
           event_at_ms: yupNumber().defined().integer().min(0),
           data: yupMixed().defined(),
+          // Only allowed on custom events: the per-event numeric observation
+          // (e.g. revenue) used by numeric experiment metrics.
+          value: yupMixed().optional(),
         }).defined(),
       ).defined().min(1).max(MAX_EVENTS),
     }).defined().transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
@@ -111,6 +119,32 @@ export const POST = createSmartRouteHandler({
     if (!auth.refreshTokenId) {
       throw new StatusError(StatusError.BadRequest, "A refresh token is required for analytics events");
     }
+
+    // Split events into reserved (auto-capture, trusted shape) and custom
+    // (customer-defined, strictly validated). Reserved names other than the
+    // two auto-capture types are rejected outright — in particular
+    // $feature-flag-exposure rows may only enter through the signed
+    // feature-flags exposure route, never through this public one.
+    const preparedEvents = body.events.map((event) => {
+      if (isReservedEventName(event.event_type)) {
+        if (event.event_type !== "$page-view" && event.event_type !== "$click") {
+          throw new StatusError(StatusError.BadRequest, `Reserved event type ${JSON.stringify(event.event_type)} cannot be uploaded via this endpoint`);
+        }
+        if (event.value !== undefined) {
+          throw new StatusError(StatusError.BadRequest, `Reserved event type ${JSON.stringify(event.event_type)} does not accept a value`);
+        }
+        return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: event.data };
+      }
+      const { properties, value } = validateCustomEventPayload({
+        eventName: event.event_type,
+        properties: event.data,
+        value: event.value,
+      });
+      // Custom event payloads are wrapped as { properties, value } so customer
+      // property keys can never collide with the top-level value field, and
+      // numeric-metric queries can always read data.value.
+      return { event_type: event.event_type, event_at_ms: event.event_at_ms, data: { properties, value } };
+    });
 
     const projectId = auth.tenancy.project.id;
     const branchId = auth.tenancy.branchId;
@@ -134,7 +168,7 @@ export const POST = createSmartRouteHandler({
 
     const clickhouseClient = getClickhouseAdminClient();
 
-    const rows = body.events.map((event) => ({
+    const rows = preparedEvents.map((event) => ({
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
       data: stripLoneSurrogates(event.data),

@@ -48,6 +48,8 @@ model Project {
   environmentConfigOverrides EnvironmentConfigOverride[]
   configAgentRuns            ConfigAgentRun[]
   aiConversations            AiConversation[]
+  experimentRuns             ExperimentRun[]
+  featureFlagAuditLogs       FeatureFlagAuditLog[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -1527,4 +1529,93 @@ model DeletedRow {
   // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
   @@index([tenancyId, tableName, sequenceId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
+}
+
+enum ExperimentRunState {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+}
+
+// One "run" of a feature-flag experiment. A run is an immutable record: its
+// configSnapshot (the full experiment definition frozen at start) and
+// configRevisionHash never change after creation. "Editing" an active
+// experiment instead completes the current run and creates a new one with an
+// incremented revisionNumber (in one transaction), so exposures and results
+// always reference exactly the configuration they were collected under.
+model ExperimentRun {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  // The user-specified id of the experiment in the featureFlags.experiments config record.
+  experimentId String
+  // Monotonically increasing per project+branch+experiment; bumped when an active run is edited.
+  revisionNumber Int @default(1)
+  // SHA-256 over the canonical (sorted-keys) JSON serialization of configSnapshot.
+  configRevisionHash String
+  // The full experiment definition (flag, variants, weights, metrics, attribution window, schedule) frozen at creation.
+  configSnapshot Json
+
+  state ExperimentRunState @default(DRAFT)
+
+  scheduledStartAt DateTime?
+  scheduledEndAt   DateTime?
+  startedAt        DateTime?
+  pausedAt         DateTime?
+  completedAt      DateTime?
+
+  // Dashboard user who created the run; null when created by the schedule processor or other automation.
+  createdByUserId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Partial unique index enforcing at most one RUNNING or PAUSED run per
+  // project+branch+experiment ("ExperimentRun_active_run_key") is created in a
+  // custom migration (partial indexes are not expressible in the Prisma schema).
+  @@index([projectId, branchId, experimentId, createdAt(sort: Desc)], name: "ExperimentRun_project_experiment_createdAt_idx")
+  // For the schedule processor: find DRAFT runs whose scheduledStartAt has passed
+  // and RUNNING runs whose scheduledEndAt has passed.
+  @@index([state, scheduledStartAt], name: "ExperimentRun_state_scheduledStartAt_idx")
+  @@index([state, scheduledEndAt], name: "ExperimentRun_state_scheduledEndAt_idx")
+}
+
+// Append-only audit trail for feature-flag resources (experiment runs, flags,
+// segments, ...). Generic on purpose: the feature-flags config itself lives in
+// the config override tables, so this is the only place that records *who*
+// changed *what* and *when* in a queryable form.
+model FeatureFlagAuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId String
+  branchId  String
+
+  // e.g. "experiment_run", "flag"; string rather than enum so other feature-flag
+  // workstreams can log new resource types without a database migration.
+  resourceType String
+  resourceId   String
+  // e.g. "created", "started", "paused", "resumed", "completed", "revision_created"
+  action String
+
+  // "user" (actorId = dashboard user id), "api_key", or "system" (actorId null, e.g. schedule processor)
+  actorType String
+  actorId   String?
+  // Where the action came from, e.g. "admin_api", "schedule_processor"
+  source String
+
+  beforeState Json?
+  afterState  Json?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, branchId, resourceType, resourceId, createdAt(sort: Desc)], name: "FeatureFlagAuditLog_resource_createdAt_idx")
+  @@index([projectId, branchId, createdAt(sort: Desc)], name: "FeatureFlagAuditLog_project_createdAt_idx")
 }
