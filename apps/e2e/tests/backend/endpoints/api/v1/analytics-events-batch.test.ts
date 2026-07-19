@@ -481,11 +481,14 @@ it("rejects invalid batch_id", async ({ expect }) => {
   `);
 });
 
-it("rejects invalid event_type", async ({ expect }) => {
+it("rejects unknown reserved event_type", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
+  // Since custom events were introduced, non-$ names are accepted as customer
+  // events; only unknown RESERVED ($-prefixed) types are rejected, now by the
+  // handler rather than the request schema.
   const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
     method: "POST",
     accessType: "client",
@@ -500,23 +503,8 @@ it("rejects invalid event_type", async ({ expect }) => {
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on POST /api/v1/analytics/events/batch:
-              - body.events[0].event_type must be one of the following values: $page-view, $click
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on POST /api/v1/analytics/events/batch:
-            - body.events[0].event_type must be one of the following values: $page-view, $click
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
+      "body": "Reserved event type \\"$invalid-type\\" cannot be uploaded via this endpoint",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
