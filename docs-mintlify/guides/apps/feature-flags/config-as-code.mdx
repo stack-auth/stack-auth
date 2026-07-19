@@ -1,0 +1,34 @@
+---
+title: "Config as Code"
+description: "Version feature flags and experiments with your codebase in your Hexclave config."
+icon: "/images/app-icons/feature-flags.svg"
+---
+
+Flags and experiments live in your project's branch config under the `featureFlags` namespace, just like the rest of your [Hexclave config](/guides/going-further/hexclave-config). That means they version with your codebase: a flag definition can be reviewed in a pull request, audited in git history, and rolled back with a revert.
+
+```ts title="hexclave.config.ts"
+export const config: HexclaveConfig = {
+  featureFlags: {
+    flags: {
+      "checkout-redesign": {
+        type: "boolean",
+        defaultVariant: "false",
+      },
+    },
+  },
+};
+```
+
+We recommend defining flags in your config file rather than ad-hoc in the dashboard — it keeps flag changes in the same review flow as the code that depends on them.
+
+## Development environments
+
+In a [development environment](/guides/going-further/local-vs-cloud-dashboard) (local dashboard running against your dev config), flag and experiment definitions come from your config file. Edits in the dashboard are read-only against deployed environments until you push your config — the same behavior as every other config surface. This prevents dashboard clicks from silently diverging from what's in your repository.
+
+## Dashboard edits use config paths
+
+When you do edit a flag in the dashboard (e.g. on a cloud project), the dashboard applies the change as a config path update like `featureFlags.flags.<key>`, so only that flag is touched and sibling config is left alone. This is the same path-notation mechanism used across Hexclave config, which is why dashboard edits and config-file edits compose cleanly.
+
+## Kill switches stay per-environment
+
+Kill switches are environment-specific state, not part of the versioned config — killing a flag in production does not touch development, and does not require a config push. This is deliberate: a kill switch is an incident response tool and must work instantly, independent of your deploy pipeline.

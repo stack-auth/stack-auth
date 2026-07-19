@@ -1,0 +1,71 @@
+---
+title: "Quickstart"
+description: "Create your first feature flag and read it in your app in a few minutes."
+icon: "/images/app-icons/feature-flags.svg"
+---
+
+This guide takes you from zero to a working flag: enable the app, create a flag, read it in your code, and flip it from the dashboard.
+
+<Steps>
+  <Step title="Enable the Feature Flags app">
+    In your Hexclave dashboard, open **Explore Apps**, select **Feature Flags**, and click **Enable**.
+
+    <Note>
+      Feature Flags is currently in beta.
+    </Note>
+  </Step>
+
+  <Step title="Create a flag">
+    In the Feature Flags app, click **Create Flag** and configure:
+
+    - **Key**: `checkout-redesign` — this is what you reference in code
+    - **Type**: boolean (string, number, and json are also available)
+    - **Variants**: `true` and `false`
+    - **Default**: `false`, so nobody sees the redesign until you say so
+
+    You can add targeting rules and percentage rollouts now or later — the flag works immediately with just a default.
+  </Step>
+
+  <Step title="Read the flag in React">
+    ```tsx
+    import { useFeatureFlag } from "@hexclave/next";  // replace `next` with the correct framework SDK package
+
+    function Checkout() {
+      const flag = useFeatureFlag("checkout-redesign", { fallback: false });
+      if (flag.isLoading) return <CheckoutSkeleton />;
+      // flag.value is typed by the fallback; flag.isFallback is true when the
+      // fallback was served (flag missing, killed, or evaluation failed)
+      return flag.value ? <NewCheckout /> : <ClassicCheckout />;
+    }
+    ```
+
+    `fallback` is required: it is served whenever the flag is killed, missing, or evaluation fails, so your UI never breaks when the backend is unreachable. It also types `flag.value`. Always render a loading state while `flag.isLoading` is `true` to avoid flashing the wrong variant.
+  </Step>
+
+  <Step title="Read the flag on the server">
+    ```ts
+    import { hexclaveServerApp } from "@/hexclave";
+
+    const showRedesign = await hexclaveServerApp.getFeatureFlagValue("checkout-redesign", {
+      user,               // or { team } for team-level flags
+      fallback: false,    // required: served on kill switch, missing flag, or error
+    });
+    ```
+
+    Server-side reads evaluate against the same rules as the client, so a user sees consistent values everywhere.
+  </Step>
+
+  <Step title="Flip it in the dashboard">
+    Back in the dashboard, change the flag's default to `true` (or add a targeting rule for your own user) and reload your app — the new variant is served. If something goes wrong, hit the **kill switch**: every SDK immediately serves the `fallback` value, no deploy needed.
+  </Step>
+</Steps>
+
+<Info>
+  Reading a flag automatically records an exposure, which is what experiments use to attribute conversions — there is no separate tracking call for exposures.
+</Info>
+
+## Next steps
+
+- [Overview](/guides/apps/feature-flags/overview) — flag types, targeting rules, rollouts, prerequisites, and holdouts
+- [Experiments](/guides/apps/feature-flags/experiments) — turn a flag into an A/B test and measure the impact
+- [Config as code](/guides/apps/feature-flags/config-as-code) — define flags in your versioned config for review and audit

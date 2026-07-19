@@ -198,6 +198,12 @@ export const ALL_APPS = {
     tags: ["auth", "developers"],
     stage: "alpha",
   },
+  "feature-flags": {
+    displayName: "Feature Flags",
+    subtitle: "Feature flags, progressive rollouts, and A/B experiments",
+    tags: ["developers", "operations"],
+    stage: "beta",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {
