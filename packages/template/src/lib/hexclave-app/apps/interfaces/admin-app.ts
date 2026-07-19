@@ -1,6 +1,7 @@
 import type { AnalyticsClickmapOptions, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse } from "@hexclave/shared/dist/interface/admin-metrics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { Result } from "@hexclave/shared/dist/utils/results";
@@ -159,6 +160,16 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<{ refundTransactionId: string }>,
     getAnalyticsClickmap(options: AnalyticsClickmapOptions): Promise<AnalyticsClickmapResponse>,
     createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse>,
+
+    testFeatureFlags(request: FeatureFlagEvaluateRequest): Promise<FeatureFlagEvaluateResponse>,
+    listFeatureFlagExperimentRuns(experimentId?: string): Promise<FeatureFlagExperimentRun[]>,
+    getFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
+    startFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
+    pauseFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
+    resumeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
+    completeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
+    getFeatureFlagExperimentResults(runId: string): Promise<FeatureFlagExperimentResults>,
+    listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
     getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,

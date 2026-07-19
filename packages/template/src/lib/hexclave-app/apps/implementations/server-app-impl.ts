@@ -1,5 +1,7 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import { evaluateFeatureFlag } from "@hexclave/shared/dist/feature-flags/evaluator";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -15,6 +17,7 @@ import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { AsyncCache } from "@hexclave/shared/dist/utils/caches";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
@@ -32,17 +35,95 @@ import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineP
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
+import { FeatureFlagController } from "../../feature-flags";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListTeamsOptions, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
+import { FeatureFlagBootstrapCache, FeatureFlagBootstrapUnavailableError, type FeatureFlagBootstrapSnapshot } from "./feature-flag-bootstrap-cache";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _HexclaveClientAppImplIncomplete<HasTokenStore, ProjectId> {
   declare protected _interface: HexclaveServerInterface;
+  private readonly _featureFlagBootstrapCache = new FeatureFlagBootstrapCache(
+    async (etag) => await this._interface.getFeatureFlagsBootstrap(etag),
+  );
+  protected override readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
+    evaluate: async (identity, request) => await this._evaluateFeatureFlagsLocally(identity.userId, request),
+    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ exposures }, identity.session),
+    cacheTtlMillis: 30_000,
+  });
+
+  private async _evaluateFeatureFlagsLocally(
+    userId: string,
+    request: FeatureFlagEvaluateRequest,
+  ): Promise<FeatureFlagEvaluateResponse<Json>> {
+    let bootstrap: FeatureFlagBootstrapSnapshot;
+    try {
+      bootstrap = await this._featureFlagBootstrapCache.get();
+    } catch (error) {
+      if (!(error instanceof FeatureFlagBootstrapUnavailableError)) throw error;
+      captureError("feature-flags-bootstrap-unavailable", error);
+      const results: FeatureFlagEvaluateResponse<Json>["results"] = {};
+      for (const key of request.flag_keys) {
+        results[key] = {
+          flag_key: key,
+          value: request.fallbacks?.[key] ?? null,
+          variant_key: null,
+          reason: "error",
+          rule_id: null,
+          config_version: "unavailable",
+          experiment_id: null,
+          experiment_run_id: null,
+          exposure_token: null,
+          is_stale: false,
+        };
+      }
+      return { results };
+    }
+
+    const results: FeatureFlagEvaluateResponse<Json>["results"] = {};
+    for (const key of request.flag_keys) {
+      const flagId = bootstrap.flag_ids_by_key[key];
+      if (flagId == null) {
+        results[key] = {
+          flag_key: key,
+          value: request.fallbacks?.[key] ?? null,
+          variant_key: null,
+          reason: "missing",
+          rule_id: null,
+          config_version: bootstrap.config_version,
+          experiment_id: null,
+          experiment_run_id: null,
+          exposure_token: null,
+          is_stale: bootstrap.isStale,
+        };
+        continue;
+      }
+      const evaluated = evaluateFeatureFlag(flagId, bootstrap.config, {
+        distinctId: userId,
+        userId,
+        teamId: request.team_id,
+        context: request.context,
+      });
+      results[key] = {
+        flag_key: evaluated.flagKey,
+        value: evaluated.value === undefined ? request.fallbacks?.[key] ?? null : evaluated.value,
+        variant_key: evaluated.variantKey ?? null,
+        reason: evaluated.reason,
+        rule_id: evaluated.ruleId ?? null,
+        config_version: bootstrap.config_version,
+        experiment_id: evaluated.experimentId ?? null,
+        experiment_run_id: evaluated.experimentRunId ?? null,
+        exposure_token: null,
+        is_stale: bootstrap.isStale,
+      };
+    }
+    return { results };
+  }
 
   // TODO override the client user cache to use the server user cache, so we save some requests
   private readonly _currentServerUserCache = createCacheBySession(async (session) => {

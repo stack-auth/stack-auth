@@ -3,6 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
 import { HexclaveClientInterface } from "./client-interface";
+import { HexclaveServerInterface } from "./server-interface";
 
 function createClientInterface(options?: {
   baseUrl?: string,
@@ -348,6 +349,84 @@ describe("HexclaveClientInterface bot challenge compatibility", () => {
       password: "password",
       bot_challenge_unavailable: "true",
     });
+  });
+});
+
+describe("HexclaveClientInterface feature flags", () => {
+  it("maps remote evaluation requests through the authenticated client route", async () => {
+    const responseBody = {
+      results: {
+        checkout: {
+          flag_key: "checkout",
+          value: true,
+          variant_key: "enabled",
+          reason: "rule",
+          rule_id: "rule-1",
+          config_version: "v1",
+          experiment_id: null,
+          experiment_run_id: null,
+          exposure_token: null,
+        },
+      },
+    };
+    const fetchMock = vi.fn(async () => createJsonResponse(responseBody));
+    vi.stubGlobal("fetch", fetchMock);
+    const iface = createClientInterface();
+
+    const result = await iface.evaluateFeatureFlags<boolean>({
+      flag_keys: ["checkout"],
+      fallbacks: { checkout: false },
+      context: { country: "US" },
+    }, createSession());
+
+    expect(result).toEqual(responseBody);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.com/api/v1/feature-flags/evaluate");
+    expect(getRequestBody(fetchMock)).toEqual({
+      flag_keys: ["checkout"],
+      fallbacks: { checkout: false },
+      context: { country: "US" },
+    });
+  });
+
+  it("sends exposure batches through the authenticated client route", async () => {
+    const fetchMock = vi.fn(async () => createJsonResponse({ accepted: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const iface = createClientInterface();
+
+    await iface.sendFeatureFlagExposureBatch({
+      exposures: [{ event_id: "event-1", exposure_token: "signed-token", exposed_at_ms: 123 }],
+    }, createSession());
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.com/api/v1/feature-flags/exposures/batch");
+    expect(getRequestBody(fetchMock)).toEqual({
+      exposures: [{ event_id: "event-1", exposure_token: "signed-token", exposed_at_ms: 123 }],
+    });
+  });
+});
+
+describe("HexclaveServerInterface feature flag bootstrap", () => {
+  it("treats a conditional 304 as a successful cache revalidation", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const ifNoneMatch = new Headers(init?.headers).get("if-none-match");
+      if (ifNoneMatch === '"v1"') return new Response(null, { status: 304, headers: { etag: '"v1"' } });
+      return createJsonResponse({ config: {}, flag_ids_by_key: {}, config_version: "v1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const iface = new HexclaveServerInterface({
+      clientVersion: "test",
+      getBaseUrl: () => "https://api.example.com",
+      getApiUrls: () => ["https://api.example.com"],
+      extraRequestHeaders: {},
+      projectId: "project-id",
+      secretServerKey: "secret-server-key",
+    });
+
+    expect(await iface.getFeatureFlagsBootstrap()).toEqual({
+      status: "ok",
+      data: { config: {}, flag_ids_by_key: {}, config_version: "v1" },
+      etag: null,
+    });
+    expect(await iface.getFeatureFlagsBootstrap('"v1"')).toEqual({ status: "not-modified" });
   });
 });
 

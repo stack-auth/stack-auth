@@ -22,7 +22,7 @@ import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@hexclav
 import { scrambleDuringCompileTime } from "@hexclave/shared/dist/utils/compile-time";
 import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
-import { parseJson } from "@hexclave/shared/dist/utils/json";
+import { parseJson, type Json } from "@hexclave/shared/dist/utils/json";
 import { DependenciesMap } from "@hexclave/shared/dist/utils/maps";
 import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { deepPlainEquals, omit } from "@hexclave/shared/dist/utils/objects";
@@ -53,6 +53,8 @@ import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-acco
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
+import { FeatureFlagController, type FeatureFlagDetails, type FeatureFlagOptions, type FeatureFlagRequest } from "../../feature-flags";
+import { useFeatureFlagDetailsFromController } from "../../feature-flag-hooks"; // THIS_LINE_PLATFORM react-like
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
@@ -63,7 +65,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { EventTracker } from "./event-tracker";
+import { EventTracker, type TrackEventOptions, validateCustomerEvent } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -261,6 +263,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
+  protected readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
+    evaluate: async (identity, request) => await this._interface.evaluateFeatureFlags(request, identity.session),
+    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ exposures }, identity.session),
+  });
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -3307,6 +3313,70 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     return crud && this._currentUserFromCrud(crud, session);
   }
+
+  protected async _getFeatureFlagIdentity() {
+    const user = await this.getUser({ or: "anonymous" });
+    return { cacheKey: user.id, value: { session: user._internalSession, userId: user.id } };
+  }
+
+  getFeatureFlag<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<T> {
+    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlag(identity, key, fallback, options));
+  }
+
+  getFeatureFlagDetails<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<FeatureFlagDetails<T>> {
+    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlagDetails(identity, key, fallback, options));
+  }
+
+  getFeatureFlags(requests: readonly FeatureFlagRequest[]): Promise<Map<string, FeatureFlagDetails<Json>>> {
+    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlags(identity, requests));
+  }
+
+  async trackFeatureFlagExposure(details: FeatureFlagDetails<Json>): Promise<void> {
+    await this._featureFlags.trackFeatureFlagExposure(await this._getFeatureFlagIdentity(), details);
+  }
+
+  async trackEvent(name: string, options?: TrackEventOptions): Promise<void> {
+    validateCustomerEvent(name, options);
+    if (this._analyticsOptions?.enabled === false) {
+      throw new Error("Cannot track an analytics event because analytics is disabled for this Hexclave app.");
+    }
+    if (this._eventTracker != null) {
+      await this._eventTracker.trackEvent(name, options);
+      return;
+    }
+
+    const identity = await this._getFeatureFlagIdentity();
+    const response = await this._interface.sendAnalyticsEventBatch(JSON.stringify({
+      session_replay_segment_id: generateUuid(),
+      batch_id: generateUuid(),
+      sent_at_ms: Date.now(),
+      events: [{
+        event_type: name,
+        event_at_ms: Date.now(),
+        data: {
+          ...options?.properties,
+          ...(options?.value == null ? {} : { value: options.value }),
+        },
+      }],
+    }), identity.value.session, { keepalive: false });
+    if (response.status === "error") throw response.error;
+    if (!response.data.ok) throw new Error(`Analytics event ingestion failed with status ${response.data.status}.`);
+  }
+
+  // IF_PLATFORM react-like
+  useFeatureFlag<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): T {
+    return this.useFeatureFlagDetails(key, fallback, options).value;
+  }
+
+  useFeatureFlagDetails<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): FeatureFlagDetails<T> {
+    const user = this.useUser({ or: "anonymous" });
+    const identity = useMemo(
+      () => ({ cacheKey: user.id, value: { session: user._internalSession, userId: user.id } }),
+      [user.id, user._internalSession],
+    );
+    return useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
+  }
+  // END_PLATFORM
 
   // IF_PLATFORM react-like
   useUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'redirect' }): ProjectCurrentUser<ProjectId>;
