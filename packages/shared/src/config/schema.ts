@@ -18,6 +18,7 @@ import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
+import { featureFlagsConfigSchema } from "../feature-flags/schema";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
@@ -326,6 +327,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  featureFlags: featureFlagsConfigSchema,
 
 
   dataVault: yupObject({
@@ -724,6 +727,7 @@ const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedCo
 const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeDefaults, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 const organizationConfigDefaults = {
+  featureFlags: undefined,
   rbac: {
     permissions: (key: string) => ({
       containedPermissionIds: (key: string) => undefined,
@@ -866,7 +870,6 @@ const organizationConfigDefaults = {
       customerType: "user",
     } as const)
   },
-
 
   dbSync: {
     externalDatabases: (key: string) => ({

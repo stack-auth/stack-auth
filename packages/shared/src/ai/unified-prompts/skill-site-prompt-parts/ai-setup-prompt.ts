@@ -540,6 +540,9 @@ type PublicAppSetupPromptId = {
 
 const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
 {
+  "feature-flags": deindent`
+    Define flags in the project's branch configuration and evaluate them through the Hexclave SDK. Feature flags control product behavior, not authorization; continue to enforce permissions on the server.
+  `,
   "authentication": deindent`
     Start by choosing the sign-in methods in \`hexclave.config.ts\`. A reasonable SaaS default is OTP plus one OAuth provider:
 

@@ -172,6 +172,12 @@ export const ALL_APPS = {
     tags: ["developers", "operations"],
     stage: "stable",
   },
+  "feature-flags": {
+    displayName: "Feature Flags",
+    subtitle: "Release features safely and run experiments",
+    tags: ["developers", "operations"],
+    stage: "beta",
+  },
   "clickmaps": {
     displayName: "Clickmaps",
     subtitle: "Visualize where users click across your app",
