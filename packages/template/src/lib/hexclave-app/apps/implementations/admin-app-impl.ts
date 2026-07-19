@@ -7,6 +7,7 @@ import { InternalApiKeysCrud } from "@hexclave/shared/dist/interface/crud/intern
 import { ProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
 import type { AdminGetSessionReplayChunkEventsResponse } from "@hexclave/shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@hexclave/shared/dist/interface/crud/transactions";
+import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
 import { HexclaveAssertionError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -1249,6 +1250,42 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       since: options.since,
       until: options.until,
     });
+  }
+
+  async testFeatureFlags(request: FeatureFlagEvaluateRequest): Promise<FeatureFlagEvaluateResponse> {
+    return await this._interface.testFeatureFlags(request);
+  }
+
+  async listFeatureFlagExperimentRuns(experimentId?: string): Promise<FeatureFlagExperimentRun[]> {
+    return await this._interface.listFeatureFlagExperimentRuns(experimentId);
+  }
+
+  async getFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.getFeatureFlagExperimentRun(runId);
+  }
+
+  async startFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(runId, "start");
+  }
+
+  async pauseFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(runId, "pause");
+  }
+
+  async resumeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(runId, "resume");
+  }
+
+  async completeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(runId, "complete");
+  }
+
+  async getFeatureFlagExperimentResults(runId: string): Promise<FeatureFlagExperimentResults> {
+    return await this._interface.getFeatureFlagExperimentResults(runId);
+  }
+
+  async listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse> {
+    return await this._interface.listFeatureFlagActivity(options);
   }
 
   async createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse> {

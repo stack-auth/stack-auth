@@ -4,6 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;
@@ -104,10 +105,43 @@ export type EventTrackerDeps = {
 };
 
 type TrackedEvent = {
-  event_type: "$page-view" | "$click",
+  event_type: string,
   event_at_ms: number,
   data: Record<string, unknown>,
 };
+
+export type TrackEventOptions = {
+  properties?: Record<string, Json>,
+  value?: number,
+};
+
+function validateEventPropertyValue(value: Json, depth = 0): void {
+  if (depth > 5) throw new Error("Analytics event properties cannot be nested more than 5 levels.");
+  if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Analytics event property numbers must be finite.");
+  if (Array.isArray(value)) {
+    for (const item of value) validateEventPropertyValue(item, depth + 1);
+  } else if (value != null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new Error("Analytics event properties must use plain JSON objects.");
+    for (const item of Object.values(value)) validateEventPropertyValue(item, depth + 1);
+  }
+}
+
+export function validateCustomerEvent(name: string, options?: TrackEventOptions): void {
+  if (name.startsWith("$")) throw new Error("Analytics event names beginning with '$' are reserved by Hexclave.");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(name)) {
+    throw new Error("Analytics event names must be 1-128 characters and contain only letters, numbers, periods, underscores, colons, or hyphens.");
+  }
+  if (options?.value != null && !Number.isFinite(options.value)) throw new Error("Analytics event values must be finite numbers.");
+  const properties = options?.properties ?? {};
+  if (Object.keys(properties).length > 50) throw new Error("Analytics events can contain at most 50 properties.");
+  for (const [key, value] of Object.entries(properties)) {
+    if (key.length === 0 || key.length > 64) throw new Error("Analytics event property names must be between 1 and 64 characters.");
+    if (!isJsonSerializable(value)) throw new Error(`Analytics event property ${JSON.stringify(key)} must be JSON serializable.`);
+    validateEventPropertyValue(value);
+  }
+  if (new TextEncoder().encode(JSON.stringify(properties)).byteLength > 16_384) throw new Error("Analytics event properties cannot exceed 16384 bytes.");
+}
 
 export class EventTracker {
   private _started = false;
@@ -175,6 +209,18 @@ export class EventTracker {
     this._events = [];
     this._approxBytes = 0;
     this._unclassifiedClicks.clear();
+  }
+
+  async trackEvent(name: string, options?: TrackEventOptions): Promise<void> {
+    validateCustomerEvent(name, options);
+    this._pushEvent({
+      event_type: name,
+      event_at_ms: Date.now(),
+      data: {
+        ...options?.properties,
+        ...(options?.value == null ? {} : { value: options.value }),
+      },
+    });
   }
 
   private _pushEvent(event: TrackedEvent) {
@@ -512,13 +558,22 @@ export class EventTracker {
       if (isAdBlockerNetworkError(res.error)) {
         return;
       }
+      this._restoreEventsAfterFailedFlush(events);
       console.warn("EventTracker flush failed:", res.error);
       return;
     }
 
     if (!res.data.ok) {
+      this._restoreEventsAfterFailedFlush(events);
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
     }
+  }
+
+  private _restoreEventsAfterFailedFlush(events: TrackedEvent[]): void {
+    // Put failed events before newer buffered events so conversion funnels keep
+    // their original ordering when the next interval retries the batch.
+    this._events = [...events, ...this._events];
+    this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
   }
 
   private _disable() {

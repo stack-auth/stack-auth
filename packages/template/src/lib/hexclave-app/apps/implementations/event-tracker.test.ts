@@ -26,6 +26,42 @@ describe("EventTracker", () => {
     vi.useRealTimers();
   });
 
+  it("buffers validated customer events and retries a failed flush", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    let attempts = 0;
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        attempts += 1;
+        return attempts === 1 ? Result.error(new Error("offline")) : Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      await tracker.trackEvent("checkout.completed", { properties: { plan: "pro" }, value: 49 });
+      await advancePastFlush();
+      await advancePastFlush();
+
+      expect(attempts).toBe(2);
+      expect(getSentEventTypes(sentBodies.slice(1))).toContain("checkout.completed");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("rejects reserved and non-serializable customer events", async () => {
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async () => Result.ok(new Response()),
+    });
+
+    await expect(tracker.trackEvent("$feature-flag-exposure")).rejects.toThrowError("reserved");
+    await expect(tracker.trackEvent("checkout", { value: Number.NaN })).rejects.toThrowError("finite");
+  });
+
   it("captures events when browser globals are exposed as accessor descriptors", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Open project</button>";

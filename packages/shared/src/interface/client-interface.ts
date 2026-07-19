@@ -8,7 +8,7 @@ import { generateSecureRandomString } from '../utils/crypto';
 import { HexclaveAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
-import { ReadonlyJson } from '../utils/json';
+import { Json, ReadonlyJson } from '../utils/json';
 import { publishableClientKeyNotNecessarySentinel } from '../utils/oauth';
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
@@ -19,6 +19,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExposureBatchRequest } from './crud/feature-flags';
 import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
@@ -577,7 +578,9 @@ export class HexclaveClientInterface {
   ): Promise<Result<Response, Error>> {
     try {
       const encoded = await encodeGzipJsonBody(body, { keepalive: options.keepalive });
-      const response = await this.sendClientRequest(
+      // The batch ID makes this POST idempotent at ingestion, so retrying a
+      // network failure cannot duplicate analytics rows.
+      const response = await this._networkRetryException(async () => await this.sendClientRequest(
         "/analytics/events/batch",
         {
           method: "POST",
@@ -589,11 +592,47 @@ export class HexclaveClientInterface {
         "client",
         this.getAnalyticsApiUrl(),
         { maxAttempts: 1, skipDiagnostics: true },
-      );
+      ), session, "client", { maxAttempts: options.keepalive ? 1 : 3, skipDiagnostics: true });
       return Result.ok(response);
     } catch (e) {
       return Result.error(e instanceof Error ? e : new Error(String(e)));
     }
+  }
+
+  async evaluateFeatureFlags<T extends Json>(
+    body: FeatureFlagEvaluateRequest,
+    session: InternalSession,
+  ): Promise<FeatureFlagEvaluateResponse<T>> {
+    const response = await this.sendClientRequest(
+      "/feature-flags/evaluate",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  async sendFeatureFlagExposureBatch(
+    body: FeatureFlagExposureBatchRequest,
+    session: InternalSession,
+  ): Promise<void> {
+    // Every exposure carries an event ID, so the ingestion endpoint can
+    // safely deduplicate retries after an ambiguous network failure.
+    await this._networkRetryException(async () => await this.sendClientRequest(
+      "/feature-flags/exposures/batch",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      session,
+      "client",
+      undefined,
+      { maxAttempts: 1, skipDiagnostics: true },
+    ), session, "client", { maxAttempts: 3, skipDiagnostics: true });
   }
 
   protected async sendClientRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
@@ -783,7 +822,9 @@ export class HexclaveClientInterface {
     const res = Object.assign(processedRes.data, {
       usedTokens: tokenObj,
     });
-    if (res.ok) {
+    // Conditional GETs intentionally use 304 as a successful cache hit even
+    // though Fetch's `ok` flag only covers 2xx responses.
+    if (res.ok || res.status === 304) {
       return Result.ok(res);
     } else if (res.status === 429) {
       const retryAfter = res.headers.get("Retry-After");

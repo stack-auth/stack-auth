@@ -56,6 +56,23 @@ export type {
 export {
   hexclaveAppInternalsSymbol,
 } from "./common";
+
+export type {
+  FeatureFlagDetails,
+  FeatureFlagExposureMode,
+  FeatureFlagOptions,
+  FeatureFlagRequest,
+} from "./feature-flags";
+export type {
+  FeatureFlagActivityItem,
+  FeatureFlagActivityResponse,
+  FeatureFlagExperimentMetricResult,
+  FeatureFlagExperimentResults,
+  FeatureFlagExperimentRun,
+  FeatureFlagExperimentRunStatus,
+} from "@hexclave/shared/dist/interface/crud/feature-flags";
+export type { Json } from "@hexclave/shared/dist/utils/json";
+export type { TrackEventOptions } from "./apps/implementations/event-tracker";
 export {
   getPagePrompt,
 } from "./url-targets";

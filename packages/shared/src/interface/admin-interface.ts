@@ -8,6 +8,7 @@ import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import type { AnalyticsClickmapDevice, AnalyticsClickmapKind, AnalyticsClickmapResponse, AnalyticsClickmapTokenResponse, MetricsResponse, MetricsUserCounts, UserActivityResponse } from "./admin-metrics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
+import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "./crud/feature-flags";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
@@ -79,6 +80,57 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       session,
       requestType,
     );
+  }
+
+  async testFeatureFlags(body: FeatureFlagEvaluateRequest): Promise<FeatureFlagEvaluateResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/feature-flags/test",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listFeatureFlagExperimentRuns(experimentId?: string): Promise<FeatureFlagExperimentRun[]> {
+    const query = experimentId == null ? "" : `?experiment_id=${encodeURIComponent(experimentId)}`;
+    const response = await this.sendAdminRequest(`/internal/feature-flags/experiment-runs${query}`, {}, null);
+    const body: { items: FeatureFlagExperimentRun[] } = await response.json();
+    return body.items;
+  }
+
+  async getFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
+    const response = await this.sendAdminRequest(`/internal/feature-flags/experiment-runs/${encodeURIComponent(runId)}`, {}, null);
+    return await response.json();
+  }
+
+  async transitionFeatureFlagExperimentRun(
+    runId: string,
+    action: "start" | "pause" | "resume" | "complete",
+  ): Promise<FeatureFlagExperimentRun> {
+    const response = await this.sendAdminRequest(
+      `/internal/feature-flags/experiment-runs/${encodeURIComponent(runId)}/${action}`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getFeatureFlagExperimentResults(runId: string): Promise<FeatureFlagExperimentResults> {
+    const response = await this.sendAdminRequest(`/internal/feature-flags/experiment-runs/${encodeURIComponent(runId)}/results`, {}, null);
+    return await response.json();
+  }
+
+  async listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse> {
+    const query = new URLSearchParams();
+    if (options?.cursor != null) query.set("cursor", options.cursor);
+    if (options?.limit != null) query.set("limit", options.limit.toString());
+    const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+    const response = await this.sendAdminRequest(`/internal/feature-flags/activity${suffix}`, {}, null);
+    return await response.json();
   }
 
   protected async sendAdminRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
