@@ -1,0 +1,34 @@
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_7494a922045b42::t_fa08bf1fa8995c 3
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_7494a922045b42::t_fa08bf1fa8995c 1
+docs-mintlify/guides/getting-started/setup.mdx
+  s_7494a922045b42::t_fa08bf1fa8995c 9
+  s_7494a922045b42::t_fe707d8336720e 731-732,954-955,1163-1196,1425-1426,1642-1643,1847-1848
+apps/backend/src/private/implementation
+  s_6d0e60a99d9bd1::t_a67d3aaf1e2c50 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "b5b0b69b14511b006c2e84886957e5ca5b035372",
+  "prompts": {},
+  "sessions": {
+    "s_6d0e60a99d9bd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "993c9261-6c03-4b7c-9aa2-68a21f6fab3d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_7494a922045b42": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3ba5099a-2b9b-4552-afce-8e2b8cd3b6e5",
+        "model": "grok-4.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
