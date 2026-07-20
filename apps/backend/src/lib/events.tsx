@@ -6,7 +6,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { HTTP_METHODS } from "@hexclave/shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@hexclave/shared/dist/utils/objects";
 import { UnionToIntersection } from "@hexclave/shared/dist/utils/types";
@@ -278,9 +278,17 @@ export async function logEvent<T extends EventType[]>(
     const billingTeamId = options.billingTeamId;
 
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const app = getHexclaveServerApp();
-      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      const isDebited = await eventsItem.tryDecreaseQuantity(1);
+      // The analytics-events quota lives in bulldozer, but event logging must
+      // not hard-depend on it: if bulldozer is unreachable, report it and log
+      // the event anyway (treat the quota as available)
+      let isDebited = true;
+      try {
+        const app = getHexclaveServerApp();
+        const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+        isDebited = await eventsItem.tryDecreaseQuantity(1);
+      } catch (error) {
+        captureError("events:analytics-events-quota-check", error);
+      }
       if (!isDebited) {
         return;
       }

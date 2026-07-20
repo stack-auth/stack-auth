@@ -261,6 +261,37 @@ Request:
 Does not error.
 
 
+## queryAnalytics(options)
+
+Arguments:
+  options.query: string - ClickHouse SQL query to run
+  options.params: Record<string, unknown>? - ClickHouse query parameters
+  options.timeout_ms: number? - max execution time in milliseconds
+  options.include_all_branches: bool? - unsupported; must be false or omitted
+
+Returns:
+  {
+    result: Record<string, unknown>[],
+    query_id: string
+  }
+
+Request:
+  POST /api/v1/analytics/query [server-only]
+  Body: {
+    query: string,
+    params?: Record<string, unknown>,
+    timeout_ms?: number,
+    include_all_branches?: false
+  }
+
+Runs a read-only analytics query for the current project and branch. The API applies project and branch filtering through ClickHouse settings.
+
+Errors:
+  AnalyticsQueryError
+    code: "ANALYTICS_QUERY_ERROR"
+    message: sanitized ClickHouse query error
+
+
 ## sendEmail(options)
 
 Arguments:

@@ -222,8 +222,17 @@
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper {
-    z-index: 9999 !important;
+    z-index: 2147483647 !important;
     overflow: visible !important;
+  }
+
+  .analytics-card-tooltip-escape:has(.recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    z-index: 2147483647 !important;
+  }
+
+  main:has(.analytics-card-tooltip-escape .recharts-tooltip-wrapper[style*="visibility: visible"]) {
+    position: relative;
+    z-index: 60;
   }
 
   .analytics-card-tooltip-escape .recharts-tooltip-wrapper > * {
@@ -444,10 +453,29 @@ body:has(.show-site-loading-indicator) .site-loading-indicator {
   }
 }
 
+@keyframes walkthrough-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.walkthrough-pulse-ring {
+  animation: walkthrough-pulse-ring 1.4s ease-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .data-grid-export-progress-shimmer {
     animation: none;
     transform: translateX(75%);
+  }
+
+  .walkthrough-pulse-ring {
+    animation: none;
   }
 }
 

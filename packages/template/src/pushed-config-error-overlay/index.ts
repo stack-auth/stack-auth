@@ -369,7 +369,7 @@ export function mountPushedConfigErrorOverlay(app: StackClientApp<true>): () => 
       return;
     }
 
-    const issueMessage = issue.messages.join("\n");
+    const issueMessage = "Hexclave config " + issue.kind + ": " + issue.messages.join("\n");
     const issueKey = `${app.projectId}:${issue.kind}:${issueMessage}`;
     const issueLabel = issue.kind === "error" ? "error" : "warning";
     const issueTitle = issue.kind === "error"

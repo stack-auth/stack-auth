@@ -58,6 +58,11 @@ import type {
   RowId,
 } from "./types";
 
+// Viewport-relative fallback height for infinite-scroll grids that the caller left unbounded
+// (no `fillHeight`, no `maxHeight`). Leaves ~16rem of room for the top bar, page header, and grid
+// toolbar. See the `effectiveMaxHeight` comment in DataGrid for why an infinite grid must be bounded.
+const DEFAULT_INFINITE_MAX_HEIGHT = "calc(100dvh - 16rem)";
+
 // ─── Row click target ────────────────────────────────────────────────
 
 function getEventTargetElement(target: EventTarget | null): Element | null {
@@ -455,16 +460,29 @@ function InfiniteScrollSentinel({
   strings: DataGridStrings;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Read `onIntersect` through a ref so the observer never has to be
+  // re-created when the callback identity changes. `onLoadMore` (and thus
+  // `onIntersect`) changes on every `isLoadingMore`/`hasMore` toggle; if the
+  // observer were re-created each time, a freshly-created observer re-reports
+  // the sentinel's *current* intersection state, so a sentinel that stays in
+  // view keeps firing `onIntersect` after every page. That auto-loads the
+  // entire dataset back-to-back (defeating "load on scroll") and OOM-crashes
+  // the tab on long transaction/customer histories. A single stable observer
+  // only fires on genuine intersection *changes* (real user scrolls).
+  const onIntersectRef = useRef(onIntersect);
+  onIntersectRef.current = onIntersect;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0]?.isIntersecting) onIntersect(); },
+      (entries) => {
+        if (entries[0]?.isIntersecting) onIntersectRef.current();
+      },
       { root: rootRef?.current ?? null, rootMargin: "200px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [onIntersect, rootRef]);
+  }, [rootRef]);
   return (
     <div ref={ref} className="flex items-center justify-center py-4">
       {isLoading && (
@@ -986,8 +1004,18 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const allSelected = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
   const someSelected = !allSelected && rowIds.some((id) => state.selection.selectedIds.has(id));
+
+  // An infinite-scroll grid MUST have a height-bounded scroll container, otherwise the container
+  // grows to fit every loaded row, the virtualizer measures it as fully visible, and it renders
+  // all rows into the DOM — unbounded memory growth that eventually OOMs the tab (rows never stop
+  // accumulating as the user scrolls). When the caller didn't bound it (no fillHeight, no maxHeight),
+  // fall back to a viewport-relative cap so virtualization can actually window. Only applied to
+  // infinite mode; paginated grids cap rows at the page size and are safe to render unbounded.
+  const effectiveMaxHeight =
+    maxHeight ?? (paginationMode === "infinite" && !fillHeight ? DEFAULT_INFINITE_MAX_HEIGHT : undefined);
+
   const infiniteScrollRootRef =
-    paginationMode === "infinite" && (fillHeight || maxHeight != null)
+    paginationMode === "infinite" && (fillHeight || effectiveMaxHeight != null)
       ? scrollContainerRef
       : undefined;
 
@@ -1005,7 +1033,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     return m;
   }, [headers]);
 
-  const isBounded = fillHeight || maxHeight != null;
+  const isBounded = fillHeight || effectiveMaxHeight != null;
 
   return (
     <>
@@ -1025,15 +1053,15 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           isBounded && "overflow-hidden",
           className,
         )}
-        style={maxHeight != null ? { ...cssVars, maxHeight } : cssVars}
+        style={effectiveMaxHeight != null ? { ...cssVars, maxHeight: effectiveMaxHeight } : cssVars}
         role="grid"
         aria-rowcount={totalRowCount ?? rows.length}
         aria-colcount={visibleColumns.length}
       >
         <div
           ref={stickyChromeRef}
-          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl"
-          style={{ top: stickyTop ?? (maxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
+          className="sticky z-30 w-full min-w-0 shrink-0 overflow-visible rounded-t-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl"
+          style={{ top: stickyTop ?? (effectiveMaxHeight != null ? 0 : "var(--data-grid-sticky-top, 0px)") }}
         >
           {toolbar !== false && (
             <div className="relative bg-transparent">
@@ -1219,7 +1247,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         </div>
 
         {footer !== false && (
-          <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background/60 backdrop-blur-xl">
+          <div className="sticky bottom-0 z-30 shrink-0 overflow-hidden rounded-b-[calc(var(--radius)*2)] bg-white/90 dark:bg-background backdrop-blur-xl">
             {footer ? footer(footerCtx) : <DefaultFooter ctx={footerCtx} pagination={paginationMode} onChange={onChange} />}
             {footerExtra && (typeof footerExtra === "function" ? footerExtra(footerCtx) : footerExtra)}
           </div>

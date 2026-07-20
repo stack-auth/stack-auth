@@ -95,8 +95,7 @@
     },
     "@hexclave/cli#build": {
       "dependsOn": [
-        "^build",
-        "@hexclave/dashboard#build:rde-standalone"
+        "^build"
       ],
       "outputs": [
         "dist/**"
@@ -130,6 +129,22 @@
       "cache": false
     },
     "dev": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#build-packages:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-sdks:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-openapi-docs:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-setup-prompt-docs:watch": {
       "persistent": true,
       "cache": false
     },

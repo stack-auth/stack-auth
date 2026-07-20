@@ -1,11 +1,10 @@
 import { Command } from "commander";
 import { getInternalUser } from "../lib/app.js";
 import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
-import { listLocalEmulatorProjects } from "../lib/local-emulator-client.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { CliError } from "../lib/errors.js";
 
-export type ProjectTarget = "cloud" | "dev";
+export type ProjectTarget = "cloud" | "local";
 
 export type ProjectListEntry = {
   id: string,
@@ -15,22 +14,31 @@ export type ProjectListEntry = {
 
 export type ProjectListFlags = {
   cloud?: boolean,
-  dev?: boolean,
+  local?: boolean,
 };
 
-// Returns which sources `project list` should query. Mutually exclusive; with
-// no flags we hit both. Exported for unit tests.
-export function resolveProjectListSources(opts: ProjectListFlags): { cloud: boolean, dev: boolean } {
-  if (opts.cloud && opts.dev) {
-    throw new CliError("Pass either --cloud or --dev, not both. Omit both flags to list projects from both sources.");
+// Returns which sources `project list` should query. Exported for unit tests.
+export function resolveProjectListSources(opts: ProjectListFlags = {}): {
+  cloud: boolean,
+  local: boolean,
+} {
+  if (opts.cloud && opts.local) {
+    throw new CliError("Pass either --cloud or --local, not both. Omit both flags to list projects from both sources.");
   }
-  if (opts.cloud) return { cloud: true, dev: false };
-  if (opts.dev) return { cloud: false, dev: true };
-  return { cloud: true, dev: true };
+
+  if (opts.cloud) {
+    return { cloud: true, local: false };
+  }
+
+  if (opts.local) {
+    return { cloud: false, local: true };
+  }
+
+  return { cloud: true, local: true };
 }
 
 // Render projects for the human-readable list output. Each line is
-// `<id>\t<displayName>\t[cloud|dev]`. No projects → "No projects found." sentinel.
+// `<id>\t<displayName>\t[cloud|local]`. No projects → "No projects found." sentinel.
 export function formatProjectList(projects: ProjectListEntry[]): string {
   if (projects.length === 0) {
     return "No projects found.";
@@ -47,35 +55,17 @@ export function registerProjectCommand(program: Command) {
     .command("list")
     .description("List your projects (defaults to both cloud and development-environment projects)")
     .option("--cloud", "Only list cloud projects")
-    .option("--dev", "Only list development-environment projects")
+    .option("--local", "Only list development-environment projects")
     .action(async (opts: ProjectListFlags) => {
       const sources = resolveProjectListSources(opts);
       const results: ProjectListEntry[] = [];
-
-      if (sources.cloud) {
-        const auth = resolveSessionAuth();
-        const user = await getInternalUser(auth);
-        const cloudProjects = await user.listOwnedProjects();
-        for (const p of cloudProjects) {
-          results.push({ id: p.id, displayName: p.displayName, target: "cloud" });
-        }
-      }
-
-      if (sources.dev) {
-        try {
-          const devProjects = await listLocalEmulatorProjects();
-          for (const p of devProjects) {
-            results.push({ id: p.projectId, displayName: p.displayName, target: "dev" });
-          }
-        } catch (err) {
-          // When the user did not explicitly request --dev, treat an unreachable
-          // emulator as a soft failure: warn on stderr and keep the cloud
-          // results. With --dev (sources.cloud === false) we surface the error.
-          if (!sources.cloud) {
-            throw err;
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`warning: skipping dev projects — development environment not reachable (${message}).`);
+      const auth = resolveSessionAuth();
+      const user = await getInternalUser(auth);
+      const ownedProjects = await user.listOwnedProjects();
+      for (const p of ownedProjects) {
+        const target: ProjectTarget = p.isDevelopmentEnvironment ? "local" : "cloud";
+        if ((target === "cloud" && sources.cloud) || (target === "local" && sources.local)) {
+          results.push({ id: p.id, displayName: p.displayName, target });
         }
       }
 
@@ -95,6 +85,11 @@ export function registerProjectCommand(program: Command) {
       if (!opts.cloud) {
         throw new CliError("hexclave project create currently only creates cloud projects. Pass --cloud to confirm.");
       }
+      const [{ getInternalUser }, { resolveLoginConfig, resolveSessionAuth }, { createProjectInteractively }] = await Promise.all([
+        import("../lib/app.js"),
+        import("../lib/auth.js"),
+        import("../lib/create-project.js"),
+      ]);
       const auth = resolveSessionAuth();
       const user = await getInternalUser(auth);
       const { dashboardUrl } = resolveLoginConfig();

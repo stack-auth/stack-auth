@@ -120,7 +120,16 @@ const nextConfig = {
   },
 
   async headers() {
-    const isLocalEmulator = resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_LOCAL_EMULATOR", "NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+    // The development-environment (RDE) dashboard is embedded as an iframe by the
+    // dev tool overlay, which runs inside the customer's own app on a *different*
+    // localhost origin (e.g. http://localhost:3000). A plain X-Frame-Options:
+    // SAMEORIGIN would block that framing, so RDE builds instead scope framing to
+    // localhost origins via CSP frame-ancestors. This only applies to the RDE
+    // build target (build:rde-standalone / dev:rde-production); the hosted and
+    // self-host Docker builds keep X-Frame-Options: SAMEORIGIN.
+    const isRdeBuild = process.env.HEXCLAVE_DASHBOARD_BUILD_FOR_RDE === "true";
+    const allowsFraming = isRdeBuild || resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+    const rdeFrameAncestors = "frame-ancestors 'self' http://localhost:* https://localhost:* http://*.localhost:* https://*.localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:*";
     return [
       {
         source: "/(.*)",
@@ -142,7 +151,7 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          ...resolveHexclaveStackEnvVar("NEXT_PUBLIC_HEXCLAVE_IS_PREVIEW", "NEXT_PUBLIC_STACK_IS_PREVIEW") === "true" ? [] : [{
+          ...allowsFraming ? [] : [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
           }],
@@ -150,7 +159,7 @@ const nextConfig = {
             key: "Content-Security-Policy",
             // Note: *.localhost requires Chrome 117+ and may not work in Firefox
             // without network.dns.localDomains configuration. Fine for dev tool purposes.
-            value: isLocalEmulator ? "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://*.localhost https://*.localhost" : "",
+            value: isRdeBuild ? rdeFrameAncestors : "",
           },
         ],
       },

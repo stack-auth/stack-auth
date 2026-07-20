@@ -1,6 +1,5 @@
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
 import { normalizeEmail, sendEmailToMany } from "@/lib/emails";
-import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
@@ -106,10 +105,6 @@ export async function sendSupportFeedbackEmail(options: {
 
   if (options.feedbackType) {
     fields.push({ label: "Type", value: feedbackLabel });
-  }
-
-  if (isLocalEmulatorEnabled()) {
-    fields.push({ label: "Environment", value: "Local Emulator" });
   }
 
   await sendInternalOperationsEmail({

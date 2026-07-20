@@ -19,13 +19,14 @@ type LinkProps = {
   title?: string,
 };
 
-export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, ...rest }, ref) => {
+export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, href, children, prefetch, ...rest }, ref) => {
   const router = useRouter();
   const { needConfirm } = useRouterConfirm();
 
   return <NextLink
     ref={ref}
     href={href}
+    prefetch={prefetch}
     {...rest}
     onClick={(e: React.MouseEvent<HTMLAnchorElement>) => {
       if (needConfirm) {
@@ -38,7 +39,7 @@ export const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(({ onClick, h
       }
     }}
   >
-    <UrlPrefetcher href={href} />
+    {prefetch !== false ? <UrlPrefetcher href={href} /> : null}
     {children}
   </NextLink>;
 

@@ -1,25 +1,24 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
-import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { ClickHouseError } from "@clickhouse/client";
 import { tool } from "ai";
 import { z } from "zod";
 
 export const SQL_QUERY_RESULT_MAX_CHARS = 50_000;
 
-export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
-  if (auth == null) {
+export function createSqlQueryTool(targetProjectId?: string | null) {
+  if (targetProjectId == null) {
     return null;
   }
 
-  const projectId = targetProjectId ?? auth.tenancy.project.id;
-  const branchId = targetProjectId ? "main" : auth.tenancy.branchId;
+  const projectId = targetProjectId;
+  const branchId = "main";
 
   // Max rows returned to the model (backstop if LIMIT is missing).
   const MAX_ROWS_FOR_AI = 50;
 
   return tool({
-    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause.`,
+    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause. Use SHOW TABLES to discover available tables and DESCRIBE TABLE <table_name> to see columns with types and descriptions.`,
     inputSchema: z.object({
       query: z
         .string()
