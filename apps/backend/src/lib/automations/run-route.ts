@@ -1,4 +1,5 @@
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { Result } from "@hexclave/shared/dist/utils/results";
 import { AutomationJson, AutomationRuleDisabledError, AutomationRuleNotFoundError, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { AutomationActionPlan, AutomationEvaluationResult, AutomationSourceAdapter, AutomationActionAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 import { paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
@@ -12,6 +13,18 @@ export type AutomationRuleExecutionClaimResult =
   | {
     claimed: false,
     lastActionAt: Date | null,
+    nextEligibleAt: Date,
+    reason: "cooldown" | "in-flight" | "retry-backoff",
+  };
+
+export type AutomationRuleExecutionDeferralResult =
+  | {
+    outcome: "deferred",
+    nextRetryAt: Date,
+  }
+  | {
+    outcome: "already-completed",
+    lastActionAt: Date,
   };
 
 export type AutomationRuleExecutionStateStore = {
@@ -37,6 +50,16 @@ export type AutomationRuleExecutionStateStore = {
     lastActionAt: Date,
     emailOutboxId: string,
   }) => Promise<void>,
+  deferActionRetry: (options: {
+    tenancyId: string,
+    ruleId: string,
+    subjectType: "user",
+    subjectId: string,
+    signalKey: string,
+    claimTriggeredAt: Date,
+    failedAt: Date,
+    emailOutboxId: string,
+  }) => Promise<AutomationRuleExecutionDeferralResult>,
 };
 
 export type AutomationEmailSendResult = {
@@ -64,13 +87,18 @@ export function getSingleAutomationEmailSendResult(result: {
 
 export type AutomationRunDecisionResult = {
   decision: EvaluatedAutomationDecision,
+  outcome: "sent" | "suppressed" | "deferred",
   sent: boolean,
   cooldown: {
     blocked: boolean,
     lastActionAtMillis?: number,
     nextEligibleAtMillis?: number,
   },
-  skipReason?: "cooldown",
+  skipReason?: "cooldown" | "in-flight" | "retry-backoff",
+  deferred?: {
+    stage: "enqueue" | "completion",
+    retryAtMillis: number,
+  },
 };
 
 export type AutomationRunResult = {
@@ -80,6 +108,7 @@ export type AutomationRunResult = {
   eligibleCount: number,
   suppressedCount: number,
   sentCount: number,
+  deferredCount: number,
   nextCursor: string | null,
   decisions: AutomationRunDecisionResult[],
 };
@@ -134,19 +163,44 @@ export async function runAutomationRuleForRoute(options: {
     if (!claim.claimed) {
       decisions.push({
         decision,
+        outcome: "suppressed",
         sent: false,
-        cooldown: getBlockedCooldownDetails(claim.lastActionAt, rule.cooldown.days),
-        skipReason: "cooldown",
+        cooldown: {
+          blocked: true,
+          ...(claim.lastActionAt === null ? {} : { lastActionAtMillis: claim.lastActionAt.getTime() }),
+          nextEligibleAtMillis: claim.nextEligibleAt.getTime(),
+        },
+        skipReason: claim.reason,
       });
       continue;
     }
 
-    await options.emailSender({
+    const sendResult = await Result.fromThrowingAsync(async () => await options.emailSender({
       action: decision.action,
       scheduledAt: options.scheduledAt,
       emailOutboxId: claim.emailOutboxId,
-    });
-    await options.stateStore.markActionCompleted({
+    }));
+    if (sendResult.status === "error") {
+      const deferral = await options.stateStore.deferActionRetry({
+        tenancyId: options.tenancy.id,
+        ruleId: options.ruleId,
+        subjectType: decision.subject.type,
+        subjectId: decision.subject.id,
+        signalKey: decision.signal.key,
+        claimTriggeredAt: options.now,
+        failedAt: options.now,
+        emailOutboxId: claim.emailOutboxId,
+      });
+      if (deferral.outcome === "already-completed") {
+        decisions.push(createSentDecisionResult(decision));
+        continue;
+      }
+      reportDeferredAutomationDecision(options, decision, "enqueue", sendResult.error);
+      decisions.push(createDeferredDecisionResult(decision, "enqueue", deferral.nextRetryAt));
+      continue;
+    }
+
+    const completionResult = await Result.fromThrowingAsync(async () => await options.stateStore.markActionCompleted({
       tenancyId: options.tenancy.id,
       ruleId: options.ruleId,
       subjectType: decision.subject.type,
@@ -155,27 +209,42 @@ export async function runAutomationRuleForRoute(options: {
       claimTriggeredAt: options.now,
       lastActionAt: options.now,
       emailOutboxId: claim.emailOutboxId,
-    });
+    }));
+    if (completionResult.status === "error") {
+      const deferral = await options.stateStore.deferActionRetry({
+        tenancyId: options.tenancy.id,
+        ruleId: options.ruleId,
+        subjectType: decision.subject.type,
+        subjectId: decision.subject.id,
+        signalKey: decision.signal.key,
+        claimTriggeredAt: options.now,
+        failedAt: options.now,
+        emailOutboxId: claim.emailOutboxId,
+      });
+      if (deferral.outcome === "already-completed") {
+        decisions.push(createSentDecisionResult(decision));
+        continue;
+      }
+      reportDeferredAutomationDecision(options, decision, "completion", completionResult.error);
+      decisions.push(createDeferredDecisionResult(decision, "completion", deferral.nextRetryAt));
+      continue;
+    }
 
-    decisions.push({
-      decision,
-      sent: true,
-      cooldown: {
-        blocked: false,
-      },
-    });
+    decisions.push(createSentDecisionResult(decision));
   }
 
-  const sentCount = decisions.filter((decision) => decision.sent).length;
-  const suppressedCount = decisions.length - sentCount;
+  const sentCount = decisions.filter((decision) => decision.outcome === "sent").length;
+  const suppressedCount = decisions.filter((decision) => decision.outcome === "suppressed").length;
+  const deferredCount = decisions.filter((decision) => decision.outcome === "deferred").length;
 
   return {
     ruleId: options.ruleId,
     mode: "run",
     evaluatedCount: evaluation.evaluatedCount,
-    eligibleCount: sentCount,
+    eligibleCount: sentCount + deferredCount,
     suppressedCount,
     sentCount,
+    deferredCount,
     nextCursor: evaluation.nextCursor,
     decisions,
   };
@@ -205,12 +274,14 @@ export function automationRunResultToApiBody(result: AutomationRunResult) {
     eligible_count: result.eligibleCount,
     suppressed_count: result.suppressedCount,
     sent_count: result.sentCount,
+    deferred_count: result.deferredCount,
     next_cursor: result.nextCursor,
     decisions: result.decisions.map((resultDecision) => ({
       subject_type: resultDecision.decision.subject.type,
       subject_id: resultDecision.decision.subject.id,
       signal_key: resultDecision.decision.signal.key,
       sent: resultDecision.sent,
+      outcome: resultDecision.outcome,
       source: paymentsItemQuotaSourceSnapshotToApiBody(resultDecision.decision, "Automation run decision"),
       action: {
         type: resultDecision.decision.action.type,
@@ -227,20 +298,58 @@ export function automationRunResultToApiBody(result: AutomationRunResult) {
         }),
       },
       ...(resultDecision.skipReason === undefined ? {} : { skip_reason: resultDecision.skipReason }),
+      ...(resultDecision.deferred === undefined ? {} : {
+        deferred: {
+          stage: resultDecision.deferred.stage,
+          retry_at_millis: resultDecision.deferred.retryAtMillis,
+        },
+      }),
     })),
   };
 }
 
-function getBlockedCooldownDetails(lastActionAt: Date | null, cooldownDays: number) {
-  if (lastActionAt === null) {
-    return {
-      blocked: true,
-    };
-  }
-  const nextEligibleAtMillis = lastActionAt.getTime() + cooldownDays * 24 * 60 * 60 * 1000;
+function createSentDecisionResult(decision: EvaluatedAutomationDecision): AutomationRunDecisionResult {
   return {
-    blocked: true,
-    lastActionAtMillis: lastActionAt.getTime(),
-    nextEligibleAtMillis,
+    decision,
+    outcome: "sent",
+    sent: true,
+    cooldown: { blocked: false },
   };
+}
+
+function createDeferredDecisionResult(
+  decision: EvaluatedAutomationDecision,
+  stage: "enqueue" | "completion",
+  nextRetryAt: Date,
+): AutomationRunDecisionResult {
+  return {
+    decision,
+    outcome: "deferred",
+    sent: false,
+    cooldown: {
+      blocked: true,
+      nextEligibleAtMillis: nextRetryAt.getTime(),
+    },
+    deferred: {
+      stage,
+      retryAtMillis: nextRetryAt.getTime(),
+    },
+  };
+}
+
+function reportDeferredAutomationDecision(
+  options: Pick<Parameters<typeof runAutomationRuleForRoute>[0], "tenancy" | "ruleId">,
+  decision: EvaluatedAutomationDecision,
+  stage: "enqueue" | "completion",
+  cause: unknown,
+) {
+  captureError("automation-decision-deferred", new HexclaveAssertionError(`Deferred automation decision after ${stage} failed.`, {
+    cause,
+    tenancyId: options.tenancy.id,
+    ruleId: options.ruleId,
+    subjectType: decision.subject.type,
+    subjectId: decision.subject.id,
+    signalKey: decision.signal.key,
+    stage,
+  }));
 }

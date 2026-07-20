@@ -123,6 +123,7 @@ function createRunResult(nextCursor: string | null, options: Partial<AutomationR
     eligibleCount: 1,
     suppressedCount: 0,
     sentCount: 1,
+    deferredCount: 0,
     nextCursor,
     decisions: [],
     ...options,
@@ -176,6 +177,32 @@ describe("native cron automation traversal", () => {
     });
     expect(state.renewIfNeeded).toHaveBeenCalledOnce();
     expect(state.release).toHaveBeenCalledOnce();
+  });
+
+  it("advances a page after decision failures are durably deferred", async () => {
+    const state = createStateHarness();
+    const nextCursor = "00000000-0000-4000-8000-000000000100";
+
+    await expect(runScheduledAutomations({
+      prisma: createPrisma(["00000000-0000-4000-8000-000000000010"]),
+      stateStore: state.stateStore,
+      getTenancyById: async (id) => createTenancy(id),
+      runRule: async () => createRunResult(nextCursor, {
+        eligibleCount: 1,
+        sentCount: 0,
+        deferredCount: 1,
+      }),
+      maxPages: 1,
+    })).resolves.toMatchObject({
+      pagesProcessed: 1,
+      sentCount: 0,
+      deferredCount: 1,
+    });
+
+    expect(state.getCheckpoint()).toMatchObject({
+      activeRuleId: ruleId,
+      nextSubjectCursor: nextCursor,
+    });
   });
 
   it("uses a monotonic clock for the work budget", async () => {

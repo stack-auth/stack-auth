@@ -1,6 +1,5 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { automationCooldownStatusToApiBody, type AutomationCooldownStatus } from "./cooldown";
-import { AutomationRuleExecutionStateReader } from "./execution-state-store";
+import { AutomationExecutionStatus, AutomationRuleExecutionStateReader } from "./execution-state-store";
 import { AutomationActionAdapter, AutomationEvaluationResult, AutomationSourceAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 import { AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { PaymentsItemQuotaSourceApiBody, paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
@@ -30,6 +29,7 @@ type AutomationDryRunDecisionApiItem = {
     last_action_at_millis?: number,
     next_eligible_at_millis?: number,
   },
+  skip_reason?: "cooldown" | "in-flight" | "retry-backoff",
   recipient: {
     user_exists: boolean,
     has_primary_email: boolean,
@@ -80,7 +80,7 @@ export async function evaluateAutomationRuleDryRunForRoute<TPrisma>(options: {
     tenancyId: options.tenancy.id,
     userIds: result.decisions.map((decision) => decision.subject.id),
   });
-  const cooldownStatuses = await Promise.all(result.decisions.map(async (decision) => await options.executionStateReader.getCooldownStatus({
+  const executionStatuses = await Promise.all(result.decisions.map(async (decision) => await options.executionStateReader.getExecutionStatus({
     tenancyId: options.tenancy.id,
     ruleId: options.ruleId,
     subjectType: decision.subject.type,
@@ -90,7 +90,7 @@ export async function evaluateAutomationRuleDryRunForRoute<TPrisma>(options: {
     now: options.now,
   })));
 
-  return automationDryRunResultToApiBody(result, recipientStatuses, cooldownStatuses);
+  return automationDryRunResultToApiBody(result, recipientStatuses, executionStatuses);
 }
 
 function getSupportedAutomationRuleForDryRunRoute(tenancy: AutomationRuleTenancy, ruleId: string) {
@@ -107,9 +107,9 @@ function getSupportedAutomationRuleForDryRunRoute(tenancy: AutomationRuleTenancy
 export function automationDryRunResultToApiBody(
   result: AutomationEvaluationResult,
   recipientStatuses: Map<string, AutomationDryRunRecipientStatus>,
-  cooldownStatuses: AutomationCooldownStatus[],
+  executionStatuses: AutomationExecutionStatus[],
 ): AutomationDryRunApiBody {
-  const blockedCount = cooldownStatuses.filter((status) => status.blocked).length;
+  const blockedCount = executionStatuses.filter((status) => status.blocked).length;
   return {
     rule_id: result.ruleId,
     mode: "dry-run",
@@ -120,7 +120,7 @@ export function automationDryRunResultToApiBody(
     decisions: result.decisions.map((decision, index) => automationDryRunDecisionToApiItem(decision, recipientStatuses.get(decision.subject.id) ?? {
       userExists: false,
       hasPrimaryEmail: false,
-    }, cooldownStatuses[index] ?? {
+    }, executionStatuses[index] ?? {
       blocked: false,
     })),
   };
@@ -129,7 +129,7 @@ export function automationDryRunResultToApiBody(
 function automationDryRunDecisionToApiItem(
   decision: EvaluatedAutomationDecision,
   recipientStatus: AutomationDryRunRecipientStatus,
-  cooldownStatus: AutomationCooldownStatus,
+  executionStatus: AutomationExecutionStatus,
 ): AutomationDryRunDecisionApiItem {
   return {
     subject_type: decision.subject.type,
@@ -140,7 +140,14 @@ function automationDryRunDecisionToApiItem(
       template_id: decision.action.templateId,
       notification_category_name: decision.action.notificationCategoryName,
     },
-    cooldown: automationCooldownStatusToApiBody(cooldownStatus),
+    cooldown: executionStatus.blocked
+      ? {
+        blocked: true,
+        ...(executionStatus.lastActionAt === undefined ? {} : { last_action_at_millis: executionStatus.lastActionAt.getTime() }),
+        next_eligible_at_millis: executionStatus.nextEligibleAt.getTime(),
+      }
+      : { blocked: false },
+    ...(executionStatus.blocked ? { skip_reason: executionStatus.reason } : {}),
     recipient: {
       user_exists: recipientStatus.userExists,
       has_primary_email: recipientStatus.hasPrimaryEmail,

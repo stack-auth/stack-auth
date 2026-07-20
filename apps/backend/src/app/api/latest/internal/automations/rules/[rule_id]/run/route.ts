@@ -44,12 +44,14 @@ export const POST = createSmartRouteHandler({
       eligible_count: yupNumber().integer().defined(),
       suppressed_count: yupNumber().integer().defined(),
       sent_count: yupNumber().integer().defined(),
+      deferred_count: yupNumber().integer().defined(),
       next_cursor: yupString().nullable().defined(),
       decisions: yupArray(yupObject({
         subject_type: yupString().oneOf(["user"]).defined(),
         subject_id: yupString().defined(),
         signal_key: yupString().defined(),
         sent: yupBoolean().defined(),
+        outcome: yupString().oneOf(["sent", "suppressed", "deferred"]).defined(),
         source: yupObject({
           type: yupString().oneOf(["payments-item-quota"]).defined(),
           item_id: yupString().defined(),
@@ -69,7 +71,11 @@ export const POST = createSmartRouteHandler({
           last_action_at_millis: yupNumber().optional(),
           next_eligible_at_millis: yupNumber().optional(),
         }).defined(),
-        skip_reason: yupString().oneOf(["cooldown"]).optional(),
+        skip_reason: yupString().oneOf(["cooldown", "in-flight", "retry-backoff"]).optional(),
+        deferred: yupObject({
+          stage: yupString().oneOf(["enqueue", "completion"]).defined(),
+          retry_at_millis: yupNumber().integer().defined(),
+        }).optional(),
       })).defined(),
     }).defined(),
   }),

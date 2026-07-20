@@ -69,6 +69,7 @@ export type ScheduledAutomationCronResult = {
   evaluatedCount: number,
   sentCount: number,
   suppressedCount: number,
+  deferredCount: number,
   cycleCompleted: boolean,
 };
 
@@ -188,6 +189,7 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
   let evaluatedCount = 0;
   let sentCount = 0;
   let suppressedCount = 0;
+  let deferredCount = 0;
   let cycleCompleted = false;
   let discoveredTenancyIds: string[] = [];
 
@@ -331,6 +333,7 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     evaluatedCount += result.evaluatedCount;
     sentCount += result.sentCount;
     suppressedCount += result.suppressedCount;
+    deferredCount += result.deferredCount;
 
     if (result.nextCursor === null) {
       await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
@@ -351,6 +354,7 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     evaluatedCount,
     sentCount,
     suppressedCount,
+    deferredCount,
     cycleCompleted,
   };
 }
@@ -442,6 +446,7 @@ function emptyCronResult(status: "lease-held"): ScheduledAutomationCronResult {
     evaluatedCount: 0,
     sentCount: 0,
     suppressedCount: 0,
+    deferredCount: 0,
     cycleCompleted: false,
   };
 }

@@ -8,6 +8,7 @@ CREATE TABLE "AutomationRuleExecutionState" (
   "signalKey" TEXT NOT NULL,
   "lastTriggeredAt" TIMESTAMP(3) NOT NULL,
   "lastActionAt" TIMESTAMP(3),
+  "nextRetryAt" TIMESTAMP(3),
   "emailOutboxId" UUID NOT NULL,
   "lastSourceSnapshot" JSONB NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

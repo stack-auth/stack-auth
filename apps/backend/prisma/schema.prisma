@@ -1175,6 +1175,8 @@ model AutomationRuleExecutionState {
   signalKey           String
   lastTriggeredAt     DateTime
   lastActionAt        DateTime?
+  // A null action time with a retry time is a deferred claim; without one it is actively in flight.
+  nextRetryAt         DateTime?
   // Reserved before enqueue so an ambiguous retry addresses the same EmailOutbox row.
   emailOutboxId       String   @db.Uuid
   lastSourceSnapshot  Json

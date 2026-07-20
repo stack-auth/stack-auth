@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
           user_exists: yupBoolean().defined(),
           has_primary_email: yupBoolean().defined(),
         }).defined(),
-        skip_reason: yupString().optional(),
+        skip_reason: yupString().oneOf(["cooldown", "in-flight", "retry-backoff"]).optional(),
       })).defined(),
     }).defined(),
   }),

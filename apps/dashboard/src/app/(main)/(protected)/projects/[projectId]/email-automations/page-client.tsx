@@ -37,6 +37,7 @@ import {
   XCircleIcon,
 } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -111,7 +112,10 @@ type AutomationDecision = {
   entitlementQuantity: number | null,
   blocked: boolean,
   sent?: boolean,
+  outcome?: "sent" | "suppressed" | "deferred",
   skipReason?: string,
+  deferredStage?: "enqueue" | "completion",
+  retryAtMillis?: number,
   hasPrimaryEmail?: boolean,
 };
 
@@ -122,6 +126,7 @@ type AutomationRouteResult = {
   eligibleCount: number,
   suppressedCount: number,
   sentCount?: number,
+  deferredCount?: number,
   nextCursor: string | null,
   decisions: AutomationDecision[],
 };
@@ -464,6 +469,7 @@ export function parseAutomationRouteResult(value: unknown): AutomationRouteResul
     eligibleCount: requireNumberFromRecord(value, "eligible_count"),
     suppressedCount: requireNumberFromRecord(value, "suppressed_count"),
     sentCount: readNumber(value.sent_count),
+    deferredCount: readNumber(value.deferred_count),
     nextCursor: value.next_cursor === null ? null : requireStringFromRecord(value, "next_cursor"),
     decisions: value.decisions.map((rawDecision) => parseDecision(rawDecision)),
   };
@@ -476,6 +482,11 @@ function parseDecision(rawDecision: unknown): AutomationDecision {
   const source = isRecord(rawDecision.source) ? rawDecision.source : undefined;
   const cooldown = isRecord(rawDecision.cooldown) ? rawDecision.cooldown : undefined;
   const recipient = isRecord(rawDecision.recipient) ? rawDecision.recipient : undefined;
+  const deferred = rawDecision.deferred === undefined
+    ? undefined
+    : isRecord(rawDecision.deferred)
+      ? rawDecision.deferred
+      : throwErr("Automation response deferred metadata did not match the expected shape");
   if (source === undefined || cooldown === undefined) {
     throw new Error("Automation response decision did not match the expected shape");
   }
@@ -487,6 +498,24 @@ function parseDecision(rawDecision: unknown): AutomationDecision {
   if (thresholdKind !== "near" && thresholdKind !== "over") {
     throw new Error(`Automation response threshold_kind "${thresholdKind}" is unsupported`);
   }
+  const rawOutcome = readString(rawDecision.outcome);
+  const outcome = rawOutcome === undefined
+    ? undefined
+    : rawOutcome === "sent" || rawOutcome === "suppressed" || rawOutcome === "deferred"
+      ? rawOutcome
+      : throwErr(`Automation response outcome "${rawOutcome}" is unsupported`);
+  if (outcome === "deferred" && deferred === undefined) {
+    throw new Error("Automation response deferred outcome is missing deferred metadata");
+  }
+  if (outcome !== "deferred" && deferred !== undefined) {
+    throw new Error(`Automation response outcome "${outcome ?? "<missing>"}" must not include deferred metadata`);
+  }
+  const rawDeferredStage = deferred === undefined ? undefined : requireStringFromRecord(deferred, "stage");
+  const deferredStage = rawDeferredStage === undefined
+    ? undefined
+    : rawDeferredStage === "enqueue" || rawDeferredStage === "completion"
+      ? rawDeferredStage
+      : throwErr(`Automation response deferred stage "${rawDeferredStage}" is unsupported`);
 
   return {
     subjectType,
@@ -496,7 +525,10 @@ function parseDecision(rawDecision: unknown): AutomationDecision {
     entitlementQuantity: source.entitlement_quantity === null ? null : requireNumberFromRecord(source, "entitlement_quantity"),
     blocked: requireBooleanFromRecord(cooldown, "blocked"),
     sent: readBoolean(rawDecision.sent),
+    outcome,
     skipReason: readString(rawDecision.skip_reason),
+    deferredStage,
+    retryAtMillis: deferred === undefined ? undefined : requireNumberFromRecord(deferred, "retry_at_millis"),
     hasPrimaryEmail: recipient === undefined ? undefined : readBoolean(recipient.has_primary_email),
   };
 }
@@ -1168,12 +1200,16 @@ function RunPreviewDialog(props: {
 function AutomationResult(props: { result: AutomationRouteResult }) {
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-5">
         <Metric label="Evaluated" value={props.result.evaluatedCount} />
         <Metric label="Eligible" value={props.result.eligibleCount} />
         <Metric label="Suppressed" value={props.result.suppressedCount} />
         <Metric label="Sent" value={props.result.sentCount ?? 0} />
+        <Metric label="Deferred" value={props.result.deferredCount ?? 0} />
       </div>
+      {(props.result.deferredCount ?? 0) > 0 ? (
+        <DesignAlert variant="warning" description="Some email decisions could not be completed and were safely deferred for retry." />
+      ) : null}
       {props.result.nextCursor !== null ? (
         <DesignAlert variant="info" description="More matching customers exist beyond this page. Scheduled workers continue pagination automatically." />
       ) : null}
@@ -1231,8 +1267,9 @@ function AutomationDecisionGrid(props: { decisions: AutomationDecision[] }) {
       sortable: false,
       renderCell: ({ row }) => {
         if (row.sent === true) return <DesignBadge label="sent" color="green" size="sm" />;
-        if (row.blocked) return <DesignBadge label="cooldown" color="orange" size="sm" />;
+        if (row.outcome === "deferred") return <DesignBadge label="deferred" color="orange" size="sm" />;
         if (row.skipReason !== undefined) return <DesignBadge label={row.skipReason} color="orange" size="sm" />;
+        if (row.blocked) return <DesignBadge label="cooldown" color="orange" size="sm" />;
         return <DesignBadge label="eligible" color="blue" size="sm" />;
       },
     },

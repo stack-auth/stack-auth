@@ -12,11 +12,15 @@ const now = new Date("2026-07-01T00:00:00.000Z");
 
 function createFakePrisma(options: {
   lastActionAt?: Date | null,
+  lastTriggeredAt?: Date,
+  nextRetryAt?: Date | null,
 } = {}) {
   return {
     automationRuleExecutionState: {
       findUnique: vi.fn(async () => options.lastActionAt === undefined ? null : {
+        lastTriggeredAt: options.lastTriggeredAt ?? new Date("2026-06-30T00:00:00.000Z"),
         lastActionAt: options.lastActionAt,
+        nextRetryAt: options.nextRetryAt ?? null,
       }),
       upsert: vi.fn(),
       create: vi.fn(),
@@ -234,6 +238,65 @@ describe("automation dry-run route helpers", () => {
 
     expect(fakePrisma.automationRuleExecutionState.create).not.toHaveBeenCalled();
     expect(fakePrisma.automationRuleExecutionState.update).not.toHaveBeenCalled();
+    expect(fakePrisma.automationRuleExecutionState.updateMany).not.toHaveBeenCalled();
+    expect(fakePrisma.emailOutbox.createMany).not.toHaveBeenCalled();
+  });
+
+  it("reports deferred retry backoff without writing automation state or email outbox rows", async () => {
+    const nextRetryAt = new Date("2026-07-01T00:15:00.000Z");
+    const fakePrisma = createFakePrisma({
+      lastActionAt: null,
+      lastTriggeredAt: now,
+      nextRetryAt,
+    });
+
+    await expect(evaluateAutomationRuleDryRunForRoute({
+      tenancy: createAutomationRouteTestTenancy(),
+      ruleId,
+      prisma: fakePrisma,
+      sourceAdapter: createAutomationRouteTestSourceAdapter(),
+      actionAdapter: createAutomationRouteTestActionAdapter(),
+      recipientStatusReader: async () => new Map(),
+      executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
+      now,
+    })).resolves.toMatchObject({
+      eligible_count: 0,
+      suppressed_count: 1,
+      decisions: [{
+        cooldown: {
+          blocked: true,
+          next_eligible_at_millis: nextRetryAt.getTime(),
+        },
+        skip_reason: "retry-backoff",
+      }],
+    });
+
+    expect(fakePrisma.automationRuleExecutionState.updateMany).not.toHaveBeenCalled();
+    expect(fakePrisma.emailOutbox.createMany).not.toHaveBeenCalled();
+  });
+
+  it("reports a due deferred decision as eligible without writing state", async () => {
+    const fakePrisma = createFakePrisma({
+      lastActionAt: null,
+      lastTriggeredAt: new Date("2026-06-30T23:45:00.000Z"),
+      nextRetryAt: now,
+    });
+
+    await expect(evaluateAutomationRuleDryRunForRoute({
+      tenancy: createAutomationRouteTestTenancy(),
+      ruleId,
+      prisma: fakePrisma,
+      sourceAdapter: createAutomationRouteTestSourceAdapter(),
+      actionAdapter: createAutomationRouteTestActionAdapter(),
+      recipientStatusReader: async () => new Map(),
+      executionStateReader: createPrismaAutomationRuleExecutionStateReader(fakePrisma),
+      now,
+    })).resolves.toMatchObject({
+      eligible_count: 1,
+      suppressed_count: 0,
+      decisions: [{ cooldown: { blocked: false } }],
+    });
+
     expect(fakePrisma.automationRuleExecutionState.updateMany).not.toHaveBeenCalled();
     expect(fakePrisma.emailOutbox.createMany).not.toHaveBeenCalled();
   });

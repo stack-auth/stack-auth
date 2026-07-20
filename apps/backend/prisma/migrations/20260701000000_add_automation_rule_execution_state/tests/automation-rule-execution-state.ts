@@ -69,6 +69,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "subjectId",
       "signalKey",
       "lastActionAt",
+      "nextRetryAt",
       "emailOutboxId",
       "lastSourceSnapshot"
     FROM "AutomationRuleExecutionState"
@@ -85,6 +86,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     subjectId: projectUserId,
     signalKey: "credits:near",
     lastActionAt: null,
+    nextRetryAt: null,
     emailOutboxId,
   }]);
   expect(JSON.parse(inserted[0].lastSourceSnapshot)).toMatchObject(initialSnapshot);
@@ -97,7 +99,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   await sql`
     UPDATE "AutomationRuleExecutionState"
     SET
-      "lastActionAt" = NOW(),
+      "nextRetryAt" = NOW() + INTERVAL '15 minutes',
       "lastSourceSnapshot" = ${JSON.stringify(updatedSnapshot)}::jsonb,
       "updatedAt" = NOW()
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
@@ -108,7 +110,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   const updated = await sql`
-    SELECT "lastActionAt", "emailOutboxId", "lastSourceSnapshot"
+    SELECT "lastActionAt", "nextRetryAt", "emailOutboxId", "lastSourceSnapshot"
     FROM "AutomationRuleExecutionState"
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
       AND "ruleId" = 'lowCreditsUpgradeEmail'
@@ -117,7 +119,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       AND "signalKey" = 'credits:near'
   `;
   expect(updated).toHaveLength(1);
-  expect(updated[0].lastActionAt).toBeInstanceOf(Date);
+  expect(updated[0].lastActionAt).toBeNull();
+  expect(updated[0].nextRetryAt).toBeInstanceOf(Date);
   expect(updated[0].emailOutboxId).toBe(emailOutboxId);
   expect(JSON.parse(updated[0].lastSourceSnapshot)).toMatchObject(updatedSnapshot);
 

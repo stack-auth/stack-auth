@@ -46,6 +46,7 @@ export const GET = createSmartRouteHandler({
       evaluated_count: yupNumber().integer().defined(),
       sent_count: yupNumber().integer().defined(),
       suppressed_count: yupNumber().integer().defined(),
+      deferred_count: yupNumber().integer().defined(),
       cycle_completed: yupBoolean().defined(),
     }).defined(),
   }),
@@ -75,6 +76,7 @@ export const GET = createSmartRouteHandler({
         evaluated_count: result.evaluatedCount,
         sent_count: result.sentCount,
         suppressed_count: result.suppressedCount,
+        deferred_count: result.deferredCount,
         cycle_completed: result.cycleCompleted,
       },
     };

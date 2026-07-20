@@ -71,6 +71,55 @@ vi.mock("../use-admin-app", () => ({
   },
 }));
 
+function createAutomationRunDecision(options: {
+  outcome: "sent" | "suppressed" | "deferred",
+  deferred?: {
+    stage: "enqueue" | "completion",
+    retry_at_millis: number,
+  },
+}) {
+  return {
+    subject_type: "user",
+    subject_id: `user-${options.outcome}`,
+    signal_key: `credits:${options.outcome}`,
+    sent: options.outcome === "sent",
+    outcome: options.outcome,
+    source: {
+      type: "payments-item-quota",
+      item_id: "credits",
+      current_quantity: 0,
+      entitlement_quantity: 10,
+      threshold_kind: "over",
+      owned_product_ids: ["pro"],
+      active_subscription_ids: ["sub-1"],
+    },
+    action: {
+      type: "send-email",
+      template_id: "template-id",
+      notification_category_name: "Marketing",
+    },
+    cooldown: {
+      blocked: options.outcome !== "sent",
+    },
+    ...(options.outcome === "suppressed" ? { skip_reason: "cooldown" } : {}),
+    ...(options.deferred === undefined ? {} : { deferred: options.deferred }),
+  };
+}
+
+function createAutomationRunResponse(decisions: ReturnType<typeof createAutomationRunDecision>[]) {
+  return {
+    rule_id: "usage-upgrade",
+    mode: "run",
+    evaluated_count: decisions.length,
+    eligible_count: decisions.filter((decision) => decision.outcome !== "suppressed").length,
+    suppressed_count: decisions.filter((decision) => decision.outcome === "suppressed").length,
+    sent_count: decisions.filter((decision) => decision.outcome === "sent").length,
+    deferred_count: decisions.filter((decision) => decision.outcome === "deferred").length,
+    next_cursor: null,
+    decisions,
+  };
+}
+
 describe("usage email automation dashboard helpers", () => {
   it("reads V1 rules from automations.rules only", () => {
     const rules = readRules({
@@ -296,6 +345,7 @@ describe("usage email automation dashboard helpers", () => {
       eligible_count: 1,
       suppressed_count: 1,
       sent_count: 1,
+      deferred_count: 0,
       next_cursor: null,
       decisions: [
         {
@@ -303,6 +353,7 @@ describe("usage email automation dashboard helpers", () => {
           subject_id: "user-1",
           signal_key: "credits:over",
           sent: true,
+          outcome: "sent",
           source: {
             type: "payments-item-quota",
             item_id: "credits",
@@ -328,8 +379,11 @@ describe("usage email automation dashboard helpers", () => {
           {
             "blocked": false,
             "currentQuantity": 12,
+            "deferredStage": undefined,
             "entitlementQuantity": 10,
             "hasPrimaryEmail": undefined,
+            "outcome": "sent",
+            "retryAtMillis": undefined,
             "sent": true,
             "skipReason": undefined,
             "subjectId": "user-1",
@@ -337,6 +391,7 @@ describe("usage email automation dashboard helpers", () => {
             "thresholdKind": "over",
           },
         ],
+        "deferredCount": 0,
         "eligibleCount": 1,
         "evaluatedCount": 2,
         "mode": "run",
@@ -346,6 +401,99 @@ describe("usage email automation dashboard helpers", () => {
         "suppressedCount": 1,
       }
     `);
+  });
+
+  it("parses explicit deferred manual-send results", () => {
+    const retryAtMillis = new Date("2026-07-01T12:15:00.000Z").getTime();
+    expect(parseAutomationRouteResult({
+      rule_id: "usage-upgrade",
+      mode: "run",
+      evaluated_count: 1,
+      eligible_count: 1,
+      suppressed_count: 0,
+      sent_count: 0,
+      deferred_count: 1,
+      next_cursor: null,
+      decisions: [{
+        subject_type: "user",
+        subject_id: "user-1",
+        signal_key: "credits:over",
+        sent: false,
+        outcome: "deferred",
+        source: {
+          type: "payments-item-quota",
+          item_id: "credits",
+          current_quantity: 0,
+          entitlement_quantity: 10,
+          threshold_kind: "over",
+          owned_product_ids: ["pro"],
+          active_subscription_ids: ["sub-1"],
+        },
+        action: {
+          type: "send-email",
+          template_id: "template-id",
+          notification_category_name: "Marketing",
+        },
+        cooldown: {
+          blocked: true,
+          next_eligible_at_millis: retryAtMillis,
+        },
+        deferred: {
+          stage: "enqueue",
+          retry_at_millis: retryAtMillis,
+        },
+      }],
+    })).toMatchObject({
+      sentCount: 0,
+      deferredCount: 1,
+      decisions: [{
+        outcome: "deferred",
+        deferredStage: "enqueue",
+        retryAtMillis,
+      }],
+    });
+  });
+
+  it("rejects a deferred outcome without deferred metadata", () => {
+    expect(() => parseAutomationRouteResult(createAutomationRunResponse([
+      createAutomationRunDecision({ outcome: "deferred" }),
+    ]))).toThrowErrorMatchingInlineSnapshot(`[Error: Automation response deferred outcome is missing deferred metadata]`);
+  });
+
+  it.each(["sent", "suppressed"] as const)("rejects a %s outcome with deferred metadata", (outcome) => {
+    expect(() => parseAutomationRouteResult(createAutomationRunResponse([
+      createAutomationRunDecision({
+        outcome,
+        deferred: {
+          stage: "enqueue",
+          retry_at_millis: new Date("2026-07-01T12:15:00.000Z").getTime(),
+        },
+      }),
+    ]))).toThrowError(`Automation response outcome "${outcome}" must not include deferred metadata`);
+  });
+
+  it("parses valid sent, suppressed, and deferred outcomes", () => {
+    const retryAtMillis = new Date("2026-07-01T12:15:00.000Z").getTime();
+    expect(parseAutomationRouteResult(createAutomationRunResponse([
+      createAutomationRunDecision({ outcome: "sent" }),
+      createAutomationRunDecision({ outcome: "suppressed" }),
+      createAutomationRunDecision({
+        outcome: "deferred",
+        deferred: {
+          stage: "completion",
+          retry_at_millis: retryAtMillis,
+        },
+      }),
+    ]))).toMatchObject({
+      sentCount: 1,
+      suppressedCount: 1,
+      deferredCount: 1,
+      decisions: [
+        { outcome: "sent", deferredStage: undefined, retryAtMillis: undefined },
+        { outcome: "suppressed", deferredStage: undefined, retryAtMillis: undefined },
+        { outcome: "deferred", deferredStage: "completion", retryAtMillis },
+      ],
+    });
   });
 
   it("fails loudly for malformed automation decision rows", () => {

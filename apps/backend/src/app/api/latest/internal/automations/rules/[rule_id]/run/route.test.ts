@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@/generated/prisma/client";
 import {
+  automationActiveClaimStaleTimeoutMs,
+  automationDeferredDecisionRetryDelayMs,
   AutomationRuleExecutionStatePrisma,
   createPrismaAutomationRuleExecutionStateStore,
 } from "@/lib/automations/execution-state-store";
-import { AutomationSourceDecision } from "@/lib/automations/rule-evaluator";
+import { AutomationSourceAdapter, AutomationSourceDecision } from "@/lib/automations/rule-evaluator";
 import {
   AutomationEmailSender,
   AutomationRuleExecutionStateStore,
@@ -21,6 +23,13 @@ import {
   createAutomationRouteTestSourceDecision,
   createAutomationRouteTestTenancy,
 } from "../test-helpers";
+
+const captureErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@hexclave/shared/dist/utils/errors", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hexclave/shared/dist/utils/errors")>();
+  return { ...actual, captureError: captureErrorMock };
+});
 
 const scheduledAt = new Date("2026-07-01T12:00:00.000Z");
 
@@ -55,6 +64,7 @@ describe("automation email enqueue result classification", () => {
 type InMemoryExecutionState = {
   lastTriggeredAt: Date,
   lastActionAt: Date | null,
+  nextRetryAt: Date | null,
   emailOutboxId: string,
   lastSourceSnapshot: Record<string, unknown>,
 };
@@ -76,17 +86,29 @@ function createInMemoryStateStore() {
       const key = keyFor(options);
       const existing = states.get(key);
       const cooldownCutoff = new Date(options.lastTriggeredAt.getTime() - options.cooldownDays * 24 * 60 * 60 * 1000);
-      const staleClaimCutoff = new Date(options.lastTriggeredAt.getTime() - 15 * 60 * 1000);
-      if (existing?.lastActionAt === null && existing.lastTriggeredAt >= staleClaimCutoff) {
+      const staleClaimCutoff = new Date(options.lastTriggeredAt.getTime() - automationActiveClaimStaleTimeoutMs);
+      if (existing?.lastActionAt === null && existing.nextRetryAt !== null && options.lastTriggeredAt < existing.nextRetryAt) {
         return {
           claimed: false,
           lastActionAt: null,
+          nextEligibleAt: existing.nextRetryAt,
+          reason: "retry-backoff",
+        };
+      }
+      if (existing?.lastActionAt === null && existing.nextRetryAt === null && existing.lastTriggeredAt >= staleClaimCutoff) {
+        return {
+          claimed: false,
+          lastActionAt: null,
+          nextEligibleAt: new Date(existing.lastTriggeredAt.getTime() + automationActiveClaimStaleTimeoutMs),
+          reason: "in-flight",
         };
       }
       if (existing?.lastActionAt != null && existing.lastActionAt >= cooldownCutoff) {
         return {
           claimed: false,
           lastActionAt: existing.lastActionAt,
+          nextEligibleAt: new Date(existing.lastActionAt.getTime() + options.cooldownDays * 24 * 60 * 60 * 1000),
+          reason: "cooldown",
         };
       }
 
@@ -94,6 +116,7 @@ function createInMemoryStateStore() {
       states.set(key, {
         lastTriggeredAt: options.lastTriggeredAt,
         lastActionAt: null,
+        nextRetryAt: null,
         emailOutboxId,
         lastSourceSnapshot: options.sourceSnapshot,
       });
@@ -112,8 +135,31 @@ function createInMemoryStateStore() {
       states.set(key, {
         ...existing,
         lastActionAt: options.lastActionAt,
+        nextRetryAt: null,
         emailOutboxId: options.emailOutboxId,
       });
+    }),
+    deferActionRetry: vi.fn(async (options) => {
+      const key = keyFor(options);
+      const existing = states.get(key);
+      if (existing === undefined) {
+        throw new Error("Expected state to be claimed before deferring action retry.");
+      }
+      if (existing.lastActionAt !== null) {
+        return {
+          outcome: "already-completed" as const,
+          lastActionAt: existing.lastActionAt,
+        };
+      }
+      const nextRetryAt = existing.nextRetryAt ?? new Date(options.failedAt.getTime() + automationDeferredDecisionRetryDelayMs);
+      states.set(key, {
+        ...existing,
+        nextRetryAt,
+      });
+      return {
+        outcome: "deferred" as const,
+        nextRetryAt,
+      };
     }),
   };
 
@@ -126,13 +172,23 @@ function createInMemoryStateStore() {
 async function runWithFakes(options: {
   stateStore?: AutomationRuleExecutionStateStore,
   decisionFactory?: () => AutomationSourceDecision,
+  sourceDecisions?: AutomationSourceDecision[],
   emailSender?: Parameters<typeof runAutomationRuleForRoute>[0]["emailSender"],
   now?: Date,
   limit?: number,
   cursor?: string | null,
   ruleEnabled?: boolean,
 } = {}) {
-  const sourceAdapter = createAutomationRouteTestSourceAdapter(options.decisionFactory, { evaluatedCount: 1 });
+  const sourceDecisions = options.sourceDecisions;
+  const sourceAdapter: AutomationSourceAdapter = sourceDecisions === undefined
+    ? createAutomationRouteTestSourceAdapter(options.decisionFactory, { evaluatedCount: 1 })
+    : {
+      evaluate: vi.fn(async () => ({
+        evaluatedCount: sourceDecisions.length,
+        nextCursor: null,
+        decisions: sourceDecisions,
+      })),
+    };
   const actionAdapter = createAutomationRouteTestActionAdapter();
   const emailSender = vi.fn(options.emailSender ?? (async () => ({ outcome: "created" as const })));
   let createdStore: ReturnType<typeof createInMemoryStateStore> | undefined;
@@ -273,6 +329,7 @@ describe("automation real-send route helpers", () => {
     states.set("tenancy-1:low-api-credits:user:user-1:api_credits:near", {
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
+      nextRetryAt: null,
       emailOutboxId: "00000000-0000-4000-8000-000000000001",
       lastSourceSnapshot: createAutomationRouteTestSourceDecision().sourceSnapshot,
     });
@@ -291,7 +348,7 @@ describe("automation real-send route helpers", () => {
         cooldown: {
           blocked: true,
         },
-        skip_reason: "cooldown",
+        skip_reason: "in-flight",
       }],
     });
   });
@@ -348,23 +405,38 @@ describe("automation real-send route helpers", () => {
     expect(second.result.sentCount).toBe(0);
   });
 
-  it("leaves failed sends as temporary in-flight claims and does not mark completion", async () => {
+  it("defers a failed send and continues with a partial result", async () => {
     const { stateStore, states } = createInMemoryStateStore();
     const failingEmailSender = vi.fn(async () => {
       throw new Error("email provider unavailable");
     });
 
-    await expect(runWithFakes({
+    const failedRun = await runWithFakes({
       stateStore,
       emailSender: failingEmailSender,
-    })).rejects.toThrow("email provider unavailable");
+    });
 
     expect(failingEmailSender).toHaveBeenCalledOnce();
     expect(stateStore.claimExecution).toHaveBeenCalledOnce();
     expect(stateStore.markActionCompleted).not.toHaveBeenCalled();
+    expect(stateStore.deferActionRetry).toHaveBeenCalledOnce();
+    expect(failedRun.result).toMatchObject({
+      eligibleCount: 1,
+      sentCount: 0,
+      suppressedCount: 0,
+      deferredCount: 1,
+      decisions: [{
+        outcome: "deferred",
+        deferred: {
+          stage: "enqueue",
+          retryAtMillis: new Date("2026-07-01T12:15:00.000Z").getTime(),
+        },
+      }],
+    });
     expect([...states.values()]).toMatchObject([{
       lastTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: null,
+      nextRetryAt: new Date("2026-07-01T12:15:00.000Z"),
       emailOutboxId: expect.any(String),
     }]);
 
@@ -375,26 +447,86 @@ describe("automation real-send route helpers", () => {
 
     expect(immediateRetry.result.sentCount).toBe(0);
     expect(immediateRetry.result.suppressedCount).toBe(1);
+    expect(immediateRetry.result.decisions[0]).toMatchObject({
+      outcome: "suppressed",
+      skipReason: "retry-backoff",
+    });
     expect(immediateRetry.emailSender).not.toHaveBeenCalled();
   });
 
-  it("allows retry after a failed send claim becomes stale", async () => {
-    const { stateStore } = createInMemoryStateStore();
+  it("continues later decisions after one decision is durably deferred", async () => {
+    const decisions = ["user-1", "user-2", "user-3"].map((userId) => createAutomationRouteTestSourceDecision({ userId }));
+    const emailSender = vi.fn(async (options: Parameters<AutomationEmailSender>[0]) => {
+      if (options.action.recipient.userId === "user-2") {
+        throw new Error("recipient-specific enqueue failure");
+      }
+      return { outcome: "created" as const };
+    });
+
+    const result = await runWithFakes({
+      sourceDecisions: decisions,
+      emailSender,
+    });
+
+    expect(emailSender).toHaveBeenCalledTimes(3);
+    expect(result.result).toMatchObject({
+      evaluatedCount: 3,
+      eligibleCount: 3,
+      sentCount: 2,
+      suppressedCount: 0,
+      deferredCount: 1,
+      decisions: [
+        { outcome: "sent" },
+        { outcome: "deferred", deferred: { stage: "enqueue" } },
+        { outcome: "sent" },
+      ],
+    });
+  });
+
+  it("stops the page when a failed decision cannot be durably deferred", async () => {
+    const created = createInMemoryStateStore();
+    const stateStore: AutomationRuleExecutionStateStore = {
+      ...created.stateStore,
+      deferActionRetry: vi.fn(async () => {
+        throw new Error("execution state unavailable");
+      }),
+    };
+    const emailSender = vi.fn(async (options: Parameters<AutomationEmailSender>[0]) => {
+      if (options.action.recipient.userId === "user-2") {
+        throw new Error("recipient-specific enqueue failure");
+      }
+      return { outcome: "created" as const };
+    });
 
     await expect(runWithFakes({
+      stateStore,
+      sourceDecisions: ["user-1", "user-2", "user-3"].map((userId) => createAutomationRouteTestSourceDecision({ userId })),
+      emailSender,
+    })).rejects.toThrow("execution state unavailable");
+
+    expect(emailSender).toHaveBeenCalledTimes(2);
+    expect(emailSender).not.toHaveBeenCalledWith(expect.objectContaining({
+      action: expect.objectContaining({ recipient: expect.objectContaining({ userId: "user-3" }) }),
+    }));
+  });
+
+  it("allows retry when a deferred decision reaches nextRetryAt", async () => {
+    const { stateStore } = createInMemoryStateStore();
+
+    await runWithFakes({
       stateStore,
       emailSender: async () => {
         throw new Error("email provider unavailable");
       },
-    })).rejects.toThrow("email provider unavailable");
-
-    const retryAfterStaleClaim = await runWithFakes({
-      stateStore,
-      now: new Date("2026-07-01T12:16:00.000Z"),
     });
 
-    expect(retryAfterStaleClaim.result.sentCount).toBe(1);
-    expect(retryAfterStaleClaim.emailSender).toHaveBeenCalledOnce();
+    const retryAfterDeferral = await runWithFakes({
+      stateStore,
+      now: new Date("2026-07-01T12:30:00.000Z"),
+    });
+
+    expect(retryAfterDeferral.result.sentCount).toBe(1);
+    expect(retryAfterDeferral.emailSender).toHaveBeenCalledOnce();
   });
 
   it("does not enqueue a duplicate when completion fails after the outbox row was created", async () => {
@@ -406,6 +538,7 @@ describe("automation real-send route helpers", () => {
     let shouldFailCompletion = true;
     const stateStore: AutomationRuleExecutionStateStore = {
       claimExecution: prismaStore.claimExecution,
+      deferActionRetry: prismaStore.deferActionRetry,
       markActionCompleted: vi.fn(async (options) => {
         if (shouldFailCompletion) {
           shouldFailCompletion = false;
@@ -423,15 +556,23 @@ describe("automation real-send route helpers", () => {
       return { outcome: "created" as const };
     });
 
-    await expect(runWithFakes({
+    const first = await runWithFakes({
       stateStore,
       emailSender,
-    })).rejects.toThrow("completion database write failed");
+    });
+    expect(first.result).toMatchObject({
+      sentCount: 0,
+      deferredCount: 1,
+      decisions: [{
+        outcome: "deferred",
+        deferred: { stage: "completion" },
+      }],
+    });
 
     const retry = await runWithFakes({
       stateStore,
       emailSender,
-      now: new Date("2026-07-01T12:16:00.000Z"),
+      now: new Date("2026-07-01T12:15:00.000Z"),
     });
 
     expect(retry.result.sentCount).toBe(1);
@@ -441,21 +582,42 @@ describe("automation real-send route helpers", () => {
     expect(enqueuedEmailOutboxIds).toEqual(new Set([reservedEmailOutboxId]));
     expect([...rows.values()]).toMatchObject([{
       emailOutboxId: reservedEmailOutboxId,
-      lastActionAt: new Date("2026-07-01T12:16:00.000Z"),
+      lastActionAt: new Date("2026-07-01T12:15:00.000Z"),
     }]);
+  });
+
+  it("treats an ambiguous completion response as sent when completion actually committed", async () => {
+    const created = createInMemoryStateStore();
+    const stateStore: AutomationRuleExecutionStateStore = {
+      ...created.stateStore,
+      markActionCompleted: vi.fn(async (options) => {
+        await created.stateStore.markActionCompleted(options);
+        throw new Error("completion response was lost");
+      }),
+    };
+
+    const result = await runWithFakes({ stateStore });
+
+    expect(result.result).toMatchObject({
+      sentCount: 1,
+      deferredCount: 0,
+      decisions: [{ outcome: "sent" }],
+    });
+    expect(stateStore.deferActionRetry).toHaveBeenCalledOnce();
   });
 
   it("suppresses a second run after an expired cooldown is reclaimed but not completed", async () => {
     const { stateStore } = createInMemoryStateStore();
 
     await runWithFakes({ stateStore });
-    await expect(runWithFakes({
+    const failedReclaim = await runWithFakes({
       stateStore,
       now: new Date("2026-07-09T12:00:00.000Z"),
       emailSender: async () => {
         throw new Error("email provider unavailable");
       },
-    })).rejects.toThrow("email provider unavailable");
+    });
+    expect(failedReclaim.result.deferredCount).toBe(1);
 
     const secondReclaimAttempt = await runWithFakes({
       stateStore,
@@ -478,8 +640,13 @@ type PrismaStoreState = {
   signalKey: string,
   lastTriggeredAt: Date,
   lastActionAt: Date | null,
+  nextRetryAt: Date | null,
   emailOutboxId: string,
   lastSourceSnapshot: Prisma.InputJsonObject,
+};
+
+type PrismaStoreInitialState = Omit<PrismaStoreState, "nextRetryAt"> & {
+  nextRetryAt?: Date | null,
 };
 
 function createPrismaUniqueConstraintError() {
@@ -489,7 +656,7 @@ function createPrismaUniqueConstraintError() {
   });
 }
 
-function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
+function createMockExecutionStatePrisma(initialRows: PrismaStoreInitialState[] = []) {
   const rows = new Map<string, PrismaStoreState>();
   const keyFor = (options: {
     tenancyId: string,
@@ -500,7 +667,10 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
   }) => `${options.tenancyId}:${options.ruleId}:${options.subjectType}:${options.subjectId}:${options.signalKey}`;
 
   for (const row of initialRows) {
-    rows.set(keyFor(row), row);
+    rows.set(keyFor(row), {
+      ...row,
+      nextRetryAt: row.nextRetryAt ?? null,
+    });
   }
 
   const prisma: AutomationRuleExecutionStatePrisma = {
@@ -518,6 +688,7 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
         return row === undefined ? null : {
           lastTriggeredAt: row.lastTriggeredAt,
           lastActionAt: row.lastActionAt,
+          nextRetryAt: row.nextRetryAt,
           emailOutboxId: row.emailOutboxId,
         };
       }),
@@ -536,7 +707,13 @@ function createMockExecutionStatePrisma(initialRows: PrismaStoreState[] = []) {
             : row.lastTriggeredAt < options.where.lastTriggeredAt.lt);
         const emailOutboxIdMatches = options.where.emailOutboxId === undefined
           || row.emailOutboxId === options.where.emailOutboxId;
-        if (!lastActionMatches || !lastTriggeredMatches || !emailOutboxIdMatches) {
+        const nextRetryAtMatches = options.where.nextRetryAt === undefined
+          || (options.where.nextRetryAt === null
+            ? row.nextRetryAt === null
+            : options.where.nextRetryAt instanceof Date
+              ? row.nextRetryAt?.getTime() === options.where.nextRetryAt.getTime()
+              : row.nextRetryAt !== null && row.nextRetryAt <= options.where.nextRetryAt.lte);
+        if (!lastActionMatches || !lastTriggeredMatches || !emailOutboxIdMatches || !nextRetryAtMatches) {
           return { count: 0 };
         }
 
@@ -642,6 +819,8 @@ describe("Prisma automation execution state store", () => {
     expect(result).toEqual({
       claimed: false,
       lastActionAt,
+      nextEligibleAt: new Date("2026-07-07T12:00:00.000Z"),
+      reason: "cooldown",
     });
     expect(prisma.automationRuleExecutionState.updateMany).toHaveBeenCalledOnce();
   });
@@ -665,9 +844,65 @@ describe("Prisma automation execution state store", () => {
     expect(second).toEqual({
       claimed: false,
       lastActionAt: null,
+      nextEligibleAt: new Date("2026-07-01T12:15:00.000Z"),
+      reason: "in-flight",
     });
     expect(prisma.automationRuleExecutionState.create).toHaveBeenCalledTimes(2);
     expect(prisma.automationRuleExecutionState.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it("transitions an active claim to deferred and exactly one due retry back to active", async () => {
+    const reservedEmailOutboxId = "00000000-0000-4000-8000-000000000001";
+    const { prisma, rows } = createMockExecutionStatePrisma();
+    const store = createPrismaAutomationRuleExecutionStateStore(prisma, {
+      createEmailOutboxId: () => reservedEmailOutboxId,
+      activeClaimStaleTimeoutMs: 60_000,
+      deferredDecisionRetryDelayMs: 120_000,
+    });
+    const claimedAt = new Date("2026-07-01T12:00:00.000Z");
+
+    await store.claimExecution(createClaimOptions({ lastTriggeredAt: claimedAt }));
+    await expect(store.deferActionRetry({
+      tenancyId: "tenancy-1",
+      ruleId,
+      subjectType: "user",
+      subjectId: "user-1",
+      signalKey: "api_credits:near",
+      claimTriggeredAt: claimedAt,
+      failedAt: claimedAt,
+      emailOutboxId: reservedEmailOutboxId,
+    })).resolves.toEqual({
+      outcome: "deferred",
+      nextRetryAt: new Date("2026-07-01T12:02:00.000Z"),
+    });
+    expect([...rows.values()]).toMatchObject([{
+      lastActionAt: null,
+      nextRetryAt: new Date("2026-07-01T12:02:00.000Z"),
+      emailOutboxId: reservedEmailOutboxId,
+    }]);
+
+    await expect(store.claimExecution(createClaimOptions({
+      lastTriggeredAt: new Date("2026-07-01T12:01:59.000Z"),
+    }))).resolves.toEqual({
+      claimed: false,
+      lastActionAt: null,
+      nextEligibleAt: new Date("2026-07-01T12:02:00.000Z"),
+      reason: "retry-backoff",
+    });
+
+    const retryAt = new Date("2026-07-01T12:02:00.000Z");
+    const [firstRetry, secondRetry] = await Promise.all([
+      store.claimExecution(createClaimOptions({ lastTriggeredAt: retryAt })),
+      store.claimExecution(createClaimOptions({ lastTriggeredAt: retryAt })),
+    ]);
+    expect([firstRetry, secondRetry].filter((result) => result.claimed)).toHaveLength(1);
+    expect([firstRetry, secondRetry].filter((result) => !result.claimed)).toHaveLength(1);
+    expect([...rows.values()]).toMatchObject([{
+      lastTriggeredAt: retryAt,
+      lastActionAt: null,
+      nextRetryAt: null,
+      emailOutboxId: reservedEmailOutboxId,
+    }]);
   });
 
   it("continues to apply cooldown and retry rules after a claim completes", async () => {
@@ -695,6 +930,8 @@ describe("Prisma automation execution state store", () => {
     }))).resolves.toEqual({
       claimed: false,
       lastActionAt: new Date("2026-07-01T12:05:00.000Z"),
+      nextEligibleAt: new Date("2026-07-08T12:05:00.000Z"),
+      reason: "cooldown",
     });
     await expect(store.claimExecution(createClaimOptions({
       lastTriggeredAt: new Date("2026-07-09T12:06:00.000Z"),
@@ -735,6 +972,8 @@ describe("Prisma automation execution state store", () => {
     expect(second).toEqual({
       claimed: false,
       lastActionAt: null,
+      nextEligibleAt: new Date("2026-07-09T12:21:00.000Z"),
+      reason: "in-flight",
     });
     expect([...rows.values()]).toMatchObject([{
       lastTriggeredAt: new Date("2026-07-09T12:06:00.000Z"),
@@ -771,6 +1010,17 @@ describe("Prisma automation execution state store", () => {
       signalKey: "api_credits:near",
       claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
       lastActionAt: new Date("2026-07-01T12:17:00.000Z"),
+      emailOutboxId: reservedEmailOutboxId,
+    })).rejects.toThrow("lost ownership");
+
+    await expect(store.deferActionRetry({
+      tenancyId: "tenancy-1",
+      ruleId,
+      subjectType: "user",
+      subjectId: "user-1",
+      signalKey: "api_credits:near",
+      claimTriggeredAt: new Date("2026-07-01T12:00:00.000Z"),
+      failedAt: new Date("2026-07-01T12:17:00.000Z"),
       emailOutboxId: reservedEmailOutboxId,
     })).rejects.toThrow("lost ownership");
 
