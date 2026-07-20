@@ -1,0 +1,27 @@
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_698857c6c3dd28::t_8686317bb7a996 156-160,162
+  s_698857c6c3dd28::t_aee5503637b3f9 220-224,226,245
+  s_698857c6c3dd28::t_bfaabac8558eca 299-304,321-328,336
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_698857c6c3dd28::t_b2533b8103fa34 127,166,208,320,552,939,1166,1302,1383
+  s_698857c6c3dd28::t_e6670b688097e2 811-812
+  s_698857c6c3dd28::t_761736e0446a3e 714
+  s_698857c6c3dd28::t_d285f581c922cb 1344
+  s_698857c6c3dd28::t_ee685c6f405e3a 975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5725a52d1bdfb838da9c74d50b111f1025e5cf29",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "grok-4.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
