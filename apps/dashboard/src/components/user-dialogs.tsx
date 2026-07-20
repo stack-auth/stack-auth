@@ -55,35 +55,13 @@ export function generateImpersonateSnippet(
   refreshToken: string,
   expiresAtDate: Date,
 ): string {
-  // Dynamically expire EVERY refresh cookie for this project before setting ours.
-  // The SDK selects the refresh token by scanning all cookies whose name starts
-  // with `hexclave-refresh-{pid}--` / `stack-refresh-{pid}--` (with or without the
-  // __Host- prefix) and keeping the one with the newest `updated_at_millis`. A
-  // hardcoded list of names misses structured variants like the cross-subdomain
-  // `--custom-*` cookies, so a stale/future-dated one could still win the selection
-  // and keep impersonation from taking effect. We instead iterate document.cookie
-  // and delete any name matching the two bases (bare legacy, `--*` structured, and
-  // __Host- prefixed) so nothing but the cookie we set below survives.
-  // We set the new token under the primary hexclave-refresh- name the SDK reads
-  // first; using the legacy stack-refresh- name caused impersonation to silently
-  // fail on production because not all deployed SDK versions fall back to it.
   const pid = encodeURIComponent(projectId);
   return deindent`
-    document.cookie = 'hexclave-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = 'stack-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    var impersonationRefreshBases = ['hexclave-refresh-${pid}', 'stack-refresh-${pid}'];
-    document.cookie.split(';').forEach(function (rawCookie) {
-      var cookieName = rawCookie.split('=')[0].trim();
-      if (!cookieName) return;
-      var bareName = cookieName.replace(/^__Host-/, '');
-      var matchesBase = impersonationRefreshBases.some(function (base) {
-        return bareName === base || bareName.indexOf(base + '--') === 0;
-      });
-      if (matchesBase) {
-        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
-      }
-    });
-    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${pid}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    var impersonationValue = encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() }));
+    var impersonationAttributes = '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
+    document.cookie = 'stack-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
+    document.cookie = 'stack-refresh-${pid}=' + encodeURIComponent(${JSON.stringify(refreshToken)}) + impersonationAttributes;
     window.location.reload();
   `;
 }
