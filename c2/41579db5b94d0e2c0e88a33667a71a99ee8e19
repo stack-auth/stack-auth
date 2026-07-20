@@ -1,0 +1,19 @@
+apps/dashboard/src/components/user-dialogs.tsx
+  s_c29fdbec1c9e11::t_b0fbc981966e83 60-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c241579db5b94d0e2c0e88a33667a71a99ee8e19",
+  "prompts": {},
+  "sessions": {
+    "s_c29fdbec1c9e11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fc196a73-8901-471a-baeb-e99f811c8830",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
