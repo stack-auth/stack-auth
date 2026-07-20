@@ -4,7 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
-import { findRecentSessionReplay } from "@/lib/session-replays";
+import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getHexclaveServerApp } from "@/hexclave";
@@ -251,6 +251,18 @@ export const POST = createSmartRouteHandler({
       data: { shouldUpdateSequenceId: true },
     });
 
+    // Fold this batch's event-time bounds into the maintained per-segment row
+    // (O(1) LEAST/GREATEST upsert — see upsertSessionReplaySegmentBounds). On-path
+    // because it's a single cheap Postgres write and the returned bounds are the
+    // authoritative segment interval.
+    const segmentBounds = await upsertSessionReplaySegmentBounds(prisma, {
+      tenancyId,
+      sessionReplayId: replayId,
+      sessionReplaySegmentId,
+      batchFirstEventAt: new Date(firstMs),
+      batchLastEventAt: new Date(lastMs),
+    });
+
     // Additionally mirror this replay into the spans telemetry surface, written
     // directly to ClickHouse (the same way events are). Purely additive to the
     // Postgres/S3 replay storage above — a $session-replay span for the whole
@@ -260,11 +272,6 @@ export const POST = createSmartRouteHandler({
     // has a 10-minute request timeout — never delays or fails the replay upload.
     runAsynchronouslyAndWaitUntil(async () => {
       try {
-        const segmentBounds = await prisma.sessionReplayChunk.aggregate({
-          where: { tenancyId, sessionReplayId: replayId, sessionReplaySegmentId },
-          _min: { firstEventAt: true },
-          _max: { lastEventAt: true },
-        });
         await insertSessionReplaySpans(getClickhouseAdminClient(), {
           projectId,
           branchId,
@@ -274,8 +281,8 @@ export const POST = createSmartRouteHandler({
           refreshTokenId,
           replayStartedAt: new Date(newStartedAtMs),
           replayLastEventAt: new Date(newLastEventAtMs),
-          segmentStartedAt: segmentBounds._min.firstEventAt ?? new Date(firstMs),
-          segmentLastEventAt: segmentBounds._max.lastEventAt ?? new Date(lastMs),
+          segmentStartedAt: segmentBounds.firstEventAt,
+          segmentLastEventAt: segmentBounds.lastEventAt,
         });
       } catch (error) {
         captureError("session-replay-spans-insert", error);
