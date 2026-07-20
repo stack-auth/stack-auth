@@ -1,0 +1,31 @@
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_29c68442deea43::t_073b0a2ca32220 522
+apps/skills/src/ask-route.test.ts
+  s_29c68442deea43::t_ed056e0aed3e4e 140,147-169
+  s_29c68442deea43::t_e6cc8ec0974457 137-139
+  s_29c68442deea43::t_033998f04d83ed 141-146
+  s_29c68442deea43::t_01cef37d04fe69 133-136
+packages/shared/src/ai/hexclave-ask.ts
+  s_29c68442deea43::t_b0e09b3a706672 99-102,104,122-147,149-152
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_29c68442deea43::t_50de4ae4df4d87 83-108
+  s_29c68442deea43::t_2c30fd1a7304ea 69-82
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_29c68442deea43::t_7d5f719cbcd58d 20-23,25,29-38,40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "f095f79c3cef45f7c56353539a83e7a591e586aa",
+  "prompts": {},
+  "sessions": {
+    "s_29c68442deea43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "def7f117-2986-4ebf-a69f-74bb63e9f630",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
