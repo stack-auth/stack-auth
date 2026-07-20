@@ -1,0 +1,35 @@
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_698857c6c3dd28::t_9397b04f4acf8f 1-24
+apps/backend/prisma/schema.prisma
+  s_698857c6c3dd28::t_868e22b6008db1 422-423
+  s_698857c6c3dd28::t_7b87046b9adf65 70-72
+  s_698857c6c3dd28::t_9181dfa6ef16ec 468-490
+  s_698857c6c3dd28::t_314aab6f1afeec 491-492
+apps/backend/src/lib/session-replays.tsx
+  s_698857c6c3dd28::t_e6e5f66177bb0b 25-86,90
+  s_698857c6c3dd28::t_2a6453493f7882 87-89
+  s_698857c6c3dd28::t_e249d498ae4ab9 3
+  s_698857c6c3dd28::t_664a975c7df29d 91
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/tests/bounds-upsert-and-cascade.ts
+  s_698857c6c3dd28::t_c794abba7731ba 41-45,48-50,54-55,59-60,64-65
+  s_698857c6c3dd28::t_eff65fb233094f 1-40,46-47,51-53,56-58,61-63,66-77
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_698857c6c3dd28::t_1646ecaadc5a0a 7
+  s_698857c6c3dd28::t_e10d2a3d6c4bf4 254-265,284-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "41c512c7100d57c10f39f524f14f163de477d44a",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
