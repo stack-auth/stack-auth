@@ -1,0 +1,33 @@
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_698857c6c3dd28::t_4d37aa1ae5d606 1-24
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/tests/bounds-upsert-and-cascade.ts
+  s_698857c6c3dd28::t_4d37aa1ae5d606 1-77
+apps/backend/src/lib/spans.tsx
+  s_698857c6c3dd28::t_4d37aa1ae5d606 15-16,31-33,40-45,62-63,78-81,84,88,100-118,252,266
+apps/backend/src/lib/session-replays.tsx
+  s_698857c6c3dd28::t_4d37aa1ae5d606 3,25-90
+  s_698857c6c3dd28::t_b048aaa5171866 91
+apps/backend/prisma/schema.prisma
+  s_698857c6c3dd28::t_4d37aa1ae5d606 70-72,422-423,468-492
+apps/backend/src/lib/spans.test.ts
+  s_698857c6c3dd28::t_8082a3642a8a52 2
+  s_698857c6c3dd28::t_4d37aa1ae5d606 10-25
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_698857c6c3dd28::t_4d37aa1ae5d606 7,254-265,284-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "00f6114c516a0f95efb4ef9362b6b2dd031ebcf4",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
