@@ -32,7 +32,11 @@ export function ToolFallback({
       ? (status.error as { message?: string } | undefined)?.message
       : undefined;
 
-  const label = toolName === "queryAnalytics" ? "Analytics Query" : toolName;
+  const label = toolName === "queryAnalytics"
+    ? "Analytics Query"
+    : toolName === "readBranchConfig"
+      ? "Project Config"
+      : toolName;
   const queryArg = (args as { query?: string } | undefined)?.query ?? (argsText ? argsText : undefined);
 
   return (

@@ -186,6 +186,12 @@ export const ALL_APPS = {
     stage: "stable",
     parentAppId: "analytics",
   },
+  "cli-auth": {
+    displayName: "CLI Auth",
+    subtitle: "Monitor CLI authentication sessions and active tokens",
+    tags: ["auth", "developers"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {

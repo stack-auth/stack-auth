@@ -823,8 +823,7 @@ export function ProjectOnboardingWizard(props: {
             >
               <BrowserFrame url="your-website.com/signin" className="w-full">
                 <div className="flex min-h-[180px] items-center justify-center px-4 py-3 sm:min-h-[220px] md:min-h-[260px] md:px-5 md:py-4 lg:min-h-[300px]">
-                  <div className="pointer-events-none relative flex w-full items-center justify-center" inert>
-                    <div className="absolute inset-0 z-10 bg-transparent" />
+                  <div className="relative flex w-full items-center justify-center">
                     <HostedAuthMethodPreview project={authPreviewProject} />
                   </div>
                 </div>
@@ -899,7 +898,16 @@ export function ProjectOnboardingWizard(props: {
         onBack={handleBack}
         disabled={saving}
         actionsLayout="inline"
-        primaryAction={
+        primaryAction={selectedPaymentsCountry === "US" ? (
+          <DesignButton
+            className="rounded-full px-6"
+            disabled={saving || paymentsSetupAction != null}
+            loading={paymentsSetupAction === "connect"}
+            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+          >
+            Connect
+          </DesignButton>
+        ) : (
           <DesignButton
             className="rounded-full px-6"
             disabled={saving || paymentsSetupAction != null}
@@ -908,16 +916,16 @@ export function ProjectOnboardingWizard(props: {
           >
             Do Later
           </DesignButton>
-        }
+        )}
         secondaryAction={selectedPaymentsCountry === "US" ? (
           <DesignButton
             className="rounded-full px-6"
             variant="outline"
             disabled={saving || paymentsSetupAction != null}
-            loading={paymentsSetupAction === "connect"}
-            onClick={() => runAsynchronouslyWithAlert(connectPaymentsSetup)}
+            loading={paymentsSetupAction === "defer"}
+            onClick={() => runAsynchronouslyWithAlert(deferPaymentsSetup)}
           >
-            Connect
+            Do Later
           </DesignButton>
         ) : undefined}
       >

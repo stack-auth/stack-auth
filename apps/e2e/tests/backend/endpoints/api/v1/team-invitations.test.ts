@@ -433,8 +433,10 @@ it("cannot revoke another team's invitation by passing a team_id the caller cont
   await Project.createAndSwitch();
   const { userId: attackerId } = await Auth.fastSignUp();
 
-  // Team A: attacker holds $remove_members here.
+  // Team A: attacker holds $remove_members here. Team permissions are scoped to membership,
+  // so the attacker must be a member before the grant (and later revoke) is meaningful.
   const { teamId: teamA } = await Team.create();
+  await Team.addMember(teamA, attackerId);
   await niceBackendFetch(`/api/v1/team-permissions/${teamA}/${attackerId}/$remove_members`, {
     accessType: "server",
     method: "POST",
@@ -444,6 +446,7 @@ it("cannot revoke another team's invitation by passing a team_id the caller cont
   // Team B: has a pending invitation. (Created by the same actor only so the test
   // can read the invitation id; the attack is passing teamA as the team_id.)
   const { teamId: teamB } = await Team.create();
+  await Team.addMember(teamB, attackerId);
   await niceBackendFetch(`/api/v1/team-permissions/${teamB}/${attackerId}/$invite_members`, {
     accessType: "server",
     method: "POST",

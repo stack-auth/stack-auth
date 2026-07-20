@@ -14,8 +14,6 @@ type ProjectUsageContext = {
   tenancyId: string,
 };
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
 function getInternalDatabaseConnectionString(): string {
   const connectionString = getEnvVariable(
     "HEXCLAVE_DATABASE_CONNECTION_STRING",
@@ -61,66 +59,6 @@ async function clearSeededUsageRows(client: Client, tenancies: readonly ProjectU
   await client.query(`DELETE FROM "SessionReplay" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
   await client.query(`DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
   await client.query(`DELETE FROM "ProjectUser" WHERE "tenancyId" = ANY($1::uuid[])`, [tenancyIds]);
-}
-
-function normalizeSubscriptionPeriodInJson(value: unknown, ownerTeamId: string, period: {
-  start: Date,
-  end: Date,
-}): JsonValue {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeSubscriptionPeriodInJson(item, ownerTeamId, period));
-  }
-  if (typeof value === "object") {
-    const normalizedObject: { [key: string]: JsonValue } = {};
-    for (const [key, entryValue] of Object.entries(value)) {
-      normalizedObject[key] = normalizeSubscriptionPeriodInJson(entryValue, ownerTeamId, period);
-    }
-    if (
-      normalizedObject.customerId === ownerTeamId
-      && typeof normalizedObject.currentPeriodStartMillis === "number"
-      && typeof normalizedObject.currentPeriodEndMillis === "number"
-    ) {
-      return {
-        ...normalizedObject,
-        currentPeriodStartMillis: period.start.getTime(),
-        currentPeriodEndMillis: period.end.getTime(),
-      };
-    }
-    return normalizedObject;
-  }
-  throw new HexclaveAssertionError("Unexpected non-JSON value in payment storage", { value });
-}
-
-async function normalizeBillingTeamSubscriptionMapPeriod(client: Client, ownerTeamId: string, period: {
-  start: Date,
-  end: Date,
-}): Promise<void> {
-  // The E2E seed data can create zero-length payment periods in the Bulldozer LFold output.
-  // Plan usage reads that output directly, so normalize only this fresh test team's emitted
-  // subscription-map rows to make the metered usage period deterministic.
-  const rows = await client.query<{ id: string, value: unknown }>(
-    `
-      SELECT "id", "value"
-      FROM "BulldozerStorageEngine"
-      WHERE "keyPath"[1] = to_jsonb('table'::text)
-        AND "keyPath"[2] = to_jsonb('external:payments-subscription-map-by-customer'::text)
-        AND "keyPath"::text LIKE $1
-        AND "value" <> 'null'::jsonb
-    `,
-    [`%${ownerTeamId}%`],
-  );
-  if (rows.rows.length === 0) {
-    throw new HexclaveAssertionError("Expected payment subscription-map rows for billing team", { ownerTeamId });
-  }
-  for (const row of rows.rows) {
-    await client.query(
-      `UPDATE "BulldozerStorageEngine" SET "value" = $2::jsonb WHERE "id" = $1::uuid`,
-      [row.id, JSON.stringify(normalizeSubscriptionPeriodInJson(row.value, ownerTeamId, period))],
-    );
-  }
 }
 
 async function insertProjectUsers(client: Client, context: ProjectUsageContext, options: {
@@ -353,7 +291,13 @@ describe("internal plan usage", () => {
       const secondary = await getProjectUsageContext(client, secondaryProject.projectId);
       const unrelated = await getProjectUsageContext(client, unrelatedProject.projectId);
       await clearSeededUsageRows(client, [primary, secondary, unrelated]);
-      await normalizeBillingTeamSubscriptionMapPeriod(client, ownerTeamId, { start, end });
+      // TODO(bulldozer-js): we used to normalize the billing team's emitted
+      // subscription-map period by editing the SQL BulldozerStorageEngine table
+      // directly. That table was dropped when the SQL bulldozer engine was
+      // retired, and plan usage now derives the period from bulldozer-js (LMDB)
+      // via getSubscriptionMapForCustomer, so the SQL edit no longer had any
+      // effect. If the period assertions below become flaky, re-introduce
+      // normalization by driving bulldozer-js instead of Postgres.
 
       const primaryUserIds = await insertProjectUsers(client, primary, {
         nonAnonymousCount: 2,

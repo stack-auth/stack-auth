@@ -55,6 +55,7 @@ const ignoredEvents = [
   "payout.created",
   "payout.paid",
   "payout.reconciliation_completed",
+  "refund.updated",
 ] as const satisfies Stripe.Event.Type[];
 
 const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof subscriptionChangedEvents)[number] } => {
@@ -234,7 +235,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
-    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
+    await bulldozerWriteOneTimePurchase(upsertedPurchase);
 
     const recipients = await getPaymentRecipients({
       tenancy,

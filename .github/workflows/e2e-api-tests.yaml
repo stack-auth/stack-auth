@@ -12,7 +12,23 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
+  wait-for-fast-fail:
+    name: wait-for-fast-fail
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/wait-for-check
+        with:
+          workflow-file: fast-fail-tests.yaml
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: wait-for-fast-fail
     name: E2E Tests (Node ${{ matrix.node-version }}, Freestyle ${{ matrix.freestyle-mode }})
     runs-on: ubicloud-standard-8
     env:
@@ -115,6 +131,23 @@ jobs:
       - name: Initialize database
         run: pnpm run db:init
   
+      - name: Start bulldozer-js in background
+        uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
+        env:
+          HEXCLAVE_BULLDOZER_JS_USE_TMP_LMDB: "1"
+        with:
+          run: pnpm run start:bulldozer &
+          wait-on: |
+            tcp:localhost:8146
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      # db:init only seeds Postgres now; mirror the seeded payment rows into the
+      # fresh bulldozer-js store so the backend's payment reads aren't empty.
+      - name: Backfill Bulldozer from Postgres
+        run: pnpm run db:backfill-bulldozer-from-prisma
+
       - name: Start stack-backend in background
         uses: JarvusInnovations/background-action@2428e7b970a846423095c79d43f759abf979a635 # v1.0.7
         with:

@@ -352,6 +352,7 @@ describeWithAi("AI Query Endpoint - Tools", () => {
   const validTools = [
     "docs",
     "sql-query",
+    "read-config",
     "create-email-theme",
     "create-email-template",
     "create-email-draft",
