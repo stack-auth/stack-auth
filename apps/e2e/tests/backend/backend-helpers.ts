@@ -1,5 +1,6 @@
 import type { ProjectConfigOverride } from "@hexclave/shared/dist/config/schema";
 import { AdminUserProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -1272,6 +1273,44 @@ export namespace InternalApiKey {
   }
 }
 
+// A new project's billing team is granted the free plan in the same
+// transaction as the team create, but the Bulldozer write that actually
+// materializes the entitlement is fired asynchronously and its item
+// quantities (auth_users, analytics_timeout_seconds, emails_per_month, ...)
+// only appear once the subscription TimeFold catches up (see
+// apps/backend/.../teams/crud.tsx and lib/payments/ensure-free-plan.ts).
+// Until then the team's item quantities read as 0, and billing-gated
+// endpoints transiently reject: analytics queries throw
+// ITEM_QUANTITY_INSUFFICIENT_AMOUNT, user sign-ups trip the auth-users soft
+// limit, email sends hit a zero email quota, etc. Tests create a project and
+// immediately exercise those endpoints, so block here until the entitlement
+// has materialized. All plan items are emitted atomically by the subscription
+// TimeFold, so a single item crossing above zero implies the rest are present.
+async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
+  const pollIntervalMs = 200;
+  const timeoutMs = 30_000;
+  const startedAt = performance.now();
+
+  while (true) {
+    const quantity = await withInternalProject(async () => {
+      const response = await niceBackendFetch(
+        `/api/v1/payments/items/team/${ownerTeamId}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+        { accessType: "server" },
+      );
+      if (response.status !== 200) {
+        throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+      }
+      return response.body.quantity as number;
+    });
+    if (quantity > 0) return;
+
+    if (performance.now() - startedAt > timeoutMs) {
+      throw new HexclaveAssertionError("Billing-team plan entitlement did not materialize within timeout", { ownerTeamId, timeoutMs });
+    }
+    await wait(pollIntervalMs);
+  }
+}
+
 export namespace Project {
   export async function create(body?: any) {
     const ownerTeamId = body?.owner_team_id ?? (await User.getCurrent()).selected_team_id;
@@ -1295,6 +1334,9 @@ export namespace Project {
         id: expect.any(String),
       },
     });
+    if (ownerTeamId != null) {
+      await waitForBillingTeamPlanEntitlement(ownerTeamId);
+    }
     return {
       createProjectResponse: response,
       projectId: response.body.id as string,
