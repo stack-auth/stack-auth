@@ -1,0 +1,47 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hexclave-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8101
+    },
+    {
+      "name": "hexclave-dev-basic",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev:basic"],
+      "port": 8101
+    },
+    {
+      "name": "hexclave-backend-prod",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "apps/backend", "start"],
+      "port": 8102
+    },
+    {
+      "name": "hexclave-backend-prod-devenv",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["NODE_ENV=development", "pnpm", "-C", "apps/backend", "start"],
+      "port": 8102
+    },
+    {
+      "name": "hexclave-dashboard-prod",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "apps/dashboard", "start"],
+      "port": 8101
+    },
+    {
+      "name": "hexclave-bulldozer",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "apps/bulldozer-js", "start"],
+      "port": 8146
+    },
+    {
+      "name": "hexclave-mock-oauth",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "apps/mock-oauth-server", "start"],
+      "port": 8114
+    }
+  ]
+}
