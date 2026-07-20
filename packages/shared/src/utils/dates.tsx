@@ -220,8 +220,8 @@ import.meta.vitest?.test("addInterval/subtractInterval do not mutate their input
   expect(original.getTime()).toBe(originalMillis);
   expect(later).not.toBe(original);
   expect(earlier).not.toBe(original);
-  expect(later.getTime()).toBeGreaterThan(original.getTime());
-  expect(earlier.getTime()).toBeLessThan(original.getTime());
+  expect(later).toEqual(new Date('2026-08-20T00:00:00.000Z'));
+  expect(earlier).toEqual(new Date('2026-06-20T00:00:00.000Z'));
 });
 
 export const FAR_FUTURE_DATE = new Date(8640000000000000); // 13 Sep 275760 00:00:00 UTC

@@ -1294,13 +1294,17 @@ async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<v
   while (true) {
     const quantity = await withInternalProject(async () => {
       const response = await niceBackendFetch(
-        `/api/v1/payments/items/team/${ownerTeamId}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+        `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
         { accessType: "server" },
       );
       if (response.status !== 200) {
         throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
       }
-      return response.body.quantity as number;
+      const quantity = response.body.quantity;
+      if (typeof quantity !== "number") {
+        throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
+      }
+      return quantity;
     });
     if (quantity > 0) return;
 
