@@ -1297,9 +1297,18 @@ export namespace InternalApiKey {
 // loaded CI shard it can exceed the timeout, and turning that into a thrown error
 // makes otherwise-passing tests flake. If the entitlement really never lands, the
 // caller's own billing-gated assertion is what should (and does) surface it.
+//
+// The budget is deliberately generous. The paid-plan wait (waitForItemQuantityToReach,
+// 8s) is granted through the payments endpoint and materializes quickly, but the
+// free-plan grant rides the `runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(...))`
+// fire-and-forget write in teams/crud.tsx, whose TimeFold can be badly backed up on a
+// cold, freshly-started CI shard — we've observed it exceed 30s there while completing
+// in well under a second locally. Since this loop returns the instant the entitlement
+// appears, a large cap adds no latency on the happy path; it only bounds the wait when
+// materialization has genuinely stalled.
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
-  const timeoutMs = 30_000;
+  const timeoutMs = 90_000;
   const startedAt = performance.now();
 
   while (true) {
