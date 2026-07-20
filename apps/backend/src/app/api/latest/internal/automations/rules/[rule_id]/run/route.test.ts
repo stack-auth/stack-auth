@@ -175,6 +175,7 @@ async function runWithFakes(options: {
   sourceDecisions?: AutomationSourceDecision[],
   emailSender?: Parameters<typeof runAutomationRuleForRoute>[0]["emailSender"],
   now?: Date,
+  failureNow?: () => Date,
   limit?: number,
   cursor?: string | null,
   ruleEnabled?: boolean,
@@ -198,13 +199,15 @@ async function runWithFakes(options: {
     stateStore = createdStore.stateStore;
   }
 
+  const now = options.now ?? new Date("2026-07-01T12:00:00.000Z");
   const result = await runAutomationRuleForRoute({
     tenancy: createAutomationRouteTestTenancy(options.ruleEnabled === undefined ? {} : { enabled: options.ruleEnabled }),
     ruleId,
     limit: options.limit,
     cursor: options.cursor,
     scheduledAt,
-    now: options.now ?? new Date("2026-07-01T12:00:00.000Z"),
+    now,
+    failureNow: options.failureNow ?? (() => now),
     sourceAdapter,
     actionAdapter,
     stateStore,
@@ -454,6 +457,37 @@ describe("automation real-send route helpers", () => {
     expect(immediateRetry.emailSender).not.toHaveBeenCalled();
   });
 
+  it("starts retry backoff when a slow enqueue failure is handled", async () => {
+    const { stateStore, states } = createInMemoryStateStore();
+    const claimTriggeredAt = new Date("2026-07-01T12:00:00.000Z");
+    const failedAt = new Date("2026-07-01T12:10:00.000Z");
+
+    const failedRun = await runWithFakes({
+      stateStore,
+      now: claimTriggeredAt,
+      failureNow: () => failedAt,
+      emailSender: async () => {
+        throw new Error("slow email provider failure");
+      },
+    });
+
+    expect(stateStore.deferActionRetry).toHaveBeenCalledWith(expect.objectContaining({
+      claimTriggeredAt,
+      failedAt,
+    }));
+    expect(failedRun.result.decisions[0]).toMatchObject({
+      outcome: "deferred",
+      deferred: {
+        stage: "enqueue",
+        retryAtMillis: new Date("2026-07-01T12:25:00.000Z").getTime(),
+      },
+    });
+    expect([...states.values()]).toMatchObject([{
+      lastTriggeredAt: claimTriggeredAt,
+      nextRetryAt: new Date("2026-07-01T12:25:00.000Z"),
+    }]);
+  });
+
   it("continues later decisions after one decision is durably deferred", async () => {
     const decisions = ["user-1", "user-2", "user-3"].map((userId) => createAutomationRouteTestSourceDecision({ userId }));
     const emailSender = vi.fn(async (options: Parameters<AutomationEmailSender>[0]) => {
@@ -559,20 +593,24 @@ describe("automation real-send route helpers", () => {
     const first = await runWithFakes({
       stateStore,
       emailSender,
+      failureNow: () => new Date("2026-07-01T12:10:00.000Z"),
     });
     expect(first.result).toMatchObject({
       sentCount: 0,
       deferredCount: 1,
       decisions: [{
         outcome: "deferred",
-        deferred: { stage: "completion" },
+        deferred: {
+          stage: "completion",
+          retryAtMillis: new Date("2026-07-01T12:25:00.000Z").getTime(),
+        },
       }],
     });
 
     const retry = await runWithFakes({
       stateStore,
       emailSender,
-      now: new Date("2026-07-01T12:15:00.000Z"),
+      now: new Date("2026-07-01T12:25:00.000Z"),
     });
 
     expect(retry.result.sentCount).toBe(1);
@@ -582,7 +620,7 @@ describe("automation real-send route helpers", () => {
     expect(enqueuedEmailOutboxIds).toEqual(new Set([reservedEmailOutboxId]));
     expect([...rows.values()]).toMatchObject([{
       emailOutboxId: reservedEmailOutboxId,
-      lastActionAt: new Date("2026-07-01T12:15:00.000Z"),
+      lastActionAt: new Date("2026-07-01T12:25:00.000Z"),
     }]);
   });
 

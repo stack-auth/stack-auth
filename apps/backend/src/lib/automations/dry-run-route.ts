@@ -1,5 +1,5 @@
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
-import { AutomationExecutionStatus, AutomationRuleExecutionStateReader } from "./execution-state-store";
+import { AutomationExecutionStatus, AutomationRuleExecutionStateReader, getAutomationRuleExecutionStateLookupKey } from "./execution-state-store";
 import { AutomationActionAdapter, AutomationEvaluationResult, AutomationSourceAdapter, EvaluatedAutomationDecision, evaluateAutomationRule } from "./rule-evaluator";
 import { AutomationRuleNotFoundError, AutomationRuleTenancy, getSupportedAutomationRule, paymentsItemQuotaSourceType, sendEmailActionType } from "./rules";
 import { PaymentsItemQuotaSourceApiBody, paymentsItemQuotaSourceSnapshotToApiBody } from "./source-snapshot";
@@ -80,15 +80,30 @@ export async function evaluateAutomationRuleDryRunForRoute<TPrisma>(options: {
     tenancyId: options.tenancy.id,
     userIds: result.decisions.map((decision) => decision.subject.id),
   });
-  const executionStatuses = await Promise.all(result.decisions.map(async (decision) => await options.executionStateReader.getExecutionStatus({
+  const executionStatusByKey = await options.executionStateReader.getExecutionStatuses({
     tenancyId: options.tenancy.id,
     ruleId: options.ruleId,
-    subjectType: decision.subject.type,
-    subjectId: decision.subject.id,
-    signalKey: decision.signal.key,
+    keys: result.decisions.map((decision) => ({
+      subjectType: decision.subject.type,
+      subjectId: decision.subject.id,
+      signalKey: decision.signal.key,
+    })),
     cooldownDays: rule.cooldown.days,
     now: options.now,
-  })));
+  });
+  const executionStatuses = result.decisions.map((decision) => {
+    const executionStatus = executionStatusByKey.get(getAutomationRuleExecutionStateLookupKey({
+      tenancyId: options.tenancy.id,
+      ruleId: options.ruleId,
+      subjectType: decision.subject.type,
+      subjectId: decision.subject.id,
+      signalKey: decision.signal.key,
+    }));
+    if (executionStatus === undefined) {
+      throw new Error("Automation dry-run execution state reader did not classify a requested decision.");
+    }
+    return executionStatus;
+  });
 
   return automationDryRunResultToApiBody(result, recipientStatuses, executionStatuses);
 }
@@ -117,12 +132,16 @@ export function automationDryRunResultToApiBody(
     eligible_count: result.decisions.length - blockedCount,
     suppressed_count: blockedCount,
     next_cursor: result.nextCursor,
-    decisions: result.decisions.map((decision, index) => automationDryRunDecisionToApiItem(decision, recipientStatuses.get(decision.subject.id) ?? {
-      userExists: false,
-      hasPrimaryEmail: false,
-    }, executionStatuses[index] ?? {
-      blocked: false,
-    })),
+    decisions: result.decisions.map((decision, index) => {
+      const executionStatus = executionStatuses.at(index);
+      if (executionStatus === undefined) {
+        throw new Error("Automation dry-run result is missing an execution status for a decision.");
+      }
+      return automationDryRunDecisionToApiItem(decision, recipientStatuses.get(decision.subject.id) ?? {
+        userExists: false,
+        hasPrimaryEmail: false,
+      }, executionStatus);
+    }),
   };
 }
 

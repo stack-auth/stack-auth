@@ -120,6 +120,8 @@ export async function runAutomationRuleForRoute(options: {
   cursor?: string | null,
   scheduledAt: Date,
   now: Date,
+  // Claim ownership stays anchored to `now`; retry backoff starts when the failure is observed.
+  failureNow?: () => Date,
   sourceAdapter: AutomationSourceAdapter,
   actionAdapter: AutomationActionAdapter,
   stateStore: AutomationRuleExecutionStateStore,
@@ -188,7 +190,7 @@ export async function runAutomationRuleForRoute(options: {
         subjectId: decision.subject.id,
         signalKey: decision.signal.key,
         claimTriggeredAt: options.now,
-        failedAt: options.now,
+        failedAt: options.failureNow?.() ?? new Date(),
         emailOutboxId: claim.emailOutboxId,
       });
       if (deferral.outcome === "already-completed") {
@@ -218,7 +220,7 @@ export async function runAutomationRuleForRoute(options: {
         subjectId: decision.subject.id,
         signalKey: decision.signal.key,
         claimTriggeredAt: options.now,
-        failedAt: options.now,
+        failedAt: options.failureNow?.() ?? new Date(),
         emailOutboxId: claim.emailOutboxId,
       });
       if (deferral.outcome === "already-completed") {

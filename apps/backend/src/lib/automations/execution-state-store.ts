@@ -6,6 +6,7 @@ import type { AutomationJson } from "./rules";
 
 export const automationActiveClaimStaleTimeoutMs = 15 * 60 * 1000;
 export const automationDeferredDecisionRetryDelayMs = 15 * 60 * 1000;
+export const automationExecutionStateReadBatchLimit = 1000;
 
 // Claims move active -> completed after enqueue, or active -> deferred after a recoverable
 // failure. Due deferred claims and stale active claims return to active with the same outbox ID;
@@ -18,6 +19,11 @@ type AutomationRuleExecutionStateKey = {
   subjectId: string,
   signalKey: string,
 };
+
+export type AutomationRuleExecutionStateDecisionKey = Pick<
+  AutomationRuleExecutionStateKey,
+  "subjectType" | "subjectId" | "signalKey"
+>;
 
 export type AutomationRuleExecutionStatePrisma = {
   automationRuleExecutionState: {
@@ -65,16 +71,26 @@ export type AutomationRuleExecutionStatePrisma = {
 
 export type AutomationRuleExecutionStateReaderPrisma = {
   automationRuleExecutionState: {
-    findUnique: (options: {
+    findMany: (options: {
       where: {
-        tenancyId_ruleId_subjectType_subjectId_signalKey: AutomationRuleExecutionStateKey,
+        tenancyId: string,
+        ruleId: string,
+        OR: AutomationRuleExecutionStateDecisionKey[],
       },
       select: {
+        subjectType: true,
+        subjectId: true,
+        signalKey: true,
         lastTriggeredAt: true,
         lastActionAt: true,
         nextRetryAt: true,
       },
-    }) => Promise<{ lastTriggeredAt: Date, lastActionAt: Date | null, nextRetryAt: Date | null } | null>,
+    }) => Promise<Array<Omit<AutomationRuleExecutionStateDecisionKey, "subjectType"> & {
+      subjectType: string,
+      lastTriggeredAt: Date,
+      lastActionAt: Date | null,
+      nextRetryAt: Date | null,
+    }>>,
   },
 };
 
@@ -88,29 +104,78 @@ export type AutomationExecutionStatus =
   };
 
 export type AutomationRuleExecutionStateReader = {
-  getExecutionStatus: (options: AutomationRuleExecutionStateKey & {
+  getExecutionStatuses: (options: Pick<AutomationRuleExecutionStateKey, "tenancyId" | "ruleId"> & {
+    keys: AutomationRuleExecutionStateDecisionKey[],
     cooldownDays: number,
     now: Date,
-  }) => Promise<AutomationExecutionStatus>,
+  }) => Promise<Map<string, AutomationExecutionStatus>>,
 };
 
 export function createPrismaAutomationRuleExecutionStateReader(prisma: AutomationRuleExecutionStateReaderPrisma): AutomationRuleExecutionStateReader {
   return {
-    async getExecutionStatus(options) {
-      const state = await prisma.automationRuleExecutionState.findUnique({
+    async getExecutionStatuses(options) {
+      const uniqueKeys = new Map<string, AutomationRuleExecutionStateDecisionKey>();
+      for (const key of options.keys) {
+        uniqueKeys.set(getAutomationRuleExecutionStateLookupKey({
+          tenancyId: options.tenancyId,
+          ruleId: options.ruleId,
+          ...key,
+        }), key);
+      }
+      if (uniqueKeys.size > automationExecutionStateReadBatchLimit) {
+        throw new Error(`Automation execution state batch exceeds the maximum of ${automationExecutionStateReadBatchLimit} unique decisions.`);
+      }
+      if (uniqueKeys.size === 0) {
+        return new Map();
+      }
+
+      const states = await prisma.automationRuleExecutionState.findMany({
         where: {
-          tenancyId_ruleId_subjectType_subjectId_signalKey: getAutomationRuleExecutionStateKey(options),
+          tenancyId: options.tenancyId,
+          ruleId: options.ruleId,
+          OR: [...uniqueKeys.values()],
         },
         select: {
+          subjectType: true,
+          subjectId: true,
+          signalKey: true,
           lastTriggeredAt: true,
           lastActionAt: true,
           nextRetryAt: true,
         },
       });
 
-      return getAutomationExecutionStatus(state, options.cooldownDays, options.now, automationActiveClaimStaleTimeoutMs);
+      const stateByKey = new Map(states.map((state) => [getAutomationRuleExecutionStateLookupKey({
+        tenancyId: options.tenancyId,
+        ruleId: options.ruleId,
+        subjectType: state.subjectType,
+        subjectId: state.subjectId,
+        signalKey: state.signalKey,
+      }), state]));
+      const statuses = new Map<string, AutomationExecutionStatus>();
+      for (const [lookupKey] of uniqueKeys) {
+        statuses.set(lookupKey, getAutomationExecutionStatus(
+          stateByKey.get(lookupKey) ?? null,
+          options.cooldownDays,
+          options.now,
+          automationActiveClaimStaleTimeoutMs,
+        ));
+      }
+      return statuses;
     },
   };
+}
+
+export function getAutomationRuleExecutionStateLookupKey(options: Omit<AutomationRuleExecutionStateKey, "subjectType"> & {
+  subjectType: string,
+}) {
+  return JSON.stringify([
+    options.tenancyId,
+    options.ruleId,
+    options.subjectType,
+    options.subjectId,
+    options.signalKey,
+  ]);
 }
 
 export function createPrismaAutomationRuleExecutionStateStore(
