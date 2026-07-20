@@ -11,7 +11,8 @@ import type { ClickHouseClient } from "./clickhouse";
 // Typed-id prefixes. Applied ONLY to a span's own `id` and to the values inside
 // `parent_span_ids` — so a heterogeneous parent array is self-describing. They are
 // NEVER applied to scalar identity columns (project_id, user_id, session_replay_id, …),
-// which stay raw so existing customer SQL keeps working.
+// which stay raw so existing customer SQL keeps working. Only prefixes with an
+// actual writer belong here — add new ones together with the code that writes them.
 export const SPAN_ID_PREFIXES = {
   sessionReplay: "sri-",
   // The per-tab id. The SDK mints exactly one `session_replay_segment_id` per
@@ -20,11 +21,10 @@ export const SPAN_ID_PREFIXES = {
   // consistent with the pre-existing `session_replay_segment_id` column + SDK field.
   sessionReplaySegment: "srsi-",
   refreshToken: "rti-",
-  user: "ui-",
-  team: "ti-",
-  project: "pi-",
-  branch: "bi-",
 } as const;
+
+export type SpanIdPrefix = typeof SPAN_ID_PREFIXES[keyof typeof SPAN_ID_PREFIXES];
+export type PrefixedSpanId = `${SpanIdPrefix}${string}`;
 
 export const SPAN_TYPES = {
   sessionReplay: "$session-replay",
@@ -32,7 +32,12 @@ export const SPAN_TYPES = {
   refreshToken: "$refresh-token",
 } as const;
 
-export function toSpanId(prefix: string, rawId: string): string {
+// The prefix parameter is constrained to the known prefixes (not `string`) so a
+// call site can't accidentally double-prefix (`toSpanId(prefix, alreadyPrefixed)`
+// still type-checks on the rawId — but passing a PrefixedSpanId where a raw uuid
+// is expected is the caller's bug; constraining the prefix at least rules out
+// arbitrary/misspelled prefixes and prefix-of-a-prefix mistakes).
+export function toSpanId<P extends SpanIdPrefix>(prefix: P, rawId: string): `${P}${string}` {
   return `${prefix}${rawId}`;
 }
 
@@ -49,8 +54,8 @@ export function buildEventSpanFields(opts: {
   sessionReplayId?: string | null,
   sessionReplaySegmentId?: string | null,
   refreshTokenId?: string | null,
-}): { parent_span_ids: string[] } {
-  const parentSpanIds: string[] = [];
+}): { parent_span_ids: PrefixedSpanId[] } {
+  const parentSpanIds: PrefixedSpanId[] = [];
   if (opts.refreshTokenId) {
     parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId));
   }
@@ -65,19 +70,17 @@ export function buildEventSpanFields(opts: {
 
 /**
  * One row of `analytics_internal.spans`. `created_at` is omitted (the table
- * defaults it to now64(3) = ingested-at). `version` is the span's own end time as
- * epoch ms (see `insertSessionReplaySpans`): the ReplacingMergeTree keeps the
- * highest version, so the row carrying the LATEST `span_ended_at` wins regardless
- * of insert order. Tying the version to the data (not wall-clock) means a stale or
- * partial re-write with an earlier end can never overwrite a later one — the span
- * end advances monotonically and never regresses under concurrent batches.
+ * defaults it to now64(3) = ingested-at). `version` decides which row the
+ * ReplacingMergeTree keeps per id (highest wins) and MUST come from one of the
+ * named version builders in this file (e.g. `monotoneEndSpanVersion`) — see the
+ * builder docs for why the scheme is per-span-type and must never be inlined.
  */
 export type SpanInsertRow = {
-  id: string,
+  id: PrefixedSpanId,
   span_type: string,
   span_started_at: Date,
   span_ended_at: Date | null,
-  parent_span_ids: string[],
+  parent_span_ids: PrefixedSpanId[],
   data: string,
   project_id: string,
   branch_id: string,
@@ -88,6 +91,25 @@ export type SpanInsertRow = {
   session_replay_segment_id: string | null,
   version: number,
 };
+
+/**
+ * Version builder for spans whose end time only ever advances (session-replay and
+ * segment spans: bounds are min/max aggregates, so a later batch can only extend
+ * them). The version IS the span's own end (epoch ms), so the row carrying the
+ * LATEST `span_ended_at` wins in the ReplacingMergeTree regardless of insert
+ * order — a stale or partial re-write with an earlier end can never overwrite a
+ * later one.
+ *
+ * IMPORTANT: `analytics_internal.spans` is one table but not one versioning
+ * scheme. Every writer MUST version through one of the named builders in this
+ * file (never inline math), because mixing schemes for the same span id silently
+ * corrupts upserts. Use this builder only for spans whose end is monotone; spans
+ * that need data re-writes without the end moving (e.g. custom spans) need a
+ * different scheme with its own builder.
+ */
+export function monotoneEndSpanVersion(spanEndedAt: Date): number {
+  return spanEndedAt.getTime();
+}
 
 export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[]): Promise<void> {
   if (rows.length === 0) return;
@@ -145,7 +167,7 @@ export async function insertSessionReplaySpans(
     span_ended_at: opts.replayLastEventAt,
     parent_span_ids: [toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId)],
     session_replay_segment_id: null,
-    version: opts.replayLastEventAt.getTime(),
+    version: monotoneEndSpanVersion(opts.replayLastEventAt),
   };
 
   const segmentSpan: SpanInsertRow = {
@@ -159,7 +181,7 @@ export async function insertSessionReplaySpans(
       toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
     ],
     session_replay_segment_id: opts.sessionReplaySegmentId,
-    version: opts.segmentLastEventAt.getTime(),
+    version: monotoneEndSpanVersion(opts.segmentLastEventAt),
   };
 
   await insertSpans(client, [replaySpan, segmentSpan]);
