@@ -1,0 +1,53 @@
+packages/shared/src/plans.ts
+  s_698857c6c3dd28::t_9a4287f5ca19fd 76
+  s_698857c6c3dd28::t_b4d48195ed0644 67
+  s_698857c6c3dd28::t_a6afe97be2492f 56-58
+  s_698857c6c3dd28::t_336223cdfd07e1 38
+  s_698857c6c3dd28::t_337e89a3695eff 19-22
+apps/backend/prisma/seed.ts
+  s_698857c6c3dd28::t_fd3288189fcf2b 165,188,212,245
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_698857c6c3dd28::t_b7059b2608b745 1136-1137
+  s_698857c6c3dd28::t_140c7ff879ca91 774-855
+  s_698857c6c3dd28::t_6d4e44dfb196fa 1123-1124
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/usage/page-client.tsx
+  s_698857c6c3dd28::t_a2bc9c8e8a1709 38
+  s_698857c6c3dd28::t_0992aa22594b07 79
+  s_698857c6c3dd28::t_e5c8715867ea59 80-82
+  s_698857c6c3dd28::t_53e57562471214 83
+apps/backend/src/lib/plan-usage.ts
+  s_698857c6c3dd28::t_8f068d12b8f204 374
+  s_698857c6c3dd28::t_7007bf716403a5 355-360
+  s_698857c6c3dd28::t_25d01fb14fefb0 476,480
+  s_698857c6c3dd28::t_564d4c825d9e4f 43
+  s_698857c6c3dd28::t_75d823e7026dfe 393
+  s_698857c6c3dd28::t_b8338067b97fb9 427-431
+  s_698857c6c3dd28::t_d44f0841050b61 354,361-373,375-386
+  s_698857c6c3dd28::t_c3394196381d4d 498
+  s_698857c6c3dd28::t_82e015e28483ef 426
+  s_698857c6c3dd28::t_cd1b547e9a5bd4 432
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_698857c6c3dd28::t_3b8731decc3466 351
+  s_698857c6c3dd28::t_9a9cc45b34a701 252
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_698857c6c3dd28::t_eaa838cbe27bd3 210-213,216-232
+  s_698857c6c3dd28::t_df6198674933e0 82-84,88-90
+  s_698857c6c3dd28::t_26995aec82a236 175-177
+  s_698857c6c3dd28::t_1efa12d0bff33b 139-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "4575200e7641a96cdd7e10e2b9eeb0651a17077e",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
