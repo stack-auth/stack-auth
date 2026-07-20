@@ -1,0 +1,30 @@
+packages/shared/src/ai/hexclave-ask.ts
+  s_d4388d7f6c379a::t_576940cf5140fd 111-114
+apps/skills/src/ask-route.test.ts
+  s_d4388d7f6c379a::t_b73ee6c876173c 52
+apps/backend/src/lib/ai/tools/index.ts
+  s_d4388d7f6c379a::t_fc271d354b9b4e 37
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_d4388d7f6c379a::t_664ed9f3dd97e3 49-52,62
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_d4388d7f6c379a::t_edd7f27e2f60fb 31,36,41
+  s_d4388d7f6c379a::t_98ca3bb16e8d81 74,89,98,106-107
+  s_d4388d7f6c379a::t_0b8c20d1ca37cf 2
+  s_d4388d7f6c379a::t_657bf6e1cf8db7 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1dcd95c7c9ec3949ef772a1151f659d7b972742d",
+  "prompts": {},
+  "sessions": {
+    "s_d4388d7f6c379a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bcc4e8f2-d5e9-4e3a-b764-109324b4d49b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
