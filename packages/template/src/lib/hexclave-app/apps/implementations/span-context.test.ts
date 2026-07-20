@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SpanRef } from "./event-tracker";
 import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
+import { syncStack } from "./span-context-state";
 import { __setAsyncContextModeForTesting } from "./span-context.test-utils";
 
 function ref(spanId: string, parentSpanIds: string[] = []): SpanRef {
@@ -66,7 +67,8 @@ describe("span context (sync-stack fallback)", () => {
       await runWithSpanContext(ref("b"), async () => {
         expect(ambientIds()).toEqual(["a", "b"]);
       });
-      expect(ambientIds()).toEqual(["a"]);
+      // After awaiting the inner withSpan, a's prologue is over — ambient stops.
+      expect(ambientIds()).toEqual([]);
     });
     expect(getAmbientSpanRefs()).toEqual([]);
   });
@@ -79,32 +81,29 @@ describe("span context (sync-stack fallback)", () => {
     });
     // Start flow1 but leave it parked on an await, then run flow2 to completion
     // while flow1's frame is still on the stack. flow2 must remove ITS frame
-    // (not flow1's) even though flow1's frame sits beneath it.
+    // (not flow1's) even though flow1's frame sits beneath it. Ambient reads
+    // never see suspended frames; stack depth pins the cleanup contract.
     const first = runWithSpanContext(ref("flow1"), async () => {
       await firstBlocked;
-      // Documented sync-stack limitation: no isolation guarantee here; the
-      // cleanup contract is what this test pins down.
     });
+    expect(syncStack).toHaveLength(1);
+    expect(syncStack[0]?.ref.spanId).toBe("flow1");
+    expect(syncStack[0]?.prologueOpen).toBe(false);
+    expect(ambientIds()).toEqual([]);
     await runWithSpanContext(ref("flow2"), async () => {
-      expect(ambientIds()).toEqual(["flow1", "flow2"]);
+      expect(ambientIds()).toEqual(["flow2"]);
+      expect(syncStack.map((frame) => frame.ref.spanId)).toEqual(["flow1", "flow2"]);
     });
-    expect(ambientIds()).toEqual(["flow1"]);
+    expect(ambientIds()).toEqual([]);
+    expect(syncStack).toHaveLength(1);
+    expect(syncStack[0]?.ref.spanId).toBe("flow1");
     releaseFirst();
     await first;
     expect(getAmbientSpanRefs()).toEqual([]);
-  });
-});
-
-describe("span context (exact sync-window reads)", () => {
-  afterEach(() => {
-    __setAsyncContextModeForTesting("auto");
+    expect(syncStack).toHaveLength(0);
   });
 
-  function exactIds(): string[] {
-    return getAmbientSpanRefs({ includeSuspendedSyncFrames: false }).map((frame) => frame.spanId);
-  }
-
-  it("sees prologue-open frames only; suspended frames are best-effort only", async () => {
+  it("sees prologue-open frames only; suspended frames of another flow are never ambient", async () => {
     __setAsyncContextModeForTesting("sync-stack");
     let releaseFirst!: () => void;
     const firstBlocked = new Promise<void>((resolve) => {
@@ -113,66 +112,65 @@ describe("span context (exact sync-window reads)", () => {
     const first = runWithSpanContext(ref("flow1"), async () => {
       await firstBlocked;
     });
-    // flow1 is suspended at its await: no longer provably the current flow.
-    expect(exactIds()).toEqual([]);
-    expect(ambientIds()).toEqual(["flow1"]);
+    // flow1 is suspended at its await: no longer ambient.
+    expect(ambientIds()).toEqual([]);
     await runWithSpanContext(ref("flow2"), async () => {
-      // flow2's synchronous prologue: exact reads see ONLY flow2 — this is the
-      // property that makes cross-flow misattribution impossible in exact mode.
-      expect(exactIds()).toEqual(["flow2"]);
-      expect(ambientIds()).toEqual(["flow1", "flow2"]);
+      // flow2's synchronous prologue: ambient sees ONLY flow2 — this is the
+      // property that makes cross-flow misattribution impossible.
+      expect(ambientIds()).toEqual(["flow2"]);
     });
     releaseFirst();
     await first;
     expect(getAmbientSpanRefs()).toEqual([]);
   });
 
-  it("keeps outer frames exact through SYNCHRONOUS nesting, and drops them after an await", async () => {
+  it("keeps outer frames ambient through SYNCHRONOUS nesting, and drops them after an await", async () => {
     __setAsyncContextModeForTesting("sync-stack");
     await runWithSpanContext(ref("a"), async () => {
-      expect(exactIds()).toEqual(["a"]);
+      expect(ambientIds()).toEqual(["a"]);
       await runWithSpanContext(ref("b"), async () => {
         // b's prologue executes while a's callback is still mid-statement, so
         // both frames are provably the current flow.
-        expect(exactIds()).toEqual(["a", "b"]);
+        expect(ambientIds()).toEqual(["a", "b"]);
       });
-      // Back after an await: a's prologue is over — exact reads fail closed,
-      // best-effort reads still see the suspended frame.
-      expect(exactIds()).toEqual([]);
-      expect(ambientIds()).toEqual(["a"]);
+      // Back after an await: a's prologue is over — ambient fails closed.
+      expect(ambientIds()).toEqual([]);
     });
   });
 
   it("runWithSpanFrame re-binds a frame exactly for a synchronous window", () => {
     __setAsyncContextModeForTesting("sync-stack");
     const result = runWithSpanFrame(ref("manual"), () => {
-      expect(exactIds()).toEqual(["manual"]);
+      expect(ambientIds()).toEqual(["manual"]);
       return 42;
     });
     expect(result).toBe(42);
     expect(getAmbientSpanRefs()).toEqual([]);
   });
 
-  it("runWithSpanFrame keeps a suspended frame for best-effort readers until settle", async () => {
+  it("runWithSpanFrame drops ambient after the prologue but keeps the frame until settle for cleanup", async () => {
     __setAsyncContextModeForTesting("sync-stack");
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
     const promise = runWithSpanFrame(ref("callback"), async () => {
-      expect(exactIds()).toEqual(["callback"]);
+      expect(ambientIds()).toEqual(["callback"]);
       await blocked;
     });
-    expect(exactIds()).toEqual([]);
-    expect(ambientIds()).toEqual(["callback"]);
+    expect(ambientIds()).toEqual([]);
+    expect(syncStack).toHaveLength(1);
+    expect(syncStack[0]?.ref.spanId).toBe("callback");
+    expect(syncStack[0]?.prologueOpen).toBe(false);
     release();
     await promise;
     // One extra microtask for the .finally(pop) chained on the result.
     await Promise.resolve();
     expect(getAmbientSpanRefs()).toEqual([]);
+    expect(syncStack).toHaveLength(0);
   });
 
-  it("runWithSpanFrame treats thenables as async for best-effort readers", async () => {
+  it("runWithSpanFrame treats thenables as async for cleanup (not ambient after prologue)", async () => {
     __setAsyncContextModeForTesting("sync-stack");
     const waiters: ((value: string) => void)[] = [];
     const thenable = {
@@ -183,13 +181,14 @@ describe("span context (exact sync-window reads)", () => {
 
     const result = runWithSpanFrame(ref("thenable"), () => thenable);
     expect(result).toBe(thenable);
-    expect(exactIds()).toEqual([]);
-    expect(ambientIds()).toEqual(["thenable"]);
+    expect(ambientIds()).toEqual([]);
+    expect(syncStack).toHaveLength(1);
     const settled = Promise.resolve(thenable);
     await Promise.resolve();
     for (const resolve of waiters) resolve("done");
     await settled;
     await Promise.resolve();
     expect(getAmbientSpanRefs()).toEqual([]);
+    expect(syncStack).toHaveLength(0);
   });
 });

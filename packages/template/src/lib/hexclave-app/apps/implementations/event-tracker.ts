@@ -433,14 +433,6 @@ export type EventTrackerDeps = {
   // Serverless keep-alive hook (AnalyticsOptions.waitUntil): every batch-send
   // promise is passed to it so un-awaited sends survive runtime teardown.
   registerBackgroundTask?: (promise: Promise<unknown>) => void,
-  // Flow-scoped ambient-parenting policy (AnalyticsOptions.ambientParenting).
-  // "exact" (default): withSpan frames are ambient only when provably from the
-  // current flow — an exact async-context primitive (ALS/AsyncContext), or the
-  // synchronous prologue window on the browser fallback. "best-effort": also
-  // frames whose callback has suspended (zero-glue across awaits; concurrently
-  // interleaved flows may observe each other's frames). Global spans and the
-  // handle methods (span.trackEvent/withSpan/fetch/…) are unaffected by this.
-  ambientParenting?: "exact" | "best-effort",
   // Origin policy for span.fetch / propagation headers (same-origin default +
   // exact-origin allowlist). Provided by the app from analytics.spanPropagation.
   getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[] },
@@ -793,9 +785,9 @@ export class EventTracker {
     }
     // Enclosing withSpan() frames, outermost first, after the globals. Exact
     // primitive (ALS/AsyncContext) → the per-flow store, always. Sync-stack
-    // fallback → prologue-open frames are provably same-flow and always count;
-    // suspended frames only under the opt-in "best-effort" policy.
-    refs.push(...getAmbientSpanRefs({ includeSuspendedSyncFrames: this._deps.ambientParenting === "best-effort" }));
+    // fallback → only prologue-open frames (provably same-flow); after an await
+    // in browsers, rebind via the span handle (`span.run` / `trackEvent` / …).
+    refs.push(...getAmbientSpanRefs());
     return refs;
   }
 

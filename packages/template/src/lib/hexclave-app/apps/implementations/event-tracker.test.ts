@@ -973,43 +973,32 @@ describe("EventTracker ambient modes + span handle kit", () => {
     vi.useRealTimers();
   });
 
-  it("ambientParenting 'exact' drops suspended sync frames; 'best-effort' keeps them", async () => {
+  it("ambient parenting drops suspended sync frames after await (exact-only)", async () => {
     __setAsyncContextModeForTesting("sync-stack");
     vi.useFakeTimers();
 
-    const run = async (mode: "exact" | "best-effort" | undefined) => {
-      const sentBodies: string[] = [];
-      const tracker = makeTracker(sentBodies, mode ? { ambientParenting: mode } : {});
-      try {
-        tracker.start();
-        let spanId!: string;
-        await withSpanImpl((type, opts) => tracker.startSpan(type, opts), "flow", async (span) => {
-          spanId = span.spanId;
-          // Synchronous prologue: provably this flow — ambient in BOTH modes.
-          tracker.trackCustomEvent("in_prologue").catch(() => {});
-          await Promise.resolve();
-          // Post-await on the browser fallback: only best-effort keeps the frame.
-          tracker.trackCustomEvent("post_await").catch(() => {});
-        });
-        await advancePastFlush();
-        const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
-        return {
-          spanId,
-          prologue: payload.events.find((event) => event.event_type === "in_prologue")?.parent_span_ids,
-          postAwait: payload.events.find((event) => event.event_type === "post_await")?.parent_span_ids,
-        };
-      } finally {
-        tracker.stop();
-      }
-    };
-
-    const exact = await run(undefined); // default IS exact
-    expect(exact.prologue).toEqual([exact.spanId]);
-    expect(exact.postAwait).toBeUndefined();
-
-    const best = await run("best-effort");
-    expect(best.prologue).toEqual([best.spanId]);
-    expect(best.postAwait).toEqual([best.spanId]);
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      let spanId!: string;
+      await withSpanImpl((type, opts) => tracker.startSpan(type, opts), "flow", async (span) => {
+        spanId = span.spanId;
+        // Synchronous prologue: provably this flow — ambient.
+        tracker.trackCustomEvent("in_prologue").catch(() => {});
+        await Promise.resolve();
+        // Post-await on the browser fallback: ambient stops; use span.run / trackEvent.
+        tracker.trackCustomEvent("post_await").catch(() => {});
+      });
+      await advancePastFlush();
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, parent_span_ids?: string[] }[] };
+      const prologue = payload.events.find((event) => event.event_type === "in_prologue")?.parent_span_ids;
+      const postAwait = payload.events.find((event) => event.event_type === "post_await")?.parent_span_ids;
+      expect(prologue).toEqual([spanId]);
+      expect(postAwait).toBeUndefined();
+    } finally {
+      tracker.stop();
+    }
   });
 
   it("span.withSpan nests exactly under the handle and auto-ends the child", async () => {
