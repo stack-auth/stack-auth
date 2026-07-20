@@ -1898,10 +1898,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       if (!span.isEnded) refs.push(span.ref());
     }
     // Enclosing withSpan() frames — AsyncLocalStorage on servers, isolated per
-    // request. If ALS is somehow unavailable, fail closed: suspended sync-stack
-    // frames are only readable under the opt-in "best-effort" policy (the
-    // provably-same-flow prologue-open frames always count).
-    refs.push(...getAmbientSpanRefs({ includeSuspendedSyncFrames: this._analyticsOptions?.ambientParenting === "best-effort" }));
+    // request. If ALS is somehow unavailable, fail closed: only prologue-open
+    // sync-stack frames count (never another flow's suspended frame).
+    refs.push(...getAmbientSpanRefs());
     return refs;
   }
 
