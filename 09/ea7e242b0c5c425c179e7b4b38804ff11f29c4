@@ -1,0 +1,21 @@
+apps/backend/src/lib/spans.tsx
+  s_698857c6c3dd28::t_3249fcfe3a857c 154-165
+  s_698857c6c3dd28::t_18146e5252d9bc 217
+  s_698857c6c3dd28::t_fdb5ab09f8d980 153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "09ea7e242b0c5c425c179e7b4b38804ff11f29c4",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
