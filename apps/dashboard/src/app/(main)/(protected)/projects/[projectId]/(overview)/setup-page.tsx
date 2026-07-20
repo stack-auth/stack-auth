@@ -22,10 +22,38 @@ import styles from './setup-page.module.css';
 const countriesPromise = import('./country-data.geo.json');
 const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default), { ssr: false });
 
-type SetupMode = "recommended" | "manual";
+type SetupMode = "recommended" | "manual" | "script";
 
 const PROD_DOCS_BASE_URL = 'https://docs.hexclave.com';
 const PROD_API_BASE_URL = 'https://api.hexclave.com';
+// Pin the esm.sh version in the copy-paste snippet so a new SDK release can't unexpectedly break the page.
+const NO_BUNDLER_SDK_VERSION = '1.0.51';
+
+function buildBrowserScriptSnippet(options: {
+  apiBaseUrl: string,
+  projectId: string,
+  requirePublishableClientKey: boolean,
+}) {
+  const { apiBaseUrl, projectId, requirePublishableClientKey } = options;
+  const publishableClientKeyLine = requirePublishableClientKey
+    ? `\n    publishableClientKey: "<your-publishable-client-key>",`
+    : '';
+
+  return deindent`
+    <script type="module">
+      // Sets up Hexclave as a global hexclaveClientApp variable.
+      // See: https://docs.hexclave.com (humans), https://skill.hexclave.com (AI agents)
+      import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${NO_BUNDLER_SDK_VERSION}";
+
+      globalThis.hexclaveClientApp = new HexclaveClientApp({
+        baseUrl: "${apiBaseUrl}",
+        projectId: "${projectId}",${publishableClientKeyLine}
+        tokenStore: "cookie",
+        urls: { default: { type: "hosted" } },
+      });
+    </script>
+  `;
+}
 
 function getSetupDocsBaseUrl() {
   return getPublicEnvVar('NEXT_PUBLIC_STACK_DOCS_BASE_URL') ?? PROD_DOCS_BASE_URL;
@@ -134,6 +162,12 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     });
   };
 
+  const setupApiBaseUrl = getSetupApiBaseUrl();
+  const browserScriptSnippet = buildBrowserScriptSnippet({
+    apiBaseUrl: setupApiBaseUrl,
+    projectId: adminApp.projectId,
+    requirePublishableClientKey,
+  });
   const setupDocsBaseUrl = getSetupDocsBaseUrl();
   const selectedInstallPrompt = isRemoteDevelopmentEnvironment
     ? buildCliDevSetupPrompt({
@@ -142,7 +176,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     : buildCloudSetupPrompt({
       docsBaseUrl: setupDocsBaseUrl,
       projectId: adminApp.projectId,
-      apiBaseUrl: getSetupApiBaseUrl(),
+      apiBaseUrl: setupApiBaseUrl,
     });
   const manualSetupDocsUrl = getManualSetupDocsUrl();
 
@@ -189,10 +223,13 @@ export default function SetupPage(props: { toMetrics: () => void }) {
       </div>
 
       <div className="flex justify-end mt-8 mx-4">
-        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : "recommended")}>
+        <Tabs value={setupMode} onValueChange={(value) => setSetupMode(value === "manual" ? "manual" : value === "script" ? "script" : "recommended")}>
           <TabsList>
-            <TabsTrigger value="recommended">Recommended</TabsTrigger>
+            <TabsTrigger value="recommended">AI Prompt (recommended)</TabsTrigger>
             <TabsTrigger value="manual">Manual setup</TabsTrigger>
+            {!isRemoteDevelopmentEnvironment && (
+              <TabsTrigger value="script">{`<script> tag`}</TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
       </div>
@@ -273,6 +310,8 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             ))}
           </ol>
         </div>
+      ) : setupMode === "script" ? (
+        <BrowserScriptSetup snippet={browserScriptSnippet} requirePublishableClientKey={requirePublishableClientKey} />
       ) : (
         <div className="mx-4 mt-12 flex flex-col items-center gap-4 py-16 text-center">
           <Typography>
@@ -378,6 +417,29 @@ function SetupRecommendedDoneStep(props: { onExploreDashboard: () => void }) {
           Explore Dashboard
         </DesignButton>
       </div>
+    </div>
+  );
+}
+
+function BrowserScriptSetup(props: { snippet: string, requirePublishableClientKey: boolean }) {
+  return (
+    <div className="mx-4 mt-8 flex flex-col gap-4">
+      <Typography variant="secondary">
+        For static pages or quick prototypes with no build step. Environment variables aren&apos;t available in the browser, so the project ID{props.requirePublishableClientKey ? ' and publishable client key are' : ' is'} set directly in the snippet.
+      </Typography>
+
+      <CodeBlock
+        language="html"
+        content={props.snippet}
+        customRender={
+          <pre className="max-h-[480px] overflow-y-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-foreground">
+            {props.snippet}
+          </pre>
+        }
+        title="index.html"
+        icon="code"
+        maxHeight={480}
+      />
     </div>
   );
 }

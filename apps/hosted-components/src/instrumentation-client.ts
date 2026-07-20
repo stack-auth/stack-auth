@@ -16,10 +16,13 @@ Sentry.init({
 
   // You can remove this option if you're not planning to use the Sentry Session Replay feature:
   integrations: [
+    // hosted-components renders Stripe payment flows, so keep Sentry's secure
+    // Replay defaults (mask all text/inputs, block media) to avoid capturing
+    // card details or other sensitive input values in session recordings.
     Sentry.replayIntegration({
-      maskAllText: false,
-      maskAllInputs: false,
-      blockAllMedia: false,
+      maskAllText: true,
+      maskAllInputs: true,
+      blockAllMedia: true,
     }),
   ],
 

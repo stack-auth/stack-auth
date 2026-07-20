@@ -1020,10 +1020,54 @@ Implementation:
 3. For afterSignIn/afterSignUp:
    - Check current URL for after_auth_return_to query param
    - If present: redirect to that URL instead of the default
+   - If absent (unless noRedirectBack=true): fall back to the sessionStorage mirror of the
+     redirect-back state (see "Redirect-back state mirror" below) before using the default
 4. Perform redirect based on redirectMethod config:
    - "browser": window.location.assign() or .replace()
    - "nextjs": Next.js redirect() function [JS-ONLY]
    - "none": don't redirect (for headless/API use)
    - Custom navigate function: call it with the URL
 
-Do not error.
+Do not error, except when the redirect loop breaker triggers (see below).
+
+### Redirect-back state mirror  [BROWSER-ONLY]
+
+The `after_auth_return_to` and cross-domain handoff query params must survive every hop of an
+auth flow (OAuth provider round-trips, MFA, magic links, ...). As a resilience layer, the SDK
+mirrors them into sessionStorage so a hop that drops them doesn't strand the user on the default
+post-auth page:
+
+1. On app construction (browser only) and on every SDK-driven redirect, if the (target) URL
+   contains after_auth_return_to, store it together with the hexclave_cross_domain_state,
+   hexclave_cross_domain_code_challenge, and hexclave_cross_domain_after_callback_redirect_url
+   params (if present) in sessionStorage, keyed by project ID.
+2. When redirectToAfterSignIn/redirectToAfterSignUp run without an after_auth_return_to query
+   param, restore the mirrored params (query params always take precedence over the mirror).
+3. The mirror expires after 30 minutes (must stay below the 1h lifetime of the outer PKCE
+   verifier cookie) and is NOT consumed on read (post-auth redirects may legitimately run more
+   than once, eg. React re-renders).
+4. Restored URLs go through the exact same trust validation as URLs read from query params, so
+   the mirror never widens the set of allowed destinations.
+5. If sessionStorage is unavailable (private browsing, sandboxed iframes), degrade silently to
+   the previous behavior (no mirror).
+
+### Redirect loop breaker  [BROWSER-ONLY]
+
+As a last line of defense against redirect loops (particularly in hosted components flows), every
+SDK-driven redirect records a breadcrumb (origin + pathname of the current and target URL; query
+params are ignored because loops usually rotate nonce-style params each cycle) in sessionStorage:
+
+1. Before navigating, count how often the exact same (from, to) redirect occurred within the last
+   30 seconds (wall clock; must survive full page loads).
+2. If this is the 5th identical redirect in that window, do NOT navigate: drop the matching
+   breadcrumbs (so a manual retry isn't instantly blocked), report the error, and throw. The page
+   that initiated the redirect renders its error state, which stops the loop and surfaces the bug.
+3. If sessionStorage is unavailable, degrade silently (no loop breaking).
+
+### Sign-out redirect validation
+
+The sign-out page follows the after_auth_return_to query param only if it passes the same trust
+validation as every other redirect (relative URLs, same-origin URLs, the project's hosted
+components origin, and the project's trusted domains). Untrusted values are ignored (the error is
+reported, and sign-out proceeds with the default after-sign-out destination); they must never be
+followed, since the query param is attacker-craftable (open redirect).

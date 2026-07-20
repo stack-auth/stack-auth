@@ -46,4 +46,6 @@ allowBuilds:
   protobufjs: true
   puppeteer: true
   sharp: true
+  lmdb: true
+  msgpackr-extract: true
   unrs-resolver: false

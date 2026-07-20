@@ -92,6 +92,11 @@ function HostedAuthPageInner(props: {
   const projectFromHook = app.useProject();
   const project: AuthProject = props.mockProject ?? projectFromHook;
 
+  // Lifted so the typed email survives switching between the "Email" (magic link) and
+  // "Email & Password" (credential) tabs — the tab content is unmounted when inactive,
+  // so keeping the email here (instead of inside each form) both persists and shares it.
+  const [email, setEmail] = useState("");
+
   if (props.automaticRedirect && user != null && props.mockProject == null) {
     return (
       <Suspense fallback={<HostedAuthLoading fullPage={props.fullPage} />}>
@@ -165,16 +170,16 @@ function HostedAuthPageInner(props: {
             <TabsTrigger value="password" className={authTabsTriggerClassName}>Email & Password</TabsTrigger>
           </TabsList>
           <TabsContent value="magic-link" className="focus-visible:outline-none focus-visible:ring-0">
-            <MagicLinkSignIn />
+            <MagicLinkSignIn email={email} onEmailChange={setEmail} />
           </TabsContent>
           <TabsContent value="password" className="focus-visible:outline-none focus-visible:ring-0">
-            {props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />}
+            {props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} email={email} onEmailChange={setEmail} /> : <CredentialSignIn email={email} onEmailChange={setEmail} />}
           </TabsContent>
         </Tabs>
       ) : project.config.credentialEnabled ? (
-        props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />
+        props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} email={email} onEmailChange={setEmail} /> : <CredentialSignIn email={email} onEmailChange={setEmail} />
       ) : project.config.magicLinkEnabled ? (
-        <MagicLinkSignIn />
+        <MagicLinkSignIn email={email} onEmailChange={setEmail} />
       ) : !(hasOAuthProviders || hasPasskey) ? (
         <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
       ) : null}

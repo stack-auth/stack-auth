@@ -6,11 +6,13 @@ import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
 import { createDocsTools } from "./docs";
 import { isHexclaveDocsAssistantRequest } from "../mcp-skill-context";
+import { readConfigTool } from "./read-config";
 import { createSqlQueryTool } from "./sql-query";
 
 export const TOOL_NAMES = [
   "docs",
   "sql-query",
+  "read-config",
   "create-email-theme",
   "create-email-template",
   "create-email-draft",
@@ -45,6 +47,14 @@ export async function getTools(
         const sqlTool = createSqlQueryTool(context.targetProjectId);
         if (sqlTool != null) {
           tools["queryAnalytics"] = sqlTool;
+        }
+        break;
+      }
+
+      case "read-config": {
+        const configTool = readConfigTool(context.auth, context.targetProjectId);
+        if (configTool != null) {
+          tools["readBranchConfig"] = configTool;
         }
         break;
       }
