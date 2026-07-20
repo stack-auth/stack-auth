@@ -66,7 +66,46 @@ describe("getMcpSkillContextPrompt", () => {
       new Response("# Hexclave Docs"),
     );
 
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).resolves.toContain("the public Hexclave MCP server's ask_hexclave tool");
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).resolves.toMatchInlineSnapshot(`
+      "
+
+      ## Hexclave Documentation Context
+
+      The current request came through the public Hexclave MCP server's ask_hexclave tool.
+      The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
+      immediately before spawning this assistant. Treat this documentation as baseline context
+      for answering the user's question, while still using documentation tools for specific
+      facts and citations:
+
+      # Hexclave Docs
+      "
+    `);
+  });
+
+  it("throws a descriptive timeout error when the docs body stalls mid-stream", async () => {
+    vi.useFakeTimers();
+    // Simulates real fetch behavior: headers arrive immediately, but the body stream never
+    // produces data. Like undici, aborting the request signal errors the pending body read.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          init?.signal?.addEventListener("abort", () => {
+            streamController.error(new DOMException("The operation was aborted", "AbortError"));
+          });
+        },
+      });
+      return new Response(stalledBody);
+    });
+
+    try {
+      const promptPromise = getMcpSkillContextPrompt("skill_site_ask");
+      // attach the rejection expectation before advancing timers so the rejection is never unhandled
+      const expectation = expect(promptPromise).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expectation;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails loudly when the documentation cannot be fetched", async () => {

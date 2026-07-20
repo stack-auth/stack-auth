@@ -17,30 +17,36 @@ async function fetchDocsText(): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-  let response: Response;
+  // The timeout must stay armed until the body is fully consumed, not just until the headers
+  // arrive: `fetch` resolves as soon as headers are received, so a CDN that stalls mid-body
+  // would otherwise hang this request forever. Aborting the signal also errors the pending
+  // `response.text()` read, which the catch below classifies as a timeout.
   try {
-    response = await fetch(HEXCLAVE_DOCS_FULL_URL, {
+    const response = await fetch(HEXCLAVE_DOCS_FULL_URL, {
       headers: { Accept: "text/markdown" },
       signal: controller.signal,
     });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch docs from ${HEXCLAVE_DOCS_FULL_URL}: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const text = await response.text();
+    cachedDocs = { text, fetchedAt: now };
+    return text;
   } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === "AbortError") {
+    // `controller.signal.aborted` is checked in addition to the DOMException, because some
+    // fetch implementations surface aborted-mid-body reads as other error types (e.g.
+    // undici's "terminated" TypeError) — if our timeout fired, it's a timeout either way.
+    if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
       throw new Error(`Docs fetch from ${HEXCLAVE_DOCS_FULL_URL} timed out after ${FETCH_TIMEOUT_MS}ms`);
     }
     throw err;
   } finally {
     clearTimeout(timeoutId);
   }
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch docs from ${HEXCLAVE_DOCS_FULL_URL}: ${response.status} ${response.statusText}`,
-    );
-  }
-
-  const text = await response.text();
-  cachedDocs = { text, fetchedAt: now };
-  return text;
 }
 
 export async function getMcpSkillContextPrompt(toolName: string | null | undefined): Promise<string> {

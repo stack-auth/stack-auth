@@ -96,9 +96,12 @@ export async function callHexclaveAskAi(options: {
   const timeoutMs = options.timeoutMs ?? HEXCLAVE_ASK_BACKEND_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
+  // The timeout must stay armed until the body is fully consumed, not just until the headers
+  // arrive: `fetch` resolves as soon as headers are received, so a backend that stalls
+  // mid-body would otherwise hang forever. Aborting the signal also errors pending body
+  // reads, which is why the AbortError classification lives in the outer catch below.
   try {
-    response = await fetch(`${options.backendApiBaseUrl.replace(/\/$/, "")}/api/latest/ai/query/generate`, {
+    const response = await fetch(`${options.backendApiBaseUrl.replace(/\/$/, "")}/api/latest/ai/query/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -116,8 +119,37 @@ export async function callHexclaveAskAi(options: {
       }),
       signal: controller.signal,
     });
+
+    if (!response.ok) {
+      const body = await response.text();
+      options.onDiagnostic?.({ event: "upstream-error", status: response.status, body });
+      return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
+    }
+
+    let responseJson: unknown;
+    try {
+      responseJson = await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) {
+        // A stalled body read aborted by our timeout is a timeout, not malformed JSON —
+        // rethrow so the outer catch reports it as such.
+        throw error;
+      }
+      options.onDiagnostic?.({ event: "malformed-json", error });
+      return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
+    }
+
+    const body = parseAiQueryResponse(responseJson);
+    return {
+      status: "ok",
+      text: getAiResponseText(body),
+      conversationId: body.conversationId ?? options.conversationId ?? "",
+    };
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    // `controller.signal.aborted` is checked in addition to the DOMException, because some
+    // fetch implementations surface aborted-mid-body reads as other error types (e.g.
+    // undici's "terminated" TypeError) — if our timeout fired, it's a timeout either way.
+    if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
       options.onDiagnostic?.({ event: "timeout", timeoutMs });
       return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
     }
@@ -125,25 +157,4 @@ export async function callHexclaveAskAi(options: {
   } finally {
     clearTimeout(timeoutId);
   }
-
-  if (!response.ok) {
-    const body = await response.text();
-    options.onDiagnostic?.({ event: "upstream-error", status: response.status, body });
-    return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
-  }
-
-  let responseJson: unknown;
-  try {
-    responseJson = await response.json();
-  } catch (error) {
-    options.onDiagnostic?.({ event: "malformed-json", error });
-    return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
-  }
-
-  const body = parseAiQueryResponse(responseJson);
-  return {
-    status: "ok",
-    text: getAiResponseText(body),
-    conversationId: body.conversationId ?? options.conversationId ?? "",
-  };
 }
