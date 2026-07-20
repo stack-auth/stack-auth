@@ -1,11 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
-import { SPAN_ID_PREFIXES, buildCustomSpanRows, buildEventSpanFields, insertSessionReplaySpans, toSpanId } from "./spans";
+import { SPAN_ID_PREFIXES, buildCustomSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSpanId } from "./spans";
 
 describe("toSpanId", () => {
   it("prefixes raw ids without touching the raw value", () => {
     expect(toSpanId(SPAN_ID_PREFIXES.sessionReplay, "abc")).toBe("sri-abc");
     expect(toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, "seg")).toBe("srsi-seg");
     expect(toSpanId(SPAN_ID_PREFIXES.refreshToken, "rt1")).toBe("rti-rt1");
+  });
+
+  it("only accepts known prefixes (compile-time constraint)", () => {
+    // @ts-expect-error — arbitrary strings are not valid span id prefixes
+    toSpanId("xx-", "abc");
+    // @ts-expect-error — an already-prefixed value is not a valid prefix
+    toSpanId("sri-abc", "def");
+  });
+});
+
+describe("monotoneEndSpanVersion", () => {
+  it("is the span end as epoch ms, so later ends always win the ReplacingMergeTree", () => {
+    const earlier = new Date("2026-01-01T00:00:00.000Z");
+    const later = new Date("2026-01-01T00:05:00.000Z");
+    expect(monotoneEndSpanVersion(later)).toBeGreaterThan(monotoneEndSpanVersion(earlier));
+    expect(monotoneEndSpanVersion(earlier)).toBe(earlier.getTime());
   });
 });
 
