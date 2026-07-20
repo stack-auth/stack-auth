@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildConfigPushSource, resolveConfigFilePathForPull, shouldReplaceConfigFileForPull } from "./config-file.js";
+import { assertConfigPullTarget, buildConfigPushSource, resolveConfigFilePathForPull } from "./config-file.js";
 
 describe("resolveConfigFilePathForPull", () => {
   let tmpDir: string;
@@ -46,7 +46,7 @@ describe("resolveConfigFilePathForPull", () => {
   });
 });
 
-describe("shouldReplaceConfigFileForPull", () => {
+describe("assertConfigPullTarget", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -57,16 +57,26 @@ describe("shouldReplaceConfigFileForPull", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("updates an existing config in place unless overwrite is explicit", () => {
-    const configPath = path.join(tmpDir, "hexclave.config.ts");
-    fs.writeFileSync(configPath, "export const config = {};\n");
-
-    expect(shouldReplaceConfigFileForPull(configPath, {})).toBe(false);
-    expect(shouldReplaceConfigFileForPull(configPath, { overwrite: true })).toBe(true);
+  it("does not throw when the target file does not exist", () => {
+    expect(() => assertConfigPullTarget(path.join(tmpDir, "hexclave.config.ts"), {})).not.toThrow();
   });
 
-  it("replaces when pull needs to create a new config file", () => {
-    expect(shouldReplaceConfigFileForPull(path.join(tmpDir, "hexclave.config.ts"), {})).toBe(true);
+  it("throws when the target file already exists and --overwrite is not set", () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(configPath, "export const config = {};\n");
+    expect(() => assertConfigPullTarget(configPath, {})).toThrow(/already exists.*--overwrite/s);
+  });
+
+  it("throws for an existing placeholder/comment-only file without --overwrite", () => {
+    const configPath = path.join(tmpDir, "stack.config.ts");
+    fs.writeFileSync(configPath, "// placeholder so the file exists\n");
+    expect(() => assertConfigPullTarget(configPath, {})).toThrow(/already exists/);
+  });
+
+  it("does not throw when --overwrite is set, even if the file exists", () => {
+    const configPath = path.join(tmpDir, "hexclave.config.ts");
+    fs.writeFileSync(configPath, "export const config = {};\n");
+    expect(() => assertConfigPullTarget(configPath, { overwrite: true })).not.toThrow();
   });
 });
 

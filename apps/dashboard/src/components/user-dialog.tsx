@@ -2,6 +2,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ServerUser } from "@hexclave/next";
 import { KnownErrors } from "@hexclave/shared";
 import { countryCodeSchema, emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@hexclave/shared/dist/schema-fields";
+import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography } from "@/components/ui";
 import { DesignButton, DesignDialog, DesignDialogClose } from "@/components/design-components";
 import { WarningCircleIcon } from "@phosphor-icons/react";
@@ -18,6 +19,7 @@ const metadataDocsUrl = "https://docs.hexclave.com/guides/getting-started/user-f
 export function UserDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
+  onUserMutated?: () => void | Promise<void>,
   trigger?: React.ReactNode,
 } & ({
   type: 'create',
@@ -145,6 +147,9 @@ export function UserDialog(props: {
         return 'prevent-close-and-prevent-reset';
       }
       throw error;
+    }
+    if (props.onUserMutated) {
+      runAsynchronouslyWithAlert(Promise.resolve().then(() => props.onUserMutated?.()));
     }
   }
 
