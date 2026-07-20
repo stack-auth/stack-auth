@@ -145,10 +145,14 @@ import.meta.vitest?.test("getInputDatetimeLocalString", ({ expect }) => {
 export type Interval = [number, 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'];
 export type DayInterval = [number, 'day' | 'week' | 'month' | 'year'];
 
-function applyInterval(date: Date, times: number, interval: Interval): Date {
+function applyInterval(inputDate: Date, times: number, interval: Interval): Date {
   if (!intervalSchema.isValidSync(interval)) {
     throw new HexclaveAssertionError(`Invalid interval`, { interval });
   }
+  // Operate on a copy: the Date setters below mutate in place, and callers routinely pass a date they
+  // also keep a reference to (e.g. `{ currentPeriodStart: now, currentPeriodEnd: addInterval(now, ...) }`).
+  // Mutating the input would alias both fields to the same advanced date, silently collapsing the period.
+  const date = new Date(inputDate);
   const [amount, unit] = interval;
   switch (unit) {
     case 'millisecond': {
@@ -202,6 +206,23 @@ export function subtractInterval(date: Date, interval: Interval): Date {
 export function addInterval(date: Date, interval: Interval): Date {
   return applyInterval(date, 1, interval);
 }
+
+import.meta.vitest?.test("addInterval/subtractInterval do not mutate their input", ({ expect }) => {
+  const original = new Date('2026-07-20T00:00:00.000Z');
+  const originalMillis = original.getTime();
+
+  const later = addInterval(original, [1, 'month']);
+  const earlier = subtractInterval(original, [1, 'month']);
+
+  // The input must be untouched, and the result must be a distinct object. This guards the aliasing
+  // footgun in `{ currentPeriodStart: now, currentPeriodEnd: addInterval(now, ...) }`, where mutating
+  // `now` would collapse both fields to the same advanced instant (a zero-width period).
+  expect(original.getTime()).toBe(originalMillis);
+  expect(later).not.toBe(original);
+  expect(earlier).not.toBe(original);
+  expect(later.getTime()).toBeGreaterThan(original.getTime());
+  expect(earlier.getTime()).toBeLessThan(original.getTime());
+});
 
 export const FAR_FUTURE_DATE = new Date(8640000000000000); // 13 Sep 275760 00:00:00 UTC
 
