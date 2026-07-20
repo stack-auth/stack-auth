@@ -49,7 +49,7 @@ describe("skill-site ask route", () => {
           "mcpCallMetadata": {
             "conversationId": "conversation-123",
             "reason": "skill-site ask endpoint",
-            "toolName": "skill_site_ask",
+            "toolName": "ask_hexclave",
             "userPrompt": "Installing Hexclave in a static HTML app",
           },
           "messages": [

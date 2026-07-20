@@ -122,7 +122,6 @@ async function callUnifiedAiEndpoint(req: Request): Promise<Response> {
     reason: ASK_ROUTE_REASON,
     userPrompt,
     conversationId,
-    toolName: "skill_site_ask",
     onDiagnostic: logAskDiagnostic,
   });
 

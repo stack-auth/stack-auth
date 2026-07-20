@@ -137,7 +137,6 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             reason,
             userPrompt,
             conversationId,
-            toolName: "ask_hexclave",
             onDiagnostic: logAskDiagnostic,
           });
 

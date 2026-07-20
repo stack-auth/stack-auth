@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { _clearDocsCache, getMcpSkillContextPrompt, isHexclaveDocsAssistantRequest } from "./mcp-skill-context";
+import { _clearDocsCache, getMcpSkillContextPrompt } from "./mcp-skill-context";
 
 describe("getMcpSkillContextPrompt", () => {
   afterEach(() => {
@@ -7,13 +7,7 @@ describe("getMcpSkillContextPrompt", () => {
     _clearDocsCache();
   });
 
-  it("identifies Hexclave docs assistant request metadata", () => {
-    expect(isHexclaveDocsAssistantRequest("skill_site_ask")).toBe(true);
-    expect(isHexclaveDocsAssistantRequest("ask_hexclave")).toBe(true);
-    expect(isHexclaveDocsAssistantRequest("other_tool")).toBe(false);
-  });
-
-  it("returns empty string for non-Hexclave docs assistant tool names", async () => {
+  it("returns empty string for non-ask_hexclave tool names", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     await expect(getMcpSkillContextPrompt("other_tool")).resolves.toMatchInlineSnapshot(`""`);
@@ -34,17 +28,17 @@ describe("getMcpSkillContextPrompt", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("fetches and embeds the full documentation for skill-site ask requests", async () => {
+  it("fetches and embeds the full documentation for ask_hexclave requests", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("# Hexclave Docs\n\nUse Hexclave docs."),
     );
 
-    await expect(getMcpSkillContextPrompt("skill_site_ask")).resolves.toMatchInlineSnapshot(`
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).resolves.toMatchInlineSnapshot(`
       "
 
       ## Hexclave Documentation Context
 
-      The current request came through the public https://skill.hexclave.com/ask endpoint.
+      The current request came through the public Hexclave docs assistant (the https://skill.hexclave.com/ask endpoint or the Hexclave MCP server's ask_hexclave tool).
       The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
       immediately before spawning this assistant. Treat this documentation as baseline context
       for answering the user's question, while still using documentation tools for specific
@@ -59,27 +53,6 @@ describe("getMcpSkillContextPrompt", () => {
       headers: { Accept: "text/markdown" },
       signal: expect.any(AbortSignal),
     }));
-  });
-
-  it("still fetches documentation for MCP ask_hexclave requests", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("# Hexclave Docs"),
-    );
-
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).resolves.toMatchInlineSnapshot(`
-      "
-
-      ## Hexclave Documentation Context
-
-      The current request came through the public Hexclave MCP server's ask_hexclave tool.
-      The backend fetched the full Hexclave documentation from https://docs.hexclave.com/llms-full.txt
-      immediately before spawning this assistant. Treat this documentation as baseline context
-      for answering the user's question, while still using documentation tools for specific
-      facts and citations:
-
-      # Hexclave Docs
-      "
-    `);
   });
 
   it("throws a descriptive timeout error when the docs body stalls mid-stream", async () => {
@@ -98,7 +71,7 @@ describe("getMcpSkillContextPrompt", () => {
     });
 
     try {
-      const promptPromise = getMcpSkillContextPrompt("skill_site_ask");
+      const promptPromise = getMcpSkillContextPrompt("ask_hexclave");
       // attach the rejection expectation before advancing timers so the rejection is never unhandled
       const expectation = expect(promptPromise).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
       await vi.advanceTimersByTimeAsync(5_000);
@@ -113,7 +86,7 @@ describe("getMcpSkillContextPrompt", () => {
       new Response("missing", { status: 503, statusText: "Service Unavailable" }),
     );
 
-    await expect(getMcpSkillContextPrompt("skill_site_ask")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Failed to fetch docs from https://docs.hexclave.com/llms-full.txt: 503 Service Unavailable]`);
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Failed to fetch docs from https://docs.hexclave.com/llms-full.txt: 503 Service Unavailable]`);
   });
 
   it("throws a descriptive error when the fetch times out", async () => {
@@ -122,7 +95,7 @@ describe("getMcpSkillContextPrompt", () => {
       return Promise.reject(err);
     });
 
-    await expect(getMcpSkillContextPrompt("skill_site_ask")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
   });
 
   it("returns cached documentation on subsequent calls within TTL", async () => {
@@ -130,8 +103,8 @@ describe("getMcpSkillContextPrompt", () => {
       new Response("# Cached Docs"),
     );
 
-    const first = await getMcpSkillContextPrompt("skill_site_ask");
-    const second = await getMcpSkillContextPrompt("skill_site_ask");
+    const first = await getMcpSkillContextPrompt("ask_hexclave");
+    const second = await getMcpSkillContextPrompt("ask_hexclave");
 
     expect(first).toBe(second);
     expect(fetchSpy).toHaveBeenCalledTimes(1);

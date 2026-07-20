@@ -14,8 +14,6 @@ type AiQueryResponse = {
   conversationId?: string | null,
 };
 
-export type HexclaveAskToolName = "skill_site_ask" | "ask_hexclave";
-
 export type HexclaveAskDiagnostic = {
   event: "timeout",
   timeoutMs: number,
@@ -88,7 +86,6 @@ export async function callHexclaveAskAi(options: {
   question: string,
   reason: string,
   userPrompt: string,
-  toolName: HexclaveAskToolName,
   conversationId?: string | null,
   timeoutMs?: number,
   onDiagnostic?: (diagnostic: HexclaveAskDiagnostic) => void,
@@ -111,7 +108,10 @@ export async function callHexclaveAskAi(options: {
         systemPrompt: "docs-ask-ai",
         messages: [{ role: "user", content: options.question }],
         mcpCallMetadata: {
-          toolName: options.toolName,
+          // Both the skill.hexclave.com/ask endpoint and the MCP server's ask_hexclave tool
+          // are the same docs assistant exposed through two transports, so they share one
+          // tool name — the backend keys its docs-context behavior on it.
+          toolName: "ask_hexclave",
           reason: options.reason,
           userPrompt: options.userPrompt,
           conversationId: options.conversationId,
