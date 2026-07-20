@@ -40,6 +40,7 @@ const USAGE_ITEM_LABELS = new Map<ItemId, string>([
   [ITEM_IDS.authUsers, "Auth users"],
   [ITEM_IDS.emailsPerMonth, "Emails per month"],
   [ITEM_IDS.analyticsEvents, "Analytics events"],
+  [ITEM_IDS.analyticsSpans, "Analytics spans"],
   [ITEM_IDS.sessionReplays, "Session replays"],
   [ITEM_IDS.analyticsTimeoutSeconds, "Analytics timeout"],
   [ITEM_IDS.onboardingCall, "Onboarding call"],
@@ -350,12 +351,46 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
   return Number(rows[0]?.total ?? 0);
 }
 
+// Counts span WRITES (row versions), not distinct spans, deliberately without
+// FINAL: every custom-span insert into analytics_internal.spans is one debited
+// item at the batch endpoint (re-writes of the same open span are billed per
+// write), so the non-collapsed count is what matches the billing meter.
+// `created_at` is the ingest time, which is when the debit happened. System
+// spans ($-prefixed types: replay/segment mirrors) are written by us for free
+// and excluded.
+async function countAnalyticsSpansForProjects(projectIds: string[], period: UsagePeriod): Promise<number> {
+  if (projectIds.length === 0) {
+    return 0;
+  }
+
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+  const result = await clickhouseClient.query({
+    query: `
+      SELECT count() AS total
+      FROM analytics_internal.spans
+      WHERE project_id IN {projectIds:Array(String)}
+        AND created_at >= {periodStart:DateTime}
+        AND created_at < {periodEnd:DateTime}
+        AND NOT startsWith(span_type, '$')
+    `,
+    query_params: {
+      projectIds,
+      periodStart: formatClickhouseDateTimeParam(period.start),
+      periodEnd: formatClickhouseDateTimeParam(period.end),
+    },
+    format: "JSONEachRow",
+  });
+  const rows: { total: string | number }[] = await result.json();
+  return Number(rows[0]?.total ?? 0);
+}
+
 function buildRows(options: {
   planId: PlanId,
   dashboardAdmins: number,
   authUsers: number,
   emails: number,
   analyticsEvents: number,
+  analyticsSpans: number,
   sessionReplays: number,
 }): PlanUsageRow[] {
   const limits = PLAN_LIMITS[options.planId];
@@ -387,6 +422,13 @@ function buildRows(options: {
       kind: "metered",
       used: options.analyticsEvents,
       limit: limits.analyticsEvents,
+    }),
+    buildUsageRow({
+      itemId: ITEM_IDS.analyticsSpans,
+      displayName: getUsageItemLabel(ITEM_IDS.analyticsSpans),
+      kind: "metered",
+      used: options.analyticsSpans,
+      limit: limits.analyticsSpans,
     }),
     buildUsageRow({
       itemId: ITEM_IDS.sessionReplays,
@@ -431,10 +473,11 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
     countDashboardAdmins(internalTenancy, ownerTeamId, now),
   ]);
 
-  const [authUsers, meteredUsage, analyticsEvents] = await Promise.all([
+  const [authUsers, meteredUsage, analyticsEvents, analyticsSpans] = await Promise.all([
     getNonAnonymousUserCountForTenancies(ownedScope.tenancyIds),
     sumTenancyMeteredUsage(ownedScope.tenancyIds, period),
     countAnalyticsEventsForProjects(ownedScope.projectIds, period),
+    countAnalyticsSpansForProjects(ownedScope.projectIds, period),
   ]);
 
   return {
@@ -452,6 +495,7 @@ export async function getPlanUsageForProject(project: UsageSourceProject, now: D
       authUsers,
       emails: meteredUsage.emails,
       analyticsEvents,
+      analyticsSpans,
       sessionReplays: meteredUsage.sessionReplays,
     }),
   };
