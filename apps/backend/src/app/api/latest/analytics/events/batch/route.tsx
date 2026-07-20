@@ -79,13 +79,15 @@ export const POST = createSmartRouteHandler({
       refreshTokenId: adaptSchema,
     }).defined(),
     body: yupObject({
-      // Required for client auth (enforced in the handler — browser batches are
-      // always tied to a per-tab segment); optional for server/admin auth.
+      // Required for client auth (see the request-level auth-type tests below —
+      // browser batches are always tied to a per-tab segment); optional for
+      // server/admin auth.
       session_replay_segment_id: yupString().optional().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
       sent_at_ms: yupNumber().defined().integer().min(0),
-      // Server/admin auth only (enforced in the handler): attributes the batch
-      // to a user when there is no session access token to derive one from.
+      // Server/admin auth only (see the request-level auth-type tests below):
+      // attributes the batch to a user when there is no session access token to
+      // derive one from.
       user_id: yupString().optional().matches(UUID_RE, "Invalid user_id"),
       events: yupArray(
         yupObject({
@@ -134,7 +136,19 @@ export const POST = createSmartRouteHandler({
       "A batch must contain at least one event or span",
       (body) => (body.events?.length ?? 0) + (body.spans?.length ?? 0) >= 1,
     ).transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
-  }),
+  }).test(
+    // Auth-type-dependent body rules live here in the schema (not the handler) so
+    // the request contract is fully declared in one place. They must be
+    // request-level tests because they need auth.type, which field-level schemas
+    // inside `body` can't see.
+    "client-auth-derives-identity",
+    "user_id must not be set with client auth; it is derived from the session",
+    (req) => req.auth.type !== "client" || req.body.user_id == null,
+  ).test(
+    "client-auth-requires-segment",
+    "session_replay_segment_id is required for analytics batches with client auth",
+    (req) => req.auth.type !== "client" || req.body.session_replay_segment_id != null,
+  ),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
@@ -158,18 +172,15 @@ export const POST = createSmartRouteHandler({
     // the batch explicitly via body.user_id (or not at all — project-level rows).
     let userId: string | null;
     let refreshTokenId: string | null;
+    // The auth-type-dependent BODY rules (user_id forbidden, segment required for
+    // client auth) are enforced declaratively in the request schema above; only
+    // checks that need runtime state (session presence, DB lookups) live here.
     if (auth.type === "client") {
       if (!auth.user) {
         throw new KnownErrors.UserAuthenticationRequired();
       }
       if (!auth.refreshTokenId) {
         throw new StatusError(StatusError.BadRequest, "A refresh token is required for analytics events");
-      }
-      if (body.user_id != null) {
-        throw new StatusError(StatusError.BadRequest, "user_id must not be set with client auth; it is derived from the session");
-      }
-      if (body.session_replay_segment_id == null) {
-        throw new StatusError(StatusError.BadRequest, "session_replay_segment_id is required for analytics batches with client auth");
       }
       userId = auth.user.id;
       refreshTokenId = auth.refreshTokenId;
@@ -196,13 +207,29 @@ export const POST = createSmartRouteHandler({
 
     const app = getHexclaveServerApp();
 
+    // Events and spans are metered as SEPARATE items so spans can be priced and
+    // limited independently of events later. The whole batch is atomic
+    // billing-wise: if the second debit fails, the first is refunded and the
+    // request is rejected, so a partial batch never burns quota.
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null && arePlanLimitsEnforced()) {
-      const totalItems = events.length + spans.length;
-      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      const isDebited = await eventsItem.tryDecreaseQuantity(totalItems);
-      if (!isDebited) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, totalItems);
+      if (events.length > 0) {
+        const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+        const isDebited = await eventsItem.tryDecreaseQuantity(events.length);
+        if (!isDebited) {
+          throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, events.length);
+        }
+      }
+      if (spans.length > 0) {
+        const spansItem = await app.getItem({ itemId: ITEM_IDS.analyticsSpans, teamId: billingTeamId });
+        const isDebited = await spansItem.tryDecreaseQuantity(spans.length);
+        if (!isDebited) {
+          if (events.length > 0) {
+            const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+            await eventsItem.increaseQuantity(events.length);
+          }
+          throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsSpans, billingTeamId, spans.length);
+        }
       }
     }
 
