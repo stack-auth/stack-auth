@@ -129,8 +129,8 @@ function serviceMemoryUsage() {
   };
 }
 
-function logBulldozerService(event: string, fields: Record<string, unknown>, options?: { suppressInNodeEnvDevelopment?: boolean }) {
-  if (options?.suppressInNodeEnvDevelopment === true && shouldSuppressPeriodicBulldozerLogs) return;
+function logBulldozerService(event: string, fields: Record<string, unknown>, options?: { periodic?: boolean }) {
+  if (options?.periodic === true && shouldSuppressPeriodicBulldozerLogs) return;
   console.log(JSON.stringify({
     component: "bulldozer-js",
     event,
@@ -285,7 +285,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
     logBulldozerService("http-handler-start", {
       label,
       memory: serviceMemoryUsage(),
-    }, { suppressInNodeEnvDevelopment: true });
+    }, { periodic: true });
     try {
       const operationStartedAt = performance.now();
       const body = await operation();
@@ -302,7 +302,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
         responseSerializationMs,
         elapsedMs: performance.now() - startedAt,
         memory: serviceMemoryUsage(),
-      }, { suppressInNodeEnvDevelopment: true });
+      }, { periodic: true });
       return response;
     } catch (error) {
       if (StatusError.isStatusError(error) && error.isClientError()) {
@@ -1091,7 +1091,7 @@ const startupFields = {
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
   memory: serviceMemoryUsage(),
 };
-logBulldozerService("service-started", startupFields, { suppressInNodeEnvDevelopment: true });
+logBulldozerService("service-started", startupFields, { periodic: true });
 
 // Emit every boot to Sentry so restart/crash loops are visible. An OOM kill (and
 // most hard crashes) terminate the process before anything can be reported, so we
@@ -1131,7 +1131,7 @@ runAsynchronously(async () => {
           slowThresholdMs: TICK_LOOP_SLOW_MS,
           lastTickMillis,
           memory: serviceMemoryUsage(),
-        }, { suppressInNodeEnvDevelopment: true });
+        }, { periodic: true });
       }
       // The HTTP server owns this periodic loop's lifetime; after it closes,
       // waiting for the next tick must not keep the process alive.
