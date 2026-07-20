@@ -146,6 +146,8 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
   let pendingCommitOperations: PendingCommitOperation[] = [];
   let pendingCommitFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingCommitFlushPromise: Promise<void> | null = null;
+  let isClosing = false;
+  let closePromise: Promise<void> | null = null;
   let activityStats = emptyActivityStats();
   let activityWindowStartedAt = performance.now();
   if (!shouldSuppressPeriodicBulldozerLogs) {
@@ -208,11 +210,12 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     return seqToDurability.get(seqId) ?? combinedSeqToDurability.get(seqId) ?? Promise.resolve();
   };
   // LMDB may reject with an opaque "Commit failed" wrapper whose real status
-  // lives on `.commitError` (a Promise). Unwrap before surfacing to callers.
-  const awaitLmdbPromise = (promise: Promise<unknown>) => promise.catch(async (error) => {
+  // lives on `.commitError` (a Promise). LMDB's `committed` value is only a
+  // PromiseLike, so normalize it before using native Promise methods.
+  const awaitLmdbPromise = (promise: PromiseLike<unknown>) => Promise.resolve(promise).catch(async (error) => {
     throw await unwrapLmdbCommitError(error);
   });
-  const rememberAvailability = (seqId: string, promise: Promise<unknown>) => {
+  const rememberAvailability = (seqId: string, promise: PromiseLike<unknown>) => {
     const insertedAt = performance.now();
     const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.availability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
       await awaitLmdbPromise(promise);
@@ -223,7 +226,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     availability.catch(() => {});
     seqToAvailability.set(seqId, availability);
   };
-  const rememberDurability = (seqId: string, promise: Promise<unknown>) => {
+  const rememberDurability = (seqId: string, promise: PromiseLike<unknown>) => {
     const insertedAt = performance.now();
     const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.durability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
       await awaitLmdbPromise(promise);
@@ -235,7 +238,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     durability.catch(() => {});
     seqToDurability.set(seqId, durability);
   };
-  const rememberCombinedAvailability = (seqId: string, promise: Promise<unknown>) => {
+  const rememberCombinedAvailability = (seqId: string, promise: PromiseLike<unknown>) => {
     const insertedAt = performance.now();
     const availability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedAvailability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
       await awaitLmdbPromise(promise);
@@ -247,7 +250,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     availability.catch(() => {});
     combinedSeqToAvailability.set(seqId, availability);
   };
-  const rememberCombinedDurability = (seqId: string, promise: Promise<unknown>) => {
+  const rememberCombinedDurability = (seqId: string, promise: PromiseLike<unknown>) => {
     const insertedAt = performance.now();
     const durability = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.combinedDurability", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
       await awaitLmdbPromise(promise);
@@ -258,7 +261,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     durability.catch(() => {});
     combinedSeqToDurability.set(seqId, durability);
   };
-  const trackCommit = (seqId: string, promise: Promise<unknown>) => {
+  const trackCommit = (seqId: string, promise: PromiseLike<unknown>) => {
     rememberAvailability(seqId, promise);
     rememberDurability(seqId, promise);
     return toSeq(seqId);
@@ -321,6 +324,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     }, 10);
   };
   const commit = (requiresSeq: DatabaseSeq, action: (version: number) => Promise<void>) => {
+    if (isClosing) throw new Error("LMDB database is closing and cannot accept writes");
     const seqId = nextSeqId();
     const deferred = createVoidDeferred();
     pendingCommitOperations.push({ seqId, requiresSeq, action, resolve: deferred.resolve, reject: deferred.reject });
@@ -328,6 +332,7 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
     return trackCommit(seqId, deferred.promise);
   };
   const commitIfVersion = async (db: BinaryDatabase, key: Buffer, version: number, action: (version: number) => Promise<void>) => {
+    if (isClosing) throw new Error("LMDB database is closing and cannot accept writes");
     const nextVersionRef: { value: number | null } = { value: null };
     const seqId = nextSeqId();
     const wasSet = await db.ifVersion(key, version, () => {
@@ -523,6 +528,25 @@ export function declareLmdbLowLevelDatabase(options: { path: string, dbId?: stri
       rememberCombinedAvailability(seqId, Promise.all(seqs.map(seq => getAvailabilityPromise(getSeqId(seq)))));
       rememberCombinedDurability(seqId, Promise.all(seqs.map(seq => getDurabilityPromise(getSeqId(seq)))));
       return toSeq(seqId);
+    },
+    close() {
+      if (closePromise === null) {
+        isClosing = true;
+        closePromise = traceSpanHot({ description: "bulldozer-js.low-level.lmdb.close", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {
+          try {
+            if (pendingCommitFlushPromise !== null) await pendingCommitFlushPromise;
+            await flushPendingCommits();
+            if (pendingCommitFlushPromise !== null) await pendingCommitFlushPromise;
+            await Promise.all([
+              ...seqToDurability.values(),
+              ...combinedSeqToDurability.values(),
+            ]);
+          } finally {
+            await root.close();
+          }
+        });
+      }
+      return closePromise;
     },
     async debugSnapshot() {
       return await traceSpanHot({ description: "bulldozer-js.low-level.lmdb.debugSnapshot", attributes: { "bulldozer.low_level.backend": "lmdb" } }, async () => {

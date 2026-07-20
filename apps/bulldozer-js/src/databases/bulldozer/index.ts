@@ -857,6 +857,8 @@ export type BulldozerDatabase = {
   getSnapshot(): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshot(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
   withSnapshotReplicated(updateSnapshot: (snapshot: BulldozerDatabaseSnapshot) => Promise<BulldozerDatabaseSnapshot | BulldozerSnapshotMutationResult>): Promise<{ snapshot: BulldozerDatabaseSnapshot, seq: DatabaseSeq }>,
+  waitUntilCurrentStateDurable(): Promise<void>,
+  close(): Promise<void>,
   applyRemainingMigrations(): Promise<{ seq: DatabaseSeq }>,
 };
 
@@ -865,10 +867,19 @@ type BulldozerDatabaseRootSerialized = {
 };
 export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase, options: { migrations: readonly BulldozerDatabaseMigration[] }): BulldozerDatabase {
   const rootKey = new TextEncoder().encode("bulldozer-database-root").buffer;
+  let latestRootWriteSeq = piledriverDatabase.initialSeq;
   const getRoot = async () => await piledriverDatabase.getRootObject(rootKey) as { object: BulldozerDatabaseRootSerialized, seq: DatabaseSeq };
-  const setRoot = async (root: BulldozerDatabaseRootSerialized) => await piledriverDatabase.setRootObject(rootKey, root);
+  const setRoot = async (root: BulldozerDatabaseRootSerialized) => {
+    const result = await piledriverDatabase.setRootObject(rootKey, root);
+    // Keep the exact instant-availability sequence alive even after its cached
+    // value is evicted. Re-reading the root can return initialSeq before the
+    // corresponding LMDB flush has made this write durable.
+    latestRootWriteSeq = result.seq;
+    return result;
+  };
   const tablesState = createTablesStateFromMigrations(options.migrations);
   let currentOperation: Promise<unknown> | null = null;
+  let closePromise: Promise<void> | null = null;
 
   const withWriteLock = async <T>(operation: () => Promise<T>): Promise<T> => {
     while (currentOperation !== null) {
@@ -968,8 +979,10 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
         rootKey,
         getRoot,
         setRoot,
+        latestRootWriteSeq,
         tablesState,
         currentOperation,
+        closePromise,
       };
     },
     listTables: () => Object.entries(tablesState.tables).map(([tableId, tableState]) => ({
@@ -986,6 +999,24 @@ export function declareBulldozerDatabase(piledriverDatabase: PiledriverDatabase,
     getSnapshot,
     withSnapshot: async (updateSnapshot) => await withSnapshot(updateSnapshot, { replicated: false }),
     withSnapshotReplicated: async (updateSnapshot) => await withSnapshot(updateSnapshot, { replicated: true }),
+    waitUntilCurrentStateDurable: async () => await traceSpan("bulldozer-js.bulldozer.waitUntilCurrentStateDurable", async () => await withWriteLock(async () => {
+      // Taking the write lock makes this a barrier for every earlier mutation.
+      // Waiting on the retained write sequence avoids the eviction race where a
+      // fresh read sees initialSeq while the original LMDB flush is still pending.
+      await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
+    })),
+    close() {
+      if (closePromise === null) {
+        closePromise = traceSpan("bulldozer-js.bulldozer.close", async () => await withWriteLock(async () => {
+          try {
+            await piledriverDatabase.waitUntilDurable(latestRootWriteSeq);
+          } finally {
+            await piledriverDatabase.close();
+          }
+        }));
+      }
+      return closePromise;
+    },
     applyRemainingMigrations: async () => await traceSpan("bulldozer-js.bulldozer.applyRemainingMigrations", async () => await withWriteLock(async () => {
       let snapshot: BulldozerDatabaseSnapshotSerialized;
       let currentSeq = piledriverDatabase.initialSeq;

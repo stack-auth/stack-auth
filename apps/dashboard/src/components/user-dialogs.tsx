@@ -55,12 +55,13 @@ export function generateImpersonateSnippet(
   refreshToken: string,
   expiresAtDate: Date,
 ): string {
+  const pid = encodeURIComponent(projectId);
   return deindent`
-    document.cookie = 'hexclave-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = 'stack-access=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = 'hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-    document.cookie = '__Host-hexclave-refresh-${encodeURIComponent(projectId)}--default=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + (location.protocol === 'https:' ? '; secure' : '');
-    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'stack-refresh-${encodeURIComponent(projectId)}--default=' + encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() })) + '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    var impersonationValue = encodeURIComponent(JSON.stringify({ refresh_token: ${JSON.stringify(refreshToken)}, updated_at_millis: Date.now() }));
+    var impersonationAttributes = '; expires=${expiresAtDate.toUTCString()}; path=/' + (location.protocol === 'https:' ? '; secure' : '');
+    document.cookie = (location.protocol === 'https:' ? '__Host-' : '') + 'hexclave-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
+    document.cookie = 'stack-refresh-${pid}--default=' + impersonationValue + impersonationAttributes;
+    document.cookie = 'stack-refresh-${pid}=' + encodeURIComponent(${JSON.stringify(refreshToken)}) + impersonationAttributes;
     window.location.reload();
   `;
 }
