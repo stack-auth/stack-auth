@@ -249,6 +249,7 @@ describe("internal plan usage", () => {
     expect(getUsedUsageValue(usage, ITEM_IDS.emailsPerMonth)).toBe(0);
     expect(getUsedUsageValue(usage, ITEM_IDS.sessionReplays)).toBe(0);
     expect(getUsedUsageValue(usage, ITEM_IDS.analyticsEvents)).toBe(0);
+    expect(getUsedUsageValue(usage, ITEM_IDS.analyticsSpans)).toBe(0);
   });
 
   it("rolls up metered usage across all projects owned by the billing team", async ({ expect }) => {
@@ -347,5 +348,6 @@ describe("internal plan usage", () => {
     expect(getUsedUsageValue(usage, ITEM_IDS.emailsPerMonth)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.sessionReplays)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.analyticsEvents)).toBe(0);
+    expect(getUsedUsageValue(usage, ITEM_IDS.analyticsSpans)).toBe(0);
   });
 });

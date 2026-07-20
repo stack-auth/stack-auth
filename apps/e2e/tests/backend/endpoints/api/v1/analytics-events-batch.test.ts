@@ -771,6 +771,88 @@ it("team plan starts with correct analytics event allocation", async ({ expect }
   expect(quantity).toBe(PLAN_LIMITS.team.analyticsEvents);
 });
 
+it("free plan starts with correct analytics span allocation", async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsSpans, PLAN_LIMITS.free.analyticsSpans);
+  const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans);
+  expect(quantity).toBe(PLAN_LIMITS.free.analyticsSpans);
+});
+
+it("debits spans against the analytics spans item, not analytics events", { timeout: 120_000 }, async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+  await Auth.Otp.signIn();
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsSpans, PLAN_LIMITS.free.analyticsSpans);
+
+  // Drain async logEvent debits (see the events debit test above for why).
+  const eventsBefore = await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 5000 },
+  );
+  const spansBefore = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans);
+
+  const now = Date.now();
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: randomUUID(),
+      batch_id: randomUUID(),
+      sent_at_ms: now,
+      spans: [
+        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
+        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 500, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
+      ],
+    },
+  });
+  expect(res.status).toBe(200);
+
+  const spansAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans);
+  expect(spansAfter).toBe(spansBefore - 2);
+  const eventsAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(eventsAfter).toBe(eventsBefore);
+});
+
+it("rejects the whole batch when span quota is insufficient and refunds the events debit", { timeout: 120_000 }, async ({ expect }) => {
+  const { ownerTeamId } = await setupProjectWithPlan("free");
+  await Auth.Otp.signIn();
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsSpans, PLAN_LIMITS.free.analyticsSpans);
+
+  // Drain async logEvent debits before pinning quantities (see comments above).
+  await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 10_000 },
+  );
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 10);
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans, 0);
+
+  const now = Date.now();
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: randomUUID(),
+      batch_id: randomUUID(),
+      sent_at_ms: now,
+      events: [{ event_type: "$page-view", event_at_ms: now, data: {} }],
+      spans: [
+        { span_id: randomUUID(), span_type: "checkout-flow", started_at_ms: now - 1000, ended_at_ms: null, parent_span_ids: [], data: {}, updated_at_ms: now },
+      ],
+    },
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+
+  // The events debit made before the failing spans debit must have been refunded.
+  const eventsAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
+  expect(eventsAfter).toBe(10);
+  const spansAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans);
+  expect(spansAfter).toBe(0);
+});
+
 // ============================================================================
 // Custom events & custom spans
 // ============================================================================
@@ -1038,7 +1120,8 @@ it("rejects user_id with client auth", async ({ expect }) => {
   });
 
   expect(res.status).toBe(400);
-  expect(res.body).toBe("user_id must not be set with client auth; it is derived from the session");
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("user_id must not be set with client auth; it is derived from the session");
 });
 
 it("rejects client-auth batches without session_replay_segment_id", async ({ expect }) => {
@@ -1050,7 +1133,8 @@ it("rejects client-auth batches without session_replay_segment_id", async ({ exp
   });
 
   expect(res.status).toBe(400);
-  expect(res.body).toBe("session_replay_segment_id is required for analytics batches with client auth");
+  expect(res.body?.code).toBe("SCHEMA_ERROR");
+  expect(res.body?.error).toContain("session_replay_segment_id is required for analytics batches with client auth");
 });
 
 it("accepts a spans-only batch and lands it on the spans surface", async ({ expect }) => {
