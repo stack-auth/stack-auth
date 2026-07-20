@@ -1,0 +1,19 @@
+apps/backend/src/private/implementation
+  s_6d0e60a99d9bd1::t_ceb9b1b1153dfe 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "86aac7af45050ad05f87fcebee2a2a235c29cb22",
+  "prompts": {},
+  "sessions": {
+    "s_6d0e60a99d9bd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "993c9261-6c03-4b7c-9aa2-68a21f6fab3d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
