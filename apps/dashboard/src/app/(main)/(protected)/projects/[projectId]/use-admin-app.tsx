@@ -1,7 +1,7 @@
 "use client";
 
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
-import { StackAdminApp } from "@hexclave/next";
+import type { StackAdminApp, StackServerApp } from "@hexclave/next";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { notFound, usePathname } from "next/navigation";
 import React from "react";
@@ -27,6 +27,10 @@ export function useAdminAppIfExists() {
   return hexclaveAdminApp;
 }
 
+export function useServerAppIfExists(): StackServerApp<false> | null {
+  return useAdminAppIfExists();
+}
+
 export function useAdminApp(projectId?: string) {
   const user = useDashboardInternalUser();
   const projects = user.useOwnedProjects();
@@ -42,6 +46,10 @@ export function useAdminApp(projectId?: string) {
   } else {
     return providedApp ?? throwErr("useAdminApp must be used within an AdminInterfaceProvider");
   }
+}
+
+export function useServerApp(projectId?: string): StackServerApp<false> {
+  return useAdminApp(projectId);
 }
 
 export function useProjectId() {

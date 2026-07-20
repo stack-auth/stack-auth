@@ -1,4 +1,5 @@
 import { HexclaveServerInterface, KnownErrors } from "@hexclave/shared";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@hexclave/shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@hexclave/shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@hexclave/shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@hexclave/shared/dist/interface/crud/notification-preferences";
@@ -18,6 +19,7 @@ import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
@@ -36,7 +38,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
 import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
@@ -89,6 +91,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     query?: string,
   ], TeamsCrud['Server']['List']>(async ([userId, orderBy, desc, cursor, limit, query]) => {
     return await this._interface.listServerTeamsPaginated({ userId, orderBy, desc, cursor, limit, query });
+  });
+  private readonly _serverTeamCache = createCache<string[], TeamsCrud['Server']['Read'] | null>(async ([teamId]) => {
+    // The previous list-and-find implementation treated unknown or malformed IDs as null; preserve that behavior without making an invalid request.
+    if (!isUuid(teamId)) {
+      return null;
+    }
+    try {
+      return await this._interface.getServerTeam(teamId);
+    } catch (error) {
+      if (KnownErrors.TeamNotFound.isInstance(error)) {
+        return null;
+      }
+      throw error;
+    }
   });
 
   protected async _refreshTeamMembership(teamId: string, userId: string) {
@@ -712,6 +728,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
+      // Unlike the app-level getTeam/useTeam (which fetch any team by id),
+      // the user-scoped variants search the user's own team list on purpose:
+      // they must return null for teams the user is not a member of, and some
+      // callers rely on that as a membership check.
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
         return teams.find((t) => t.id === teamId) ?? null;
@@ -1042,6 +1062,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async update(update: Partial<ServerTeamUpdateOptions>) {
         await app._interface.updateServerTeam(crud.id, serverTeamUpdateOptionsToCrud(update));
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1049,6 +1070,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async delete() {
         await app._interface.deleteServerTeam(crud.id);
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1452,6 +1474,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
+  protected async _refreshItemCache(customerType: "user" | "team" | "custom", customerId: string, itemId: string): Promise<void> {
+    if (customerType === "user") {
+      await this._serverUserItemsCache.refresh([customerId, itemId]);
+    } else if (customerType === "team") {
+      await this._serverTeamItemsCache.refresh([customerId, itemId]);
+    } else {
+      await this._serverCustomItemsCache.refresh([customerId, itemId]);
+    }
+  }
+
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
     if ("userId" in options) {
       const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
@@ -1537,6 +1569,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
+    await this._serverTeamCache.refresh([team.id]);
     await this._serverTeamsCache.refreshWhere(() => true);
     return this._serverTeamFromCrud(team);
   }
@@ -1580,8 +1613,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this._getTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = await this.listTeams();
-      return teams.find((t) => t.id === teamId) ?? null;
+      if (teamId == null) {
+        return null;
+      }
+      const team = Result.orThrow(await this._serverTeamCache.getOrWait([teamId], "write-only"));
+      return team == null ? null : this._serverTeamFromCrud(team);
     }
   }
 
@@ -1593,10 +1629,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return this._useTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = this.useTeams();
+      // "" is never a valid UUID, so the cache resolves a nullish id to null while keeping the hook call order stable.
+      const team = useAsyncCache(this._serverTeamCache, [teamId ?? ""], "serverApp.useTeam()");
       return useMemo(() => {
-        return teams.find((t) => t.id === teamId) ?? null;
-      }, [teams, teamId]);
+        return team == null ? null : this._serverTeamFromCrud(team);
+      }, [team]);
     }
   }
   // END_PLATFORM
@@ -1653,6 +1690,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     await this._interface.activateEmailCapacityBoost();
     // Refresh the cache so UI updates immediately
     await this._emailDeliveryInfoCache.refresh([]);
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
   }
 
   protected override async _refreshSession(session: InternalSession) {
@@ -1987,7 +2028,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         if (endPromise) return endPromise;
         ended = true;
         this._serverGlobalSpans.delete(span);
-        const endedAtMs = Math.max(startedAtMs, Math.round(endOptions?.endedAtMs ?? Date.now()));
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },
@@ -2004,13 +2045,14 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       getPropagationHeaders: () => ({
         [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader({
           projectId: this.projectId,
+          ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
           ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
           customParentSpanIds: [...parentSpanIds, spanId],
         }),
       }),
-      // Server→server fetch: no CORS and the call itself is explicit intent, so
-      // the origin policy is bypassed; an explicitly-set header still wins and
-      // no-cors requests are still skipped.
+      // Server runtimes do not have a browser-like current origin, so span.fetch
+      // fails closed instead of leaking context to arbitrary third-party URLs.
+      // Use getPropagationHeaders() explicitly when the target service is trusted.
       fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         try {
           const initWithHeader = buildFetchInitWithSpanContext({
@@ -2019,7 +2061,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
             headerValue: span.getPropagationHeaders()[SPAN_CONTEXT_HEADER],
             selfOrigin: null,
             allowedOrigins: [],
-            bypassOriginPolicy: true,
           });
           return globalThis.fetch(input, initWithHeader ?? init);
         } catch {
@@ -2127,7 +2168,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     this._serverTelemetryInFlight.add(tracked);
     // Serverless keep-alive (AnalyticsOptions.waitUntil): un-awaited sends must
     // survive runtime teardown.
-    this._analyticsOptions?.waitUntil?.(tracked);
+    registerTelemetryBackgroundTask(this._analyticsOptions?.waitUntil, tracked, "server telemetry");
   }
 }
 

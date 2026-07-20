@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/backend",
-  "version": "1.0.43",
+  "version": "1.0.53",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -38,6 +38,7 @@
     "db:seed": "pnpm run with-env:dev tsx scripts/db-migrations.ts seed",
     "db:init": "pnpm run with-env:dev tsx scripts/db-migrations.ts init",
     "db:migrate": "pnpm run with-env:dev tsx scripts/db-migrations.ts migrate",
+    "db:backfill-bulldozer-from-prisma": "pnpm run with-env:dev tsx scripts/db-migrations.ts backfill-bulldozer-from-prisma",
     "db:backfill-internal-free-plans": "pnpm run with-env:dev tsx scripts/db-migrations.ts backfill-internal-free-plans",
     "db:regen-internal-subscriptions-to-latest": "pnpm run with-env:dev tsx scripts/db-migrations.ts regen-internal-subscriptions-to-latest",
     "generate-migration-imports": "pnpm run with-env tsx scripts/generate-migration-imports.ts",
@@ -51,7 +52,7 @@
     "run-cron-jobs:test": "pnpm run with-env:test tsx scripts/run-cron-jobs.ts",
     "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
     "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts",
-    "run-bulldozer-studio": "pnpm run with-env:dev tsx watch --clear-screen=false scripts/run-bulldozer-studio.ts"
+    "run-bulldozer-studio": "pnpm --filter=@hexclave/bulldozer-js run run-bulldozer-studio"
   },
   "prisma": {
     "seed": "pnpm run db-seed-script"
@@ -95,7 +96,6 @@
     "diff": "^8.0.3",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
-    "elkjs": "^0.11.1",
     "emailable": "^3.1.1",
     "freestyle": "^0.1.63",
     "jiti": "^2.6.1",

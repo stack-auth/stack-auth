@@ -29,9 +29,12 @@ import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, createRequestCo
  */
 
 /** Shape of the initial context `wrapFetchHandler` injects / the middleware consumes+extends. */
+const hexclaveORPCSpanStarted = Symbol("hexclaveORPCSpanStarted");
+
 export type HexclaveORPCContext = {
   hexclave?: HexclaveRequestContext,
   user?: AdapterUser | null,
+  [hexclaveORPCSpanStarted]?: true,
 };
 
 type ORPCMiddlewareOpts = {
@@ -61,17 +64,28 @@ export function createHexclaveORPC(app: AdapterServerApp, options?: {
       }
       return async ({ context, path, next }: ORPCMiddlewareOpts) => {
         const hexclave = context.hexclave ?? createRequestContext(app, null);
-        return await runRequestSpan(app, hexclave, {
-          defaultSpanType: "orpc.procedure",
-          data: { path: path?.join(".") ?? null },
-          telemetry: middlewareOptions?.telemetry,
-        }, async () => {
+        const run = async (spanActive: boolean) => {
           const user = await hexclave.getUser();
           if (middlewareOptions?.required && user === null) {
             throw unauthorized!();
           }
-          return await next({ context: { hexclave, user } });
-        });
+          return await next({
+            context: {
+              ...context,
+              hexclave,
+              user,
+              ...spanActive ? { [hexclaveORPCSpanStarted]: true } : {},
+            },
+          });
+        };
+        if (context[hexclaveORPCSpanStarted] === true) {
+          return await run(false);
+        }
+        return await runRequestSpan(app, hexclave, {
+          defaultSpanType: "orpc.procedure",
+          data: { path: path?.join(".") ?? null },
+          telemetry: middlewareOptions?.telemetry,
+        }, async (span) => await run(span !== null));
       };
     },
 

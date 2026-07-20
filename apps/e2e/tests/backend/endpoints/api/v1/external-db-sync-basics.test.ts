@@ -38,9 +38,9 @@ import {
 } from './external-db-sync-utils';
 
 async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
-  return await niceBackendFetch("/api/v1/internal/analytics/query", {
+  return await niceBackendFetch("/api/v1/analytics/query", {
     method: "POST",
-    accessType: "admin",
+    accessType: "server",
     body,
   });
 }

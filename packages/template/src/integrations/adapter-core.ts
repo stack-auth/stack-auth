@@ -69,17 +69,20 @@ export type AdapterTelemetryOptions = boolean | {
   data?: Record<string, unknown>,
 };
 
+type AdapterSpanLink = Record<string, unknown>;
+
 /**
- * Wraps `fn` in the adapter's request-linked span (or calls it straight through
- * when telemetry is off). The span — and everything created inside `fn` —
- * parents under the caller's client session via `withSpan({ request })`.
+ * Wraps `fn` in an adapter span (or calls it straight through when telemetry is
+ * off). HTTP adapters pass `{ request }` so the span parents under the caller's
+ * client session; non-HTTP adapters can pass another stable link such as
+ * `{ userId }`.
  */
-export async function runRequestSpan<T>(
+export async function runAdapterSpan<T>(
   app: AdapterServerApp,
-  context: HexclaveRequestContext,
   info: {
     defaultSpanType: string,
     data: Record<string, unknown>,
+    link?: AdapterSpanLink,
     telemetry: AdapterTelemetryOptions | undefined,
   },
   fn: (span: Span | null) => Promise<T>,
@@ -92,7 +95,28 @@ export async function runRequestSpan<T>(
   const data = { ...info.data, ...custom?.data ?? {} };
   return await app.withSpan(
     spanType,
-    { ...context.request !== null ? { request: context.request } : {}, data },
+    { ...info.link, data },
     (span) => fn(span),
   );
+}
+
+/**
+ * Wraps `fn` in the adapter's request-linked span. The span — and everything
+ * created inside `fn` — parents under the caller's client session via
+ * `withSpan({ request })`.
+ */
+export async function runRequestSpan<T>(
+  app: AdapterServerApp,
+  context: HexclaveRequestContext,
+  info: {
+    defaultSpanType: string,
+    data: Record<string, unknown>,
+    telemetry: AdapterTelemetryOptions | undefined,
+  },
+  fn: (span: Span | null) => Promise<T>,
+): Promise<T> {
+  return await runAdapterSpan(app, {
+    ...info,
+    link: context.request !== null ? { request: context.request } : undefined,
+  }, fn);
 }

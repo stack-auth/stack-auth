@@ -4,7 +4,7 @@ import { wait } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { mergeScopeStrings } from "@hexclave/shared/dist/utils/strings";
 import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, custom, generators } from "openid-client";
-import { assertSafeOAuthUrl, safeOAuthDnsLookup } from "../ssrf-protection";
+import { assertSafeOAuthUrl, safeOAuthDnsLookup } from "@/lib/ssrf-protection/oauth";
 import { OAuthUserInfo } from "../utils";
 
 const OAUTH_USERINFO_TOTAL_ATTEMPTS = 3;

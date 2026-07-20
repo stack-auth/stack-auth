@@ -66,7 +66,7 @@ describe("tRPC adapter", () => {
   it("middleware wraps the procedure in a request-linked span and injects ctx.user", async () => {
     const { app, withSpan } = makeApp();
     const hexclave = createHexclaveTRPC(t, app);
-    const ctx = hexclave.createContext({ req: makeRequest() }) as Record<string, unknown>;
+    const ctx = { ...hexclave.createContext({ req: makeRequest() }), db: { name: "main" } } as Record<string, unknown>;
     const { next, result } = callMiddleware(hexclave.middleware(), ctx);
     await result;
     expect(withSpan).toHaveBeenCalledTimes(1);
@@ -75,6 +75,7 @@ describe("tRPC adapter", () => {
     expect((options as { data: unknown }).data).toEqual({ path: "checkout.create", type: "mutation" });
     expect((options as { request: unknown }).request).not.toBeUndefined();
     expect(next).toHaveBeenCalledWith({ ctx: expect.objectContaining({ user: FAKE_USER }) });
+    expect(next).toHaveBeenCalledWith({ ctx: expect.objectContaining({ db: { name: "main" } }) });
   });
 
   it("required: true rejects unauthenticated calls with a TRPCError-shaped UNAUTHORIZED", async () => {
@@ -128,6 +129,29 @@ describe("oRPC adapter", () => {
     expect(withSpan.mock.calls[0][0]).toBe("orpc.procedure");
     expect((withSpan.mock.calls[0][1] as { data: unknown }).data).toEqual({ path: "checkout.create" });
     expect(next).toHaveBeenCalledWith({ context: expect.objectContaining({ user: FAKE_USER }) });
+  });
+
+  it("middleware preserves existing context values and avoids duplicate spans when composed", async () => {
+    const { app, withSpan } = makeApp();
+    const hexclave = createHexclaveORPC(app, { unauthorized: () => new Error("nope") });
+    const publicMiddleware = hexclave.middleware();
+    const protectedMiddleware = hexclave.middleware({ required: true });
+    const finalNext = vi.fn(async (opts?: { context?: Record<string, unknown> }) => opts?.context);
+    const result = await publicMiddleware({
+      context: { service: { name: "orders" }, hexclave: createRequestContext(app, makeRequest()) } as never,
+      path: ["orders", "create"],
+      next: async (publicOptions?: { context?: Record<string, unknown> }) => {
+        return await protectedMiddleware({
+          context: publicOptions?.context as never,
+          path: ["orders", "create"],
+          next: finalNext,
+        });
+      },
+    });
+
+    expect(withSpan).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ service: { name: "orders" }, user: FAKE_USER });
+    expect(finalNext).toHaveBeenCalledWith({ context: expect.objectContaining({ service: { name: "orders" }, user: FAKE_USER }) });
   });
 
   it("required: true throws the caller-provided error for unauthenticated calls", async () => {
@@ -188,14 +212,17 @@ describe("Convex adapter", () => {
     expect(withSpan.mock.calls[0][1]).toMatchObject({ userId: "user-1", data: { kind: "query", name: "listItems" } });
   });
 
-  it("required: true rejects unauthenticated calls; telemetry: false skips the span", async () => {
-    const { app } = makeApp({ user: null });
+  it("required: true rejects unauthenticated calls inside telemetry; telemetry: false skips the span", async () => {
+    const { app, withSpan } = makeApp({ user: null });
     const guarded = hexclaveConvexFunction(app, async () => "never", { required: true });
     await expect(guarded(convexCtx as never, {})).rejects.toThrow(/signed in/);
+    expect(withSpan).toHaveBeenCalledTimes(1);
+    expect(withSpan.mock.calls[0][0]).toBe("convex.function");
+    expect(withSpan.mock.calls[0][1]).toMatchObject({ data: {} });
 
-    const { app: app2, withSpan } = makeApp();
+    const { app: app2, withSpan: withSpan2 } = makeApp();
     const bare = hexclaveConvexFunction(app2, async () => "ok", { telemetry: false });
     await expect(bare(convexCtx as never, {})).resolves.toBe("ok");
-    expect(withSpan).not.toHaveBeenCalled();
+    expect(withSpan2).not.toHaveBeenCalled();
   });
 });

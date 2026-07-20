@@ -92,7 +92,7 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
           if (middlewareOptions?.required && user === null) {
             throw (middlewareOptions.unauthorized ?? options?.unauthorized ?? defaultUnauthorized)();
           }
-          return await next({ ctx: { hexclave, user } });
+          return await next({ ctx: { ...ctx, hexclave, user } });
         });
       }) as ReturnType<T["middleware"]>;
     },
