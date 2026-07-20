@@ -67,8 +67,9 @@ model Tenancy {
   organizationId      String?              @db.Uuid
   hasNoOrganization   BooleanTrue?
   emailOutboxes       EmailOutbox[]
-  sessionReplays      SessionReplay[]
-  sessionReplayChunks SessionReplayChunk[]
+  sessionReplays        SessionReplay[]
+  sessionReplayChunks   SessionReplayChunk[]
+  sessionReplaySegments SessionReplaySegment[]
   managedEmailDomains ManagedEmailDomain[]
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
@@ -418,7 +419,8 @@ model SessionReplay {
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  chunks SessionReplayChunk[]
+  chunks   SessionReplayChunk[]
+  segments SessionReplaySegment[]
 
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId, startedAt])
@@ -460,10 +462,32 @@ model SessionReplayChunk {
 
   @@unique([tenancyId, sessionReplayId, batchId])
   @@index([tenancyId, sessionReplayId, createdAt])
-  // Narrows the per-batch span-bounds aggregate (min firstEventAt / max lastEventAt)
-  // to a single tab's segment instead of scanning the whole replay's chunks.
-  @@index([tenancyId, sessionReplayId, sessionReplaySegmentId], map: "SessionReplayChunk_tenancyId_sessionReplayId_segment_idx")
   @@map("SessionReplayChunk")
+}
+
+// Maintained per-tab recording-segment bounds, updated O(1) per replay batch with
+// LEAST/GREATEST (see upsertSessionReplaySegmentBounds) instead of re-aggregating
+// min/max over the segment's chunks on every upload. Feeds the $session-replay-segment
+// span's start/end in ClickHouse.
+model SessionReplaySegment {
+  // The client-minted per-tab segment id. Plain String (not @db.Uuid) to match
+  // SessionReplayChunk.sessionReplaySegmentId, which it joins against.
+  id String
+
+  tenancyId       String @db.Uuid
+  sessionReplayId String @db.Uuid
+
+  firstEventAt DateTime
+  lastEventAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessionReplay SessionReplay @relation(fields: [tenancyId, sessionReplayId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, sessionReplayId, id])
+  @@map("SessionReplaySegment")
 }
 
 enum ContactChannelType {
