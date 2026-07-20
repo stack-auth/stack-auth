@@ -151,6 +151,19 @@ export type CustomSpanWireItem = {
 const CUSTOM_SPAN_VERSION_MAX_FUTURE_MS = 5 * 60 * 1000;
 
 /**
+ * Version builder for SDK-created custom spans: the client's `updated_at_ms`,
+ * clamped to [1, serverNow + 5min]. Custom spans re-write their `data` while
+ * still open, so `monotoneEndSpanVersion` is unusable here — two data re-writes
+ * of an open span would collide at the same (null-end-derived) version. The SDK
+ * bumps `updated_at_ms` on every mutation, making it per-span monotonic, so the
+ * latest client-side state wins in the ReplacingMergeTree regardless of insert
+ * order. See `monotoneEndSpanVersion` for the one-table-many-schemes warning.
+ */
+export function clientUpdatedAtSpanVersion(updatedAtMs: number, serverNowMs: number): number {
+  return Math.min(Math.max(updatedAtMs, 1), serverNowMs + CUSTOM_SPAN_VERSION_MAX_FUTURE_MS);
+}
+
+/**
  * Builds `analytics_internal.spans` rows for SDK-created custom spans. Each
  * row's `parent_span_ids` is the server-known system ancestry (same gating as
  * event rows — see `buildEventSpanFields`) followed by the client's custom
@@ -201,7 +214,7 @@ export function buildCustomSpanRows(opts: {
       refresh_token_id: opts.refreshTokenId,
       session_replay_id: opts.sessionReplayId,
       session_replay_segment_id: opts.sessionReplaySegmentId,
-      version: Math.min(Math.max(span.updated_at_ms, 1), opts.serverNowMs + CUSTOM_SPAN_VERSION_MAX_FUTURE_MS),
+      version: clientUpdatedAtSpanVersion(span.updated_at_ms, opts.serverNowMs),
     };
   });
 }
