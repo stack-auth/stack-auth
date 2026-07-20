@@ -19,6 +19,7 @@ import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
+import { isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
@@ -88,6 +89,20 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     query?: string,
   ], TeamsCrud['Server']['List']>(async ([userId, orderBy, desc, cursor, limit, query]) => {
     return await this._interface.listServerTeamsPaginated({ userId, orderBy, desc, cursor, limit, query });
+  });
+  private readonly _serverTeamCache = createCache<string[], TeamsCrud['Server']['Read'] | null>(async ([teamId]) => {
+    // The previous list-and-find implementation treated unknown or malformed IDs as null; preserve that behavior without making an invalid request.
+    if (!isUuid(teamId)) {
+      return null;
+    }
+    try {
+      return await this._interface.getServerTeam(teamId);
+    } catch (error) {
+      if (KnownErrors.TeamNotFound.isInstance(error)) {
+        return null;
+      }
+      throw error;
+    }
   });
 
   protected async _refreshTeamMembership(teamId: string, userId: string) {
@@ -711,6 +726,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
+      // Unlike the app-level getTeam/useTeam (which fetch any team by id),
+      // the user-scoped variants search the user's own team list on purpose:
+      // they must return null for teams the user is not a member of, and some
+      // callers rely on that as a membership check.
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
         return teams.find((t) => t.id === teamId) ?? null;
@@ -1041,6 +1060,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async update(update: Partial<ServerTeamUpdateOptions>) {
         await app._interface.updateServerTeam(crud.id, serverTeamUpdateOptionsToCrud(update));
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1048,6 +1068,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       async delete() {
         await app._interface.deleteServerTeam(crud.id);
         await Promise.all([
+          app._serverTeamCache.refresh([crud.id]),
           app._serverTeamsCache.refreshWhere(() => true),
           app._serverUsersCache.refreshWhere(() => true),
         ]);
@@ -1451,6 +1472,16 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
   }
 
+  protected async _refreshItemCache(customerType: "user" | "team" | "custom", customerId: string, itemId: string): Promise<void> {
+    if (customerType === "user") {
+      await this._serverUserItemsCache.refresh([customerId, itemId]);
+    } else if (customerType === "team") {
+      await this._serverTeamItemsCache.refresh([customerId, itemId]);
+    } else {
+      await this._serverCustomItemsCache.refresh([customerId, itemId]);
+    }
+  }
+
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
     if ("userId" in options) {
       const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
@@ -1536,6 +1567,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   async createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam> {
     const team = await this._interface.createServerTeam(serverTeamCreateOptionsToCrud(data));
+    await this._serverTeamCache.refresh([team.id]);
     await this._serverTeamsCache.refreshWhere(() => true);
     return this._serverTeamFromCrud(team);
   }
@@ -1579,8 +1611,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return await this._getTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = await this.listTeams();
-      return teams.find((t) => t.id === teamId) ?? null;
+      if (teamId == null) {
+        return null;
+      }
+      const team = Result.orThrow(await this._serverTeamCache.getOrWait([teamId], "write-only"));
+      return team == null ? null : this._serverTeamFromCrud(team);
     }
   }
 
@@ -1592,10 +1627,11 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       return this._useTeamByApiKey(options.apiKey);
     } else {
       const teamId = options;
-      const teams = this.useTeams();
+      // "" is never a valid UUID, so the cache resolves a nullish id to null while keeping the hook call order stable.
+      const team = useAsyncCache(this._serverTeamCache, [teamId ?? ""], "serverApp.useTeam()");
       return useMemo(() => {
-        return teams.find((t) => t.id === teamId) ?? null;
-      }, [teams, teamId]);
+        return team == null ? null : this._serverTeamFromCrud(team);
+      }, [team]);
     }
   }
   // END_PLATFORM

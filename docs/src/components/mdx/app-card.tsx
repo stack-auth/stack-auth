@@ -45,6 +45,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
   analytics: BarChart3,
   clickmaps: MousePointerClick,
   "session-replays": PlayCircle,
+  "cli-auth": Code,
 };
 
 function createSvgIcon(ChildrenComponent: () => React.ReactNode): (props: React.SVGProps<SVGSVGElement>) => React.ReactNode {

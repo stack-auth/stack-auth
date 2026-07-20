@@ -37,6 +37,29 @@ describe("LMDB low-level database", () => {
     }
   });
 
+  it("flushes delayed commits before close resolves", async () => {
+    const path = await tempLmdbPath();
+    const db = declareLmdbLowLevelDatabase({ path, dbId: "close-drain" });
+    try {
+      const store = db.declareKvStore("store");
+      await store.setAll([{ key: buffer("key"), value: buffer("durable") }]);
+      // setAll intentionally returns before the 10ms commit batch is submitted.
+      // close must flush that application-level queue before closing LMDB.
+      await db.close();
+
+      const reopened = declareLmdbLowLevelDatabase({ path, dbId: "close-drain" });
+      try {
+        const reopenedStore = reopened.declareKvStore("store");
+        expect(text((await reopenedStore.get(buffer("key"))).buffer)).toBe("durable");
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      await db.close();
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
   it("supports compareAndSet without advancing seq on failed comparisons", async () => {
     const path = await tempLmdbPath();
     try {
@@ -95,6 +118,46 @@ describe("LMDB low-level database", () => {
       expect(inserted.keys).toHaveLength(2);
       expect(text((await dump.get(inserted.keys[0])).buffer)).toBe("first");
       expect(text((await dump.get(inserted.keys[1])).buffer)).toBe("second");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("coalesces independent writes into one delayed transaction", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "coalesce" });
+      const store = db.declareKvStore("store");
+      const beforeVersion = db.getDebugInfo().currentVersion;
+
+      const first = await store.setAll([{ key: buffer("a"), value: buffer("one") }]);
+      const second = await store.setAll([{ key: buffer("b"), value: buffer("two") }]);
+
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion);
+      await db.waitUntilAvailable(db.combineSeqs(first.seq, second.seq));
+
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion + 1);
+      expect(text((await store.get(buffer("a"))).buffer)).toBe("one");
+      expect(text((await store.get(buffer("b"))).buffer)).toBe("two");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+  });
+
+  it("does not deadlock when one queued write requires another queued write", async () => {
+    const path = await tempLmdbPath();
+    try {
+      const db = declareLmdbLowLevelDatabase({ path, dbId: "same-batch-dependency" });
+      const store = db.declareKvStore("store");
+      const beforeVersion = db.getDebugInfo().currentVersion;
+
+      const first = await store.setAll([{ key: buffer("parent"), value: buffer("first") }]);
+      const second = await store.setAll([{ key: buffer("child"), value: buffer("second") }], { requiresSeq: db.combineSeqs(first.seq) });
+
+      await db.waitUntilAvailable(second.seq);
+      expect(db.getDebugInfo().currentVersion).toBe(beforeVersion + 1);
+      expect(text((await store.get(buffer("parent"))).buffer)).toBe("first");
+      expect(text((await store.get(buffer("child"))).buffer)).toBe("second");
     } finally {
       await rm(path, { recursive: true, force: true });
     }
