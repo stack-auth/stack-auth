@@ -35,6 +35,7 @@ import {
   ListIcon,
   PlusIcon,
   SidebarIcon,
+  TreeStructureIcon,
   UsersIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
@@ -106,6 +107,16 @@ const dashboardsItem: Item = {
   href: "/dashboards",
   regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
   icon: ChartBarIcon,
+  type: 'item',
+};
+
+// Mock-UI exploration page for the upcoming Workflows app; top-level nav
+// entry while the design is being compared (no app-store registration yet).
+const workflowsItem: Item = {
+  name: "Workflows",
+  href: "/workflows",
+  regex: /^\/projects\/[^\/]+\/workflows(\/.*)?$/,
+  icon: TreeStructureIcon,
   type: 'item',
 };
 
@@ -564,6 +575,12 @@ function SidebarContent({
             item={dashboardsItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${dashboardsItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={workflowsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${workflowsItem.href}`}
             isCollapsed={isCollapsed}
           />
           {projectId === "internal" && (
