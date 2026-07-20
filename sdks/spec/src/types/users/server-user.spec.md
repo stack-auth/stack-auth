@@ -113,7 +113,7 @@ teamId: string
 
 Returns: ServerTeam | null
 
-Find in listTeams() by id.
+Find in listTeams() by id. This is deliberately scoped to the user's own team memberships (unlike the app-level getTeam), so it returns null for teams the user is not a member of.
 
 Does not error.
 

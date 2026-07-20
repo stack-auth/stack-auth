@@ -132,70 +132,74 @@ function parseEmailDomains(input: string) {
 
 // ─── Column definitions ──────────────────────────────────────────────
 
-const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
-  {
-    id: "user",
-    header: "User",
-    width: 180,
-    flex: 1,
-    sortable: false,
-    renderCell: ({ row }) => <UserIdentityCell user={row} />,
-  },
-  {
-    id: "email",
-    header: "Email",
-    width: 180,
-    flex: 1,
-    sortable: false,
-    renderCell: ({ row }) => <UserEmailCell user={row} />,
-  },
-  {
-    id: "userId",
-    header: "User ID",
-    width: 130,
-    sortable: false,
-    renderCell: ({ row }) => <UserIdCell user={row} />,
-  },
-  {
-    id: "emailStatus",
-    header: "Email Verified",
-    width: 110,
-    sortable: false,
-    renderCell: ({ row }) => <EmailStatusCell user={row} />,
-  },
-  {
-    id: "lastActiveAt",
-    header: "Last active",
-    width: 110,
-    renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
-  },
-  {
-    id: "auth",
-    header: "Auth methods",
-    width: 150,
-    sortable: false,
-    cellOverflow: "wrap",
-    renderCell: ({ row }) => <AuthMethodsCell user={row} />,
-  },
-  {
-    id: "signedUpAt",
-    header: "Signed up",
-    width: 110,
-    renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
-  },
-  {
-    id: "actions",
-    header: "",
-    width: 44,
-    minWidth: 44,
-    maxWidth: 44,
-    sortable: false,
-    hideable: false,
-    resizable: false,
-    align: "right",
-    renderCell: ({ row }) => <UserActions user={row} />,
-  },
-];
+function createUserTableColumns(
+  onUserMutated: () => void | Promise<void>,
+): DataGridColumnDef<ExtendedServerUser>[] {
+  return [
+    {
+      id: "user",
+      header: "User",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => <UserIdentityCell user={row} />,
+    },
+    {
+      id: "email",
+      header: "Email",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => <UserEmailCell user={row} />,
+    },
+    {
+      id: "userId",
+      header: "User ID",
+      width: 130,
+      sortable: false,
+      renderCell: ({ row }) => <UserIdCell user={row} />,
+    },
+    {
+      id: "emailStatus",
+      header: "Email Verified",
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => <EmailStatusCell user={row} />,
+    },
+    {
+      id: "lastActiveAt",
+      header: "Last active",
+      width: 110,
+      renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
+    },
+    {
+      id: "auth",
+      header: "Auth methods",
+      width: 150,
+      sortable: false,
+      cellOverflow: "wrap",
+      renderCell: ({ row }) => <AuthMethodsCell user={row} />,
+    },
+    {
+      id: "signedUpAt",
+      header: "Signed up",
+      width: 110,
+      renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => <UserActions user={row} onUserMutated={onUserMutated} />,
+    },
+  ];
+}
 
 const USER_EXPORT_FIELDS: DataGridExportField<ExtendedServerUser>[] = [
   { key: "id", label: "User ID", enabled: true, getValue: (user) => user.id },
@@ -218,10 +222,13 @@ const USER_EXPORT_FIELDS: DataGridExportField<ExtendedServerUser>[] = [
 
 // ─── UserTable ───────────────────────────────────────────────────────
 
-export function UserTable() {
+export function UserTable(props: {
+  onUserMutated: () => void | Promise<void>,
+  onReloadChange?: (reload: () => void) => void,
+}) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
-  return <UserTableBody filters={filters} setFilters={setFilters} />;
+  return <UserTableBody filters={filters} setFilters={setFilters} onUserMutated={props.onUserMutated} onReloadChange={props.onReloadChange} />;
 }
 
 // ─── Body (imperative fetching — no Suspense flash) ──────────────────
@@ -229,12 +236,15 @@ export function UserTable() {
 function UserTableBody(props: {
   filters: FilterState,
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
+  onUserMutated: () => void | Promise<void>,
+  onReloadChange?: (reload: () => void) => void,
 }) {
-  const { filters, setFilters } = props;
+  const { filters, setFilters, onUserMutated, onReloadChange } = props;
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
+  const columns = useMemo(() => createUserTableColumns(onUserMutated), [onUserMutated]);
 
-  const [gridState, setGridState] = useDataGridUrlState(USER_TABLE_COLUMNS, {
+  const [gridState, setGridState] = useDataGridUrlState(columns, {
     paramPrefix: "users",
     initial: {
       sorting: [{ columnId: "signedUpAt", direction: DEFAULT_FILTERS.signedUpOrder }],
@@ -314,13 +324,18 @@ function UserTableBody(props: {
 
   const gridData = useDataSource({
     dataSource,
-    columns: USER_TABLE_COLUMNS,
+    columns,
     getRowId,
     sorting: gridState.sorting,
     quickSearch: debouncedQuickSearch,
     pagination: gridState.pagination,
     paginationMode: "infinite",
   });
+
+  useEffect(() => {
+    onReloadChange?.(gridData.reload);
+    return () => onReloadChange?.(() => {});
+  }, [gridData.reload, onReloadChange]);
 
   const handleResetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
@@ -400,7 +415,7 @@ function UserTableBody(props: {
 
   return (
     <DataGrid
-      columns={USER_TABLE_COLUMNS}
+      columns={columns}
       rows={gridData.rows}
       getRowId={getRowId}
       isLoading={gridData.isLoading}
@@ -595,17 +610,26 @@ function EmailDomainFilter(props: {
 
 // ─── Cell components ─────────────────────────────────────────────────
 
-function UserActions(props: { user: ExtendedServerUser }) {
-  const { user } = props;
+function UserActions(props: {
+  user: ExtendedServerUser,
+  onUserMutated: () => void | Promise<void>,
+}) {
+  const { user, onUserMutated } = props;
   const hexclaveAdminApp = useAdminApp();
   const router = useRouter();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
+  const profileUrl = `/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
 
   return (
-    <div className="flex justify-end">
-      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} />
+    <div
+      className="flex justify-end"
+      data-no-row-click
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <DeleteUserDialog user={user} open={isDeleteOpen} onOpenChange={setIsDeleteOpen} profileHref={profileUrl} onDeleted={onUserMutated} />
       <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       <CreateCheckoutDialog
         open={isCheckoutOpen}
@@ -620,9 +644,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem
-            onClick={() =>
-              router.push(`/projects/${encodeURIComponent(hexclaveAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`)
-            }
+            onClick={() => router.push(profileUrl)}
           >
             View details
           </DropdownMenuItem>
@@ -649,6 +671,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
               onClick={() =>
                 runAsynchronouslyWithAlert(async () => {
                   await user.update({ totpMultiFactorSecret: null });
+                  runAsynchronouslyWithAlert(Promise.resolve().then(() => onUserMutated()));
                 })
               }
             >
@@ -674,7 +697,7 @@ function UserIdentityCell(props: { user: ExtendedServerUser }) {
 
   return (
     <div className="flex items-center gap-3">
-      <Link href={profileUrl} className="rounded-full shrink-0">
+      <Link href={profileUrl} className="rounded-full shrink-0" prefetch={false}>
         <Avatar className="h-6 w-6">
           <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.displayName ?? user.primaryEmail ?? "User avatar"} />
           <AvatarFallback>{fallback}</AvatarFallback>
@@ -683,6 +706,7 @@ function UserIdentityCell(props: { user: ExtendedServerUser }) {
       <div className="min-w-0 flex-1">
         <Link
           href={profileUrl}
+          prefetch={false}
           className="block truncate text-sm font-semibold text-foreground hover:text-foreground"
           title={displayName}
         >

@@ -21,5 +21,6 @@ export type PlanUsage = {
   periodStart: Date,
   periodEnd: Date,
   nextPlanId: PlanUsageNextPlanId | null,
+  arePlanLimitsEnforced: boolean,
   rows: PlanUsageRow[],
 };
