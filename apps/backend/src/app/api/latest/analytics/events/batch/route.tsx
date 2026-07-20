@@ -153,7 +153,13 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
+      // `inserted` = events durably written to ClickHouse on the response path.
+      // `accepted_spans` = spans accepted for async processing — not yet
+      // confirmed written. A background insert failure refunds the spans debit
+      // (see the waitUntil catch below); the client cannot observe that outcome
+      // from this response.
       inserted: yupNumber().defined(),
+      accepted_spans: yupNumber().defined(),
     }).defined(),
   }),
   async handler({ auth, body }) {
@@ -211,7 +217,13 @@ export const POST = createSmartRouteHandler({
     // limited independently of events later. The whole batch is atomic
     // billing-wise: if the second debit fails, the first is refunded and the
     // request is rejected, so a partial batch never burns quota.
+    //
+    // Spans are charged at accept time (before the off-path ClickHouse insert).
+    // If that insert later fails, the background task refunds the debit — see
+    // `spansBillingTeamIdForRefund` below. Captured here so the async path
+    // knows whether a debit actually happened (plan limits may be off).
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    let spansBillingTeamIdForRefund: string | null = null;
     if (billingTeamId != null && arePlanLimitsEnforced()) {
       if (events.length > 0) {
         const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
@@ -230,6 +242,7 @@ export const POST = createSmartRouteHandler({
           }
           throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsSpans, billingTeamId, spans.length);
         }
+        spansBillingTeamIdForRefund = billingTeamId;
       }
     }
 
@@ -283,6 +296,12 @@ export const POST = createSmartRouteHandler({
     // off the response path (same pattern as the replay batch route) so a slow or
     // unavailable ClickHouse never delays the upload; the events insert above
     // stays on-path because the response reports what was accepted.
+    //
+    // Billing is accept-then-refund: quota was already decreased above. On insert
+    // failure we refund so a dropped background write does not permanently burn
+    // spans quota. The refund itself is best-effort and captureError'd if it
+    // fails — we can't fail the (already-sent) response. E2E can't trigger the
+    // insert-failure path without breaking ClickHouse; observability covers it.
     if (spans.length > 0) {
       runAsynchronouslyAndWaitUntil(async () => {
         try {
@@ -299,6 +318,14 @@ export const POST = createSmartRouteHandler({
           await insertSpans(clickhouseClient, spanRows);
         } catch (error) {
           captureError("analytics-custom-spans-insert", error);
+          if (spansBillingTeamIdForRefund != null) {
+            try {
+              const spansItem = await app.getItem({ itemId: ITEM_IDS.analyticsSpans, teamId: spansBillingTeamIdForRefund });
+              await spansItem.increaseQuantity(spans.length);
+            } catch (refundError) {
+              captureError("analytics-custom-spans-refund", refundError);
+            }
+          }
         }
       });
     }
@@ -306,7 +333,7 @@ export const POST = createSmartRouteHandler({
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { inserted: events.length },
+      body: { inserted: events.length, accepted_spans: spans.length },
     };
   },
 });

@@ -124,7 +124,7 @@ it("accepts valid $page-view events", async ({ expect }) => {
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 2 },
+      "body": { "inserted": 2, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -163,7 +163,7 @@ it("accepts valid $click events", async ({ expect }) => {
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -205,7 +205,7 @@ it("accepts a gzipped binary body (adblocker-evasion encoding)", async ({ expect
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -317,7 +317,7 @@ it("handles click event data containing a truncated surrogate pair (lone high su
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -549,7 +549,7 @@ it("inserted events are queryable via analytics query endpoint", async ({ expect
   expect(uploadRes).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 2 },
+      "body": { "inserted": 2, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -711,6 +711,7 @@ it("accepts batch and debits event quota correctly", { timeout: 120_000 }, async
 
   expect(res.status).toBe(200);
   expect(res.body.inserted).toBe(eventCount);
+  expect(res.body.accepted_spans).toBe(0);
 
   const afterQuantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(afterQuantity).toBe(quantityBeforeBatch - eventCount);
@@ -807,6 +808,8 @@ it("debits spans against the analytics spans item, not analytics events", { time
     },
   });
   expect(res.status).toBe(200);
+  expect(res.body.inserted).toBe(0);
+  expect(res.body.accepted_spans).toBe(2);
 
   const spansAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans);
   expect(spansAfter).toBe(spansBefore - 2);
@@ -933,7 +936,7 @@ it("accepts custom events and stamps system ancestry on them", async ({ expect }
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -969,6 +972,7 @@ it("appends the client-supplied custom parent chain after system ancestry on eve
   });
   expect(res.status).toBe(200);
   expect(res.body.inserted).toBe(1);
+  expect(res.body.accepted_spans).toBe(0);
 
   const queryRes = await queryAnalyticsUntil({
     query: "SELECT parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
@@ -1159,7 +1163,7 @@ it("accepts a spans-only batch and lands it on the spans surface", async ({ expe
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 0 },
+      "body": { "inserted": 0, "accepted_spans": 1 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -1295,7 +1299,7 @@ it("accepts server-key batches with explicit user_id and no system ancestry", as
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 0 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -1337,6 +1341,7 @@ it("accepts server-key spans without refresh-token ancestry", async ({ expect })
   }, { accessType: "server" });
   expect(res.status).toBe(200);
   expect(res.body.inserted).toBe(0);
+  expect(res.body.accepted_spans).toBe(1);
 
   const queryRes = await queryAnalyticsUntil({
     query: "SELECT id, span_type, parent_span_ids, user_id FROM spans WHERE id = {id:String}",
@@ -1375,7 +1380,7 @@ it("accepts a gzipped binary body containing custom events and spans", async ({ 
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "inserted": 1 },
+      "body": { "inserted": 1, "accepted_spans": 1 },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
