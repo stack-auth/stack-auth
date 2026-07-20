@@ -1,0 +1,50 @@
+apps/backend/src/lib/plan-usage.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 43,354-386,393,426-432,476,480,498
+apps/backend/src/lib/session-replays.tsx
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 3,27-92
+  s_698857c6c3dd28::t_12a902fcc055ca 93
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/tests/bounds-upsert-and-cascade.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 1-77
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/usage/page-client.tsx
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 38,79
+  s_698857c6c3dd28::t_537d0d0df19a0d 80-83
+apps/backend/prisma/schema.prisma
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 70-72,422-423,468-490
+  s_698857c6c3dd28::t_cf3e0235f80cb7 491-492
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 7,254-265,284-285
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 82-84,88-90,146-151,154-158,182-184,220-223,226-242
+  s_698857c6c3dd28::t_f50cfb084e3011 152-153
+apps/backend/src/lib/spans.test.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 2,10-25
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 252,351
+apps/backend/src/lib/spans.tsx
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 15-16,31-33,40-45,62-63,78-81,84,88,100-118,153-165,217,265,279
+apps/backend/prisma/seed.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 165,188,212,245
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 1-24
+packages/shared/src/plans.ts
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 19-22,38,56-58,67,76
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_698857c6c3dd28::t_6934dc77823bbe 1315
+  s_698857c6c3dd28::t_b69d7c1ffb5e49 774-855,1314,1327-1328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "eb9a25ae0562a96913099ad7f9dd01fb00dbb203",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
