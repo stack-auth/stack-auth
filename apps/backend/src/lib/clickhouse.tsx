@@ -51,8 +51,8 @@ export function getClickhouseExternalClient() {
 // client's — count toward the same 9 GB budget. With the 30-day bounds each
 // metrics query peaks well under 100 MiB, so practical interference is low.
 export const METRICS_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_bytes_before_external_group_by: "4000000000",
-  max_memory_usage: "8000000000",
+  max_bytes_before_external_group_by: "256000000",
+  max_memory_usage: "512000000",
   max_memory_usage_for_user: "9000000000",
   // SDK type narrows to a single algorithm; the server accepts a fallback list.
   join_algorithm: "grace_hash,parallel_hash,hash" as ClickHouseSettings["join_algorithm"],

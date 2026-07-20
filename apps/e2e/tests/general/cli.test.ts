@@ -431,12 +431,27 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("plain `config` object");
   });
 
-  it("config pull overwrites an existing file by default", async ({ expect }) => {
+  it("config pull refuses to clobber an existing file without --overwrite", async ({ expect }) => {
     const existingConfigPath = path.join(tmpDir, "existing-config.ts");
     fs.writeFileSync(existingConfigPath, "existing\n");
 
-    const { stdout, exitCode } = await runCli(
+    const { stderr, exitCode } = await runCli(
       ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", existingConfigPath],
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("already exists");
+    expect(stderr).toContain("--overwrite");
+    // The existing file must be left untouched.
+    expect(fs.readFileSync(existingConfigPath, "utf-8")).toBe("existing\n");
+  });
+
+  it("config pull replaces an existing file with --overwrite", async ({ expect }) => {
+    const existingConfigPath = path.join(tmpDir, "existing-config-overwrite.ts");
+    fs.writeFileSync(existingConfigPath, "existing\n");
+
+    const { stdout, exitCode } = await runCli(
+      ["config", "pull", "--cloud-project-id", createdProjectId, "--config-file", existingConfigPath, "--overwrite"],
     );
 
     expect(exitCode).toBe(0);
@@ -465,13 +480,13 @@ describe("Stack CLI", () => {
     }
   });
 
-  it("config pull still prefers an existing ./stack.config.ts when --config-file is omitted", async ({ expect }) => {
+  it("config pull still prefers an existing ./stack.config.ts when --config-file is omitted (with --overwrite)", async ({ expect }) => {
     const cwdDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-config-pull-empty-")));
     const expected = path.join(cwdDir, "stack.config.ts");
     fs.writeFileSync(expected, "// placeholder so the file exists\n");
     try {
       const { stdout, exitCode } = await runCli(
-        ["config", "pull", "--cloud-project-id", createdProjectId],
+        ["config", "pull", "--cloud-project-id", createdProjectId, "--overwrite"],
         undefined,
         cwdDir,
       );

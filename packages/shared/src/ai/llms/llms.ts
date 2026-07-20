@@ -6,7 +6,16 @@ import { buildSkillSitePrompt, skillSitePrompt } from "../unified-prompts/skill-
 export const llmsTxt = deindent`
   # Hexclave
 
+  > Hexclave is an authentication and user management platform for SaaS apps, with teams, RBAC, payments, and analytics. Formerly Stack Auth.
+
   ${remindersPrompt}
+
+  ## Docs
+
+  - [Full documentation](https://skill.hexclave.com/full): LLM-optimized Hexclave documentation
+  - [Ask questions](https://skill.hexclave.com/ask): Q&A endpoint for Hexclave
+  - [Human documentation](https://docs.hexclave.com): Browse the docs, or add \`.md\` to a page URL for markdown
+  - [MCP server](https://mcp.hexclave.com): Hexclave documentation for MCP clients
 `;
 
 export const llmsFullTxt = skillSitePrompt;

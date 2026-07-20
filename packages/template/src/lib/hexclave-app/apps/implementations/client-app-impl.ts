@@ -57,6 +57,8 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { buildCliAuthConfirmUrl, getHostedHandlerUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { augmentUrlWithPersistedRedirectBackState, saveRedirectBackStateFromUrl } from "./redirect-back-state";
+import { recordRedirectAndThrowIfLoopDetected } from "./redirect-loop-breaker";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
@@ -767,6 +769,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       this._trackPendingAuthResolution(async () => {
         await this._maybeHandleNestedCrossDomainAuth(urlAtConstructionTime);
       });
+
+      // Mirror any redirect-back state from the page URL into sessionStorage, so the return trip
+      // survives later hops that drop the query params (OAuth provider round-trips, MFA, magic
+      // links, ...). See redirect-back-state.ts for details.
+      saveRedirectBackStateFromUrl({ url: urlAtConstructionTime, projectId: this.projectId });
     }
 
     // IF_PLATFORM js-like
@@ -3018,6 +3025,17 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _redirectTo(options: { url: URL | string, replace?: boolean }) {
+    if (this._redirectMethod !== "none" && isBrowserLike()) {
+      const currentUrl = new URL(window.location.href);
+      const targetUrl = new URL(options.url, currentUrl);
+      // Circuit breaker: if this exact redirect keeps repeating, throw so the initiating page
+      // renders its error state instead of bouncing the user between pages forever.
+      recordRedirectAndThrowIfLoopDetected({ currentUrl, targetUrl });
+      // Client-side navigations don't re-run the app constructor, so mirror redirect-back state
+      // on every SDK-driven hop too (see redirect-back-state.ts).
+      saveRedirectBackStateFromUrl({ url: targetUrl, projectId: this.projectId });
+    }
+
     if (this._redirectMethod === "none") {
       return;
       // IF_PLATFORM next
@@ -3096,9 +3114,21 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       throw new Error(`No URL for handler name ${handlerName}`);
     }
 
-    const currentUrl = isReactServer || typeof window === "undefined"
+    let currentUrl = isReactServer || typeof window === "undefined"
       ? null
       : new URL(window.location.href);
+    if (
+      currentUrl != null
+      && options?.noRedirectBack !== true
+      && (handlerName === "afterSignIn" || handlerName === "afterSignUp")
+    ) {
+      // If intermediate hops dropped the redirect-back query params, restore them from the
+      // sessionStorage mirror so the user still returns to where they came from instead of
+      // stranding on the default post-auth page (on hosted components, that would be the hosted
+      // welcome page). The restored URL goes through the same _isTrusted / cross-domain-authorize
+      // validation below as one read from query params.
+      currentUrl = augmentUrlWithPersistedRedirectBackState({ currentUrl, projectId: this.projectId });
+    }
     const plan = await planRedirectToHandler({
       handlerName,
       rawHandlerUrl,
@@ -4234,6 +4264,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       awaitPendingAuthResolutions: async () => {
         await this._awaitPendingAuthResolutions();
+      },
+      isTrustedRedirectUrl: async (url: string) => {
+        return await this._isTrusted(url);
       },
     };
   };

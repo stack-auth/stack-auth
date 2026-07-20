@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -419,6 +419,21 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
         <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
+      </>
+    ),
+  },
+  "cli-auth": {
+    icon: TerminalWindowIcon,
+    href: "cli-auth",
+    documentationHref: "https://docs.hexclave.com/guides/others/cli-authentication",
+    navigationItems: [
+      { displayName: "CLI Auth", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>CLI Auth shows real-time insight into how CLI authentication is used in your project.</p>
+        <p>Monitor recent login attempts, see which users have active CLI refresh tokens, and track session health at a glance.</p>
       </>
     ),
   },

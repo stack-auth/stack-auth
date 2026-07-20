@@ -1,3 +1,4 @@
+import { US_CENTER } from '@/hooks/use-viewer-location';
 import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useDashboardUser } from '@/lib/dashboard-user';
 import { useThemeWatcher } from '@/lib/theme';
@@ -359,7 +360,7 @@ type SatelliteHandle = {
   lastCountryCheckAt: number,
 };
 
-export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, children?: React.ReactNode}) {
+export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, interactive?: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
@@ -372,6 +373,7 @@ export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, sa
         activeUsersByCountry={activeUsersByCountry ?? {}}
         satelliteCount={satelliteCount ?? 2}
         interactive={interactive ?? false}
+        initialPointOfView={initialPointOfView}
       />
     </Suspense>
   );
@@ -466,7 +468,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, interactive, initialPointOfView, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, interactive: boolean, initialPointOfView?: { lat: number, lng: number }, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
@@ -531,6 +533,8 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   selectedCountryRef.current = selectedCountry;
 
   const pendingCountryClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingHoverHitTestRafRef = useRef<number | null>(null);
+  const latestPointerPositionRef = useRef<{ clientX: number, clientY: number } | null>(null);
   const clearPendingCountryClear = () => {
     if (pendingCountryClearTimeoutRef.current != null) {
       clearTimeout(pendingCountryClearTimeoutRef.current);
@@ -587,6 +591,14 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     updateSelectedCountry(findCountryAt(globeCoords.lat, globeCoords.lng, countries.features));
   };
 
+  const cancelPendingHoverHitTest = () => {
+    if (pendingHoverHitTestRafRef.current != null) {
+      cancelAnimationFrame(pendingHoverHitTestRafRef.current);
+      pendingHoverHitTestRafRef.current = null;
+    }
+    latestPointerPositionRef.current = null;
+  };
+
   useEffect(() => {
     if (selectedCountry) {
       setPreviousSelectedCountry(selectedCountry);
@@ -598,6 +610,10 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
       if (pendingCountryClearTimeoutRef.current != null) {
         clearTimeout(pendingCountryClearTimeoutRef.current);
       }
+      if (pendingHoverHitTestRafRef.current != null) {
+        cancelAnimationFrame(pendingHoverHitTestRafRef.current);
+      }
+      latestPointerPositionRef.current = null;
     };
   }, []);
 
@@ -676,7 +692,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
     setBorderSizeFromGlobe(visualDiameter);
     resumeRender();
   }, [cameraDistance, shouldShowGlobe, squareSize, interactive]);
-
 
   const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
   const totalPopulationInCountries = countries.features.reduce((acc, curr) => acc + curr.properties.POP_EST, 0);
@@ -1106,13 +1121,25 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
               }}
               onMouseMoveCapture={(e) => {
                 resumeRender();
-                updateSelectedCountryFromPointerPosition(e.clientX, e.clientY);
+                latestPointerPositionRef.current = { clientX: e.clientX, clientY: e.clientY };
+                // Mousemove can fire many times between paints; coalesce the expensive
+                // globe raycast and country scan to one hit-test per animation frame.
+                if (pendingHoverHitTestRafRef.current == null) {
+                  pendingHoverHitTestRafRef.current = requestAnimationFrame(() => {
+                    pendingHoverHitTestRafRef.current = null;
+                    const pointerPosition = latestPointerPositionRef.current;
+                    if (pointerPosition != null) {
+                      updateSelectedCountryFromPointerPosition(pointerPosition.clientX, pointerPosition.clientY);
+                    }
+                  });
+                }
                 if (tooltipRef.current) {
                   tooltipRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
                 }
               }}
               onMouseLeave={() => {
                 // Only clear when leaving the entire globe area
+                cancelPendingHoverHitTest();
                 updateSelectedCountry(null, { immediateClear: true });
                 if (globeRef.current) {
                   //globeRef.current.controls().autoRotate = true;
@@ -1156,8 +1183,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                         controls.enableZoom = interactive;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
-                        // Little Saint James Island, U.S. Virgin Islands
-                        current.pointOfView({ lat: 18.3076, lng: -64.8267 }, 0);
+                        current.pointOfView({ lat: initialPointOfView?.lat ?? US_CENTER.lat, lng: initialPointOfView?.lng ?? US_CENTER.lng }, 0);
 
                         // Fix z-fighting: Enable proper depth testing
                         const renderer = current.renderer();

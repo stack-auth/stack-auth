@@ -14,7 +14,23 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
+  wait-for-fast-fail:
+    name: wait-for-fast-fail
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/wait-for-check
+        with:
+          workflow-file: fast-fail-tests.yaml
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: wait-for-fast-fail
     name: E2E Fallback Tests (Node ${{ matrix.node-version }})
     runs-on: ubicloud-standard-8
     env:
