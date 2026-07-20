@@ -1347,8 +1347,14 @@ export namespace Project {
         id: expect.any(String),
       },
     });
-    if (ownerTeamId != null) {
-      await waitForBillingTeamPlanEntitlement(ownerTeamId);
+    // Wait on the owner team the backend actually recorded, not the pre-request
+    // value: the request body is merged with `...body`, so a caller could override
+    // owner_team_id, and it's the created project's owner team that the free-plan
+    // entitlement is granted to. Fall back to the resolved value if the response
+    // omits it.
+    const createdOwnerTeamId = response.body.owner_team_id ?? ownerTeamId;
+    if (createdOwnerTeamId != null) {
+      await waitForBillingTeamPlanEntitlement(createdOwnerTeamId);
     }
     return {
       createProjectResponse: response,
