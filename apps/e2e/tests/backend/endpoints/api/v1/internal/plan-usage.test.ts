@@ -197,11 +197,25 @@ function getUsedUsageValue(usage: PlanUsageResponse, itemId: string): number {
   return row.used ?? throwErr(`Expected usage row ${itemId} to have a used value`);
 }
 
-function getCalendarMonthBounds(now: Date): { start: Date, end: Date } {
-  return {
-    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
-    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)),
-  };
+// Plan usage windows metered items (emails, session replays) by the billing team's active
+// subscription period, not the calendar month: getPlanUsagePeriod derives the window from the
+// subscription's currentPeriodStart/End (via bulldozer-js) and only falls back to the calendar month
+// when there is no active paid subscription. So for a paid plan we must anchor both the seeded rows
+// and the period assertions to the actual subscription period, read here from the source-of-truth
+// Subscription row.
+async function getActiveTeamSubscriptionPeriod(client: Client, ownerTeamId: string): Promise<{ start: Date, end: Date }> {
+  const result = await client.query<{ currentPeriodStart: Date, currentPeriodEnd: Date }>(
+    `
+      SELECT "currentPeriodStart", "currentPeriodEnd"
+      FROM "Subscription"
+      WHERE "customerId" = $1 AND "customerType" = 'TEAM' AND "productId" = 'team' AND "status" = 'active'
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `,
+    [ownerTeamId],
+  );
+  const row = result.rows[0] ?? throwErr(`Could not find an active team subscription for billing team ${ownerTeamId}`);
+  return { start: row.currentPeriodStart, end: row.currentPeriodEnd };
 }
 
 async function waitForPlanUsageValues(expected: {
@@ -279,25 +293,23 @@ describe("internal plan usage", () => {
 
     backendContext.set({ projectKeys: primaryProjectKeys, userAuth: null });
 
-    const { start, end } = getCalendarMonthBounds(new Date());
-    const outsideBefore = new Date(start.getTime() - 2 * 24 * 60 * 60 * 1000);
-    const insidePrimary = new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000);
-    const insideSecondaryA = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const insideSecondaryB = new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000);
-    const outsideAfter = new Date(end.getTime() + 2 * 24 * 60 * 60 * 1000);
-
-    await withInternalDatabase(async (client) => {
+    const period = await withInternalDatabase(async (client) => {
       const primary = await getProjectUsageContext(client, primaryProject.projectId);
       const secondary = await getProjectUsageContext(client, secondaryProject.projectId);
       const unrelated = await getProjectUsageContext(client, unrelatedProject.projectId);
       await clearSeededUsageRows(client, [primary, secondary, unrelated]);
-      // TODO(bulldozer-js): we used to normalize the billing team's emitted
-      // subscription-map period by editing the SQL BulldozerStorageEngine table
-      // directly. That table was dropped when the SQL bulldozer engine was
-      // retired, and plan usage now derives the period from bulldozer-js (LMDB)
-      // via getSubscriptionMapForCustomer, so the SQL edit no longer had any
-      // effect. If the period assertions below become flaky, re-introduce
-      // normalization by driving bulldozer-js instead of Postgres.
+
+      // Anchor the seeded rows to the actual subscription period. Metered usage is windowed by the
+      // billing cycle [start, end), so "inside" rows must sit within it and "outside" rows just beyond
+      // its edges. (Previously these were anchored to the calendar month, which stopped matching the
+      // window once plan usage started deriving the period from the subscription via bulldozer-js.)
+      const { start, end } = await getActiveTeamSubscriptionPeriod(client, ownerTeamId);
+      const dayMs = 24 * 60 * 60 * 1000;
+      const outsideBefore = new Date(start.getTime() - 2 * dayMs);
+      const insidePrimary = new Date(start.getTime() + 2 * dayMs);
+      const insideSecondaryA = new Date(start.getTime() + 3 * dayMs);
+      const insideSecondaryB = new Date(start.getTime() + 4 * dayMs);
+      const outsideAfter = new Date(end.getTime() + 2 * dayMs);
 
       const primaryUserIds = await insertProjectUsers(client, primary, {
         nonAnonymousCount: 2,
@@ -330,6 +342,8 @@ describe("internal plan usage", () => {
       await insertSessionReplayRow(client, secondary, firstSecondaryUserId, insideSecondaryB);
       await insertSessionReplayRow(client, secondary, firstSecondaryUserId, outsideAfter);
       await insertSessionReplayRow(client, unrelated, firstUnrelatedUserId, insidePrimary);
+
+      return { start, end };
     });
 
     const usage = await waitForPlanUsageValues({
@@ -341,8 +355,8 @@ describe("internal plan usage", () => {
 
     expect(usage.owner_team_id).toBe(ownerTeamId);
     expect(usage.plan_id).toBe("team");
-    expect(usage.period_start_millis).toBe(start.getTime());
-    expect(usage.period_end_millis).toBe(end.getTime());
+    expect(usage.period_start_millis).toBe(period.start.getTime());
+    expect(usage.period_end_millis).toBe(period.end.getTime());
     expect(getUsedUsageValue(usage, ITEM_IDS.authUsers)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.emailsPerMonth)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.sessionReplays)).toBe(3);
