@@ -31,7 +31,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAdminApp } from "../../use-admin-app";
+import { useServerApp } from "../../use-admin-app";
 import {
   isJsonValue,
   JsonValue,
@@ -332,14 +332,14 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     },
     ref,
   ) {
-    const adminApp = useAdminApp();
+    const serverApp = useServerApp();
 
     const [discoveredColumns, setDiscoveredColumns] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
-    // Ref mirror so the async generator (memoised against adminApp) can
+    // Ref mirror so the async generator (memoised against serverApp) can
     // read the latest column list without being re-created every time
     // the schema updates.
     const discoveredColumnsRef = useRef<string[]>([]);
@@ -462,7 +462,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             offset,
           });
 
-          const response = await adminApp.queryAnalytics({
+          const response = await serverApp.queryAnalytics({
             query: finalQuery,
             include_all_branches: false,
             timeout_ms: 30000,
@@ -495,7 +495,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
           yield { rows: [], hasMore: false };
         }
       };
-    }, [adminApp]);
+    }, [serverApp]);
 
     const getRowId = useCallback((row: RowData): string => {
       if (typeof row[INTERNAL_ROW_ID_KEY] === "string") return row[INTERNAL_ROW_ID_KEY];

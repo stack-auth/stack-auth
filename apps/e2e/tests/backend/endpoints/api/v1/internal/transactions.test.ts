@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
@@ -76,18 +76,7 @@ async function createPurchaseCodeForCustomer(options: { customerType: "user" | "
 const stripeWebhookSecret = getEnvVariable("STACK_STRIPE_WEBHOOK_SECRET", "mock_stripe_webhook_secret");
 
 async function sendStripeWebhook(payload: unknown) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const hmac = createHmac("sha256", stripeWebhookSecret);
-  hmac.update(`${timestamp}.${JSON.stringify(payload)}`);
-  const signature = hmac.digest("hex");
-  return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "stripe-signature": `t=${timestamp},v1=${signature}`,
-    },
-    body: payload,
-  });
+  return await PaymentsHelper.sendStripeWebhook(payload, { secret: stripeWebhookSecret });
 }
 async function createPurchaseCode(options: { userId: string, productId: string }) {
   return await createPurchaseCodeForCustomer({
@@ -336,9 +325,10 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   const code = await createPurchaseCode({ userId, productId: "sub-product" });
   const tenancyId = code.split("_")[0];
 
+  const idSuffix = randomUUID().replace(/-/g, "");
   const nowSec = Math.floor(Date.now() / 1000);
   const stripeSubscription = {
-    id: "sub_tx_filter",
+    id: `sub_tx_filter_${idSuffix}`,
     status: "active",
     items: {
       data: [
@@ -364,7 +354,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   };
 
   const baseInvoiceObject = {
-    customer: "cus_tx_filter",
+    customer: `cus_tx_filter_${idSuffix}`,
     stack_stripe_mock_data: stackStripeMockData,
     lines: {
       data: [
@@ -380,26 +370,26 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
   };
 
   const creationInvoiceEvent = {
-    id: "evt_sub_invoice_creation",
+    id: `evt_sub_invoice_creation_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_creation_tx",
+        id: `in_creation_tx_${idSuffix}`,
         billing_reason: "subscription_create",
       },
     },
   };
 
   const renewalInvoiceEvent = {
-    id: "evt_sub_invoice_cycle",
+    id: `evt_sub_invoice_cycle_${idSuffix}`,
     type: "invoice.payment_succeeded",
     account: accountId,
     data: {
       object: {
         ...baseInvoiceObject,
-        id: "in_cycle_tx",
+        id: `in_cycle_tx_${idSuffix}`,
         billing_reason: "subscription_cycle",
       },
     },

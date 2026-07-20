@@ -41,7 +41,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
     backendBaseUrl,
     currentUser: currentUser ?? undefined,
     systemPrompt: "command-center-ask-ai",
-    tools: ["docs", "sql-query"],
+    tools: ["docs", "sql-query", "read-config"],
     quality: "smart",
     speed: "slow",
     projectId,
@@ -88,6 +88,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
           composerAttachments
           attachmentAdapter={attachmentAdapter}
           autoFocusComposer={false}
+          agentEjectFooter
         />
       </div>
     </AssistantRuntimeProvider>

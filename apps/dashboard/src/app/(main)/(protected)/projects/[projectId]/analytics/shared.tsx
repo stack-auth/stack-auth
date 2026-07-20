@@ -18,9 +18,11 @@ import { Alert, AlertDescription, Button } from "@/components/ui";
 import { Link } from "@/components/link";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import { PLAN_LIMITS, resolvePlanId } from "@hexclave/shared/dist/plans";
+import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMemo, useRef } from "react";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
+import { Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useAdminApp } from "../use-admin-app";
 
 // ============================================================================
@@ -323,12 +325,47 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
 }
 
 /**
+ * The plan-limit banners live on core dashboard pages (overview, analytics,
+ * session replays) but read the internal project's billing state from
+ * bulldozer (plan usage, owned products, item quantities). Billing is not
+ * essential to those pages, so a bulldozer outage must not take them down:
+ * on any read failure we report it and render nothing rather than letting the
+ * error escape to the page. `Suspense` keeps the banner from blocking the page
+ * while its data loads.
+ */
+function BillingBannerErrorFallback({ location, error }: { location: string, error: unknown }) {
+  useEffect(() => {
+    captureError(location, error);
+  }, [location, error]);
+  return null;
+}
+
+function ResilientBillingBanner(props: { children: ReactNode, location: string }) {
+  return (
+    <ErrorBoundary errorComponent={({ error }) => <BillingBannerErrorFallback location={props.location} error={error} />}>
+      <Suspense fallback={null}>
+        {props.children}
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+/**
  * Shows a warning banner when analytics event usage is at 80%+ or 100%.
  * Fetches the billing team's analytics_events item and computes usage against the plan's total allocation.
  */
 export function AnalyticsEventLimitBanner() {
+  return (
+    <ResilientBillingBanner location="analytics-limit-banner:billing-read-failed">
+      <AnalyticsEventLimitBannerContent />
+    </ResilientBillingBanner>
+  );
+}
+
+function AnalyticsEventLimitBannerContent() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const planUsage = adminApp.usePlanUsage();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
@@ -337,7 +374,7 @@ export function AnalyticsEventLimitBanner() {
     [teams, project.ownerTeamId],
   );
 
-  if (ownerTeam == null) {
+  if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
     return null;
   }
 
@@ -349,8 +386,17 @@ export function AnalyticsEventLimitBanner() {
  * Since the limit is the same across all plans, no upgrade button is shown.
  */
 export function SessionReplayLimitBanner() {
+  return (
+    <ResilientBillingBanner location="session-replay-limit-banner:billing-read-failed">
+      <SessionReplayLimitBannerContent />
+    </ResilientBillingBanner>
+  );
+}
+
+function SessionReplayLimitBannerContent() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const planUsage = adminApp.usePlanUsage();
   const user = useDashboardInternalUser();
   const teams = user.useTeams();
 
@@ -359,7 +405,7 @@ export function SessionReplayLimitBanner() {
     [teams, project.ownerTeamId],
   );
 
-  if (ownerTeam == null) {
+  if (!planUsage.arePlanLimitsEnforced || ownerTeam == null) {
     return null;
   }
 
