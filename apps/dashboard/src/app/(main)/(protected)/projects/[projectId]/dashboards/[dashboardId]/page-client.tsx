@@ -15,7 +15,7 @@ import {
   type AssistantComposerApi,
 } from "@/components/vibe-coding";
 import { ToolCallContent, type DashboardChip, type DashboardPatchFailure, type DashboardPatchSnapshot } from "@/components/vibe-coding/chat-adapters";
-import { patchSnapshotKey, registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
+import { registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
 import type { AppId } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardUser } from "@/lib/dashboard-user";
@@ -300,7 +300,7 @@ function DashboardDetailContent({
       }, 1000);
     }, 3000);
     for (const snap of snapshots) {
-      registerPatchSnapshot(patchSnapshotKey(snap.edits), snap.resultSource);
+      registerPatchSnapshot(snap.toolCallId, snap.resultSource);
     }
     if (failures.length > 0) {
       const summary = failures.slice(0, 3).map((f) =>

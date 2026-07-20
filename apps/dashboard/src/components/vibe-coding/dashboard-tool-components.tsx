@@ -39,8 +39,11 @@ function useCurrentCode() {
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Patch snapshot registry. Each successful patchDashboard call stores the
- * post-patch source under a stable key (the JSON-serialized edits array). The
- * patch tool's chat row reads this to offer a "restore this version" action.
+ * post-patch source under the tool call's unique ID. The patch tool's chat row
+ * reads this to offer a "restore this version" action. Keying by tool-call ID
+ * (rather than, say, the serialized edits) matters: the same edits can be
+ * applied more than once against different base versions, and each occurrence
+ * must restore its own result, not the latest one.
  *
  * Limitation: snapshots live in-memory and only cover patches applied during
  * the current session. Patches loaded from saved chat history won't have a
@@ -51,8 +54,8 @@ function useCurrentCode() {
 const patchSnapshots = new Map<string, string>();
 const patchSnapshotListeners: Set<() => void> = new Set();
 
-export function registerPatchSnapshot(editsKey: string, resultSource: string) {
-  patchSnapshots.set(editsKey, resultSource);
+export function registerPatchSnapshot(toolCallId: string, resultSource: string) {
+  patchSnapshots.set(toolCallId, resultSource);
   for (const l of patchSnapshotListeners) l();
 }
 
@@ -63,19 +66,11 @@ function subscribePatchSnapshots(listener: () => void) {
   };
 }
 
-function usePatchSnapshot(editsKey: string): string | undefined {
+function usePatchSnapshot(toolCallId: string): string | undefined {
   return useSyncExternalStore(
     subscribePatchSnapshots,
-    () => patchSnapshots.get(editsKey),
+    () => patchSnapshots.get(toolCallId),
   );
-}
-
-export function patchSnapshotKey(edits: unknown): string {
-  try {
-    return JSON.stringify(edits);
-  } catch {
-    return "";
-  }
 }
 
 function ToolRender({ args, isRunning }: { args: { content: string }, isRunning: boolean }) {
@@ -159,12 +154,12 @@ const ToolUI = makeAssistantToolUI<
 type PatchEditArg = { oldText?: string, newText?: string, occurrenceIndex?: number };
 type PatchToolArgs = { edits?: PatchEditArg[] };
 
-function PatchToolRender({ args, isRunning }: { args: PatchToolArgs, isRunning: boolean }) {
+function PatchToolRender({ args, toolCallId, isRunning }: { args: PatchToolArgs, toolCallId: string, isRunning: boolean }) {
   const [open, setOpen] = useState(false);
   const edits = Array.isArray(args.edits) ? args.edits : [];
   const count = edits.length;
   const currentCode = useCurrentCode();
-  const snapshot = usePatchSnapshot(patchSnapshotKey(edits));
+  const snapshot = usePatchSnapshot(toolCallId);
   // Snapshot may be missing for patches loaded from saved chat history (the in-memory
   // map only covers the current session). When absent, hide the restore button rather
   // than offering something we can't fulfill.
@@ -268,7 +263,7 @@ const PatchToolUI = makeAssistantToolUI<
   "success"
 >({
   toolName: "patchDashboard",
-  render: (props) => <PatchToolRender args={props.args} isRunning={props.status.type === "running"} />,
+  render: (props) => <PatchToolRender args={props.args} toolCallId={props.toolCallId} isRunning={props.status.type === "running"} />,
 });
 
 /* ────────────────────────────────────────────────────────────────────────────

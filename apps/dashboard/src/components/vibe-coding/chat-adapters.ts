@@ -70,6 +70,7 @@ export type DashboardPatchResult = {
 };
 
 export type DashboardPatchSnapshot = {
+  toolCallId: string,
   edits: DashboardPatchEdit[],
   resultSource: string,
 };
@@ -601,7 +602,7 @@ export function createDashboardChatAdapter(
             if (result.failures.length === 0 && result.applied > 0) {
               runningSource = result.updatedSource;
               anyPatchApplied = true;
-              snapshots.push({ edits, resultSource: runningSource });
+              snapshots.push({ toolCallId: item.toolCallId, edits, resultSource: runningSource });
             }
           }
         }
