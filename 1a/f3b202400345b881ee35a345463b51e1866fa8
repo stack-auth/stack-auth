@@ -1,0 +1,27 @@
+apps/backend/src/lib/spans.tsx
+  s_698857c6c3dd28::t_c608be792ac9bb 79,83
+  s_698857c6c3dd28::t_de1f2b1b5e14e9 95-113
+  s_698857c6c3dd28::t_a2f929f0a2d1c4 14-15,26-28,35-40
+  s_698857c6c3dd28::t_6cbe0d98f8034f 184
+  s_698857c6c3dd28::t_39c870c9d2cfe7 170
+  s_698857c6c3dd28::t_ef9897b6b8d19a 73-76
+  s_698857c6c3dd28::t_453d154fa511a4 57-58
+apps/backend/src/lib/spans.test.ts
+  s_698857c6c3dd28::t_091d1943210b80 2,10-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1af3b202400345b881ee35a345463b51e1866fa8",
+  "prompts": {},
+  "sessions": {
+    "s_698857c6c3dd28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "aba14b5d-665b-4d86-bcbc-94cc725aaf21",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
