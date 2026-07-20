@@ -115,6 +115,11 @@ async function insertProjectUsers(client: Client, context: ProjectUsageContext, 
   return nonAnonymousUsers.rows.map((row) => row.projectUserId);
 }
 
+// Marks the EmailOutbox rows this test seeds so we can distinguish them from
+// incidental transactional emails the platform sends to the billing team's
+// projects (see waitForPlanUsageValues for why that matters).
+const SEEDED_EMAIL_SUBJECT = "Plan usage test email";
+
 async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSendingAt: Date | null): Promise<void> {
   const renderedAt = new Date();
   await client.query(
@@ -127,7 +132,7 @@ async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSe
       VALUES
         ($1::uuid, gen_random_uuid(), $4, $4, '', false, $2::jsonb, '{}'::jsonb,
          true, 'PROGRAMMATIC_CALL', $3::uuid, $4, $4, '<p>usage test</p>',
-         'Plan usage test email', true, $4, true, $5, $5, $6)
+         $7, true, $4, true, $5, $5, $6)
     `,
     [
       tenancyId,
@@ -136,7 +141,23 @@ async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSe
       renderedAt,
       startedSendingAt,
       startedSendingAt == null ? null : false,
+      SEEDED_EMAIL_SUBJECT,
     ],
+  );
+}
+
+// Removes any EmailOutbox rows in the given tenancies that this test did not seed.
+// The platform sends incidental transactional emails to a billing team's projects
+// around purchase/setup time; because those land at ~now they fall inside the
+// active subscription window and inflate the metered email count. We can't clear
+// them once up front the way we do the rest of the seeded usage, because they are
+// written asynchronously and can arrive after that clear (observed only on slower
+// CI shards — locally they settle before seeding). Deleting the non-seeded rows
+// keeps the test measuring exactly the usage it controls.
+async function deleteIncidentalEmailRows(client: Client, tenancyIds: readonly string[]): Promise<void> {
+  await client.query(
+    `DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
+    [tenancyIds, SEEDED_EMAIL_SUBJECT],
   );
 }
 
@@ -218,15 +239,20 @@ async function getActiveTeamSubscriptionPeriod(client: Client, ownerTeamId: stri
   return { start: row.currentPeriodStart, end: row.currentPeriodEnd };
 }
 
-async function waitForPlanUsageValues(expected: {
-  authUsers: number,
-  emails: number,
-  sessionReplays: number,
-  analyticsEvents: number,
-}): Promise<PlanUsageResponse> {
+async function waitForPlanUsageValues(
+  client: Client,
+  billingTenancyIds: readonly string[],
+  expected: {
+    authUsers: number,
+    emails: number,
+    sessionReplays: number,
+    analyticsEvents: number,
+  },
+): Promise<PlanUsageResponse> {
   const startedAt = performance.now();
   let latestUsage: PlanUsageResponse | undefined;
   while (performance.now() - startedAt < 15_000) {
+    await deleteIncidentalEmailRows(client, billingTenancyIds);
     latestUsage = await getPlanUsage();
     if (
       getUsedUsageValue(latestUsage, ITEM_IDS.authUsers) === expected.authUsers
@@ -293,7 +319,7 @@ describe("internal plan usage", () => {
 
     backendContext.set({ projectKeys: primaryProjectKeys, userAuth: null });
 
-    const period = await withInternalDatabase(async (client) => {
+    const { period, billingTenancyIds } = await withInternalDatabase(async (client) => {
       const primary = await getProjectUsageContext(client, primaryProject.projectId);
       const secondary = await getProjectUsageContext(client, secondaryProject.projectId);
       const unrelated = await getProjectUsageContext(client, unrelatedProject.projectId);
@@ -343,15 +369,18 @@ describe("internal plan usage", () => {
       await insertSessionReplayRow(client, secondary, firstSecondaryUserId, outsideAfter);
       await insertSessionReplayRow(client, unrelated, firstUnrelatedUserId, insidePrimary);
 
-      return { start, end };
+      return {
+        period: { start, end },
+        billingTenancyIds: [primary.tenancyId, secondary.tenancyId],
+      };
     });
 
-    const usage = await waitForPlanUsageValues({
+    const usage = await withInternalDatabase((client) => waitForPlanUsageValues(client, billingTenancyIds, {
       authUsers: 3,
       emails: 3,
       sessionReplays: 3,
       analyticsEvents: 0,
-    });
+    }));
 
     expect(usage.owner_team_id).toBe(ownerTeamId);
     expect(usage.plan_id).toBe("team");
