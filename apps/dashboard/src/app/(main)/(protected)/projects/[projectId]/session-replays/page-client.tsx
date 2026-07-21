@@ -848,6 +848,15 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
         speed: msRef.current.settings.playerSpeed,
         skipInactive: msRef.current.settings.skipInactivity,
         triggerFocus: false,
+        // rrweb warns "Node with id 'X' not found" (mostly benign: mutations
+        // targeting since-removed nodes, or seeks across segments) and attaches
+        // the FULL mutation payload to every console.warn. Next 16 forwards
+        // browser console output to the dev terminal over the dev-server
+        // WebSocket, and the flood of giant warning objects can exceed ws's max
+        // payload, crashing the dev server with WS_ERR_UNSUPPORTED_MESSAGE_LENGTH.
+        // We never act on these warnings, so silence them.
+        showWarning: false,
+        showDebug: false,
       });
 
       rootEl.style.position = "relative";
