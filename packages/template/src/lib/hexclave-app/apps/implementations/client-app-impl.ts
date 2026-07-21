@@ -69,6 +69,7 @@ import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions } from "./session-replay";
+import { createAnonymousAnalyticsTokenStore } from "./analytics-session";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -262,6 +263,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   protected readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   protected _eventTracker: EventTracker | null = null;
+  private _anonymousAnalyticsTokenStore: Store<TokenObject> | null = null;
+  private _anonymousAnalyticsSignUpInProgress: Promise<InternalSession> | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _HexclaveAdminAppImplIncomplete<false, string>>();
@@ -710,16 +713,6 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     this._analyticsOptions = resolvedOptions.analytics;
 
-    const getAnalyticsSession = async (): Promise<InternalSession> => {
-      this._ensurePersistentTokenStore();
-      const partialUser = await this.getPartialUser({ from: 'token', or: 'anonymous-if-exists' });
-      if (partialUser) {
-        return await this._getSession();
-      }
-      const anonUser = await this.getUser({ or: "anonymous" });
-      return anonUser._internalSession;
-    };
-
     const analyticsEnabled = this._analyticsOptions?.enabled !== false;
 
     const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
@@ -728,22 +721,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // session_replay_segment_id (they used to each mint their own, which made
     // event rows impossible to correlate to a replay tab).
     const sessionReplaySegmentId = generateUuid();
-    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore() && sessionReplayOptions.enabled) {
+    if (analyticsEnabled && isBrowserLike() && sessionReplayOptions.enabled) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await this._getAnalyticsSession(), opts);
         },
         sessionReplaySegmentId,
       }, sessionReplayOptions);
       this._sessionRecorder.start();
     }
 
-    if (analyticsEnabled && isBrowserLike() && this._hasPersistentTokenStore()) {
+    if (analyticsEnabled && isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
+          return await this._interface.sendAnalyticsEventBatch(body, await this._getAnalyticsSession(), opts);
         },
         sessionReplaySegmentId,
         registerBackgroundTask: this._analyticsOptions?.waitUntil,
@@ -751,6 +744,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
           selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
           allowedOrigins: this._analyticsOptions?.spanPropagation?.targets ?? [],
         }),
+        integritySignals: this._analyticsOptions?.integritySignals === true,
       });
       this._eventTracker.start();
     }
@@ -1705,6 +1699,43 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
     return (overrideTokenStoreInit !== undefined ? overrideTokenStoreInit : this._tokenStoreInit) !== null;
+  }
+
+  private async _getAnalyticsSession(): Promise<InternalSession> {
+    if (this._hasPersistentTokenStore()) {
+      const partialUser = await this.getPartialUser({ from: "token", or: "anonymous-if-exists" });
+      if (partialUser !== null) return await this._getSession();
+      return (await this.getUser({ or: "anonymous" }))._internalSession;
+    }
+
+    // `tokenStore: null` means customer auth must remain stateless. Replays
+    // still need a refresh-token identity because the ingestion model groups
+    // chunks and server spans beneath that chain, so keep a private browser-only
+    // store that is never exposed through the app's auth APIs.
+    this._anonymousAnalyticsTokenStore ??= createAnonymousAnalyticsTokenStore(this.projectId);
+    const analyticsTokenStore = this._anonymousAnalyticsTokenStore;
+    const existingTokens = analyticsTokenStore.get();
+    if (existingTokens.refreshToken !== null) {
+      return this._getSessionFromTokenStore(analyticsTokenStore);
+    }
+
+    if (this._anonymousAnalyticsSignUpInProgress === null) {
+      this._anonymousAnalyticsSignUpInProgress = (async () => {
+        const unsignedSession = this._getSessionFromTokenStore(analyticsTokenStore);
+        const result = await this._interface.signUpAnonymously(unsignedSession);
+        if (result.status === "error") {
+          throw new HexclaveAssertionError("Anonymous analytics sign-up should never return an error");
+        }
+        analyticsTokenStore.set(result.data);
+        return this._getSessionFromTokenStore(analyticsTokenStore);
+      })();
+    }
+
+    try {
+      return await this._anonymousAnalyticsSignUpInProgress;
+    } finally {
+      this._anonymousAnalyticsSignUpInProgress = null;
+    }
   }
 
   protected _ensurePersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): asserts this is StackClientApp<true, ProjectId> {
@@ -4146,9 +4177,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const customParentSpanIds = flattenParentRefsToIds(root ? [] : tracker.getAmbientParentRefs(), extraParents);
     const segmentId = tracker.getSessionReplaySegmentId();
     if (!segmentId && customParentSpanIds.length === 0) return null;
+    // Like the segment id, the page ancestry is identity, not parenting — it
+    // always rides (even under root), so backend telemetry still lands on the
+    // right page.
+    const pageViewSpanId = tracker.getCurrentPageViewSpanId();
     return {
       projectId: this.projectId,
       ...segmentId ? { sessionReplaySegmentId: segmentId } : {},
+      ...pageViewSpanId != null ? { pageViewSpanId } : {},
       ...customParentSpanIds.length > 0 ? { customParentSpanIds } : {},
     };
   }

@@ -1,7 +1,7 @@
 import { getClickhouseAdminClient, stripLoneSurrogates } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
-import { buildCustomSpanRows, buildEventSpanFields, insertSpans, toSpanId, SPAN_ID_PREFIXES } from "@/lib/spans";
+import { buildBatchSpanRows, buildEventSpanFields, insertSpans, toSpanId, SPAN_ID_PREFIXES } from "@/lib/spans";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getHexclaveServerApp } from "@/hexclave";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -10,13 +10,11 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, PAGE_VIEW_SPAN_TYPE, PERMISSIVE_DATA_SYSTEM_EVENT_TYPES, SYSTEM_EVENT_TYPES } from "@hexclave/shared/dist/utils/telemetry";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const SYSTEM_EVENT_TYPES = ["$page-view", "$click"] as const;
 
 const MAX_EVENTS = 500;
 const MAX_SPANS = 500;
@@ -67,7 +65,7 @@ function maybeDecodeBinaryBody(value: unknown): unknown {
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Upload analytics telemetry batch",
-    description: "Uploads a batch of analytics telemetry: auto-captured events ($page-view, $click), custom events, and custom spans.",
+    description: "Uploads a batch of analytics telemetry: auto-captured system events and spans ($page-view, $click, …), custom events, and custom spans.",
     tags: ["Analytics Events"],
     hidden: true,
   },
@@ -107,22 +105,33 @@ export const POST = createSmartRouteHandler({
           event_at_ms: yupNumber().defined().integer().min(0),
           data: yupMixed().defined(),
           // Custom ancestor chain, root-first, raw span uuids. System ancestry
-          // (refresh-token/replay/segment) is composed server-side on top.
+          // (refresh-token/replay/segment/page-view) is composed server-side on top.
           parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).optional().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
+          // The `$page-view` span this event happened on — client tab state the
+          // server cannot derive, so it rides per-item (a batch can straddle a
+          // navigation). Untrusted label, same trust model as the segment id.
+          page_view_span_id: yupString().optional().matches(UUID_RE, "Invalid page_view_span_id"),
         }).defined().test(
           "custom-event-data",
-          `Custom event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
-          // System event data stays permissive for backward compatibility with
-          // deployed trackers; the object/size cap applies to custom types only.
-          (event) => (SYSTEM_EVENT_TYPES as readonly string[]).includes(event.event_type) || isPlainObjectWithinLimit(event.data),
+          `Event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
+          // The two original system event types predate the cap and deployed
+          // trackers may exceed it, so they stay permissive; every later system
+          // type validates like a custom one (see PERMISSIVE_DATA_SYSTEM_EVENT_TYPES).
+          (event) => (PERMISSIVE_DATA_SYSTEM_EVENT_TYPES as readonly string[]).includes(event.event_type) || isPlainObjectWithinLimit(event.data),
         ),
       ).optional().max(MAX_EVENTS),
       spans: yupArray(
         yupObject({
           span_id: yupString().defined().matches(UUID_RE, "Invalid span_id"),
-          // Custom names only — `$…` span types are reserved for system spans
-          // and can never be written through this endpoint.
-          span_type: yupString().defined().matches(CUSTOM_TELEMETRY_NAME_RE, "Invalid span_type"),
+          // Custom names, or the client-writable system autocapture types
+          // ($page-view, $tab-hidden, …). All other `$…` span types are
+          // server-derived and can never be written through this endpoint.
+          span_type: yupString().defined().test(
+            "span-type",
+            `span_type must be one of ${CLIENT_SYSTEM_SPAN_TYPES.join(", ")} or a custom name matching ${CUSTOM_TELEMETRY_NAME_RE}`,
+            // yup skips tests for undefined values, so `value` is always set here.
+            (value) => (CLIENT_SYSTEM_SPAN_TYPES as readonly string[]).includes(value) || CUSTOM_TELEMETRY_NAME_RE.test(value),
+          ),
           started_at_ms: yupNumber().defined().integer().min(0),
           ended_at_ms: yupNumber().nullable().defined().integer().min(0),
           parent_span_ids: yupArray(yupString().defined().matches(UUID_RE, "Invalid parent span id")).defined().max(CUSTOM_TELEMETRY_MAX_PARENT_CHAIN),
@@ -132,10 +141,16 @@ export const POST = createSmartRouteHandler({
             (value) => isPlainObjectWithinLimit(value),
           ),
           updated_at_ms: yupNumber().defined().integer().min(0),
+          // See the event-level page_view_span_id above.
+          page_view_span_id: yupString().optional().matches(UUID_RE, "Invalid page_view_span_id"),
         }).defined().test(
           "span-interval",
           "ended_at_ms must be greater than or equal to started_at_ms",
           (span) => span.ended_at_ms == null || span.ended_at_ms >= span.started_at_ms,
+        ).test(
+          "page-view-span-parent",
+          "A $page-view span must not carry a page_view_span_id, and a span must not name itself as its page_view_span_id",
+          (span) => span.page_view_span_id == null || (span.span_type !== PAGE_VIEW_SPAN_TYPE && span.page_view_span_id !== span.span_id),
         ),
       ).optional().max(MAX_SPANS),
     }).defined().test(
@@ -274,10 +289,17 @@ export const POST = createSmartRouteHandler({
     // billing-wise: if the second debit fails, the first is refunded and the
     // request is rejected, so a partial batch never burns quota.
     //
+    // Only CUSTOM spans are billable. System autocapture spans ($page-view,
+    // $tab-hidden, …) are free — the interaction is already metered via its
+    // event counterpart, and the span_writes usage-measurement MV excludes
+    // `$`-prefixed types, so debiting them here would silently drift quota
+    // away from the usage the customer sees.
+    //
     // Spans are charged at accept time (before the off-path ClickHouse insert).
     // If that insert later fails, the background task refunds the debit — see
     // `spansBillingTeamIdForRefund` below. Captured here so the async path
     // knows whether a debit actually happened (plan limits may be off).
+    const billableSpanCount = spans.filter((span) => !span.span_type.startsWith("$")).length;
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     let eventsBillingTeamIdForRefund: string | null = null;
     let spansBillingTeamIdForRefund: string | null = null;
@@ -290,15 +312,15 @@ export const POST = createSmartRouteHandler({
         }
         eventsBillingTeamIdForRefund = billingTeamId;
       }
-      if (spans.length > 0) {
+      if (billableSpanCount > 0) {
         const spansItem = await app.getItem({ itemId: ITEM_IDS.analyticsSpans, teamId: billingTeamId });
-        const isDebited = await spansItem.tryDecreaseQuantity(spans.length);
+        const isDebited = await spansItem.tryDecreaseQuantity(billableSpanCount);
         if (!isDebited) {
           if (events.length > 0) {
             await refundItem(ITEM_IDS.analyticsEvents, events.length, "analytics-events-span-debit-refund");
             eventsBillingTeamIdForRefund = null;
           }
-          throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsSpans, billingTeamId, spans.length);
+          throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsSpans, billingTeamId, billableSpanCount);
         }
         spansBillingTeamIdForRefund = billingTeamId;
       }
@@ -309,9 +331,10 @@ export const POST = createSmartRouteHandler({
         const clickhouseClient = getClickhouseAdminClient();
 
         // Point each event at its ancestor spans (root-first: refresh-token,
-        // replay, then the per-tab span when a replay exists). The per-tab id
-        // itself already lives in session_replay_segment_id. Custom ancestors
-        // are appended after the system ancestry with the cs- prefix.
+        // replay, then the per-tab span when a replay exists, then the item's
+        // $page-view span when the client named one). The per-tab id itself
+        // already lives in session_replay_segment_id. Custom ancestors are
+        // appended after the system ancestry with the cs- prefix.
         const eventSpanFields = buildEventSpanFields({
           sessionReplayId,
           sessionReplaySegmentId,
@@ -331,6 +354,7 @@ export const POST = createSmartRouteHandler({
           session_replay_segment_id: sessionReplaySegmentId,
           parent_span_ids: [
             ...eventSpanFields.parent_span_ids,
+            ...event.page_view_span_id != null ? [toSpanId(SPAN_ID_PREFIXES.pageView, event.page_view_span_id)] : [],
             ...(event.parent_span_ids ?? []).map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
           ],
         }));
@@ -350,7 +374,7 @@ export const POST = createSmartRouteHandler({
       } catch (error) {
         await Promise.all([
           eventsBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsEvents, events.length, "analytics-events-on-path-refund"),
-          spansBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsSpans, spans.length, "analytics-spans-on-path-refund"),
+          spansBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-spans-on-path-refund"),
         ]);
         throw error;
       }
@@ -369,7 +393,7 @@ export const POST = createSmartRouteHandler({
     if (spans.length > 0) {
       runAsynchronouslyAndWaitUntil(async () => {
         try {
-          const spanRows = buildCustomSpanRows({
+          const spanRows = buildBatchSpanRows({
             spans,
             projectId,
             branchId,
@@ -383,7 +407,7 @@ export const POST = createSmartRouteHandler({
         } catch (error) {
           captureError("analytics-custom-spans-insert", error);
           if (spansBillingTeamIdForRefund != null) {
-            await refundItem(ITEM_IDS.analyticsSpans, spans.length, "analytics-custom-spans-refund");
+            await refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-custom-spans-refund");
           }
         }
       });

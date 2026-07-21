@@ -14,12 +14,16 @@
  * expose ambient request context rather than risking cross-request attribution.
  */
 
-/** The resolved, prefix-free context. Ids are raw uuids; the backend applies `rti-`/`sri-`/`srsi-`/`cs-`. */
+/** The resolved, prefix-free context. Ids are raw uuids; the backend applies `rti-`/`sri-`/`srsi-`/`pv-`/`cs-`. */
 export type ServerRequestSpanContext = {
   userId: string | null,
   refreshTokenId: string | null,
   sessionReplayId: string | null,
   sessionReplaySegmentId: string | null,
+  // The caller's current $page-view span (from the propagation header) —
+  // untrusted label, stamped per-item so backend telemetry nests under the
+  // page the user was on when they triggered this request.
+  pageViewSpanId: string | null,
   customParentSpanIds: string[],
 };
 

@@ -788,7 +788,7 @@ WHERE sync_is_deleted = 0;
 // hardcoded schema in the prompt.
 const COLUMN_COMMENTS: string[] = [
   // ── events ──
-  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known types: \$page-view, \$click, \$token-refresh, \$sign-up-rule-trigger'`,
+  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$page-view, \$click, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger; other values are customer-defined custom events'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
   `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$page-view → {is_anonymous, path, referrer}; \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
   `ALTER TABLE default.events COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,
@@ -799,6 +799,7 @@ const COLUMN_COMMENTS: string[] = [
   `ALTER TABLE default.events COMMENT COLUMN refresh_token_id 'Denormalized from data.refresh_token_id for \$token-refresh events. NULL for other event types'`,
   `ALTER TABLE default.events COMMENT COLUMN session_replay_id 'Session replay identifier for linking to replay recordings'`,
   `ALTER TABLE default.events COMMENT COLUMN session_replay_segment_id 'Segment within a session replay recording'`,
+  `ALTER TABLE default.events COMMENT COLUMN parent_span_ids 'Deduped root-first ancestor span ids, each prefixed by kind: rti- (\$refresh-token), sri- (\$session-replay), srsi- (\$session-replay-segment), pv- (the \$page-view span the event happened on), cs- (customer-defined custom spans). Match rows in default.spans by id'`,
 
   // ── users ──
   `ALTER TABLE default.users COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,

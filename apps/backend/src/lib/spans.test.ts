@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SPAN_ID_PREFIXES, buildCustomSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId } from "./spans";
+import { SPAN_ID_PREFIXES, buildBatchSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId, wireSpanIdPrefix } from "./spans";
 
 describe("toSpanId", () => {
   it("prefixes raw ids without touching the raw value", () => {
@@ -129,7 +129,23 @@ describe("insertSessionReplaySpans", () => {
   });
 });
 
-describe("buildCustomSpanRows", () => {
+describe("wireSpanIdPrefix", () => {
+  it("routes $page-view to pv-, other client system types to sas-, and custom names to cs-", () => {
+    expect(wireSpanIdPrefix("$page-view")).toBe("pv-");
+    expect(wireSpanIdPrefix("$tab-hidden")).toBe("sas-");
+    expect(wireSpanIdPrefix("$window-blur")).toBe("sas-");
+    expect(wireSpanIdPrefix("$offline")).toBe("sas-");
+    expect(wireSpanIdPrefix("checkout-flow")).toBe("cs-");
+  });
+
+  it("asserts on $ types that are not client-writable (server-derived or unknown)", () => {
+    expect(() => wireSpanIdPrefix("$session-replay")).toThrowError(/not a writable system span type/);
+    expect(() => wireSpanIdPrefix("$refresh-token")).toThrowError(/not a writable system span type/);
+    expect(() => wireSpanIdPrefix("$made-up")).toThrowError(/not a writable system span type/);
+  });
+});
+
+describe("buildBatchSpanRows", () => {
   const NOW_MS = new Date("2026-01-01T00:10:00.000Z").getTime();
   const baseOpts = {
     projectId: "p1",
@@ -151,7 +167,7 @@ describe("buildCustomSpanRows", () => {
   };
 
   it("prefixes the span id and every client parent with cs- and prepends the full system ancestry root-first", () => {
-    const rows = buildCustomSpanRows({
+    const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [{
         ...baseSpan,
@@ -170,7 +186,7 @@ describe("buildCustomSpanRows", () => {
   });
 
   it("degrades the system ancestry with the same gating as event rows (refresh-token only, then none)", () => {
-    const refreshTokenOnly = buildCustomSpanRows({
+    const refreshTokenOnly = buildBatchSpanRows({
       ...baseOpts,
       sessionReplayId: null,
       sessionReplaySegmentId: null,
@@ -178,7 +194,7 @@ describe("buildCustomSpanRows", () => {
     });
     expect(refreshTokenOnly[0].parent_span_ids).toEqual(["rti-rt1"]);
 
-    const serverAuth = buildCustomSpanRows({
+    const serverAuth = buildBatchSpanRows({
       ...baseOpts,
       userId: null,
       refreshTokenId: null,
@@ -192,7 +208,7 @@ describe("buildCustomSpanRows", () => {
   });
 
   it("keeps open intervals open and fills identity columns raw (unprefixed)", () => {
-    const rows = buildCustomSpanRows({ ...baseOpts, spans: [baseSpan] });
+    const rows = buildBatchSpanRows({ ...baseOpts, spans: [baseSpan] });
     expect(rows[0]).toMatchObject({
       span_type: "checkout-flow",
       span_ended_at: null,
@@ -208,7 +224,7 @@ describe("buildCustomSpanRows", () => {
   });
 
   it("uses the client updated_at_ms as the version, clamped to [1, now + 5min]", () => {
-    const rows = buildCustomSpanRows({
+    const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [
         { ...baseSpan, updated_at_ms: NOW_MS - 1_000 },
@@ -222,7 +238,7 @@ describe("buildCustomSpanRows", () => {
   });
 
   it("serializes data to a JSON string and strips lone surrogates (ClickHouse rejects them)", () => {
-    const rows = buildCustomSpanRows({
+    const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, data: { label: "truncated \uD83D", count: 3 } }],
     });
@@ -231,7 +247,7 @@ describe("buildCustomSpanRows", () => {
 
   it("closes the interval when ended_at_ms is set", () => {
     const endedAtMs = NOW_MS - 30_000;
-    const rows = buildCustomSpanRows({
+    const rows = buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, ended_at_ms: endedAtMs, updated_at_ms: endedAtMs }],
     });
@@ -239,10 +255,53 @@ describe("buildCustomSpanRows", () => {
     expect(rows[0].version).toBe(endedAtMs);
   });
 
-  it("refuses $-prefixed span types even if a caller bypasses the route schema", () => {
-    expect(() => buildCustomSpanRows({
+  it("refuses non-client-writable $-prefixed span types even if a caller bypasses the route schema", () => {
+    expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$session-replay" }],
-    })).toThrowError(/must not start with "\$"/);
+    })).toThrowError(/not a writable system span type/);
+  });
+
+  it("prefixes a $page-view span id with pv- and other system autocapture spans with sas-", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [
+        { ...baseSpan, span_type: "$page-view" },
+        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$tab-hidden" },
+      ],
+    });
+    expect(rows[0].id).toBe(`pv-${baseSpan.span_id}`);
+    expect(rows[0].span_type).toBe("$page-view");
+    expect(rows[1].id).toBe("sas-0f000000-0000-4000-8000-000000000002");
+    expect(rows[1].span_type).toBe("$tab-hidden");
+  });
+
+  it("inserts the pv- ancestor between the system ancestry and the custom chain", () => {
+    const rows = buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{
+        ...baseSpan,
+        page_view_span_id: "0f000000-0000-4000-8000-00000000cccc",
+        parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"],
+      }],
+    });
+    expect(rows[0].parent_span_ids).toEqual([
+      "rti-rt1",
+      "sri-replay1",
+      "srsi-replay1:seg1",
+      "pv-0f000000-0000-4000-8000-00000000cccc",
+      "cs-0f000000-0000-4000-8000-00000000aaaa",
+    ]);
+  });
+
+  it("refuses a $page-view span that carries a page_view_span_id, and a span naming itself as its page", () => {
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, span_type: "$page-view", page_view_span_id: "0f000000-0000-4000-8000-00000000cccc" }],
+    })).toThrowError(/must not itself carry a page_view_span_id/);
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, span_type: "$tab-hidden", page_view_span_id: baseSpan.span_id }],
+    })).toThrowError(/must not name itself/);
   });
 });
