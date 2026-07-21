@@ -1,8 +1,8 @@
 -- Maintained per-tab segment bounds (min firstEventAt / max lastEventAt), updated
 -- O(1) per replay batch via LEAST/GREATEST upsert instead of re-aggregating over
--- the segment's chunks on every upload. New empty table, so no batching/backfill
--- sentinels are needed; pre-existing segments are lazily seeded from their chunks
--- on the first post-deploy batch (see upsertSessionReplaySegmentBounds).
+-- the segment's chunks on every upload. New empty table — no historical backfill.
+-- Bounds for a segment appear on the first post-deploy batch that touches it
+-- (see upsertSessionReplaySegmentBounds).
 
 -- CreateTable
 CREATE TABLE "SessionReplaySegment" (
