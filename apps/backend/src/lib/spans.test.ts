@@ -32,9 +32,12 @@ describe("buildEventSpanFields", () => {
     });
   });
 
-  it("omits the segment parent when there is no replay (segment spans only exist under a replay)", () => {
+  it("still parents under the segment when the replay id is unresolved (event/replay batch race)", () => {
+    // Client mints session_replay_segment_id at tab start; the first analytics
+    // flush can beat findRecentSessionReplay. Stamp srsi- anyway so Traces can
+    // attach once the segment span lands.
     expect(buildEventSpanFields({ sessionReplayId: null, sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
-      parent_span_ids: ["rti-r1"],
+      parent_span_ids: ["rti-r1", "srsi-seg1"],
     });
   });
 

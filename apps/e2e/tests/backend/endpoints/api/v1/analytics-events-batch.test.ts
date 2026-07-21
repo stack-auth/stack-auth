@@ -6,10 +6,10 @@ import { gzipSync } from "node:zlib";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import {
-  getItemQuantity,
-  setItemQuantity,
-  waitForItemQuantityToReach,
-  waitForItemQuantityToStabilize,
+    getItemQuantity,
+    setItemQuantity,
+    waitForItemQuantityToReach,
+    waitForItemQuantityToStabilize,
 } from "../../../payment-quota-helpers";
 
 async function uploadEventBatch(options: {
@@ -1130,7 +1130,9 @@ it("does not derive a fallback replay from another user when server auth supplie
   expect(row.user_id).toBe(secondUser.userId);
   expect(row.refresh_token_id).toBe(refreshTokenId);
   expect(row.session_replay_id).toBeNull();
-  expect(row.parent_span_ids).toEqual([`rti-${refreshTokenId}`]);
+  // Segment id is still stamped even when the replay cannot be resolved (here the
+  // forwarded refresh token belongs to a different user than the batch's user_id).
+  expect(row.parent_span_ids).toEqual([`rti-${refreshTokenId}`, `srsi-${serverSegmentId}`]);
   expect(firstUser.userId).not.toBe(secondUser.userId);
 });
 

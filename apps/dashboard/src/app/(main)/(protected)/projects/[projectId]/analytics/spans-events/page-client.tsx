@@ -49,7 +49,18 @@ LEFT ANY JOIN default.users AS u
   ON s.project_id = u.project_id
   AND s.branch_id = u.branch_id
   AND s.user_id = toString(u.id)
-WHERE s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+WHERE
+  -- Normal spans: started in the window.
+  s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+  -- $refresh-token spans use token created_at as span_started_at, which is often
+  -- older than the window even while the session is live. Keep tokens that are
+  -- still open or that ended inside the window so $page-view/$click parented
+  -- only under rti-… (event batch raced ahead of the first replay batch) remain
+  -- attachable in the waterfall.
+  OR (
+    s.span_type = '$refresh-token'
+    AND (s.span_ended_at IS NULL OR s.span_ended_at >= now64(3) - INTERVAL {hours:UInt32} HOUR)
+  )
 ORDER BY s.span_started_at DESC
 LIMIT 3000
 `;

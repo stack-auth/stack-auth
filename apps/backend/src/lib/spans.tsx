@@ -50,10 +50,17 @@ export function toSpanId<P extends SpanIdPrefix>(prefix: P, rawId: string): `${P
  * The `parent_span_ids` an event insert stamps on each row — the full, deduped
  * list of ancestor spans the server can name, root-first: refresh-token, then the
  * session-replay span (via the server-resolved `session_replay_id`), then the
- * per-tab `$session-replay-segment` span (only when a replay exists, since that span
- * is written under a replay). Parent links are logical ancestry, not FK-guaranteed
- * rows; the list always contains a higher-level ancestor even if the segment span was
- * never written (recording off). The per-tab id is carried in `session_replay_segment_id`.
+ * per-tab `$session-replay-segment` span.
+ *
+ * The segment id is included whenever the client sent one, even if we have not
+ * yet resolved `session_replay_id`. Event batches and replay batches flush on
+ * independent timers; the client mints `session_replay_segment_id` at tab start,
+ * so an early `$page-view` can land before `findRecentSessionReplay` sees a row.
+ * Parent links are logical ancestry, not FK-guaranteed — stamping `srsi-…` here
+ * lets the Traces UI attach that event to the segment span once the first replay
+ * batch writes it. Omitting it left those events parented only under
+ * `$refresh-token`, which often falls outside the Traces time window (token
+ * `created_at` can be days old), so `$page-view`/`$click` looked "missing".
  */
 export function buildEventSpanFields(opts: {
   sessionReplayId?: string | null,
@@ -67,7 +74,7 @@ export function buildEventSpanFields(opts: {
   if (opts.sessionReplayId) {
     parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.sessionReplayId));
   }
-  if (opts.sessionReplayId && opts.sessionReplaySegmentId) {
+  if (opts.sessionReplaySegmentId) {
     parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, opts.sessionReplaySegmentId));
   }
   return { parent_span_ids: parentSpanIds };

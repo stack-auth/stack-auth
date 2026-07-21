@@ -1461,11 +1461,22 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         }
       });
     } else {
-      const oldValue = this._storedBrowserCookieTokenStore.get();
-      const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
-      if (!deepPlainEquals(currentValue, oldValue)) {
-        this._storedBrowserCookieTokenStore.set(currentValue);
-      }
+      // This getter runs during React renders (via _useTokenStore → useUser etc.), so we must not call
+      // Store.set() synchronously here: set() synchronously notifies subscribers, and useSyncExternalStore
+      // subscribers react by scheduling re-renders on *other* mounted components, which triggers React's
+      // "Cannot update a component while rendering a different component" error (it would also write
+      // cookies as a render side effect via the onChange handler above). Instead, we defer the
+      // cookie-drift check to a microtask; the returned store may be one microtask stale, but subscribers
+      // are notified as soon as it runs — the same mechanism as the 100ms polling interval above, just
+      // faster. The equality re-check inside makes duplicate queued microtasks no-ops.
+      const store = this._storedBrowserCookieTokenStore;
+      queueMicrotask(() => {
+        const oldValue = store.get();
+        const currentValue = this._getCurrentBrowserCookieTokenStoreValue(oldValue);
+        if (!deepPlainEquals(currentValue, oldValue)) {
+          store.set(currentValue);
+        }
+      });
     }
 
     return this._storedBrowserCookieTokenStore;
