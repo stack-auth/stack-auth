@@ -189,6 +189,28 @@ type TimelineMarker = {
   label: string,
 };
 
+const TIMELINE_EVENT_LABELS = new Map([
+  ["$copy", "Copy"],
+  ["$cut", "Cut"],
+  ["$paste", "Paste"],
+  ["$context-menu", "Context menu"],
+  ["$print", "Print"],
+  ["$fullscreen-exit", "Fullscreen exit"],
+]);
+
+const TIMELINE_MARKER_CLASS_NAMES = new Map([
+  ["$click", "bg-blue-500/70 hover:bg-blue-400"],
+  ["$page-view", "bg-emerald-500/70 hover:bg-emerald-400"],
+  ["$form-submit", "bg-amber-500/70 hover:bg-amber-400"],
+  ["$window-resize", "bg-sky-500/70 hover:bg-sky-400"],
+  ["$copy", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$cut", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$paste", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$context-menu", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$print", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$fullscreen-exit", "bg-violet-500/70 hover:bg-violet-400"],
+]);
+
 function formatEventTooltip(event: TimelineEvent): string {
   const d = event.data;
   switch (event.eventType) {
@@ -212,44 +234,15 @@ function formatEventTooltip(event: TimelineEvent): string {
       if (typeof w === "number" && typeof h === "number") return `Resize ${w}×${h}`;
       return "Window resize";
     }
-    case "$copy":
-      return "Copy";
-    case "$cut":
-      return "Cut";
-    case "$paste":
-      return "Paste";
-    case "$context-menu":
-      return "Context menu";
-    case "$print":
-      return "Print";
-    case "$fullscreen-exit":
-      return "Fullscreen exit";
-    default:
-      return event.eventType;
+    default: {
+      return TIMELINE_EVENT_LABELS.get(event.eventType) ?? event.eventType;
+    }
   }
 }
 
 function markerClassName(eventType: string): string {
-  switch (eventType) {
-    case "$click":
-      return "bg-blue-500/70 hover:bg-blue-400";
-    case "$page-view":
-      return "bg-emerald-500/70 hover:bg-emerald-400";
-    case "$form-submit":
-      return "bg-amber-500/70 hover:bg-amber-400";
-    case "$window-resize":
-      return "bg-sky-500/70 hover:bg-sky-400";
-    case "$copy":
-    case "$cut":
-    case "$paste":
-    case "$context-menu":
-    case "$print":
-    case "$fullscreen-exit":
-      return "bg-violet-500/70 hover:bg-violet-400";
-    default:
-      // Custom events (and any future system types) share a neutral marker.
-      return "bg-zinc-500/70 hover:bg-zinc-400";
-  }
+  // Custom events (and any future system types) share a neutral marker.
+  return TIMELINE_MARKER_CLASS_NAMES.get(eventType) ?? "bg-zinc-500/70 hover:bg-zinc-400";
 }
 
 function DisplayDate({ date }: { date: Date }) {
