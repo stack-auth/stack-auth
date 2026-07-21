@@ -37,6 +37,8 @@ export type AutomationRuleConfig = {
   cooldown: {
     days?: number,
   },
+  // Runtime config remains broad until scheduler admission validates and narrows cadence.
+  // Manual Send and Dry Run intentionally do not reject rules based on scheduled cadence.
   schedule?: {
     cadence?: string,
   },
@@ -58,9 +60,6 @@ export type PaymentsItemQuotaAutomationRule = AutomationRuleConfig & {
   },
   cooldown: {
     days: number,
-  },
-  schedule?: {
-    cadence?: string,
   },
 };
 

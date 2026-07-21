@@ -142,8 +142,10 @@ export function createPrismaAutomationSchedulerStateStore(options: {
         async completeRuleEvaluation(completion) {
           assertActive();
           assertActiveRuleCheckpointInvariant(completion.checkpoint);
-          const completionNow = now();
           await retryTransaction(options.prisma, async (tx) => {
+            // Each transaction retry must fence against its own start time. Reusing the first
+            // attempt's timestamp could allow a later retry to commit after the lease expires.
+            const completionNow = now();
             const checkpointResult = await tx.automationSchedulerState.updateMany({
               where: {
                 key: automationSchedulerStateKey,

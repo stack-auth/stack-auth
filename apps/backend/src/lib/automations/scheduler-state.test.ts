@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   automationSchedulerStateKey,
   createPrismaAutomationSchedulerStateStore,
@@ -65,7 +65,18 @@ function createFakePrisma(options: {
       },
     },
     async $transaction(callback: (tx: unknown) => Promise<unknown>) {
-      return await callback(prisma);
+      const stateBeforeTransaction = state === null ? null : { ...state };
+      const scheduleStatesBeforeTransaction = new Map(scheduleStates);
+      try {
+        return await callback(prisma);
+      } catch (error) {
+        state = stateBeforeTransaction;
+        scheduleStates.clear();
+        for (const [key, value] of scheduleStatesBeforeTransaction) {
+          scheduleStates.set(key, value);
+        }
+        throw error;
+      }
     },
   };
 
@@ -87,6 +98,10 @@ function createClock(initial: string) {
 }
 
 describe("Prisma automation scheduler state store", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("allows only one concurrent lease acquisition", async () => {
     const fake = createFakePrisma();
     const clock = createClock("2026-07-17T12:00:00.000Z");
@@ -234,5 +249,34 @@ describe("Prisma automation scheduler state store", () => {
       completedRuleCursor: "usage-upgrade",
     });
     expect(fake.getScheduleState(tenancyId, "usage-upgrade")).toEqual(startedAt);
+  });
+
+  it("checks lease expiry against each transaction retry's start time", async () => {
+    const fake = createFakePrisma();
+    const startedAt = new Date("2026-07-21T12:00:00.000Z");
+    const retryTimes = [
+      startedAt,
+      new Date(startedAt.getTime() + 500),
+      new Date(startedAt.getTime() + 1_001),
+    ];
+    const now = vi.fn(() => retryTimes.shift() ?? new Date(startedAt.getTime() + 1_001));
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const lease = await createPrismaAutomationSchedulerStateStore({
+      prisma: fake.prisma,
+      now,
+      ownerId: () => "00000000-0000-4000-8000-000000000001",
+      leaseDurationMs: 1_000,
+      renewalThresholdMs: 250,
+    }).acquire();
+
+    await expect(lease!.completeRuleEvaluation({
+      checkpoint: emptyCheckpoint,
+      tenancyId: "00000000-0000-4000-8000-000000000010",
+      ruleId: "usage-upgrade",
+      evaluationStartedAt: startedAt,
+    })).rejects.toThrow("lease was lost or expired");
+
+    expect(now).toHaveBeenCalledTimes(3);
+    expect(fake.getScheduleState("00000000-0000-4000-8000-000000000010", "usage-upgrade")).toBeUndefined();
   });
 });
