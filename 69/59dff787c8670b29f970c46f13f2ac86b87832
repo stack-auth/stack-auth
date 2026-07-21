@@ -1,0 +1,27 @@
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_5dc76ef9133451::t_00328a8f7f6483 14,161,177-180,183-187,189-194,196-206,208-209,211-216,218-252,254-258,269-271,287,290-291,306-307
+apps/backend/src/lib/spans.tsx
+  s_5dc76ef9133451::t_00328a8f7f6483 50-58,81,240,280
+  s_5dc76ef9133451::t_b893b52de2e473 49
+apps/backend/src/lib/spans.test.ts
+  s_5dc76ef9133451::t_00328a8f7f6483 28-36,40,113
+  s_5dc76ef9133451::t_a8b62edf93a8d7 2
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_5dc76ef9133451::t_00328a8f7f6483 3,5-6,11-35,165-176,204-214,269-270
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6959dff787c8670b29f970c46f13f2ac86b87832",
+  "prompts": {},
+  "sessions": {
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
