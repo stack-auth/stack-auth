@@ -1,0 +1,26 @@
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_ab2b6b8a3caaa2::t_6a43bbcc6ee969 176-182
+  s_ab2b6b8a3caaa2::t_9ee49e185d5bfa 257,260
+  s_ab2b6b8a3caaa2::t_5d8c1761f535a7 171-175,183-185,242-256,258
+  s_ab2b6b8a3caaa2::t_be4e3e7c2a2231 213-237,239-241
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_ab2b6b8a3caaa2::t_6a43bbcc6ee969 262,264-265
+  s_ab2b6b8a3caaa2::t_ec4643dc565619 263
+  s_ab2b6b8a3caaa2::t_5d8c1761f535a7 229-261,266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "a95e7e46b081842643d11f5f3b9a1ea349669493",
+  "prompts": {},
+  "sessions": {
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
