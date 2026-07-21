@@ -6,6 +6,7 @@ import { CaretRightIcon, ChartLineIcon, ClockIcon, CornersOutIcon, KeyboardIcon,
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatDuration,
+  getTraceScaleEnd,
   isSystemSpanType,
   panViewWindow,
   zoomViewWindow,
@@ -152,7 +153,7 @@ export function TraceWaterfall({
   // interval ends render as a fading stub instead. The epsilon keeps
   // zero-length traces from dividing by zero.
   const scaleStart = trace.startMs;
-  const scaleEnd = Math.max(Math.min(trace.endMs ?? trace.latestMs, nowMs), scaleStart + 1);
+  const scaleEnd = getTraceScaleEnd(trace, nowMs);
   const totalSpanMs = scaleEnd - scaleStart;
   const viewStartMs = scaleStart + view.start * totalSpanMs;
   const viewSpanMs = Math.max((view.end - view.start) * totalSpanMs, 1e-9);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraces, flattenTrace, formatDuration, isSystemSpanType, panViewWindow, rerootTrace, subtreeMatches, traceNodePath, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
+import { buildTraces, flattenTrace, formatDuration, getTraceScaleEnd, isSystemSpanType, panViewWindow, rerootTrace, subtreeMatches, traceNodePath, zoomViewWindow, type EventInput, type SpanInput } from "./trace-utils";
 
 function span(id: string, opts: Partial<SpanInput> = {}): SpanInput {
   return {
@@ -117,6 +117,8 @@ describe("buildTraces", () => {
         }
       }
     }
+    expect(traces).toHaveLength(1);
+    expect(seen).toEqual(new Set(["x", "y"]));
   });
 
   it("dedupes duplicate span ids, keeping the first occurrence", () => {
@@ -127,6 +129,18 @@ describe("buildTraces", () => {
     const { traces } = buildTraces(spans, []);
     expect(traces).toHaveLength(1);
     expect(traces[0].root.span.spanType).toBe("kept");
+  });
+});
+
+describe("getTraceScaleEnd", () => {
+  it("extends an open trace through now even when its latest observation is at the start", () => {
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: null }, 10_000)).toBe(10_000);
+  });
+
+  it("uses a closed end, clamps future ends to now, and preserves a non-zero scale", () => {
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 5000 }, 10_000)).toBe(5000);
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 50_000 }, 10_000)).toBe(10_000);
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 1000 }, 10_000)).toBe(1001);
   });
 });
 

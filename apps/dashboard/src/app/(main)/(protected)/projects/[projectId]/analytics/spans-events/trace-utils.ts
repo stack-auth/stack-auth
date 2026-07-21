@@ -1,6 +1,8 @@
 // Pure trace-tree construction for the Spans & Events page. Operates on
 // already-parsed rows (epoch ms, not ClickHouse date strings) so the module
-// stays dependency-free and unit-testable.
+// stays focused and unit-testable.
+
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export type SpanInput = {
   id: string,
@@ -73,6 +75,11 @@ export function panViewWindow(view: ViewWindow, deltaFrac: number): ViewWindow {
   return { start, end: start + span };
 }
 
+/** Timeline end clamped to now; an open trace continues through now. */
+export function getTraceScaleEnd(trace: Pick<Trace, "startMs" | "endMs">, nowMs: number): number {
+  return Math.max(Math.min(trace.endMs ?? nowMs, nowMs), trace.startMs + 1);
+}
+
 /**
  * The parent a row renders under is its nearest ANCESTOR THAT WAS FETCHED, not
  * its literal last parent id — intermediate spans can fall outside the queried
@@ -93,10 +100,50 @@ export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces:
     if (!byId.has(span.id)) byId.set(span.id, span);
   }
 
+  // Each span has at most one nearest fetched parent. Hand-crafted input can
+  // still form a cycle, so deterministically cut one edge per cycle before
+  // constructing children; otherwise a fully cyclic component has no root and
+  // silently disappears from the UI.
+  const parentOf = new Map<string, string | null>();
+  for (const span of byId.values()) {
+    parentOf.set(span.id, nearestFetchedAncestor(span.parentSpanIds, byId, span.id));
+  }
+  const resolved = new Set<string>();
+  for (const span of byId.values()) {
+    if (resolved.has(span.id)) continue;
+    const path: string[] = [];
+    const indexInPath = new Map<string, number>();
+    let currentId: string | null = span.id;
+    while (currentId != null && !resolved.has(currentId)) {
+      const cycleStart = indexInPath.get(currentId);
+      if (cycleStart !== undefined) {
+        const cycleIds = path.slice(cycleStart);
+        cycleIds.sort((leftId, rightId) => {
+          const left = byId.get(leftId);
+          const right = byId.get(rightId);
+          if (left == null || right == null) {
+            throw new Error("Cycle detection referenced a span outside the fetched span map");
+          }
+          return left.startMs - right.startMs || stringCompare(left.id, right.id);
+        });
+        const cycleRootId = cycleIds.at(0);
+        if (cycleRootId == null) {
+          throw new Error("Cycle detection found an empty cycle");
+        }
+        parentOf.set(cycleRootId, null);
+        break;
+      }
+      indexInPath.set(currentId, path.length);
+      path.push(currentId);
+      currentId = parentOf.get(currentId) ?? null;
+    }
+    for (const id of path) resolved.add(id);
+  }
+
   const childrenOf = new Map<string, SpanInput[]>();
   const roots: SpanInput[] = [];
   for (const span of byId.values()) {
-    const parentId = nearestFetchedAncestor(span.parentSpanIds, byId, span.id);
+    const parentId = parentOf.get(span.id) ?? null;
     if (parentId == null) {
       roots.push(span);
     } else {
@@ -120,8 +167,7 @@ export function buildTraces(spans: SpanInput[], events: EventInput[]): { traces:
   }
 
   const traces = roots.map((rootSpan) => {
-    // Cycle guard: hand-crafted parent ids could form a loop; a span may only
-    // appear once per trace.
+    // Defense in depth for malformed input: a span may only appear once per trace.
     const visited = new Set<string>();
 
     const buildNode = (span: SpanInput, depth: number): TraceNode => {
