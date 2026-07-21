@@ -1,0 +1,30 @@
+apps/backend/src/lib/spans.test.ts
+  s_5dc76ef9133451::t_a20698eb595466 44,46
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.test.ts
+  s_5dc76ef9133451::t_1b84131c19aaf5 2,120-121,135-144
+  s_5dc76ef9133451::t_e0435b203af8a4 145-146
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.ts
+  s_5dc76ef9133451::t_0d238a7300af6f 3
+  s_5dc76ef9133451::t_df981ba024df48 124-126,130-133
+  s_5dc76ef9133451::t_a20698eb595466 78-82,103-123,128,134-142,146,170
+  s_5dc76ef9133451::t_79a3ec31e73212 5,127,129
+  s_5dc76ef9133451::t_b353aa6a00e8a5 4
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/waterfall.tsx
+  s_5dc76ef9133451::t_1b84131c19aaf5 9,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a5a907d7560acf55fae5cced601bf2c7aced7610",
+  "prompts": {},
+  "sessions": {
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
