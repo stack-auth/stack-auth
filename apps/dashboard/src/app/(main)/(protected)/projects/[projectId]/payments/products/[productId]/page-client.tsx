@@ -46,7 +46,6 @@ import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, 
 import { CreateCheckoutDialog } from "@/components/payments/create-checkout-dialog";
 import type { CustomerType } from "@/components/payments/customer-selector";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
-import type { Transaction, TransactionEntry } from "@hexclave/shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@hexclave/shared/dist/utils/dates";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { prettyPrintWithMagnitudes } from "@hexclave/shared/dist/utils/numbers";
@@ -64,6 +63,7 @@ import {
   type EditingPrice,
 } from "../price-edit-dialog";
 import { createFreePrice, DEFAULT_INTERVAL_UNITS, generateUniqueId, intervalLabel, isFreePrices, shortIntervalLabel, type Price, type Product } from "../utils";
+import { deriveProductCustomers } from "./product-customers";
 
 const CUSTOMER_TYPE_COLORS = {
   user: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/30',
@@ -1488,9 +1488,10 @@ type ProductCustomersSectionProps = {
   product: Product,
 };
 
-function isProductGrantEntry(entry: TransactionEntry): entry is Extract<TransactionEntry, { type: 'product_grant' }> {
-  return entry.type === 'product_grant';
-}
+// Bulldozer clamps a single transactions page to 200. We scope the fetch to the
+// product's own customer type (see below), so 200 recent same-type transactions
+// is plenty for typical projects; `truncated` surfaces when it isn't.
+const PRODUCT_CUSTOMERS_TRANSACTION_CAP = 200;
 
 type CustomerGridRow = {
   key: string,
@@ -1501,47 +1502,27 @@ type CustomerGridRow = {
 
 function ProductCustomersSection({ productId, product }: ProductCustomersSectionProps) {
   const adminApp = useAdminApp();
-  const { transactions } = adminApp.useTransactions({ limit: 100 });
+  // Scope the fetch to the product's own customer type. Without this we'd fetch
+  // the most recent N transactions across *all* customer types; on projects with
+  // many user transactions, team/custom purchases get crowded out of that window
+  // and their products show zero customers.
+  const { transactions, nextCursor } = adminApp.useTransactions({
+    limit: PRODUCT_CUSTOMERS_TRANSACTION_CAP,
+    customerType: product.customerType as CustomerType,
+  });
+  const truncated = nextCursor != null;
 
-  const customersWithTransactions = useMemo(() => {
-    const customerMap = new Map<string, {
-      customerType: string,
-      customerId: string,
-      latestTransaction: Transaction,
-    }>();
-
-    for (const transaction of transactions) {
-      if (transaction.type !== 'purchase') continue;
-
-      const productGrant = transaction.entries.find(isProductGrantEntry);
-      if (!productGrant || productGrant.product_id !== productId) continue;
-
-      const customerEntry = transaction.entries.find(e => 'customer_type' in e && 'customer_id' in e) as { customer_type: string, customer_id: string } | undefined;
-      if (!customerEntry) continue;
-
-      const key = `${customerEntry.customer_type}:${customerEntry.customer_id}`;
-      const existing = customerMap.get(key);
-
-      if (!existing || transaction.created_at_millis > existing.latestTransaction.created_at_millis) {
-        customerMap.set(key, {
-          customerType: customerEntry.customer_type,
-          customerId: customerEntry.customer_id,
-          latestTransaction: transaction,
-        });
-      }
-    }
-
-    return Array.from(customerMap.values()).sort(
-      (a, b) => b.latestTransaction.created_at_millis - a.latestTransaction.created_at_millis
-    );
-  }, [transactions, productId]);
+  const customersWithTransactions = useMemo(
+    () => deriveProductCustomers(transactions, productId),
+    [transactions, productId],
+  );
 
   const gridRows = useMemo<CustomerGridRow[]>(
-    () => customersWithTransactions.map(({ customerType, customerId, latestTransaction }) => ({
+    () => customersWithTransactions.map(({ customerType, customerId, latestGrantMillis }) => ({
       key: `${customerType}:${customerId}`,
       customerType,
       customerId,
-      purchasedAt: new Date(latestTransaction.created_at_millis),
+      purchasedAt: new Date(latestGrantMillis),
     })),
     [customersWithTransactions],
   );
@@ -1616,8 +1597,13 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       <div className="px-5 pt-4 pb-3">
         <h3 className="text-base font-semibold">Customers</h3>
         <p className="text-sm text-muted-foreground">
-          Customers who have purchased this product ({customersWithTransactions.length} found)
+          Customers who have purchased this product ({customersWithTransactions.length}{truncated ? "+" : ""} found)
         </p>
+        {truncated && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Showing customers from the most recent {PRODUCT_CUSTOMERS_TRANSACTION_CAP.toLocaleString()} transactions. Older history is excluded.
+          </p>
+        )}
       </div>
       <div className="px-5 pb-5">
         {customersWithTransactions.length === 0 ? (
@@ -1667,8 +1653,8 @@ function CustomerRowActions({ customerType, customerId }: { customerType: string
 }
 
 // TODO(ui-fixes-minor): This component calls `adminApp.useUser(userId)` once
-// per row. With the customer grid capped at 100 rows via `useTransactions`,
-// that's 100 individual user fetches on the product detail page. Consider
+// per row. With the customer grid derived from a capped `useTransactions` fetch,
+// that's up to one individual user fetch per row on the product detail page. Consider
 // hoisting to a parent-level `adminApp.useUsers({ ids: [...] })` (when the
 // SDK grows that capability) and passing a `Map<userId, user>` down so the
 // cell is a pure lookup. Same applies to `TeamCell` below.
