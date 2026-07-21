@@ -40,6 +40,7 @@ import {
   StackIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
+import { getInputDatetimeLocalString } from "@hexclave/shared/dist/utils/dates";
 import { useId, useMemo, useState } from "react";
 import { generateShortId, PercentField } from "./shared";
 
@@ -61,7 +62,7 @@ const CUSTOM_ATTRIBUTE_OPTION = "__custom__";
 
 export type FlagEditorProps = {
   mode: "create" | "edit",
-  /** Fixed flag key in edit mode; ignored in create mode. */
+  /** Initial public key in edit mode; ignored in create mode. */
   fixedFlagKey?: string,
   initialFlag: FlagConfig,
   section: FeatureFlagsSection,
@@ -80,22 +81,22 @@ export function FlagEditor(props: FlagEditorProps) {
 
   const update = (patch: Partial<FlagConfig>) => setDraft((current) => ({ ...current, ...patch }));
 
-  const keyError = props.mode === "create" && flagKey.length > 0 ? validateFlagKey(flagKey) : null;
-  const keyTakenError = props.mode === "create" && props.section.flags.has(flagKey)
+  const keyError = flagKey.length > 0 ? validateFlagKey(flagKey) : null;
+  const keyTakenError = props.section.flags.has(flagKey) && (props.mode === "create" || flagKey !== props.fixedFlagKey)
     ? "A flag with this key already exists." : null;
 
   const validationErrors = useMemo(() => {
-    const errors = validateFlagConfig(props.mode === "create" ? flagKey : props.fixedFlagKey ?? flagKey, draft, props.section);
+    const errors = validateFlagConfig(flagKey, draft, props.section);
     if (keyTakenError != null) errors.push(keyTakenError);
     return errors;
-  }, [draft, flagKey, keyTakenError, props.fixedFlagKey, props.mode, props.section]);
+  }, [draft, flagKey, keyTakenError, props.section]);
 
   const changeSummary = useMemo(
     () => summarizeChanges(props.initialFlag, draft, props.mode),
     [props.initialFlag, draft, props.mode],
   );
 
-  const hasChanges = props.mode === "create" || changeSummary.length > 0;
+  const hasChanges = props.mode === "create" || changeSummary.length > 0 || flagKey !== props.fixedFlagKey;
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,17 +119,14 @@ export function FlagEditor(props: FlagEditorProps) {
               size="sm"
               className="font-mono"
               placeholder="checkout-redesign"
-              value={props.mode === "edit" ? props.fixedFlagKey ?? "" : flagKey}
-              disabled={props.mode === "edit"}
+              value={flagKey}
               aria-invalid={keyError != null || keyTakenError != null}
               onChange={(event) => setFlagKey(event.target.value)}
             />
-            {props.mode === "edit" ? (
-              <span className="text-xs text-muted-foreground">Keys are permanent — SDKs reference them directly.</span>
-            ) : (keyError ?? keyTakenError) != null ? (
+            {(keyError ?? keyTakenError) != null ? (
               <span className="text-xs text-red-600 dark:text-red-400">{keyError ?? keyTakenError}</span>
             ) : (
-              <span className="text-xs text-muted-foreground">Lowercase letters, digits, and dashes. Used by SDKs; cannot be changed later.</span>
+              <span className="text-xs text-muted-foreground">Lowercase letters, digits, and dashes. Renaming changes the SDK lookup key but preserves the flag&apos;s history.</span>
             )}
           </div>
           <div className="flex flex-col gap-1 sm:col-span-2">
@@ -463,7 +461,7 @@ export function FlagEditor(props: FlagEditorProps) {
               size="sm"
               disabled={validationErrors.length > 0}
               onClick={async () => {
-                await props.onPublish(props.mode === "create" ? flagKey : props.fixedFlagKey ?? flagKey, draft);
+                await props.onPublish(flagKey, draft);
                 setReviewOpen(false);
               }}
             >
@@ -953,8 +951,15 @@ function ConditionRow(props: {
           type={metadata.valueKind === "datetime" ? "datetime-local" : "text"}
           inputMode={metadata.valueKind === "number" ? "decimal" : undefined}
           placeholder={metadata.valueKind === "semver" ? "1.2.3" : metadata.valueKind === "number" ? "42" : "value"}
-          value={props.condition.value ?? ""}
-          onChange={(event) => props.onChange({ ...props.condition, value: event.target.value })}
+          value={metadata.valueKind === "datetime" && props.condition.value != null
+            ? getInputDatetimeLocalString(new Date(props.condition.value))
+            : props.condition.value ?? ""}
+          onChange={(event) => props.onChange({
+            ...props.condition,
+            value: metadata.valueKind === "datetime" && event.target.value.length > 0
+              ? new Date(event.target.value).toISOString()
+              : event.target.value,
+          })}
         />
       )}
       {metadata.arity === "list" && (
@@ -1018,6 +1023,7 @@ export function createEmptyFlagDraft(nowMillis: number): FlagConfig {
   const enabledVariantId = generateShortId("variant");
   const disabledVariantId = generateShortId("variant");
   return {
+    internalId: generateShortId("flag"),
     displayName: "",
     description: "",
     type: "boolean",

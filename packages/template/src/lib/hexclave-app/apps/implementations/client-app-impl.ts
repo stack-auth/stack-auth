@@ -41,7 +41,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import React, { useCallback, useEffect, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
 import { constructRedirectUrl } from "../../../../utils/url";
@@ -265,7 +265,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _eventTracker: EventTracker | null = null;
   protected readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
     evaluate: async (identity, request) => await this._interface.evaluateFeatureFlags(request, identity.session),
-    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ exposures }, identity.session),
+    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ batch_id: generateUuid(), exposures }, identity.session),
+    cacheTtlMillis: 30_000,
   });
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
@@ -3320,15 +3321,27 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   getFeatureFlag<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<T> {
-    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlag(identity, key, fallback, options));
+    return this._getFeatureFlagIdentity().then(async (identity) => {
+      const value = await this._featureFlags.getFeatureFlag(identity, key, fallback, options);
+      this._eventTracker?.setTeamContext(options?.teamId ?? null);
+      return value;
+    });
   }
 
   getFeatureFlagDetails<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<FeatureFlagDetails<T>> {
-    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlagDetails(identity, key, fallback, options));
+    return this._getFeatureFlagIdentity().then(async (identity) => {
+      const details = await this._featureFlags.getFeatureFlagDetails(identity, key, fallback, options);
+      this._eventTracker?.setTeamContext(options?.teamId ?? null);
+      return details;
+    });
   }
 
   getFeatureFlags(requests: readonly FeatureFlagRequest[]): Promise<Map<string, FeatureFlagDetails<Json>>> {
-    return this._getFeatureFlagIdentity().then((identity) => this._featureFlags.getFeatureFlags(identity, requests));
+    return this._getFeatureFlagIdentity().then(async (identity) => {
+      const details = await this._featureFlags.getFeatureFlags(identity, requests);
+      this._eventTracker?.setTeamContext(requests.find((request) => request.options?.teamId != null)?.options?.teamId ?? null);
+      return details;
+    });
   }
 
   async trackFeatureFlagExposure(details: FeatureFlagDetails<Json>): Promise<void> {
@@ -3353,10 +3366,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       events: [{
         event_type: name,
         event_at_ms: Date.now(),
-        data: {
-          ...options?.properties,
-          ...(options?.value == null ? {} : { value: options.value }),
-        },
+        ...(options?.teamId == null ? {} : { team_id: options.teamId }),
+        data: options?.properties ?? {},
+        ...(options?.value == null ? {} : { value: options.value }),
       }],
     }), identity.value.session, { keepalive: false });
     if (response.status === "error") throw response.error;
@@ -3374,7 +3386,11 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       () => ({ cacheKey: user.id, value: { session: user._internalSession, userId: user.id } }),
       [user.id, user._internalSession],
     );
-    return useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
+    const details = useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
+    useEffect(() => {
+      this._eventTracker?.setTeamContext(options?.teamId ?? null);
+    }, [options?.teamId]);
+    return details;
   }
   // END_PLATFORM
 

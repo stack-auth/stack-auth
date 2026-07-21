@@ -131,6 +131,13 @@ export function detectSampleRatioMismatch(options: {
   }
 
   const contributing = variants.filter((v) => v.weightBasisPoints > 0);
+  // With one positive-weight variant there is no distribution to compare.
+  // Zero-weight variants were handled above, so the observed allocation is
+  // necessarily consistent and a chi-square test (zero degrees of freedom)
+  // is not applicable.
+  if (contributing.length === 1) {
+    return { detected: false, statistic: 0, pValue: 1 };
+  }
   let statistic = 0;
   for (const v of contributing) {
     const expected = (totalExposed * v.weightBasisPoints) / totalWeight;

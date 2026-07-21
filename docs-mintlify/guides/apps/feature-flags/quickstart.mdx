@@ -31,37 +31,31 @@ This guide takes you from zero to a working flag: enable the app, create a flag,
     import { useFeatureFlag } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
     function Checkout() {
-      const flag = useFeatureFlag("checkout-redesign", { fallback: false });
-      if (flag.isLoading) return <CheckoutSkeleton />;
-      // flag.value is typed by the fallback; flag.isFallback is true when the
-      // fallback was served (flag missing, killed, or evaluation failed)
-      return flag.value ? <NewCheckout /> : <ClassicCheckout />;
+      const showRedesign = useFeatureFlag("checkout-redesign", false);
+      return showRedesign ? <NewCheckout /> : <ClassicCheckout />;
     }
     ```
 
-    `fallback` is required: it is served whenever the flag is killed, missing, or evaluation fails, so your UI never breaks when the backend is unreachable. It also types `flag.value`. Always render a loading state while `flag.isLoading` is `true` to avoid flashing the wrong variant.
+    `fallback` is required: it is served whenever the flag is missing or evaluation fails, so your UI never breaks when the backend is unreachable. A killed flag serves the fallback variant configured in its definition. The caller fallback also determines the return type. React Suspense handles the initial asynchronous evaluation.
   </Step>
 
   <Step title="Read the flag on the server">
     ```ts
     import { hexclaveServerApp } from "@/hexclave";
 
-    const showRedesign = await hexclaveServerApp.getFeatureFlagValue("checkout-redesign", {
-      user,               // or { team } for team-level flags
-      fallback: false,    // required: served on kill switch, missing flag, or error
-    });
+    const showRedesign = await hexclaveServerApp.getFeatureFlag("checkout-redesign", false);
     ```
 
     Server-side reads evaluate against the same rules as the client, so a user sees consistent values everywhere.
   </Step>
 
   <Step title="Flip it in the dashboard">
-    Back in the dashboard, change the flag's default to `true` (or add a targeting rule for your own user) and reload your app — the new variant is served. If something goes wrong, hit the **kill switch**: every SDK immediately serves the `fallback` value, no deploy needed.
+    Back in the dashboard, change the flag's default to `true` (or add a targeting rule for your own user) and reload your app — the new variant is served. If something goes wrong, hit the **kill switch**: every SDK serves the flag's configured fallback variant after the config change is published.
   </Step>
 </Steps>
 
 <Info>
-  Reading a flag automatically records an exposure, which is what experiments use to attribute conversions — there is no separate tracking call for exposures.
+  When an active experiment assigns a visitor through its linked flag, the SDK automatically records that experiment exposure. Ordinary feature-flag reads do not emit exposure telemetry, and there is no separate tracking call for experiment exposures.
 </Info>
 
 ## Next steps

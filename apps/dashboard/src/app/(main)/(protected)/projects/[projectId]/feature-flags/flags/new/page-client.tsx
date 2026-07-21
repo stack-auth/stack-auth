@@ -2,7 +2,7 @@
 
 import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/components/config-update";
-import { flagConfigPath } from "@/lib/feature-flags/config";
+import { featureFlagConfigUpdates } from "@/lib/feature-flags/config";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useState } from "react";
 import { PageLayout } from "../../../page-layout";
@@ -30,7 +30,7 @@ export default function PageClient() {
         onPublish={async (flagKey, flag) => {
           const updated = await updateConfig({
             adminApp,
-            configUpdate: { [flagConfigPath(flagKey)]: flag },
+            configUpdate: featureFlagConfigUpdates(flag.internalId, flagKey, flag, section),
             pushable: true,
           });
           if (updated) {

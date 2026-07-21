@@ -14,6 +14,8 @@ import { Project, niceBackendFetch } from "../../../../backend-helpers";
 // of results is covered by backend unit tests instead.
 
 const EXPERIMENT_ID = "my-experiment";
+const SECOND_EXPERIMENT_ID = "my-second-experiment";
+const DEFAULT_ATTRIBUTION_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 function validExperimentConfig() {
   return {
@@ -22,21 +24,83 @@ function validExperimentConfig() {
     traffic_allocation_basis_points: 10000,
     control_variant_id: "control",
     variants: {
-      control: { weight_basis_points: 5000 },
+      control: { weight_basis_points: 5000, flag_value: false },
       treatment: { weight_basis_points: 5000, flag_value: true },
     },
     primary_metric: { id: "signup", kind: "binary", event_name: "signed-up", direction: "increase" },
-    attribution_window_days: 7,
+    attribution_window_seconds: DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
   };
 }
 
-async function createProjectWithAnalytics() {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+function featureFlagsConfig(options?: {
+  attributionWindowSeconds?: number,
+  trafficAllocationBasisPoints?: number,
+  startsAt?: string,
+  endsAt?: string,
+  onlyControlVariant?: boolean,
+  funnelSteps?: Record<string, string>,
+}) {
+  const variantWeights = options?.onlyControlVariant === true ? { control: 10000 } : { control: 5000, treatment: 5000 };
+  const variants = options?.onlyControlVariant === true
+    ? { control: { value: false } }
+    : { control: { value: false }, treatment: { value: true } };
+  const primaryMetric = options?.funnelSteps === undefined ? {
+    id: "signup",
+    type: "custom_event",
+    eventName: "signed-up",
+    direction: "increase",
+    attributionWindowSeconds: options?.attributionWindowSeconds ?? DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+  } : {
+    id: "signup",
+    type: "funnel",
+    direction: "increase",
+    funnelSteps: options.funnelSteps,
+    attributionWindowSeconds: options.attributionWindowSeconds ?? DEFAULT_ATTRIBUTION_WINDOW_SECONDS,
+  };
+  const experiment = {
+    key: "my-experiment",
+    hypothesis: "The treatment improves sign-up completion",
+    flagId: "my-flag",
+    assignmentUnit: "user",
+    trafficAllocationBasisPoints: options?.trafficAllocationBasisPoints ?? 10000,
+    controlVariantKey: "control",
+    variantWeights,
+    primaryMetric,
+    ...(options?.startsAt === undefined ? {} : { startsAt: options.startsAt }),
+    ...(options?.endsAt === undefined ? {} : { endsAt: options.endsAt }),
+  };
+  return {
+    flags: {
+      "my-flag": {
+        key: "my-flag",
+        type: "boolean",
+        enabled: true,
+        allocationSalt: "my-flag-allocation",
+        fallbackVariantKey: "control",
+        variants,
+      },
+    },
+    experiments: {
+      [EXPERIMENT_ID]: experiment,
+      [SECOND_EXPERIMENT_ID]: { ...experiment, key: "my-second-experiment" },
+    },
+  };
 }
 
-async function createRun(config: unknown = validExperimentConfig()) {
-  return await niceBackendFetch(`/api/v1/internal/feature-flags/experiments/${EXPERIMENT_ID}/runs`, {
+async function updateFeatureFlagConfig(options?: Parameters<typeof featureFlagsConfig>[0], analyticsEnabled = true, featureFlagsEnabled = true) {
+  await Project.updateConfig({
+    apps: { installed: { analytics: { enabled: analyticsEnabled }, "feature-flags": { enabled: featureFlagsEnabled } } },
+    featureFlags: featureFlagsConfig(options),
+  });
+}
+
+async function createProjectWithAnalytics(options?: Parameters<typeof featureFlagsConfig>[0]) {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await updateFeatureFlagConfig(options);
+}
+
+async function createRun(config: unknown = validExperimentConfig(), experimentId = EXPERIMENT_ID) {
+  return await niceBackendFetch(`/api/v1/internal/feature-flags/experiments/${experimentId}/runs`, {
     method: "POST",
     accessType: "admin",
     body: { experiment_config: config },
@@ -50,8 +114,8 @@ async function listRuns() {
   });
 }
 
-async function transitionRun(runId: string, action: "start" | "pause" | "resume" | "complete", body: unknown = {}) {
-  return await niceBackendFetch(`/api/v1/internal/feature-flags/experiments/${EXPERIMENT_ID}/runs/${runId}/${action}`, {
+async function transitionRun(runId: string, action: "start" | "pause" | "resume" | "complete", body: unknown = {}, experimentId = EXPERIMENT_ID) {
+  return await niceBackendFetch(`/api/v1/internal/feature-flags/experiments/${experimentId}/runs/${runId}/${action}`, {
     method: "POST",
     accessType: "admin",
     body,
@@ -61,7 +125,7 @@ async function transitionRun(runId: string, action: "start" | "pause" | "resume"
 describe("experiment run creation", () => {
   it("requires analytics to be enabled", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-    // Analytics is disabled by default - do NOT call Project.updateConfig
+    await updateFeatureFlagConfig(undefined, false);
 
     const res = await createRun();
 
@@ -84,7 +148,7 @@ describe("experiment run creation", () => {
         "config_revision_hash": "<asserted above>",
         "config_snapshot": {
           "assignment_unit": "user",
-          "attribution_window_days": 7,
+          "attribution_window_seconds": 604800,
           "control_variant_id": "control",
           "flag_id": "my-flag",
           "guardrail_metrics": [],
@@ -97,7 +161,7 @@ describe("experiment run creation", () => {
           "secondary_metrics": [],
           "traffic_allocation_basis_points": 10000,
           "variants": {
-            "control": { "weight_basis_points": 5000 },
+            "control": { "flag_value": false, "weight_basis_points": 5000 },
             "treatment": {
               "flag_value": true,
               "weight_basis_points": 5000,
@@ -125,8 +189,8 @@ describe("experiment run creation", () => {
     const badWeightsRes = await createRun({
       ...validExperimentConfig(),
       variants: {
-        control: { weight_basis_points: 5000 },
-        treatment: { weight_basis_points: 4000 },
+        control: { weight_basis_points: 5000, flag_value: false },
+        treatment: { weight_basis_points: 4000, flag_value: true },
       },
     });
     expect(badWeightsRes.status).toBe(400);
@@ -140,23 +204,47 @@ describe("experiment run creation", () => {
     expect(badControlRes.status).toBe(400);
     expect(badControlRes.body).toContain("control_variant_id \"missing\" is not a key of variants");
 
-    // Metric event names must be customer event names, not reserved ones
+    // Reserved event names other than the two supported auto-capture events
+    // must not be accepted as conversion metrics.
     const badMetricRes = await createRun({
       ...validExperimentConfig(),
-      primary_metric: { id: "signup", kind: "binary", event_name: "$page-view", direction: "increase" },
+      primary_metric: { id: "signup", kind: "binary", event_name: "$feature-flag-exposure", direction: "increase" },
     });
     expect(badMetricRes.status).toBe(400);
-    expect(badMetricRes.body).toContain("Metric event names must be customer event names");
+    expect(badMetricRes.body).toContain("Metric event names must be customer events");
 
     // At least 2 variants are required
     const singleVariantRes = await createRun({
       ...validExperimentConfig(),
       variants: {
-        control: { weight_basis_points: 10000 },
+        control: { weight_basis_points: 10000, flag_value: false },
       },
     });
     expect(singleVariantRes.status).toBe(400);
     expect(singleVariantRes.body).toContain("Experiments must define between 2 and 10 variants");
+  });
+
+  it("derives funnel order from canonical step ids", async ({ expect }) => {
+    await createProjectWithAnalytics({
+      funnelSteps: { step_2: "purchase-completed", step_1: "checkout-started" },
+    });
+    const funnelConfig = {
+      ...validExperimentConfig(),
+      primary_metric: {
+        id: "signup",
+        kind: "funnel",
+        steps: ["checkout-started", "purchase-completed"],
+        direction: "increase",
+      },
+    };
+    const createRes = await createRun(funnelConfig);
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.config_snapshot.primary_metric.steps).toEqual(["checkout-started", "purchase-completed"]);
+
+    await updateFeatureFlagConfig({ funnelSteps: { opened: "checkout-started", purchased: "purchase-completed" } });
+    const invalidStepIdsRes = await createRun(funnelConfig);
+    expect(invalidStepIdsRes.status).toBe(400);
+    expect(invalidStepIdsRes.body).toContain("must use step_1, step_2, ... notation");
   });
 
   it("lists created runs", async ({ expect }) => {
@@ -250,7 +338,21 @@ describe("experiment run lifecycle transitions", () => {
 
     const secondStartRes = await transitionRun(secondCreateRes.body.id, "start");
     expect(secondStartRes.status).toBe(409);
-    expect(secondStartRes.body).toBe("Another run of this experiment is already active");
+    expect(secondStartRes.body).toBe("Another active run already targets this experiment or feature flag");
+  });
+
+  it("allows only one active experiment per feature flag", async ({ expect }) => {
+    await createProjectWithAnalytics();
+
+    const firstCreateRes = await createRun();
+    const secondCreateRes = await createRun(validExperimentConfig(), SECOND_EXPERIMENT_ID);
+    expect(firstCreateRes.status).toBe(201);
+    expect(secondCreateRes.status).toBe(201);
+    expect((await transitionRun(firstCreateRes.body.id, "start")).status).toBe(200);
+
+    const secondStartRes = await transitionRun(secondCreateRes.body.id, "start", {}, SECOND_EXPERIMENT_ID);
+    expect(secondStartRes.status).toBe(409);
+    expect(secondStartRes.body).toBe("Another active run already targets this experiment or feature flag");
   });
 
   it("freezes the config snapshot at start and keeps it immutable afterwards", async ({ expect }) => {
@@ -259,13 +361,18 @@ describe("experiment run lifecycle transitions", () => {
     expect(createRes.status).toBe(201);
     const runId = createRes.body.id;
 
-    // Starting with a config override re-freezes the snapshot from the
-    // override; the draft snapshot was only provisional.
-    const overrideConfig = { ...validExperimentConfig(), attribution_window_days: 14 };
-    const startRes = await transitionRun(runId, "start", { experiment_config: overrideConfig });
+    // The published branch definition, not the draft or request body, is the
+    // source of truth when assignment begins.
+    const updatedWindowSeconds = 14 * 24 * 60 * 60;
+    await updateFeatureFlagConfig({ attributionWindowSeconds: updatedWindowSeconds });
+    const staleStartRes = await transitionRun(runId, "start", { experiment_config: validExperimentConfig() });
+    expect(staleStartRes.status).toBe(400);
+    expect(staleStartRes.body).toBe("Submitted experiment configuration does not exactly match the current branch definition");
+
+    const startRes = await transitionRun(runId, "start");
     expect(startRes.status).toBe(200);
     expect(startRes.body.state).toBe("running");
-    expect(startRes.body.config_snapshot.attribution_window_days).toBe(14);
+    expect(startRes.body.config_snapshot.attribution_window_seconds).toBe(updatedWindowSeconds);
     expect(startRes.body.config_revision_hash).not.toBe(createRes.body.config_revision_hash);
 
     const listRes = await listRuns();
@@ -281,6 +388,28 @@ describe("experiment run lifecycle transitions", () => {
     expect(completeRes.body.config_revision_hash).toBe(startRes.body.config_revision_hash);
     expect(completeRes.body.config_snapshot).toEqual(startRes.body.config_snapshot);
   });
+
+  it("serves frozen variants when the current branch definition changes", async ({ expect }) => {
+    await createProjectWithAnalytics();
+    const createRes = await createRun();
+    expect(createRes.status).toBe(201);
+    expect((await transitionRun(createRes.body.id, "start")).status).toBe(200);
+
+    await updateFeatureFlagConfig({ onlyControlVariant: true });
+    const bootstrapRes = await niceBackendFetch("/api/v1/feature-flags/bootstrap", {
+      method: "GET",
+      accessType: "server",
+    });
+    expect(bootstrapRes.status).toBe(200);
+    expect(bootstrapRes.body.config.flags["my-flag"].variants).toMatchObject({
+      control: { value: false },
+      treatment: { value: true },
+    });
+    expect(bootstrapRes.body.config.flags["my-flag"].rules[`experiment_${createRes.body.id}`].variantWeights).toEqual({
+      control: 5000,
+      treatment: 5000,
+    });
+  });
 });
 
 describe("experiment run revisions", () => {
@@ -293,6 +422,7 @@ describe("experiment run revisions", () => {
     const oldHash = createRes.body.config_revision_hash;
 
     const revisedConfig = { ...validExperimentConfig(), traffic_allocation_basis_points: 5000 };
+    await updateFeatureFlagConfig({ trafficAllocationBasisPoints: 5000 });
     const revisionRes = await niceBackendFetch(`/api/v1/internal/feature-flags/experiments/${EXPERIMENT_ID}/runs/${oldRunId}/revision`, {
       method: "POST",
       accessType: "admin",
@@ -417,11 +547,12 @@ describe("experiment schedule processor", () => {
   });
 
   it("starts runs whose scheduled start time has passed, idempotently", async ({ expect }) => {
-    await createProjectWithAnalytics();
+    const scheduledStartMillis = Date.now() - 60_000;
+    await createProjectWithAnalytics({ startsAt: new Date(scheduledStartMillis).toISOString() });
 
     const createRes = await createRun({
       ...validExperimentConfig(),
-      schedule: { start_at_millis: Date.now() - 60_000 },
+      schedule: { start_at_millis: scheduledStartMillis },
     });
     expect(createRes.status).toBe(201);
     expect(createRes.body.state).toBe("draft");
@@ -457,5 +588,65 @@ describe("experiment schedule processor", () => {
     const runAfterSecondProcess = secondListRes.body.items.find((r: any) => r.id === runId);
     expect(runAfterSecondProcess.state).toBe("running");
     expect(runAfterSecondProcess.started_at_millis).toBe(run.started_at_millis);
+  });
+
+  it("leaves scheduled runs in draft while a required app is disabled", async ({ expect }) => {
+    const scheduledStartMillis = Date.now() - 60_000;
+    const configOptions = { startsAt: new Date(scheduledStartMillis).toISOString() };
+    await createProjectWithAnalytics(configOptions);
+    const createRes = await createRun({
+      ...validExperimentConfig(),
+      schedule: { start_at_millis: scheduledStartMillis },
+    });
+    expect(createRes.status).toBe(201);
+
+    await updateFeatureFlagConfig(configOptions, false, true);
+    expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
+      method: "GET",
+      headers: cronHeaders,
+    })).status).toBe(200);
+    expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
+
+    await updateFeatureFlagConfig(configOptions, true, false);
+    expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
+      method: "GET",
+      headers: cronHeaders,
+    })).status).toBe(200);
+    expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
+  });
+
+  it("reconciles cancellation and postponement from current branch config", async ({ expect }) => {
+    const originalStartMillis = Date.now() - 60_000;
+    await createProjectWithAnalytics({ startsAt: new Date(originalStartMillis).toISOString() });
+    const cancelledRun = await createRun({
+      ...validExperimentConfig(),
+      schedule: { start_at_millis: originalStartMillis },
+    });
+    expect(cancelledRun.status).toBe(201);
+
+    await updateFeatureFlagConfig();
+    expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
+      method: "GET",
+      headers: cronHeaders,
+    })).status).toBe(200);
+    const cancelled = (await listRuns()).body.items.find((run: any) => run.id === cancelledRun.body.id);
+    expect(cancelled.state).toBe("draft");
+    expect(cancelled.scheduled_start_at_millis).toBeNull();
+
+    const postponedStartMillis = Date.now() + 60 * 60 * 1000;
+    await updateFeatureFlagConfig({ startsAt: new Date(originalStartMillis).toISOString() });
+    const postponedRun = await createRun({
+      ...validExperimentConfig(),
+      schedule: { start_at_millis: originalStartMillis },
+    });
+    expect(postponedRun.status).toBe(201);
+    await updateFeatureFlagConfig({ startsAt: new Date(postponedStartMillis).toISOString() });
+    expect((await niceBackendFetch("/api/v1/internal/feature-flags/experiment-schedule-processor", {
+      method: "GET",
+      headers: cronHeaders,
+    })).status).toBe(200);
+    const postponed = (await listRuns()).body.items.find((run: any) => run.id === postponedRun.body.id);
+    expect(postponed.state).toBe("draft");
+    expect(postponed.scheduled_start_at_millis).toBe(postponedStartMillis);
   });
 });

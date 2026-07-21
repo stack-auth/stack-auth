@@ -265,9 +265,10 @@ Note: Quantity may go negative. Use tryDecreaseQuantity for atomic decrement-if-
 Does not error.
 
 
-### tryDecreaseQuantity(amount)
+### tryDecreaseQuantity(amount, options?)
 
 amount: number (positive)
+options.idempotencyKey: string? (1-256 characters)
 
 Returns: bool
 
@@ -275,10 +276,11 @@ POST /api/v1/customers/{type}/{id}/items/{itemId}/try-decrease { amount } [serve
 
 Returns true if quantity was >= amount and was decreased.
 Returns false if quantity would go negative (no change made).
+Retries with the same idempotencyKey and amount return true without applying a second decrease. Reusing the key for a different update fails.
 
 Useful for pre-paid credits to prevent overdraft.
 
-Does not error.
+Insufficient quantity returns false. Reusing an idempotency key for a different update errors.
 
 
 ---

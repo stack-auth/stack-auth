@@ -101,6 +101,16 @@ describe("detectSampleRatioMismatch", () => {
     expect(result.pValue).toBe(0);
   });
 
+  it("does not run a zero-degree-of-freedom test when only one variant has weight", () => {
+    const result = detectSampleRatioMismatch({
+      variants: [
+        { variantId: "a", weightBasisPoints: 10000, exposedSubjects: 1000 },
+        { variantId: "b", weightBasisPoints: 0, exposedSubjects: 0 },
+      ],
+    });
+    expect(result).toEqual({ detected: false, statistic: 0, pValue: 1 });
+  });
+
   it("works with more than two variants", () => {
     const result = detectSampleRatioMismatch({
       variants: [

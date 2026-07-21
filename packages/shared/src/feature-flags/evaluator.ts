@@ -151,10 +151,10 @@ function applyOperator(
   if (operator !== "is_set" && operator !== "is_not_set" && expected === undefined) return false;
   switch (operator) {
     case "eq": { return jsonEquals(actual, expected); }
-    case "neq": { return !jsonEquals(actual, expected); }
+    case "neq": { return actual !== undefined && !jsonEquals(actual, expected); }
     case "in": { return Array.isArray(expected) && expected.some((value) => jsonEquals(actual, value)); }
     // Invalid negative predicates fail closed instead of accidentally targeting everyone.
-    case "not_in": { return Array.isArray(expected) && !expected.some((value) => jsonEquals(actual, value)); }
+    case "not_in": { return actual !== undefined && Array.isArray(expected) && !expected.some((value) => jsonEquals(actual, value)); }
     case "starts_with": { return typeof actual === "string" && typeof expected === "string" && actual.startsWith(expected); }
     case "ends_with": { return typeof actual === "string" && typeof expected === "string" && actual.endsWith(expected); }
     case "contains": {
@@ -183,17 +183,22 @@ function applyOperator(
     }
     case "semver_eq":
     case "semver_gt":
-    case "semver_lt": {
+    case "semver_gte":
+    case "semver_lt":
+    case "semver_lte": {
       if (typeof actual !== "string" || typeof expected !== "string") return false;
       const comparison = compareSemver(actual, expected);
       if (comparison === undefined) return false;
       if (operator === "semver_eq") return comparison === 0;
       if (operator === "semver_gt") return comparison > 0;
-      return comparison < 0;
+      if (operator === "semver_gte") return comparison >= 0;
+      if (operator === "semver_lt") return comparison < 0;
+      return comparison <= 0;
     }
-    case "in_segment": {
+    case "in_segment":
+    case "not_in_segment": {
       if (typeof expected !== "string") return false;
-      if (context.segments?.has(expected) === true) return true;
+      if (context.segments?.has(expected) === true) return operator === "in_segment";
       if (segmentStack.has(expected)) return false;
       const segment = config.segments?.[expected];
       if (segment === undefined) return false;
@@ -201,8 +206,10 @@ function applyOperator(
       nextStack.add(expected);
       const conditions = Object.values(segment.conditions ?? {}).filter((value) => value !== undefined);
       if (conditions.length === 0) return false;
-      if (segment.match === "any") return conditions.some((value) => conditionMatches(value, config, context, nextStack));
-      return conditions.every((value) => conditionMatches(value, config, context, nextStack));
+      const matches = segment.match === "any"
+        ? conditions.some((value) => conditionMatches(value, config, context, nextStack))
+        : conditions.every((value) => conditionMatches(value, config, context, nextStack));
+      return operator === "in_segment" ? matches : !matches;
     }
   }
 }
@@ -240,13 +247,30 @@ function selectedMutualExclusionExperiment(
   context: FeatureFlagEvaluationContext,
 ): string | undefined {
   const group = config.mutualExclusionGroups?.[groupId];
-  const subjectId = context.distinctId ?? context.userId;
-  if (group === undefined || subjectId === undefined) return undefined;
+  if (group === undefined) return undefined;
+  const assignmentUnits = new Set(Object.keys(group.experimentWeights ?? {}).flatMap((experimentId) => {
+    const unit = config.experiments?.[experimentId]?.assignmentUnit;
+    return unit === undefined ? [] : [unit];
+  }));
+  if (assignmentUnits.size !== 1) return undefined;
+  const assignmentUnit = assignmentUnits.values().next().value;
+  const subjectId = assignmentUnit === "team" ? context.teamId : context.distinctId ?? context.userId;
+  if (subjectId === undefined) return undefined;
   const weights = Object.entries(group.experimentWeights ?? {})
     .filter((entry): entry is [string, number] => entry[1] !== undefined)
     .sort(([left], [right]) => lexicalCompare(left, right))
     .map(([key, weight]) => ({ key, weight }));
   return chooseFeatureFlagVariant(subjectId, `mutex.${groupId}.${group.allocationSalt ?? groupId}`, weights);
+}
+
+function getFlagAllocationSubject(flag: FeatureFlagDefinition, config: FeatureFlagsConfig, context: FeatureFlagEvaluationContext): string | undefined {
+  const experimentIds = Object.values(flag.rules ?? {}).flatMap((rule) => rule?.experimentId === undefined ? [] : [rule.experimentId]);
+  const assignmentUnits = new Set(experimentIds.flatMap((experimentId) => {
+    const unit = config.experiments?.[experimentId]?.assignmentUnit;
+    return unit === undefined ? [] : [unit];
+  }));
+  if (assignmentUnits.size > 1) return undefined;
+  return assignmentUnits.values().next().value === "team" ? context.teamId : context.distinctId ?? context.userId;
 }
 
 export function evaluateFeatureFlag(
@@ -275,7 +299,7 @@ export function evaluateFeatureFlag(
 
   if (flag.holdoutId !== undefined) {
     const holdout = config.holdouts?.[flag.holdoutId];
-    const subjectId = context.distinctId ?? context.userId;
+    const subjectId = getFlagAllocationSubject(flag, config, context);
     if (holdout !== undefined && subjectId !== undefined) {
       const allocation = holdout.allocationBasisPoints ?? 0;
       if (featureFlagBucket(subjectId, `holdout.${flag.holdoutId}.${holdout.allocationSalt ?? flag.holdoutId}`) * 10_000 < allocation) {
@@ -320,6 +344,7 @@ export function evaluateFeatureFlag(
       ruleId,
       ...(rule.experimentId === undefined ? {} : { experimentId: rule.experimentId }),
       ...(rule.experimentRunId === undefined ? {} : { experimentRunId: rule.experimentRunId }),
+      ...(rule.experimentConfigRevision === undefined ? {} : { experimentConfigRevision: rule.experimentConfigRevision }),
     };
   }
 
@@ -349,6 +374,8 @@ import.meta.vitest?.test("operators are strict, own-property-only, and negative 
     },
   });
   expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.plan", operator: "not_in", value: "bad" }), { distinctId: "u", user: { plan: "pro" } }).value).toBe(false);
+  expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.missing", operator: "neq", value: "enterprise" }), { distinctId: "u", user: {} }).value).toBe(false);
+  expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.missing", operator: "not_in", value: ["enterprise"] }), { distinctId: "u", user: {} }).value).toBe(false);
   expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.missing", operator: "eq" }), { distinctId: "u", user: {} }).value).toBe(false);
   expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.toString", operator: "is_set" }), { distinctId: "u", user: {} }).value).toBe(false);
   expect(evaluateFeatureFlag("flag", makeConfig({ attribute: "user.date", operator: "before", value: "2026-01-02T00:00:00Z" }), { distinctId: "u", user: { date: "2026-01-01T00:00:00Z" } }).value).toBe(true);
@@ -419,11 +446,41 @@ import.meta.vitest?.test("priority, prerequisites, cycles, holdouts, and mutual 
       first: { key: "first", fallbackVariantKey: "off", mutualExclusionGroupId: "group", variants: { on: { value: true }, off: { value: false } }, rules: { experiment: { experimentId: "firstExperiment", variantKey: "on" } } },
       second: { key: "second", fallbackVariantKey: "off", mutualExclusionGroupId: "group", variants: { on: { value: true }, off: { value: false } }, rules: { experiment: { experimentId: "secondExperiment", variantKey: "on" } } },
     },
-    experiments: { firstExperiment: { flagId: "first" }, secondExperiment: { flagId: "second" } },
+    experiments: {
+      firstExperiment: { flagId: "first", assignmentUnit: "user" },
+      secondExperiment: { flagId: "second", assignmentUnit: "user" },
+    },
     mutualExclusionGroups: { group: { experimentWeights: { firstExperiment: 5_000, secondExperiment: 5_000 } } },
   };
   const first = evaluateFeatureFlag("first", mutuallyExclusive, { distinctId: "one-subject" });
   const second = evaluateFeatureFlag("second", mutuallyExclusive, { distinctId: "one-subject" });
   expect([first.reason, second.reason].filter((reason) => reason === "matched_rule")).toHaveLength(1);
   expect([first.reason, second.reason].filter((reason) => reason === "mutual_exclusion")).toHaveLength(1);
+});
+
+import.meta.vitest?.test("team experiments use the team for holdout and mutual-exclusion allocation", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      first: {
+        key: "first", fallbackVariantKey: "off", holdoutId: "holdout", mutualExclusionGroupId: "group",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { experiment: { experimentId: "firstExperiment", stickyBy: "teamId", variantKey: "on" } },
+      },
+      second: {
+        key: "second", fallbackVariantKey: "off", mutualExclusionGroupId: "group",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { experiment: { experimentId: "secondExperiment", stickyBy: "teamId", variantKey: "on" } },
+      },
+    },
+    holdouts: { holdout: { allocationBasisPoints: 5_000, allocationSalt: "team-holdout" } },
+    experiments: {
+      firstExperiment: { flagId: "first", assignmentUnit: "team" },
+      secondExperiment: { flagId: "second", assignmentUnit: "team" },
+    },
+    mutualExclusionGroups: { group: { allocationSalt: "team-mutex", experimentWeights: { firstExperiment: 5_000, secondExperiment: 5_000 } } },
+  };
+  const firstUser = { distinctId: "user-a", userId: "user-a", teamId: "shared-team" };
+  const secondUser = { distinctId: "user-b", userId: "user-b", teamId: "shared-team" };
+  expect(evaluateFeatureFlag("first", config, firstUser)).toEqual(evaluateFeatureFlag("first", config, secondUser));
+  expect(evaluateFeatureFlag("second", config, firstUser)).toEqual(evaluateFeatureFlag("second", config, secondUser));
 });

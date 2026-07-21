@@ -130,6 +130,60 @@ it("accepts valid $page-view events", async ({ expect }) => {
   `);
 });
 
+it("rejects batches and events with implausible future timestamps", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const future = now + 10 * 60 * 1000;
+  const futureBatch = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: future,
+    events: [{ event_type: "$page-view", event_at_ms: future, data: { path: "/future" } }],
+  });
+  const futureEvent = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: [{ event_type: "$page-view", event_at_ms: future, data: { path: "/future" } }],
+  });
+
+  expect(futureBatch.status).toBe(400);
+  expect(futureBatch.body).toBe("Analytics sent_at_ms is too far in the past or future");
+  expect(futureEvent.status).toBe(400);
+  expect(futureEvent.body).toBe("Analytics event_at_ms is outside the accepted batch window");
+});
+
+it("returns the completed result for an identical batch replay and rejects batch-id reuse", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const batchId = randomUUID();
+  const request = {
+    sessionReplaySegmentId: randomUUID(),
+    batchId,
+    sentAtMs: now,
+    events: [{ event_type: "$page-view", event_at_ms: now, data: { path: "/idempotent" } }],
+  };
+  const first = await uploadEventBatch(request);
+  const replay = await uploadEventBatch(request);
+  const conflicting = await uploadEventBatch({
+    ...request,
+    events: [{ event_type: "$page-view", event_at_ms: now, data: { path: "/different" } }],
+  });
+
+  expect(first.status).toBe(200);
+  expect(first.body).toEqual({ inserted: 1 });
+  expect(replay.status).toBe(200);
+  expect(replay.body).toEqual({ inserted: 1 });
+  expect(conflicting.status).toBe(409);
+  expect(conflicting.body).toBe("Analytics batch_id was already used for a different payload");
+});
+
 it("accepts valid $click events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });

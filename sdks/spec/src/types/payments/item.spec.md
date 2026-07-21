@@ -79,9 +79,10 @@ use tryDecreaseQuantity instead.
 Does not error.
 
 
-### tryDecreaseQuantity(amount)
+### tryDecreaseQuantity(amount, options?)
 
 amount: number (positive)
+options.idempotencyKey: string? (1-256 characters)
 
 Returns: bool
 
@@ -94,13 +95,15 @@ POST /api/v1/internal/items/try-decrease {
 Atomically tries to decrease the quantity:
 - If current quantity >= amount: decreases and returns true
 - If current quantity < amount: does nothing and returns false
+- Retrying the same amount with the same idempotencyKey returns true without another decrease
+- Reusing an idempotencyKey for a different update fails
 
 This is race-condition safe and ideal for:
 - Deducting pre-paid credits
 - Consuming limited resources
 - Any scenario where overdraft must be prevented
 
-Does not error.
+Insufficient quantity returns false. Reusing an idempotency key for a different update errors.
 
 
 ## Example Usage (pseudocode)

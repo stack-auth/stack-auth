@@ -9,7 +9,7 @@ import { useAdminApp } from "../use-admin-app";
 export type FlagLifecycleAction = "kill" | "restore" | "archive" | "unarchive";
 
 export type PendingFlagLifecycleAction = {
-  flagKey: string,
+  flagId: string,
   displayName: string,
   action: FlagLifecycleAction,
 };
@@ -61,8 +61,8 @@ export function FlagLifecycleConfirmDialog(props: {
     const pending = props.pending
       ?? throwErrState("The lifecycle confirm dialog performed an action without a pending state — it should be unmounted when pending is null.");
     const configUpdate = pending.action === "kill" || pending.action === "restore"
-      ? { [`${flagConfigPath(pending.flagKey)}.killed`]: pending.action === "kill" }
-      : { [`${flagConfigPath(pending.flagKey)}.archived`]: pending.action === "archive" };
+      ? { [`${flagConfigPath(pending.flagId)}.killed`]: pending.action === "kill" }
+      : { [`${flagConfigPath(pending.flagId)}.archived`]: pending.action === "archive" };
     await updateConfig({ adminApp, configUpdate, pushable: true });
     props.onClose();
   };

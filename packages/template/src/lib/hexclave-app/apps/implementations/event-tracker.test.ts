@@ -26,8 +26,9 @@ describe("EventTracker", () => {
     vi.useRealTimers();
   });
 
-  it("buffers validated customer events and retries a failed flush", async () => {
+  it("retries the exact failed batch before sending newer events", async () => {
     vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const sentBodies: string[] = [];
     let attempts = 0;
     const tracker = new EventTracker({
@@ -43,12 +44,43 @@ describe("EventTracker", () => {
       tracker.start();
       await tracker.trackEvent("checkout.completed", { properties: { plan: "pro" }, value: 49 });
       await advancePastFlush();
+      await tracker.trackEvent("checkout.follow-up");
+      await advancePastFlush();
       await advancePastFlush();
 
-      expect(attempts).toBe(2);
-      expect(getSentEventTypes(sentBodies.slice(1))).toContain("checkout.completed");
+      expect(attempts).toBe(3);
+      expect(sentBodies[1]).toBe(sentBodies[0]);
+      expect(getSentEventTypes(sentBodies.slice(0, 1))).toContain("checkout.completed");
+      expect(getSentEventTypes(sentBodies.slice(1, 2))).not.toContain("checkout.follow-up");
+      expect(getSentEventTypes(sentBodies.slice(2))).toEqual(["checkout.follow-up"]);
     } finally {
       tracker.stop();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("retries a pending batch even when no newer events arrive", async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return sentBodies.length === 1 ? Result.error(new Error("offline")) : Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.start();
+      await advancePastFlush();
+      await advancePastFlush();
+
+      expect(sentBodies).toHaveLength(2);
+      expect(sentBodies[1]).toBe(sentBodies[0]);
+    } finally {
+      tracker.stop();
+      warnSpy.mockRestore();
     }
   });
 
@@ -60,6 +92,34 @@ describe("EventTracker", () => {
 
     await expect(tracker.trackEvent("$feature-flag-exposure")).rejects.toThrowError("reserved");
     await expect(tracker.trackEvent("checkout", { value: Number.NaN })).rejects.toThrowError("finite");
+  });
+
+  it("attaches verified team context to subsequent automatic and custom events", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+    });
+
+    try {
+      tracker.setTeamContext("00000000-0000-4000-8000-000000000001");
+      tracker.start();
+      await tracker.trackEvent("checkout.completed");
+      await advancePastFlush();
+
+      const payload: unknown = JSON.parse(sentBodies[0] ?? "{}");
+      if (typeof payload !== "object" || payload === null || !("events" in payload) || !Array.isArray(payload.events)) {
+        throw new Error("Expected analytics batch payload to include events.");
+      }
+      expect(payload.events).toHaveLength(2);
+      expect(payload.events.every((event) => typeof event === "object" && event !== null && "team_id" in event && event.team_id === "00000000-0000-4000-8000-000000000001")).toBe(true);
+    } finally {
+      tracker.stop();
+    }
   });
 
   it("captures events when browser globals are exposed as accessor descriptors", async () => {

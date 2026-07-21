@@ -9,6 +9,9 @@ import {
   getFlagStatus,
   getLinkedExperiments,
   isStrictSemver,
+  serializeExperimentConfig,
+  serializeFlagConfig,
+  toExperimentRunConfig,
   parseFeatureFlagsSection,
   percentToBps,
   validateExperimentConfig,
@@ -22,6 +25,7 @@ import {
 
 function makeFlag(overrides: Partial<FlagConfig> = {}): FlagConfig {
   return {
+    internalId: "flag_checkout_redesign",
     displayName: "Checkout redesign",
     description: "",
     type: "boolean",
@@ -58,6 +62,8 @@ function makeExperiment(overrides: Partial<ExperimentConfig> = {}): ExperimentCo
     hypothesis: "The redesign increases purchases.",
     flagKey: "checkout-redesign",
     assignmentUnit: "user",
+    // Deliberately not first: allocation order must never define the control.
+    controlVariantId: "variant-off",
     allocation: [
       { variantId: "variant-on", weightBps: 5000 },
       { variantId: "variant-off", weightBps: 5000 },
@@ -241,6 +247,22 @@ describe("validateFlagConfig", () => {
     const errors = validateFlagConfig("checkout-redesign", flag, makeSection());
     expect(errors.some((error) => error.includes("strict semver"))).toBe(true);
   });
+
+  it("requires targeting dates to be canonical UTC timestamps", () => {
+    const withDate = (value: string) => makeFlag({
+      rules: [{
+        id: "rule-date",
+        label: "Date rule",
+        enabled: true,
+        conditions: [{ attribute: "user.signedUpAt", operator: "before", value }],
+        serve: { type: "variant", variantId: "variant-on" },
+        rolloutBps: BPS_TOTAL,
+      }],
+    });
+    expect(validateFlagConfig("checkout-redesign", withDate("2026-07-18T12:30:00.000Z"), makeSection())).toEqual([]);
+    expect(validateFlagConfig("checkout-redesign", withDate("2026-07-18T12:30"), makeSection())
+      .some((error) => error.includes("strict UTC"))).toBe(true);
+  });
 });
 
 describe("validateExperimentConfig", () => {
@@ -266,6 +288,20 @@ describe("validateExperimentConfig", () => {
     });
     const errors = validateExperimentConfig(experiment, makeSection());
     expect(errors.some((error) => error.includes("at least two"))).toBe(true);
+  });
+
+  it("preserves an explicit control variant independently of allocation order", () => {
+    const experiment = makeExperiment();
+    const serialized = serializeExperimentConfig("experiment-1", experiment, makeSection());
+    const frozen = toExperimentRunConfig(experiment, makeSection());
+
+    expect(serialized.controlVariantKey).toBe("variant-off");
+    expect(frozen.control_variant_id).toBe("variant-off");
+  });
+
+  it("requires the explicit control to be allocated", () => {
+    const errors = validateExperimentConfig(makeExperiment({ controlVariantId: "missing" }), makeSection());
+    expect(errors.some((error) => error.includes("control variant"))).toBe(true);
   });
 
   it("requires the linked flag to exist", () => {
@@ -309,9 +345,9 @@ describe("parseFeatureFlagsSection", () => {
     const experiment = makeExperiment();
     const section = parseFeatureFlagsSection({
       featureFlags: {
-        flags: { "checkout-redesign": flag },
-        segments: { "beta-testers": { displayName: "Beta testers", conditions: [{ attribute: "custom.beta", operator: "eq", value: "true" }] } },
-        experiments: { "experiment-1": experiment },
+        flags: { [flag.internalId]: serializeFlagConfig(flag.internalId, "checkout-redesign", flag, makeSection()) },
+        segments: { "beta-testers": { displayName: "Beta testers", conditions: { beta: { attribute: "context.beta", operator: "eq", value: "true" } } } },
+        experiments: { "experiment-1": serializeExperimentConfig("experiment-1", experiment, makeSection()) },
       },
     });
     expect(section.flags.get("checkout-redesign")).toEqual(flag);
@@ -320,7 +356,7 @@ describe("parseFeatureFlagsSection", () => {
   });
 
   it("throws loudly on malformed sections", () => {
-    expect(() => parseFeatureFlagsSection({ featureFlags: { flags: { bad: { displayName: 42 } } } }))
+    expect(() => parseFeatureFlagsSection({ featureFlags: { flags: { bad: { key: "bad", displayName: 42, type: "boolean", variants: { off: { value: false } }, fallbackVariantKey: "off" } } } }))
       .toThrowError(/featureFlags\.flags\.bad\.displayName/);
     expect(() => parseFeatureFlagsSection({ featureFlags: "nope" }))
       .toThrowError(/featureFlags/);

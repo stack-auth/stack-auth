@@ -15,7 +15,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   const runId = randomUUID();
   await sql`
     INSERT INTO "ExperimentRun" ("id", "projectId", "branchId", "experimentId", "configRevisionHash", "configSnapshot", "updatedAt")
-    VALUES (${runId}::uuid, ${projectId}, 'main', 'exp-1', 'hash-1', '{"flagId":"f"}'::jsonb, NOW())
+    VALUES (${runId}::uuid, ${projectId}, 'main', 'exp-1', 'hash-1', '{"flag_id":"f"}'::jsonb, NOW())
   `;
   const runs = await sql`SELECT "state", "revisionNumber", "createdAt", "scheduledStartAt", "startedAt", "createdByUserId" FROM "ExperimentRun" WHERE "id" = ${runId}::uuid`;
   expect(runs).toHaveLength(1);
@@ -25,6 +25,16 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   expect(runs[0].scheduledStartAt).toBeNull();
   expect(runs[0].startedAt).toBeNull();
   expect(runs[0].createdByUserId).toBeNull();
+
+  // Different experiments cannot concurrently assign the same frozen flag.
+  await sql`
+    INSERT INTO "ExperimentRun" ("id", "projectId", "branchId", "experimentId", "configRevisionHash", "configSnapshot", "state", "updatedAt")
+    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', 'active-exp-1', 'active-hash-1', '{"flag_id":"shared-flag"}'::jsonb, 'RUNNING', NOW())
+  `;
+  await expect(sql`
+    INSERT INTO "ExperimentRun" ("id", "projectId", "branchId", "experimentId", "configRevisionHash", "configSnapshot", "state", "updatedAt")
+    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', 'active-exp-2', 'active-hash-2', '{"flag_id":"shared-flag"}'::jsonb, 'PAUSED', NOW())
+  `).rejects.toThrow(/ExperimentRun_active_flag_key/);
 
   // Only the four known states are accepted.
   await expect(sql`
@@ -50,10 +60,68 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   expect(audits[0].beforeState).toBeNull();
   expect(audits[0].createdAt).toBeInstanceOf(Date);
 
-  // Deleting the project cascades to both tables.
+  const receiptId = randomUUID();
+  const eventId = randomUUID();
+  const evaluationId = randomUUID();
+  const batchId = randomUUID();
+  const nonce = randomUUID();
+  await sql`
+    INSERT INTO "FeatureFlagExposureReceipt" ("id", "projectId", "branchId", "eventId", "evaluationId", "batchId", "batchPayloadHash", "ingestionNonce")
+    VALUES (${receiptId}::uuid, ${projectId}, 'main', ${eventId}::uuid, ${evaluationId}::uuid, ${batchId}::uuid, 'sha256:batch', ${nonce}::uuid)
+  `;
+  const exposureReceipts = await sql`
+    SELECT "processingStartedAt", "billingNonce", "billingStartedAt", "billingCompletedAt", "completedAt"
+    FROM "FeatureFlagExposureReceipt" WHERE "id" = ${receiptId}::uuid
+  `;
+  expect(exposureReceipts).toHaveLength(1);
+  expect(exposureReceipts[0].processingStartedAt).toBeNull();
+  expect(exposureReceipts[0].billingNonce).toBeNull();
+  expect(exposureReceipts[0].billingStartedAt).toBeNull();
+  expect(exposureReceipts[0].billingCompletedAt).toBeNull();
+  expect(exposureReceipts[0].completedAt).toBeNull();
+  await expect(sql`
+    INSERT INTO "FeatureFlagExposureReceipt" ("id", "projectId", "branchId", "eventId", "evaluationId", "batchId", "batchPayloadHash", "ingestionNonce")
+    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', ${eventId}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'sha256:other', ${randomUUID()}::uuid)
+  `).rejects.toThrow(/FeatureFlagExposureReceipt_project_event_key/);
+  await expect(sql`
+    INSERT INTO "FeatureFlagExposureReceipt" ("id", "projectId", "branchId", "eventId", "evaluationId", "batchId", "batchPayloadHash", "ingestionNonce")
+    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', ${randomUUID()}::uuid, ${evaluationId}::uuid, ${randomUUID()}::uuid, 'sha256:other', ${randomUUID()}::uuid)
+  `).rejects.toThrow(/FeatureFlagExposureReceipt_project_evaluation_key/);
+
+  const analyticsReceiptId = randomUUID();
+  const analyticsBatchId = randomUUID();
+  await sql`
+    INSERT INTO "AnalyticsEventBatchReceipt" ("id", "projectId", "branchId", "batchId", "payloadHash", "eventCount")
+    VALUES (${analyticsReceiptId}::uuid, ${projectId}, 'main', ${analyticsBatchId}::uuid, 'sha256:payload', 2)
+  `;
+  const analyticsReceipts = await sql`
+    SELECT "payloadHash", "eventCount", "insertedCount", "processingNonce", "processingStartedAt", "billingNonce", "billingStartedAt", "billingCompletedAt", "completedAt", "createdAt"
+    FROM "AnalyticsEventBatchReceipt" WHERE "id" = ${analyticsReceiptId}::uuid
+  `;
+  expect(analyticsReceipts).toHaveLength(1);
+  expect(analyticsReceipts[0].payloadHash).toBe('sha256:payload');
+  expect(Number(analyticsReceipts[0].eventCount)).toBe(2);
+  expect(analyticsReceipts[0].insertedCount).toBeNull();
+  expect(analyticsReceipts[0].processingNonce).toBeNull();
+  expect(analyticsReceipts[0].processingStartedAt).toBeNull();
+  expect(analyticsReceipts[0].billingNonce).toBeNull();
+  expect(analyticsReceipts[0].billingStartedAt).toBeNull();
+  expect(analyticsReceipts[0].billingCompletedAt).toBeNull();
+  expect(analyticsReceipts[0].completedAt).toBeNull();
+  expect(analyticsReceipts[0].createdAt).toBeInstanceOf(Date);
+  await expect(sql`
+    INSERT INTO "AnalyticsEventBatchReceipt" ("id", "projectId", "branchId", "batchId", "payloadHash", "eventCount")
+    VALUES (${randomUUID()}::uuid, ${projectId}, 'main', ${analyticsBatchId}::uuid, 'sha256:different', 1)
+  `).rejects.toThrow(/AnalyticsEventBatchReceipt_project_branch_batch_key/);
+
+  // Deleting the project cascades to every new project-owned table.
   await sql`DELETE FROM "Project" WHERE "id" = ${projectId}`;
   const remainingRuns = await sql`SELECT COUNT(*) AS count FROM "ExperimentRun" WHERE "projectId" = ${projectId}`;
   expect(Number(remainingRuns[0].count)).toBe(0);
   const remainingAudits = await sql`SELECT COUNT(*) AS count FROM "FeatureFlagAuditLog" WHERE "projectId" = ${projectId}`;
   expect(Number(remainingAudits[0].count)).toBe(0);
+  const remainingReceipts = await sql`SELECT COUNT(*) AS count FROM "FeatureFlagExposureReceipt" WHERE "projectId" = ${projectId}`;
+  expect(Number(remainingReceipts[0].count)).toBe(0);
+  const remainingAnalyticsReceipts = await sql`SELECT COUNT(*) AS count FROM "AnalyticsEventBatchReceipt" WHERE "projectId" = ${projectId}`;
+  expect(Number(remainingAnalyticsReceipts[0].count)).toBe(0);
 };

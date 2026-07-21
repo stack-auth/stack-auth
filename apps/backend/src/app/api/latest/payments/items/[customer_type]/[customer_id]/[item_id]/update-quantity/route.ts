@@ -1,12 +1,76 @@
 import { ensureCustomerExists } from "@/lib/payments";
 import { bulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
 import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
 import { typedToUppercase } from "@hexclave/shared/dist/utils/strings";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { createHash } from "node:crypto";
+
+function idempotentQuantityChangeId(options: {
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  itemId: string,
+  idempotencyKey: string,
+}): string {
+  const hex = createHash("sha256").update([
+    "hexclave:item-quantity-change",
+    options.tenancyId,
+    options.customerType,
+    options.customerId,
+    options.itemId,
+    options.idempotencyKey,
+  ].join("\0"), "utf8").digest("hex");
+  const variantNibble = ((Number.parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variantNibble}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function quantityChangeLockId(options: {
+  tenancyId: string,
+  customerType: "user" | "team" | "custom",
+  customerId: string,
+  itemId: string,
+}): bigint {
+  const hex = createHash("sha256").update([
+    "hexclave:item-quantity-lock",
+    options.tenancyId,
+    options.customerType,
+    options.customerId,
+    options.itemId,
+  ].join("\0"), "utf8").digest("hex").slice(0, 16);
+  return BigInt.asIntN(64, BigInt(`0x${hex}`));
+}
+
+function ensureIdempotentQuantityChangeMatches(change: {
+  customerId: string,
+  customerType: string,
+  itemId: string,
+  quantity: number,
+  description: string | null,
+  expiresAt: Date | null,
+}, expected: {
+  customerId: string,
+  customerType: "user" | "team" | "custom",
+  itemId: string,
+  quantity: number,
+  description: string | null,
+  expiresAt: Date | null,
+}): void {
+  if (
+    change.customerId !== expected.customerId ||
+    change.customerType !== typedToUppercase(expected.customerType) ||
+    change.itemId !== expected.itemId ||
+    change.quantity !== expected.quantity ||
+    change.description !== expected.description ||
+    change.expiresAt?.getTime() !== expected.expiresAt?.getTime()
+  ) {
+    throw new StatusError(StatusError.Conflict, "The item quantity idempotency key was already used for a different update");
+  }
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -68,6 +132,12 @@ export const POST = createSmartRouteHandler({
           exampleValue: "Monthly subscription renewal"
         }
       }),
+      idempotency_key: yupString().min(1).max(256).optional().meta({
+        openapiField: {
+          description: "Optional retry key. Reusing it with the same update applies the quantity change exactly once.",
+          exampleValue: "analytics-batch:550e8400-e29b-41d4-a716-446655440000",
+        },
+      }),
     }).defined(),
   }),
   response: yupObject({
@@ -95,38 +165,100 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
     });
 
-    // Read the current quantity from bulldozer-js BEFORE starting the Prisma
-    // transaction. getItemQuantityForCustomer reads via HTTP from the
-    // bulldozer-js server and does not use the Prisma client; keeping the
-    // call inside the transaction would hold the transaction open for the
-    // full HTTP round-trip, exhausting the interactive-transaction pool
-    // under load and causing "Unable to start a transaction" cascades.
-    const totalQuantity = await getItemQuantityForCustomer({
-      prisma,
+    const idempotentChangeId = req.body.idempotency_key === undefined ? undefined : idempotentQuantityChangeId({
       tenancyId: tenancy.id,
+      customerType: req.params.customer_type,
+      customerId: req.params.customer_id,
       itemId: req.params.item_id,
+      idempotencyKey: req.body.idempotency_key,
+    });
+    const expiresAt = req.body.expires_at === undefined ? null : new Date(req.body.expires_at);
+    const expectedChange = {
       customerId: req.params.customer_id,
       customerType: req.params.customer_type,
-    });
-    if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
-      throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
+      itemId: req.params.item_id,
+      quantity: req.body.delta,
+      description: req.body.description ?? null,
+      expiresAt,
+    };
+    if (idempotentChangeId !== undefined) {
+      const existing = await prisma.itemQuantityChange.findUnique({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: idempotentChangeId } },
+      });
+      if (existing !== null) {
+        ensureIdempotentQuantityChangeMatches(existing, expectedChange);
+        await bulldozerWriteItemQuantityChange(existing);
+        return { statusCode: 200, bodyType: "json", body: {} };
+      }
     }
 
-    const change = await retryTransaction(prisma, async (tx) => {
-      const change = await tx.itemQuantityChange.create({
-        data: {
-          tenancyId: tenancy.id,
-          customerId: req.params.customer_id,
-          customerType: typedToUppercase(req.params.customer_type),
-          itemId: req.params.item_id,
-          quantity: req.body.delta,
-          description: req.body.description,
-          expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
-        },
-      });
-      return change;
+    const changeData = {
+      tenancyId: tenancy.id,
+      customerId: req.params.customer_id,
+      customerType: typedToUppercase(req.params.customer_type),
+      itemId: req.params.item_id,
+      quantity: req.body.delta,
+      description: expectedChange.description,
+      expiresAt,
+    };
+    const lockId = quantityChangeLockId({
+      tenancyId: tenancy.id,
+      customerType: req.params.customer_type,
+      customerId: req.params.customer_id,
+      itemId: req.params.item_id,
     });
-    await bulldozerWriteItemQuantityChange(change);
+    // This transaction intentionally is not wrapped in retryTransaction. The
+    // critical section contains an idempotent external materializer write;
+    // automatically replaying the callback after a synthetic rollback could
+    // observe its own already-applied delta and incorrectly report insufficient
+    // quantity. Callers retry the whole request with the same idempotency key.
+    // eslint-disable-next-line no-restricted-syntax
+    const change = await prisma.$transaction(async (tx) => {
+      // The balance is materialized by bulldozer rather than Prisma, so the
+      // advisory lock is the shared serialization point for every writer of a
+      // customer/item pair. This deliberately holds one transaction over the
+      // local balance read: without it, distinct idempotency keys can both see
+      // the same credits and overdraw. The lock is narrow and the read does no
+      // Prisma work, keeping the critical section bounded to one local call.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+      if (idempotentChangeId !== undefined) {
+        const existing = await tx.itemQuantityChange.findUnique({
+          where: { tenancyId_id: { tenancyId: tenancy.id, id: idempotentChangeId } },
+        });
+        if (existing !== null) {
+          ensureIdempotentQuantityChangeMatches(existing, expectedChange);
+          await bulldozerWriteItemQuantityChange(existing);
+          return existing;
+        }
+      }
+      const totalQuantity = await getItemQuantityForCustomer({
+        prisma: tx,
+        tenancyId: tenancy.id,
+        itemId: req.params.item_id,
+        customerId: req.params.customer_id,
+        customerType: req.params.customer_type,
+      });
+      if (!allowNegative && totalQuantity + req.body.delta < 0) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
+      }
+      if (idempotentChangeId === undefined) {
+        const created = await tx.itemQuantityChange.create({ data: changeData });
+        await bulldozerWriteItemQuantityChange(created);
+        return created;
+      }
+      await tx.itemQuantityChange.createMany({
+        data: [{ ...changeData, id: idempotentChangeId }],
+        skipDuplicates: true,
+      });
+      const idempotentChange = await tx.itemQuantityChange.findUnique({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: idempotentChangeId } },
+      });
+      if (idempotentChange === null) throw new StatusError(StatusError.Conflict, "The idempotent item quantity update could not be reserved");
+      ensureIdempotentQuantityChangeMatches(idempotentChange, expectedChange);
+      await bulldozerWriteItemQuantityChange(idempotentChange);
+      return idempotentChange;
+    }, { timeout: 15_000 });
+    ensureIdempotentQuantityChangeMatches(change, expectedChange);
 
     return {
       statusCode: 200,
@@ -135,5 +267,3 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
-
-

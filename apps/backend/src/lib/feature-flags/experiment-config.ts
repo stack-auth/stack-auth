@@ -33,8 +33,8 @@ export const BASIS_POINTS_TOTAL = 10_000;
 // batch route accepts (see analytics-custom-events.ts).
 const metricEventNameSchema = yupString().defined().min(1).max(MAX_CUSTOM_EVENT_NAME_LENGTH).test(
   "not-reserved",
-  "Metric event names must be customer event names (must not start with $)",
-  (value) => value == null || !value.startsWith("$"),
+  "Metric event names must be customer events, $page-view, or $click",
+  (value) => !value.startsWith("$") || value === "$page-view" || value === "$click",
 );
 
 const metricDirectionSchema = yupString().oneOf(["increase", "decrease"] as const).defined();
@@ -44,6 +44,11 @@ const binaryMetricSchema = yupObject({
   kind: yupString().oneOf(["binary"] as const).defined(),
   event_name: metricEventNameSchema,
   direction: metricDirectionSchema,
+  event_filter: yupObject({
+    field: yupString().oneOf(["path", "selector"] as const).defined(),
+    operator: yupString().oneOf(["eq", "starts_with", "ends_with", "contains"] as const).defined(),
+    value: yupString().defined().min(1).max(2048),
+  }).optional(),
 });
 
 const numericMetricSchema = yupObject({
@@ -51,6 +56,8 @@ const numericMetricSchema = yupObject({
   kind: yupString().oneOf(["numeric"] as const).defined(),
   event_name: metricEventNameSchema,
   direction: metricDirectionSchema,
+  property_name: yupString().defined().min(1).max(64),
+  aggregation: yupString().oneOf(["sum", "average"] as const).defined(),
 });
 
 const funnelMetricSchema = yupObject({
@@ -64,8 +71,8 @@ const funnelMetricSchema = yupObject({
 // yup has no discriminated-union primitive, so we validate the `kind` field
 // first and then the matching object schema in validateExperimentMetric below.
 export type ExperimentMetricDefinition =
-  | { id: string, kind: "binary", event_name: string, direction: "increase" | "decrease" }
-  | { id: string, kind: "numeric", event_name: string, direction: "increase" | "decrease" }
+  | { id: string, kind: "binary", event_name: string, direction: "increase" | "decrease", event_filter?: { field: "path" | "selector", operator: "eq" | "starts_with" | "ends_with" | "contains", value: string } }
+  | { id: string, kind: "numeric", event_name: string, direction: "increase" | "decrease", property_name: string, aggregation: "sum" | "average" }
   | { id: string, kind: "funnel", steps: string[], direction: "increase" | "decrease" };
 
 const metricKindSchema = yupObject({
@@ -90,11 +97,14 @@ async function validateExperimentMetric(value: unknown): Promise<ExperimentMetri
   const { kind } = await yupValidate(metricKindSchema, value, { abortEarly: false });
   switch (kind) {
     case "binary": {
-      rejectUnknownKeys(value, ["id", "kind", "event_name", "direction"], "binary metric");
+      rejectUnknownKeys(value, ["id", "kind", "event_name", "direction", "event_filter"], "binary metric");
+      if (typeof value === "object" && value !== null && !Array.isArray(value) && "event_filter" in value && value.event_filter !== undefined) {
+        rejectUnknownKeys(value.event_filter, ["field", "operator", "value"], "binary metric event_filter");
+      }
       return { ...await yupValidate(binaryMetricSchema, value, { abortEarly: false }), kind: "binary" };
     }
     case "numeric": {
-      rejectUnknownKeys(value, ["id", "kind", "event_name", "direction"], "numeric metric");
+      rejectUnknownKeys(value, ["id", "kind", "event_name", "direction", "property_name", "aggregation"], "numeric metric");
       return { ...await yupValidate(numericMetricSchema, value, { abortEarly: false }), kind: "numeric" };
     }
     case "funnel": {
@@ -120,14 +130,15 @@ const experimentConfigBaseSchema = yupObject({
       // Relative assignment weight in basis points; all weights must sum to exactly 10000.
       weight_basis_points: yupNumber().integer().min(0).max(BASIS_POINTS_TOTAL).defined(),
       // The flag value served to this variant; any JSON value.
-      flag_value: yupMixed().optional(),
+      flag_value: yupMixed().nullable().defined(),
     }),
   ).defined(),
   primary_metric: yupMixed().defined(),
   secondary_metrics: yupArray(yupMixed().defined()).max(MAX_METRICS_PER_KIND).optional(),
   guardrail_metrics: yupArray(yupMixed().defined()).max(MAX_METRICS_PER_KIND).optional(),
   // Conversions are only attributed within this window after a subject's first eligible exposure.
-  attribution_window_days: yupNumber().integer().min(1).max(90).defined(),
+  attribution_window_seconds: yupNumber().integer().min(1).max(90 * 24 * 60 * 60).defined(),
+  mutual_exclusion_group_id: userSpecifiedIdSchema("mutualExclusionGroupId").optional(),
   schedule: yupObject({
     start_at_millis: yupNumber().integer().min(0).optional(),
     end_at_millis: yupNumber().integer().min(0).optional(),
@@ -141,11 +152,12 @@ export type ExperimentConfig = {
   assignment_unit: "user" | "team",
   traffic_allocation_basis_points: number,
   control_variant_id: string,
-  variants: Record<string, { weight_basis_points: number, flag_value?: unknown }>,
+  variants: Record<string, { weight_basis_points: number, flag_value: unknown }>,
   primary_metric: ExperimentMetricDefinition,
   secondary_metrics: ExperimentMetricDefinition[],
   guardrail_metrics: ExperimentMetricDefinition[],
-  attribution_window_days: number,
+  attribution_window_seconds: number,
+  mutual_exclusion_group_id?: string,
   schedule?: { start_at_millis?: number, end_at_millis?: number },
 };
 
@@ -174,36 +186,30 @@ async function validateExperimentConfigInner(value: unknown): Promise<Experiment
   rejectUnknownKeys(value, [
     "display_name", "hypothesis", "flag_id", "assignment_unit", "traffic_allocation_basis_points",
     "control_variant_id", "variants", "primary_metric", "secondary_metrics", "guardrail_metrics",
-    "attribution_window_days", "schedule",
+    "attribution_window_seconds", "schedule",
+    "mutual_exclusion_group_id",
   ], "experiment configuration");
   if (typeof value === "object" && value !== null && !Array.isArray(value) && "schedule" in value) {
     rejectUnknownKeys(value.schedule, ["start_at_millis", "end_at_millis"], "experiment schedule");
   }
   const base = await yupValidate(experimentConfigBaseSchema.defined(), value, { abortEarly: false });
 
-  // INTEGRATION NOTE (feature-flags core workstream): conversion events only
-  // carry user_id today (the analytics batch route inserts team_id: null), so
-  // the attribution SQL in experiment-results.ts can only recompute the
-  // subject hash from user ids — a team-unit experiment would silently report
-  // zero conversions for every variant. Reject it here (rather than mis-report
-  // in results) and lift this once conversion attribution can resolve a user's
-  // team, e.g. via the synced team-members table in ClickHouse. The schema
-  // keeps the user|team union so the wire contract doesn't change when team
-  // support lands.
-  if (base.assignment_unit === "team") {
-    throw new yup.ValidationError('assignment_unit "team" is not supported yet; use "user"', value, "assignment_unit");
-  }
-
   const variantEntries = Object.entries(base.variants);
   if (variantEntries.length < 2 || variantEntries.length > MAX_VARIANTS_PER_EXPERIMENT) {
     throw new yup.ValidationError(`Experiments must define between 2 and ${MAX_VARIANTS_PER_EXPERIMENT} variants`, value, "variants");
   }
-  const weightSum = variantEntries.reduce((acc, [, v]) => acc + (v?.weight_basis_points ?? 0), 0);
+  const weightSum = variantEntries.reduce((acc, [, v]) => acc + v.weight_basis_points, 0);
   if (weightSum !== BASIS_POINTS_TOTAL) {
     throw new yup.ValidationError(`Variant weights must sum to exactly ${BASIS_POINTS_TOTAL} basis points, got ${weightSum}`, value, "variants");
   }
+  if (variantEntries.filter(([, variant]) => variant.weight_basis_points > 0).length < 2) {
+    throw new yup.ValidationError("Experiments must define at least two variants with positive weights", value, "variants");
+  }
   if (!(base.control_variant_id in base.variants)) {
     throw new yup.ValidationError(`control_variant_id ${JSON.stringify(base.control_variant_id)} is not a key of variants`, value, "control_variant_id");
+  }
+  if (base.variants[base.control_variant_id].weight_basis_points <= 0) {
+    throw new yup.ValidationError("The control variant must have a positive weight", value, "control_variant_id");
   }
   if (base.schedule?.start_at_millis != null && base.schedule.end_at_millis != null && base.schedule.end_at_millis <= base.schedule.start_at_millis) {
     throw new yup.ValidationError("schedule.end_at_millis must be after schedule.start_at_millis", value, "schedule");
@@ -225,13 +231,14 @@ async function validateExperimentConfigInner(value: unknown): Promise<Experiment
     traffic_allocation_basis_points: base.traffic_allocation_basis_points,
     control_variant_id: base.control_variant_id,
     variants: Object.fromEntries(variantEntries.map(([id, v]) => [id, {
-      weight_basis_points: (v ?? { weight_basis_points: 0 }).weight_basis_points,
-      ...v?.flag_value !== undefined ? { flag_value: v.flag_value } : {},
+      weight_basis_points: v.weight_basis_points,
+      flag_value: v.flag_value,
     }])),
     primary_metric: primaryMetric,
     secondary_metrics: secondaryMetrics,
     guardrail_metrics: guardrailMetrics,
-    attribution_window_days: base.attribution_window_days,
+    attribution_window_seconds: base.attribution_window_seconds,
+    ...base.mutual_exclusion_group_id != null ? { mutual_exclusion_group_id: base.mutual_exclusion_group_id } : {},
     ...base.schedule != null ? {
       schedule: {
         ...base.schedule.start_at_millis != null ? { start_at_millis: base.schedule.start_at_millis } : {},
@@ -247,7 +254,7 @@ function canonicalizeJson(value: unknown): unknown {
   }
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
+      Object.entries(value)
         .filter(([, v]) => v !== undefined)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([k, v]) => [k, canonicalizeJson(v)]),

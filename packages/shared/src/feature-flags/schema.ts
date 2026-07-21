@@ -1,7 +1,7 @@
 import { yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "../schema-fields";
 import { HexclaveAssertionError } from "../utils/errors";
 import { isStrictSemver, isStrictUtcTimestamp } from "./evaluator";
-import type { FeatureFlagCondition, FeatureFlagsConfig } from "./types";
+import type { FeatureFlagCondition, FeatureFlagDefinition, FeatureFlagExperiment, FeatureFlagMetric, FeatureFlagsConfig } from "./types";
 import { featureFlagConditionOperators, isFeatureFlagValue } from "./types";
 
 const configIdSchema = yupString().matches(/^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$/, "ID must contain only letters, numbers, underscores, and hyphens");
@@ -11,8 +11,8 @@ const strictUtcTimestampSchema = yupString().test("strict-utc", "Timestamp must 
 const featureFlagTypes = ["boolean", "string", "number", "json"] as const;
 const stickyByValues = ["distinctId", "userId", "teamId"] as const;
 const segmentMatchValues = ["all", "any"] as const;
-const assignmentUnitValues = ["user", "team", "distinct_id"] as const;
-const metricTypeValues = ["binary", "funnel", "numeric"] as const;
+const assignmentUnitValues = ["user", "team"] as const;
+const metricTypeValues = ["page_view", "click", "funnel", "custom_event", "numeric_value"] as const;
 
 const jsonValueSchema = yupMixed()
   .nullable()
@@ -39,8 +39,11 @@ function conditionValueIsValid(condition: FeatureFlagCondition): boolean {
     case "after": { return typeof condition.value === "string" && isStrictUtcTimestamp(condition.value); }
     case "semver_eq":
     case "semver_gt":
-    case "semver_lt": { return typeof condition.value === "string" && isStrictSemver(condition.value); }
-    case "in_segment": { return typeof condition.value === "string"; }
+    case "semver_gte":
+    case "semver_lt":
+    case "semver_lte": { return typeof condition.value === "string" && isStrictSemver(condition.value); }
+    case "in_segment":
+    case "not_in_segment": { return typeof condition.value === "string"; }
   }
 }
 
@@ -67,6 +70,7 @@ const prerequisiteSchema = yupObject({
 });
 
 const ruleSchema = yupObject({
+  displayName: yupString().max(128),
   enabled: yupBoolean(),
   priority: yupNumber().integer().min(0),
   conditions: yupRecord(configIdSchema, conditionSchema),
@@ -76,11 +80,11 @@ const ruleSchema = yupObject({
   variantKey: configIdSchema,
   variantWeights: yupRecord(configIdSchema, basisPointsSchema),
   experimentId: configIdSchema,
-  experimentRunId: configIdSchema,
 });
 
 const flagSchema = yupObject({
   key: publicKeySchema,
+  displayName: yupString().max(128),
   description: yupString().max(1000),
   type: yupString().oneOf(featureFlagTypes),
   enabled: yupBoolean(),
@@ -93,6 +97,7 @@ const flagSchema = yupObject({
   holdoutId: configIdSchema,
   mutualExclusionGroupId: configIdSchema,
   rules: yupRecord(configIdSchema, ruleSchema),
+  createdAtMillis: yupNumber().integer().min(0),
 });
 
 const holdoutSchema = yupObject({
@@ -108,16 +113,27 @@ const mutualExclusionGroupSchema = yupObject({
 });
 
 const metricSchema = yupObject({
+  id: configIdSchema,
+  displayName: yupString().max(128),
   eventName: yupString().min(1).max(128),
   type: yupString().oneOf(metricTypeValues),
+  direction: yupString().oneOf(["increase", "decrease"]),
+  urlPattern: yupString().max(2048),
+  selector: yupString().max(2048),
+  funnelSteps: yupRecord(configIdSchema, yupString().min(1).max(128)),
+  numericProperty: yupString().min(1).max(128),
+  numericAggregation: yupString().oneOf(["sum", "average"]),
   attributionWindowSeconds: yupNumber().integer().min(1).max(31_536_000),
 });
 
 const experimentSchema = yupObject({
   key: publicKeySchema,
+  displayName: yupString().max(128),
   hypothesis: yupString().max(2000),
   flagId: configIdSchema,
   assignmentUnit: yupString().oneOf(assignmentUnitValues),
+  trafficAllocationBasisPoints: basisPointsSchema,
+  controlVariantKey: configIdSchema,
   variantWeights: yupRecord(configIdSchema, basisPointsSchema),
   primaryMetric: metricSchema,
   secondaryMetrics: yupRecord(configIdSchema, metricSchema),
@@ -125,6 +141,8 @@ const experimentSchema = yupObject({
   mutualExclusionGroupId: configIdSchema,
   startsAt: strictUtcTimestampSchema,
   endsAt: strictUtcTimestampSchema,
+  archived: yupBoolean(),
+  createdAtMillis: yupNumber().integer().min(0),
 });
 
 function sumDefined(record: Record<string, number | undefined> | undefined): number {
@@ -157,6 +175,67 @@ function findGraphCycle(graph: ReadonlyMap<string, readonly string[]>): readonly
     if (cycle !== undefined) return cycle;
   }
   return undefined;
+}
+
+function isNonEmptyString(value: string | undefined): value is string {
+  return value !== undefined && value.trim().length > 0;
+}
+
+function validateExperimentMetric(
+  experimentId: string,
+  metricPath: string,
+  metric: FeatureFlagMetric | undefined,
+  errors: string[],
+): number | undefined {
+  const label = `Metric "${metricPath}" on experiment "${experimentId}"`;
+  if (metric === undefined) {
+    errors.push(`${label} is required`);
+    return undefined;
+  }
+  if (!isNonEmptyString(metric.id)) errors.push(`${label} must define an id`);
+  if (metric.type === undefined) errors.push(`${label} must define a type`);
+  if (metric.direction === undefined) errors.push(`${label} must define a direction`);
+  if (metric.attributionWindowSeconds === undefined) errors.push(`${label} must define an attribution window`);
+
+  switch (metric.type) {
+    case undefined: { break; }
+    case "page_view": {
+      if (metric.eventName !== "$page-view") errors.push(`${label} must use the $page-view event`);
+      const pattern = metric.urlPattern?.trim();
+      if (pattern === undefined || pattern.length === 0 || pattern.replace(/^\*/, "").replace(/\*$/, "").length === 0) {
+        errors.push(`${label} must define a non-empty URL pattern`);
+      }
+      break;
+    }
+    case "click": {
+      if (metric.eventName !== "$click") errors.push(`${label} must use the $click event`);
+      if (!isNonEmptyString(metric.selector)) errors.push(`${label} must define a selector`);
+      break;
+    }
+    case "funnel": {
+      const steps = Object.entries(metric.funnelSteps ?? {}).map(([stepId, eventName]) => {
+        const match = /^step_([1-9]\d*)$/.exec(stepId);
+        return { position: match === null ? undefined : Number(match[1]), eventName };
+      }).sort((left, right) => (left.position ?? Number.MAX_SAFE_INTEGER) - (right.position ?? Number.MAX_SAFE_INTEGER));
+      if (steps.length < 2 || steps.length > 10) errors.push(`${label} must define between 2 and 10 funnel steps`);
+      for (const [index, step] of steps.entries()) {
+        if (step.position !== index + 1) errors.push(`${label} funnel steps must be consecutively named step_1, step_2, ...`);
+        if (!isNonEmptyString(step.eventName)) errors.push(`${label} funnel step ${index + 1} must define an event name`);
+      }
+      break;
+    }
+    case "custom_event": {
+      if (!isNonEmptyString(metric.eventName) || metric.eventName.startsWith("$")) errors.push(`${label} must define a non-reserved event name`);
+      break;
+    }
+    case "numeric_value": {
+      if (!isNonEmptyString(metric.eventName) || metric.eventName.startsWith("$")) errors.push(`${label} must define a non-reserved event name`);
+      if (!isNonEmptyString(metric.numericProperty)) errors.push(`${label} must define a numeric property`);
+      if (metric.numericAggregation === undefined) errors.push(`${label} must define a numeric aggregation`);
+      break;
+    }
+  }
+  return metric.attributionWindowSeconds;
 }
 
 export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[] {
@@ -202,10 +281,14 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
       for (const variantKey of Object.keys(rule.variantWeights ?? {})) {
         if (!hasRecordKey(flag.variants, variantKey)) errors.push(`Rule "${ruleId}" references missing variant "${variantKey}"`);
       }
-      if (rule.experimentId !== undefined && !hasRecordKey(config.experiments, rule.experimentId)) errors.push(`Rule "${ruleId}" references missing experiment "${rule.experimentId}"`);
+      if (rule.experimentId !== undefined && !hasRecordKey(config.experiments, rule.experimentId)) {
+        errors.push(`Rule "${ruleId}" references missing experiment "${rule.experimentId}"`);
+      } else if (rule.experimentId !== undefined && config.experiments?.[rule.experimentId]?.flagId !== flagId) {
+        errors.push(`Rule "${ruleId}" on feature flag "${flagId}" references experiment "${rule.experimentId}" for a different flag`);
+      }
       for (const condition of Object.values(rule.conditions ?? {})) {
         if (condition?.attribute === undefined || condition.operator === undefined) errors.push(`Rule "${ruleId}" contains an incomplete condition`);
-        if (condition?.operator === "in_segment" && typeof condition.value === "string" && !hasRecordKey(config.segments, condition.value)) {
+        if ((condition?.operator === "in_segment" || condition?.operator === "not_in_segment") && typeof condition.value === "string" && !hasRecordKey(config.segments, condition.value)) {
           errors.push(`Rule "${ruleId}" references missing segment "${condition.value}"`);
         }
       }
@@ -219,21 +302,68 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
   for (const [segmentId, segment] of Object.entries(config.segments ?? {})) {
     for (const condition of Object.values(segment?.conditions ?? {})) {
       if (condition?.attribute === undefined || condition.operator === undefined) errors.push(`Segment "${segmentId}" contains an incomplete condition`);
-      if (condition?.operator === "in_segment" && typeof condition.value === "string" && !hasRecordKey(config.segments, condition.value)) {
+      if ((condition?.operator === "in_segment" || condition?.operator === "not_in_segment") && typeof condition.value === "string" && !hasRecordKey(config.segments, condition.value)) {
         errors.push(`Segment "${segmentId}" references missing segment "${condition.value}"`);
       }
     }
   }
+  const experimentKeys = new Set<string>();
   for (const [experimentId, experiment] of Object.entries(config.experiments ?? {})) {
     if (experiment === undefined) continue;
+    if (!isNonEmptyString(experiment.key)) {
+      errors.push(`Experiment "${experimentId}" must define a public key`);
+    } else {
+      if (experimentKeys.has(experiment.key)) errors.push(`Experiment key "${experiment.key}" is duplicated`);
+      experimentKeys.add(experiment.key);
+    }
+    if (!isNonEmptyString(experiment.hypothesis)) errors.push(`Experiment "${experimentId}" must define a hypothesis`);
+    if (experiment.flagId === undefined) errors.push(`Experiment "${experimentId}" must reference a flag`);
+    if (experiment.assignmentUnit === undefined) errors.push(`Experiment "${experimentId}" must define an assignment unit`);
+    if (experiment.trafficAllocationBasisPoints === undefined) errors.push(`Experiment "${experimentId}" must define a traffic allocation`);
+    if (experiment.controlVariantKey === undefined) errors.push(`Experiment "${experimentId}" must define a control variant`);
     if (experiment.flagId !== undefined && !hasRecordKey(config.flags, experiment.flagId)) errors.push(`Experiment "${experimentId}" references missing flag "${experiment.flagId}"`);
-    if (experiment.variantWeights !== undefined && sumDefined(experiment.variantWeights) !== 10_000) errors.push(`Experiment "${experimentId}" variant weights must total 10000 basis points`);
+
+    const variantEntries = Object.entries(experiment.variantWeights ?? {});
+    if (variantEntries.length < 2 || variantEntries.length > 10) errors.push(`Experiment "${experimentId}" must define between 2 and 10 variants`);
+    if (experiment.variantWeights === undefined || sumDefined(experiment.variantWeights) !== 10_000) errors.push(`Experiment "${experimentId}" variant weights must total 10000 basis points`);
+    for (const [variantKey, weight] of variantEntries) {
+      if (weight === undefined) errors.push(`Experiment "${experimentId}" variant "${variantKey}" must define a weight`);
+    }
     const flag = experiment.flagId === undefined ? undefined : config.flags?.[experiment.flagId];
     for (const variantKey of Object.keys(experiment.variantWeights ?? {})) {
       if (!hasRecordKey(flag?.variants, variantKey)) errors.push(`Experiment "${experimentId}" references missing variant "${variantKey}"`);
     }
+    if (experiment.controlVariantKey !== undefined && !hasRecordKey(flag?.variants, experiment.controlVariantKey)) {
+      errors.push(`Experiment "${experimentId}" references missing control variant "${experiment.controlVariantKey}"`);
+    }
+    if (experiment.controlVariantKey !== undefined && !hasRecordKey(experiment.variantWeights, experiment.controlVariantKey)) {
+      errors.push(`Experiment "${experimentId}" control variant "${experiment.controlVariantKey}" must be allocated by the experiment`);
+    }
     if (experiment.mutualExclusionGroupId !== undefined && !hasRecordKey(config.mutualExclusionGroups, experiment.mutualExclusionGroupId)) {
       errors.push(`Experiment "${experimentId}" references missing mutual exclusion group "${experiment.mutualExclusionGroupId}"`);
+    }
+
+    const metrics: [string, FeatureFlagMetric | undefined][] = [
+      ["primaryMetric", experiment.primaryMetric],
+      ...Object.entries(experiment.secondaryMetrics ?? {}).map(([metricId, metric]): [string, FeatureFlagMetric | undefined] => [`secondaryMetrics.${metricId}`, metric]),
+      ...Object.entries(experiment.guardrailMetrics ?? {}).map(([metricId, metric]): [string, FeatureFlagMetric | undefined] => [`guardrailMetrics.${metricId}`, metric]),
+    ];
+    const metricIds = new Set<string>();
+    const attributionWindows = new Set<number>();
+    for (const [metricPath, metric] of metrics) {
+      const attributionWindow = validateExperimentMetric(experimentId, metricPath, metric, errors);
+      if (attributionWindow !== undefined) attributionWindows.add(attributionWindow);
+      if (metric?.id !== undefined) {
+        if (metricIds.has(metric.id)) errors.push(`Experiment "${experimentId}" metric id "${metric.id}" is duplicated`);
+        metricIds.add(metric.id);
+      }
+    }
+    if (attributionWindows.size > 1) errors.push(`Experiment "${experimentId}" metrics must use the same attribution window`);
+
+    if (experiment.startsAt !== undefined && !isStrictUtcTimestamp(experiment.startsAt)) errors.push(`Experiment "${experimentId}" start must be a strict UTC timestamp`);
+    if (experiment.endsAt !== undefined && !isStrictUtcTimestamp(experiment.endsAt)) errors.push(`Experiment "${experimentId}" end must be a strict UTC timestamp`);
+    if (experiment.startsAt !== undefined && experiment.endsAt !== undefined && isStrictUtcTimestamp(experiment.startsAt) && isStrictUtcTimestamp(experiment.endsAt) && new Date(experiment.endsAt).getTime() <= new Date(experiment.startsAt).getTime()) {
+      errors.push(`Experiment "${experimentId}" end must be after its start`);
     }
   }
   for (const [groupId, group] of Object.entries(config.mutualExclusionGroups ?? {})) {
@@ -241,6 +371,11 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
     for (const experimentId of Object.keys(group?.experimentWeights ?? {})) {
       if (!hasRecordKey(config.experiments, experimentId)) errors.push(`Mutual exclusion group "${groupId}" references missing experiment "${experimentId}"`);
     }
+    const assignmentUnits = new Set(Object.keys(group?.experimentWeights ?? {}).flatMap((experimentId) => {
+      const unit = config.experiments?.[experimentId]?.assignmentUnit;
+      return unit === undefined ? [] : [unit];
+    }));
+    if (assignmentUnits.size > 1) errors.push(`Mutual exclusion group "${groupId}" mixes user and team assignment units`);
   }
   const prerequisiteGraph = new Map(Object.entries(config.flags ?? {}).map(([flagId, flag]) => [
     flagId,
@@ -251,7 +386,7 @@ export function getFeatureFlagsConfigErrors(config: FeatureFlagsConfig): string[
 
   const segmentGraph = new Map(Object.entries(config.segments ?? {}).map(([segmentId, segment]) => [
     segmentId,
-    Object.values(segment?.conditions ?? {}).flatMap((condition) => condition?.operator === "in_segment" && typeof condition.value === "string" ? [condition.value] : []),
+    Object.values(segment?.conditions ?? {}).flatMap((condition) => (condition?.operator === "in_segment" || condition?.operator === "not_in_segment") && typeof condition.value === "string" ? [condition.value] : []),
   ]));
   const segmentCycle = findGraphCycle(segmentGraph);
   if (segmentCycle !== undefined) errors.push(`Feature flag segments contain a cycle: ${segmentCycle.join(" -> ")}`);
@@ -290,4 +425,68 @@ import.meta.vitest?.test("feature flag schema validates operator types, referenc
   expect(getFeatureFlagsConfigErrors({ flags: { flag: { fallbackVariantKey: "missing", variants: {} } } })).toContain('Feature flag "flag" references missing fallback variant "missing"');
   expect(getFeatureFlagsConfigErrors({ flags: { flag: { variants: { on: { value: true } }, rules: { all: { variantWeights: { on: 9_999 } } } } } })).toContain('Rule "all" variant weights must total 10000 basis points');
   expect(getFeatureFlagsConfigErrors({ flags: { a: { prerequisites: { b: { flagId: "b" } } }, b: { prerequisites: { a: { flagId: "a" } } } } })).toContain("Feature flag prerequisites contain a cycle: a -> b -> a");
+  expect(getFeatureFlagsConfigErrors({
+    flags: { a: {}, b: {} },
+    experiments: { userExperiment: { flagId: "a", assignmentUnit: "user" }, teamExperiment: { flagId: "b", assignmentUnit: "team" } },
+    mutualExclusionGroups: { mixed: { experimentWeights: { userExperiment: 5_000, teamExperiment: 5_000 } } },
+  })).toContain('Mutual exclusion group "mixed" mixes user and team assignment units');
+});
+
+import.meta.vitest?.test("whole-config validation rejects incomplete experiment definitions", ({ expect }) => {
+  const flag: FeatureFlagDefinition = {
+    key: "checkout", type: "boolean", allocationSalt: "checkout-allocation",
+    variants: { control: { value: false }, treatment: { value: true } }, fallbackVariantKey: "control",
+  };
+  const validExperiment: FeatureFlagExperiment = {
+    key: "checkout-copy", hypothesis: "The new copy increases checkout completion", flagId: "checkout",
+    assignmentUnit: "user", trafficAllocationBasisPoints: 10_000,
+    controlVariantKey: "control", variantWeights: { control: 5_000, treatment: 5_000 },
+    primaryMetric: {
+      id: "completed", type: "custom_event", direction: "increase",
+      eventName: "checkout-completed", attributionWindowSeconds: 86_400,
+    },
+  };
+  expect(getFeatureFlagsConfigErrors({ flags: { checkout: flag }, experiments: { checkoutExperiment: validExperiment } })).toEqual([]);
+  expect(getFeatureFlagsConfigErrors({
+    flags: {
+      checkout: flag,
+      other: {
+        key: "other", type: "boolean", allocationSalt: "other-allocation", fallbackVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { experiment: { experimentId: "checkoutExperiment", variantKey: "on" } },
+      },
+    },
+    experiments: { checkoutExperiment: validExperiment },
+  })).toContain('Rule "experiment" on feature flag "other" references experiment "checkoutExperiment" for a different flag');
+
+  expect(getFeatureFlagsConfigErrors({ flags: { checkout: flag }, experiments: { incomplete: {} } })).toEqual(expect.arrayContaining([
+    'Experiment "incomplete" must define a public key',
+    'Experiment "incomplete" must define a hypothesis',
+    'Experiment "incomplete" must reference a flag',
+    'Experiment "incomplete" must define an assignment unit',
+    'Experiment "incomplete" must define a traffic allocation',
+    'Experiment "incomplete" must define a control variant',
+    'Metric "primaryMetric" on experiment "incomplete" is required',
+  ]));
+
+  expect(getFeatureFlagsConfigErrors({
+    flags: { checkout: flag },
+    experiments: {
+      checkoutExperiment: {
+        ...validExperiment,
+        startsAt: "2026-07-20T00:00:00Z",
+        endsAt: "2026-07-19T00:00:00Z",
+        secondaryMetrics: {
+          value: {
+            id: "completed", type: "numeric_value", direction: "increase", eventName: "checkout-completed",
+            numericProperty: "total", numericAggregation: "sum", attributionWindowSeconds: 3_600,
+          },
+        },
+      },
+    },
+  })).toEqual(expect.arrayContaining([
+    'Experiment "checkoutExperiment" metric id "completed" is duplicated',
+    'Experiment "checkoutExperiment" metrics must use the same attribution window',
+    'Experiment "checkoutExperiment" end must be after its start',
+  ]));
 });

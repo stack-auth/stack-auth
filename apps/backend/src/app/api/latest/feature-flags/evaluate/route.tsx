@@ -5,6 +5,10 @@ import { parseFeatureFlagsConfig } from "@hexclave/shared/dist/feature-flags/sch
 import { isFeatureFlagValue, type FeatureFlagEvaluationContext, type FeatureFlagEvaluationResult, type FeatureFlagValue } from "@hexclave/shared/dist/feature-flags/types";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { withActiveExperimentRuns } from "@/lib/feature-flags/active-experiments";
+import { createFeatureFlagEvaluationToken } from "@/lib/feature-flags/exposure-tokens";
+import { getPrismaClientForTenancy } from "@/prisma-client";
+import { ensureTeamMembershipExists } from "@/lib/request-checks";
 
 const MAX_FLAG_KEYS = 50;
 const MAX_CONTEXT_PROPERTIES = 50;
@@ -15,14 +19,14 @@ const jsonValueSchema = yupMixed<Exclude<FeatureFlagValue, null>>()
   .test("json", "Value must be JSON serializable", isFeatureFlagValue);
 
 const boundedContextSchema = yupRecord(yupString().min(1).max(128), jsonValueSchema.optional())
-  .test("context-properties", `Context may contain at most ${MAX_CONTEXT_PROPERTIES} properties`, (value) => value === undefined || Object.keys(value).length <= MAX_CONTEXT_PROPERTIES)
-  .test("context-size", `Context may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => value === undefined || new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES);
+  .test("context-properties", `Context may contain at most ${MAX_CONTEXT_PROPERTIES} properties`, (value) => Object.keys(value).length <= MAX_CONTEXT_PROPERTIES)
+  .test("context-size", `Context may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES);
 
 const evaluationBodySchema = yupObject({
   flag_keys: yupArray(yupString().min(1).max(128).defined()).defined().min(1).max(MAX_FLAG_KEYS),
   fallbacks: yupRecord(yupString().min(1).max(128), jsonValueSchema.optional())
-    .test("fallback-count", `Fallbacks may contain at most ${MAX_FLAG_KEYS} properties`, (value) => value === undefined || Object.keys(value).length <= MAX_FLAG_KEYS)
-    .test("fallback-size", `Fallbacks may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => value === undefined || new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES)
+    .test("fallback-count", `Fallbacks may contain at most ${MAX_FLAG_KEYS} properties`, (value) => Object.keys(value).length <= MAX_FLAG_KEYS)
+    .test("fallback-size", `Fallbacks may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES)
     .optional(),
   distinct_id: yupString().min(1).max(256).optional(),
   user_id: yupString().min(1).max(256).optional(),
@@ -30,7 +34,7 @@ const evaluationBodySchema = yupObject({
   context: boundedContextSchema.optional(),
   user: boundedContextSchema.optional(),
   team: boundedContextSchema.optional(),
-  segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("segment-count", "Segments may contain at most 100 properties", (value) => value === undefined || Object.keys(value).length <= 100).optional(),
+  segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("segment-count", "Segments may contain at most 100 properties", (value) => Object.keys(value).length <= 100).optional(),
 });
 
 const evaluationResultSchema = yupObject({
@@ -45,12 +49,42 @@ const evaluationResultSchema = yupObject({
   exposure_token: yupString().nullable().defined(),
 });
 
-function shapeResult(
+async function shapeResult(
   requestedKey: string,
   result: FeatureFlagEvaluationResult,
   fallback: FeatureFlagValue,
   configVersion: string,
+  options: {
+    auth: { tenancy: Parameters<typeof createFeatureFlagEvaluationToken>[0]["tenancy"] },
+    config: ReturnType<typeof parseFeatureFlagsConfig>,
+    context: FeatureFlagEvaluationContext,
+  },
 ) {
+  const experiment = result.experimentId === undefined ? undefined : options.config.experiments?.[result.experimentId];
+  const subjectType = experiment?.assignmentUnit;
+  const subjectId = subjectType === "team" ? options.context.teamId : options.context.userId;
+  const exposureToken =
+    result.reason === "matched_rule" &&
+    result.variantKey !== undefined &&
+    result.ruleId !== undefined &&
+    result.experimentId !== undefined &&
+    result.experimentRunId !== undefined &&
+    result.experimentConfigRevision !== undefined &&
+    subjectType !== undefined &&
+    subjectId !== undefined
+      ? (await createFeatureFlagEvaluationToken({
+        tenancy: options.auth.tenancy,
+        runId: result.experimentRunId,
+        experimentId: result.experimentId,
+        flagId: result.flagId,
+        variantId: result.variantKey,
+        ruleId: result.ruleId,
+        reason: result.reason,
+        configRevisionHash: result.experimentConfigRevision,
+        subjectType,
+        subjectId,
+      })).token
+      : null;
   return {
     flag_key: requestedKey,
     value: result.value === undefined ? fallback : result.value,
@@ -60,9 +94,7 @@ function shapeResult(
     config_version: configVersion,
     experiment_id: result.experimentId ?? null,
     experiment_run_id: result.experimentRunId ?? null,
-    // Exposure signing and ingestion are implemented by the analytics workstream. Keeping this
-    // explicit prevents clients from mistaking an unsigned assignment for a recordable exposure.
-    exposure_token: null,
+    exposure_token: exposureToken,
   };
 }
 
@@ -93,10 +125,25 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "Feature flags are not enabled for this project.");
     }
 
-    const config = parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {});
+    const config = await withActiveExperimentRuns(
+      auth.tenancy,
+      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {}),
+    );
     const bootstrap = createFeatureFlagsBootstrap(config);
     const trustedCaller = auth.type !== "client";
     const verifiedEmail = auth.user?.primary_email_verified === true ? auth.user.primary_email ?? undefined : undefined;
+    if (!trustedCaller && body.team_id !== undefined) {
+      if (auth.user === undefined) {
+        throw new StatusError(StatusError.BadRequest, "Selecting a team requires an authenticated or anonymous user identity.");
+      }
+      const prisma = await getPrismaClientForTenancy(auth.tenancy);
+      await ensureTeamMembershipExists(prisma, {
+        tenancyId: auth.tenancy.id,
+        teamId: body.team_id,
+        userId: auth.user.id,
+      });
+    }
+    const selectedTeamId = body.team_id;
     const context: FeatureFlagEvaluationContext = trustedCaller ? {
       distinctId: body.distinct_id ?? body.user_id ?? auth.user?.id,
       userId: body.user_id ?? auth.user?.id,
@@ -108,23 +155,25 @@ export const POST = createSmartRouteHandler({
     } : {
       distinctId: auth.user?.id ?? body.distinct_id,
       userId: auth.user?.id,
+      teamId: selectedTeamId,
       user: auth.user === undefined ? undefined : {
         id: auth.user.id,
         email: verifiedEmail,
         primary_email: verifiedEmail,
         primary_email_verified: auth.user.primary_email_verified,
       },
+      team: selectedTeamId === undefined ? undefined : { id: selectedTeamId },
       context: body.context,
     };
 
-    const results = new Map<string, ReturnType<typeof shapeResult>>();
+    const results = new Map<string, Awaited<ReturnType<typeof shapeResult>>>();
     for (const requestedKey of body.flag_keys) {
       const fallback = body.fallbacks?.[requestedKey] ?? null;
       const flagId = findFeatureFlagIdByKey(config, requestedKey);
       const evaluated = flagId === undefined
         ? { flagId: requestedKey, flagKey: requestedKey, reason: "missing" } satisfies FeatureFlagEvaluationResult
         : evaluateFeatureFlag(flagId, config, context);
-      results.set(requestedKey, shapeResult(requestedKey, evaluated, fallback, bootstrap.configVersion));
+      results.set(requestedKey, await shapeResult(requestedKey, evaluated, fallback, bootstrap.configVersion, { auth, config, context }));
     }
 
     return {

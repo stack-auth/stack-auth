@@ -48,12 +48,20 @@ Page views and clicks are captured automatically by the Analytics SDK. For anyth
 import { useStackApp } from "@hexclave/next";  // replace `next` with the correct framework SDK package
 
 const app = useStackApp();
-await app.captureEvent("purchase-completed", { value: 49.99 });
+await app.trackEvent("purchase-completed", { value: 49.99 });
 ```
+
+For a team-assigned experiment, pass the same selected team used for flag evaluation:
+
+```tsx
+await app.trackEvent("purchase-completed", { teamId: team.id, value: 49.99 });
+```
+
+The backend verifies that the current user belongs to the selected team. After a team-scoped flag evaluation, automatically captured page views and clicks also use that team context.
 
 Reference the event name (`purchase-completed`) in a custom-event metric, or use the numeric payload (`value`) in a numeric-value metric to measure revenue per user instead of just conversion rate.
 
-Exposures need no extra code: reading the flag with `useFeatureFlag` or `getFeatureFlagValue` records an exposure automatically. Read the flag as close as possible to where the user actually experiences the difference — exposing users who never see the change dilutes your results.
+Exposures need no extra code: reading the flag with `useFeatureFlag` or `getFeatureFlag` records an exposure automatically. Read the flag as close as possible to where the user actually experiences the difference — exposing users who never see the change dilutes your results.
 
 ## Lifecycle
 
@@ -62,7 +70,7 @@ An experiment moves through four states:
 1. **Draft** — configure everything; nothing is served yet.
 2. **Running** — traffic is enrolled, assignments are locked in, data accumulates.
 3. **Paused** — enrollment stops; already-assigned users keep their variant so data stays consistent if you resume.
-4. **Completed** — the experiment is over. Declare a winner or archive it.
+4. **Completed** — enrollment is over. Results continue to honor the frozen attribution window, and Hexclave displays a winner only when the evidence threshold is met.
 
 Avoid editing variants or metrics on a running experiment — changing what you measure mid-flight invalidates the comparison. If the setup was wrong, complete the experiment and start a new one.
 
@@ -84,8 +92,8 @@ Also watch for two automatic alerts:
 - **Sample-ratio mismatch** — the observed split across variants deviates from the configured allocation more than chance explains. This usually indicates a bug in exposure logging or enrollment; results from an experiment with a sample-ratio mismatch should not be trusted.
 - **Insufficient data** — the experiment hasn't accumulated enough exposures or conversions for the estimates to be meaningful yet. Keep it running; checking early and often is fine, but deciding early on thin evidence is how experiments mislead.
 
-## Declaring a winner and rolling out
+## Winner selection and rollout
 
-When the evidence is in — the primary metric shows a clear probability-to-be-best, guardrails haven't regressed, and there's no sample-ratio mismatch — declare the winning variant on the results page. This completes the experiment and gives you a one-click rollout: the flag's default is updated to the winning variant for 100% of traffic. From there you can eventually remove the flag from your code and clean up.
+Hexclave marks a winner only when every variant has at least 100 exposed subjects, the leading variant has at least 95% probability-to-be-best, guardrails have not regressed, and there is no sample-ratio mismatch. Once you complete a qualifying experiment, the results page offers a one-click rollout: the flag's default is updated to the winning variant for 100% of traffic. From there you can eventually remove the flag from your code and clean up.
 
 If no variant shows convincing evidence of improvement, that is also a result: keep the control, write down what you learned, and move on to the next hypothesis.

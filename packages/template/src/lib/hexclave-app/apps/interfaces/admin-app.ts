@@ -4,6 +4,7 @@ import type { Transaction, TransactionType } from "@hexclave/shared/dist/interfa
 import type { FeatureFlagActivityResponse, FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExperimentResults, FeatureFlagExperimentRun } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { InternalSession } from "@hexclave/shared/dist/sessions";
 import type { MoneyAmount } from "@hexclave/shared/dist/utils/currency-constants";
+import type { Json } from "@hexclave/shared/dist/utils/json";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
@@ -162,13 +163,14 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createAnalyticsClickmapToken(options: { origin: string }): Promise<AnalyticsClickmapTokenResponse>,
 
     testFeatureFlags(request: FeatureFlagEvaluateRequest): Promise<FeatureFlagEvaluateResponse>,
-    listFeatureFlagExperimentRuns(experimentId?: string): Promise<FeatureFlagExperimentRun[]>,
-    getFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
-    startFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
-    pauseFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
-    resumeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
-    completeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun>,
-    getFeatureFlagExperimentResults(runId: string): Promise<FeatureFlagExperimentResults>,
+    listFeatureFlagExperimentRuns(experimentId: string): Promise<FeatureFlagExperimentRun[]>,
+    createFeatureFlagExperimentRun(experimentId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun>,
+    startFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun>,
+    pauseFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun>,
+    resumeFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun>,
+    completeFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun>,
+    createFeatureFlagExperimentRevision(experimentId: string, runId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun>,
+    getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults>,
     listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,

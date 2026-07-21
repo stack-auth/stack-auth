@@ -55,7 +55,8 @@ function ExperimentsList() {
   const router = useRouter();
   const section = useFeatureFlagsSection();
 
-  const runsState = useAdapterData(async () => await listExperimentRuns(adminApp), [adminApp]);
+  const experimentIds = useMemo(() => [...section.experiments.keys()], [section]);
+  const runsState = useAdapterData(async () => await listExperimentRuns(adminApp, experimentIds), [adminApp, experimentIds]);
   const runsById = useMemo(() => {
     const map = new Map<string, ExperimentRun>();
     if (runsState.status === "ok") {
@@ -99,15 +100,15 @@ function ExperimentsList() {
                     size="sm"
                     icon={FlaskIcon}
                     title={experiment.displayName}
-                    subtitle={`${flag?.displayName ?? experiment.flagKey} · ${formatBps(experiment.trafficBps)} of traffic · ${experiment.assignmentUnit}-level${run != null ? ` · ${run.totalExposures.toLocaleString()} exposures` : ""}`}
+                    subtitle={`${flag?.displayName ?? experiment.flagKey} · ${formatBps(experiment.trafficBps)} of traffic · ${experiment.assignmentUnit}-level`}
                     onClick={() => router.push(urlString`/projects/${project.id}/feature-flags/experiments/${id}`)}
                   />
                 </div>
                 <div className="shrink-0">
                   {runsState.status === "ok" ? (
                     // No run record means the experiment was configured but
-                    // never started — the backend treats that as a draft.
-                    <ExperimentStatusBadge status={run?.status ?? "draft"} />
+                    // its first immutable run has not been created yet.
+                    <ExperimentStatusBadge status={run?.status ?? "not_started"} />
                   ) : (
                     <span className="text-xs text-muted-foreground" title="Live status unavailable">—</span>
                   )}

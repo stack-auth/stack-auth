@@ -26,7 +26,7 @@ Fetch `GET /api/v1/feature-flags/bootstrap` with the secret server key. The resp
 
 On a transient network, 408, 429, or 5xx failure, a previously validated snapshot may be used for at most five minutes and returned details set `isStale=true`. Never serve stale definitions for authorization/4xx failures. If no eligible snapshot exists during a transient failure, report the error through the SDK error reporter and return every caller-provided fallback with reason `error`. Other bootstrap or schema failures fail loudly.
 
-Use the shared deterministic evaluator from the feature-flags core package. Derive `distinctId` and `userId` from `getUser({ or: "anonymous" })`; pass bounded context and the selected team ID. Attach the bootstrap config version to every result. Local evaluation has no browser exposure-signing material, so `exposureToken` is null.
+Use the shared deterministic evaluator from the feature-flags core package. Derive `distinctId` and `userId` from `getUser({ or: "anonymous" })`; pass bounded context and the selected team ID. Attach the bootstrap config version to every result. Ordinary flags are fully local. An active experiment assignment may use the authenticated evaluation endpoint only to mint a signed exposure credential; the assignment returned to application code must remain the locally evaluated assignment, and a token-mint failure must not invalidate an otherwise eligible stale bootstrap result.
 
 Feature flags are not authorization controls even when evaluated by the server SDK.
 

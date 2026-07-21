@@ -22,7 +22,7 @@ import { detectSampleRatioMismatch } from "./stats/srm";
  *   and is attributed to the variant of that first exposure — one subject, one
  *   variant, per revision.
  * - Only conversion events with event_at inside
- *   [first_exposed_at, first_exposed_at + attribution_window_days] count.
+ *   [first_exposed_at, first_exposed_at + attribution_window_seconds] count.
  * - Exposure rows are deduplicated by event_id via aggregation (min/argMin/
  *   uniqExact and per-subject GROUP BY are unaffected by duplicate rows), per
  *   the ReplacingMergeTree contract on feature_flag_exposures.
@@ -42,29 +42,71 @@ export type ExperimentRunForResults = {
   experimentId: string,
   configRevisionHash: string,
   config: ExperimentConfig,
+  startedAtMillis: number,
+  completedAtMillis?: number,
+  sinceMillis?: number,
+  untilMillis?: number,
 };
 
 // Must stay in sync with computeExposureSubjectHash in exposure-tokens.ts.
-const SUBJECT_HASH_SQL = `lower(hex(SHA256(concat('hexclave:ff:subject:', {projectId:String}, ':', {subjectType:String}, ':', assumeNotNull(user_id)))))`;
+const SUBJECT_ID_SQL = `if({subjectType:String} = 'team', assumeNotNull(team_id), assumeNotNull(user_id))`;
+const SUBJECT_HASH_SQL = `lower(hex(SHA256(concat('hexclave:ff:subject:', {projectId:String}, ':', {subjectType:String}, ':', ${SUBJECT_ID_SQL}))))`;
+const SUBJECT_PRESENT_SQL = `(({subjectType:String} = 'team' AND team_id IS NOT NULL) OR ({subjectType:String} = 'user' AND user_id IS NOT NULL))`;
+// New SDK batches carry a stable event_id. Exact retries therefore collapse
+// before attribution. The deterministic legacy key preserves compatibility
+// for older rows while also collapsing byte-identical historical duplicates.
+const ANALYTICS_EVENT_DEDUPLICATION_KEY_SQL = `if(
+  length(toString(data.event_id)) > 0,
+  concat('id:', toString(data.event_id)),
+  concat('legacy:', lower(hex(SHA256(concat(
+    toString(event_at), ':', event_type, ':', toString(data), ':',
+    ifNull(user_id, ''), ':', ifNull(team_id, '')
+  )))))
+)`;
 
-// Per-subject first exposure for the run: variant of the earliest exposure row
-// and its timestamp. Duplicate exposure rows (idempotent re-sends) collapse in
-// the GROUP BY; the (event_at, event_id) tiebreaker makes argMin deterministic
-// even if two distinct exposures share a timestamp.
+// Per-subject first exposure for the complete frozen run/revision: variant of
+// the earliest exposure row and its timestamp. The cohort window is deliberately
+// applied only after that canonical exposure is selected. Otherwise, asking for
+// results with `since` could re-enroll a subject at a later exposure and even
+// attribute the subject to a different variant. Duplicate exposure rows
+// (idempotent re-sends) collapse in the GROUP BY; the (event_at, event_id)
+// tiebreaker makes argMin deterministic when distinct exposures share a timestamp.
 const FIRST_EXPOSURES_CTE = `
   SELECT
     subject_hash,
-    argMin(variant_id, (event_at, event_id)) AS variant_id,
-    min(event_at) AS first_exposed_at
-  FROM analytics_internal.feature_flag_exposures
-  WHERE project_id = {projectId:String}
-    AND branch_id = {branchId:String}
-    AND experiment_id = {experimentId:String}
-    AND run_id = {runId:String}
-    AND config_revision_hash = {configRevisionHash:String}
-    AND subject_type = {subjectType:String}
-  GROUP BY subject_hash
+    variant_id,
+    first_exposed_at
+  FROM (
+    SELECT
+      subject_hash,
+      argMin(variant_id, (event_at, event_id)) AS variant_id,
+      min(event_at) AS first_exposed_at
+    FROM analytics_internal.feature_flag_exposures
+    WHERE project_id = {projectId:String}
+      AND branch_id = {branchId:String}
+      AND experiment_id = {experimentId:String}
+      AND run_id = {runId:String}
+      AND config_revision_hash = {configRevisionHash:String}
+      AND subject_type = {subjectType:String}
+    GROUP BY subject_hash
+  )
+  WHERE first_exposed_at >= fromUnixTimestamp64Milli({sinceMillis:Int64})
+    AND first_exposed_at <= fromUnixTimestamp64Milli({untilMillis:Int64})
 `;
+
+import.meta.vitest?.test("first-exposure cohort filtering happens after canonical attribution", ({ expect }) => {
+  const aggregationStart = FIRST_EXPOSURES_CTE.indexOf("FROM analytics_internal.feature_flag_exposures");
+  const aggregationEnd = FIRST_EXPOSURES_CTE.indexOf("GROUP BY subject_hash", aggregationStart);
+  const cohortFilterStart = FIRST_EXPOSURES_CTE.indexOf("WHERE first_exposed_at", aggregationEnd);
+
+  expect(aggregationStart).toBeGreaterThanOrEqual(0);
+  expect(aggregationEnd).toBeGreaterThan(aggregationStart);
+  expect(cohortFilterStart).toBeGreaterThan(aggregationEnd);
+  expect(FIRST_EXPOSURES_CTE.slice(aggregationStart, aggregationEnd)).not.toContain("{sinceMillis:Int64}");
+  expect(FIRST_EXPOSURES_CTE.slice(aggregationStart, aggregationEnd)).not.toContain("{untilMillis:Int64}");
+  expect(FIRST_EXPOSURES_CTE.slice(cohortFilterStart)).toContain("{sinceMillis:Int64}");
+  expect(FIRST_EXPOSURES_CTE.slice(cohortFilterStart)).toContain("{untilMillis:Int64}");
+});
 
 const EXPOSED_SUBJECTS_QUERY = `
 WITH first_exposures AS (${FIRST_EXPOSURES_CTE})
@@ -77,19 +119,32 @@ const BINARY_CONVERSIONS_QUERY = `
 WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 conversion_events AS (
   SELECT
-    ${SUBJECT_HASH_SQL} AS subject_hash,
-    event_at
+    argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
+    argMin(event_at, created_at) AS event_at
   FROM analytics_internal.events
   WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
     AND event_type = {eventName:String}
-    AND user_id IS NOT NULL
+    AND ${SUBJECT_PRESENT_SQL}
+    AND event_at >= fromUnixTimestamp64Milli({conversionSinceMillis:Int64})
+    AND event_at <= fromUnixTimestamp64Milli({conversionUntilMillis:Int64})
+    AND (
+      {filterField:String} = ''
+      OR ({filterField:String} = 'path' AND (
+        ({filterOperator:String} = 'eq' AND toString(data.path) = {filterValue:String})
+        OR ({filterOperator:String} = 'starts_with' AND startsWith(toString(data.path), {filterValue:String}))
+        OR ({filterOperator:String} = 'ends_with' AND endsWith(toString(data.path), {filterValue:String}))
+        OR ({filterOperator:String} = 'contains' AND position(toString(data.path), {filterValue:String}) > 0)
+      ))
+      OR ({filterField:String} = 'selector' AND toString(data.selector) = {filterValue:String})
+    )
+  GROUP BY ${ANALYTICS_EVENT_DEDUPLICATION_KEY_SQL}
 )
 SELECT
   fe.variant_id AS variant_id,
   toUInt64(uniqExactIf(fe.subject_hash,
     ce.event_at >= fe.first_exposed_at
-    AND ce.event_at <= fe.first_exposed_at + toIntervalDay({attributionWindowDays:UInt32})
+    AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
   )) AS converted_subjects
 FROM first_exposures AS fe
 INNER JOIN conversion_events AS ce ON ce.subject_hash = fe.subject_hash
@@ -104,14 +159,21 @@ const NUMERIC_OBSERVATIONS_QUERY = `
 WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 conversion_events AS (
   SELECT
-    ${SUBJECT_HASH_SQL} AS subject_hash,
-    event_at,
-    coalesce(toFloat64OrNull(toString(data.value)), 0) AS value
+    argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
+    argMin(event_at, created_at) AS event_at,
+    argMin(coalesce(if(
+      {propertyName:String} = 'value',
+      toFloat64OrNull(toString(data.value)),
+      toFloat64OrNull(JSONExtractRaw(toString(data.properties), {propertyName:String}))
+    ), 0), created_at) AS value
   FROM analytics_internal.events
   WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
     AND event_type = {eventName:String}
-    AND user_id IS NOT NULL
+    AND ${SUBJECT_PRESENT_SQL}
+    AND event_at >= fromUnixTimestamp64Milli({conversionSinceMillis:Int64})
+    AND event_at <= fromUnixTimestamp64Milli({conversionUntilMillis:Int64})
+  GROUP BY ${ANALYTICS_EVENT_DEDUPLICATION_KEY_SQL}
 )
 SELECT
   variant_id,
@@ -121,9 +183,11 @@ FROM (
   SELECT
     fe.variant_id AS variant_id,
     fe.subject_hash AS subject_hash,
-    sumIf(ce.value,
-      ce.event_at >= fe.first_exposed_at
-      AND ce.event_at <= fe.first_exposed_at + toIntervalDay({attributionWindowDays:UInt32})
+    if(
+      {aggregation:String} = 'average',
+      sumIf(ce.value, ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
+        / greatest(toFloat64(countIf(ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))), 1),
+      sumIf(ce.value, ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
     ) AS subject_value
   FROM first_exposures AS fe
   INNER JOIN conversion_events AS ce ON ce.subject_hash = fe.subject_hash
@@ -147,14 +211,17 @@ function buildFunnelQuery(stepCount: number): string {
 WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 step_events AS (
   SELECT
-    ${SUBJECT_HASH_SQL} AS subject_hash,
-    event_at,
-    event_type
+    argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
+    argMin(event_at, created_at) AS event_at,
+    argMin(event_type, created_at) AS event_type
   FROM analytics_internal.events
   WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
     AND event_type IN (${stepInList})
-    AND user_id IS NOT NULL
+    AND ${SUBJECT_PRESENT_SQL}
+    AND event_at >= fromUnixTimestamp64Milli({conversionSinceMillis:Int64})
+    AND event_at <= fromUnixTimestamp64Milli({conversionUntilMillis:Int64})
+  GROUP BY ${ANALYTICS_EVENT_DEDUPLICATION_KEY_SQL}
 )
 SELECT
   variant_id,
@@ -170,7 +237,7 @@ FROM (
   FROM first_exposures AS fe
   INNER JOIN step_events AS se ON se.subject_hash = fe.subject_hash
   WHERE se.event_at >= fe.first_exposed_at
-    AND se.event_at <= fe.first_exposed_at + toIntervalDay({attributionWindowDays:UInt32})
+    AND se.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
   GROUP BY fe.variant_id, fe.subject_hash
 )
 GROUP BY variant_id
@@ -198,6 +265,9 @@ async function queryRows<T>(client: ClickhouseClient, query: string, params: Rec
 }
 
 function baseParams(run: ExperimentRunForResults): Record<string, string | number> {
+  const exposureSinceMillis = Math.max(run.startedAtMillis, run.sinceMillis ?? run.startedAtMillis);
+  const enrollmentEndedAtMillis = run.completedAtMillis ?? Date.now();
+  const exposureUntilMillis = Math.min(enrollmentEndedAtMillis, run.untilMillis ?? enrollmentEndedAtMillis);
   return {
     projectId: run.projectId,
     branchId: run.branchId,
@@ -205,6 +275,10 @@ function baseParams(run: ExperimentRunForResults): Record<string, string | numbe
     runId: run.id,
     configRevisionHash: run.configRevisionHash,
     subjectType: run.config.assignment_unit,
+    sinceMillis: exposureSinceMillis,
+    untilMillis: exposureUntilMillis,
+    conversionSinceMillis: exposureSinceMillis,
+    conversionUntilMillis: exposureUntilMillis + run.config.attribution_window_seconds * 1000,
   };
 }
 
@@ -233,7 +307,10 @@ async function queryConvertedSubjectsByVariant(
     rows = await queryRows(client, BINARY_CONVERSIONS_QUERY, {
       ...baseParams(run),
       eventName: metric.event_name,
-      attributionWindowDays: run.config.attribution_window_days,
+      filterField: metric.event_filter?.field ?? "",
+      filterOperator: metric.event_filter?.operator ?? "eq",
+      filterValue: metric.event_filter?.value ?? "",
+      attributionWindowSeconds: run.config.attribution_window_seconds,
     });
   } else if (metric.kind === "funnel") {
     const stepParams = Object.fromEntries(metric.steps.map((step, i) => [`step${i}`, step]));
@@ -241,8 +318,8 @@ async function queryConvertedSubjectsByVariant(
       ...baseParams(run),
       ...stepParams,
       stepCount: metric.steps.length,
-      attributionWindowDays: run.config.attribution_window_days,
-      attributionWindowMillis: run.config.attribution_window_days * 24 * 60 * 60 * 1000,
+      attributionWindowSeconds: run.config.attribution_window_seconds,
+      attributionWindowMillis: run.config.attribution_window_seconds * 1000,
     });
   } else {
     throw new HexclaveAssertionError(`queryConvertedSubjectsByVariant called with non-conversion metric kind ${metric.kind}`);
@@ -264,7 +341,9 @@ async function queryNumericObservationsByVariant(
   const rows = await queryRows<{ variant_id: string, sum_values: string | number, sum_squared_values: string | number }>(client, NUMERIC_OBSERVATIONS_QUERY, {
     ...baseParams(run),
     eventName: metric.event_name,
-    attributionWindowDays: run.config.attribution_window_days,
+    attributionWindowSeconds: run.config.attribution_window_seconds,
+    propertyName: metric.property_name,
+    aggregation: metric.aggregation,
   });
   const observations = new Map<string, { sumValues: number, sumSquaredValues: number }>(
     Object.keys(run.config.variants).map((variantId) => [variantId, { sumValues: 0, sumSquaredValues: 0 }]),
@@ -318,7 +397,7 @@ async function computeMetricResults(options: {
   metric: ExperimentMetricDefinition,
   role: "primary" | "secondary" | "guardrail",
   exposedByVariant: Map<string, number>,
-}): Promise<{ results: ExperimentMetricResults, posteriors: VariantPosteriorSummary[], regressionVariantIds: Set<string> }> {
+}): Promise<{ results: ExperimentMetricResults, posteriors: VariantPosteriorSummary[], winnerPosteriors: VariantPosteriorSummary[], regressionVariantIds: Set<string> }> {
   const { client, run, metric, role, exposedByVariant } = options;
   const variantIds = Object.keys(run.config.variants);
   // Seeded per run+metric: reproducible results per revision, decorrelated
@@ -326,6 +405,7 @@ async function computeMetricResults(options: {
   const seed = `experiment-results :: ${run.id} :: ${metric.id}`;
 
   let posteriors: VariantPosteriorSummary[];
+  let winnerPosteriors: VariantPosteriorSummary[];
   let convertedByVariant: Map<string, number> | null = null;
   let numericByVariant: Map<string, { sumValues: number, sumSquaredValues: number }> | null = null;
   let samplesByVariant: Map<string, number[]>;
@@ -342,18 +422,28 @@ async function computeMetricResults(options: {
       };
     });
     posteriors = computeNumericPosteriors({ variants, direction: metric.direction, seed });
+    winnerPosteriors = computeNumericPosteriors({
+      variants: variants.filter((variant) => run.config.variants[variant.variantId].weight_basis_points > 0),
+      direction: metric.direction,
+      seed: `${seed} :: eligible`,
+    });
     samplesByVariant = drawPosteriorSamplesForGuardrail({ kind: "numeric", variants, seed });
   } else {
     convertedByVariant = await queryConvertedSubjectsByVariant(client, run, metric);
     const variants = variantIds.map((variantId) => {
       const exposed = exposedByVariant.get(variantId) ?? 0;
-      // A duplicate-heavy edge: conversions are counted with uniqExact over
-      // subjects, so converted can never exceed exposed unless the two queries
-      // raced a fresh insert; clamp to keep the Beta posterior well-defined.
-      const converted = Math.min(convertedByVariant?.get(variantId) ?? 0, exposed);
+      const converted = convertedByVariant?.get(variantId) ?? 0;
+      if (converted > exposed) {
+        throw new HexclaveAssertionError(`Metric ${metric.id} counted ${converted} converted subjects but only ${exposed} exposed subjects for variant ${variantId}`);
+      }
       return { variantId, exposedSubjects: exposed, convertedSubjects: converted };
     });
     posteriors = computeBinaryPosteriors({ variants, direction: metric.direction, seed });
+    winnerPosteriors = computeBinaryPosteriors({
+      variants: variants.filter((variant) => run.config.variants[variant.variantId].weight_basis_points > 0),
+      direction: metric.direction,
+      seed: `${seed} :: eligible`,
+    });
     samplesByVariant = drawPosteriorSamplesForGuardrail({ kind: "binary", variants, seed });
   }
 
@@ -397,6 +487,7 @@ async function computeMetricResults(options: {
       }),
     },
     posteriors,
+    winnerPosteriors,
     regressionVariantIds,
   };
 }
@@ -428,18 +519,23 @@ export async function computeExperimentRunResults(run: ExperimentRunForResults):
     }
   }
 
-  const winner = decideWinner({
-    exposedSubjectsByVariant: exposedByVariant,
-    primaryPosteriors: primary.posteriors,
-    guardrailRegressionVariantIds,
-    srmDetected: srm.detected,
-  });
+  const eligibleVariantIds = new Set(Object.entries(run.config.variants)
+    .filter(([, variant]) => variant.weight_basis_points > 0)
+    .map(([variantId]) => variantId));
+  const winner = eligibleVariantIds.size < 2
+    ? { status: "no_winner", reason: "insufficient_data" } as const
+    : decideWinner({
+      exposedSubjectsByVariant: new Map([...exposedByVariant].filter(([variantId]) => eligibleVariantIds.has(variantId))),
+      primaryPosteriors: primary.winnerPosteriors,
+      guardrailRegressionVariantIds,
+      srmDetected: srm.detected,
+    });
 
   const winnerRollout = winner.status === "winner"
     ? {
       flag_id: run.config.flag_id,
       variant_id: winner.variantId,
-      flag_value: run.config.variants[winner.variantId].flag_value ?? null,
+      flag_value: run.config.variants[winner.variantId].flag_value,
     }
     : null;
 

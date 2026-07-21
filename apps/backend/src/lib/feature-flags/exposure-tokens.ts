@@ -5,6 +5,7 @@ import { signJWT, verifyJWT } from "@hexclave/shared/dist/utils/jwt";
 import { JOSEError } from "jose/errors";
 import { createHash } from "node:crypto";
 import { ValidationError } from "yup";
+import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
 
 /**
  * Signed evaluation tokens for feature-flag exposures.
@@ -29,27 +30,37 @@ export const EXPOSURE_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 const FeatureFlagExposureTokenPayloadSchema = yupObject({
   kind: yupString().oneOf([EXPOSURE_TOKEN_KIND]).defined(),
+  evaluation_id: yupString().uuid().defined(),
+  issued_at_millis: yupString().matches(/^\d+$/).defined(),
   project_id: yupString().defined(),
   branch_id: yupString().defined(),
   run_id: yupString().defined(),
   experiment_id: yupString().defined(),
   flag_id: yupString().defined(),
   variant_id: yupString().defined(),
+  rule_id: yupString().defined(),
+  reason: yupString().defined(),
   config_revision_hash: yupString().defined(),
   subject_type: yupString().oneOf(["user", "team"]).defined(),
+  subject_id: yupString().defined(),
   subject_hash: yupString().defined(),
 }).defined();
 
 export type FeatureFlagExposureTokenPayload = {
   kind: typeof EXPOSURE_TOKEN_KIND,
+  evaluation_id: string,
+  issued_at_millis: string,
   project_id: string,
   branch_id: string,
   run_id: string,
   experiment_id: string,
   flag_id: string,
   variant_id: string,
+  rule_id: string,
+  reason: string,
   config_revision_hash: string,
   subject_type: "user" | "team",
+  subject_id: string,
   subject_hash: string,
 };
 
@@ -83,25 +94,33 @@ export async function createFeatureFlagEvaluationToken(options: {
   experimentId: string,
   flagId: string,
   variantId: string,
+  ruleId: string,
+  reason: string,
   configRevisionHash: string,
   subjectType: "user" | "team",
   subjectId: string,
 }): Promise<{ token: string, expiresAtMillis: number }> {
-  const expiresAtMillis = Date.now() + EXPOSURE_TOKEN_TTL_MS;
+  const issuedAtMillis = Date.now();
+  const expiresAtMillis = issuedAtMillis + EXPOSURE_TOKEN_TTL_MS;
   const token = await signJWT({
     issuer: EXPOSURE_TOKEN_ISSUER,
     audience: EXPOSURE_TOKEN_AUDIENCE,
     expirationTime: `${EXPOSURE_TOKEN_TTL_MS / 1000}s`,
     payload: {
       kind: EXPOSURE_TOKEN_KIND,
+      evaluation_id: generateUuid(),
+      issued_at_millis: issuedAtMillis.toString(),
       project_id: options.tenancy.project.id,
       branch_id: options.tenancy.branchId,
       run_id: options.runId,
       experiment_id: options.experimentId,
       flag_id: options.flagId,
       variant_id: options.variantId,
+      rule_id: options.ruleId,
+      reason: options.reason,
       config_revision_hash: options.configRevisionHash,
       subject_type: options.subjectType,
+      subject_id: options.subjectId,
       subject_hash: computeExposureSubjectHash({
         projectId: options.tenancy.project.id,
         subjectType: options.subjectType,

@@ -10,7 +10,6 @@ import {
   DesignEmptyState,
   DesignInput,
   DesignProgressBar,
-  DesignSelectorDropdown,
   DesignSkeleton,
   DesignTable,
   DesignTableBody,
@@ -23,19 +22,23 @@ import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/components/config-update";
 import {
   completeExperimentRun,
+  createExperimentRun,
   getExperimentRun,
   getFeatureFlagActivity,
   getExperimentResults,
   transitionExperimentRun,
+  type ExperimentResults,
   type ExperimentRun,
   type ExperimentRunTransition,
 } from "@/lib/feature-flags/admin-adapter";
 import {
   flagConfigPath,
   formatBps,
+  toExperimentRunConfig,
   type ExperimentConfig,
   type ExperimentMetric,
   type FlagConfig,
+  type FeatureFlagsSection,
 } from "@/lib/feature-flags/config";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import {
@@ -50,11 +53,12 @@ import {
   TrophyIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
 import {
   AdapterErrorAlert,
+  type AdapterLoadState,
   AnalyticsRequiredGuard,
   BackendUnavailableAlert,
   ExperimentStatusBadge,
@@ -69,8 +73,6 @@ type PageClientProps = {
 
 // Sentinels for Radix Select options that mean "no selection" — Radix forbids
 // empty-string item values.
-const NO_WINNER_OPTION = "__no-winner__";
-const ALL_TRAFFIC_OPTION = "__all-traffic__";
 
 export default function PageClient({ experimentId }: PageClientProps) {
   const adminApp = useAdminApp();
@@ -121,7 +123,7 @@ export default function PageClient({ experimentId }: PageClientProps) {
       }
     >
       <AnalyticsRequiredGuard>
-        <ExperimentDetail experimentId={experimentId} experiment={experiment} flag={flag ?? null} />
+        <ExperimentDetail experimentId={experimentId} experiment={experiment} flag={flag ?? null} section={section} />
       </AnalyticsRequiredGuard>
     </PageLayout>
   );
@@ -131,6 +133,7 @@ function ExperimentDetail(props: {
   experimentId: string,
   experiment: ExperimentConfig,
   flag: FlagConfig | null,
+  section: FeatureFlagsSection,
 }) {
   const adminApp = useAdminApp();
 
@@ -140,25 +143,25 @@ function ExperimentDetail(props: {
     [adminApp, props.experimentId, runRevision],
   );
 
-  const [segmentId, setSegmentId] = useState<string>("");
   const [sinceDate, setSinceDate] = useState("");
   const [untilDate, setUntilDate] = useState("");
+  const runStatus = runState.status === "ok" ? runState.data.status : null;
+  const resultsEligible = runStatus === "running" || runStatus === "paused" || runStatus === "completed";
 
   const resultsState = useAdapterData(
-    async () => await getExperimentResults(adminApp, props.experimentId, {
-      ...segmentId.length > 0 ? { segmentId } : {},
-      ...sinceDate.length > 0 ? { sinceIso: new Date(sinceDate).toISOString() } : {},
-      ...untilDate.length > 0 ? { untilIso: new Date(untilDate).toISOString() } : {},
-    }),
-    [adminApp, props.experimentId, segmentId, sinceDate, untilDate, runRevision],
+    async () => resultsEligible
+      ? await getExperimentResults(adminApp, props.experimentId, {
+        ...sinceDate.length > 0 ? { sinceIso: new Date(sinceDate).toISOString() } : {},
+        ...untilDate.length > 0 ? { untilIso: new Date(untilDate).toISOString() } : {},
+      })
+      : null,
+    [adminApp, props.experimentId, sinceDate, untilDate, resultsEligible, runRevision],
   );
 
   const activityState = useAdapterData(
     async () => await getFeatureFlagActivity(adminApp, { experimentId: props.experimentId }),
     [adminApp, props.experimentId, runRevision],
   );
-
-  const segments = useSegmentOptions();
 
   if (runState.status === "loading") {
     return (
@@ -188,6 +191,7 @@ function ExperimentDetail(props: {
   }
 
   const run = runState.data;
+  const results = resultsState.status === "ok" ? resultsState.data : null;
   const reloadRun = () => setRunRevision((revision) => revision + 1);
 
   return (
@@ -196,11 +200,13 @@ function ExperimentDetail(props: {
         experimentId={props.experimentId}
         experiment={props.experiment}
         flag={props.flag}
+        section={props.section}
         run={run}
+        results={results}
         onChanged={reloadRun}
       />
       <HypothesisCard experiment={props.experiment} />
-      <ExposuresCard experiment={props.experiment} flag={props.flag} run={run} />
+      <ExposuresCard experiment={props.experiment} flag={props.flag} run={run} resultsState={resultsState} />
 
       <DesignCard
         title="Results"
@@ -209,24 +215,40 @@ function ExperimentDetail(props: {
         gradient="cyan"
       >
         <div className="flex flex-col gap-4">
-          <ResultsFilters
-            segments={segments}
-            segmentId={segmentId}
-            onSegmentChange={setSegmentId}
-            sinceDate={sinceDate}
-            onSinceChange={setSinceDate}
-            untilDate={untilDate}
-            onUntilChange={setUntilDate}
-          />
-          {resultsState.status === "loading" && <DesignSkeleton className="h-40 rounded-xl" />}
-          {resultsState.status === "unavailable" && <BackendUnavailableAlert what="Experiment results" />}
-          {resultsState.status === "error" && <AdapterErrorAlert what="experiment results" message={resultsState.message} />}
-          {resultsState.status === "ok" && (
-            <ResultsSection
-              experiment={props.experiment}
-              flag={props.flag}
-              results={resultsState.data}
+          {!resultsEligible ? (
+            <DesignEmptyState
+              icon={ChartBarIcon}
+              title="Experiment not started"
+              description={run.status === "scheduled"
+                ? "Results will appear after the scheduled experiment begins enrolling subjects."
+                : "Start the experiment to begin collecting exposures and conversion data."}
             />
+          ) : (
+            <>
+              <ResultsFilters
+                sinceDate={sinceDate}
+                onSinceChange={setSinceDate}
+                untilDate={untilDate}
+                onUntilChange={setUntilDate}
+              />
+              {resultsState.status === "loading" && <DesignSkeleton className="h-40 rounded-xl" />}
+              {resultsState.status === "unavailable" && <BackendUnavailableAlert what="Experiment results" />}
+              {resultsState.status === "error" && <AdapterErrorAlert what="experiment results" message={resultsState.message} />}
+              {resultsState.status === "ok" && resultsState.data == null && (
+                <DesignEmptyState
+                  icon={ChartBarIcon}
+                  title="No results available"
+                  description="The experiment has started, but results are not available yet."
+                />
+              )}
+              {resultsState.status === "ok" && resultsState.data != null && (
+                <ResultsSection
+                  experiment={props.experiment}
+                  flag={props.flag}
+                  results={resultsState.data}
+                />
+              )}
+            </>
           )}
         </div>
       </DesignCard>
@@ -240,7 +262,7 @@ function ExperimentDetail(props: {
             <DesignEmptyState
               icon={ClockCounterClockwiseIcon}
               title="No activity yet"
-              description="Lifecycle changes and configuration edits will appear here."
+              description="Experiment lifecycle changes and revisions will appear here."
             />
           ) : (
             <ol className="flex flex-col gap-2">
@@ -263,16 +285,6 @@ function ExperimentDetail(props: {
   );
 }
 
-// The results segment filter reads the shared section; kept as a hook so the
-// parent component body stays readable.
-function useSegmentOptions(): { id: string, displayName: string }[] {
-  const section = useFeatureFlagsSection();
-  return useMemo(
-    () => [...section.segments.entries()].map(([id, segment]) => ({ id, displayName: segment.displayName })),
-    [section],
-  );
-}
-
 function HypothesisCard({ experiment }: { experiment: ExperimentConfig }) {
   return (
     <DesignCard title="Hypothesis" icon={LightbulbIcon} gradient="purple">
@@ -291,23 +303,30 @@ function LifecycleCard(props: {
   experimentId: string,
   experiment: ExperimentConfig,
   flag: FlagConfig | null,
+  section: FeatureFlagsSection,
   run: ExperimentRun,
+  results: ExperimentResults | null,
   onChanged: () => void,
 }) {
   const adminApp = useAdminApp();
   const updateConfig = useUpdateConfig();
   const [completeOpen, setCompleteOpen] = useState(false);
-  const [winnerVariantId, setWinnerVariantId] = useState<string>("");
   const [rolloutOpen, setRolloutOpen] = useState(false);
+  const rolloutFlag = props.flag;
+  const winnerRollout = props.results?.winnerRollout ?? null;
 
   const transition = async (name: ExperimentRunTransition) => {
+    if (name === "start" && props.run.status === "not_started") {
+      await createExperimentRun(adminApp, props.experimentId, toExperimentRunConfig(props.experiment, props.section));
+    }
     await transitionExperimentRun(adminApp, props.experimentId, name);
     props.onChanged();
   };
 
-  const winnerVariant = props.run.winnerVariantId != null
-    ? props.flag?.variants.find((variant) => variant.id === props.run.winnerVariantId) ?? null
-    : null;
+  const winnerVariant = winnerRollout == null
+    ? null
+    : props.flag?.variants.find((variant) => variant.id === winnerRollout.variantId) ?? null;
+  const winnerLabel = winnerVariant?.label ?? winnerRollout?.variantId ?? null;
 
   return (
     <DesignCard title="Status" icon={FlaskIcon} gradient="default">
@@ -320,7 +339,7 @@ function LifecycleCard(props: {
           <span className="text-xs text-muted-foreground">completed {formatRelativeTime(props.run.completedAtIso)}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {(props.run.status === "draft" || props.run.status === "scheduled") && (
+          {(props.run.status === "not_started" || props.run.status === "draft" || props.run.status === "scheduled") && (
             <DesignButton size="sm" onClick={async () => await transition("start")}>
               <PlayIcon className="h-4 w-4 mr-1" />
               Start
@@ -349,9 +368,9 @@ function LifecycleCard(props: {
 
       {props.run.status === "completed" && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          {winnerVariant != null ? (
+          {winnerLabel != null ? (
             <>
-              <DesignBadge label={`Winner declared: ${winnerVariant.label}`} color="green" size="sm" icon={TrophyIcon} />
+              <DesignBadge label={`Winner declared: ${winnerLabel}`} color="green" size="sm" icon={TrophyIcon} />
               {props.flag != null && (
                 <DesignButton size="sm" onClick={() => setRolloutOpen(true)}>
                   <RocketLaunchIcon className="h-4 w-4 mr-1" />
@@ -371,7 +390,7 @@ function LifecycleCard(props: {
         size="md"
         icon={TrophyIcon}
         title="Complete experiment"
-        description="Enrollment stops and results are frozen. Optionally declare a winning variant."
+        description="Enrollment stops. Hexclave keeps computing results from the frozen run snapshot and its attribution window."
         footer={
           <>
             <DesignDialogClose asChild>
@@ -381,7 +400,7 @@ function LifecycleCard(props: {
               size="sm"
               onClick={async () => {
                 await completeExperimentRun(adminApp, props.experimentId, {
-                  winnerVariantId: winnerVariantId.length > 0 ? winnerVariantId : null,
+                  winnerVariantId: null,
                 });
                 setCompleteOpen(false);
                 props.onChanged();
@@ -392,40 +411,21 @@ function LifecycleCard(props: {
           </>
         }
       >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Winner (optional)</span>
-            <DesignSelectorDropdown
-              size="sm"
-              value={winnerVariantId.length > 0 ? winnerVariantId : NO_WINNER_OPTION}
-              placeholder="No winner"
-              onValueChange={(value) => setWinnerVariantId(value === NO_WINNER_OPTION ? "" : value)}
-              options={[
-                // Radix Select items cannot use an empty-string value, so "no
-                // winner" gets an explicit sentinel that is mapped back to "".
-                { value: NO_WINNER_OPTION, label: "No winner" },
-                ...(props.flag?.variants ?? [])
-                  .filter((variant) => props.experiment.allocation.some((entry) => entry.variantId === variant.id))
-                  .map((variant) => ({ value: variant.id, label: variant.label })),
-              ]}
-            />
-          </div>
-          <DesignAlert
-            variant="info"
-            title="Declaring a winner is a judgment call"
-            description="The results show probabilities, not proof. Check that the credible intervals and guardrails support the decision before declaring."
-          />
-        </div>
+        <DesignAlert
+          variant="info"
+          title="Winner selection stays evidence-based"
+          description="A winner appears only after every variant reaches the minimum sample size, probability-to-be-best is at least 95%, and neither a guardrail regression nor SRM is present."
+        />
       </DesignDialog>
 
-      {props.flag != null && winnerVariant != null && (
+      {rolloutFlag != null && winnerRollout != null && winnerLabel != null && (
         <DesignDialog
           open={rolloutOpen}
           onOpenChange={setRolloutOpen}
           size="md"
           icon={RocketLaunchIcon}
-          title={`Roll out "${winnerVariant.label}"`}
-          description={`Flag: ${props.flag.displayName}`}
+          title={`Roll out "${winnerLabel}"`}
+          description={`Flag: ${rolloutFlag.displayName}`}
           footer={
             <>
               <DesignDialogClose asChild>
@@ -439,9 +439,17 @@ function LifecycleCard(props: {
                     // Path update so sibling flag properties (rules, variants,
                     // holdout) stay untouched.
                     configUpdate: {
-                      [`${flagConfigPath(props.experiment.flagKey)}.defaultServe`]: {
-                        type: "variant",
-                        variantId: winnerVariant.id,
+                      [`${flagConfigPath(rolloutFlag.internalId)}.variants.${winnerRollout.variantId}`]: {
+                        value: winnerRollout.flagValue,
+                        description: winnerVariant?.label ?? winnerRollout.variantId,
+                      },
+                      [`${flagConfigPath(rolloutFlag.internalId)}.rules.__default`]: {
+                        enabled: true,
+                        priority: 0,
+                        rolloutBasisPoints: 10_000,
+                        allocationSalt: `${props.experiment.flagKey}.__default`,
+                        stickyBy: "distinctId",
+                        variantKey: winnerRollout.variantId,
                       },
                     },
                     pushable: true,
@@ -455,7 +463,7 @@ function LifecycleCard(props: {
           }
         >
           <p className="text-sm text-muted-foreground">
-            The flag&apos;s default rule changes to serve <span className="font-medium text-foreground">{winnerVariant.label}</span> to
+            The frozen winning value is restored and the flag&apos;s default rule changes to serve <span className="font-medium text-foreground">{winnerLabel}</span> to
             all traffic that no targeting rule captures. Targeting rules, the holdout, and the fallback variant are not modified —
             review them afterwards if they should change too.
           </p>
@@ -469,23 +477,30 @@ function ExposuresCard(props: {
   experiment: ExperimentConfig,
   flag: FlagConfig | null,
   run: ExperimentRun,
+  resultsState: AdapterLoadState<ExperimentResults | null>,
 }) {
+  const resultsEligible = props.run.status === "running" || props.run.status === "paused" || props.run.status === "completed";
+  const results = props.resultsState.status === "ok" ? props.resultsState.data : null;
   return (
     <DesignCard
       title="Exposures & allocation"
-      subtitle={`${props.run.totalExposures.toLocaleString()} total exposures`}
+      subtitle={results == null ? undefined : `${results.totalExposures.toLocaleString()} total exposures`}
       icon={UsersThreeIcon}
       gradient="cyan"
     >
-      {props.run.exposuresByVariant.length === 0 ? (
+      {resultsEligible && props.resultsState.status === "loading" && <DesignSkeleton className="h-24 rounded-xl" />}
+      {resultsEligible && props.resultsState.status === "unavailable" && <BackendUnavailableAlert what="Exposure totals" />}
+      {resultsEligible && props.resultsState.status === "error" && <AdapterErrorAlert what="exposure totals" message={props.resultsState.message} />}
+      {(!resultsEligible || (props.resultsState.status === "ok" && (results == null || results.exposuresByVariant.length === 0))) && (
         <DesignEmptyState
           icon={UsersThreeIcon}
           title="No exposures yet"
           description="Exposures appear once the experiment is running and users evaluate the linked flag."
         />
-      ) : (
+      )}
+      {props.resultsState.status === "ok" && results != null && results.exposuresByVariant.length > 0 && (
         <div className="flex flex-col gap-3">
-          {props.run.exposuresByVariant.map((entry) => {
+          {results.exposuresByVariant.map((entry) => {
             const variantLabel = props.flag?.variants.find((variant) => variant.id === entry.variantId)?.label ?? entry.variantId;
             const expectedBps = props.experiment.allocation.find((allocation) => allocation.variantId === entry.variantId)?.weightBps ?? 0;
             return (
@@ -498,7 +513,7 @@ function ExposuresCard(props: {
                 </div>
                 <DesignProgressBar
                   value={entry.exposures}
-                  max={Math.max(1, props.run.totalExposures)}
+                  max={Math.max(1, results.totalExposures)}
                   gradient="cyan"
                   size="sm"
                 />
@@ -512,9 +527,6 @@ function ExposuresCard(props: {
 }
 
 function ResultsFilters(props: {
-  segments: { id: string, displayName: string }[],
-  segmentId: string,
-  onSegmentChange: (id: string) => void,
   sinceDate: string,
   onSinceChange: (value: string) => void,
   untilDate: string,
@@ -522,21 +534,6 @@ function ResultsFilters(props: {
 }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Segment</span>
-        <DesignSelectorDropdown
-          size="sm"
-          className="w-44"
-          value={props.segmentId.length > 0 ? props.segmentId : ALL_TRAFFIC_OPTION}
-          placeholder="All traffic"
-          onValueChange={(value) => props.onSegmentChange(value === ALL_TRAFFIC_OPTION ? "" : value)}
-          options={[
-            // Radix Select items cannot use an empty-string value.
-            { value: ALL_TRAFFIC_OPTION, label: "All traffic" },
-            ...props.segments.map((segment) => ({ value: segment.id, label: segment.displayName })),
-          ]}
-        />
-      </div>
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">From</span>
         <DesignInput
@@ -564,10 +561,20 @@ function ResultsFilters(props: {
 function ResultsSection(props: {
   experiment: ExperimentConfig,
   flag: FlagConfig | null,
-  results: Awaited<ReturnType<typeof getExperimentResults>>,
+  results: ExperimentResults,
 }) {
   const { results } = props;
   const metricsById = new Map(props.experiment.metrics.map((metric): [string, ExperimentMetric] => [metric.id, metric]));
+
+  if (results.totalExposures === 0) {
+    return (
+      <DesignEmptyState
+        icon={ChartBarIcon}
+        title="No experiment data yet"
+        description="Results will appear after the first eligible subjects evaluate the linked flag."
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -575,7 +582,7 @@ function ResultsSection(props: {
         <DesignAlert
           variant="error"
           title="Sample ratio mismatch detected"
-          description={`The observed variant split deviates from the configured allocation more than chance plausibly allows (p = ${results.srm.pValue.toPrecision(2)}). Results are unreliable until the assignment issue is found and fixed.`}
+          description={`The observed variant split deviates from the configured allocation more than chance plausibly allows${results.srm.pValue == null ? "" : ` (p = ${results.srm.pValue.toPrecision(2)})`}. Results are unreliable until the assignment issue is found and fixed.`}
         />
       )}
       {results.insufficientData && (
@@ -606,6 +613,7 @@ function ResultsSection(props: {
             metric={metric}
             metricResult={metricResult}
             flag={props.flag}
+            controlVariantId={results.controlVariantId}
           />
         );
       })}
@@ -615,8 +623,9 @@ function ResultsSection(props: {
 
 function MetricResultTable(props: {
   metric: ExperimentMetric,
-  metricResult: Awaited<ReturnType<typeof getExperimentResults>>["metrics"][number],
+  metricResult: ExperimentResults["metrics"][number],
   flag: FlagConfig | null,
+  controlVariantId: string,
 }) {
   const roleColor = props.metric.role === "primary" ? "green" : props.metric.role === "guardrail" ? "orange" : "blue";
   const isNumeric = props.metric.source.type === "numeric_value";
@@ -650,17 +659,17 @@ function MetricResultTable(props: {
           </DesignTableRow>
         </DesignTableHeader>
         <DesignTableBody>
-          {props.metricResult.perVariant.map((variantResult, index) => {
+          {props.metricResult.perVariant.map((variantResult) => {
             const variantLabel = props.flag?.variants.find((variant) => variant.id === variantResult.variantId)?.label
               ?? variantResult.variantId;
             return (
               <DesignTableRow key={variantResult.variantId}>
                 <DesignTableCell>
                   <span className="text-sm font-medium">{variantLabel}</span>
-                  {index === 0 && <span className="text-xs text-muted-foreground ml-1.5">(control)</span>}
+                  {variantResult.variantId === props.controlVariantId && <span className="text-xs text-muted-foreground ml-1.5">(control)</span>}
                 </DesignTableCell>
                 <DesignTableCell><span className="tabular-nums text-sm">{variantResult.exposures.toLocaleString()}</span></DesignTableCell>
-                <DesignTableCell><span className="tabular-nums text-sm">{variantResult.value.toLocaleString()}</span></DesignTableCell>
+                <DesignTableCell><span className="tabular-nums text-sm">{isNumeric ? formatNumericValue(variantResult.value) : variantResult.value.toLocaleString()}</span></DesignTableCell>
                 {!isNumeric && (
                   <DesignTableCell>
                     <span className="tabular-nums text-sm">
@@ -675,7 +684,7 @@ function MetricResultTable(props: {
                 </DesignTableCell>
                 <DesignTableCell>
                   <span className="tabular-nums text-xs text-muted-foreground">
-                    [{formatPercent(variantResult.credibleIntervalLow)}, {formatPercent(variantResult.credibleIntervalHigh)}]
+                    [{isNumeric ? formatNumericValue(variantResult.credibleIntervalLow) : formatPercent(variantResult.credibleIntervalLow)}, {isNumeric ? formatNumericValue(variantResult.credibleIntervalHigh) : formatPercent(variantResult.credibleIntervalHigh)}]
                   </span>
                 </DesignTableCell>
                 <DesignTableCell>
@@ -697,6 +706,10 @@ function formatPercent(fraction: number): string {
 function formatSignedPercent(fraction: number): string {
   const formatted = formatPercent(Math.abs(fraction));
   return fraction >= 0 ? `+${formatted}` : `−${formatted}`;
+}
+
+function formatNumericValue(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 }
 
 function liftClass(lift: number | null): string {

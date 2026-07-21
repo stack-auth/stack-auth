@@ -40,9 +40,9 @@ Increase the percentage in rule 2 as you gain confidence, then remove the rules 
 
 ## Kill switches
 
-Every flag has a kill switch. Killing a flag immediately stops all evaluation and makes every SDK serve the `fallback` value you pass at the call site. This is why `fallback` is required on every read: your UI keeps a well-defined behavior even when a flag is killed, missing, or the backend is unreachable.
+Every flag has a kill switch. Killing a flag immediately stops targeting and serves the flag definition's configured fallback variant. The caller-provided SDK `fallback` remains the safety net when the flag is missing or evaluation is unavailable.
 
-Kill switches are per-environment, so you can kill a misbehaving feature in production while keeping it enabled in development.
+Kill switches are stored in branch config, so you can kill a misbehaving feature in production while keeping it enabled in a development branch.
 
 ## Prerequisites
 

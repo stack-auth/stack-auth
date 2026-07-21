@@ -14,7 +14,7 @@ export const postMigration = async (sql: Sql) => {
     JOIN pg_class table_relation ON table_relation.oid = index_metadata.indrelid
     JOIN pg_namespace table_namespace ON table_namespace.oid = table_relation.relnamespace
     WHERE table_namespace.nspname = current_schema()
-      AND table_relation.relname IN ('ExperimentRun', 'FeatureFlagAuditLog')
+      AND table_relation.relname IN ('ExperimentRun', 'FeatureFlagAuditLog', 'FeatureFlagExposureReceipt', 'AnalyticsEventBatchReceipt')
   `;
   const byName = new Map(indexes.map((row) => [row.index_name as string, row]));
 
@@ -24,12 +24,29 @@ export const postMigration = async (sql: Sql) => {
   expect(activeKey!.indexdef).toContain(`WHERE (state = ANY (ARRAY['RUNNING'::"ExperimentRunState", 'PAUSED'::"ExperimentRunState"]))`);
   expect(activeKey!.indexdef).toContain('("projectId", "branchId", "experimentId")');
 
+  const activeFlagKey = byName.get('ExperimentRun_active_flag_key');
+  expect(activeFlagKey).toBeDefined();
+  expect(activeFlagKey).toMatchObject({ indisvalid: true, indisready: true, indisunique: true });
+  expect(activeFlagKey!.indexdef).toContain(`WHERE (state = ANY (ARRAY['RUNNING'::"ExperimentRunState", 'PAUSED'::"ExperimentRunState"]))`);
+  expect(activeFlagKey!.indexdef).toContain('("projectId", "branchId"');
+  expect(activeFlagKey!.indexdef).toContain(`"configSnapshot" ->> 'flag_id'::text`);
+
   for (const name of [
     'ExperimentRun_project_experiment_createdAt_idx',
     'ExperimentRun_state_scheduledStartAt_idx',
     'ExperimentRun_state_scheduledEndAt_idx',
+    'ExperimentRun_schedule_start_rotation_idx',
+    'ExperimentRun_schedule_end_rotation_idx',
     'FeatureFlagAuditLog_resource_createdAt_idx',
     'FeatureFlagAuditLog_project_createdAt_idx',
+    'FeatureFlagExposureReceipt_project_event_key',
+    'FeatureFlagExposureReceipt_project_evaluation_key',
+    'FeatureFlagExposureReceipt_ingestionNonce_idx',
+    'FeatureFlagExposureReceipt_processingStartedAt_idx',
+    'FeatureFlagExposureReceipt_project_createdAt_idx',
+    'AnalyticsEventBatchReceipt_project_branch_batch_key',
+    'AnalyticsEventBatchReceipt_processingStartedAt_idx',
+    'AnalyticsEventBatchReceipt_createdAt_idx',
   ]) {
     const index = byName.get(name);
     expect(index, `expected index ${name} to exist`).toBeDefined();

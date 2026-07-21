@@ -12,11 +12,13 @@ import {
 import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/components/config-update";
 import {
+  createExperimentRun,
   FeatureFlagsBackendUnavailableError,
   transitionExperimentRun,
 } from "@/lib/feature-flags/admin-adapter";
 import {
-  experimentConfigPath,
+  experimentConfigUpdates,
+  toExperimentRunConfig,
   formatBps,
   validateExperimentConfig,
   type ExperimentConfig,
@@ -98,6 +100,7 @@ function ExperimentWizard() {
   const [hypothesis, setHypothesis] = useState("");
   const [flagKey, setFlagKey] = useState("");
   const [assignmentUnit, setAssignmentUnit] = useState<"user" | "team">("user");
+  const [controlVariantId, setControlVariantId] = useState("");
   const [trafficBps, setTrafficBps] = useState(10_000);
   const [weightsByVariantId, setWeightsByVariantId] = useState<Map<string, number>>(new Map());
   const [metrics, setMetrics] = useState<ExperimentMetric[]>([{
@@ -126,6 +129,7 @@ function ExperimentWizard() {
     hypothesis,
     flagKey,
     assignmentUnit,
+    controlVariantId,
     allocation: selectedFlag == null ? [] : selectedFlag.variants
       .map((variant) => ({ variantId: variant.id, weightBps: weightsByVariantId.get(variant.id) ?? 0 }))
       .filter((entry) => entry.weightBps > 0),
@@ -139,7 +143,7 @@ function ExperimentWizard() {
     },
     archived: false,
     createdAtMillis: Date.now(),
-  }), [displayName, hypothesis, flagKey, assignmentUnit, selectedFlag, weightsByVariantId, trafficBps, metrics, attributionWindowHours, mutualExclusionGroup, startAt, endAt]);
+  }), [displayName, hypothesis, flagKey, assignmentUnit, controlVariantId, selectedFlag, weightsByVariantId, trafficBps, metrics, attributionWindowHours, mutualExclusionGroup, startAt, endAt]);
 
   const validationErrors = useMemo(() => validateExperimentConfig(draft, section), [draft, section]);
 
@@ -149,13 +153,14 @@ function ExperimentWizard() {
     const experimentId = savedExperimentId ?? generateShortId("experiment");
     const updated = await updateConfig({
       adminApp,
-      configUpdate: { [experimentConfigPath(experimentId)]: draft },
+      configUpdate: experimentConfigUpdates(experimentId, draft, section),
       pushable: true,
     });
     if (!updated) return;
     setSavedExperimentId(experimentId);
     if (startAfterSave) {
       try {
+        await createExperimentRun(adminApp, experimentId, toExperimentRunConfig(draft, section));
         await transitionExperimentRun(adminApp, experimentId, "start");
       } catch (error) {
         if (error instanceof FeatureFlagsBackendUnavailableError) {
@@ -230,6 +235,7 @@ function ExperimentWizard() {
                     setFlagKey(value);
                     const flag = section.flags.get(value);
                     if (flag != null) {
+                      setControlVariantId(flag.variants[0]?.id ?? "");
                       // Seed an even split across all variants; weights are
                       // editable below.
                       const base = Math.floor(10_000 / flag.variants.length);

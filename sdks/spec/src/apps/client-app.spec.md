@@ -108,9 +108,9 @@ Feature flags are delivery controls, not authorization checks. Security decision
 
 ## trackEvent(name, options?)
 
-Records a customer-defined analytics conversion event. Names are 1-128 characters, use letters/numbers plus `. _ : -`, and cannot begin with `$` because those names are reserved. `options.properties` contains at most 50 JSON-serializable entries and 16384 serialized bytes; `options.value` must be finite.
+Records a customer-defined analytics conversion event. Names are 1-128 characters, use letters/numbers plus `. _ : -`, and cannot begin with `$` because those names are reserved. `options.properties` contains at most 50 JSON-serializable entries and 16384 serialized bytes; `options.value` must be finite. `options.teamId` selects the team assignment context and is accepted only after the backend verifies that the current user belongs to that team.
 
-Browser implementations append custom events to the same `/api/v1/analytics/events/batch` buffer used for page views and clicks. Preserve event order and put a failed non-blocked batch back at the front of the buffer for retry. Clear buffered events on sign-out to prevent cross-user leakage. Server-like implementations send a bounded one-event batch immediately. Fail explicitly when analytics is disabled.
+Browser implementations append custom events to the same `/api/v1/analytics/events/batch` buffer used for page views and clicks. A team-scoped feature-flag evaluation sets the active team context for subsequently captured page views and clicks until another evaluation changes it; an explicit `trackEvent` team ID applies only to that event. Preserve event order and put a failed non-blocked batch back at the front of the buffer for retry. Clear buffered events and team context on sign-out to prevent cross-user leakage. Server-like implementations send a bounded one-event batch immediately. Fail explicitly when analytics is disabled.
 
 
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]

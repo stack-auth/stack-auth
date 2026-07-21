@@ -1,193 +1,214 @@
-import { describe, expect, it, vi } from "vitest";
 import { hexclaveAppInternalsSymbol } from "@/lib/hexclave-app-internals";
-import {
-  evaluateFlagWithoutExposure,
-  FeatureFlagsBackendUnavailableError,
-  getExperimentResults,
-  getFeatureFlagActivity,
-  getLastExposures,
-  listExperimentRuns,
-  transitionExperimentRun,
-} from "./admin-adapter";
-
-// Mocks are declared with the transport's real parameter list so both the
-// assignability into the internals object and `mock.calls[i][j]` indexing stay
-// fully typed (a zero-arg vi.fn() would type calls as an empty tuple).
-function createSendRequestMock(respond: () => Response) {
-  return vi.fn(async (
-    _path: string,
-    _requestOptions: RequestInit,
-    _requestType?: "client" | "server" | "admin",
-  ) => respond());
-}
-
-type SendRequestMock = ReturnType<typeof createSendRequestMock>;
-
-function makeAdminApp(sendRequest: SendRequestMock): object {
-  return { [hexclaveAppInternalsSymbol]: { sendRequest } };
-}
+import { describe, expect, it, vi } from "vitest";
+import { evaluateFlagWithoutExposure, FeatureFlagsBackendUnavailableError, getExperimentResults, getExperimentRun, getFeatureFlagActivity, listExperimentRuns, transitionExperimentRun } from "./admin-adapter";
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-const SAMPLE_RUN = {
-  experimentId: "experiment-1",
-  status: "running",
-  startedAtIso: "2026-07-01T00:00:00.000Z",
-  completedAtIso: null,
-  totalExposures: 1234,
-  exposuresByVariant: [{ variantId: "variant-on", exposures: 620 }],
-  winnerVariantId: null,
-};
+function makeRun(state: "draft" | "running" | "paused" | "completed" = "running") {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    experiment_id: "experiment-1",
+    revision_number: 1,
+    config_revision_hash: "revision",
+    config_snapshot: {
+      control_variant_id: "control",
+      variants: { control: { weight_basis_points: 5000 }, treatment: { weight_basis_points: 5000 } },
+    },
+    state,
+    scheduled_start_at_millis: null,
+    scheduled_end_at_millis: null,
+    started_at_millis: state === "draft" ? null : 1782864000000,
+    paused_at_millis: null,
+    completed_at_millis: null,
+    created_by_user_id: null,
+    created_at_millis: 1782864000000,
+  };
+}
 
-describe("unavailability detection", () => {
-  it("maps 404 responses to FeatureFlagsBackendUnavailableError", async () => {
-    const sendRequest = createSendRequestMock(() => new Response("not found", { status: 404 }));
-    await expect(listExperimentRuns(makeAdminApp(sendRequest)))
-      .rejects.toBeInstanceOf(FeatureFlagsBackendUnavailableError);
+function makeAdminApp(responder: (path: string, init: RequestInit) => Response) {
+  const sendRequest = vi.fn(async (path: string, init: RequestInit, _requestType?: "client" | "server" | "admin") => responder(path, init));
+  return { app: { [hexclaveAppInternalsSymbol]: { sendRequest } }, sendRequest };
+}
+
+describe("feature flags admin adapter", () => {
+  it("uses the nested experiment-run route and parses the backend run shape", async () => {
+    const { app, sendRequest } = makeAdminApp(() => jsonResponse({ items: [makeRun("draft")] }));
+    const runs = await listExperimentRuns(app, ["experiment-1"]);
+    expect(runs).toMatchInlineSnapshot(`
+      [
+        {
+          "completedAtIso": null,
+          "experimentId": "experiment-1",
+          "runId": "00000000-0000-4000-8000-000000000001",
+          "startedAtIso": null,
+          "status": "draft",
+        },
+      ]
+    `);
+    expect(sendRequest.mock.calls[0]?.[0]).toBe("/internal/feature-flags/experiments/experiment-1/runs");
   });
 
-  it("maps 501 responses to FeatureFlagsBackendUnavailableError", async () => {
-    const sendRequest = createSendRequestMock(() => new Response("not implemented", { status: 501 }));
-    await expect(getLastExposures(makeAdminApp(sendRequest)))
-      .rejects.toBeInstanceOf(FeatureFlagsBackendUnavailableError);
+  it("models a configured experiment without a run as not started", async () => {
+    const { app, sendRequest } = makeAdminApp(() => jsonResponse({ items: [] }));
+    const run = await getExperimentRun(app, "experiment-1");
+    expect(run).toMatchInlineSnapshot(`
+      {
+        "completedAtIso": null,
+        "experimentId": "experiment-1",
+        "runId": null,
+        "startedAtIso": null,
+        "status": "not_started",
+      }
+    `);
+    expect(sendRequest).toHaveBeenCalledOnce();
   });
 
-  it("throws a regular error for other failure statuses", async () => {
-    const sendRequest = createSendRequestMock(() => new Response("boom", { status: 500 }));
-    await expect(listExperimentRuns(makeAdminApp(sendRequest)))
-      .rejects.toThrowError(/500/);
-  });
-});
+  it("loads running lifecycle metadata without requesting analytical results", async () => {
+    const { app, sendRequest } = makeAdminApp((path) => {
+      if (!path.endsWith("/runs")) throw new Error(`Unexpected results request: ${path}`);
+      return jsonResponse({ items: [makeRun("running")] });
+    });
 
-describe("listExperimentRuns", () => {
-  it("parses runs and uses the admin transport", async () => {
-    const sendRequest = createSendRequestMock(() => jsonResponse({ runs: [SAMPLE_RUN] }));
-    const runs = await listExperimentRuns(makeAdminApp(sendRequest));
-    expect(runs).toEqual([SAMPLE_RUN]);
-    expect(sendRequest).toHaveBeenCalledWith(
-      "/internal/feature-flags/experiment-runs",
-      { method: "GET" },
-      "admin",
-    );
+    await expect(getExperimentRun(app, "experiment-1")).resolves.toMatchObject({ status: "running" });
+    expect(sendRequest).toHaveBeenCalledOnce();
   });
 
-  it("rejects malformed responses with a descriptive error", async () => {
-    const sendRequest = createSendRequestMock(() => jsonResponse({ runs: [{ ...SAMPLE_RUN, status: "exploded" }] }));
-    await expect(listExperimentRuns(makeAdminApp(sendRequest)))
-      .rejects.toThrowError(/status/);
+  it("does not request results before a run starts", async () => {
+    const { app, sendRequest } = makeAdminApp(() => jsonResponse({ items: [makeRun("draft")] }));
+    await expect(getExperimentResults(app, "experiment-1", {})).resolves.toBeNull();
+    expect(sendRequest).toHaveBeenCalledOnce();
+    expect(sendRequest.mock.calls[0]?.[0]).toBe("/internal/feature-flags/experiments/experiment-1/runs");
   });
-});
 
-describe("transitionExperimentRun", () => {
-  it("POSTs the transition and returns the updated run", async () => {
-    const sendRequest = createSendRequestMock(() => jsonResponse({ ...SAMPLE_RUN, status: "paused" }));
-    const run = await transitionExperimentRun(makeAdminApp(sendRequest), "experiment-1", "pause");
-    expect(run.status).toBe("paused");
-    expect(sendRequest).toHaveBeenCalledWith(
-      "/internal/feature-flags/experiment-runs/experiment-1/pause",
-      { method: "POST" },
-      "admin",
-    );
-  });
-});
-
-describe("getExperimentResults", () => {
-  it("encodes filters as query parameters and parses the response", async () => {
-    const results = {
-      totalExposures: 100,
-      exposuresByVariant: [{ variantId: "variant-on", exposures: 50, expectedBps: 5000 }],
-      srm: { detected: false, pValue: 0.8 },
+  it("maps posterior means, relative lift, zero baselines, and winner rollout", async () => {
+    const metricVariant = (options: {
+      variantId: string,
+      exposed: number,
+      converted: number | null,
+      sum: number | null,
+      posteriorMean: number,
+      lower: number,
+      upper: number,
+    }) => ({
+      variant_id: options.variantId,
+      exposed_subjects: options.exposed,
+      converted_subjects: options.converted,
+      sum_values: options.sum,
+      posterior_mean: options.posteriorMean,
+      credible_interval_95: { lower: options.lower, upper: options.upper },
+      probability_best: options.variantId === "treatment" ? 0.96 : 0.04,
+      is_guardrail_regression: null,
+    });
+    const resultsBody = {
+      total_exposed_subjects: 400,
+      exposed_subjects_by_variant: { control: 200, treatment: 200 },
+      min_exposed_subjects_for_winner: 100,
+      srm: { detected: false, statistic: 0, p_value: 1 },
       metrics: [{
-        metricId: "metric-1",
-        guardrailBreached: false,
-        perVariant: [{
-          variantId: "variant-on",
-          exposures: 50,
-          value: 10,
-          conversionRate: 0.2,
-          liftVsControl: null,
-          credibleIntervalLow: 0.1,
-          credibleIntervalHigh: 0.3,
-          probabilityBest: 0.6,
-        }],
+        metric_id: "conversion",
+        kind: "binary",
+        role: "primary",
+        direction: "increase",
+        variants: [
+          metricVariant({ variantId: "control", exposed: 200, converted: 40, sum: null, posteriorMean: 0.2, lower: 0.15, upper: 0.25 }),
+          metricVariant({ variantId: "treatment", exposed: 200, converted: 60, sum: null, posteriorMean: 0.3, lower: 0.24, upper: 0.36 }),
+        ],
+      }, {
+        metric_id: "revenue",
+        kind: "numeric",
+        role: "secondary",
+        direction: "increase",
+        variants: [
+          metricVariant({ variantId: "control", exposed: 200, converted: null, sum: 0, posteriorMean: 0, lower: -0.5, upper: 0.5 }),
+          metricVariant({ variantId: "treatment", exposed: 200, converted: null, sum: 1000, posteriorMean: 5, lower: 4.2, upper: 5.8 }),
+        ],
       }],
-      insufficientData: true,
-      minimumExposuresPerVariant: 500,
+      winner: { status: "winner", variant_id: "treatment", probability_best: 0.96 },
+      winner_rollout: { flag_id: "flag", variant_id: "treatment", flag_value: { enabled: true } },
     };
-    const sendRequest = createSendRequestMock(() => jsonResponse(results));
-    const parsed = await getExperimentResults(makeAdminApp(sendRequest), "experiment-1", {
-      segmentId: "beta-testers",
-      sinceIso: "2026-07-01T00:00:00.000Z",
-    });
-    expect(parsed).toEqual(results);
-    const requestedPath: unknown = sendRequest.mock.calls[0]?.[0];
-    expect(requestedPath).toBe(
-      "/internal/feature-flags/experiment-runs/experiment-1/results?segment_id=beta-testers&since=2026-07-01T00%3A00%3A00.000Z",
-    );
-  });
-});
+    const { app } = makeAdminApp((path) => path.endsWith("/runs")
+      ? jsonResponse({ items: [makeRun("completed")] })
+      : jsonResponse(resultsBody));
 
-describe("getFeatureFlagActivity", () => {
-  it("passes filters and parses entries", async () => {
-    const entry = {
-      id: "activity-1",
-      timestampIso: "2026-07-01T00:00:00.000Z",
-      kind: "lifecycle",
-      flagKey: "checkout-redesign",
-      experimentId: null,
-      actor: "jamie@example.com",
-      message: "Experiment started",
-    };
-    const sendRequest = createSendRequestMock(() => jsonResponse({ entries: [entry] }));
-    const entries = await getFeatureFlagActivity(makeAdminApp(sendRequest), { kind: "lifecycle", flagKey: "checkout-redesign" });
-    expect(entries).toEqual([entry]);
-    const requestedPath: unknown = sendRequest.mock.calls[0]?.[0];
-    expect(requestedPath).toBe("/internal/feature-flags/activity?kind=lifecycle&flag_key=checkout-redesign");
+    const results = await getExperimentResults(app, "experiment-1", {});
+    expect(results?.controlVariantId).toBe("control");
+    expect(results?.metrics[0]?.perVariant.map((variant) => [variant.variantId, variant.value, variant.liftVsControl])).toEqual([
+      ["control", 40, 0],
+      ["treatment", 60, 0.4999999999999999],
+    ]);
+    expect(results?.metrics[1]?.perVariant.map((variant) => [variant.variantId, variant.value, variant.credibleIntervalLow, variant.credibleIntervalHigh, variant.liftVsControl])).toEqual([
+      ["control", 0, -0.5, 0.5, 0],
+      ["treatment", 5, 4.2, 5.8, null],
+    ]);
+    expect(results?.winnerRollout).toEqual({ variantId: "treatment", flagValue: { enabled: true } });
   });
-});
 
-describe("evaluateFlagWithoutExposure", () => {
-  it("always sends recordExposure: false and serializes the context", async () => {
-    const sendRequest = createSendRequestMock(() => jsonResponse({
-      variantId: "variant-on",
-      jsonValue: "true",
-      reason: "Matched rule",
-      matchedRuleId: "rule-1",
-    }));
-    const result = await evaluateFlagWithoutExposure(makeAdminApp(sendRequest), "checkout-redesign", {
-      userId: "user-1",
-      email: null,
-      teamId: null,
-      environment: "production",
-      customAttributes: new Map([["plan", "pro"]]),
+  it("loads the latest run before posting a transition", async () => {
+    const { app, sendRequest } = makeAdminApp((path) => path.endsWith("/runs")
+      ? jsonResponse({ items: [makeRun("running")] })
+      : jsonResponse(makeRun("paused")));
+    const run = await transitionExperimentRun(app, "experiment-1", "pause");
+    expect(run.status).toBe("paused");
+    expect(sendRequest.mock.calls[1]?.[0]).toBe("/internal/feature-flags/experiments/experiment-1/runs/00000000-0000-4000-8000-000000000001/pause");
+  });
+
+  it("maps unavailable routes to the explicit unavailable state", async () => {
+    const { app } = makeAdminApp(() => new Response("missing", { status: 404 }));
+    await expect(listExperimentRuns(app, ["experiment-1"])).rejects.toBeInstanceOf(FeatureFlagsBackendUnavailableError);
+  });
+
+  it("uses the exposure-free tester contract", async () => {
+    const { app, sendRequest } = makeAdminApp(() => jsonResponse({ results: { checkout: {
+      flag_key: "checkout", value: true, variant_key: "on", reason: "matched_rule", rule_id: "rule", config_version: "v1", experiment_id: null, experiment_run_id: null, exposure_token: null,
+    } } }));
+    const result = await evaluateFlagWithoutExposure(app, "checkout", {
+      userId: "user-1", email: "user@example.com", teamId: null, environment: "production", customAttributes: new Map([["plan", "pro"]]),
     });
-    expect(result.variantId).toBe("variant-on");
-    const requestInit: unknown = sendRequest.mock.calls[0]?.[1];
-    if (requestInit == null || typeof requestInit !== "object" || !("body" in requestInit) || typeof requestInit.body !== "string") {
-      throw new Error("Expected the evaluate call to send a JSON string body");
-    }
-    const body: unknown = JSON.parse(requestInit.body);
-    expect(body).toEqual({
-      flagKey: "checkout-redesign",
-      recordExposure: false,
-      context: {
-        userId: "user-1",
-        email: null,
-        teamId: null,
-        environment: "production",
-        customAttributes: { plan: "pro" },
-      },
+    expect(result).toEqual({ variantId: "on", jsonValue: "true", reason: "matched_rule", matchedRuleId: "rule" });
+    const init = sendRequest.mock.calls[0][1];
+    expect(init.body == null ? null : JSON.parse(init.body.toString())).toEqual({
+      flag_keys: ["checkout"],
+      user_id: "user-1",
+      user: { email: "user@example.com" },
+      context: { environment: "production", plan: "pro" },
     });
   });
-});
 
-describe("internals access", () => {
-  it("fails loudly when the app does not expose internals", async () => {
-    await expect(listExperimentRuns({})).rejects.toThrowError(/internals/);
+  it("loads lifecycle audit entries for every revision of a filtered experiment", async () => {
+    const firstRun = makeRun("completed");
+    const secondRun = { ...makeRun("running"), id: "00000000-0000-4000-8000-000000000002" };
+    const { app, sendRequest } = makeAdminApp((path) => {
+      if (path.endsWith("/runs")) return jsonResponse({ items: [secondRun, firstRun] });
+      const isSecond = path.includes(secondRun.id);
+      return jsonResponse({ items: [{
+        id: isSecond ? "activity-2" : "activity-1",
+        resource_type: "experiment_run",
+        resource_id: isSecond ? secondRun.id : firstRun.id,
+        action: isSecond ? "started" : "completed",
+        actor_type: "admin_user",
+        actor_id: null,
+        source: "dashboard",
+        before_state: null,
+        after_state: null,
+        metadata: null,
+        created_at_millis: isSecond ? 2000 : 1000,
+      }], next_cursor: null });
+    });
+    const activity = await getFeatureFlagActivity(app, { experimentId: "experiment-1" });
+    expect(activity.map((entry) => [entry.id, entry.experimentId, entry.action, entry.message])).toEqual([
+      ["activity-2", "experiment-1", "started", "Experiment run started"],
+      ["activity-1", "experiment-1", "completed", "Experiment run completed"],
+    ]);
+    expect(sendRequest.mock.calls.map((call) => call[0])).toEqual([
+      "/internal/feature-flags/experiments/experiment-1/runs",
+      `/internal/feature-flags/activity?resource_type=experiment_run&resource_id=${secondRun.id}`,
+      `/internal/feature-flags/activity?resource_type=experiment_run&resource_id=${firstRun.id}`,
+    ]);
+  });
+
+  it("fails loudly when app internals are absent", async () => {
+    await expect(listExperimentRuns({}, ["experiment-1"])).rejects.toThrowError(/internals/);
   });
 });

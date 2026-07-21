@@ -4,6 +4,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import type { Tenancy } from "@/lib/tenancies";
 import type { ExperimentActor } from "./experiment-runs";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * Shared wire-format helpers for the internal experiment-run routes. Kept in
@@ -13,9 +14,10 @@ import type { ExperimentActor } from "./experiment-runs";
 
 // Experiments read and write analytics data (exposures, conversion events), so
 // every experiment action requires the analytics app.
-// INTEGRATION NOTE (feature-flags core workstream): once a "feature-flags" app
-// id exists in apps-config.ts, require that app here as well.
 export function ensureAnalyticsInstalledForExperiments(tenancy: Tenancy): void {
+  if (tenancy.config.apps.installed["feature-flags"]?.enabled !== true) {
+    throw new StatusError(StatusError.BadRequest, "Feature flags are not enabled for this project");
+  }
   if (!tenancy.config.apps.installed["analytics"]?.enabled) {
     throw new KnownErrors.AnalyticsNotEnabled();
   }

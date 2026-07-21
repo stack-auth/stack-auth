@@ -10,9 +10,28 @@ Flags and experiments live in your project's branch config under the `featureFla
 export const config: HexclaveConfig = {
   featureFlags: {
     flags: {
-      "checkout-redesign": {
+      // This map key is an immutable internal ID. The public key below can be renamed.
+      "flag_checkout_redesign": {
+        key: "checkout-redesign",
+        displayName: "Checkout redesign",
         type: "boolean",
-        defaultVariant: "false",
+        enabled: true,
+        killed: false,
+        allocationSalt: "flag_checkout_redesign",
+        variants: {
+          off: { value: false, description: "Current checkout" },
+          on: { value: true, description: "Redesigned checkout" },
+        },
+        fallbackVariantKey: "off",
+        rules: {
+          __default: {
+            priority: 0,
+            rolloutBasisPoints: 10_000,
+            allocationSalt: "flag_checkout_redesign.__default",
+            stickyBy: "distinctId",
+            variantKey: "off",
+          },
+        },
       },
     },
   },
@@ -29,6 +48,6 @@ In a [development environment](/guides/going-further/local-vs-cloud-dashboard) (
 
 When you do edit a flag in the dashboard (e.g. on a cloud project), the dashboard applies the change as a config path update like `featureFlags.flags.<key>`, so only that flag is touched and sibling config is left alone. This is the same path-notation mechanism used across Hexclave config, which is why dashboard edits and config-file edits compose cleanly.
 
-## Kill switches stay per-environment
+## Kill switches are versioned branch configuration
 
-Kill switches are environment-specific state, not part of the versioned config — killing a flag in production does not touch development, and does not require a config push. This is deliberate: a kill switch is an incident response tool and must work instantly, independent of your deploy pipeline.
+The `killed` field is part of branch config. Dashboard kill-switch changes use the same config publishing flow as other flag changes, so development and production branches can still be controlled independently and every change remains reviewable.

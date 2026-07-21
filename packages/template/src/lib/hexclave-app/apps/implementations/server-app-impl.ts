@@ -22,7 +22,7 @@ import { ProviderType } from "@hexclave/shared/dist/utils/oauth";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { suspend } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { isUuid } from "@hexclave/shared/dist/utils/uuids";
+import { generateUuid, isUuid } from "@hexclave/shared/dist/utils/uuids";
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
@@ -52,13 +52,13 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     async (etag) => await this._interface.getFeatureFlagsBootstrap(etag),
   );
   protected override readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
-    evaluate: async (identity, request) => await this._evaluateFeatureFlagsLocally(identity.userId, request),
-    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ exposures }, identity.session),
+    evaluate: async (identity, request) => await this._evaluateFeatureFlagsLocally(identity, request),
+    sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ batch_id: generateUuid(), exposures }, identity.session),
     cacheTtlMillis: 30_000,
   });
 
   private async _evaluateFeatureFlagsLocally(
-    userId: string,
+    identity: { session: InternalSession, userId: string },
     request: FeatureFlagEvaluateRequest,
   ): Promise<FeatureFlagEvaluateResponse<Json>> {
     let bootstrap: FeatureFlagBootstrapSnapshot;
@@ -104,12 +104,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         continue;
       }
       const evaluated = evaluateFeatureFlag(flagId, bootstrap.config, {
-        distinctId: userId,
-        userId,
+        distinctId: identity.userId,
+        userId: identity.userId,
         teamId: request.team_id,
         context: request.context,
       });
-      results[key] = {
+      const localResult: FeatureFlagEvaluateResponse<Json>["results"][string] = {
         flag_key: evaluated.flagKey,
         value: evaluated.value === undefined ? request.fallbacks?.[key] ?? null : evaluated.value,
         variant_key: evaluated.variantKey ?? null,
@@ -121,6 +121,39 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         exposure_token: null,
         is_stale: bootstrap.isStale,
       };
+      // Server SDKs evaluate from the protected bootstrap. A signed exposure
+      // credential still has to be minted by the backend; only experiment
+      // assignments pay this extra request, while ordinary flags remain fully
+      // local. Returning the remote result also closes a run-transition race
+      // where a stale bootstrap could otherwise expose a paused experiment.
+      // A snapshot served specifically because revalidation failed must remain
+      // usable for its five-minute stale window. Avoid making the fallback
+      // contingent on a second call to the same unavailable backend; the
+      // exposure can only be recorded after a subsequent fresh evaluation.
+      if (evaluated.experimentRunId !== undefined && !bootstrap.isStale) {
+        const remote = await this._interface.evaluateFeatureFlags<Json>({
+          flag_keys: [key],
+          fallbacks: { [key]: request.fallbacks?.[key] ?? null },
+          user_id: identity.userId,
+          team_id: request.team_id,
+          context: request.context,
+        }, identity.session);
+        const remoteResult = remote.results[key] ?? throwErr(`Remote feature flag token mint omitted ${JSON.stringify(key)}`);
+        const assignmentMatches = remoteResult.config_version === localResult.config_version
+          && remoteResult.variant_key === localResult.variant_key
+          && remoteResult.experiment_id === localResult.experiment_id
+          && remoteResult.experiment_run_id === localResult.experiment_run_id;
+        if (!assignmentMatches) {
+          captureError("feature-flags-exposure-token-assignment-mismatch", new HexclaveAssertionError(
+            `Remote exposure credential did not match protected bootstrap assignment for flag ${JSON.stringify(key)}`,
+          ));
+          results[key] = localResult;
+          continue;
+        }
+        results[key] = { ...localResult, exposure_token: remoteResult.exposure_token };
+        continue;
+      }
+      results[key] = localResult;
     }
     return { results };
   }
@@ -1244,14 +1277,17 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
         else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);
       },
-      tryDecreaseQuantity: async (delta: number) => {
+      tryDecreaseQuantity: async (delta: number, options?: { idempotencyKey?: string }) => {
         try {
           const updateOptions = customer.type === "user"
             ? { itemId: crud.id, userId: customer.id }
             : customer.type === "team"
               ? { itemId: crud.id, teamId: customer.id }
               : { itemId: crud.id, customCustomerId: customer.id };
-          await app._interface.updateItemQuantity(updateOptions, { delta: -delta });
+          await app._interface.updateItemQuantity(updateOptions, {
+            delta: -delta,
+            ...options?.idempotencyKey === undefined ? {} : { idempotency_key: options.idempotencyKey },
+          });
           if (customer.type === "user") await app._serverUserItemsCache.refresh([customer.id, crud.id]);
           else if (customer.type === "team") await app._serverTeamItemsCache.refresh([customer.id, crud.id]);
           else await app._serverCustomItemsCache.refresh([customer.id, crud.id]);

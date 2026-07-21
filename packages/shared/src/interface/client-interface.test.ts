@@ -76,6 +76,14 @@ function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): Record<str
   return parsed;
 }
 
+function getRequestUrl(fetchMock: { mock: { calls: unknown[][] } }): string {
+  const input = fetchMock.mock.calls[0]?.[0];
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.toString();
+  if (input instanceof Request) return input.url;
+  throw new Error("Expected the fetch mock to receive a URL-like first argument");
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -380,7 +388,7 @@ describe("HexclaveClientInterface feature flags", () => {
     }, createSession());
 
     expect(result).toEqual(responseBody);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.com/api/v1/feature-flags/evaluate");
+    expect(getRequestUrl(fetchMock)).toBe("https://api.example.com/api/v1/feature-flags/evaluate");
     expect(getRequestBody(fetchMock)).toEqual({
       flag_keys: ["checkout"],
       fallbacks: { checkout: false },
@@ -394,11 +402,13 @@ describe("HexclaveClientInterface feature flags", () => {
     const iface = createClientInterface();
 
     await iface.sendFeatureFlagExposureBatch({
+      batch_id: "batch-1",
       exposures: [{ event_id: "event-1", exposure_token: "signed-token", exposed_at_ms: 123 }],
     }, createSession());
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.example.com/api/v1/feature-flags/exposures/batch");
+    expect(getRequestUrl(fetchMock)).toBe("https://api.example.com/api/v1/feature-flags/exposures/batch");
     expect(getRequestBody(fetchMock)).toEqual({
+      batch_id: "batch-1",
       exposures: [{ event_id: "event-1", exposure_token: "signed-token", exposed_at_ms: 123 }],
     });
   });

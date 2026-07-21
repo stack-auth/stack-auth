@@ -40,6 +40,7 @@ import {
 } from "../shared";
 
 type FlagRow = {
+  internalId: string,
   key: string,
   displayName: string,
   status: FlagStatus,
@@ -65,13 +66,14 @@ export default function PageClient() {
 
   const allRows = useMemo<FlagRow[]>(() => {
     return [...section.flags.entries()].map(([key, flag]) => ({
+      internalId: flag.internalId,
       key,
       displayName: flag.displayName,
       status: getFlagStatus(flag),
       type: flag.type,
       rollout: describeCurrentRollout(flag),
       experimentNames: getLinkedExperiments(section, key).map(({ experiment }) => experiment.displayName).join(", "),
-      lastExposureIso: lastExposures.status === "ok" ? lastExposures.data.get(key) ?? null : null,
+      lastExposureIso: lastExposures.status === "ok" ? lastExposures.data.get(flag.internalId) ?? null : null,
     }));
   }, [section, lastExposures]);
 
@@ -182,25 +184,25 @@ export default function PageClient() {
               id: "restore",
               label: "Restore",
               icon: <ArrowCounterClockwiseIcon />,
-              onClick: () => setPendingAction({ flagKey: row.key, displayName: row.displayName, action: "restore" }),
+              onClick: () => setPendingAction({ flagId: row.internalId, displayName: row.displayName, action: "restore" }),
             }] : [],
             ...row.status !== "killed" && row.status !== "archived" ? [{
               id: "kill",
               label: "Kill switch",
               icon: <ProhibitIcon />,
               itemVariant: "destructive" as const,
-              onClick: () => setPendingAction({ flagKey: row.key, displayName: row.displayName, action: "kill" }),
+              onClick: () => setPendingAction({ flagId: row.internalId, displayName: row.displayName, action: "kill" }),
             }] : [],
             row.status === "archived" ? {
               id: "unarchive",
               label: "Unarchive",
               icon: <ArrowCounterClockwiseIcon />,
-              onClick: () => setPendingAction({ flagKey: row.key, displayName: row.displayName, action: "unarchive" }),
+              onClick: () => setPendingAction({ flagId: row.internalId, displayName: row.displayName, action: "unarchive" }),
             } : {
               id: "archive",
               label: "Archive",
               icon: <ArchiveIcon />,
-              onClick: () => setPendingAction({ flagKey: row.key, displayName: row.displayName, action: "archive" }),
+              onClick: () => setPendingAction({ flagId: row.internalId, displayName: row.displayName, action: "archive" }),
             },
           ]}
         />

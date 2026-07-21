@@ -22,14 +22,19 @@ function makeFakeTenancy(projectId: string, branchId: string): Tenancy {
 function makeValidPayload(): FeatureFlagExposureTokenPayload {
   return {
     kind: "feature_flag_evaluation",
+    evaluation_id: "00000000-0000-4000-8000-000000000001",
+    issued_at_millis: "1784342400000",
     project_id: "internal",
     branch_id: "main",
     run_id: "run-1",
     experiment_id: "experiment-1",
     flag_id: "flag-1",
     variant_id: "variant-a",
+    rule_id: "experiment-run-1",
+    reason: "matched_rule",
     config_revision_hash: "revision-hash-1",
     subject_type: "user",
+    subject_id: "user-123",
     subject_hash: computeExposureSubjectHash({ projectId: "internal", subjectType: "user", subjectId: "user-123" }),
   };
 }
@@ -75,25 +80,35 @@ describe("verifyFeatureFlagEvaluationToken", () => {
     const payload = await verifyFeatureFlagEvaluationToken({ token, tenancy: makeFakeTenancy("internal", "main") });
     expect({
       kind: payload.kind,
+      evaluation_id: payload.evaluation_id,
+      issued_at_millis: payload.issued_at_millis,
       project_id: payload.project_id,
       branch_id: payload.branch_id,
       run_id: payload.run_id,
       experiment_id: payload.experiment_id,
       flag_id: payload.flag_id,
       variant_id: payload.variant_id,
+      rule_id: payload.rule_id,
+      reason: payload.reason,
       config_revision_hash: payload.config_revision_hash,
       subject_type: payload.subject_type,
+      subject_id: payload.subject_id,
       subject_hash: payload.subject_hash,
     }).toMatchInlineSnapshot(`
       {
         "branch_id": "main",
         "config_revision_hash": "revision-hash-1",
+        "evaluation_id": "00000000-0000-4000-8000-000000000001",
         "experiment_id": "experiment-1",
         "flag_id": "flag-1",
+        "issued_at_millis": "1784342400000",
         "kind": "feature_flag_evaluation",
         "project_id": "internal",
+        "reason": "matched_rule",
+        "rule_id": "experiment-run-1",
         "run_id": "run-1",
         "subject_hash": "091902c5819c58582f1a01240a2d98b2ad7e76fe1dd1fe354985f0a088712bf9",
+        "subject_id": "user-123",
         "subject_type": "user",
         "variant_id": "variant-a",
       }

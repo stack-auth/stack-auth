@@ -166,6 +166,62 @@ it("creates an item quantity change successfully", async ({ expect }) => {
   expect(response.body).toMatchObject({});
 });
 
+it("applies an idempotent item quantity update exactly once", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateEnvironmentConfig({
+    payments: {
+      items: {
+        "test-item": {
+          displayName: "Test Item",
+          customerType: "user",
+        },
+      },
+    },
+  });
+  const { userId } = await Auth.fastSignUp();
+  const path = `/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=false`;
+  const update = async (delta: number) => await niceBackendFetch(path, {
+    method: "POST",
+    accessType: "admin",
+    body: { delta, idempotency_key: "analytics-batch:test" },
+  });
+
+  expect((await update(3)).status).toBe(200);
+  expect((await update(3)).status).toBe(200);
+  const conflicting = await update(4);
+  const item = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, { accessType: "client" });
+
+  expect(conflicting.status).toBe(409);
+  expect(conflicting.body).toBe("The item quantity idempotency key was already used for a different update");
+  expect(item.body.quantity).toBe(3);
+});
+
+it("serializes concurrent non-negative item decrements", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await updateEnvironmentConfig({
+    payments: { items: { "test-item": { displayName: "Test Item", customerType: "user" } } },
+  });
+  const { userId } = await Auth.fastSignUp();
+  const path = `/api/latest/payments/items/user/${userId}/test-item/update-quantity`;
+  expect((await niceBackendFetch(path, {
+    method: "POST",
+    accessType: "admin",
+    query: { allow_negative: "true" },
+    body: { delta: 1 },
+  })).status).toBe(200);
+
+  const responses = await Promise.all(["first", "second"].map(async (idempotencyKey) => await niceBackendFetch(path, {
+    method: "POST",
+    accessType: "admin",
+    query: { allow_negative: "false" },
+    body: { delta: -1, idempotency_key: idempotencyKey },
+  })));
+  const item = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, { accessType: "client" });
+
+  expect(responses.map((response) => response.status).sort((left, right) => left - right)).toEqual([200, 400]);
+  expect(item.body.quantity).toBe(0);
+});
+
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
   await updateEnvironmentConfig({

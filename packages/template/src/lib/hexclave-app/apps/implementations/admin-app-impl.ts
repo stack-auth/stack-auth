@@ -1256,32 +1256,36 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return await this._interface.testFeatureFlags(request);
   }
 
-  async listFeatureFlagExperimentRuns(experimentId?: string): Promise<FeatureFlagExperimentRun[]> {
+  async listFeatureFlagExperimentRuns(experimentId: string): Promise<FeatureFlagExperimentRun[]> {
     return await this._interface.listFeatureFlagExperimentRuns(experimentId);
   }
 
-  async getFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
-    return await this._interface.getFeatureFlagExperimentRun(runId);
+  async createFeatureFlagExperimentRun(experimentId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.createFeatureFlagExperimentRun(experimentId, experimentConfig);
   }
 
-  async startFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
-    return await this._interface.transitionFeatureFlagExperimentRun(runId, "start");
+  async startFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(experimentId, runId, "start");
   }
 
-  async pauseFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
-    return await this._interface.transitionFeatureFlagExperimentRun(runId, "pause");
+  async pauseFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(experimentId, runId, "pause");
   }
 
-  async resumeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
-    return await this._interface.transitionFeatureFlagExperimentRun(runId, "resume");
+  async resumeFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(experimentId, runId, "resume");
   }
 
-  async completeFeatureFlagExperimentRun(runId: string): Promise<FeatureFlagExperimentRun> {
-    return await this._interface.transitionFeatureFlagExperimentRun(runId, "complete");
+  async completeFeatureFlagExperimentRun(experimentId: string, runId: string): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.transitionFeatureFlagExperimentRun(experimentId, runId, "complete");
   }
 
-  async getFeatureFlagExperimentResults(runId: string): Promise<FeatureFlagExperimentResults> {
-    return await this._interface.getFeatureFlagExperimentResults(runId);
+  async createFeatureFlagExperimentRevision(experimentId: string, runId: string, experimentConfig: Json): Promise<FeatureFlagExperimentRun> {
+    return await this._interface.createFeatureFlagExperimentRevision(experimentId, runId, experimentConfig);
+  }
+
+  async getFeatureFlagExperimentResults(experimentId: string, runId: string): Promise<FeatureFlagExperimentResults> {
+    return await this._interface.getFeatureFlagExperimentResults(experimentId, runId);
   }
 
   async listFeatureFlagActivity(options?: { cursor?: string, limit?: number }): Promise<FeatureFlagActivityResponse> {

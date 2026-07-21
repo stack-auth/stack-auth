@@ -160,6 +160,7 @@ export function BackendUnavailableAlert(props: { what: string }) {
 }
 
 export const EXPERIMENT_STATUS_BADGE: ReadonlyMap<ExperimentRunStatus, { label: string, color: DesignBadgeColor }> = new Map([
+  ["not_started", { label: "Not started", color: "blue" }],
   ["draft", { label: "Draft", color: "blue" }],
   ["scheduled", { label: "Scheduled", color: "cyan" }],
   ["running", { label: "Running", color: "green" }],

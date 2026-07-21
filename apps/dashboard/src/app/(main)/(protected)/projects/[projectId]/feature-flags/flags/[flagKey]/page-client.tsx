@@ -7,7 +7,7 @@ import {
 } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/components/config-update";
-import { flagConfigPath, getFlagStatus, getLinkedExperiments } from "@/lib/feature-flags/config";
+import { featureFlagConfigUpdates, getFlagStatus, getLinkedExperiments } from "@/lib/feature-flags/config";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { ArchiveIcon, ArrowCounterClockwiseIcon, FlaskIcon, ProhibitIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -88,7 +88,7 @@ export default function PageClient({ flagKey }: PageClientProps) {
             <DesignButton
               variant="outline"
               size="sm"
-              onClick={() => setPendingAction({ flagKey, displayName: flag.displayName, action: "restore" })}
+              onClick={() => setPendingAction({ flagId: flag.internalId, displayName: flag.displayName, action: "restore" })}
             >
               <ArrowCounterClockwiseIcon className="h-4 w-4 mr-1" />
               Restore
@@ -97,7 +97,7 @@ export default function PageClient({ flagKey }: PageClientProps) {
             <DesignButton
               variant="destructive"
               size="sm"
-              onClick={() => setPendingAction({ flagKey, displayName: flag.displayName, action: "kill" })}
+              onClick={() => setPendingAction({ flagId: flag.internalId, displayName: flag.displayName, action: "kill" })}
             >
               <ProhibitIcon className="h-4 w-4 mr-1" />
               Kill switch
@@ -107,7 +107,7 @@ export default function PageClient({ flagKey }: PageClientProps) {
             <DesignButton
               variant="outline"
               size="sm"
-              onClick={() => setPendingAction({ flagKey, displayName: flag.displayName, action: "unarchive" })}
+              onClick={() => setPendingAction({ flagId: flag.internalId, displayName: flag.displayName, action: "unarchive" })}
             >
               <ArrowCounterClockwiseIcon className="h-4 w-4 mr-1" />
               Unarchive
@@ -116,7 +116,7 @@ export default function PageClient({ flagKey }: PageClientProps) {
             <DesignButton
               variant="outline"
               size="sm"
-              onClick={() => setPendingAction({ flagKey, displayName: flag.displayName, action: "archive" })}
+              onClick={() => setPendingAction({ flagId: flag.internalId, displayName: flag.displayName, action: "archive" })}
             >
               <ArchiveIcon className="h-4 w-4 mr-1" />
               Archive
@@ -151,9 +151,12 @@ export default function PageClient({ flagKey }: PageClientProps) {
         onPublish={async (publishedKey, publishedFlag) => {
           await updateConfig({
             adminApp,
-            configUpdate: { [flagConfigPath(publishedKey)]: publishedFlag },
+            configUpdate: featureFlagConfigUpdates(flag.internalId, publishedKey, publishedFlag, section),
             pushable: true,
           });
+          if (publishedKey !== flagKey) {
+            router.push(urlString`/projects/${project.id}/feature-flags/flags/${publishedKey}`);
+          }
         }}
       />
 

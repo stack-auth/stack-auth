@@ -108,11 +108,19 @@ type TrackedEvent = {
   event_type: string,
   event_at_ms: number,
   data: Record<string, unknown>,
+  value?: number,
+  team_id?: string,
+};
+
+type PendingEventBatch = {
+  body: string,
 };
 
 export type TrackEventOptions = {
   properties?: Record<string, Json>,
   value?: number,
+  /** Team assignment context for team-scoped experiments. Membership is verified by the server. */
+  teamId?: string,
 };
 
 function validateEventPropertyValue(value: Json, depth = 0): void {
@@ -151,9 +159,15 @@ export class EventTracker {
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
   private _approxBytes = 0;
+  // A failed delivery remains separate from newly buffered events. Retrying the
+  // exact serialized body preserves its batch id and makes server-side
+  // idempotency effective even when the first response was lost.
+  private _pendingBatch: PendingEventBatch | null = null;
+  private _flushInFlight: Promise<void> | null = null;
   private _lastUrl: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
+  private _teamId: string | null = null;
 
   private _originalPushState: History["pushState"] | null = null;
   private _originalReplaceState: History["replaceState"] | null = null;
@@ -208,7 +222,13 @@ export class EventTracker {
   clearBuffer() {
     this._events = [];
     this._approxBytes = 0;
+    this._pendingBatch = null;
     this._unclassifiedClicks.clear();
+    this._teamId = null;
+  }
+
+  setTeamContext(teamId: string | null): void {
+    this._teamId = teamId;
   }
 
   async trackEvent(name: string, options?: TrackEventOptions): Promise<void> {
@@ -216,17 +236,19 @@ export class EventTracker {
     this._pushEvent({
       event_type: name,
       event_at_ms: Date.now(),
-      data: {
-        ...options?.properties,
-        ...(options?.value == null ? {} : { value: options.value }),
-      },
+      data: options?.properties ?? {},
+      ...(options?.teamId == null ? {} : { team_id: options.teamId }),
+      ...(options?.value == null ? {} : { value: options.value }),
     });
   }
 
   private _pushEvent(event: TrackedEvent) {
     if (this._disabled) return;
-    this._events.push(event);
-    this._approxBytes += JSON.stringify(event).length;
+    const contextualizedEvent = event.team_id !== undefined || this._teamId === null
+      ? event
+      : { ...event, team_id: this._teamId };
+    this._events.push(contextualizedEvent);
+    this._approxBytes += JSON.stringify(contextualizedEvent).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
       runAsynchronously(() => this._flush({ keepalive: false }));
     }
@@ -516,6 +538,23 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    if (this._flushInFlight != null) {
+      await this._flushInFlight;
+      // An unload flush must drain whatever the ordinary in-flight request did
+      // not deliver; returning here would strand newer events as the page exits.
+      if (options.keepalive) await this._flush(options);
+      return;
+    }
+    const flush = this._flushOnce(options);
+    this._flushInFlight = flush;
+    try {
+      await flush;
+    } finally {
+      if (this._flushInFlight === flush) this._flushInFlight = null;
+    }
+  }
+
+  private async _flushOnce(options: { keepalive: boolean }) {
     if (this._disabled) return;
 
     // A keepalive flush means the page is unloading — a click still awaiting
@@ -528,23 +567,24 @@ export class EventTracker {
     // Clicks still awaiting classification stay buffered so the sweep can
     // mark them dead in place; classification finishes well within one flush
     // interval, so they ride the next flush at the latest.
-    const events = this._events.filter((event) => !this._unclassifiedClicks.has(event));
-    if (events.length === 0) return;
-    this._events = this._events.filter((event) => this._unclassifiedClicks.has(event));
-    this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
-
-    const nowMs = Date.now();
-
-    const batchId = generateUuid();
-    const payload = {
-      session_replay_segment_id: this._sessionReplaySegmentId,
-      batch_id: batchId,
-      sent_at_ms: nowMs,
-      events,
-    };
+    if (this._pendingBatch == null) {
+      const events = this._events.filter((event) => !this._unclassifiedClicks.has(event));
+      if (events.length === 0) return;
+      this._events = this._events.filter((event) => this._unclassifiedClicks.has(event));
+      this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
+      this._pendingBatch = {
+        body: JSON.stringify({
+          session_replay_segment_id: this._sessionReplaySegmentId,
+          batch_id: generateUuid(),
+          sent_at_ms: Date.now(),
+          events,
+        }),
+      };
+    }
+    const pendingBatch = this._pendingBatch;
 
     const res = await this._deps.sendBatch(
-      JSON.stringify(payload),
+      pendingBatch.body,
       { keepalive: options.keepalive },
     );
 
@@ -556,28 +596,23 @@ export class EventTracker {
       // Ad blockers commonly block analytics endpoints, causing network
       // errors. These are expected and should not pollute the console.
       if (isAdBlockerNetworkError(res.error)) {
+        this._pendingBatch = null;
         return;
       }
-      this._restoreEventsAfterFailedFlush(events);
       console.warn("EventTracker flush failed:", res.error);
       return;
     }
 
     if (!res.data.ok) {
-      this._restoreEventsAfterFailedFlush(events);
       console.warn("EventTracker flush failed:", res.data.status, await res.data.text());
+      return;
     }
-  }
-
-  private _restoreEventsAfterFailedFlush(events: TrackedEvent[]): void {
-    // Put failed events before newer buffered events so conversion funnels keep
-    // their original ordering when the next interval retries the batch.
-    this._events = [...events, ...this._events];
-    this._approxBytes = this._events.reduce((total, event) => total + JSON.stringify(event).length, 0);
+    if (this._pendingBatch === pendingBatch) this._pendingBatch = null;
   }
 
   private _disable() {
     this._disabled = true;
+    this._pendingBatch = null;
     if (this._flushTimer !== null) {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
@@ -587,7 +622,7 @@ export class EventTracker {
 
   private _tick() {
     if (this._cancelled) return;
-    if (this._events.length > 0) {
+    if (this._pendingBatch != null || this._events.length > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }

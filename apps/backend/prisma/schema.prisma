@@ -50,6 +50,8 @@ model Project {
   aiConversations            AiConversation[]
   experimentRuns             ExperimentRun[]
   featureFlagAuditLogs       FeatureFlagAuditLog[]
+  featureFlagExposureReceipts FeatureFlagExposureReceipt[]
+  analyticsEventBatchReceipts AnalyticsEventBatchReceipt[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -1556,7 +1558,8 @@ model ExperimentRun {
   revisionNumber Int @default(1)
   // SHA-256 over the canonical (sorted-keys) JSON serialization of configSnapshot.
   configRevisionHash String
-  // The full experiment definition (flag, variants, weights, metrics, attribution window, schedule) frozen at creation.
+  // Full experiment definition provisionally captured at draft creation and
+  // re-frozen from branch config when the run starts.
   configSnapshot Json
 
   state ExperimentRunState @default(DRAFT)
@@ -1575,14 +1578,17 @@ model ExperimentRun {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  // Partial unique index enforcing at most one RUNNING or PAUSED run per
-  // project+branch+experiment ("ExperimentRun_active_run_key") is created in a
-  // custom migration (partial indexes are not expressible in the Prisma schema).
+  // Partial unique indexes enforce at most one RUNNING or PAUSED run per
+  // project+branch+experiment and per frozen flag id. They are created in the
+  // custom migration because partial/expression indexes are not expressible in
+  // the Prisma schema.
   @@index([projectId, branchId, experimentId, createdAt(sort: Desc)], name: "ExperimentRun_project_experiment_createdAt_idx")
   // For the schedule processor: find DRAFT runs whose scheduledStartAt has passed
   // and RUNNING runs whose scheduledEndAt has passed.
   @@index([state, scheduledStartAt], name: "ExperimentRun_state_scheduledStartAt_idx")
   @@index([state, scheduledEndAt], name: "ExperimentRun_state_scheduledEndAt_idx")
+  @@index([state, updatedAt, scheduledStartAt, id], name: "ExperimentRun_schedule_start_rotation_idx")
+  @@index([state, updatedAt, scheduledEndAt, id], name: "ExperimentRun_schedule_end_rotation_idx")
 }
 
 // Append-only audit trail for feature-flag resources (experiment runs, flags,
@@ -1618,4 +1624,58 @@ model FeatureFlagAuditLog {
 
   @@index([projectId, branchId, resourceType, resourceId, createdAt(sort: Desc)], name: "FeatureFlagAuditLog_resource_createdAt_idx")
   @@index([projectId, branchId, createdAt(sort: Desc)], name: "FeatureFlagAuditLog_project_createdAt_idx")
+}
+
+// Durable idempotency ledger for verified experiment exposure uploads. It is
+// intentionally narrow: high-volume event payloads stay in ClickHouse, while
+// Postgres owns the uniqueness guarantee used before quota debit.
+model FeatureFlagExposureReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String
+  branchId String
+  eventId String @db.Uuid
+  evaluationId String @db.Uuid
+  batchId String @db.Uuid
+  batchPayloadHash String
+  ingestionNonce String @db.Uuid
+  processingStartedAt DateTime?
+  billingNonce String? @db.Uuid
+  billingStartedAt DateTime?
+  billingCompletedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, eventId], name: "FeatureFlagExposureReceipt_project_event_key")
+  @@unique([projectId, evaluationId], name: "FeatureFlagExposureReceipt_project_evaluation_key")
+  @@index([ingestionNonce], name: "FeatureFlagExposureReceipt_ingestionNonce_idx")
+  @@index([processingStartedAt], name: "FeatureFlagExposureReceipt_processingStartedAt_idx")
+  @@index([projectId, branchId, createdAt(sort: Desc)], name: "FeatureFlagExposureReceipt_project_createdAt_idx")
+}
+
+// Narrow idempotency ledger for analytics uploads. Event payloads remain in
+// ClickHouse; Postgres only retains the batch identity and payload digest for a
+// bounded replay window so retries cannot consume quota or duplicate events.
+model AnalyticsEventBatchReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String
+  branchId String
+  batchId String @db.Uuid
+  payloadHash String
+  eventCount Int
+  insertedCount Int?
+  processingNonce String? @db.Uuid
+  processingStartedAt DateTime?
+  billingNonce String? @db.Uuid
+  billingStartedAt DateTime?
+  billingCompletedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, branchId, batchId], name: "AnalyticsEventBatchReceipt_project_branch_batch_key")
+  @@index([processingStartedAt], name: "AnalyticsEventBatchReceipt_processingStartedAt_idx")
+  @@index([createdAt], name: "AnalyticsEventBatchReceipt_createdAt_idx")
 }

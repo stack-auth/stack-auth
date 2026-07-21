@@ -52,8 +52,11 @@ export const featureFlagConditionOperators = [
   "after",
   "semver_eq",
   "semver_gt",
+  "semver_gte",
   "semver_lt",
+  "semver_lte",
   "in_segment",
+  "not_in_segment",
 ] as const;
 
 export type FeatureFlagConditionOperator = typeof featureFlagConditionOperators[number];
@@ -81,6 +84,7 @@ export type FeatureFlagPrerequisite = {
 };
 
 export type FeatureFlagRule = {
+  displayName?: string,
   enabled?: boolean,
   priority?: number,
   conditions?: Record<string, FeatureFlagCondition | undefined>,
@@ -91,10 +95,12 @@ export type FeatureFlagRule = {
   variantWeights?: Record<string, number | undefined>,
   experimentId?: string,
   experimentRunId?: string,
+  experimentConfigRevision?: string,
 };
 
 export type FeatureFlagDefinition = {
   key?: string,
+  displayName?: string,
   description?: string,
   type?: FeatureFlagVariantType,
   enabled?: boolean,
@@ -107,6 +113,7 @@ export type FeatureFlagDefinition = {
   holdoutId?: string,
   mutualExclusionGroupId?: string,
   rules?: Record<string, FeatureFlagRule | undefined>,
+  createdAtMillis?: number,
 };
 
 export type FeatureFlagHoldout = {
@@ -122,16 +129,27 @@ export type FeatureFlagMutualExclusionGroup = {
 };
 
 export type FeatureFlagMetric = {
+  id?: string,
+  displayName?: string,
   eventName?: string,
-  type?: "binary" | "funnel" | "numeric",
+  type?: "page_view" | "click" | "funnel" | "custom_event" | "numeric_value",
+  direction?: "increase" | "decrease",
+  urlPattern?: string,
+  selector?: string,
+  funnelSteps?: Record<string, string | undefined>,
+  numericProperty?: string,
+  numericAggregation?: "sum" | "average",
   attributionWindowSeconds?: number,
 };
 
 export type FeatureFlagExperiment = {
   key?: string,
+  displayName?: string,
   hypothesis?: string,
   flagId?: string,
-  assignmentUnit?: "user" | "team" | "distinct_id",
+  assignmentUnit?: "user" | "team",
+  trafficAllocationBasisPoints?: number,
+  controlVariantKey?: string,
   variantWeights?: Record<string, number | undefined>,
   primaryMetric?: FeatureFlagMetric,
   secondaryMetrics?: Record<string, FeatureFlagMetric | undefined>,
@@ -139,6 +157,8 @@ export type FeatureFlagExperiment = {
   mutualExclusionGroupId?: string,
   startsAt?: string,
   endsAt?: string,
+  archived?: boolean,
+  createdAtMillis?: number,
 };
 
 export type FeatureFlagsConfig = {
@@ -182,6 +202,7 @@ export type FeatureFlagEvaluationResult = {
   ruleId?: string,
   experimentId?: string,
   experimentRunId?: string,
+  experimentConfigRevision?: string,
 };
 
 export type FeatureFlagsBootstrap = {

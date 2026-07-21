@@ -1,4 +1,4 @@
-import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagExposureRequest } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import type { Json } from "@hexclave/shared/dist/utils/json";
 import { describe, expect, it, vi } from "vitest";
 import { FeatureFlagController, type FeatureFlagDetails } from "./feature-flags";
@@ -134,20 +134,46 @@ describe("FeatureFlagController", () => {
     const automatic = await controller.getFeatureFlagDetails(identity, "auto", false);
     await controller.getFeatureFlagDetails(identity, "auto", false);
     const manual = await controller.getFeatureFlagDetails(identity, "manual", false, { exposure: "manual" });
-    await controller.getFeatureFlagDetails(identity, "none", false, { exposure: "none" });
+    const none = await controller.getFeatureFlagDetails(identity, "none", false, { exposure: "none" });
     await controller.trackFeatureFlagExposure(identity, manual);
     await controller.trackFeatureFlagExposure(identity, manual);
 
     expect(automatic.exposureToken).toBe("token-auto-v1");
+    expect(none.exposureToken).toBeNull();
     expect(sent).toEqual([["token-auto-v1"], ["token-manual-v1"]]);
+  });
+
+  it("deduplicates exposures independently for each selected team", async () => {
+    const sent: string[] = [];
+    const controller = new FeatureFlagController<string>({
+      evaluate: async (_identity, request) => {
+        const response = responseFor(request);
+        const checkout = response.results.checkout;
+        if (checkout == null) throw new Error("Expected checkout result.");
+        checkout.exposure_token = `token-${request.team_id ?? "user"}`;
+        return response;
+      },
+      sendExposures: async (_identity, exposures) => {
+        sent.push(...exposures.map((exposure) => exposure.exposure_token));
+      },
+    });
+    const identity = { cacheKey: "user-1", value: "session-1" };
+
+    await controller.getFeatureFlagDetails(identity, "checkout", false, { teamId: "team-a" });
+    await controller.getFeatureFlagDetails(identity, "checkout", false, { teamId: "team-a" });
+    await controller.getFeatureFlagDetails(identity, "checkout", false, { teamId: "team-b" });
+
+    expect(sent).toEqual(["token-team-a", "token-team-b"]);
   });
 
   it("allows a failed exposure to retry", async () => {
     let attempts = 0;
+    const sent: FeatureFlagExposureRequest[][] = [];
     const controller = new FeatureFlagController<string>({
       evaluate: async (_identity, request) => responseFor(request),
-      sendExposures: async () => {
+      sendExposures: async (_identity, exposures) => {
         attempts += 1;
+        sent.push(exposures);
         if (attempts === 1) throw new TypeError("offline");
       },
     });
@@ -168,6 +194,7 @@ describe("FeatureFlagController", () => {
     await expect(controller.trackFeatureFlagExposure(identity, details)).rejects.toThrowError("offline");
     await controller.trackFeatureFlagExposure(identity, details);
     expect(attempts).toBe(2);
+    expect(sent[1]).toEqual(sent[0]);
   });
 
   it("rejects unbounded or non-serializable targeting context", async () => {

@@ -17,6 +17,12 @@ const getScreenshots = (appName: string, count: number): string[] => {
   return Array.from({ length: count }, (_, i) => `/storeDesc-${appName}-${i + 1}.png`);
 };
 
+const FEATURE_FLAGS_NAVIGATION_ITEMS: AppNavigationItem[] = [
+  { displayName: "Flags", href: "./flags" },
+  { displayName: "Experiments", href: "./experiments" },
+  { displayName: "Activity", href: "./activity" },
+];
+
 export const DUMMY_ORIGIN = "https://example.com";
 
 type BreadcrumbDefinition = {
@@ -440,12 +446,8 @@ export const ALL_APPS_FRONTEND = {
   "feature-flags": {
     icon: FlagIcon,
     href: "feature-flags",
-    navigationItems: [
-      { displayName: "Flags", href: "./flags" },
-      { displayName: "Experiments", href: "./experiments" },
-      { displayName: "Activity", href: "./activity" },
-    ],
-    screenshots: [],
+    navigationItems: FEATURE_FLAGS_NAVIGATION_ITEMS,
+    screenshots: getScreenshots("feature-flags", 0),
     storeDescription: (
       <>
         <p>Feature Flags lets you ship features safely with kill switches, targeted rollouts, and percentage-based releases.</p>

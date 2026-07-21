@@ -1,4 +1,6 @@
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
 
 /**
  * Frontend-local mirror of the *intended* `featureFlags` branch-config section.
@@ -113,6 +115,8 @@ export type FlagPrerequisite = {
 };
 
 export type FlagConfig = {
+  /** Stable config identity. Public keys may be renamed without changing this value. */
+  internalId: string,
   displayName: string,
   description: string,
   type: FlagValueType,
@@ -162,6 +166,8 @@ export type ExperimentConfig = {
   hypothesis: string,
   flagKey: string,
   assignmentUnit: "user" | "team",
+  /** Explicit control; allocation order is presentation-only and must not change experiment semantics. */
+  controlVariantId: string,
   /** Split of enrolled traffic across the linked flag's variants; sums to 10_000. */
   allocation: { variantId: string, weightBps: number }[],
   /** Portion of eligible traffic enrolled into the experiment. */
@@ -348,6 +354,7 @@ function parseCondition(value: unknown, path: string): FlagCondition {
 function parseFlag(value: unknown, path: string): FlagConfig {
   const record = asRecord(value, path);
   return {
+    internalId: path.split(".").at(-1) ?? throwErr(`Flag config path ${path} has no internal ID`),
     displayName: asString(record.displayName, `${path}.displayName`),
     description: asString(record.description, `${path}.description`),
     type: asOneOf(record.type, ["boolean", "string", "number", "json"] as const, `${path}.type`),
@@ -429,6 +436,7 @@ function parseExperiment(value: unknown, path: string): ExperimentConfig {
     hypothesis: asString(record.hypothesis, `${path}.hypothesis`),
     flagKey: asString(record.flagKey, `${path}.flagKey`),
     assignmentUnit: asOneOf(record.assignmentUnit, ["user", "team"] as const, `${path}.assignmentUnit`),
+    controlVariantId: asString(record.controlVariantId, `${path}.controlVariantId`),
     allocation: asArray(record.allocation, `${path}.allocation`).map((entry, index) => {
       const entryRecord = asRecord(entry, `${path}.allocation[${index}]`);
       return {
@@ -475,20 +483,348 @@ export function parseFeatureFlagsSection(config: object): FeatureFlagsSection {
     return { flags: new Map(), segments: new Map(), experiments: new Map() };
   }
   const record = asRecord(raw, FEATURE_FLAGS_CONFIG_PREFIX);
+  const rawFlags = asRecord(record.flags ?? {}, "featureFlags.flags");
+  const publicKeyById = new Map(Object.entries(rawFlags).map(([flagId, value]) => {
+    const flag = asRecord(value, `featureFlags.flags.${flagId}`);
+    return [flagId, asString(flag.key, `featureFlags.flags.${flagId}.key`)];
+  }));
+  const holdouts = asRecord(record.holdouts ?? {}, "featureFlags.holdouts");
   return {
-    flags: new Map(Object.entries(asRecord(record.flags ?? {}, "featureFlags.flags"))
-      .map(([key, value]): [string, FlagConfig] => [key, parseFlag(value, `featureFlags.flags.${key}`)])),
-    segments: new Map(Object.entries(asRecord(record.segments ?? {}, "featureFlags.segments"))
-      .map(([key, value]): [string, FlagSegment] => {
-        const segmentRecord = asRecord(value, `featureFlags.segments.${key}`);
-        return [key, {
-          displayName: asString(segmentRecord.displayName, `featureFlags.segments.${key}.displayName`),
-          conditions: asArray(segmentRecord.conditions, `featureFlags.segments.${key}.conditions`).map((condition, index) =>
-            parseCondition(condition, `featureFlags.segments.${key}.conditions[${index}]`)),
-        }];
-      })),
-    experiments: new Map(Object.entries(asRecord(record.experiments ?? {}, "featureFlags.experiments"))
-      .map(([key, value]): [string, ExperimentConfig] => [key, parseExperiment(value, `featureFlags.experiments.${key}`)])),
+    flags: new Map(Object.entries(rawFlags).map(([flagId, value]): [string, FlagConfig] => {
+      const publicKey = publicKeyById.get(flagId) ?? throwErr(`Feature flag ${flagId} has no public key`);
+      return [publicKey, parseSharedFlag(flagId, value, holdouts, publicKeyById, `featureFlags.flags.${flagId}`)];
+    })),
+    segments: new Map(Object.entries(asRecord(record.segments ?? {}, "featureFlags.segments")).map(([key, value]): [string, FlagSegment] => {
+      const segment = asRecord(value, `featureFlags.segments.${key}`);
+      return [key, {
+        displayName: typeof segment.displayName === "string" ? segment.displayName : key,
+        conditions: Object.entries(asRecord(segment.conditions ?? {}, `featureFlags.segments.${key}.conditions`)).map(([conditionId, condition]) =>
+          parseSharedCondition(condition, `featureFlags.segments.${key}.conditions.${conditionId}`)),
+      }];
+    })),
+    experiments: new Map(Object.entries(asRecord(record.experiments ?? {}, "featureFlags.experiments")).map(([key, value]): [string, ExperimentConfig] =>
+      [key, parseSharedExperiment(key, value, publicKeyById, `featureFlags.experiments.${key}`)])),
+  };
+}
+
+const SHARED_TO_UI_OPERATOR = new Map<string, FlagOperator>([
+  ["gt", "num_gt"], ["gte", "num_gte"], ["lt", "num_lt"], ["lte", "num_lte"],
+  ["is_set", "exists"], ["is_not_set", "not_exists"],
+]);
+
+const UI_TO_SHARED_OPERATOR = new Map<FlagOperator, string>([
+  ["num_gt", "gt"], ["num_gte", "gte"], ["num_lt", "lt"], ["num_lte", "lte"],
+  ["exists", "is_set"], ["not_exists", "is_not_set"],
+]);
+
+function parseSharedCondition(value: unknown, path: string): FlagCondition {
+  const condition = asRecord(value, path);
+  const sharedOperator = asString(condition.operator, `${path}.operator`);
+  const operator = SHARED_TO_UI_OPERATOR.get(sharedOperator) ?? FLAG_OPERATORS.find((candidate) => candidate === sharedOperator)
+    ?? throwErr(`Unsupported feature flag operator ${sharedOperator}`);
+  const metadata = getOperatorMetadataOrThrow(operator);
+  const rawValue = condition.value;
+  return {
+    attribute: asString(condition.attribute, `${path}.attribute`).replace(/^context\./, "custom."),
+    operator,
+    ...metadata.arity === "single" ? { value: typeof rawValue === "string" ? rawValue : JSON.stringify(rawValue) } : {},
+    ...metadata.arity === "list" ? { values: asArray(rawValue, `${path}.value`).map((entry) => typeof entry === "string" ? entry : JSON.stringify(entry)) } : {},
+  };
+}
+
+function parseSharedServe(rule: Record<string, unknown>, path: string): FlagServe {
+  if (typeof rule.variantKey === "string") return { type: "variant", variantId: rule.variantKey };
+  const weights = asRecord(rule.variantWeights, `${path}.variantWeights`);
+  return { type: "split", split: Object.entries(weights).map(([variantId, weight]) => ({ variantId, weightBps: asNumber(weight, `${path}.variantWeights.${variantId}`) })) };
+}
+
+function parseSharedFlag(
+  flagId: string,
+  value: unknown,
+  holdouts: Record<string, unknown>,
+  publicKeyById: ReadonlyMap<string, string>,
+  path: string,
+): FlagConfig {
+  const flag = asRecord(value, path);
+  const variants = Object.entries(asRecord(flag.variants ?? {}, `${path}.variants`)).map(([variantId, variantValue]) => {
+    const variant = asRecord(variantValue, `${path}.variants.${variantId}`);
+    return {
+      id: variantId,
+      label: typeof variant.description === "string" ? variant.description : variantId,
+      jsonValue: stringifyJsonOrThrow(variant.value, `${path}.variants.${variantId}.value`),
+    };
+  });
+  const fallbackVariantId = asString(flag.fallbackVariantKey, `${path}.fallbackVariantKey`);
+  const rules = Object.entries(asRecord(flag.rules ?? {}, `${path}.rules`));
+  const defaultEntry = rules.find(([ruleId]) => ruleId === "__default");
+  const customRules = rules.filter(([ruleId]) => ruleId !== "__default");
+  const holdoutId = typeof flag.holdoutId === "string" ? flag.holdoutId : undefined;
+  const holdout = holdoutId === undefined ? undefined : asRecord(holdouts[holdoutId], `featureFlags.holdouts.${holdoutId}`);
+  return {
+    internalId: flagId,
+    displayName: flag.displayName === undefined ? asString(flag.key, `${path}.key`) : asString(flag.displayName, `${path}.displayName`),
+    description: typeof flag.description === "string" ? flag.description : "",
+    type: asOneOf(flag.type, ["boolean", "string", "number", "json"] as const, `${path}.type`),
+    enabled: flag.enabled !== false,
+    killed: flag.killed === true,
+    archived: flag.archived === true,
+    variants,
+    fallbackVariantId,
+    defaultServe: defaultEntry === undefined ? { type: "variant", variantId: fallbackVariantId } : parseSharedServe(asRecord(defaultEntry[1], `${path}.rules.__default`), `${path}.rules.__default`),
+    rules: customRules.map(([ruleId, ruleValue]) => {
+      const rule = asRecord(ruleValue, `${path}.rules.${ruleId}`);
+      return {
+        id: ruleId,
+        label: typeof rule.displayName === "string" ? rule.displayName : ruleId,
+        enabled: rule.enabled !== false,
+        conditions: Object.entries(asRecord(rule.conditions ?? {}, `${path}.rules.${ruleId}.conditions`)).map(([conditionId, condition]) => parseSharedCondition(condition, `${path}.rules.${ruleId}.conditions.${conditionId}`)),
+        serve: parseSharedServe(rule, `${path}.rules.${ruleId}`),
+        rolloutBps: typeof rule.rolloutBasisPoints === "number" ? rule.rolloutBasisPoints : BPS_TOTAL,
+      };
+    }),
+    prerequisites: Object.entries(asRecord(flag.prerequisites ?? {}, `${path}.prerequisites`)).flatMap(([prerequisiteId, prerequisiteValue]) => {
+      const prerequisite = asRecord(prerequisiteValue, `${path}.prerequisites.${prerequisiteId}`);
+      const prerequisiteFlagId = asString(prerequisite.flagId, `${path}.prerequisites.${prerequisiteId}.flagId`);
+      const variantId = Object.keys(asRecord(prerequisite.variantKeys, `${path}.prerequisites.${prerequisiteId}.variantKeys`)).at(0);
+      return variantId === undefined ? [] : [{ flagKey: publicKeyById.get(prerequisiteFlagId) ?? prerequisiteFlagId, requiredVariantId: variantId }];
+    }),
+    holdoutBps: holdout === undefined ? 0 : asNumber(holdout.allocationBasisPoints, `featureFlags.holdouts.${holdoutId}.allocationBasisPoints`),
+    mutualExclusionGroup: typeof flag.mutualExclusionGroupId === "string" ? flag.mutualExclusionGroupId : null,
+    createdAtMillis: typeof flag.createdAtMillis === "number" ? flag.createdAtMillis : 0,
+  };
+}
+
+function parseSharedMetric(value: unknown, role: ExperimentMetricRole, path: string): ExperimentMetric {
+  const metric = asRecord(value, path);
+  const id = typeof metric.id === "string" ? metric.id : path.split(".").at(-1) ?? "metric";
+  const type = asString(metric.type, `${path}.type`);
+  let source: MetricSource;
+  if (type === "page_view") source = { type, urlPattern: typeof metric.urlPattern === "string" ? metric.urlPattern : "" };
+  else if (type === "click") source = { type, selector: typeof metric.selector === "string" ? metric.selector : "" };
+  else if (type === "funnel") source = { type, steps: Object.values(asRecord(metric.funnelSteps ?? {}, `${path}.funnelSteps`)).map((step, index) => ({ eventName: asString(step, `${path}.funnelSteps.${index}`) })) };
+  else if (type === "numeric_value") source = { type, eventName: asString(metric.eventName, `${path}.eventName`), propertyName: typeof metric.numericProperty === "string" ? metric.numericProperty : "value", aggregation: metric.numericAggregation === "average" ? "average" : "sum" };
+  else source = { type: "custom_event", eventName: asString(metric.eventName, `${path}.eventName`) };
+  return { id, label: typeof metric.displayName === "string" ? metric.displayName : id, role, source };
+}
+
+function parseSharedExperiment(experimentId: string, value: unknown, publicKeyById: ReadonlyMap<string, string>, path: string): ExperimentConfig {
+  const experiment = asRecord(value, path);
+  const flagId = asString(experiment.flagId, `${path}.flagId`);
+  const primaryMetric = parseSharedMetric(experiment.primaryMetric, "primary", `${path}.primaryMetric`);
+  const secondary = Object.entries(asRecord(experiment.secondaryMetrics ?? {}, `${path}.secondaryMetrics`)).map(([id, metric]) => parseSharedMetric(metric, "secondary", `${path}.secondaryMetrics.${id}`));
+  const guardrails = Object.entries(asRecord(experiment.guardrailMetrics ?? {}, `${path}.guardrailMetrics`)).map(([id, metric]) => parseSharedMetric(metric, "guardrail", `${path}.guardrailMetrics.${id}`));
+  const primaryWindow = asRecord(experiment.primaryMetric, `${path}.primaryMetric`).attributionWindowSeconds;
+  return {
+    displayName: typeof experiment.displayName === "string" ? experiment.displayName : experimentId,
+    hypothesis: typeof experiment.hypothesis === "string" ? experiment.hypothesis : "",
+    flagKey: publicKeyById.get(flagId) ?? flagId,
+    assignmentUnit: asOneOf(experiment.assignmentUnit, ["user", "team"] as const, `${path}.assignmentUnit`),
+    controlVariantId: asString(experiment.controlVariantKey, `${path}.controlVariantKey`),
+    allocation: Object.entries(asRecord(experiment.variantWeights, `${path}.variantWeights`)).map(([variantId, weight]) => ({ variantId, weightBps: asNumber(weight, `${path}.variantWeights.${variantId}`) })),
+    trafficBps: typeof experiment.trafficAllocationBasisPoints === "number" ? experiment.trafficAllocationBasisPoints : BPS_TOTAL,
+    metrics: [primaryMetric, ...secondary, ...guardrails],
+    attributionWindowHours: typeof primaryWindow === "number" ? primaryWindow / 3600 : 24,
+    mutualExclusionGroup: typeof experiment.mutualExclusionGroupId === "string" ? experiment.mutualExclusionGroupId : null,
+    schedule: { startAtIso: typeof experiment.startsAt === "string" ? experiment.startsAt : null, endAtIso: typeof experiment.endsAt === "string" ? experiment.endsAt : null },
+    archived: experiment.archived === true,
+    createdAtMillis: typeof experiment.createdAtMillis === "number" ? experiment.createdAtMillis : 0,
+  };
+}
+
+function stringifyJsonOrThrow(value: unknown, path: string): string {
+  const stringify: (input: unknown) => string | undefined = JSON.stringify;
+  return stringify(value) ?? throwErr(`Feature flag value at ${path} is not JSON serializable`);
+}
+
+function parseJsonText(value: string, path: string): Json {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!isJsonSerializable(parsed)) throw new HexclaveAssertionError(`Value at ${path} is not JSON serializable`);
+    return parsed;
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new HexclaveAssertionError(`Invalid JSON at ${path}`, { cause: error });
+    throw error;
+  }
+}
+
+function conditionToShared(condition: FlagCondition) {
+  const operator = UI_TO_SHARED_OPERATOR.get(condition.operator) ?? condition.operator;
+  const attribute = condition.attribute.replace(/^custom\./, "context.");
+  const metadata = getOperatorMetadataOrThrow(condition.operator);
+  let value: unknown;
+  if (metadata.arity === "list") value = condition.values ?? [];
+  else if (metadata.arity === "single") {
+    if (metadata.valueKind === "number") value = Number(condition.value);
+    else value = condition.value ?? "";
+  }
+  return { attribute, operator, ...(metadata.arity === "none" ? {} : { value }) };
+}
+
+function serveToShared(serve: FlagServe) {
+  return serve.type === "variant"
+    ? { variantKey: serve.variantId }
+    : { variantWeights: Object.fromEntries(serve.split.map((entry) => [entry.variantId, entry.weightBps])) };
+}
+
+export function serializeFlagConfig(flagId: string, publicKey: string, flag: FlagConfig, section: FeatureFlagsSection) {
+  const customRules = Object.fromEntries(flag.rules.map((rule, index) => [rule.id, {
+    displayName: rule.label,
+    enabled: rule.enabled,
+    priority: 10_000 - index,
+    conditions: Object.fromEntries(rule.conditions.map((condition, conditionIndex) => [`condition_${conditionIndex + 1}`, conditionToShared(condition)])),
+    rolloutBasisPoints: rule.rolloutBps,
+    allocationSalt: `${flagId}.${rule.id}`,
+    stickyBy: "distinctId",
+    ...serveToShared(rule.serve),
+  }]));
+  return {
+    key: publicKey,
+    displayName: flag.displayName,
+    description: flag.description,
+    type: flag.type,
+    enabled: flag.enabled,
+    killed: flag.killed,
+    archived: flag.archived,
+    allocationSalt: `flag.${flagId}`,
+    variants: Object.fromEntries(flag.variants.map((variant) => [variant.id, { value: parseJsonText(variant.jsonValue, `variant ${variant.id}`), description: variant.label }])),
+    fallbackVariantKey: flag.fallbackVariantId,
+    prerequisites: Object.fromEntries(flag.prerequisites.map((prerequisite, index) => {
+      const prerequisiteFlag = section.flags.get(prerequisite.flagKey) ?? throwErr(`Prerequisite flag ${prerequisite.flagKey} is missing`);
+      return [`prerequisite_${index + 1}`, { flagId: prerequisiteFlag.internalId, variantKeys: { [prerequisite.requiredVariantId]: true } }];
+    })),
+    ...(flag.holdoutBps > 0 ? { holdoutId: `flag_${flagId}` } : {}),
+    rules: {
+      ...customRules,
+      __default: {
+        enabled: true,
+        priority: 0,
+        rolloutBasisPoints: BPS_TOTAL,
+        allocationSalt: `${flagId}.__default`,
+        stickyBy: "distinctId",
+        ...serveToShared(flag.defaultServe),
+      },
+    },
+    createdAtMillis: flag.createdAtMillis,
+  };
+}
+
+export function featureFlagConfigUpdates(flagId: string, publicKey: string, flag: FlagConfig, section: FeatureFlagsSection): EnvironmentConfigOverrideOverride {
+  return {
+    [flagConfigPath(flagId)]: serializeFlagConfig(flagId, publicKey, flag, section),
+    [`featureFlags.holdouts.flag_${flagId}`]: flag.holdoutBps > 0 ? {
+      displayName: `${flag.displayName} holdout`,
+      allocationBasisPoints: flag.holdoutBps,
+      allocationSalt: `holdout.flag_${flagId}`,
+    } : null,
+  };
+}
+
+function metricToShared(metric: ExperimentMetric, attributionWindowSeconds: number) {
+  const common = { id: metric.id, displayName: metric.label, direction: "increase", attributionWindowSeconds };
+  switch (metric.source.type) {
+    case "page_view": { return { ...common, type: "page_view", eventName: "$page-view", urlPattern: metric.source.urlPattern }; }
+    case "click": { return { ...common, type: "click", eventName: "$click", selector: metric.source.selector }; }
+    case "funnel": { return { ...common, type: "funnel", funnelSteps: Object.fromEntries(metric.source.steps.map((step, index) => [`step_${index + 1}`, step.eventName])) }; }
+    case "custom_event": { return { ...common, type: "custom_event", eventName: metric.source.eventName }; }
+    case "numeric_value": { return { ...common, type: "numeric_value", eventName: metric.source.eventName, numericProperty: metric.source.propertyName, numericAggregation: metric.source.aggregation }; }
+  }
+}
+
+export function serializeExperimentConfig(experimentId: string, experiment: ExperimentConfig, section: FeatureFlagsSection) {
+  const primary = experiment.metrics.find((metric) => metric.role === "primary") ?? throwErr("An experiment must have a primary metric before it can be saved");
+  const flag = section.flags.get(experiment.flagKey) ?? throwErr(`Experiment flag ${experiment.flagKey} is missing`);
+  const attributionWindowSeconds = Math.max(1, Math.round(experiment.attributionWindowHours * 3600));
+  return {
+    key: experimentId,
+    displayName: experiment.displayName,
+    hypothesis: experiment.hypothesis,
+    flagId: flag.internalId,
+    assignmentUnit: experiment.assignmentUnit,
+    trafficAllocationBasisPoints: experiment.trafficBps,
+    controlVariantKey: experiment.controlVariantId,
+    variantWeights: Object.fromEntries(experiment.allocation.map((variant) => [variant.variantId, variant.weightBps])),
+    primaryMetric: metricToShared(primary, attributionWindowSeconds),
+    secondaryMetrics: Object.fromEntries(experiment.metrics.filter((metric) => metric.role === "secondary").map((metric) => [metric.id, metricToShared(metric, attributionWindowSeconds)])),
+    guardrailMetrics: Object.fromEntries(experiment.metrics.filter((metric) => metric.role === "guardrail").map((metric) => [metric.id, metricToShared(metric, attributionWindowSeconds)])),
+    ...(experiment.mutualExclusionGroup == null ? {} : { mutualExclusionGroupId: experiment.mutualExclusionGroup }),
+    ...(experiment.schedule.startAtIso == null ? {} : { startsAt: experiment.schedule.startAtIso }),
+    ...(experiment.schedule.endAtIso == null ? {} : { endsAt: experiment.schedule.endAtIso }),
+    archived: experiment.archived,
+    createdAtMillis: experiment.createdAtMillis,
+  };
+}
+
+export function experimentConfigUpdates(experimentId: string, experiment: ExperimentConfig, section: FeatureFlagsSection): EnvironmentConfigOverrideOverride {
+  const updates: EnvironmentConfigOverrideOverride = { [experimentConfigPath(experimentId)]: serializeExperimentConfig(experimentId, experiment, section) };
+  if (experiment.mutualExclusionGroup != null) {
+    const memberIds = [...section.experiments.entries()]
+      .filter(([id, candidate]) => id !== experimentId && candidate.mutualExclusionGroup === experiment.mutualExclusionGroup)
+      .map(([id]) => id)
+      .concat(experimentId)
+      .sort();
+    const baseWeight = Math.floor(BPS_TOTAL / memberIds.length);
+    const remainder = BPS_TOTAL - baseWeight * memberIds.length;
+    updates[`featureFlags.mutualExclusionGroups.${experiment.mutualExclusionGroup}`] = {
+      displayName: experiment.mutualExclusionGroup,
+      allocationSalt: `mutex.${experiment.mutualExclusionGroup}`,
+      experimentWeights: Object.fromEntries(memberIds.map((id, index) => [id, baseWeight + (index < remainder ? 1 : 0)])),
+    };
+  }
+  return updates;
+}
+
+function frozenMetric(metric: ExperimentMetric) {
+  switch (metric.source.type) {
+    case "page_view": {
+      const trimmed = metric.source.urlPattern.trim();
+      if (trimmed === "*") return { id: metric.id, kind: "binary", event_name: "$page-view", direction: "increase" };
+      const startsWithWildcard = trimmed.startsWith("*");
+      const endsWithWildcard = trimmed.endsWith("*");
+      const value = trimmed.slice(startsWithWildcard ? 1 : 0, endsWithWildcard ? -1 : undefined);
+      return {
+        id: metric.id,
+        kind: "binary",
+        event_name: "$page-view",
+        direction: "increase",
+        event_filter: {
+          field: "path",
+          operator: startsWithWildcard && endsWithWildcard ? "contains" : startsWithWildcard ? "ends_with" : endsWithWildcard ? "starts_with" : "eq",
+          value,
+        },
+      };
+    }
+    case "click": { return { id: metric.id, kind: "binary", event_name: "$click", direction: "increase", event_filter: { field: "selector", operator: "eq", value: metric.source.selector.trim() } }; }
+    case "funnel": { return { id: metric.id, kind: "funnel", steps: metric.source.steps.map((step) => step.eventName), direction: "increase" }; }
+    case "custom_event": { return { id: metric.id, kind: "binary", event_name: metric.source.eventName, direction: "increase" }; }
+    case "numeric_value": { return { id: metric.id, kind: "numeric", event_name: metric.source.eventName, direction: "increase", property_name: metric.source.propertyName, aggregation: metric.source.aggregation }; }
+  }
+}
+
+export function toExperimentRunConfig(experiment: ExperimentConfig, section: FeatureFlagsSection) {
+  const flag = section.flags.get(experiment.flagKey) ?? throwErr(`Experiment flag ${experiment.flagKey} is missing`);
+  const primary = experiment.metrics.find((metric) => metric.role === "primary") ?? throwErr("Experiment primary metric is missing");
+  return {
+    display_name: experiment.displayName,
+    hypothesis: experiment.hypothesis,
+    flag_id: flag.internalId,
+    assignment_unit: experiment.assignmentUnit,
+    traffic_allocation_basis_points: experiment.trafficBps,
+    control_variant_id: experiment.controlVariantId,
+    variants: Object.fromEntries(experiment.allocation.map((allocation) => {
+      const variant = getVariantOrThrow(flag, allocation.variantId);
+      return [allocation.variantId, { weight_basis_points: allocation.weightBps, flag_value: parseJsonText(variant.jsonValue, `variant ${variant.id}`) }];
+    })),
+    primary_metric: frozenMetric(primary),
+    secondary_metrics: experiment.metrics.filter((metric) => metric.role === "secondary").map(frozenMetric),
+    guardrail_metrics: experiment.metrics.filter((metric) => metric.role === "guardrail").map(frozenMetric),
+    attribution_window_seconds: Math.max(1, Math.round(experiment.attributionWindowHours * 60 * 60)),
+    ...(experiment.mutualExclusionGroup == null ? {} : { mutual_exclusion_group_id: experiment.mutualExclusionGroup }),
+    ...experiment.schedule.startAtIso == null && experiment.schedule.endAtIso == null ? {} : {
+      schedule: {
+        ...(experiment.schedule.startAtIso == null ? {} : { start_at_millis: new Date(experiment.schedule.startAtIso).getTime() }),
+        ...(experiment.schedule.endAtIso == null ? {} : { end_at_millis: new Date(experiment.schedule.endAtIso).getTime() }),
+      },
+    },
   };
 }
 
@@ -569,8 +905,9 @@ function validateCondition(condition: FlagCondition, section: FeatureFlagsSectio
   if (metadata.valueKind === "number" && condition.value != null && !Number.isFinite(Number(condition.value))) {
     errors.push(`"${condition.value}" is not a number.`);
   }
-  if (metadata.valueKind === "datetime" && condition.value != null && Number.isNaN(Date.parse(condition.value))) {
-    errors.push(`"${condition.value}" is not a valid date/time.`);
+  if (metadata.valueKind === "datetime" && condition.value != null
+    && (Number.isNaN(Date.parse(condition.value)) || new Date(condition.value).toISOString() !== condition.value)) {
+    errors.push(`"${condition.value}" is not a strict UTC date/time.`);
   }
   if (metadata.valueKind === "semver" && condition.value != null && !isStrictSemver(condition.value)) {
     errors.push(`"${condition.value}" is not a strict semver version (like 1.2.3).`);
@@ -636,6 +973,9 @@ export function validateExperimentConfig(experiment: ExperimentConfig, section: 
       if (entry.weightBps < 0 || entry.weightBps > BPS_TOTAL) errors.push("Allocation weights must be between 0% and 100%.");
       total += entry.weightBps;
     }
+    if (!experiment.allocation.some((entry) => entry.variantId === experiment.controlVariantId)) {
+      errors.push("The control variant must be included in the experiment allocation.");
+    }
     if (experiment.allocation.length >= 2 && total !== BPS_TOTAL) {
       errors.push(`Allocation must add up to exactly 100% (currently ${formatBps(total)}).`);
     }
@@ -662,7 +1002,10 @@ function validateMetricSource(metric: ExperimentMetric): string[] {
   if (metric.label.trim().length === 0) return ["a label is required."];
   switch (metric.source.type) {
     case "page_view": {
-      return metric.source.urlPattern.trim().length === 0 ? ["a URL pattern is required."] : [];
+      const pattern = metric.source.urlPattern.trim();
+      if (pattern.length === 0) return ["a URL pattern is required."];
+      if (pattern.slice(1, -1).includes("*")) return ["URL patterns support a wildcard only at the beginning or end."];
+      return [];
     }
     case "click": {
       return metric.source.selector.trim().length === 0 ? ["a CSS selector is required."] : [];

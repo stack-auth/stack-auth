@@ -29,7 +29,7 @@ export type ServerItem = Item & {
    *
    * Most useful for pre-paid credits.
    */
-  tryDecreaseQuantity(amount: number): Promise<boolean>,
+  tryDecreaseQuantity(amount: number, options?: { idempotencyKey?: string }): Promise<boolean>,
 };
 
 export type CustomerProduct = {

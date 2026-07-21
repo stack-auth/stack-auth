@@ -1,9 +1,9 @@
 /**
- * INTEGRATION NOTE: replace with app.getFeatureFlagValue / app.captureEvent once the
- * feature-flags SDK ships; the call signatures here match that contract exactly:
+ * The demo feature-detects the website SDK so it can still explain its explicit
+ * fallback when generated packages have not been refreshed in a checkout:
  *
- *   app.getFeatureFlagValue(key: string, options: { fallback: T }): Promise<T>  // records an exposure
- *   app.captureEvent(eventName: string, properties?: Record<string, unknown>): Promise<void>
+ *   app.getFeatureFlag(key: string, fallback: T): Promise<T>
+ *   app.trackEvent(eventName: string, options?): Promise<void>
  *
  * Until then, this module feature-detects those methods on the app object at runtime.
  * When they are absent, it does NOT silently pretend the flag SDK exists — it returns a
@@ -11,7 +11,7 @@
  * "you are looking at the explicit fallback value" to the person viewing the demo.
  */
 
-type SdkMethodName = "getFeatureFlagValue" | "captureEvent";
+type SdkMethodName = "getFeatureFlag" | "trackEvent";
 
 /**
  * A future SDK method after feature detection. Arguments and return value are `unknown`
@@ -30,12 +30,7 @@ function detectSdkMethod(app: object, methodName: SdkMethodName): DetectedSdkMet
   if (typeof candidate !== "function") {
     return undefined;
   }
-  // This is the single type cast in this module: TypeScript narrows `candidate` to
-  // `Function`, which is not callable in a type-safe way. We only widen it to a
-  // signature that takes/returns `unknown`, so every result still has to pass the
-  // structural runtime validation in the exported functions below before it is used.
-  const method = candidate as DetectedSdkMethod;
-  return (...args: unknown[]) => Reflect.apply(method, app, args);
+  return (...args: unknown[]) => Reflect.apply(candidate, app, args);
 }
 
 export type FeatureFlagResult = {
@@ -54,14 +49,14 @@ export async function getFeatureFlagValue(
   key: string,
   options: { fallback: boolean },
 ): Promise<FeatureFlagResult> {
-  const method = detectSdkMethod(app, "getFeatureFlagValue");
+  const method = detectSdkMethod(app, "getFeatureFlag");
   if (method === undefined) {
     return { value: options.fallback, source: "fallback" };
   }
-  const result: unknown = await method(key, { fallback: options.fallback });
+  const result: unknown = await method(key, options.fallback);
   if (typeof result !== "boolean") {
     throw new Error(
-      `app.getFeatureFlagValue(${JSON.stringify(key)}) returned a non-boolean value ` +
+      `app.getFeatureFlag(${JSON.stringify(key)}) returned a non-boolean value ` +
       `(${typeof result}); the demo-checkout-redesign flag is expected to be a boolean flag. ` +
       `This likely means the feature-flags SDK contract changed — update feature-flag-client.ts.`,
     );
@@ -71,7 +66,7 @@ export async function getFeatureFlagValue(
 
 export type ConversionEventResult = {
   /**
-   * `false` means the (future) `app.captureEvent` method is absent in this build, so
+   * `false` means the `app.trackEvent` method is absent in this build, so
    * the event was NOT sent anywhere. The UI must tell the user instead of silently
    * dropping the conversion.
    */
@@ -83,10 +78,12 @@ export async function captureConversionEvent(
   eventName: string,
   properties: Record<string, number | string | boolean>,
 ): Promise<ConversionEventResult> {
-  const method = detectSdkMethod(app, "captureEvent");
+  const method = detectSdkMethod(app, "trackEvent");
   if (method === undefined) {
     return { delivered: false };
   }
-  await method(eventName, properties);
+  const value = typeof properties.value === "number" ? properties.value : undefined;
+  const eventProperties = Object.fromEntries(Object.entries(properties).filter(([key]) => key !== "value"));
+  await method(eventName, { properties: eventProperties, ...(value === undefined ? {} : { value }) });
   return { delivered: true };
 }

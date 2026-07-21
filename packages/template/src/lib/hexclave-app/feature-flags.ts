@@ -1,4 +1,4 @@
-import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagEvaluateResult } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse, FeatureFlagEvaluateResult, FeatureFlagExposureRequest } from "@hexclave/shared/dist/interface/crud/feature-flags";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
@@ -9,6 +9,7 @@ const MAX_CONTEXT_KEYS = 32;
 const MAX_CONTEXT_KEY_LENGTH = 64;
 const MAX_CONTEXT_BYTES = 8_192;
 const MAX_CONTEXT_DEPTH = 5;
+const MAX_COMPLETED_EXPOSURE_KEYS = 10_000;
 
 export type FeatureFlagExposureMode = "auto" | "manual" | "none";
 
@@ -229,8 +230,12 @@ export class FeatureFlagController<TIdentity> {
   private readonly _evaluationPromises = new Map<string, CachedPromise<FeatureFlagEvaluateResponse<Json>>>();
   private readonly _resultPromises = new Map<string, CachedPromise<Map<string, FeatureFlagDetails<Json>>>>();
   private readonly _configVersionByIdentity = new Map<string, string>();
+  private readonly _teamIdByDetails = new WeakMap<FeatureFlagDetails<Json>, string | null>();
   private readonly _completedExposureKeys = new Set<string>();
   private readonly _pendingExposurePromises = new Map<string, Promise<void>>();
+  private readonly _retryExposureBatches = new Map<string, {
+    entries: { key: string, exposure: FeatureFlagExposureRequest }[],
+  }>();
 
   constructor(private readonly _dependencies: FeatureFlagControllerDependencies<TIdentity>) {}
 
@@ -241,7 +246,13 @@ export class FeatureFlagController<TIdentity> {
     options?: FeatureFlagOptions,
   ): Promise<FeatureFlagDetails<T>> {
     return this.getFeatureFlagDetailsPromise(identity, key, fallback, options)
-      .then((details) => narrowFeatureFlagDetails(details, fallback));
+      .then((details) => {
+        const narrowed = narrowFeatureFlagDetails(details, fallback);
+        if (this._teamIdByDetails.has(details)) {
+          this._teamIdByDetails.set(narrowed, this._teamIdByDetails.get(details) ?? null);
+        }
+        return narrowed;
+      });
   }
 
   getFeatureFlagDetailsPromise(
@@ -329,7 +340,11 @@ export class FeatureFlagController<TIdentity> {
     for (const request of [...requests].sort((left, right) => stringCompare(left.key, right.key))) {
       const wireResult = response.results[request.key];
       if (wireResult == null) throw new HexclaveAssertionError(`Feature flag evaluation response omitted ${JSON.stringify(request.key)}.`);
-      results.set(request.key, fromWireResult({ ...wireResult, value: wireResult.value }));
+      const details = fromWireResult({ ...wireResult, value: wireResult.value });
+      if (details.exposureToken != null) {
+        this._teamIdByDetails.set(details, request.options?.teamId ?? null);
+      }
+      results.set(request.key, request.options?.exposure === "none" ? { ...details, exposureToken: null } : details);
     }
 
     const versions = new Set([...results.values()].map((result) => result.configVersion));
@@ -368,27 +383,59 @@ export class FeatureFlagController<TIdentity> {
       return;
     }
 
-    const exposures = pendingDetails.map((detail) => {
-      if (detail.exposureToken == null) {
-        throw new HexclaveAssertionError("A pending feature flag exposure must have an exposure token.");
+    const batches = new Set<{ entries: { key: string, exposure: FeatureFlagExposureRequest }[] }>();
+    const freshEntries: { key: string, exposure: FeatureFlagExposureRequest }[] = [];
+    for (const detail of pendingDetails) {
+      const key = this._exposureKey(identity, detail);
+      const retryBatch = this._retryExposureBatches.get(key);
+      if (retryBatch !== undefined) {
+        batches.add(retryBatch);
+        continue;
       }
-      return {
-        event_id: generateUuid(),
-        exposure_token: detail.exposureToken,
-        exposed_at_ms: Date.now(),
-      };
-    });
-    const promise = this._dependencies.sendExposures(identity.value, exposures);
-    for (const detail of pendingDetails) this._pendingExposurePromises.set(this._exposureKey(identity, detail), promise);
-    try {
-      await promise;
-      for (const detail of pendingDetails) this._completedExposureKeys.add(this._exposureKey(identity, detail));
-    } finally {
-      for (const detail of pendingDetails) this._pendingExposurePromises.delete(this._exposureKey(identity, detail));
+      if (detail.exposureToken == null) throw new HexclaveAssertionError("A pending feature flag exposure must have an exposure token.");
+      freshEntries.push({
+        key,
+        exposure: {
+          event_id: generateUuid(),
+          exposure_token: detail.exposureToken,
+          exposed_at_ms: Date.now(),
+        },
+      });
     }
+    if (freshEntries.length > 0) batches.add({ entries: freshEntries });
+
+    await Promise.all([...batches].map(async (batch) => {
+      for (const entry of batch.entries) this._retryExposureBatches.set(entry.key, batch);
+      const promise = this._dependencies.sendExposures(identity.value, batch.entries.map((entry) => entry.exposure));
+      for (const entry of batch.entries) this._pendingExposurePromises.set(entry.key, promise);
+      try {
+        await promise;
+        for (const entry of batch.entries) {
+          this._completedExposureKeys.add(entry.key);
+          this._retryExposureBatches.delete(entry.key);
+        }
+        // Server apps can evaluate for many identities over a long process
+        // lifetime. Keep SDK-level deduplication bounded; the durable signed
+        // evaluation-id ledger remains the final idempotency backstop.
+        while (this._completedExposureKeys.size > MAX_COMPLETED_EXPOSURE_KEYS) {
+          const oldestKey = this._completedExposureKeys.values().next().value;
+          if (oldestKey == null) throw new HexclaveAssertionError("A non-empty completed exposure set did not yield its oldest key.");
+          this._completedExposureKeys.delete(oldestKey);
+        }
+      } finally {
+        for (const entry of batch.entries) this._pendingExposurePromises.delete(entry.key);
+      }
+    }));
   }
 
   private _exposureKey(identity: FeatureFlagIdentity<TIdentity>, details: FeatureFlagDetails<Json>): string {
-    return `${identity.cacheKey}:${details.configVersion}:${details.flagKey}:${details.experimentRunId ?? ""}`;
+    const selectedTeam = this._teamIdByDetails.get(details);
+    // Details produced by this controller carry the selected team through the
+    // token map. For externally reconstructed details, fall back to the signed
+    // token itself so distinct team-bound credentials are never conflated.
+    const subjectKey = selectedTeam === undefined
+      ? `token:${details.exposureToken ?? ""}`
+      : `team:${selectedTeam ?? ""}`;
+    return `${identity.cacheKey}:${subjectKey}:${details.configVersion}:${details.flagKey}:${details.experimentRunId ?? ""}`;
   }
 }

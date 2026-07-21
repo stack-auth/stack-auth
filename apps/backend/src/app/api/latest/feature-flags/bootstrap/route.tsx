@@ -3,6 +3,7 @@ import { createFeatureFlagsBootstrap } from "@hexclave/shared/dist/feature-flags
 import { parseFeatureFlagsConfig } from "@hexclave/shared/dist/feature-flags/schema";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupArray, yupMixed, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { withActiveExperimentRuns } from "@/lib/feature-flags/active-experiments";
 
 function normalizeEtag(value: string): string {
   const withoutWeakPrefix = value.startsWith("W/") ? value.slice(2).trim() : value;
@@ -41,7 +42,10 @@ export const GET = createSmartRouteHandler({
     if (auth.tenancy.config.apps.installed["feature-flags"]?.enabled !== true) {
       throw new StatusError(StatusError.BadRequest, "Feature flags are not enabled for this project.");
     }
-    const config = parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {});
+    const config = await withActiveExperimentRuns(
+      auth.tenancy,
+      parseFeatureFlagsConfig(auth.tenancy.config.featureFlags ?? {}),
+    );
     const bootstrap = createFeatureFlagsBootstrap(config);
     const etag = `"${bootstrap.configVersion}"`;
     if (ifNoneMatchContains(headers["if-none-match"] ?? [], bootstrap.configVersion)) {

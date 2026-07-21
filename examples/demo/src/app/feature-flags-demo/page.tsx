@@ -26,7 +26,7 @@ function FallbackNotice() {
       <Typography variant="secondary" className="text-sm text-yellow-700 dark:text-yellow-400">
         ⚠️ The Feature Flags SDK isn&apos;t available in this build, so you are seeing the
         explicit fallback value <code className="font-mono">false</code> that this page passed
-        to <code className="font-mono">getFeatureFlagValue</code>. This is not a real flag
+        to <code className="font-mono">getFeatureFlag</code>. This is not a real flag
         evaluation — nothing is silently defaulting; the fallback state is surfaced on purpose.
       </Typography>
     </div>
@@ -173,7 +173,7 @@ export default function FeatureFlagsDemoPage() {
                 <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                   <Typography variant="secondary" className="text-sm text-yellow-700 dark:text-yellow-400">
                     ⚠️ The event could not be delivered because the Feature Flags SDK
-                    (<code className="font-mono">app.captureEvent</code>) isn&apos;t available in this
+                    (<code className="font-mono">app.trackEvent</code>) isn&apos;t available in this
                     build. Nothing was sent — this is surfaced instead of silently dropped.
                   </Typography>
                 </div>
