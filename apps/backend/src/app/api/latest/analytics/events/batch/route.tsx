@@ -212,6 +212,21 @@ export const POST = createSmartRouteHandler({
     const branchId = auth.tenancy.branchId;
 
     const app = getHexclaveServerApp();
+    const refundItem = async (
+      itemId: typeof ITEM_IDS.analyticsEvents | typeof ITEM_IDS.analyticsSpans,
+      quantity: number,
+      captureKey: string,
+    ) => {
+      if (billingTeamId == null || quantity === 0) return;
+      try {
+        const item = await app.getItem({ itemId, teamId: billingTeamId });
+        await item.increaseQuantity(quantity);
+      } catch (error) {
+        // Preserve the operation's original failure while surfacing a failed
+        // compensation separately for operators to repair.
+        captureError(captureKey, error);
+      }
+    };
 
     // Events and spans are metered as SEPARATE items so spans can be priced and
     // limited independently of events later. The whole batch is atomic
@@ -223,6 +238,7 @@ export const POST = createSmartRouteHandler({
     // `spansBillingTeamIdForRefund` below. Captured here so the async path
     // knows whether a debit actually happened (plan limits may be off).
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    let eventsBillingTeamIdForRefund: string | null = null;
     let spansBillingTeamIdForRefund: string | null = null;
     if (billingTeamId != null && arePlanLimitsEnforced()) {
       if (events.length > 0) {
@@ -231,14 +247,15 @@ export const POST = createSmartRouteHandler({
         if (!isDebited) {
           throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, events.length);
         }
+        eventsBillingTeamIdForRefund = billingTeamId;
       }
       if (spans.length > 0) {
         const spansItem = await app.getItem({ itemId: ITEM_IDS.analyticsSpans, teamId: billingTeamId });
         const isDebited = await spansItem.tryDecreaseQuantity(spans.length);
         if (!isDebited) {
           if (events.length > 0) {
-            const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-            await eventsItem.increaseQuantity(events.length);
+            await refundItem(ITEM_IDS.analyticsEvents, events.length, "analytics-events-span-debit-refund");
+            eventsBillingTeamIdForRefund = null;
           }
           throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsSpans, billingTeamId, spans.length);
         }
@@ -246,51 +263,60 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    const recentSession = refreshTokenId == null ? null : await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
-    const sessionReplayId = recentSession?.id ?? null;
-    const sessionReplaySegmentId = body.session_replay_segment_id ?? null;
+    const { clickhouseClient, sessionReplayId, sessionReplaySegmentId } = await (async () => {
+      try {
+        const recentSession = refreshTokenId == null ? null : await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
+        const sessionReplayId = recentSession?.id ?? null;
+        const sessionReplaySegmentId = body.session_replay_segment_id ?? null;
+        const clickhouseClient = getClickhouseAdminClient();
 
-    const clickhouseClient = getClickhouseAdminClient();
+        // Point each event at its ancestor spans (root-first: refresh-token,
+        // replay, then the per-tab span when a replay exists). The per-tab id
+        // itself already lives in session_replay_segment_id. Custom ancestors
+        // are appended after the system ancestry with the cs- prefix.
+        const eventSpanFields = buildEventSpanFields({
+          sessionReplayId,
+          sessionReplaySegmentId,
+          refreshTokenId,
+        });
 
-    // Point each event at its ancestor spans (root-first: refresh-token, replay,
-    // then the per-tab span when a replay exists). The per-tab id itself already
-    // lives in the session_replay_segment_id column — see lib/spans.tsx. The
-    // client-supplied custom chain (raw uuids) is appended after the system
-    // ancestry, each id prefixed cs-.
-    const eventSpanFields = buildEventSpanFields({
-      sessionReplayId,
-      sessionReplaySegmentId,
-      refreshTokenId,
-    });
+        const rows = events.map((event) => ({
+          event_type: event.event_type,
+          event_at: new Date(event.event_at_ms),
+          data: stripLoneSurrogates(event.data),
+          project_id: projectId,
+          branch_id: branchId,
+          user_id: userId,
+          team_id: null,
+          refresh_token_id: refreshTokenId,
+          session_replay_id: sessionReplayId,
+          session_replay_segment_id: sessionReplaySegmentId,
+          parent_span_ids: [
+            ...eventSpanFields.parent_span_ids,
+            ...(event.parent_span_ids ?? []).map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
+          ],
+        }));
 
-    const rows = events.map((event) => ({
-      event_type: event.event_type,
-      event_at: new Date(event.event_at_ms),
-      data: stripLoneSurrogates(event.data),
-      project_id: projectId,
-      branch_id: branchId,
-      user_id: userId,
-      team_id: null,
-      refresh_token_id: refreshTokenId,
-      session_replay_id: sessionReplayId,
-      session_replay_segment_id: sessionReplaySegmentId,
-      parent_span_ids: [
-        ...eventSpanFields.parent_span_ids,
-        ...(event.parent_span_ids ?? []).map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
-      ],
-    }));
-
-    if (rows.length > 0) {
-      await clickhouseClient.insert({
-        table: "analytics_internal.events",
-        values: rows,
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          date_time_input_format: "best_effort",
-          async_insert: 1,
-        },
-      });
-    }
+        if (rows.length > 0) {
+          await clickhouseClient.insert({
+            table: "analytics_internal.events",
+            values: rows,
+            format: "JSONEachRow",
+            clickhouse_settings: {
+              date_time_input_format: "best_effort",
+              async_insert: 1,
+            },
+          });
+        }
+        return { clickhouseClient, sessionReplayId, sessionReplaySegmentId };
+      } catch (error) {
+        await Promise.all([
+          eventsBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsEvents, events.length, "analytics-events-on-path-refund"),
+          spansBillingTeamIdForRefund == null ? Promise.resolve() : refundItem(ITEM_IDS.analyticsSpans, spans.length, "analytics-spans-on-path-refund"),
+        ]);
+        throw error;
+      }
+    })();
 
     // Custom spans are versioned upserts into analytics_internal.spans. Written
     // off the response path (same pattern as the replay batch route) so a slow or
@@ -319,12 +345,7 @@ export const POST = createSmartRouteHandler({
         } catch (error) {
           captureError("analytics-custom-spans-insert", error);
           if (spansBillingTeamIdForRefund != null) {
-            try {
-              const spansItem = await app.getItem({ itemId: ITEM_IDS.analyticsSpans, teamId: spansBillingTeamIdForRefund });
-              await spansItem.increaseQuantity(spans.length);
-            } catch (refundError) {
-              captureError("analytics-custom-spans-refund", refundError);
-            }
+            await refundItem(ITEM_IDS.analyticsSpans, spans.length, "analytics-custom-spans-refund");
           }
         }
       });

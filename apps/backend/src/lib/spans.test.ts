@@ -163,7 +163,7 @@ describe("buildCustomSpanRows", () => {
     expect(rows[0].parent_span_ids).toEqual([
       "rti-rt1",
       "sri-replay1",
-      "srsi-seg1",
+      "srsi-replay1:seg1",
       "cs-0f000000-0000-4000-8000-00000000aaaa",
       "cs-0f000000-0000-4000-8000-00000000bbbb",
     ]);
