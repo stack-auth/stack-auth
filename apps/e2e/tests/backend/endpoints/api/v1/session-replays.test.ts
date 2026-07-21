@@ -124,7 +124,7 @@ it("throws error when analytics is not enabled", async ({ expect }) => {
 it("stores session replay batch metadata and dedupes by (session_replay_id, batch_id)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
   const now = Date.now();
   const browserSessionId = randomUUID();
@@ -184,7 +184,12 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
       batch_id: batchId,
       started_at_ms: now,
       sent_at_ms: now + 500,
-      events: [{ timestamp: now + 150, type: 2 }],
+      // A retry body is not authoritative. These deliberately divergent bounds
+      // must not replace the metadata persisted for the original batch.
+      events: [
+        { timestamp: now + 50, type: 2 },
+        { timestamp: now + 250, type: 3 },
+      ],
     },
   });
 
@@ -203,6 +208,15 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
   expect(second.body?.session_replay_id).toBe(recordingId);
 
   await withInternalDatabase(async (client) => {
+    const repairedReplays = await client.query<{ startedAtMs: string, lastEventAtMs: string }>(
+      `SELECT EXTRACT(EPOCH FROM "startedAt") * 1000 AS "startedAtMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastEventAtMs" FROM "SessionReplay" WHERE "id" = $1::uuid`,
+      [recordingId],
+    );
+    expect(repairedReplays.rows.map((row) => ({
+      startedAtMs: Number(row.startedAtMs),
+      lastEventAtMs: Number(row.lastEventAtMs),
+    }))).toEqual([{ startedAtMs: now + 100, lastEventAtMs: now + 200 }]);
+
     const repairedSegments = await client.query<{ firstEventAtMs: string, lastEventAtMs: string }>(
       `SELECT EXTRACT(EPOCH FROM "firstEventAt") * 1000 AS "firstEventAtMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastEventAtMs" FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
       [recordingId, sessionReplaySegmentId],
