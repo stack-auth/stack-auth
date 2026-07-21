@@ -267,7 +267,7 @@ async function loadActiveUsersByCountry(
 // by `loadActiveUsersByCountry`. This is the "live users right now" number on
 // the overview globe and works independently of whether the analytics app is
 // installed (unlike `analytics_overview.online_live`, which relies on
-// `$page-view` events).
+// `$page-view` spans).
 async function loadLiveUsersCount(
   tenancy: Tenancy,
   now: Date,
@@ -1278,6 +1278,46 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
   };
 }
 
+// Page views are spans. Shape them like event rows ONLY inside metrics SQL —
+// never project them into default.events (that caused dual event+span UI rows).
+const PAGE_VIEWS_FROM_SPANS_SQL = `
+  SELECT
+    CAST('$page-view', 'LowCardinality(String)') AS event_type,
+    span_started_at AS event_at,
+    CAST(data, 'JSON') AS data,
+    project_id,
+    branch_id,
+    user_id,
+    team_id,
+    refresh_token_id,
+    session_replay_id,
+    session_replay_segment_id,
+    created_at,
+    parent_span_ids
+  FROM analytics_internal.spans FINAL
+  WHERE span_type = '$page-view'
+`;
+
+const PAGE_VIEWS_AND_CLICKS_SQL = `
+  SELECT
+    event_type,
+    event_at,
+    data,
+    project_id,
+    branch_id,
+    user_id,
+    team_id,
+    refresh_token_id,
+    session_replay_id,
+    session_replay_segment_id,
+    created_at,
+    parent_span_ids
+  FROM analytics_internal.events
+  WHERE event_type = '$click'
+  UNION ALL
+  ${PAGE_VIEWS_FROM_SPANS_SQL}
+`;
+
 async function loadAnalyticsOverview(
   tenancy: Tenancy,
   now: Date,
@@ -1400,10 +1440,9 @@ async function loadAnalyticsOverview(
       ? `
             AND user_id IN (
               SELECT assumeNotNull(e.user_id)
-              FROM analytics_internal.events AS e
+              FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
               ${filters.country_code != null ? analyticsUserJoinWithCountry : ""}
-              WHERE e.event_type = '$page-view'
-                AND e.project_id = {projectId:String}
+              WHERE e.project_id = {projectId:String}
                 AND e.branch_id = {branchId:String}
                 AND e.user_id IS NOT NULL
                 AND e.event_at >= {since:DateTime}
@@ -1414,8 +1453,8 @@ async function loadAnalyticsOverview(
         `
       : '';
     const [dailyEventResult, hourlyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, sessionResult, userAgentResult] = await Promise.all([
-      // Combined daily aggregates: page-view count, click count, and unique
-      // visitors per day — one scan over the page-view/click event types.
+      // Combined daily aggregates: page-view count (from spans), click count,
+      // and unique visitors per day.
       clickhouseClient.query({
         query: `
           SELECT
@@ -1426,10 +1465,9 @@ async function loadAnalyticsOverview(
               assumeNotNull(e.user_id),
               e.event_type = '$page-view'
             ) AS visitors
-          FROM analytics_internal.events AS e
+          FROM (${PAGE_VIEWS_AND_CLICKS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
-          WHERE e.event_type IN ('$page-view', '$click')
-            AND e.project_id = {projectId:String}
+          WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
@@ -1461,10 +1499,9 @@ async function loadAnalyticsOverview(
               assumeNotNull(e.user_id),
               e.event_type = '$page-view'
             ) AS visitors
-          FROM analytics_internal.events AS e
+          FROM (${PAGE_VIEWS_AND_CLICKS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
-          WHERE e.event_type IN ('$page-view', '$click')
-            AND e.project_id = {projectId:String}
+          WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {hourlySince:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
@@ -1492,10 +1529,9 @@ async function loadAnalyticsOverview(
         query: `
           SELECT
             uniqExact(assumeNotNull(e.user_id)) AS visitors
-          FROM analytics_internal.events AS e
+          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
-          WHERE e.event_type = '$page-view'
-            AND e.project_id = {projectId:String}
+          WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
@@ -1517,10 +1553,9 @@ async function loadAnalyticsOverview(
           SELECT
             nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
             uniqExact(assumeNotNull(e.user_id)) AS visitors
-          FROM analytics_internal.events AS e
+          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
           ${analyticsUserJoinForFilteredEvents}
-          WHERE e.event_type = '$page-view'
-            AND e.project_id = {projectId:String}
+          WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {rangeSince:DateTime}
             AND e.event_at < {rangeUntilExclusive:DateTime}
@@ -1552,10 +1587,9 @@ async function loadAnalyticsOverview(
           SELECT
             upper(coalesce(token_refresh_users.latest_country, '')) AS country_code,
             uniqExact(assumeNotNull(e.user_id)) AS visitors
-          FROM analytics_internal.events AS e
+          FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
           ${analyticsUserJoinWithCountry}
-          WHERE e.event_type = '$page-view'
-            AND e.project_id = {projectId:String}
+          WHERE e.project_id = {projectId:String}
             AND e.branch_id = {branchId:String}
             AND e.event_at >= {rangeSince:DateTime}
             AND e.event_at < {rangeUntilExclusive:DateTime}
@@ -1613,14 +1647,13 @@ async function loadAnalyticsOverview(
           WITH matching_sessions AS (
             SELECT
               e.session_replay_segment_id AS sid
-            FROM analytics_internal.events AS e
+            FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
             ${analyticsUserJoinForFilteredEvents}
             WHERE e.session_replay_segment_id IS NOT NULL
               AND e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}
               AND e.event_at >= {since:DateTime}
               AND e.event_at < {untilExclusive:DateTime}
-              AND e.event_type = '$page-view'
               AND ${analyticsContributingUserFilter}
               ${sharedExtraFilters}
             GROUP BY sid
@@ -1631,13 +1664,12 @@ async function loadAnalyticsOverview(
               toDate(min(e.event_at)) AS session_day,
               countIf(e.event_type = '$page-view') AS pv,
               dateDiff('second', min(e.event_at), max(e.event_at)) AS duration_s
-            FROM analytics_internal.events AS e
+            FROM (${PAGE_VIEWS_AND_CLICKS_SQL}) AS e
             WHERE e.session_replay_segment_id IN (SELECT sid FROM matching_sessions)
               AND e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}
               AND e.event_at >= {since:DateTime}
               AND e.event_at < {untilExclusive:DateTime}
-              AND e.event_type IN ('$page-view', '$click')
             GROUP BY sid
           )
           SELECT
@@ -1659,8 +1691,8 @@ async function loadAnalyticsOverview(
         },
         format: "JSONEachRow",
       }),
-      // User-Agent buckets pulled from the same `$page-view` event stream so
-      // visitor counts line up with the referrer / region cards on the overview.
+      // User-Agent buckets from `$page-view` spans so visitor counts line up
+      // with the referrer / region cards on the overview.
       // `data.user_agent` is captured client-side (navigator.userAgent), so
       // older rows that pre-date capture simply return empty here.
       clickhouseClient.query({
@@ -1675,10 +1707,9 @@ async function loadAnalyticsOverview(
               ${analyticsOverviewBrowserSql} AS browser,
               ${analyticsOverviewOsSql} AS os,
               ${analyticsOverviewDeviceSql} AS device
-            FROM analytics_internal.events AS e
+            FROM (${PAGE_VIEWS_FROM_SPANS_SQL}) AS e
             ${analyticsUserJoinForFilteredEvents}
-            WHERE e.event_type = '$page-view'
-              AND e.project_id = {projectId:String}
+            WHERE e.project_id = {projectId:String}
               AND e.branch_id = {branchId:String}
               AND e.event_at >= {rangeSince:DateTime}
               AND e.event_at < {rangeUntilExclusive:DateTime}

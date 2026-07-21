@@ -31,14 +31,14 @@ SELECT
 FROM (
   SELECT
     user_id,
-    JSONExtractString(toString(data), 'path') as path,
-    lagInFrame(JSONExtractString(toString(data), 'path')) OVER (
+    JSONExtractString(data, 'path') as path,
+    lagInFrame(JSONExtractString(data, 'path')) OVER (
       PARTITION BY user_id
-      ORDER BY event_at ASC
+      ORDER BY span_started_at ASC
     ) as prev_path
-  FROM default.events
-  WHERE event_type = '$page-view'
-    AND JSONExtractString(toString(data), 'path') != ''
+  FROM default.spans
+  WHERE span_type = '$page-view'
+    AND JSONExtractString(data, 'path') != ''
     AND user_id != ''
 ) sub
 WHERE prev_path != '' AND prev_path != path
@@ -49,12 +49,12 @@ LIMIT 500
 
 const PAGE_VIEWS_QUERY = `
 SELECT
-  JSONExtractString(toString(data), 'path') as path,
-  any(domain(JSONExtractString(toString(data), 'url'))) as page_domain,
+  JSONExtractString(data, 'path') as path,
+  any(domain(JSONExtractString(data, 'url'))) as page_domain,
   count() as views
-FROM default.events
-WHERE event_type = '$page-view'
-  AND JSONExtractString(toString(data), 'path') != ''
+FROM default.spans
+WHERE span_type = '$page-view'
+  AND JSONExtractString(data, 'path') != ''
 GROUP BY path
 ORDER BY views DESC
 LIMIT 200

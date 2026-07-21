@@ -1294,7 +1294,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
 
   const sessionReplaySegmentId = randomUUID();
   const pageViewSpanId = randomUUID();
-  const tabHiddenSpanId = randomUUID();
+  const awaySpanId = randomUUID();
   const customSpanId = randomUUID();
   const customParent = randomUUID();
   const now = Date.now();
@@ -1303,7 +1303,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [
       makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", data: { path: "/exam", entry_type: "initial" } }),
-      makeCustomSpan({ span_id: tabHiddenSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId }),
+      makeCustomSpan({ span_id: awaySpanId, span_type: "$away", page_view_span_id: pageViewSpanId, data: { reasons: ["tab-hidden"] } }),
       makeCustomSpan({ span_id: customSpanId, page_view_span_id: pageViewSpanId, parent_span_ids: [customParent] }),
     ],
     events: [{
@@ -1330,9 +1330,9 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   expect(pageViewRow?.parent_span_ids).toHaveLength(1);
   expect(pageViewRow?.parent_span_ids[0]).toMatch(/^rti-/);
 
-  const tabHiddenRow = spanRows.find((row) => row.id === `sas-${tabHiddenSpanId}`);
-  expect(tabHiddenRow?.span_type).toBe("$tab-hidden");
-  expect(tabHiddenRow?.parent_span_ids).toEqual([
+  const awayRow = spanRows.find((row) => row.id === `sas-${awaySpanId}`);
+  expect(awayRow?.span_type).toBe("$away");
+  expect(awayRow?.parent_span_ids).toEqual([
     pageViewRow!.parent_span_ids[0],
     `pv-${pageViewSpanId}`,
   ]);
@@ -1374,7 +1374,7 @@ it("rejects a $page-view span carrying a page_view_span_id and a span naming its
 
   const selfReferencing = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId })],
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$away", page_view_span_id: pageViewSpanId })],
   });
   expect(selfReferencing.status).toBe(400);
   expect(selfReferencing.body?.code).toBe("SCHEMA_ERROR");

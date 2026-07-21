@@ -1397,7 +1397,7 @@ function MetricsContent({
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const dailyRev = analytics.daily_revenue;
     const dailyPageViews = analytics.daily_page_views;
-    // When the analytics app isn't installed there are no `$page-view` events,
+    // When the analytics app isn't installed there are no `$page-view` rows,
     // so fall back to token-refresh-derived anonymous visitors so the card has
     // something meaningful to render instead of a flat zero line.
     const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
