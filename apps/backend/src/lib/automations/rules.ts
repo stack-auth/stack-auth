@@ -1,6 +1,14 @@
 export const paymentsItemQuotaSourceType = "payments-item-quota";
 export const sendEmailActionType = "send-email";
 export const userCustomerType = "user";
+export const automationCadenceDurationsMs = {
+  "every-15-minutes": 15 * 60 * 1000,
+  hourly: 60 * 60 * 1000,
+  "every-6-hours": 6 * 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+} satisfies Record<string, number>;
+
+export type AutomationCadence = keyof typeof automationCadenceDurationsMs;
 
 export type AutomationJson = string | number | boolean | null | AutomationJson[] | { [key: string]: AutomationJson };
 
@@ -29,6 +37,9 @@ export type AutomationRuleConfig = {
   cooldown: {
     days?: number,
   },
+  schedule?: {
+    cadence?: string,
+  },
 };
 
 export type PaymentsItemQuotaAutomationRule = AutomationRuleConfig & {
@@ -47,6 +58,9 @@ export type PaymentsItemQuotaAutomationRule = AutomationRuleConfig & {
   },
   cooldown: {
     days: number,
+  },
+  schedule?: {
+    cadence?: string,
   },
 };
 

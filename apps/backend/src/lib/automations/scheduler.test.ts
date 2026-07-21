@@ -48,6 +48,7 @@ function emptyCheckpoint(): AutomationSchedulerCheckpoint {
     activeTenancyId: null,
     completedRuleCursor: null,
     activeRuleId: null,
+    activeRuleEvaluationStartedAt: null,
     nextSubjectCursor: null,
   };
 }
@@ -59,12 +60,21 @@ function createStateHarness(initial: AutomationSchedulerCheckpoint = emptyCheckp
   });
   const release = vi.fn(async () => {});
   const renewIfNeeded = vi.fn(async () => {});
+  const completeRuleEvaluation = vi.fn(async (options: {
+    checkpoint: AutomationSchedulerCheckpoint,
+    tenancyId: string,
+    ruleId: string,
+    evaluationStartedAt: Date,
+  }) => {
+    checkpoint = options.checkpoint;
+  });
   const acquire = vi.fn(async (): Promise<AutomationSchedulerLease> => ({
     ownerId: "00000000-0000-4000-8000-000000000001",
     get checkpoint() {
       return checkpoint;
     },
     saveCheckpoint,
+    completeRuleEvaluation,
     release,
     renewIfNeeded,
   }));
@@ -75,10 +85,14 @@ function createStateHarness(initial: AutomationSchedulerCheckpoint = emptyCheckp
     saveCheckpoint,
     release,
     renewIfNeeded,
+    completeRuleEvaluation,
   };
 }
 
-function createPrisma(tenancyIds: string[]) {
+function createPrisma(tenancyIds: string[], options: {
+  scheduleStates?: Map<string, Date>,
+  dueDeferredRuleIds?: Set<string>,
+} = {}) {
   return {
     tenancy: {
       findMany: vi.fn(async (options: any) => tenancyIds
@@ -86,10 +100,22 @@ function createPrisma(tenancyIds: string[]) {
         .slice(0, options.take)
         .map((id) => ({ id }))),
     },
+    automationRuleScheduleState: {
+      findUnique: vi.fn(async ({ where }: any) => {
+        const key = `${where.tenancyId_ruleId.tenancyId}:${where.tenancyId_ruleId.ruleId}`;
+        const lastCompletedEvaluationStartedAt = options.scheduleStates?.get(key);
+        return lastCompletedEvaluationStartedAt === undefined ? null : { lastCompletedEvaluationStartedAt };
+      }),
+    },
+    automationRuleExecutionState: {
+      findFirst: vi.fn(async ({ where }: any) => options.dueDeferredRuleIds?.has(where.ruleId)
+        ? { signalKey: "api-credits:near" }
+        : null),
+    },
   };
 }
 
-function createRule(options: { enabled?: boolean, sourceType?: string } = {}) {
+function createRule(options: { enabled?: boolean, sourceType?: string, cadence?: string } = {}) {
   return {
     enabled: options.enabled ?? true,
     source: {
@@ -104,6 +130,7 @@ function createRule(options: { enabled?: boolean, sourceType?: string } = {}) {
       notificationCategoryName: "Marketing",
     },
     cooldown: { days: 7 },
+    ...(options.cadence === undefined ? {} : { schedule: { cadence: options.cadence } }),
   };
 }
 
@@ -239,6 +266,7 @@ describe("native cron automation traversal", () => {
       activeTenancyId: "00000000-0000-4000-8000-000000000010",
       completedRuleCursor: null,
       activeRuleId: ruleId,
+      activeRuleEvaluationStartedAt: new Date("2026-07-21T12:00:00.000Z"),
       nextSubjectCursor: "00000000-0000-4000-8000-000000000100",
     };
     const state = createStateHarness(initial);
@@ -263,6 +291,7 @@ describe("native cron automation traversal", () => {
   it("propagates discovery database failures without changing the checkpoint", async () => {
     const state = createStateHarness();
     const prisma = {
+      ...createPrisma([]),
       tenancy: {
         findMany: vi.fn(async () => {
           throw new Error("database unavailable");
@@ -300,6 +329,7 @@ describe("native cron automation traversal", () => {
       activeTenancyId: null,
       completedRuleCursor: null,
       activeRuleId: null,
+      activeRuleEvaluationStartedAt: null,
       nextSubjectCursor: null,
     });
     expect(runRule).not.toHaveBeenCalled();
@@ -322,6 +352,7 @@ describe("native cron automation traversal", () => {
       activeTenancyId: tenancyId,
       completedRuleCursor: ruleId,
       activeRuleId: null,
+      activeRuleEvaluationStartedAt: null,
       nextSubjectCursor: null,
     });
 
@@ -429,5 +460,104 @@ describe("native cron automation traversal", () => {
     });
 
     expect(runRule).not.toHaveBeenCalled();
+  });
+
+  it("skips a configured rule that is not due and continues to the next rule", async () => {
+    const tenancyId = "00000000-0000-4000-8000-000000000010";
+    const state = createStateHarness();
+    const scheduleStates = new Map([
+      [`${tenancyId}:hourly-rule`, new Date("2026-07-21T12:00:00.000Z")],
+    ]);
+    const runRule = vi.fn(async (options: { ruleId: string }) => createRunResult(null, { ruleId: options.ruleId }));
+
+    await expect(runScheduledAutomations({
+      prisma: createPrisma([tenancyId], { scheduleStates }),
+      stateStore: state.stateStore,
+      getTenancyById: async (id) => createTenancy(id, {
+        "hourly-rule": createRule({ cadence: "hourly" }),
+        "later-rule": createRule(),
+      }),
+      runRule,
+      now: () => new Date("2026-07-21T12:30:00.000Z"),
+      maxPages: 1,
+    })).resolves.toMatchObject({
+      rulesProcessed: 2,
+      rulesSkippedNotDue: 1,
+      pagesProcessed: 1,
+    });
+
+    expect(runRule).toHaveBeenCalledOnce();
+    expect(runRule).toHaveBeenCalledWith(expect.objectContaining({ ruleId: "later-rule" }));
+  });
+
+  it("allows a genuinely due deferred decision to override cadence", async () => {
+    const tenancyId = "00000000-0000-4000-8000-000000000010";
+    const state = createStateHarness();
+    const prisma = createPrisma([tenancyId], {
+      scheduleStates: new Map([
+        [`${tenancyId}:${ruleId}`, new Date("2026-07-21T12:00:00.000Z")],
+      ]),
+      dueDeferredRuleIds: new Set([ruleId]),
+    });
+    const runRule = vi.fn(async () => createRunResult(null));
+
+    await expect(runScheduledAutomations({
+      prisma,
+      stateStore: state.stateStore,
+      getTenancyById: async (id) => createTenancy(id, { [ruleId]: createRule({ cadence: "hourly" }) }),
+      runRule,
+      now: () => new Date("2026-07-21T12:30:00.000Z"),
+      maxPages: 1,
+    })).resolves.toMatchObject({
+      deferredRetryWakeups: 1,
+      pagesProcessed: 1,
+    });
+    expect(runRule).toHaveBeenCalledOnce();
+  });
+
+  it("finishes an over-cadence active traversal without rerunning it or blocking later rules", async () => {
+    const tenancyId = "00000000-0000-4000-8000-000000000010";
+    const firstRuleId = "first-hourly-rule";
+    const secondRuleId = "second-rule";
+    const evaluationStartedAt = new Date("2026-07-21T10:00:00.000Z");
+    const state = createStateHarness({
+      completedTenancyCursor: null,
+      activeTenancyId: tenancyId,
+      completedRuleCursor: null,
+      activeRuleId: firstRuleId,
+      activeRuleEvaluationStartedAt: evaluationStartedAt,
+      nextSubjectCursor: "00000000-0000-4000-8000-000000000100",
+    });
+    const runRule = vi.fn(async (options: { ruleId: string }) => createRunResult(null, { ruleId: options.ruleId }));
+    const prisma = createPrisma([]);
+
+    await expect(runScheduledAutomations({
+      prisma,
+      stateStore: state.stateStore,
+      getTenancyById: async (id) => createTenancy(id, {
+        [firstRuleId]: createRule({ cadence: "hourly" }),
+        [secondRuleId]: createRule(),
+      }),
+      runRule,
+      now: () => new Date("2026-07-21T12:00:00.000Z"),
+      maxPages: 2,
+    })).resolves.toMatchObject({
+      pagesProcessed: 2,
+      rulesProcessed: 2,
+    });
+
+    expect(runRule.mock.calls.map(([options]) => options.ruleId)).toEqual([firstRuleId, secondRuleId]);
+    expect(prisma.automationRuleScheduleState.findUnique).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenancyId_ruleId: { tenancyId, ruleId: firstRuleId } },
+    }));
+    expect(state.completeRuleEvaluation).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      ruleId: firstRuleId,
+      evaluationStartedAt,
+    }));
+    expect(state.getCheckpoint()).toMatchObject({
+      completedRuleCursor: secondRuleId,
+      activeRuleId: null,
+      activeRuleEvaluationStartedAt: null,
+    });
   });
 });

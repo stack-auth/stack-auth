@@ -45,7 +45,18 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 const THEME_DEFAULT_VALUE = "__project_default__";
+const CADENCE_DEFAULT_VALUE = "__scheduler_default__";
 const DEFAULT_LIMIT = 100;
+
+type AutomationCadence = "every-15-minutes" | "hourly" | "every-6-hours" | "daily";
+
+const cadenceOptions: SelectorOption[] = [
+  { value: CADENCE_DEFAULT_VALUE, label: "Default (every scheduler cycle)" },
+  { value: "every-15-minutes", label: "Every 15 minutes" },
+  { value: "hourly", label: "Every hour" },
+  { value: "every-6-hours", label: "Every 6 hours" },
+  { value: "daily", label: "Daily" },
+];
 
 type UsageEmailAutomationRule = {
   displayName?: string,
@@ -69,6 +80,9 @@ type UsageEmailAutomationRule = {
   },
   cooldown: {
     days: number,
+  },
+  schedule?: {
+    cadence?: AutomationCadence,
   },
 };
 
@@ -100,6 +114,7 @@ type RuleEditorDraft = {
   themeId: string,
   subject: string,
   cooldownDays: string,
+  cadence?: string,
 };
 
 type MissingPrerequisite = "paymentsItem" | "emailTemplate";
@@ -151,6 +166,15 @@ function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function readAutomationCadence(value: unknown): AutomationCadence | undefined {
+  return value === "every-15-minutes"
+    || value === "hourly"
+    || value === "every-6-hours"
+    || value === "daily"
+    ? value
+    : undefined;
+}
+
 export function readRules(config: unknown): RuleEntry[] {
   if (!isRecord(config)) return [];
   const automations = isRecord(config.automations) ? config.automations : undefined;
@@ -168,6 +192,11 @@ function parseRule(rawRule: unknown): UsageEmailAutomationRule | undefined {
   const source = isRecord(rawRule.source) ? rawRule.source : undefined;
   const action = isRecord(rawRule.action) ? rawRule.action : undefined;
   const cooldown = isRecord(rawRule.cooldown) ? rawRule.cooldown : undefined;
+  const schedule = rawRule.schedule === undefined
+    ? undefined
+    : isRecord(rawRule.schedule)
+      ? rawRule.schedule
+      : undefined;
   const thresholds = isRecord(source?.thresholds) ? source.thresholds : undefined;
   if (
     source === undefined
@@ -184,7 +213,14 @@ function parseRule(rawRule: unknown): UsageEmailAutomationRule | undefined {
   const itemId = readString(source.itemId);
   const templateId = readString(action.templateId);
   const cooldownDays = readNumber(cooldown.days);
-  if (itemId === undefined || templateId === undefined || cooldownDays === undefined) {
+  const cadence = schedule === undefined ? undefined : readAutomationCadence(schedule.cadence);
+  if (
+    itemId === undefined
+    || templateId === undefined
+    || cooldownDays === undefined
+    || (rawRule.schedule !== undefined && schedule === undefined)
+    || (schedule !== undefined && schedule.cadence !== undefined && cadence === undefined)
+  ) {
     return undefined;
   }
 
@@ -211,6 +247,7 @@ function parseRule(rawRule: unknown): UsageEmailAutomationRule | undefined {
     cooldown: {
       days: cooldownDays,
     },
+    ...(cadence === undefined ? {} : { schedule: { cadence } }),
   };
 }
 
@@ -272,6 +309,7 @@ function createDraft(mode: DialogMode, existingRuleIds: string[], itemOptions: S
       themeId: rule.action.themeId ?? THEME_DEFAULT_VALUE,
       subject: rule.action.subject ?? "",
       cooldownDays: String(rule.cooldown.days),
+      cadence: rule.schedule?.cadence ?? CADENCE_DEFAULT_VALUE,
     };
   }
 
@@ -287,6 +325,7 @@ function createDraft(mode: DialogMode, existingRuleIds: string[], itemOptions: S
     themeId: themeOptions[0]?.value ?? THEME_DEFAULT_VALUE,
     subject: "",
     cooldownDays: "7",
+    cadence: CADENCE_DEFAULT_VALUE,
   };
 }
 
@@ -355,6 +394,11 @@ export function buildRuleFromDraft(draft: RuleEditorDraft): UsageEmailAutomation
     cooldown: {
       days: cooldownDays,
     },
+    ...((draft.cadence ?? CADENCE_DEFAULT_VALUE) === CADENCE_DEFAULT_VALUE ? {} : {
+      schedule: {
+        cadence: readAutomationCadence(draft.cadence) ?? throwErr(`Unsupported automation cadence "${draft.cadence ?? "<missing>"}"`),
+      },
+    }),
   };
 }
 
@@ -384,6 +428,12 @@ function formatThresholds(rule: UsageEmailAutomationRule) {
     parts.push(`Cutoff: ${thresholds.overLimitQuantity}`);
   }
   return parts.join(", ");
+}
+
+export function formatAutomationCadence(cadence: AutomationCadence | undefined) {
+  if (cadence === undefined) return "Every Scheduler Cycle";
+  return cadenceOptions.find((option) => option.value === cadence)?.label
+    ?? throwErr(`Unsupported automation cadence "${cadence}"`);
 }
 
 function formatItem(itemOptions: SelectorOption[], itemId: string) {
@@ -658,6 +708,8 @@ export default function PageClient() {
                           <span>{formatThresholds(entry.rule)}</span>
                           <span className="text-muted-foreground/40">·</span>
                           <span>{entry.rule.cooldown.days}-Day Cooldown</span>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>{formatAutomationCadence(entry.rule.schedule?.cadence)}</span>
                         </div>
                       </div>
                     </div>
@@ -932,7 +984,7 @@ function RuleEditorDialog(props: {
             </div>
 
             <div className="bg-white/50 dark:bg-background/40 backdrop-blur-md rounded-2xl border border-foreground/[0.06] p-4 hover:border-foreground/[0.1] transition-all duration-150 hover:transition-none">
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <Field label="Item to Monitor">{(fieldId) => (
                   <DesignSelectorDropdown
                     triggerId={fieldId}
@@ -957,7 +1009,19 @@ function RuleEditorDialog(props: {
                     placeholder="e.g. 7"
                   />
                 )}</Field>
+                <Field label="Scheduled Cadence">{(fieldId) => (
+                  <DesignSelectorDropdown
+                    triggerId={fieldId}
+                    value={draft.cadence ?? CADENCE_DEFAULT_VALUE}
+                    onValueChange={(value) => setDraftField("cadence", value)}
+                    options={cadenceOptions}
+                    size="md"
+                  />
+                )}</Field>
               </div>
+              <Typography type="label" className="mt-3 block text-xs text-muted-foreground">
+                Cadence applies to automatic evaluation only. Preview and Send Now remain available immediately.
+              </Typography>
             </div>
           </div>
 

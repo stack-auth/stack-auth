@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildRuleFromDraft,
+  formatAutomationCadence,
   getMissingPrerequisites,
   parseAutomationRouteResult,
   readRules,
@@ -287,6 +288,71 @@ describe("usage email automation dashboard helpers", () => {
         },
       }
     `);
+  });
+
+  it("parses and builds optional scheduled cadence without changing the default shape", () => {
+    const [entry] = readRules({
+      automations: {
+        rules: {
+          usageUpgrade: {
+            enabled: true,
+            source: {
+              type: "payments-item-quota",
+              itemId: "credits",
+              customerType: "user",
+              thresholds: { nearRemainingRatio: 0.2 },
+            },
+            action: {
+              type: "send-email",
+              templateId: "00000000-0000-4000-8000-000000000001",
+            },
+            cooldown: { days: 7 },
+            schedule: { cadence: "every-6-hours" },
+          },
+        },
+      },
+    });
+    expect(entry.rule.schedule).toEqual({ cadence: "every-6-hours" });
+
+    const scheduledRule = buildRuleFromDraft({
+      ruleId: "usage-upgrade",
+      displayName: "Usage upgrade",
+      enabled: true,
+      itemId: "credits",
+      nearRemainingRatio: "0.25",
+      nearRemainingQuantity: "",
+      overLimitQuantity: "0",
+      templateId: "00000000-0000-4000-8000-000000000001",
+      themeId: "__project_default__",
+      subject: "",
+      cooldownDays: "7",
+      cadence: "daily",
+    });
+    expect(scheduledRule.schedule).toEqual({ cadence: "daily" });
+
+    const defaultRule = buildRuleFromDraft({
+      ruleId: "usage-upgrade",
+      displayName: "Usage upgrade",
+      enabled: true,
+      itemId: "credits",
+      nearRemainingRatio: "0.25",
+      nearRemainingQuantity: "",
+      overLimitQuantity: "0",
+      templateId: "00000000-0000-4000-8000-000000000001",
+      themeId: "__project_default__",
+      subject: "",
+      cooldownDays: "7",
+      cadence: "__scheduler_default__",
+    });
+    expect(defaultRule.schedule).toBeUndefined();
+  });
+
+  it("formats effective cadence labels", () => {
+    expect(formatAutomationCadence(undefined)).toBe("Every Scheduler Cycle");
+    expect(formatAutomationCadence("every-15-minutes")).toBe("Every 15 minutes");
+    expect(formatAutomationCadence("hourly")).toBe("Every hour");
+    expect(formatAutomationCadence("every-6-hours")).toBe("Every 6 hours");
+    expect(formatAutomationCadence("daily")).toBe("Daily");
   });
 
   it("rejects drafts without thresholds", () => {

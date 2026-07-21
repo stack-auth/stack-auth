@@ -74,6 +74,7 @@ model Tenancy {
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
   automationRuleExecutionStates AutomationRuleExecutionState[]
+  automationRuleScheduleStates AutomationRuleScheduleState[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1188,6 +1189,22 @@ model AutomationRuleExecutionState {
 
   @@id([tenancyId, ruleId, subjectType, subjectId, signalKey])
   @@index([tenancyId, ruleId, lastTriggeredAt], name: "AutomationRuleExecutionState_tenancy_rule_triggered_idx")
+  @@index([tenancyId, ruleId, nextRetryAt], name: "AutomationRuleExecutionState_tenancy_rule_retry_idx")
+}
+
+model AutomationRuleScheduleState {
+  tenancyId String @db.Uuid
+  ruleId    String
+
+  // Start time of the last fully completed evaluation cycle. Cadence is start-to-start.
+  lastCompletedEvaluationStartedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, ruleId])
 }
 
 model AutomationSchedulerState {
@@ -1197,6 +1214,7 @@ model AutomationSchedulerState {
   activeTenancyId         String? @db.Uuid
   completedRuleCursor     String?
   activeRuleId            String?
+  activeRuleEvaluationStartedAt DateTime?
   // Continuation cursor passed to the next source-adapter page.
   nextSubjectCursor       String? @db.Uuid
 

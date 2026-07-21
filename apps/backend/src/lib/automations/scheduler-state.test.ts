@@ -10,13 +10,19 @@ const emptyCheckpoint: AutomationSchedulerCheckpoint = {
   activeTenancyId: null,
   completedRuleCursor: null,
   activeRuleId: null,
+  activeRuleEvaluationStartedAt: null,
   nextSubjectCursor: null,
 };
 
-function createFakePrisma(options: { missing?: boolean } = {}) {
+function createFakePrisma(options: {
+  missing?: boolean,
+  checkpoint?: Partial<AutomationSchedulerCheckpoint>,
+} = {}) {
+  const scheduleStates = new Map<string, Date>();
   let state = options.missing ? null : {
     key: automationSchedulerStateKey,
     ...emptyCheckpoint,
+    ...options.checkpoint,
     leaseOwner: null as string | null,
     leaseExpiresAt: null as Date | null,
   };
@@ -38,20 +44,35 @@ function createFakePrisma(options: { missing?: boolean } = {}) {
     return true;
   };
 
-  return {
-    prisma: {
-      automationSchedulerState: {
-        async updateMany({ where, data }: any) {
-          if (!matchesWhere(where)) return { count: 0 };
-          state = { ...state!, ...data };
-          return { count: 1 };
-        },
-        async findUnique() {
-          return state === null ? null : { ...state };
-        },
+  const prisma = {
+    automationSchedulerState: {
+      async updateMany({ where, data }: any) {
+        if (!matchesWhere(where)) return { count: 0 };
+        state = { ...state!, ...data };
+        return { count: 1 };
       },
-    } as any,
+      async findUnique() {
+        return state === null ? null : { ...state };
+      },
+    },
+    automationRuleScheduleState: {
+      async upsert({ where, create, update }: any) {
+        const key = `${where.tenancyId_ruleId.tenancyId}:${where.tenancyId_ruleId.ruleId}`;
+        scheduleStates.set(key, scheduleStates.has(key)
+          ? update.lastCompletedEvaluationStartedAt
+          : create.lastCompletedEvaluationStartedAt);
+        return {};
+      },
+    },
+    async $transaction(callback: (tx: unknown) => Promise<unknown>) {
+      return await callback(prisma);
+    },
+  };
+
+  return {
+    prisma: prisma as any,
     getState: () => state,
+    getScheduleState: (tenancyId: string, ruleId: string) => scheduleStates.get(`${tenancyId}:${ruleId}`),
   };
 }
 
@@ -110,6 +131,12 @@ describe("Prisma automation scheduler state store", () => {
       ...emptyCheckpoint,
       activeTenancyId: "00000000-0000-4000-8000-000000000010",
     })).rejects.toThrow("lease was lost or expired");
+    await expect(firstLease!.completeRuleEvaluation({
+      checkpoint: emptyCheckpoint,
+      tenancyId: "00000000-0000-4000-8000-000000000010",
+      ruleId: "usage-upgrade",
+      evaluationStartedAt: new Date("2026-07-17T12:00:00.000Z"),
+    })).rejects.toThrow("lease was lost or expired");
     await expect(firstLease!.renewIfNeeded()).rejects.toThrow("lease was lost or expired");
     await expect(firstLease!.release()).rejects.toThrow("lease was lost or expired");
 
@@ -150,5 +177,62 @@ describe("Prisma automation scheduler state store", () => {
     });
 
     await expect(store.acquire()).rejects.toThrow("Apply the scheduler-state migration");
+  });
+
+  it("rejects checkpoints whose active rule and evaluation start are not paired", async () => {
+    const fake = createFakePrisma();
+    const lease = await createPrismaAutomationSchedulerStateStore({
+      prisma: fake.prisma,
+      ownerId: () => "00000000-0000-4000-8000-000000000001",
+    }).acquire();
+
+    await expect(lease!.saveCheckpoint({
+      ...emptyCheckpoint,
+      activeRuleId: "usage-upgrade",
+    })).rejects.toThrow("activeRuleId and activeRuleEvaluationStartedAt together");
+    await expect(lease!.saveCheckpoint({
+      ...emptyCheckpoint,
+      activeRuleEvaluationStartedAt: new Date("2026-07-21T12:00:00.000Z"),
+    })).rejects.toThrow("activeRuleId and activeRuleEvaluationStartedAt together");
+  });
+
+  it("fails acquisition when persisted active rule checkpoint fields are not paired", async () => {
+    const fake = createFakePrisma({
+      checkpoint: { activeRuleId: "usage-upgrade" },
+    });
+    const store = createPrismaAutomationSchedulerStateStore({
+      prisma: fake.prisma,
+      ownerId: () => "00000000-0000-4000-8000-000000000001",
+    });
+
+    await expect(store.acquire()).rejects.toThrow("activeRuleId and activeRuleEvaluationStartedAt together");
+  });
+
+  it("completes cadence state with the checkpoint through the owned lease", async () => {
+    const fake = createFakePrisma();
+    const tenancyId = "00000000-0000-4000-8000-000000000010";
+    const startedAt = new Date("2026-07-21T12:00:00.000Z");
+    const lease = await createPrismaAutomationSchedulerStateStore({
+      prisma: fake.prisma,
+      ownerId: () => "00000000-0000-4000-8000-000000000001",
+    }).acquire();
+
+    await lease!.completeRuleEvaluation({
+      checkpoint: {
+        ...emptyCheckpoint,
+        activeTenancyId: tenancyId,
+        completedRuleCursor: "usage-upgrade",
+      },
+      tenancyId,
+      ruleId: "usage-upgrade",
+      evaluationStartedAt: startedAt,
+    });
+
+    expect(fake.getState()).toMatchObject({
+      activeRuleId: null,
+      activeRuleEvaluationStartedAt: null,
+      completedRuleCursor: "usage-upgrade",
+    });
+    expect(fake.getScheduleState(tenancyId, "usage-upgrade")).toEqual(startedAt);
   });
 });

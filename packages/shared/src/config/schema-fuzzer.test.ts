@@ -90,6 +90,9 @@ const branchSchemaFuzzerConfig = [{
         cooldown: [{
           days: [1, 7, 30],
         }],
+        schedule: [undefined, {
+          cadence: ["every-15-minutes", "hourly", "every-6-hours", "daily"] as const,
+        }],
       }],
     }],
   }],

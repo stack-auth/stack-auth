@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { PrismaClientTransaction } from "@/prisma-client";
+import { retryTransaction } from "@/prisma-client";
 
 export const automationSchedulerStateKey = "usage-email-v1";
 export const automationSchedulerLeaseDurationMs = 120_000;
@@ -10,6 +10,7 @@ export type AutomationSchedulerCheckpoint = {
   activeTenancyId: string | null,
   completedRuleCursor: string | null,
   activeRuleId: string | null,
+  activeRuleEvaluationStartedAt: Date | null,
   nextSubjectCursor: string | null,
 };
 
@@ -18,10 +19,16 @@ export type AutomationSchedulerLease = {
   checkpoint: AutomationSchedulerCheckpoint,
   renewIfNeeded: () => Promise<void>,
   saveCheckpoint: (checkpoint: AutomationSchedulerCheckpoint) => Promise<void>,
+  completeRuleEvaluation: (options: {
+    checkpoint: AutomationSchedulerCheckpoint,
+    tenancyId: string,
+    ruleId: string,
+    evaluationStartedAt: Date,
+  }) => Promise<void>,
   release: () => Promise<void>,
 };
 
-type AutomationSchedulerStatePrisma = Pick<PrismaClientTransaction, "automationSchedulerState">;
+type AutomationSchedulerStatePrisma = Parameters<typeof retryTransaction>[0];
 
 export function createPrismaAutomationSchedulerStateStore(options: {
   prisma: AutomationSchedulerStatePrisma,
@@ -73,6 +80,7 @@ export function createPrismaAutomationSchedulerStateStore(options: {
           activeTenancyId: true,
           completedRuleCursor: true,
           activeRuleId: true,
+          activeRuleEvaluationStartedAt: true,
           nextSubjectCursor: true,
           leaseOwner: true,
           leaseExpiresAt: true,
@@ -127,8 +135,43 @@ export function createPrismaAutomationSchedulerStateStore(options: {
           currentLeaseExpiresAt = renewedUntil;
         },
         async saveCheckpoint(nextCheckpoint) {
+          assertActiveRuleCheckpointInvariant(nextCheckpoint);
           await mutateOwnedUnexpiredLease("save automation scheduler checkpoint", nextCheckpoint);
           checkpoint = nextCheckpoint;
+        },
+        async completeRuleEvaluation(completion) {
+          assertActive();
+          assertActiveRuleCheckpointInvariant(completion.checkpoint);
+          const completionNow = now();
+          await retryTransaction(options.prisma, async (tx) => {
+            const checkpointResult = await tx.automationSchedulerState.updateMany({
+              where: {
+                key: automationSchedulerStateKey,
+                leaseOwner: owner,
+                leaseExpiresAt: { gt: completionNow },
+              },
+              data: completion.checkpoint,
+            });
+            assertSingleMutation(checkpointResult.count, "complete automation rule evaluation");
+
+            await tx.automationRuleScheduleState.upsert({
+              where: {
+                tenancyId_ruleId: {
+                  tenancyId: completion.tenancyId,
+                  ruleId: completion.ruleId,
+                },
+              },
+              create: {
+                tenancyId: completion.tenancyId,
+                ruleId: completion.ruleId,
+                lastCompletedEvaluationStartedAt: completion.evaluationStartedAt,
+              },
+              update: {
+                lastCompletedEvaluationStartedAt: completion.evaluationStartedAt,
+              },
+            });
+          });
+          checkpoint = completion.checkpoint;
         },
         async release() {
           assertActive();
@@ -151,13 +194,22 @@ export function createPrismaAutomationSchedulerStateStore(options: {
 }
 
 function readCheckpoint(state: AutomationSchedulerCheckpoint): AutomationSchedulerCheckpoint {
-  return {
+  const checkpoint = {
     completedTenancyCursor: state.completedTenancyCursor,
     activeTenancyId: state.activeTenancyId,
     completedRuleCursor: state.completedRuleCursor,
     activeRuleId: state.activeRuleId,
+    activeRuleEvaluationStartedAt: state.activeRuleEvaluationStartedAt,
     nextSubjectCursor: state.nextSubjectCursor,
   };
+  assertActiveRuleCheckpointInvariant(checkpoint);
+  return checkpoint;
+}
+
+export function assertActiveRuleCheckpointInvariant(checkpoint: Pick<AutomationSchedulerCheckpoint, "activeRuleId" | "activeRuleEvaluationStartedAt">) {
+  if ((checkpoint.activeRuleId === null) !== (checkpoint.activeRuleEvaluationStartedAt === null)) {
+    throw new Error("Automation scheduler checkpoint must set activeRuleId and activeRuleEvaluationStartedAt together.");
+  }
 }
 
 function validateLeaseDurations(leaseDurationMs: number, renewalThresholdMs: number) {

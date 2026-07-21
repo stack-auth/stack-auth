@@ -27,6 +27,7 @@ const providerIdRegex = /^[a-z0-9_-]+$/;
 const paymentsItemQuotaAutomationSourceType = "payments-item-quota";
 const sendEmailAutomationActionType = "send-email";
 const marketingAutomationNotificationCategoryName = "Marketing";
+const automationCadenceValues = ["every-15-minutes", "hourly", "every-6-hours", "daily"] as const;
 
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -191,6 +192,9 @@ const branchAutomationsSchema = yupObject({
       cooldown: yupObject({
         days: yupNumber().integer().min(1),
       }),
+      schedule: yupObject({
+        cadence: yupString().oneOf(automationCadenceValues).optional(),
+      }).optional(),
     }),
   ),
 });
@@ -220,6 +224,9 @@ const validQuotaAutomationRule = {
         },
         cooldown: {
           days: 7,
+        },
+        schedule: {
+          cadence: "hourly",
         },
       },
     },
@@ -320,6 +327,24 @@ import.meta.vitest?.test("branchAutomationsSchema rejects invalid cooldowns", as
       },
     },
   }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: automations.rules.cooldown.days must be greater than or equal to 1]`);
+});
+
+import.meta.vitest?.test("branchAutomationsSchema accepts missing cadence and rejects unsupported cadence values", async ({ expect }) => {
+  const ruleWithoutCadence = structuredClone(validQuotaAutomationRule);
+  Reflect.deleteProperty(ruleWithoutCadence.automations.rules.lowCreditsUpgradeEmail, "schedule");
+  await expect(branchConfigSchema.validate(ruleWithoutCadence, { abortEarly: false })).resolves.toMatchObject(ruleWithoutCadence);
+
+  await expect(branchConfigSchema.validate({
+    automations: {
+      rules: {
+        lowCreditsUpgradeEmail: {
+          schedule: {
+            cadence: "every-minute",
+          },
+        },
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrow(/automations\.rules\.schedule\.cadence must be one of the following values/);
 });
 
 import.meta.vitest?.test("branchAutomationsSchema rejects payments quota email automation config", async ({ expect }) => {
@@ -1028,6 +1053,9 @@ const organizationConfigDefaults = {
       },
       cooldown: {
         days: undefined,
+      },
+      schedule: {
+        cadence: undefined,
       },
     }),
   },

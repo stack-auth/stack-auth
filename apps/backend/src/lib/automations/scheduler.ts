@@ -5,6 +5,7 @@ import {
   type AutomationSchedulerCheckpoint,
   type AutomationSchedulerLease,
 } from "@/lib/automations/scheduler-state";
+import { getAutomationRuleCadence, getAutomationRuleScheduleEligibility, type AutomationRuleScheduleReaderPrisma } from "@/lib/automations/rule-schedule";
 import {
   createPaymentsItemQuotaSourceAdapter,
   paymentsItemQuotaCustomerDataReaders,
@@ -24,7 +25,7 @@ export const scheduledAutomationMaxPages = 10;
 export const scheduledAutomationDefaultPages = 5;
 export const scheduledAutomationWorkBudgetMs = 45_000;
 
-type AutomationDiscoveryPrisma = {
+type AutomationDiscoveryPrisma = AutomationRuleScheduleReaderPrisma & {
   tenancy: {
     findMany: (options: {
       where: {
@@ -70,6 +71,8 @@ export type ScheduledAutomationCronResult = {
   sentCount: number,
   suppressedCount: number,
   deferredCount: number,
+  rulesSkippedNotDue: number,
+  deferredRetryWakeups: number,
   cycleCompleted: boolean,
 };
 
@@ -190,6 +193,8 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
   let sentCount = 0;
   let suppressedCount = 0;
   let deferredCount = 0;
+  let rulesSkippedNotDue = 0;
+  let deferredRetryWakeups = 0;
   let cycleCompleted = false;
   let discoveredTenancyIds: string[] = [];
 
@@ -233,6 +238,7 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
         activeTenancyId: nextTenancyId,
         completedRuleCursor: null,
         activeRuleId: null,
+        activeRuleEvaluationStartedAt: null,
         nextSubjectCursor: null,
       });
       tenanciesScanned++;
@@ -258,9 +264,45 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
         await saveCheckpoint(completeActiveTenancy(checkpoint));
         continue;
       }
+      if (!nextRule.rule.enabled) {
+        await saveCheckpoint(completeActiveRule(checkpoint, nextRule.ruleId));
+        rulesProcessed++;
+        continue;
+      }
+      let cadence;
+      try {
+        assertSupportedAutomationRule(nextRule.ruleId, nextRule.rule);
+        cadence = getAutomationRuleCadence(nextRule.ruleId, nextRule.rule);
+      } catch (error) {
+        if (!(error instanceof NonRetryableAutomationRuleError)) {
+          throw error;
+        }
+        captureInvalidRule(tenancy.id, nextRule.ruleId, error);
+        await saveCheckpoint(completeActiveRule(checkpoint, nextRule.ruleId));
+        rulesProcessed++;
+        continue;
+      }
+      const eligibilityNow = options.now();
+      const eligibility = await getAutomationRuleScheduleEligibility({
+        prisma: options.prisma,
+        tenancyId: tenancy.id,
+        ruleId: nextRule.ruleId,
+        cadence,
+        now: eligibilityNow,
+      });
+      if (!eligibility.due) {
+        await saveCheckpoint(completeActiveRule(checkpoint, nextRule.ruleId));
+        rulesProcessed++;
+        rulesSkippedNotDue++;
+        continue;
+      }
+      if (eligibility.reason === "deferred-retry") {
+        deferredRetryWakeups++;
+      }
       await saveCheckpoint({
         ...checkpoint,
         activeRuleId: nextRule.ruleId,
+        activeRuleEvaluationStartedAt: eligibilityNow,
         nextSubjectCursor: null,
       });
     }
@@ -268,6 +310,10 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     const activeRuleId = checkpoint.activeRuleId;
     if (activeRuleId === null) {
       throw new Error("Automation scheduler checkpoint lost its active rule unexpectedly.");
+    }
+    const activeRuleEvaluationStartedAt = checkpoint.activeRuleEvaluationStartedAt;
+    if (activeRuleEvaluationStartedAt === null) {
+      throw new Error("Automation scheduler checkpoint lost its active rule evaluation start unexpectedly.");
     }
     const ruleEntry = sortedRules.find(({ ruleId }) => ruleId === activeRuleId);
     if (ruleEntry === undefined) {
@@ -282,16 +328,12 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     }
     try {
       assertSupportedAutomationRule(activeRuleId, ruleEntry.rule);
+      getAutomationRuleCadence(activeRuleId, ruleEntry.rule);
     } catch (error) {
       if (!(error instanceof NonRetryableAutomationRuleError)) {
         throw error;
       }
-      captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${activeRuleId}" for tenancy "${tenancy.id}".`, {
-        cause: error,
-        tenancyId: tenancy.id,
-        ruleId: activeRuleId,
-        reason: error.reason,
-      }));
+      captureInvalidRule(tenancy.id, activeRuleId, error);
       await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
       rulesProcessed++;
       continue;
@@ -336,7 +378,14 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     deferredCount += result.deferredCount;
 
     if (result.nextCursor === null) {
-      await saveCheckpoint(completeActiveRule(checkpoint, activeRuleId));
+      const completedCheckpoint = completeActiveRule(checkpoint, activeRuleId);
+      await options.lease.completeRuleEvaluation({
+        checkpoint: completedCheckpoint,
+        tenancyId: tenancy.id,
+        ruleId: activeRuleId,
+        evaluationStartedAt: activeRuleEvaluationStartedAt,
+      });
+      checkpoint = completedCheckpoint;
       rulesProcessed++;
     } else {
       await saveCheckpoint({
@@ -355,6 +404,8 @@ async function runWithLease<TTenancy extends AutomationRuleTenancy>(options: {
     sentCount,
     suppressedCount,
     deferredCount,
+    rulesSkippedNotDue,
+    deferredRetryWakeups,
     cycleCompleted,
   };
 }
@@ -410,6 +461,7 @@ function completeActiveRule(checkpoint: AutomationSchedulerCheckpoint, ruleId: s
     ...checkpoint,
     completedRuleCursor: ruleId,
     activeRuleId: null,
+    activeRuleEvaluationStartedAt: null,
     nextSubjectCursor: null,
   };
 }
@@ -423,6 +475,7 @@ function completeActiveTenancy(checkpoint: AutomationSchedulerCheckpoint): Autom
     activeTenancyId: null,
     completedRuleCursor: null,
     activeRuleId: null,
+    activeRuleEvaluationStartedAt: null,
     nextSubjectCursor: null,
   };
 }
@@ -433,6 +486,7 @@ function emptyCheckpoint(): AutomationSchedulerCheckpoint {
     activeTenancyId: null,
     completedRuleCursor: null,
     activeRuleId: null,
+    activeRuleEvaluationStartedAt: null,
     nextSubjectCursor: null,
   };
 }
@@ -447,6 +501,17 @@ function emptyCronResult(status: "lease-held"): ScheduledAutomationCronResult {
     sentCount: 0,
     suppressedCount: 0,
     deferredCount: 0,
+    rulesSkippedNotDue: 0,
+    deferredRetryWakeups: 0,
     cycleCompleted: false,
   };
+}
+
+function captureInvalidRule(tenancyId: string, ruleId: string, error: NonRetryableAutomationRuleError) {
+  captureError("automation-scheduler-invalid-rule", new HexclaveAssertionError(`Skipping invalid scheduled automation rule "${ruleId}" for tenancy "${tenancyId}".`, {
+    cause: error,
+    tenancyId,
+    ruleId,
+    reason: error.reason,
+  }));
 }
