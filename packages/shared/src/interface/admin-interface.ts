@@ -26,6 +26,17 @@ import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import type { PlanUsageResponse } from "./plan-usage";
 import { HexclaveServerInterface, ServerAuthApplicationOptions } from "./server-interface";
+import type {
+  WorkflowCancelRunsResultJson,
+  WorkflowRunDetailsJson,
+  WorkflowRunJson,
+  WorkflowRunsFilterJson,
+  WorkflowSecretJson,
+  WorkflowSummaryJson,
+  WorkflowSyncResultJson,
+  WorkflowUpgradeRunsResultJson,
+  WorkflowVersionJson,
+} from "./workflows";
 
 export type { PlanUsageResponse } from "./plan-usage";
 
@@ -180,6 +191,142 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     const response = await this.sendAdminRequest(`/internal/email-templates`, {}, null);
     const result = await response.json() as { templates: { id: string, display_name: string, theme_id?: string, tsx_source: string }[] };
     return result.templates;
+  }
+
+  // ─── Workflows (internal-project gated; see the Workflows v1 spec) ───────
+
+  async listWorkflows(): Promise<WorkflowSummaryJson[]> {
+    const response = await this.sendAdminRequest(`/internal/workflows`, {}, null);
+    const result = await response.json() as { workflows: WorkflowSummaryJson[] };
+    return result.workflows;
+  }
+
+  async createWorkflow(options: { id: string, display_name?: string, source: string }): Promise<WorkflowSyncResultJson> {
+    const response = await this.sendAdminRequest(
+      `/internal/workflows`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateWorkflowSource(workflowId: string, source: string): Promise<WorkflowSyncResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/source`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listWorkflowVersions(workflowId: string): Promise<WorkflowVersionJson[]> {
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/${workflowId}/versions`, {}, null);
+    const result = await response.json() as { versions: WorkflowVersionJson[] };
+    return result.versions;
+  }
+
+  async listWorkflowRuns(workflowId: string, filter: WorkflowRunsFilterJson = {}): Promise<{ runs: WorkflowRunJson[], next_cursor: string | null }> {
+    const params = new URLSearchParams();
+    if (filter.state !== undefined) params.set("state", filter.state);
+    if (filter.version !== undefined) params.set("version", String(filter.version));
+    if (filter.run_key !== undefined) params.set("run_key", filter.run_key);
+    if (filter.cursor !== undefined) params.set("cursor", filter.cursor);
+    if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+    if (filter.include_state !== undefined) params.set("include_state", String(filter.include_state));
+    const query = params.toString();
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/${workflowId}/runs` + (query ? `?${query}` : ""), {}, null);
+    return await response.json();
+  }
+
+  async getWorkflowRun(runId: string): Promise<WorkflowRunDetailsJson> {
+    const response = await this.sendAdminRequest(urlString`/internal/workflows/runs/${runId}`, {}, null);
+    return await response.json();
+  }
+
+  async cancelWorkflowRuns(workflowId: string, filter: { run_key?: string, run_id?: string, state?: string, version?: number }): Promise<WorkflowCancelRunsResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/runs/cancel`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(filter),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async upgradeWorkflowRuns(workflowId: string, options: { to_version: number, run_key?: string, from_version?: number }): Promise<WorkflowUpgradeRunsResultJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}/runs/upgrade`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async retryWorkflowRun(runId: string): Promise<{ run_id: string }> {
+    const response = await this.sendAdminRequest(
+      urlString`/internal/workflows/runs/${runId}/retry`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async sendWorkflowEvent(name: string, data: unknown): Promise<{ event_id: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/workflows/events`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, data }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listWorkflowSecrets(): Promise<WorkflowSecretJson[]> {
+    const response = await this.sendAdminRequest(`/internal/workflows/secrets`, {}, null);
+    const result = await response.json() as { secrets: WorkflowSecretJson[] };
+    return result.secrets;
+  }
+
+  async setWorkflowSecret(key: string, value: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/workflows/secrets`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      },
+      null,
+    );
+  }
+
+  async deleteWorkflowSecret(key: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/internal/workflows/secrets/${key}`,
+      { method: "DELETE" },
+      null,
+    );
   }
 
   async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {

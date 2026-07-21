@@ -1,6 +1,7 @@
 import { grantProjectPermission, listPermissions, revokeProjectPermission } from "@/lib/permissions";
 import { ensureProjectPermissionExists, ensureUserExists } from "@/lib/request-checks";
 import { sendProjectPermissionCreatedWebhook, sendProjectPermissionDeletedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -25,11 +26,15 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
-      return await grantProjectPermission(tx, {
+      const granted = await grantProjectPermission(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
         permissionId: params.permission_id
       });
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox); the Svix webhook below stays fire-and-forget post-commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "project_permission.created", payload: { id: params.permission_id, user_id: params.user_id } });
+      return granted;
     });
 
     runAsynchronouslyAndWaitUntil(sendProjectPermissionCreatedWebhook({
@@ -53,11 +58,13 @@ export const projectPermissionsCrudHandlers = createLazyProxy(() => createCrudHa
         recursive: false,
       });
 
-      return await revokeProjectPermission(tx, {
+      const revoked = await revokeProjectPermission(tx, {
         tenancy: auth.tenancy,
         userId: params.user_id,
         permissionId: params.permission_id
       });
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "project_permission.deleted", payload: { id: params.permission_id, user_id: params.user_id } });
+      return revoked;
     });
 
     runAsynchronouslyAndWaitUntil(sendProjectPermissionDeletedWebhook({

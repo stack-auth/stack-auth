@@ -1,18 +1,26 @@
 "use client";
 
+import { useUser } from "@hexclave/next";
 import { useState } from "react";
 import { PageLayout } from "../page-layout";
+import { useProjectId } from "../use-admin-app";
 import { WorkflowDetail } from "./workflow-detail";
 
-// Mock UI for the upcoming Workflows app (see the Workflows v1 spec). All
-// data is fake. There is deliberately no app-store registration — the
-// previous Workflows app was removed in 2025-10 and a config migration still
-// strips `apps.installed.workflows`, so wiring a real app id is part of the
-// actual implementation, not this mock. The page is reachable via the
-// "Workflows" sidebar entry.
+// The Workflows page (v1, internal-only rollout). Deliberately NOT a
+// registered dashboard app: workflows is a standalone page pinned to the top
+// of the left sidebar, shown only for the internal project — which also
+// sidesteps the old workflows app id being blocked by a config migration.
+// The backend enforces the same gate (404) on every workflows route, so this
+// client-side check is UX, not security.
 
 export default function PageClient() {
+  const projectId = useProjectId();
+  useUser({ or: "redirect", projectIdMustMatch: "internal" });
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+
+  if (projectId !== "internal") {
+    return null;
+  }
 
   return (
     <PageLayout title="Workflows">

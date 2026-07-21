@@ -22,6 +22,7 @@ import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectP
 import type { PlanUsage } from "../../plan-usage";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
+import { AdminWorkflow, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowRunsFilter, AdminWorkflowSyncResult, AdminWorkflowUpgradeResult, AdminWorkflowVersion, adminWorkflowFromCrud, adminWorkflowRunDetailsFromCrud, adminWorkflowRunFromCrud, adminWorkflowSyncResultFromCrud, adminWorkflowVersionFromCrud } from "../../workflows";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { _HexclaveServerAppImplIncomplete } from "./server-app-impl";
@@ -94,6 +95,12 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   });
   private readonly _adminEmailDraftsCache = createCache(async () => {
     return await this._interface.listInternalEmailDrafts();
+  });
+  private readonly _adminWorkflowsCache = createCache(async () => {
+    return await this._interface.listWorkflows();
+  });
+  private readonly _adminWorkflowSecretsCache = createCache(async () => {
+    return await this._interface.listWorkflowSecrets();
   });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
@@ -490,6 +497,18 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       }));
     }, [crud]);
   }
+  useWorkflows(): AdminWorkflow[] {
+    const crud = useAsyncCache(this._adminWorkflowsCache, [], "adminApp.useWorkflows()");
+    return useMemo(() => crud.map(adminWorkflowFromCrud), [crud]);
+  }
+  useWorkflowSecrets(): { key: string, createdAtMillis: number, updatedAtMillis: number }[] {
+    const crud = useAsyncCache(this._adminWorkflowSecretsCache, [], "adminApp.useWorkflowSecrets()");
+    return useMemo(() => crud.map((secret) => ({
+      key: secret.key,
+      createdAtMillis: secret.created_at_millis,
+      updatedAtMillis: secret.updated_at_millis,
+    })), [crud]);
+  }
   // END_PLATFORM
   async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
     const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
@@ -507,6 +526,114 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       themeId: template.theme_id,
       tsxSource: template.tsx_source,
     }));
+  }
+
+  // ─── Workflows (internal-project gated; see the Workflows v1 spec) ───────
+
+  async listWorkflows(): Promise<AdminWorkflow[]> {
+    const crud = Result.orThrow(await this._adminWorkflowsCache.getOrWait([], "write-only"));
+    return crud.map(adminWorkflowFromCrud);
+  }
+
+  async createWorkflow(options: { id: string, displayName?: string, source: string }): Promise<AdminWorkflowSyncResult> {
+    const result = await this._interface.createWorkflow({
+      id: options.id,
+      display_name: options.displayName,
+      source: options.source,
+    });
+    await this._adminWorkflowsCache.refresh([]);
+    return adminWorkflowSyncResultFromCrud(result);
+  }
+
+  async updateWorkflowSource(workflowId: string, source: string): Promise<AdminWorkflowSyncResult> {
+    const result = await this._interface.updateWorkflowSource(workflowId, source);
+    await this._adminWorkflowsCache.refresh([]);
+    return adminWorkflowSyncResultFromCrud(result);
+  }
+
+  async listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]> {
+    return (await this._interface.listWorkflowVersions(workflowId)).map(adminWorkflowVersionFromCrud);
+  }
+
+  async listWorkflowRuns(workflowId: string, filter: AdminWorkflowRunsFilter = {}): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }> {
+    const result = await this._interface.listWorkflowRuns(workflowId, {
+      state: filter.state,
+      version: filter.version,
+      run_key: filter.runKey,
+      cursor: filter.cursor,
+      limit: filter.limit,
+    });
+    return {
+      runs: result.runs.map(adminWorkflowRunFromCrud),
+      nextCursor: result.next_cursor,
+    };
+  }
+
+  async getWorkflowRun(runId: string): Promise<AdminWorkflowRunDetails> {
+    return adminWorkflowRunDetailsFromCrud(await this._interface.getWorkflowRun(runId));
+  }
+
+  async cancelWorkflowRuns(workflowId: string, filter: { runKey?: string, runId?: string, state?: "queued" | "running" | "sleeping", version?: number } = {}): Promise<{ canceledCount: number }> {
+    const result = await this._interface.cancelWorkflowRuns(workflowId, {
+      run_key: filter.runKey,
+      run_id: filter.runId,
+      state: filter.state,
+      version: filter.version,
+    });
+    await this._adminWorkflowsCache.refresh([]);
+    return { canceledCount: result.canceled_count };
+  }
+
+  async upgradeWorkflowRuns(workflowId: string, options: { toVersion: number, runKey?: string, fromVersion?: number }): Promise<AdminWorkflowUpgradeResult> {
+    const result = await this._interface.upgradeWorkflowRuns(workflowId, {
+      to_version: options.toVersion,
+      run_key: options.runKey,
+      from_version: options.fromVersion,
+    });
+    return {
+      upgradedCount: result.upgraded_count,
+      skipped: result.skipped.map((skip) => ({
+        runId: skip.run_id,
+        runKey: skip.run_key,
+        fromVersion: skip.from_version,
+        diagnostic: {
+          reason: skip.diagnostic.reason,
+          suspendedStepKey: skip.diagnostic.suspended_step_key,
+          foundStepKey: skip.diagnostic.found_step_key,
+          consumedStepKeys: skip.diagnostic.consumed_step_keys,
+          unconsumedStepKeys: skip.diagnostic.unconsumed_step_keys,
+          details: skip.diagnostic.details,
+        },
+      })),
+    };
+  }
+
+  async retryWorkflowRun(runId: string): Promise<void> {
+    await this._interface.retryWorkflowRun(runId);
+  }
+
+  async sendWorkflowEvent(name: string, data?: unknown): Promise<{ eventId: string }> {
+    const result = await this._interface.sendWorkflowEvent(name, data ?? null);
+    return { eventId: result.event_id };
+  }
+
+  async listWorkflowSecrets(): Promise<{ key: string, createdAtMillis: number, updatedAtMillis: number }[]> {
+    const crud = Result.orThrow(await this._adminWorkflowSecretsCache.getOrWait([], "write-only"));
+    return crud.map((secret) => ({
+      key: secret.key,
+      createdAtMillis: secret.created_at_millis,
+      updatedAtMillis: secret.updated_at_millis,
+    }));
+  }
+
+  async setWorkflowSecret(key: string, value: string): Promise<void> {
+    await this._interface.setWorkflowSecret(key, value);
+    await this._adminWorkflowSecretsCache.refresh([]);
+  }
+
+  async deleteWorkflowSecret(key: string): Promise<void> {
+    await this._interface.deleteWorkflowSecret(key);
+    await this._adminWorkflowSecretsCache.refresh([]);
   }
 
   async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {

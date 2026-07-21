@@ -4,6 +4,7 @@ import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershi
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook, sendTeamPermissionCreatedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -78,12 +79,21 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
         throw new KnownErrors.UserNotFound();
       }
 
-      return await addUserToTeam(tx, {
+      const addResult = await addUserToTeam(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
         userId: params.user_id,
         type: 'member',
       });
+
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox); the Svix webhooks below stay fire-and-forget post-commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_membership.created", payload: { team_id: params.team_id, user_id: params.user_id } });
+      for (const permissionId of addResult.directPermissionIds) {
+        await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_permission.created", payload: { id: permissionId, team_id: params.team_id, user_id: params.user_id } });
+      }
+
+      return addResult;
     });
 
     const data = {
@@ -161,6 +171,8 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
           },
         },
       });
+
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_membership.deleted", payload: { team_id: params.team_id, user_id: params.user_id } });
     });
 
     runAsynchronouslyAndWaitUntil(sendTeamMembershipDeletedWebhook({

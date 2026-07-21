@@ -110,7 +110,7 @@ const dashboardsItem: Item = {
   type: 'item',
 };
 
-// Mock-UI exploration page for the upcoming Workflows app; top-level nav
+// Workflows (v1, internal-only): a standalone page pinned to the top nav
 // entry while the design is being compared (no app-store registration yet).
 const workflowsItem: Item = {
   name: "Workflows",
@@ -577,12 +577,17 @@ function SidebarContent({
             href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
-          <NavItem
-            item={workflowsItem}
-            onClick={onNavigate}
-            href={`/projects/${projectId}${workflowsItem.href}`}
-            isCollapsed={isCollapsed}
-          />
+          {/* Workflows v1 is internal-only (see ensureWorkflowsEnabled in the
+              backend — flipping the rollout later changes only that helper
+              plus this guard). */}
+          {projectId === "internal" && (
+            <NavItem
+              item={workflowsItem}
+              onClick={onNavigate}
+              href={`/projects/${projectId}${workflowsItem.href}`}
+              isCollapsed={isCollapsed}
+            />
+          )}
           {projectId === "internal" && (
             <NavItem
               item={internalToolsSection}

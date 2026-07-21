@@ -1,6 +1,7 @@
 import { grantTeamPermission, listPermissions, revokeTeamPermission } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamPermissionCreatedWebhook, sendTeamPermissionDeletedWebhook } from "@/lib/webhooks";
+import { enqueueWorkflowEvent } from "@/lib/workflows/events";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
@@ -27,12 +28,16 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
     const result = await retryTransaction(prisma, async (tx) => {
       await ensureTeamMembershipExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id, userId: params.user_id });
 
-      return await grantTeamPermission(tx, {
+      const granted = await grantTeamPermission(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
         userId: params.user_id,
         permissionId: params.permission_id
       });
+      // Workflow platform events ride the entity transaction (transactional
+      // outbox); the Svix webhook below stays fire-and-forget post-commit.
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_permission.created", payload: { id: params.permission_id, team_id: params.team_id, user_id: params.user_id } });
+      return granted;
     });
 
     runAsynchronouslyAndWaitUntil(sendTeamPermissionCreatedWebhook({
@@ -58,12 +63,14 @@ export const teamPermissionsCrudHandlers = createLazyProxy(() => createCrudHandl
         recursive: false,
       });
 
-      return await revokeTeamPermission(tx, {
+      const revoked = await revokeTeamPermission(tx, {
         tenancy: auth.tenancy,
         teamId: params.team_id,
         userId: params.user_id,
         permissionId: params.permission_id
       });
+      await enqueueWorkflowEvent(tx, { tenancy: auth.tenancy, type: "team_permission.deleted", payload: { id: params.permission_id, team_id: params.team_id, user_id: params.user_id } });
+      return revoked;
     });
 
     runAsynchronouslyAndWaitUntil(sendTeamPermissionDeletedWebhook({

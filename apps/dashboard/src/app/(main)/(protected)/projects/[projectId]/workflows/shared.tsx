@@ -11,6 +11,7 @@ import {
 import { cn } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
 import Editor, { DiffEditor, type Monaco } from "@monaco-editor/react";
+import type { AdminWorkflow, AdminWorkflowRun, AdminWorkflowSyncResult, AdminWorkflowTrigger, AdminWorkflowUpgradeResult, AdminWorkflowVersion } from "@hexclave/next";
 import {
   BroadcastIcon,
   CalendarBlankIcon,
@@ -30,111 +31,134 @@ import {
   type DataGridColumnDef,
   type DataGridDataSource,
 } from "@hexclave/dashboard-ui-components";
-import { useMemo, useState } from "react";
-import {
-  getInFlightRunCount,
-  getRuns7d,
-  getRunStateBadgeColor,
-  getRunStateLabel,
-  getRunsForWorkflow,
-  getVersionsForWorkflow,
-  getWorkflowById,
-  getWorkflowFileName,
-  MOCK_WORKFLOWS,
-  type MockRun,
-  type MockTrigger,
-  type MockVersion,
-  type MockWorkflow,
-  type RunState,
-} from "./mock-data";
+import { fromNow } from "@hexclave/shared/dist/utils/dates";
+import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAdminApp } from "../use-admin-app";
+import { WORKFLOWS_EDITOR_AMBIENT_DTS, WORKFLOWS_EDITOR_DTS } from "./editor-types";
+import { getRunStateBadgeColor, getRunStateLabel, getTriggerKind, getTriggerLabel, getWorkflowFileName, type RunState } from "./run-states";
 
 // Building blocks for the Workflows page: the two infinite-scroll grids
 // (same pattern as the Users page), the workflow header pieces, and the
-// always-editable code panel where saving mints a new version (a post-v1
-// exploration; the v1 spec keeps dashboard code read-only).
+// always-editable code panel where saving mints a new version (the v1
+// dashboard-authored model — every save of changed source is a deploy).
 
-export type WorkflowDetailProps = {
-  selectedWorkflowId: string | null,
-  onSelect: (workflowId: string) => void,
-  onClose: () => void,
+// ─── Async load helper (explicit loading/error states, repo rule) ──────────
+
+export type AsyncLoad<T> = {
+  data: T | null,
+  error: Error | null,
+  loading: boolean,
+  reload: () => void,
 };
 
-const TRIGGER_ICONS = new Map<MockTrigger["kind"], React.ElementType>([
+export function useAsyncLoad<T>(load: () => Promise<T>, deps: unknown[]): AsyncLoad<T> {
+  const [state, setState] = useState<{ data: T | null, error: Error | null, loading: boolean }>({ data: null, error: null, loading: true });
+  const [reloadCounter, setReloadCounter] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    runAsynchronously(async () => {
+      try {
+        const data = await load();
+        if (alive) setState({ data, error: null, loading: false });
+      } catch (error) {
+        if (alive) setState({ data: null, error: error instanceof Error ? error : new Error(String(error)), loading: false });
+      }
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, reloadCounter]);
+  return {
+    ...state,
+    reload: useCallback(() => setReloadCounter((count) => count + 1), []),
+  };
+}
+
+// ─── Trigger chips / header pieces ─────────────────────────────────────────
+
+const TRIGGER_ICONS = new Map<"platform" | "custom" | "schedule", React.ElementType>([
   ["platform", LightningIcon],
   ["custom", BroadcastIcon],
   ["schedule", CalendarBlankIcon],
 ]);
 
-export function TriggerChip({ trigger }: { trigger: MockTrigger }) {
-  const TriggerIcon = TRIGGER_ICONS.get(trigger.kind) ?? LightningIcon;
+export function TriggerChip({ trigger }: { trigger: AdminWorkflowTrigger }) {
+  const TriggerIcon = TRIGGER_ICONS.get(getTriggerKind(trigger)) ?? LightningIcon;
   return (
     <span className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.05] px-2 py-0.5 font-mono text-[11px] text-foreground/80">
       <TriggerIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
-      {trigger.label}
+      {getTriggerLabel(trigger)}
     </span>
   );
 }
 
 /** The slug + version + trigger chips row atop the workflow detail. */
-export function WorkflowTitleRow({ workflow }: { workflow: MockWorkflow }) {
+export function WorkflowTitleRow({ workflow }: { workflow: AdminWorkflow }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-lg font-semibold">{workflow.id}</span>
-      <DesignBadge label={`v${workflow.currentVersion}`} color="blue" size="sm" />
-      {workflow.triggers.map((trigger) => <TriggerChip key={trigger.label} trigger={trigger} />)}
+      <DesignBadge label={`v${workflow.latestVersion}`} color="blue" size="sm" />
+      {workflow.triggers.map((trigger) => <TriggerChip key={getTriggerLabel(trigger)} trigger={trigger} />)}
     </div>
   );
+}
+
+export function getRuns7d(workflow: AdminWorkflow): number {
+  return workflow.stats.runVolume14d.slice(-7).reduce((sum, value) => sum + value, 0);
 }
 
 /** Workflow-scoped KPI cards. */
-export function WorkflowKpiRow({ workflow }: { workflow: MockWorkflow }) {
+export function WorkflowKpiRow({ workflow }: { workflow: AdminWorkflow }) {
   return (
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <DesignMetricCard label="Active runs" value={workflow.activeRuns} icon={PlayIcon} gradient="blue" />
-      <DesignMetricCard label="Sleeping runs" value={workflow.sleepingRuns.toLocaleString()} icon={MoonIcon} gradient="purple" />
+      <DesignMetricCard label="Active runs" value={workflow.stats.activeRuns} icon={PlayIcon} gradient="blue" />
+      <DesignMetricCard label="Sleeping runs" value={workflow.stats.sleepingRuns.toLocaleString()} icon={MoonIcon} gradient="purple" />
       <DesignMetricCard label="Runs · 7d" value={getRuns7d(workflow).toLocaleString()} icon={ChartLineIcon} gradient="cyan" />
-      <DesignMetricCard label="Failed · 7d" value={workflow.failed7d} icon={WarningCircleIcon} gradient="orange" />
+      <DesignMetricCard label="Failed · 7d" value={workflow.stats.failed7d} icon={WarningCircleIcon} gradient="orange" />
     </div>
   );
-}
-
-// ─── Infinite-scroll plumbing (same pattern as the Users page grid) ────────
-
-const INFINITE_PAGE_SIZE = 25;
-
-/**
- * Wraps an in-memory row array in the async-generator data-source contract
- * the Users page uses, so both grids get real infinite scrolling (cursor =
- * offset). Search and sorting are applied server-side-style inside the
- * generator, exactly like a paginated API would.
- */
-function createMockDataSource<TRow>(
-  getRows: () => TRow[],
-  columns: readonly DataGridColumnDef<TRow>[],
-): DataGridDataSource<TRow> {
-  return async function* (params) {
-    const offset = typeof params.cursor === "string" ? Number(params.cursor) : 0;
-    let rows = getRows();
-    const query = typeof params.quickSearch === "string" ? params.quickSearch.trim() : "";
-    if (query.length > 0) {
-      rows = [...applyQuickSearch(rows, query, columns, defaultMatchRow)];
-    }
-    const comparator = buildRowComparator(params.sorting, columns);
-    if (comparator != null) {
-      rows = [...rows].sort(comparator);
-    }
-    const nextOffset = offset + INFINITE_PAGE_SIZE;
-    yield {
-      rows: rows.slice(offset, nextOffset),
-      hasMore: nextOffset < rows.length,
-      nextCursor: nextOffset < rows.length ? String(nextOffset) : undefined,
-    };
-  };
 }
 
 // ─── Workflows table (level 1) ─────────────────────────────────────────────
 
-const workflowColumns: DataGridColumnDef<MockWorkflow>[] = [
+const INFINITE_PAGE_SIZE = 25;
+
+/**
+ * Wraps the (small, fully loaded) workflows array in the async-generator
+ * data-source contract so the grid keeps real infinite scrolling behavior.
+ */
+function createInMemoryDataSource<TRow>(
+  rows: TRow[],
+  columns: readonly DataGridColumnDef<TRow>[],
+): DataGridDataSource<TRow> {
+  return async function* (params) {
+    const offset = typeof params.cursor === "string" ? Number(params.cursor) : 0;
+    let filtered = rows;
+    const query = typeof params.quickSearch === "string" ? params.quickSearch.trim() : "";
+    if (query.length > 0) {
+      filtered = [...applyQuickSearch(filtered, query, columns, defaultMatchRow)];
+    }
+    const comparator = buildRowComparator(params.sorting, columns);
+    if (comparator != null) {
+      filtered = [...filtered].sort(comparator);
+    }
+    const nextOffset = offset + INFINITE_PAGE_SIZE;
+    yield {
+      rows: filtered.slice(offset, nextOffset),
+      hasMore: nextOffset < filtered.length,
+      nextCursor: nextOffset < filtered.length ? String(nextOffset) : undefined,
+    };
+  };
+}
+
+export function getInFlightRunCount(workflow: AdminWorkflow): number {
+  return workflow.stats.activeRuns + workflow.stats.sleepingRuns;
+}
+
+const workflowColumns: DataGridColumnDef<AdminWorkflow>[] = [
   {
     id: "id",
     header: "Workflow",
@@ -151,24 +175,24 @@ const workflowColumns: DataGridColumnDef<MockWorkflow>[] = [
   {
     id: "triggers",
     header: "Triggers",
-    accessor: (workflow) => workflow.triggers.map((trigger) => trigger.label).join(", "),
+    accessor: (workflow) => workflow.triggers.map(getTriggerLabel).join(", "),
     width: 230,
     type: "string",
     cellOverflow: "wrap",
     renderCell: ({ row }) => (
       <div className="flex flex-wrap gap-1 py-1">
-        {row.triggers.map((trigger) => <TriggerChip key={trigger.label} trigger={trigger} />)}
+        {row.triggers.map((trigger) => <TriggerChip key={getTriggerLabel(trigger)} trigger={trigger} />)}
       </div>
     ),
   },
   {
-    id: "currentVersion",
+    id: "latestVersion",
     header: "Version",
-    accessor: "currentVersion",
+    accessor: "latestVersion",
     width: 85,
     type: "number",
     align: "left",
-    renderCell: ({ row }) => <span className="font-mono text-xs">v{row.currentVersion}</span>,
+    renderCell: ({ row }) => <span className="font-mono text-xs">v{row.latestVersion}</span>,
   },
   {
     id: "inFlight",
@@ -177,17 +201,9 @@ const workflowColumns: DataGridColumnDef<MockWorkflow>[] = [
     width: 115,
     type: "number",
     align: "right",
-    renderCell: ({ row }) => {
-      const count = getInFlightRunCount(row);
-      return (
-        <div className="flex w-full flex-col items-end">
-          <span className="text-xs tabular-nums">{count.toLocaleString()}</span>
-          {row.pausedRuns > 0 && (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400">{row.pausedRuns} paused</span>
-          )}
-        </div>
-      );
-    },
+    renderCell: ({ row }) => (
+      <span className="text-xs tabular-nums">{getInFlightRunCount(row).toLocaleString()}</span>
+    ),
   },
   {
     id: "runs7d",
@@ -201,39 +217,38 @@ const workflowColumns: DataGridColumnDef<MockWorkflow>[] = [
   {
     id: "failed7d",
     header: "Failed (7d)",
-    accessor: "failed7d",
+    accessor: (workflow) => workflow.stats.failed7d,
     width: 100,
     type: "number",
     align: "right",
     renderCell: ({ row }) => (
-      <span className={cn("text-xs tabular-nums", row.failed7d > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
-        {row.failed7d}
+      <span className={cn("text-xs tabular-nums", row.stats.failed7d > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+        {row.stats.failed7d}
       </span>
     ),
   },
   {
     id: "lastDeploy",
     header: "Last deploy",
-    accessor: (workflow) => workflow.lastDeploy.at,
+    accessor: (workflow) => workflow.lastDeployedAtMillis,
     width: 110,
-    type: "string",
+    type: "number",
     renderCell: ({ row }) => (
-      <span className="text-[11px] text-muted-foreground">{row.lastDeploy.at}</span>
+      <span className="text-[11px] text-muted-foreground">{fromNow(new Date(row.lastDeployedAtMillis))}</span>
     ),
   },
 ];
 
-const workflowsDataSource = createMockDataSource(() => MOCK_WORKFLOWS, workflowColumns);
-
-function getWorkflowRowId(workflow: MockWorkflow): string {
+function getWorkflowRowId(workflow: AdminWorkflow): string {
   return workflow.id;
 }
 
 /** The level-1 workflows table — infinite-scroll grid, same as the Users page. */
-export function WorkflowsTable({ onOpen }: { onOpen: (workflowId: string) => void }) {
+export function WorkflowsTable({ workflows, onOpen }: { workflows: AdminWorkflow[], onOpen: (workflowId: string) => void }) {
   const [gridState, setGridState] = useState(() => createDefaultDataGridState(workflowColumns));
+  const dataSource = useMemo(() => createInMemoryDataSource(workflows, workflowColumns), [workflows]);
   const gridData = useDataSource({
-    dataSource: workflowsDataSource,
+    dataSource,
     columns: workflowColumns,
     getRowId: getWorkflowRowId,
     sorting: gridState.sorting,
@@ -266,19 +281,16 @@ export function WorkflowsTable({ onOpen }: { onOpen: (workflowId: string) => voi
 
 // ─── Runs grid ─────────────────────────────────────────────────────────────
 
-const ALL_RUN_STATES: RunState[] = ["queued", "running", "sleeping", "paused", "failed", "completed", "canceled"];
-const RUN_STATE_OPTIONS = ALL_RUN_STATES.map((state) => ({ value: state, label: getRunStateLabel(state) }));
-
-const runColumns: DataGridColumnDef<MockRun>[] = [
+const runColumns = (latestVersion: number): DataGridColumnDef<AdminWorkflowRun>[] => [
   {
     id: "runKey",
     header: "Run key",
-    accessor: (run) => run.runKey ?? run.uuid,
+    accessor: (run) => run.runKey ?? run.id,
     width: 200,
     type: "string",
     renderCell: ({ row }) => (
       <span className="font-mono text-xs">
-        {row.runKey ?? <span className="text-muted-foreground">{row.uuid} · keyless</span>}
+        {row.runKey ?? <span className="text-muted-foreground">{row.id.slice(0, 8)} · keyless</span>}
       </span>
     ),
   },
@@ -287,8 +299,7 @@ const runColumns: DataGridColumnDef<MockRun>[] = [
     header: "State",
     accessor: "state",
     width: 115,
-    type: "singleSelect",
-    valueOptions: RUN_STATE_OPTIONS,
+    type: "string",
     renderCell: ({ row }) => (
       <DesignBadge label={getRunStateLabel(row.state)} color={getRunStateBadgeColor(row.state)} size="sm" />
     ),
@@ -300,24 +311,21 @@ const runColumns: DataGridColumnDef<MockRun>[] = [
     width: 100,
     type: "number",
     align: "left",
-    renderCell: ({ row }) => {
-      const isLatest = row.version === getWorkflowById(row.workflowId).currentVersion;
-      return (
-        <span className={cn("font-mono text-xs", isLatest ? "" : "text-muted-foreground")}>
-          v{row.version}{isLatest ? "" : " (pinned)"}
-        </span>
-      );
-    },
+    renderCell: ({ row }) => (
+      <span className={cn("font-mono text-xs", row.version === latestVersion ? "" : "text-muted-foreground")}>
+        v{row.version}{row.version === latestVersion ? "" : " (pinned)"}
+      </span>
+    ),
   },
   {
     id: "trigger",
     header: "Trigger",
-    accessor: (run) => `${run.trigger} ${run.triggerSummary}`,
+    accessor: (run) => `${run.triggerType} ${run.triggerSummary}`,
     width: 220,
     type: "string",
     renderCell: ({ row }) => (
       <div className="flex min-w-0 flex-col">
-        <span className="truncate font-mono text-[11px]">{row.trigger}</span>
+        <span className="truncate font-mono text-[11px]">{row.triggerType}</span>
         <span className="truncate text-[11px] text-muted-foreground">{row.triggerSummary}</span>
       </div>
     ),
@@ -325,44 +333,81 @@ const runColumns: DataGridColumnDef<MockRun>[] = [
   {
     id: "currentStep",
     header: "Current step",
-    accessor: (run) => run.currentStep ?? "",
+    accessor: (run) => run.currentStepId ?? "",
     width: 170,
     type: "string",
     renderCell: ({ row }) => (
-      row.currentStep == null
+      row.currentStepId == null
         ? <span className="text-xs text-muted-foreground">—</span>
-        : <span className="font-mono text-xs">{row.currentStep}</span>
+        : <span className="font-mono text-xs">{row.currentStepId}</span>
     ),
   },
-  { id: "startedAt", header: "Started", accessor: "startedAt", width: 100, type: "string" },
+  {
+    id: "startedAt",
+    header: "Started",
+    accessor: (run) => run.createdAtMillis,
+    width: 100,
+    type: "number",
+    renderCell: ({ row }) => <span className="text-xs">{fromNow(new Date(row.createdAtMillis))}</span>,
+  },
   {
     id: "nextWakeAt",
     header: "Next wake",
-    accessor: (run) => run.nextWakeAt ?? "",
+    accessor: (run) => run.nextWakeAtMillis ?? 0,
     width: 100,
-    type: "string",
+    type: "number",
     renderCell: ({ row }) => (
-      row.nextWakeAt == null
+      row.nextWakeAtMillis == null
         ? <span className="text-xs text-muted-foreground">—</span>
-        : <span className="text-xs">{row.nextWakeAt}</span>
+        : <span className="text-xs">{fromNow(new Date(row.nextWakeAtMillis))}</span>
     ),
   },
 ];
 
-function getRunRowId(run: MockRun): string {
-  return run.uuid;
+function getRunRowId(run: AdminWorkflowRun): string {
+  return run.id;
 }
 
-/** This workflow's runs — infinite-scroll DataGrid, same pattern as the Users page. */
-export function WorkflowRunsGrid({ workflowId, maxHeight = 520 }: { workflowId: string, maxHeight?: number }) {
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(runColumns));
-  const dataSource = useMemo(
-    () => createMockDataSource(() => getRunsForWorkflow(workflowId), runColumns),
-    [workflowId],
+/**
+ * This workflow's runs — infinite-scroll DataGrid backed by the server's
+ * cursor pagination. Quick search filters within loaded pages only (there is
+ * no server-side free-text search in v1).
+ */
+export function WorkflowRunsGrid({ workflowId, latestVersion, stateFilter, reloadKey, onOpenRun, maxHeight = 520 }: {
+  workflowId: string,
+  latestVersion: number,
+  stateFilter?: RunState,
+  reloadKey?: number,
+  onOpenRun: (run: AdminWorkflowRun) => void,
+  maxHeight?: number,
+}) {
+  const adminApp = useAdminApp();
+  const columns = useMemo(() => runColumns(latestVersion), [latestVersion]);
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const dataSource = useMemo<DataGridDataSource<AdminWorkflowRun>>(
+    () => async function* (params) {
+      const result = await adminApp.listWorkflowRuns(workflowId, {
+        cursor: typeof params.cursor === "string" ? params.cursor : undefined,
+        limit: INFINITE_PAGE_SIZE,
+        state: stateFilter,
+      });
+      let rows = result.runs;
+      const query = typeof params.quickSearch === "string" ? params.quickSearch.trim() : "";
+      if (query.length > 0) {
+        rows = [...applyQuickSearch(rows, query, columns, defaultMatchRow)];
+      }
+      yield {
+        rows,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey is deliberately extra: bumping it forces a refetch after retry/cancel actions
+    [adminApp, workflowId, stateFilter, columns, reloadKey],
   );
   const gridData = useDataSource({
     dataSource,
-    columns: runColumns,
+    columns,
     getRowId: getRunRowId,
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
@@ -372,13 +417,14 @@ export function WorkflowRunsGrid({ workflowId, maxHeight = 520 }: { workflowId: 
 
   return (
     <DataGrid
-      columns={runColumns}
+      columns={columns}
       rows={gridData.rows}
       getRowId={getRunRowId}
       isLoading={gridData.isLoading}
       isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
+      onRowClick={onOpenRun}
       paginationMode="infinite"
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
@@ -393,116 +439,75 @@ export function WorkflowRunsGrid({ workflowId, maxHeight = 520 }: { workflowId: 
 
 // ─── Code: always-editable panel with version selector ────────────────────
 
-export type WorkflowVersionsController = {
-  workflowId: string,
-  versions: MockVersion[],
-  selectedVersion: number,
-  setSelectedVersion: (version: number) => void,
-  selected: MockVersion,
-  saveNewVersion: (code: string) => number,
-  lastSavedVersion: number | null,
-};
-
-/**
- * Versions of a workflow plus any versions minted locally by the code panel
- * ("save creates a new version"). Local versions exist only in component
- * state — nothing is persisted.
- */
-export function useWorkflowVersions(workflowId: string): WorkflowVersionsController {
-  const [localVersions, setLocalVersions] = useState<MockVersion[]>([]);
-  const [lastSavedVersion, setLastSavedVersion] = useState<number | null>(null);
-
-  const baseVersions = getVersionsForWorkflow(workflowId);
-  const versions = useMemo(() => {
-    if (localVersions.length === 0) return baseVersions;
-    return [
-      ...localVersions.map((version, index) => ({ ...version, isCurrent: index === 0 })),
-      ...baseVersions.map((version) => ({ ...version, isCurrent: false })),
-    ];
-  }, [localVersions, baseVersions]);
-
-  const currentVersion = versions.find((version) => version.isCurrent);
-  if (currentVersion == null) {
-    throw new Error(`Workflow "${workflowId}" has no current version — mock data must mark exactly one version current`);
-  }
-
-  const [selectedVersion, setSelectedVersion] = useState(currentVersion.version);
-  // Adjust-state-during-render reset when the caller switches workflows.
-  const [lastWorkflowId, setLastWorkflowId] = useState(workflowId);
-  if (lastWorkflowId !== workflowId) {
-    setLastWorkflowId(workflowId);
-    setLocalVersions([]);
-    setLastSavedVersion(null);
-    setSelectedVersion(getVersionsForWorkflow(workflowId).find((version) => version.isCurrent)?.version ?? 1);
-  }
-
-  const selected = versions.find((version) => version.version === selectedVersion) ?? currentVersion;
-
-  const saveNewVersion = (code: string): number => {
-    const nextVersion = versions[0].version + 1;
-    const minted: MockVersion = {
-      version: nextVersion,
-      deployedAt: "just now",
-      activeRuns: 0,
-      sleepingRuns: 0,
-      pausedRuns: 0,
-      isCurrent: true,
-      code,
-    };
-    setLocalVersions((existing) => [minted, ...existing]);
-    setSelectedVersion(nextVersion);
-    setLastSavedVersion(nextVersion);
-    return nextVersion;
-  };
-
-  return { workflowId, versions, selectedVersion, setSelectedVersion, selected, saveNewVersion, lastSavedVersion };
-}
-
-function inFlightRunsOnVersion(version: MockVersion): number {
-  return version.activeRuns + version.sleepingRuns + version.pausedRuns;
-}
-
-function versionSelectorOptions(versions: MockVersion[]) {
+function versionSelectorOptions(versions: AdminWorkflowVersion[]) {
   return versions.map((version) => ({
     value: String(version.version),
-    label: `v${version.version}${version.isCurrent ? " (latest)" : ""} · deployed ${version.deployedAt}`,
+    label: `v${version.version}${version.isLatest ? " (latest)" : ""} · deployed ${fromNow(new Date(version.createdAtMillis))}`,
   }));
 }
 
+export function configureWorkflowsMonaco(monaco: Monaco) {
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    strict: true,
+    noEmit: true,
+    allowNonTsExtensions: true,
+  });
+  // Real validation is the sync-time compile on the backend; Monaco
+  // diagnostics are editor UX on top of the injected contract typedefs.
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: false,
+    noSyntaxValidation: false,
+  });
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_DTS, "file:///node_modules/@hexclave/workflows/index.d.ts");
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_AMBIENT_DTS, "file:///ambient-workflows-stdlib.d.ts");
+}
+
+type SaveAlert =
+  | { variant: "success", title: string, description: string }
+  | { variant: "error", title: string, description: string };
+
 /**
  * The code tab's panel. The latest version is editable in Monaco with a
- * Save button that enables on any change and mints the next version; older
- * versions render in the same editor read-only, with an upgrade-runs action
- * in the Save button's place. The deploy label in the editor header opens a
- * side-by-side diff viewer with its own pair of version selectors.
+ * Save button that mints the next version through the sync API (compile +
+ * manifest validation happen server-side; errors surface in the alert
+ * below). Older versions render read-only with an upgrade-runs action in the
+ * Save button's place. The deploy label opens a side-by-side diff viewer.
  */
-export function EditableCodePanel({ controller, height = 460 }: { controller: WorkflowVersionsController, height?: number }) {
+export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, height = 460 }: {
+  workflowId: string,
+  versions: AdminWorkflowVersion[],
+  onSynced: (result: AdminWorkflowSyncResult) => void,
+  onUpgraded: (result: AdminWorkflowUpgradeResult) => void,
+  height?: number,
+}) {
+  const adminApp = useAdminApp();
   const { resolvedTheme } = useTheme();
-  const [draft, setDraft] = useState(controller.selected.code);
+  const latest = versions.find((version) => version.isLatest) ?? versions[0];
+  const [selectedVersion, setSelectedVersion] = useState(latest.version);
+  const selected = versions.find((version) => version.version === selectedVersion) ?? latest;
+  const [draft, setDraft] = useState(selected.source);
+  const [saveAlert, setSaveAlert] = useState<SaveAlert | null>(null);
   const [diff, setDiff] = useState<{ baseVersion: number, targetVersion: number } | null>(null);
 
   // Reset the draft whenever the shown version changes (including right
   // after a save, when the selection jumps to the freshly minted version).
-  // The diff view only closes when the WORKFLOW changes — its version pair
-  // would dangle otherwise.
-  const draftKey = `${controller.workflowId}:${controller.selectedVersion}`;
+  const draftKey = `${workflowId}:${selected.version}`;
   const [lastDraftKey, setLastDraftKey] = useState(draftKey);
   if (lastDraftKey !== draftKey) {
-    const workflowChanged = !lastDraftKey.startsWith(`${controller.workflowId}:`);
     setLastDraftKey(draftKey);
-    setDraft(controller.selected.code);
-    if (workflowChanged) setDiff(null);
+    setDraft(selected.source);
     return null;
   }
 
-  const isCurrent = controller.selected.isCurrent;
-  const isDirty = isCurrent && draft !== controller.selected.code;
-  const nextVersion = controller.versions[0].version + 1;
-  const inFlight = inFlightRunsOnVersion(controller.selected);
+  const isLatest = selected.version === latest.version;
+  const isDirty = isLatest && draft !== selected.source;
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
 
-  const getVersionOrThrow = (versionNumber: number): MockVersion => {
-    const version = controller.versions.find((v) => v.version === versionNumber);
+  const getVersionOrThrow = (versionNumber: number): AdminWorkflowVersion => {
+    const version = versions.find((v) => v.version === versionNumber);
     if (version == null) {
       throw new Error(`Version v${versionNumber} not found — diff selectors only offer existing versions`);
     }
@@ -512,22 +517,13 @@ export function EditableCodePanel({ controller, height = 460 }: { controller: Wo
   const openDiff = () => {
     // Default comparison: the shown version against the one deployed right
     // before it (or against the next newer one when the oldest is shown).
-    const index = controller.versions.findIndex((version) => version.version === controller.selectedVersion);
-    const older = index + 1 < controller.versions.length ? controller.versions[index + 1] : null;
+    const index = versions.findIndex((version) => version.version === selectedVersion);
+    const older = index + 1 < versions.length ? versions[index + 1] : null;
     if (older != null) {
-      setDiff({ baseVersion: older.version, targetVersion: controller.selectedVersion });
+      setDiff({ baseVersion: older.version, targetVersion: selectedVersion });
     } else {
-      setDiff({ baseVersion: controller.selectedVersion, targetVersion: controller.versions[index - 1].version });
+      setDiff({ baseVersion: selectedVersion, targetVersion: versions[index - 1].version });
     }
-  };
-
-  const handleBeforeMount = (monaco: Monaco) => {
-    // The mock code imports packages Monaco can't resolve here; keep syntax
-    // checking but drop semantic validation so the editor isn't a sea of red.
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: true,
-      noSyntaxValidation: false,
-    });
   };
 
   if (diff != null) {
@@ -540,14 +536,14 @@ export function EditableCodePanel({ controller, height = 460 }: { controller: Wo
             <DesignSelectorDropdown
               value={String(diff.baseVersion)}
               onValueChange={(value) => setDiff({ baseVersion: Number(value), targetVersion: diff.targetVersion })}
-              options={versionSelectorOptions(controller.versions)}
+              options={versionSelectorOptions(versions)}
               size="sm"
             />
             <span className="text-xs text-muted-foreground">→</span>
             <DesignSelectorDropdown
               value={String(diff.targetVersion)}
               onValueChange={(value) => setDiff({ baseVersion: diff.baseVersion, targetVersion: Number(value) })}
-              options={versionSelectorOptions(controller.versions)}
+              options={versionSelectorOptions(versions)}
               size="sm"
             />
           </div>
@@ -558,16 +554,16 @@ export function EditableCodePanel({ controller, height = 460 }: { controller: Wo
 
         <div className={codePanelShellClasses}>
           <div className={codePanelHeaderClasses}>
-            <span className="font-mono text-xs">{getWorkflowFileName(controller.workflowId)}</span>
+            <span className="font-mono text-xs">{getWorkflowFileName(workflowId)}</span>
             <span className="text-[11px] text-muted-foreground">v{baseVersion.version} → v{targetVersion.version}</span>
           </div>
           <DiffEditor
             height={height}
             language="typescript"
-            original={baseVersion.code}
-            modified={targetVersion.code}
+            original={baseVersion.source}
+            modified={targetVersion.source}
             theme={monacoTheme}
-            beforeMount={handleBeforeMount}
+            beforeMount={configureWorkflowsMonaco}
             options={{
               readOnly: true,
               renderSideBySide: true,
@@ -587,65 +583,107 @@ export function EditableCodePanel({ controller, height = 460 }: { controller: Wo
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <DesignSelectorDropdown
-          value={String(controller.selectedVersion)}
-          onValueChange={(value) => controller.setSelectedVersion(Number(value))}
-          options={versionSelectorOptions(controller.versions)}
+          value={String(selectedVersion)}
+          onValueChange={(value) => setSelectedVersion(Number(value))}
+          options={versionSelectorOptions(versions)}
           size="sm"
         />
-        {isCurrent ? (
+        {isLatest ? (
           <DesignButton
             size="sm"
-            onClick={() => {
-              controller.saveNewVersion(draft);
-            }}
             disabled={!isDirty}
+            onClick={async () => {
+              setSaveAlert(null);
+              try {
+                const result = await adminApp.updateWorkflowSource(workflowId, draft);
+                if (result.created) {
+                  setSaveAlert({
+                    variant: "success",
+                    title: `v${result.version} deployed`,
+                    description: result.inFlightRunsOnOlderVersions > 0
+                      ? `New runs start on v${result.version}. ${result.inFlightRunsOnOlderVersions.toLocaleString()} in-flight run(s) stay pinned to older versions until you explicitly upgrade them.`
+                      : `New runs start on v${result.version}. In-flight runs stay pinned to the version they started on until you explicitly upgrade them.`,
+                  });
+                } else {
+                  setSaveAlert({
+                    variant: "success",
+                    title: "No changes",
+                    description: `The source is identical to v${result.version}; no new version was minted.`,
+                  });
+                }
+                setSelectedVersion(result.version);
+                onSynced(result);
+              } catch (error) {
+                setSaveAlert({
+                  variant: "error",
+                  title: "Deploy failed",
+                  description: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }}
           >
-            Save as v{nextVersion}
+            Save as v{latest.version + 1}
           </DesignButton>
-        ) : inFlight > 0 ? (
-          // Mock action — intentionally inert in this prototype.
-          <DesignButton size="sm" variant="outline">
-            Upgrade {inFlight.toLocaleString()} run{inFlight === 1 ? "" : "s"} to v{controller.versions[0].version}
+        ) : selected.inFlightRuns > 0 ? (
+          <DesignButton
+            size="sm"
+            variant="outline"
+            onClick={async () => {
+              setSaveAlert(null);
+              try {
+                const result = await adminApp.upgradeWorkflowRuns(workflowId, { toVersion: latest.version, fromVersion: selected.version });
+                onUpgraded(result);
+              } catch (error) {
+                setSaveAlert({
+                  variant: "error",
+                  title: "Upgrade failed",
+                  description: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }}
+          >
+            Upgrade {selected.inFlightRuns.toLocaleString()} run{selected.inFlightRuns === 1 ? "" : "s"} to v{latest.version}
           </DesignButton>
         ) : null}
       </div>
 
-      {controller.lastSavedVersion != null && controller.selectedVersion === controller.lastSavedVersion && !isDirty && (
+      {saveAlert != null && (
         <DesignAlert
-          variant="success"
-          title={`v${controller.lastSavedVersion} deployed`}
-          description="New runs start on this version. In-flight runs stay pinned to the version they started on until you explicitly upgrade them."
+          variant={saveAlert.variant}
+          title={saveAlert.title}
+          description={saveAlert.description}
         />
       )}
 
       <div className={codePanelShellClasses}>
         <div className={codePanelHeaderClasses}>
-          <span className="font-mono text-xs">{getWorkflowFileName(controller.workflowId)}</span>
-          {controller.versions.length > 1 ? (
+          <span className="font-mono text-xs">{getWorkflowFileName(workflowId)}</span>
+          {versions.length > 1 ? (
             <button
               type="button"
               onClick={openDiff}
               className="text-[11px] text-blue-600 transition-colors duration-150 hover:underline hover:transition-none dark:text-blue-400"
             >
-              {isCurrent ? "latest" : `v${controller.selectedVersion}`} · deployed {controller.selected.deployedAt}
+              {isLatest ? "latest" : `v${selectedVersion}`} · deployed {fromNow(new Date(selected.createdAtMillis))}
             </button>
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              {isCurrent ? "latest" : `v${controller.selectedVersion}`} · deployed {controller.selected.deployedAt}
+              {isLatest ? "latest" : `v${selectedVersion}`} · deployed {fromNow(new Date(selected.createdAtMillis))}
             </span>
           )}
         </div>
         <Editor
           height={height}
           language="typescript"
-          value={isCurrent ? draft : controller.selected.code}
+          path={`file:///workflows/${workflowId}.ts`}
+          value={isLatest ? draft : selected.source}
           onChange={(value) => {
-            if (isCurrent) setDraft(value ?? "");
+            if (isLatest) setDraft(value ?? "");
           }}
           theme={monacoTheme}
-          beforeMount={handleBeforeMount}
+          beforeMount={configureWorkflowsMonaco}
           options={{
-            readOnly: !isCurrent,
+            readOnly: !isLatest,
             minimap: { enabled: false },
             fontSize: 12,
             scrollBeyondLastLine: false,

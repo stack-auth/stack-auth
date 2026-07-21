@@ -1528,3 +1528,345 @@ model DeletedRow {
   @@index([tenancyId, tableName, sequenceId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
 }
+
+// ─── Workflows ──────────────────────────────────────────────────────────────
+//
+// Durable, event-triggered workflows (Hexclave Workflows v1). All tables are
+// fully multi-tenant even though v1 gates the feature to the internal
+// project — the internal-only restriction lives exclusively in the
+// ensureWorkflowsEnabled() gate helper, never in the schema.
+//
+// The engine is tick-driven like the email queue: a cron route claims due
+// work with FOR UPDATE SKIP LOCKED, invokes sandboxes (js-execution), and
+// records step results. See apps/backend/src/lib/workflows/.
+
+model WorkflowDefinition {
+  tenancyId String @db.Uuid
+
+  // User-chosen slug (e.g. "welcome-drip"). Deliberately not a uuid: it is
+  // the stable business identity of the workflow across versions, and the
+  // handle used by the management API (cancelRuns({ workflow: ... })).
+  workflowId String
+
+  displayName String
+
+  // Denormalized copy of the highest WorkflowVersion.version. The sync route
+  // is the only writer of versions, and it updates this in the same
+  // transaction that inserts the version row.
+  latestVersion Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, workflowId])
+}
+
+model WorkflowVersion {
+  tenancyId  String @db.Uuid
+  workflowId String
+  // Platform-assigned, monotonically increasing per workflow per tenancy
+  // (v1, v2, ...). Never author-declared.
+  version Int
+
+  // The raw source string as authored in the dashboard editor. The version
+  // hash is over (source, runtimeEnvVersion): a version is minted whenever
+  // either changes.
+  source     String
+  sourceHash String
+
+  // esbuild output of (runtime shim + user source), bundled at sync time and
+  // stored per version so that pinned runs execute byte-identical code
+  // forever. Only the pinned stdlib (date-fns) stays an external import,
+  // installed into the sandbox via nodeModules at the exact version recorded
+  // in runtimeEnvVersion's pin table.
+  compiledBundle String
+
+  // Version tag of the platform-provided runtime environment (runtime shim +
+  // stdlib pins) this version was synced against. Pinned runs execute
+  // against their recorded env; env upgrades apply to new versions only.
+  // See WORKFLOWS_RUNTIME_ENVS in apps/backend/src/lib/workflows/runtime-env.tsx.
+  runtimeEnvVersion String
+
+  // WorkflowManifest (packages/shared/src/interface/workflows.ts), extracted
+  // by executing the compiled bundle in manifest mode at sync time: triggers,
+  // hasRunKey, onConflict, usesStdlib. This is what event dispatch matches
+  // against, so trigger declarations are data here, never re-evaluated code.
+  manifest Json
+
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, workflowId, version])
+}
+
+enum WorkflowRunState {
+  QUEUED
+  RUNNING
+  SLEEPING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+// Which error channel a failure belongs to. USER failures (handler/step code
+// threw) surface in run history with their message; PLATFORM failures
+// (sandbox provisioning, engine bugs) are reported to our monitoring and
+// surface to users only as a generic platform error.
+enum WorkflowRunFailureKind {
+  USER
+  PLATFORM
+}
+
+model WorkflowRun {
+  tenancyId String @db.Uuid
+  // Platform UUID for history: runKeys recur over time, UUIDs never.
+  id String @default(uuid()) @db.Uuid
+
+  workflowId String
+  // The version this run is pinned to. Set at creation to the then-latest
+  // version; changed only by an explicit upgradeRuns action.
+  version Int
+
+  // Business key derived from the trigger event at run creation (before any
+  // execution). Unique per workflow among ACTIVE runs — see the isActive
+  // generated column below. Null for keyless runs. Capped at 512 chars at
+  // creation time to keep the unique index well below btree limits.
+  runKey String?
+
+  state WorkflowRunState @default(QUEUED)
+
+  // Generated column (see migration): TRUE while state is one of
+  // QUEUED/RUNNING/SLEEPING, NULL otherwise. Exists solely so the
+  // active-run-per-runKey uniqueness below can be an ordinary unique index
+  // (NULLs never collide), the same trick as Tenancy.hasNoOrganization.
+  // NOTE: Prisma only applies dbgenerated() as a DEFAULT; the migration
+  // hand-writes the actual GENERATED ALWAYS AS ... STORED column, and this
+  // declaration must be kept in sync with it.
+  isActive Boolean? @default(dbgenerated("CASE WHEN \"state\" IN ('QUEUED', 'RUNNING', 'SLEEPING') THEN TRUE ELSE NULL END"))
+
+  // The id of the WorkflowEvent that triggered this run. Not a foreign key
+  // on purpose: events are retention-pruned independently of runs, and the
+  // id must survive as a value (it keys the idempotency floor).
+  // triggerType/triggerPayload are denormalized snapshots because the
+  // handler replays against them on every invocation.
+  triggerEventId String? @db.Uuid
+  triggerType    String
+  // Envelope { ts_millis: number, data: <event payload> } — ts_millis is the
+  // trigger event's scheduledAt, which becomes event.ts in the handler.
+  triggerPayload Json
+
+  // The step the run is currently parked on: the sleep step while SLEEPING,
+  // the step being retried while QUEUED with attempts > 0, the last known
+  // executing step while RUNNING. Null at creation and after each recorded
+  // step. Used by upgrade divergence decisions (a sleeping run can only
+  // transfer to code that reaches the same sleep) and the dashboard.
+  currentStepKey String?
+
+  // When the run next needs engine attention: QUEUED = ready (or waiting out
+  // a retry backoff), SLEEPING = durable timer. Null while RUNNING (leased).
+  wakeAt DateTime?
+  // Lease for crash recovery: a RUNNING run whose lease expired is re-claimed
+  // by a later tick. Safe because of the idempotency floor.
+  leaseUntil DateTime?
+  // Fencing token, rotated on every claim: post-invocation transitions
+  // require the claimant's token, so a stale worker that lost its lease
+  // (paused mid-await past expiry) can no longer clobber the new claimant's
+  // state. Cancel/upgrade/retry deliberately do NOT check it — they act on
+  // state, and the engine's guarded transitions observe the result.
+  leaseToken String? @db.Uuid
+
+  // Attempt counter for the step currently being executed; reset to 0
+  // whenever a step result is recorded. 4 attempts max (1 + 3 retries).
+  currentStepAttempt Int @default(0)
+
+  // Running total of recorded step result sizes, to enforce the 4 MiB
+  // total-memoized-state-per-run limit without summing on every step.
+  memoTotalBytes Int @default(0)
+
+  failureKind  WorkflowRunFailureKind?
+  errorSummary String?
+
+  // Machine-readable diagnostic from the most recent skipped upgradeRuns
+  // attempt (expected vs found step graph). Cleared on successful upgrade.
+  lastUpgradeDivergence Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  stepResults  WorkflowStepResult[]
+  stepAttempts WorkflowStepAttempt[]
+
+  @@id([tenancyId, id])
+  // runKey/onConflict enforcement: at most one ACTIVE run per (workflow,
+  // runKey). isActive is NULL for terminal runs and runKey is NULL for
+  // keyless runs, so neither ever conflicts.
+  @@unique([tenancyId, workflowId, runKey, isActive], map: "WorkflowRun_active_run_key")
+  // Run-list queries (dashboard/API): filter by workflow + state, newest first.
+  @@index([tenancyId, workflowId, state, createdAt(sort: Desc)], map: "WorkflowRun_list_idx")
+  // Engine due-work scan (cross-tenancy): QUEUED/SLEEPING by wakeAt, plus
+  // expired-lease recovery on RUNNING by leaseUntil.
+  @@index([state, wakeAt], map: "WorkflowRun_due_idx")
+  @@index([state, leaseUntil], map: "WorkflowRun_lease_idx")
+  // Version fan-out ("214 runs on v7, 3 on v8") per workflow.
+  @@index([tenancyId, workflowId, version, state], map: "WorkflowRun_version_idx")
+}
+
+enum WorkflowStepKind {
+  RUN
+  SLEEP
+}
+
+model WorkflowStepResult {
+  tenancyId String @db.Uuid
+  runId     String @db.Uuid
+
+  // The memoization key: the user-written step id, suffixed with "#<n>" by
+  // the runtime when the same id executes more than once (loop counter).
+  // CONTRACT: a step key names a recorded fact; matching is by key only,
+  // order-independent.
+  stepKey String
+
+  // The user-written step id without the loop counter suffix (for display).
+  stepId String
+  kind   WorkflowStepKind
+
+  // RUN: the JSON return value of the step callback (<= 1 MiB, enforced with
+  // an explicit error). SLEEP: { until: <ISO timestamp> }.
+  result          Json?
+  resultSizeBytes Int
+
+  // How many attempts it took to record this fact (1 = first try).
+  attempts Int
+  // Which workflow version's code executed this step (observability; differs
+  // from the run's current version after an upgrade).
+  executedAtVersion Int
+  elapsedMs         Int?
+
+  createdAt DateTime @default(now())
+
+  run WorkflowRun @relation(fields: [tenancyId, runId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, runId, stepKey])
+}
+
+enum WorkflowStepAttemptOutcome {
+  SUCCEEDED
+  FAILED
+}
+
+// One row per sandbox invocation attempt of a step, for observability
+// (sandbox logs + error history per attempt). Kept separate from
+// WorkflowStepResult because failed attempts are history, not facts.
+model WorkflowStepAttempt {
+  tenancyId String @db.Uuid
+  runId     String @db.Uuid
+  stepKey   String
+  attempt   Int
+
+  stepId  String
+  outcome WorkflowStepAttemptOutcome
+  // { name, message, stack } of the user-code error if FAILED with
+  // failureKind USER; a generic marker for PLATFORM failures.
+  error       Json?
+  failureKind WorkflowRunFailureKind?
+  // console output captured inside the sandbox by the runtime shim, capped
+  // at 64 KiB per attempt.
+  logs String?
+
+  startedAt  DateTime
+  finishedAt DateTime
+  createdAt  DateTime @default(now())
+
+  run WorkflowRun @relation(fields: [tenancyId, runId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, runId, stepKey, attempt])
+}
+
+// The workflow event outbox. Platform events are inserted transactionally
+// with the entity mutation at the webhook call sites (at-least-once from our
+// own tables); custom events via workflows.send(); schedule occurrences are
+// materialized by the engine; lifecycle events (workflow.run.*) are inserted
+// on run state transitions.
+model WorkflowEvent {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  // Wire type: platform events are unprefixed ("user.created"), custom
+  // events are always "custom.*", lifecycle events are "workflow.run.*",
+  // schedule occurrences are "schedule".
+  type    String
+  payload Json
+
+  // For schedule occurrences: the cron tick's nominal time (may be in the
+  // past when catching up after downtime). Everything else: creation time.
+  // The outbox processes events in ascending scheduledAt order, which is
+  // what guarantees delayed-never-skipped schedule catch-up.
+  scheduledAt DateTime  @default(now())
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, id])
+  // Outbox scan: unprocessed events in scheduledAt order. processedAt is the
+  // leading column so the scan stays cheap as processed events accumulate
+  // (IS NULL rows are contiguous in the index).
+  @@index([processedAt, scheduledAt], map: "WorkflowEvent_outbox_idx")
+  // Retention pruning + per-tenancy event views.
+  @@index([tenancyId, createdAt], map: "WorkflowEvent_tenancy_created_idx")
+}
+
+// Cursor for schedule() trigger materialization. One row per schedule
+// trigger per workflow; scheduleKey is "<cron>|<timezone>" so editing a
+// schedule starts a fresh cursor (no retroactive catch-up of the new
+// expression).
+model WorkflowScheduleCursor {
+  tenancyId   String @db.Uuid
+  workflowId  String
+  scheduleKey String
+
+  lastMaterializedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, workflowId, scheduleKey])
+}
+
+// Per-environment key/value secrets, injected as env vars into the workflow
+// sandbox at invocation. Never included in bundles or run state.
+model WorkflowSecret {
+  tenancyId String @db.Uuid
+  // The env var name, e.g. "SLACK_WEBHOOK_URL".
+  key   String
+  value String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, key])
+}
+
+// Generic idempotency-key records backing the x-hexclave-idempotency-key
+// request header (see smart-route-handler). Introduced for the workflows
+// idempotency floor: first-party actions inside steps are keyed by trigger
+// event + step id, so retries/upgrades/restarts never double-fire them.
+// responseStatus/responseBody are null while the original request is still
+// executing ("pending"); a concurrent duplicate gets a 409.
+model IdempotencyKeyRecord {
+  tenancyId String @db.Uuid
+  key       String
+
+  // Hash of (method, path, body) — reusing a key with a different request is
+  // an explicit error rather than a silent wrong-response replay.
+  requestHash String
+
+  responseStatus Int?
+  responseBody   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([tenancyId, key])
+  // Retention pruning (records are dead weight after ~30 days).
+  @@index([createdAt], map: "IdempotencyKeyRecord_createdAt_idx")
+}
