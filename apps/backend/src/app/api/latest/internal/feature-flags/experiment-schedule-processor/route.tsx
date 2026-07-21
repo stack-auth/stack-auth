@@ -1,4 +1,5 @@
 import { processScheduledExperimentRuns } from "@/lib/feature-flags/experiment-runs";
+import { cleanupExpiredFeatureFlagExposureReceipts } from "@/lib/feature-flags/exposure-receipts";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString, yupTuple } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
@@ -32,6 +33,7 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       started: yupNumber().defined(),
       completed: yupNumber().defined(),
+      exposure_receipts_deleted: yupNumber().defined(),
     }).defined(),
   }),
   handler: async ({ headers, auth }) => {
@@ -42,10 +44,11 @@ export const GET = createSmartRouteHandler({
     }
 
     const result = await processScheduledExperimentRuns({ now: new Date(), batchLimit: BATCH_LIMIT });
+    const exposureReceiptsDeleted = await cleanupExpiredFeatureFlagExposureReceipts(new Date());
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { started: result.started, completed: result.completed },
+      body: { started: result.started, completed: result.completed, exposure_receipts_deleted: exposureReceiptsDeleted },
     };
   },
 });

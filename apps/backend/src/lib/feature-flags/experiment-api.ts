@@ -4,7 +4,8 @@ import { KnownErrors } from "@hexclave/shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import type { Tenancy } from "@/lib/tenancies";
 import type { ExperimentActor } from "./experiment-runs";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { isJsonSerializable } from "@hexclave/shared/dist/utils/json";
 
 /**
  * Shared wire-format helpers for the internal experiment-run routes. Kept in
@@ -51,6 +52,9 @@ const RUN_STATE_TO_API = {
 } as const;
 
 export function experimentRunToApiFormat(run: ExperimentRun) {
+  if (!isJsonSerializable(run.configSnapshot)) {
+    throw new HexclaveAssertionError(`Experiment run ${run.id} contains a non-JSON config snapshot`);
+  }
   return {
     id: run.id,
     experiment_id: run.experimentId,

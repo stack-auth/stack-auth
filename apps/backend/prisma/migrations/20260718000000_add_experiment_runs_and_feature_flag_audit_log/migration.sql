@@ -123,6 +123,7 @@ CREATE UNIQUE INDEX "FeatureFlagExposureReceipt_project_event_key" ON "FeatureFl
 CREATE UNIQUE INDEX "FeatureFlagExposureReceipt_project_evaluation_key" ON "FeatureFlagExposureReceipt"("projectId", "evaluationId");
 CREATE INDEX "FeatureFlagExposureReceipt_ingestionNonce_idx" ON "FeatureFlagExposureReceipt"("ingestionNonce");
 CREATE INDEX "FeatureFlagExposureReceipt_processingStartedAt_idx" ON "FeatureFlagExposureReceipt"("processingStartedAt");
+CREATE INDEX "FeatureFlagExposureReceipt_createdAt_idx" ON "FeatureFlagExposureReceipt"("createdAt");
 CREATE INDEX "FeatureFlagExposureReceipt_project_createdAt_idx" ON "FeatureFlagExposureReceipt"("projectId", "branchId", "createdAt" DESC);
 
 CREATE UNIQUE INDEX "AnalyticsEventBatchReceipt_project_branch_batch_key" ON "AnalyticsEventBatchReceipt"("projectId", "branchId", "batchId");

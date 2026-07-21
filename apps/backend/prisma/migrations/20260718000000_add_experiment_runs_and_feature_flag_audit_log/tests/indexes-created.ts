@@ -43,6 +43,7 @@ export const postMigration = async (sql: Sql) => {
     'FeatureFlagExposureReceipt_project_evaluation_key',
     'FeatureFlagExposureReceipt_ingestionNonce_idx',
     'FeatureFlagExposureReceipt_processingStartedAt_idx',
+    'FeatureFlagExposureReceipt_createdAt_idx',
     'FeatureFlagExposureReceipt_project_createdAt_idx',
     'AnalyticsEventBatchReceipt_project_branch_batch_key',
     'AnalyticsEventBatchReceipt_processingStartedAt_idx',

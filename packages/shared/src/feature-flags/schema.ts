@@ -407,17 +407,27 @@ export function parseFeatureFlagsConfig(value: unknown): FeatureFlagsConfig {
   return value;
 }
 
+function getSchemaCrossReferenceErrors(value: unknown): string[] {
+  // Yup runs object-level tests for absent optional subtrees too. Shape/type
+  // errors are handled by the object schema; cross-reference validation only
+  // applies once the value has the expected record shape.
+  return isFeatureFlagsConfig(value) ? getFeatureFlagsConfigErrors(value) : [];
+}
+
 export const featureFlagsConfigSchema = yupObject({
   flags: yupRecord(configIdSchema, flagSchema),
   segments: yupRecord(configIdSchema, segmentSchema),
   holdouts: yupRecord(configIdSchema, holdoutSchema),
   mutualExclusionGroups: yupRecord(configIdSchema, mutualExclusionGroupSchema),
   experiments: yupRecord(configIdSchema, experimentSchema),
+}).test("feature-flags-cross-references", "Feature flag definitions contain invalid references", function (value) {
+  const errors = getSchemaCrossReferenceErrors(value);
+  return errors.length === 0 || this.createError({ message: errors.join("\n") });
 });
 
 import.meta.vitest?.test("feature flag schema validates operator types, references, and basis points", async ({ expect }) => {
   await expect(featureFlagsConfigSchema.validate({
-    flags: { flag: { key: "checkout", type: "boolean", variants: { on: { value: true }, off: { value: false } }, fallbackVariantKey: "off", rules: { all: { variantWeights: { on: 5_000, off: 5_000 } } } } },
+    flags: { flag: { key: "checkout", type: "boolean", allocationSalt: "checkout", variants: { on: { value: true }, off: { value: false } }, fallbackVariantKey: "off", rules: { all: { variantWeights: { on: 5_000, off: 5_000 } } } } },
   }, { strict: true })).resolves.toBeDefined();
   await expect(conditionSchema.validate({ attribute: "user.plan", operator: "not_in", value: "pro" }, { strict: true })).rejects.toThrow("Condition value does not match its operator");
   await expect(conditionSchema.validate({ attribute: "context.version", operator: "semver_gt", value: "1.0.0-01" }, { strict: true })).rejects.toThrow("Condition value does not match its operator");

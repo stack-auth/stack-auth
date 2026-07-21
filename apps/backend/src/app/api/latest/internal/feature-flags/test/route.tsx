@@ -7,10 +7,18 @@ import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNu
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { withActiveExperimentRuns } from "@/lib/feature-flags/active-experiments";
 
+function hasAtMostProperties(value: object | null | undefined, maximum: number): boolean {
+  return value == null || Object.keys(value).length <= maximum;
+}
+
+function hasAtMostEncodedBytes(value: unknown, maximum: number): boolean {
+  return value == null || new TextEncoder().encode(JSON.stringify(value)).byteLength <= maximum;
+}
+
 const jsonValueSchema = yupMixed<Exclude<FeatureFlagValue, null>>().nullable().test("json", "Value must be JSON serializable", isFeatureFlagValue);
 const contextSchema = yupRecord(yupString().min(1).max(128), jsonValueSchema.optional())
-  .test("bounded", "Context may contain at most 50 properties", (value) => Object.keys(value).length <= 50)
-  .test("size", "Context may contain at most 16384 bytes", (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= 16_384);
+  .test("bounded", "Context may contain at most 50 properties", (value) => hasAtMostProperties(value, 50))
+  .test("size", "Context may contain at most 16384 bytes", (value) => hasAtMostEncodedBytes(value, 16_384));
 const resultSchema = yupObject({
   flag_key: yupString().defined(), value: jsonValueSchema.defined(), variant_key: yupString().nullable().defined(), reason: yupString().defined(),
   rule_id: yupString().nullable().defined(), config_version: yupString().defined(), experiment_id: yupString().nullable().defined(), experiment_run_id: yupString().nullable().defined(), exposure_token: yupString().nullable().defined(),
@@ -25,7 +33,7 @@ export const POST = createSmartRouteHandler({
       fallbacks: yupRecord(yupString().min(1).max(128), jsonValueSchema.optional()).optional(),
       distinct_id: yupString().min(1).max(256).optional(), user_id: yupString().min(1).max(256).optional(), team_id: yupString().min(1).max(256).optional(),
       context: contextSchema.optional(), user: contextSchema.optional(), team: contextSchema.optional(),
-      segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("bounded", "Segments may contain at most 100 properties", (value) => Object.keys(value).length <= 100).optional(),
+      segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("bounded", "Segments may contain at most 100 properties", (value) => hasAtMostProperties(value, 100)).optional(),
     }).defined(),
   }),
   response: yupObject({ statusCode: yupNumber().oneOf([200]).defined(), bodyType: yupString().oneOf(["json"]).defined(), body: yupObject({ results: yupRecord(yupString(), resultSchema).defined() }).defined() }),

@@ -85,6 +85,21 @@ describe("FeatureFlagController", () => {
     expect(evaluate).toHaveBeenCalledTimes(2);
   });
 
+  it("evicts old request caches instead of growing with every identity and context", async () => {
+    const evaluate = vi.fn(async (_identity: string, request: FeatureFlagEvaluateRequest) => responseFor(request));
+    const controller = new FeatureFlagController<string>({
+      evaluate,
+      sendExposures: async () => {},
+      cacheMaxEntries: 2,
+    });
+
+    for (const key of ["one", "two", "three", "one"]) {
+      await controller.getFeatureFlag({ cacheKey: "user-1", value: "session-1" }, key, false, { exposure: "none" });
+    }
+
+    expect(evaluate).toHaveBeenCalledTimes(4);
+  });
+
   it("fails loudly when the server omits a requested key", async () => {
     const controller = new FeatureFlagController<string>({
       evaluate: async () => ({ results: {} }),
@@ -149,7 +164,6 @@ describe("FeatureFlagController", () => {
       evaluate: async (_identity, request) => {
         const response = responseFor(request);
         const checkout = response.results.checkout;
-        if (checkout == null) throw new Error("Expected checkout result.");
         checkout.exposure_token = `token-${request.team_id ?? "user"}`;
         return response;
       },
@@ -164,6 +178,22 @@ describe("FeatureFlagController", () => {
     await controller.getFeatureFlagDetails(identity, "checkout", false, { teamId: "team-b" });
 
     expect(sent).toEqual(["token-team-a", "token-team-b"]);
+  });
+
+  it("resolves analytics team context after evaluation without a React effect", async () => {
+    const resolvedTeamIds: Array<string | null> = [];
+    const controller = new FeatureFlagController<string>({
+      evaluate: async (_identity, request) => responseFor(request),
+      sendExposures: async () => {},
+      onTeamContextResolved: (teamId) => resolvedTeamIds.push(teamId),
+    });
+    const identity = { cacheKey: "user-1", value: "session-1" };
+
+    await controller.getFeatureFlagDetails(identity, "team-flag", false, { teamId: "team-a" });
+    await controller.getFeatureFlagDetails(identity, "user-flag", false);
+    await controller.getFeatureFlagDetails(identity, "team-flag", false, { teamId: "team-a" });
+
+    expect(resolvedTeamIds).toEqual(["team-a", null, "team-a"]);
   });
 
   it("allows a failed exposure to retry", async () => {

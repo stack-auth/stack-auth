@@ -3,6 +3,8 @@ import { userSpecifiedIdSchema, yupArray, yupMixed, yupNumber, yupObject, yupRec
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { createHash } from "node:crypto";
 import * as yup from "yup";
+import type { Json } from "@hexclave/shared/dist/utils/json";
+import { isJsonSerializable } from "@hexclave/shared/dist/utils/json";
 
 /**
  * Backend-local wire schema for experiment definitions.
@@ -152,7 +154,7 @@ export type ExperimentConfig = {
   assignment_unit: "user" | "team",
   traffic_allocation_basis_points: number,
   control_variant_id: string,
-  variants: Record<string, { weight_basis_points: number, flag_value: unknown }>,
+  variants: Record<string, { weight_basis_points: number, flag_value: Json }>,
   primary_metric: ExperimentMetricDefinition,
   secondary_metrics: ExperimentMetricDefinition[],
   guardrail_metrics: ExperimentMetricDefinition[],
@@ -215,6 +217,17 @@ async function validateExperimentConfigInner(value: unknown): Promise<Experiment
     throw new yup.ValidationError("schedule.end_at_millis must be after schedule.start_at_millis", value, "schedule");
   }
 
+  const variants: ExperimentConfig["variants"] = {};
+  for (const [variantId, variant] of variantEntries) {
+    if (!isJsonSerializable(variant.flag_value)) {
+      throw new yup.ValidationError(`Variant ${JSON.stringify(variantId)} flag_value must be JSON-serializable`, value, `variants.${variantId}.flag_value`);
+    }
+    variants[variantId] = {
+      weight_basis_points: variant.weight_basis_points,
+      flag_value: variant.flag_value,
+    };
+  }
+
   const primaryMetric = await validateExperimentMetric(base.primary_metric);
   const secondaryMetrics = await Promise.all((base.secondary_metrics ?? []).map(validateExperimentMetric));
   const guardrailMetrics = await Promise.all((base.guardrail_metrics ?? []).map(validateExperimentMetric));
@@ -230,10 +243,7 @@ async function validateExperimentConfigInner(value: unknown): Promise<Experiment
     assignment_unit: base.assignment_unit,
     traffic_allocation_basis_points: base.traffic_allocation_basis_points,
     control_variant_id: base.control_variant_id,
-    variants: Object.fromEntries(variantEntries.map(([id, v]) => [id, {
-      weight_basis_points: v.weight_basis_points,
-      flag_value: v.flag_value,
-    }])),
+    variants,
     primary_metric: primaryMetric,
     secondary_metrics: secondaryMetrics,
     guardrail_metrics: guardrailMetrics,

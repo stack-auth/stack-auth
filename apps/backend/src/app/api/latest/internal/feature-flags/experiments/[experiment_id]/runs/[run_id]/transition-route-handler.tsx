@@ -4,6 +4,7 @@ import type { ExperimentActor } from "@/lib/feature-flags/experiment-runs";
 import type { Tenancy } from "@/lib/tenancies";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, userSpecifiedIdSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 /**
  * All four lifecycle transition endpoints (start/pause/resume/complete) plus
@@ -37,14 +38,10 @@ export function createExperimentRunTransitionHandler(options: {
         experiment_id: userSpecifiedIdSchema("experimentId").defined(),
         run_id: yupString().uuid().defined(),
       }).defined(),
-      body: options.configRequired
-        ? yupObject({
-          // Deep-validated by validateExperimentConfig inside the lib call.
-          experiment_config: yupMixed().defined(),
-        }).defined()
-        : yupObject({
-          ...options.acceptsConfig ? { experiment_config: yupMixed().optional() } : {},
-        }).nullable().optional(),
+      body: yupObject({
+        // Deep-validated by validateExperimentConfig inside the lib call.
+        experiment_config: yupMixed().optional(),
+      }).nullable().optional(),
     }),
     response: yupObject({
       statusCode: yupNumber().oneOf([200]).defined(),
@@ -54,6 +51,9 @@ export function createExperimentRunTransitionHandler(options: {
     async handler({ auth, params, body }) {
       ensureAnalyticsInstalledForExperiments(auth.tenancy);
       const config = options.acceptsConfig ? (body ?? {}).experiment_config : undefined;
+      if (options.configRequired && config === undefined) {
+        throw new StatusError(StatusError.BadRequest, "experiment_config is required");
+      }
       const run = await options.transition({
         tenancy: auth.tenancy,
         experimentId: params.experiment_id,

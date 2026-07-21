@@ -11,6 +11,7 @@ import {
   isStrictSemver,
   serializeExperimentConfig,
   serializeFlagConfig,
+  segmentConfigUpdates,
   toExperimentRunConfig,
   parseFeatureFlagsSection,
   percentToBps,
@@ -265,6 +266,17 @@ describe("validateFlagConfig", () => {
   });
 });
 
+describe("serializeFlagConfig", () => {
+  it("preserves the mutual exclusion group selected in the visual editor", () => {
+    expect(serializeFlagConfig(
+      "flag_checkout_redesign",
+      "checkout-redesign",
+      makeFlag({ mutualExclusionGroup: "checkout-tests" }),
+      makeSection(),
+    )).toMatchObject({ mutualExclusionGroupId: "checkout-tests" });
+  });
+});
+
 describe("validateExperimentConfig", () => {
   it("accepts a well-formed experiment", () => {
     expect(validateExperimentConfig(makeExperiment(), makeSection())).toEqual([]);
@@ -346,12 +358,13 @@ describe("parseFeatureFlagsSection", () => {
     const section = parseFeatureFlagsSection({
       featureFlags: {
         flags: { [flag.internalId]: serializeFlagConfig(flag.internalId, "checkout-redesign", flag, makeSection()) },
-        segments: { "beta-testers": { displayName: "Beta testers", conditions: { beta: { attribute: "context.beta", operator: "eq", value: "true" } } } },
+        segments: { "beta-testers": { displayName: "Beta testers", match: "any", conditions: { beta: { attribute: "context.beta", operator: "eq", value: "true" } } } },
         experiments: { "experiment-1": serializeExperimentConfig("experiment-1", experiment, makeSection()) },
       },
     });
     expect(section.flags.get("checkout-redesign")).toEqual(flag);
     expect(section.segments.get("beta-testers")?.displayName).toBe("Beta testers");
+    expect(section.segments.get("beta-testers")?.match).toBe("any");
     expect(section.experiments.get("experiment-1")).toEqual(experiment);
   });
 
@@ -360,6 +373,24 @@ describe("parseFeatureFlagsSection", () => {
       .toThrowError(/featureFlags\.flags\.bad\.displayName/);
     expect(() => parseFeatureFlagsSection({ featureFlags: "nope" }))
       .toThrowError(/featureFlags/);
+  });
+});
+
+describe("segmentConfigUpdates", () => {
+  it("serializes the visual segment editor without replacing sibling segments", () => {
+    expect(segmentConfigUpdates("beta-testers", {
+      displayName: "Beta testers",
+      match: "all",
+      conditions: [{ attribute: "user.email", operator: "ends_with", value: "@example.com" }],
+    })).toEqual({
+      "featureFlags.segments.beta-testers": {
+        displayName: "Beta testers",
+        match: "all",
+        conditions: {
+          condition_1: { attribute: "user.email", operator: "ends_with", value: "@example.com" },
+        },
+      },
+    });
   });
 });
 

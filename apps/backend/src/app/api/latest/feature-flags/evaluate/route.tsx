@@ -14,19 +14,27 @@ const MAX_FLAG_KEYS = 50;
 const MAX_CONTEXT_PROPERTIES = 50;
 const MAX_CONTEXT_BYTES = 16_384;
 
+function hasAtMostProperties(value: object | null | undefined, maximum: number): boolean {
+  return value == null || Object.keys(value).length <= maximum;
+}
+
+function hasAtMostEncodedBytes(value: unknown, maximum: number): boolean {
+  return value == null || new TextEncoder().encode(JSON.stringify(value)).byteLength <= maximum;
+}
+
 const jsonValueSchema = yupMixed<Exclude<FeatureFlagValue, null>>()
   .nullable()
   .test("json", "Value must be JSON serializable", isFeatureFlagValue);
 
 const boundedContextSchema = yupRecord(yupString().min(1).max(128), jsonValueSchema.optional())
-  .test("context-properties", `Context may contain at most ${MAX_CONTEXT_PROPERTIES} properties`, (value) => Object.keys(value).length <= MAX_CONTEXT_PROPERTIES)
-  .test("context-size", `Context may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES);
+  .test("context-properties", `Context may contain at most ${MAX_CONTEXT_PROPERTIES} properties`, (value) => hasAtMostProperties(value, MAX_CONTEXT_PROPERTIES))
+  .test("context-size", `Context may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => hasAtMostEncodedBytes(value, MAX_CONTEXT_BYTES));
 
 const evaluationBodySchema = yupObject({
   flag_keys: yupArray(yupString().min(1).max(128).defined()).defined().min(1).max(MAX_FLAG_KEYS),
   fallbacks: yupRecord(yupString().min(1).max(128), jsonValueSchema.optional())
-    .test("fallback-count", `Fallbacks may contain at most ${MAX_FLAG_KEYS} properties`, (value) => Object.keys(value).length <= MAX_FLAG_KEYS)
-    .test("fallback-size", `Fallbacks may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_CONTEXT_BYTES)
+    .test("fallback-count", `Fallbacks may contain at most ${MAX_FLAG_KEYS} properties`, (value) => hasAtMostProperties(value, MAX_FLAG_KEYS))
+    .test("fallback-size", `Fallbacks may contain at most ${MAX_CONTEXT_BYTES} bytes`, (value) => hasAtMostEncodedBytes(value, MAX_CONTEXT_BYTES))
     .optional(),
   distinct_id: yupString().min(1).max(256).optional(),
   user_id: yupString().min(1).max(256).optional(),
@@ -34,7 +42,7 @@ const evaluationBodySchema = yupObject({
   context: boundedContextSchema.optional(),
   user: boundedContextSchema.optional(),
   team: boundedContextSchema.optional(),
-  segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("segment-count", "Segments may contain at most 100 properties", (value) => Object.keys(value).length <= 100).optional(),
+  segments: yupRecord(yupString().min(1).max(128), yupBoolean().oneOf([true])).test("segment-count", "Segments may contain at most 100 properties", (value) => hasAtMostProperties(value, 100)).optional(),
 });
 
 const evaluationResultSchema = yupObject({
@@ -161,6 +169,7 @@ export const POST = createSmartRouteHandler({
         email: verifiedEmail,
         primary_email: verifiedEmail,
         primary_email_verified: auth.user.primary_email_verified,
+        signedUpAt: new Date(auth.user.signed_up_at_millis).toISOString(),
       },
       team: selectedTeamId === undefined ? undefined : { id: selectedTeamId },
       context: body.context,

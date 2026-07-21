@@ -10,6 +10,7 @@ const MAX_CONTEXT_KEY_LENGTH = 64;
 const MAX_CONTEXT_BYTES = 8_192;
 const MAX_CONTEXT_DEPTH = 5;
 const MAX_COMPLETED_EXPOSURE_KEYS = 10_000;
+const DEFAULT_MAX_CACHE_ENTRIES = 1_000;
 
 export type FeatureFlagExposureMode = "auto" | "manual" | "none";
 
@@ -52,11 +53,28 @@ export type FeatureFlagControllerDependencies<TIdentity> = {
     identity: TIdentity,
     exposures: { event_id: string, exposure_token: string, exposed_at_ms: number }[],
   ) => Promise<void>,
+  onTeamContextResolved?: (teamId: string | null) => void,
   cacheTtlMillis?: number,
+  cacheMaxEntries?: number,
   now?: () => number,
 };
 
 type CachedPromise<T> = { promise: Promise<T>, createdAt: number };
+
+function setBoundedMap<K, V>(map: Map<K, V>, key: K, value: V, maximumSize: number): void {
+  if (!Number.isInteger(maximumSize) || maximumSize < 1) {
+    throw new HexclaveAssertionError("Feature flag cache size must be a positive integer.");
+  }
+  // Refresh insertion order when replacing a key so frequently used entries
+  // are not the first evicted merely because they were created early.
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > maximumSize) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) throw new HexclaveAssertionError("A non-empty feature flag cache did not yield an oldest key.");
+    map.delete(oldestKey);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -296,9 +314,16 @@ export class FeatureFlagController<TIdentity> {
     requests: readonly FeatureFlagRequest[],
   ): Promise<Map<string, FeatureFlagDetails<Json>>> {
     validateRequests(requests);
+    const withResolvedTeamContext = (result: Map<string, FeatureFlagDetails<Json>>) => {
+      // Resolve analytics context after evaluation rather than during React
+      // render. Apply it for cache hits too: another flag call may have changed
+      // the active team since this result was first evaluated.
+      this._dependencies.onTeamContextResolved?.(requests.find((request) => request.options?.teamId != null)?.options?.teamId ?? null);
+      return result;
+    };
     const resultKey = `${identity.cacheKey}:${canonicalFeatureFlagRequestKey(requests)}`;
     const cachedResult = this._resultPromises.get(resultKey);
-    if (cachedResult != null && this._isFresh(cachedResult)) return cachedResult.promise;
+    if (cachedResult != null && this._isFresh(cachedResult)) return cachedResult.promise.then(withResolvedTeamContext);
     this._resultPromises.delete(resultKey);
     const networkKey = `${identity.cacheKey}:${canonicalNetworkRequestKey(requests)}`;
     const cachedEvaluation = this._evaluationPromises.get(networkKey);
@@ -306,8 +331,8 @@ export class FeatureFlagController<TIdentity> {
       ? cachedEvaluation.promise
       : this._evaluateWire(identity, requests, networkKey);
     const resultPromise = evaluationPromise.then(async (response) => await this._mapResponse(identity, requests, response));
-    this._resultPromises.set(resultKey, { promise: resultPromise, createdAt: this._now() });
-    return resultPromise;
+    setBoundedMap(this._resultPromises, resultKey, { promise: resultPromise, createdAt: this._now() }, this._maxCacheEntries());
+    return resultPromise.then(withResolvedTeamContext);
   }
 
   private _evaluateWire(
@@ -316,7 +341,7 @@ export class FeatureFlagController<TIdentity> {
     requestKey: string,
   ): Promise<FeatureFlagEvaluateResponse<Json>> {
     const evaluationPromise = this._dependencies.evaluate(identity.value, toWireRequest(requests));
-    this._evaluationPromises.set(requestKey, { promise: evaluationPromise, createdAt: this._now() });
+    setBoundedMap(this._evaluationPromises, requestKey, { promise: evaluationPromise, createdAt: this._now() }, this._maxCacheEntries());
     return evaluationPromise;
   }
 
@@ -329,6 +354,10 @@ export class FeatureFlagController<TIdentity> {
     return this._dependencies.now?.() ?? performance.now();
   }
 
+  private _maxCacheEntries(): number {
+    return this._dependencies.cacheMaxEntries ?? DEFAULT_MAX_CACHE_ENTRIES;
+  }
+
   private async _mapResponse(
     identity: FeatureFlagIdentity<TIdentity>,
     requests: readonly FeatureFlagRequest[],
@@ -338,8 +367,10 @@ export class FeatureFlagController<TIdentity> {
 
     const results = new Map<string, FeatureFlagDetails<Json>>();
     for (const request of [...requests].sort((left, right) => stringCompare(left.key, right.key))) {
+      if (!Object.prototype.hasOwnProperty.call(response.results, request.key)) {
+        throw new HexclaveAssertionError(`Feature flag evaluation response omitted ${JSON.stringify(request.key)}.`);
+      }
       const wireResult = response.results[request.key];
-      if (wireResult == null) throw new HexclaveAssertionError(`Feature flag evaluation response omitted ${JSON.stringify(request.key)}.`);
       const details = fromWireResult({ ...wireResult, value: wireResult.value });
       if (details.exposureToken != null) {
         this._teamIdByDetails.set(details, request.options?.teamId ?? null);
@@ -360,7 +391,7 @@ export class FeatureFlagController<TIdentity> {
         if (key.startsWith(`${identity.cacheKey}:`)) this._resultPromises.delete(key);
       }
     }
-    this._configVersionByIdentity.set(identity.cacheKey, configVersion);
+    setBoundedMap(this._configVersionByIdentity, identity.cacheKey, configVersion, this._maxCacheEntries());
 
     const automatic = [...results.values()].filter((result) => {
       const request = requests.find((candidate) => candidate.key === result.flagKey);
@@ -405,7 +436,7 @@ export class FeatureFlagController<TIdentity> {
     if (freshEntries.length > 0) batches.add({ entries: freshEntries });
 
     await Promise.all([...batches].map(async (batch) => {
-      for (const entry of batch.entries) this._retryExposureBatches.set(entry.key, batch);
+      for (const entry of batch.entries) setBoundedMap(this._retryExposureBatches, entry.key, batch, MAX_COMPLETED_EXPOSURE_KEYS);
       const promise = this._dependencies.sendExposures(identity.value, batch.entries.map((entry) => entry.exposure));
       for (const entry of batch.entries) this._pendingExposurePromises.set(entry.key, promise);
       try {

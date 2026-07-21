@@ -48,8 +48,16 @@ function invalidTransitionError(action: string): StatusError {
 // The one-active-run constraint is a raw partial unique index (not in the
 // Prisma schema), so we can only match on the P2002 code, not on
 // isPrismaUniqueConstraintViolation's model/target metadata.
-function isUniqueConstraintViolation(error: unknown): boolean {
-  return isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION");
+function isUniqueConstraintViolation(error: unknown, seen: Set<unknown> = new Set()): boolean {
+  if (seen.has(error)) return false;
+  seen.add(error);
+  if (isPrismaError(error, "UNIQUE_CONSTRAINT_VIOLATION")) return true;
+  if (error instanceof AggregateError) {
+    const nestedErrors: unknown[] = error.errors;
+    if (nestedErrors.some((nestedError) => isUniqueConstraintViolation(nestedError, seen))) return true;
+  }
+  return error instanceof Error && error.cause !== undefined
+    && isUniqueConstraintViolation(error.cause, seen);
 }
 
 function invalidBranchExperiment(message: string): StatusError {
@@ -143,7 +151,6 @@ function deriveMetric(metric: FeatureFlagMetric | undefined, path: string): {
       break;
     }
   }
-  if (definition === undefined) throw invalidBranchExperiment(`${path}.type is unsupported`);
   return { definition, attributionWindowSeconds };
 }
 

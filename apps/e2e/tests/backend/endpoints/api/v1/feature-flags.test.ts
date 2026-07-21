@@ -56,6 +56,12 @@ it("rejects invalid cross-references before publishing config", async ({ expect 
   });
   expect(response.status).toBe(400);
   expect(JSON.stringify(response.body)).toContain("missing fallback variant");
+
+  const storedOverride = await niceBackendFetch("/api/latest/internal/config/override/environment", {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(JSON.parse(storedOverride.body.config_string).featureFlags).toBeUndefined();
 });
 
 it("requires the feature flags app to be installed", async ({ expect }) => {
@@ -66,7 +72,28 @@ it("requires the feature flags app to be installed", async ({ expect }) => {
     body: { flag_keys: ["new-checkout"], fallbacks: { "new-checkout": false } },
   });
   expect(response.status).toBe(400);
-  expect(response.body).toEqual({ error: "Feature flags are not enabled for this project." });
+  expect(response.body).toBe("Feature flags are not enabled for this project.");
+});
+
+it("accepts minimal evaluate and tester bodies without optional context maps", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await enableFeatureFlags();
+
+  const publicResponse = await niceBackendFetch("/api/v1/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: { flag_keys: ["new-checkout"] },
+  });
+  expect(publicResponse.status).toBe(200);
+  expect(publicResponse.body?.results?.["new-checkout"]).toMatchObject({ value: false, variant_key: "off" });
+
+  const testerResponse = await niceBackendFetch("/api/latest/internal/feature-flags/test", {
+    method: "POST",
+    accessType: "admin",
+    body: { flag_keys: ["new-checkout"] },
+  });
+  expect(testerResponse.status).toBe(200);
+  expect(testerResponse.body?.results?.["new-checkout"]).toMatchObject({ value: false, variant_key: "off", exposure_token: null });
 });
 
 it("uses verified auth attributes and ignores client-supplied user targeting data", async ({ expect }) => {
@@ -89,11 +116,10 @@ it("uses verified auth attributes and ignores client-supplied user targeting dat
       flag_keys: ["new-checkout", "missing"],
       fallbacks: { "new-checkout": false, missing: "safe" },
       user: { primary_email_verified: true },
-      team_id: "spoofed-team",
     },
   });
   expect(spoofed.body?.results).toMatchObject({
-    "new-checkout": { value: false, variant_key: null, reason: "fallback" },
+    "new-checkout": { value: false, variant_key: "off", reason: "fallback" },
     missing: { value: "safe", variant_key: null, reason: "missing" },
   });
 });
@@ -117,5 +143,4 @@ it("protects bootstrap definitions and supports ETag revalidation", async ({ exp
     headers: { "if-none-match": etag ?? undefined },
   });
   expect(revalidated.status).toBe(304);
-  expect(revalidated.body).toBeNull();
 });

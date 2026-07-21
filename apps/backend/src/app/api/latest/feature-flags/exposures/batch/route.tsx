@@ -1,5 +1,6 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { computeExposureSubjectHash, EXPOSURE_TOKEN_TTL_MS, verifyFeatureFlagEvaluationToken } from "@/lib/feature-flags/exposure-tokens";
+import { EXPOSURE_RECEIPT_CLEANUP_BATCH_SIZE, EXPOSURE_RECEIPT_RETENTION_MS } from "@/lib/feature-flags/exposure-receipts";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { getHexclaveServerApp } from "@/hexclave";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -25,8 +26,6 @@ const MAX_TOKEN_LENGTH = 4096;
 // skewing attribution windows.
 const MAX_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const MAX_EVENT_BEFORE_EVALUATION_SKEW_MS = 60 * 1000;
-const EXPOSURE_RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const EXPOSURE_RECEIPT_CLEANUP_BATCH_SIZE = MAX_EXPOSURES * 2;
 // ClickHouse requests may run for up to ten minutes. A lease must outlive that
 // timeout or a retry can take ownership while the first insert is still active.
 const EXPOSURE_PROCESSING_LEASE_MS = 12 * 60 * 1000;
@@ -107,7 +106,8 @@ export const POST = createSmartRouteHandler({
       exposure,
       payload: await verifyFeatureFlagEvaluationToken({ token: exposure.exposure_token, tenancy: auth.tenancy }),
     })));
-    if (auth.user == null) {
+    const authenticatedUser = auth.user;
+    if (authenticatedUser == null) {
       throw new KnownErrors.UserAuthenticationRequired();
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
@@ -120,11 +120,11 @@ export const POST = createSmartRouteHandler({
         throw new StatusError(StatusError.Unauthorized, "Invalid or expired feature flag evaluation token");
       }
       if (payload.subject_type === "user") {
-        if (payload.subject_id !== auth.user.id) {
+        if (payload.subject_id !== authenticatedUser.id) {
           throw new StatusError(StatusError.Unauthorized, "Invalid or expired feature flag evaluation token");
         }
       } else {
-        await ensureTeamMembershipExists(prisma, { tenancyId: auth.tenancy.id, teamId: payload.subject_id, userId: auth.user.id });
+        await ensureTeamMembershipExists(prisma, { tenancyId: auth.tenancy.id, teamId: payload.subject_id, userId: authenticatedUser.id });
       }
     }
 
@@ -317,7 +317,7 @@ export const POST = createSmartRouteHandler({
       },
       project_id: auth.tenancy.project.id,
       branch_id: auth.tenancy.branchId,
-      user_id: auth.user.id,
+      user_id: authenticatedUser.id,
       team_id: payload.subject_type === "team" ? payload.subject_id : null,
       refresh_token_id: null,
       session_replay_id: null,

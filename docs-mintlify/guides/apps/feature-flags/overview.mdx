@@ -46,7 +46,7 @@ Kill switches are stored in branch config, so you can kill a misbehaving feature
 
 ## Prerequisites
 
-A flag can declare another flag as a prerequisite. The dependent flag only evaluates its own rules when the prerequisite evaluates to the required variant; otherwise it serves its default. Use this to gate a family of sub-flags behind one master flag, e.g. `checkout-redesign-animations` requiring `checkout-redesign` to be `true`.
+A flag can declare another flag as a prerequisite. The dependent flag only evaluates its own rules when the prerequisite evaluates to the required variant; otherwise it serves its configured fallback variant. Use this to gate a family of sub-flags behind one master flag, e.g. `checkout-redesign-animations` requiring `checkout-redesign` to be `true`.
 
 ## Holdouts and mutual exclusion
 

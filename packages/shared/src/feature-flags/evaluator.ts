@@ -75,8 +75,8 @@ export function isStrictUtcTimestamp(value: string): boolean {
 }
 
 type ParsedSemver = {
-  core: readonly [number, number, number],
-  prerelease?: readonly (number | string)[],
+  core: readonly [string, string, string],
+  prerelease?: readonly string[],
 };
 
 function parseSemver(value: string): ParsedSemver | undefined {
@@ -86,13 +86,10 @@ function parseSemver(value: string): ParsedSemver | undefined {
   const coreText = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex);
   const prereleaseText = dashIndex === -1 ? undefined : withoutBuild.slice(dashIndex + 1);
   const core = coreText.split(".");
-  const prerelease = prereleaseText === undefined ? undefined : prereleaseText.split(".").map((part) => {
-    if (/^(0|[1-9]\d*)$/.test(part)) return Number(part);
-    return part;
-  });
+  const prerelease = prereleaseText === undefined ? undefined : prereleaseText.split(".");
   if (prereleaseText !== undefined && prereleaseText.split(".").some((part) => /^\d+$/.test(part) && !/^(0|[1-9]\d*)$/.test(part))) return undefined;
   return {
-    core: [Number(core[0]), Number(core[1]), Number(core[2])],
+    core: [core[0], core[1], core[2]],
     ...(prerelease === undefined ? {} : { prerelease: prerelease }),
   };
 }
@@ -108,7 +105,7 @@ function compareSemver(left: string, right: string): number | undefined {
   for (let index = 0; index < 3; index++) {
     const leftPart = parsedLeft.core[index];
     const rightPart = parsedRight.core[index];
-    if (leftPart !== rightPart) return leftPart - rightPart;
+    if (leftPart !== rightPart) return leftPart.length - rightPart.length || lexicalCompare(leftPart, rightPart);
   }
   if (parsedLeft.prerelease === undefined && parsedRight.prerelease === undefined) return 0;
   if (parsedLeft.prerelease === undefined) return 1;
@@ -118,9 +115,11 @@ function compareSemver(left: string, right: string): number | undefined {
     const leftPart = parsedLeft.prerelease[index];
     const rightPart = parsedRight.prerelease[index];
     if (leftPart === rightPart) continue;
-    if (typeof leftPart === "number" && typeof rightPart === "number") return leftPart - rightPart;
-    if (typeof leftPart === "number") return -1;
-    if (typeof rightPart === "number") return 1;
+    const leftIsNumeric = /^\d+$/.test(leftPart);
+    const rightIsNumeric = /^\d+$/.test(rightPart);
+    if (leftIsNumeric && rightIsNumeric) return leftPart.length - rightPart.length || lexicalCompare(leftPart, rightPart);
+    if (leftIsNumeric) return -1;
+    if (rightIsNumeric) return 1;
     return lexicalCompare(leftPart, rightPart);
   }
   return parsedLeft.prerelease.length - parsedRight.prerelease.length;
@@ -416,6 +415,8 @@ import.meta.vitest?.test("every supported typed operator evaluates without coerc
   expect(matches(condition("after", "2026-01-01T00:00:00Z"), "2026-01-02T00:00:00.000Z")).toBe(true);
   expect(matches(condition("semver_eq", "1.0.0+left"), "1.0.0+right")).toBe(true);
   expect(matches(condition("semver_lt", "2.0.0"), "2.0.0-alpha.1")).toBe(true);
+  expect(matches(condition("semver_gt", "9007199254740992.0.0"), "9007199254740993.0.0")).toBe(true);
+  expect(matches(condition("semver_gt", "1.0.0-9007199254740992"), "1.0.0-9007199254740993")).toBe(true);
   expect(matches(condition("in_segment", "paid"), "ignored", { segments: { paid: { conditions: { plan: { attribute: "context.actual", operator: "eq", value: "ignored" } } } } })).toBe(true);
   expect(matches(condition("gt", 3), "4")).toBe(false);
 });

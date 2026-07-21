@@ -1,6 +1,7 @@
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import type { EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
 import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
+import type { FeatureFlagCondition as SharedFeatureFlagCondition } from "@hexclave/shared/dist/feature-flags/types";
 
 /**
  * Frontend-local mirror of the *intended* `featureFlags` branch-config section.
@@ -140,6 +141,7 @@ export type FlagConfig = {
 
 export type FlagSegment = {
   displayName: string,
+  match: "all" | "any",
   conditions: FlagCondition[],
 };
 
@@ -498,6 +500,7 @@ export function parseFeatureFlagsSection(config: object): FeatureFlagsSection {
       const segment = asRecord(value, `featureFlags.segments.${key}`);
       return [key, {
         displayName: typeof segment.displayName === "string" ? segment.displayName : key,
+        match: segment.match === "any" ? "any" : "all",
         conditions: Object.entries(asRecord(segment.conditions ?? {}, `featureFlags.segments.${key}.conditions`)).map(([conditionId, condition]) =>
           parseSharedCondition(condition, `featureFlags.segments.${key}.conditions.${conditionId}`)),
       }];
@@ -510,11 +513,6 @@ export function parseFeatureFlagsSection(config: object): FeatureFlagsSection {
 const SHARED_TO_UI_OPERATOR = new Map<string, FlagOperator>([
   ["gt", "num_gt"], ["gte", "num_gte"], ["lt", "num_lt"], ["lte", "num_lte"],
   ["is_set", "exists"], ["is_not_set", "not_exists"],
-]);
-
-const UI_TO_SHARED_OPERATOR = new Map<FlagOperator, string>([
-  ["num_gt", "gt"], ["num_gte", "gte"], ["num_lt", "lt"], ["num_lte", "lte"],
-  ["exists", "is_set"], ["not_exists", "is_not_set"],
 ]);
 
 function parseSharedCondition(value: unknown, path: string): FlagCondition {
@@ -647,11 +645,23 @@ function parseJsonText(value: string, path: string): Json {
   }
 }
 
-function conditionToShared(condition: FlagCondition) {
-  const operator = UI_TO_SHARED_OPERATOR.get(condition.operator) ?? condition.operator;
+function toSharedOperator(operator: FlagOperator): NonNullable<SharedFeatureFlagCondition["operator"]> {
+  switch (operator) {
+    case "num_gt": { return "gt"; }
+    case "num_gte": { return "gte"; }
+    case "num_lt": { return "lt"; }
+    case "num_lte": { return "lte"; }
+    case "exists": { return "is_set"; }
+    case "not_exists": { return "is_not_set"; }
+    default: { return operator; }
+  }
+}
+
+function conditionToShared(condition: FlagCondition): SharedFeatureFlagCondition {
+  const operator = toSharedOperator(condition.operator);
   const attribute = condition.attribute.replace(/^custom\./, "context.");
   const metadata = getOperatorMetadataOrThrow(condition.operator);
-  let value: unknown;
+  let value: Json | undefined;
   if (metadata.arity === "list") value = condition.values ?? [];
   else if (metadata.arity === "single") {
     if (metadata.valueKind === "number") value = Number(condition.value);
@@ -693,6 +703,7 @@ export function serializeFlagConfig(flagId: string, publicKey: string, flag: Fla
       return [`prerequisite_${index + 1}`, { flagId: prerequisiteFlag.internalId, variantKeys: { [prerequisite.requiredVariantId]: true } }];
     })),
     ...(flag.holdoutBps > 0 ? { holdoutId: `flag_${flagId}` } : {}),
+    ...(flag.mutualExclusionGroup == null ? {} : { mutualExclusionGroupId: flag.mutualExclusionGroup }),
     rules: {
       ...customRules,
       __default: {
@@ -716,6 +727,19 @@ export function featureFlagConfigUpdates(flagId: string, publicKey: string, flag
       allocationBasisPoints: flag.holdoutBps,
       allocationSalt: `holdout.flag_${flagId}`,
     } : null,
+  };
+}
+
+export function segmentConfigUpdates(segmentId: string, segment: FlagSegment): EnvironmentConfigOverrideOverride {
+  return {
+    [`featureFlags.segments.${segmentId}`]: {
+      displayName: segment.displayName,
+      match: segment.match,
+      conditions: Object.fromEntries(segment.conditions.map((condition, index) => [
+        `condition_${index + 1}`,
+        conditionToShared(condition),
+      ])),
+    },
   };
 }
 
@@ -851,7 +875,7 @@ export function validateFlagConfig(flagKey: string, flag: FlagConfig, section: F
     const ruleName = rule.label.trim().length > 0 ? `Rule "${rule.label}"` : `Rule ${index + 1}`;
     if (rule.conditions.length === 0) errors.push(`${ruleName} needs at least one condition.`);
     for (const condition of rule.conditions) {
-      errors.push(...validateCondition(condition, section).map((error) => `${ruleName}: ${error}`));
+      errors.push(...validateFlagCondition(condition, section).map((error) => `${ruleName}: ${error}`));
     }
     errors.push(...validateServe(rule.serve, variantIds, ruleName));
     if (rule.rolloutBps < 0 || rule.rolloutBps > BPS_TOTAL) errors.push(`${ruleName}: rollout must be between 0% and 100%.`);
@@ -892,7 +916,7 @@ function validateServe(serve: FlagServe, variantIds: Set<string>, context: strin
   return errors;
 }
 
-function validateCondition(condition: FlagCondition, section: FeatureFlagsSection): string[] {
+export function validateFlagCondition(condition: FlagCondition, section: FeatureFlagsSection): string[] {
   const errors: string[] = [];
   if (condition.attribute.trim().length === 0) errors.push("every condition needs an attribute.");
   const metadata = getOperatorMetadataOrThrow(condition.operator);

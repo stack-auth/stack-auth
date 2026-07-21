@@ -1651,6 +1651,7 @@ model FeatureFlagExposureReceipt {
   @@unique([projectId, evaluationId], name: "FeatureFlagExposureReceipt_project_evaluation_key")
   @@index([ingestionNonce], name: "FeatureFlagExposureReceipt_ingestionNonce_idx")
   @@index([processingStartedAt], name: "FeatureFlagExposureReceipt_processingStartedAt_idx")
+  @@index([createdAt], name: "FeatureFlagExposureReceipt_createdAt_idx")
   @@index([projectId, branchId, createdAt(sort: Desc)], name: "FeatureFlagExposureReceipt_project_createdAt_idx")
 }
 

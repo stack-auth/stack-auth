@@ -31,6 +31,7 @@ import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { EvaluatorTesterDialog } from "../evaluator-tester-dialog";
 import { FlagLifecycleConfirmDialog, type PendingFlagLifecycleAction } from "../flag-lifecycle";
+import { SegmentsManager } from "../segments-manager";
 import {
   FLAG_STATUS_BADGE,
   FlagStatusBadge,
@@ -232,6 +233,7 @@ export default function PageClient() {
         </DesignButton>
       }
     >
+      <SegmentsManager section={section} />
       {section.flags.size === 0 ? (
         <DesignCard>
           <DesignEmptyState

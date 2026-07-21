@@ -41,6 +41,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { getInputDatetimeLocalString } from "@hexclave/shared/dist/utils/dates";
+import { isJsonSerializable, type Json } from "@hexclave/shared/dist/utils/json";
 import { useId, useMemo, useState } from "react";
 import { generateShortId, PercentField } from "./shared";
 
@@ -628,16 +629,168 @@ function VariantValueInput(props: {
     }
     case "json": {
       return (
-        <textarea
-          id={props.inputId}
-          className="w-full min-h-[80px] rounded-xl border border-black/[0.08] dark:border-white/[0.06] bg-white/80 dark:bg-foreground/[0.03] px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]"
-          value={props.jsonValue}
-          spellCheck={false}
-          onChange={(event) => props.onJsonValueChange(event.target.value)}
+        <StructuredJsonEditor
+          jsonValue={props.jsonValue}
+          onJsonValueChange={props.onJsonValueChange}
         />
       );
     }
   }
+}
+
+type JsonValueKind = "object" | "array" | "string" | "number" | "boolean" | "null";
+
+function jsonValueKind(value: Json): JsonValueKind {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "object") return "object";
+  if (typeof value === "string") return "string";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  throw new Error("A structured feature flag value contained a non-JSON primitive.");
+}
+
+function defaultJsonForKind(kind: JsonValueKind): Json {
+  switch (kind) {
+    case "object": { return {}; }
+    case "array": { return []; }
+    case "string": { return ""; }
+    case "number": { return 0; }
+    case "boolean": { return false; }
+    case "null": { return null; }
+  }
+}
+
+function parseStructuredJson(value: string): { valid: true, value: Json } | { valid: false } {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isJsonSerializable(parsed) ? { valid: true, value: parsed } : { valid: false };
+  } catch {
+    return { valid: false };
+  }
+}
+
+function StructuredJsonEditor(props: { jsonValue: string, onJsonValueChange: (value: string) => void }) {
+  const parsed = parseStructuredJson(props.jsonValue);
+  if (!parsed.valid) {
+    return (
+      <DesignAlert
+        variant="error"
+        title="This saved value is not valid JSON"
+        description={
+          <DesignButton size="sm" variant="secondary" onClick={() => props.onJsonValueChange("{}")}>Reset to an empty object</DesignButton>
+        }
+      />
+    );
+  }
+  return (
+    <div className="rounded-xl border border-black/[0.06] bg-white/50 p-2 dark:border-white/[0.06] dark:bg-foreground/[0.02]">
+      <JsonValueEditor
+        value={parsed.value}
+        depth={0}
+        onChange={(value) => props.onJsonValueChange(JSON.stringify(value))}
+      />
+    </div>
+  );
+}
+
+function JsonValueEditor(props: { value: Json, depth: number, onChange: (value: Json) => void }) {
+  const kind = jsonValueKind(props.value);
+  const objectValue = props.value != null && typeof props.value === "object" && !Array.isArray(props.value) ? props.value : null;
+  const arrayValue = Array.isArray(props.value) ? props.value : null;
+  const allowedKinds: JsonValueKind[] = props.depth >= 4
+    ? ["string", "number", "boolean", "null"]
+    : ["object", "array", "string", "number", "boolean", "null"];
+  return (
+    <div className="flex flex-col gap-2">
+      <DesignSelectorDropdown
+        size="sm"
+        className="w-32"
+        value={kind}
+        onValueChange={(nextKind) => {
+          const selectedKind = allowedKinds.find((candidate) => candidate === nextKind);
+          if (selectedKind != null) props.onChange(defaultJsonForKind(selectedKind));
+        }}
+        options={allowedKinds.map((value) => ({ value, label: capitalize(value) }))}
+      />
+      {kind === "string" && typeof props.value === "string" && (
+        <DesignInput size="sm" value={props.value} onChange={(event) => props.onChange(event.target.value)} />
+      )}
+      {kind === "number" && typeof props.value === "number" && (
+        <DesignInput
+          size="sm"
+          type="number"
+          inputMode="decimal"
+          value={String(props.value)}
+          onChange={(event) => {
+            if (!Number.isNaN(event.target.valueAsNumber)) props.onChange(event.target.valueAsNumber);
+          }}
+        />
+      )}
+      {kind === "boolean" && typeof props.value === "boolean" && (
+        <DesignPillToggle
+          size="sm"
+          options={[{ id: "true", label: "true" }, { id: "false", label: "false" }]}
+          selected={props.value ? "true" : "false"}
+          onSelect={(value) => props.onChange(value === "true")}
+        />
+      )}
+      {kind === "null" && <span className="text-xs text-muted-foreground">No value</span>}
+      {kind === "object" && objectValue != null && (
+        <div className="flex flex-col gap-2 border-l border-black/[0.06] pl-2 dark:border-white/[0.06]">
+          {Object.entries(objectValue).map(([key, value], index) => (
+            <div key={`${key}-${index}`} className="flex items-start gap-2">
+              <DesignInput
+                size="sm"
+                className="w-32 font-mono"
+                aria-label="JSON property name"
+                value={key}
+                onChange={(event) => {
+                  const entries = Object.entries(objectValue).map(([candidateKey, candidateValue]) => candidateKey === key ? [event.target.value, candidateValue] : [candidateKey, candidateValue]);
+                  props.onChange(Object.fromEntries(entries));
+                }}
+              />
+              <div className="min-w-0 flex-1">
+                <JsonValueEditor
+                  value={value}
+                  depth={props.depth + 1}
+                  onChange={(nextValue) => props.onChange(Object.fromEntries(Object.entries(objectValue).map(([candidateKey, candidateValue]) => [candidateKey, candidateKey === key ? nextValue : candidateValue])))}
+                />
+              </div>
+              <DesignButton size="icon" variant="ghost" aria-label={`Remove JSON property ${key}`} onClick={() => props.onChange(Object.fromEntries(Object.entries(objectValue).filter(([candidateKey]) => candidateKey !== key)))}>
+                <TrashIcon className="h-4 w-4" />
+              </DesignButton>
+            </div>
+          ))}
+          <div>
+            <DesignButton size="sm" variant="ghost" onClick={() => props.onChange({ ...objectValue, [`property_${Object.keys(objectValue).length + 1}`]: "" })}>
+              <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add property
+            </DesignButton>
+          </div>
+        </div>
+      )}
+      {kind === "array" && arrayValue != null && (
+        <div className="flex flex-col gap-2 border-l border-black/[0.06] pl-2 dark:border-white/[0.06]">
+          {arrayValue.map((value, index) => (
+            <div key={index} className="flex items-start gap-2">
+              <span className="w-5 pt-2 text-right text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+              <div className="min-w-0 flex-1">
+                <JsonValueEditor value={value} depth={props.depth + 1} onChange={(nextValue) => props.onChange(arrayValue.map((candidate, candidateIndex) => candidateIndex === index ? nextValue : candidate))} />
+              </div>
+              <DesignButton size="icon" variant="ghost" aria-label={`Remove JSON item ${index + 1}`} onClick={() => props.onChange(arrayValue.filter((_, candidateIndex) => candidateIndex !== index))}>
+                <TrashIcon className="h-4 w-4" />
+              </DesignButton>
+            </div>
+          ))}
+          <div>
+            <DesignButton size="sm" variant="ghost" onClick={() => props.onChange([...arrayValue, ""])}>
+              <PlusIcon className="mr-1 h-3.5 w-3.5" /> Add item
+            </DesignButton>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function decodeJsonString(jsonValue: string): string {
@@ -803,7 +956,7 @@ function RuleCard(props: {
 
       <div className="flex flex-col gap-2">
         {props.rule.conditions.map((condition, index) => (
-          <ConditionRow
+          <FlagConditionEditor
             key={index}
             condition={condition}
             isFirst={index === 0}
@@ -860,7 +1013,7 @@ function RuleCard(props: {
   );
 }
 
-function ConditionRow(props: {
+export function FlagConditionEditor(props: {
   condition: FlagCondition,
   isFirst: boolean,
   section: FeatureFlagsSection,

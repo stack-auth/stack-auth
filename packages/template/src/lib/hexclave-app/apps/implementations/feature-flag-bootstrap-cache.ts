@@ -1,5 +1,8 @@
 import type { FeatureFlagBootstrapResponse } from "@hexclave/shared/dist/interface/crud/feature-flags";
+import { createFeatureFlagsBootstrap } from "@hexclave/shared/dist/feature-flags/canonical";
+import { getFeatureFlagsConfigErrors } from "@hexclave/shared/dist/feature-flags/schema";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 const REVALIDATE_AFTER_MILLIS = 30_000;
 const SERVE_STALE_FOR_MILLIS = 5 * 60_000;
@@ -49,6 +52,19 @@ function validateBootstrap(data: FeatureFlagBootstrapResponse): void {
     if (key === "" || typeof flagId !== "string" || flagId === "") {
       throw new HexclaveAssertionError("Feature flag bootstrap returned an invalid public-key lookup.");
     }
+  }
+  const configErrors = getFeatureFlagsConfigErrors(data.config);
+  if (configErrors.length > 0) {
+    throw new HexclaveAssertionError(`Feature flag bootstrap returned invalid definitions: ${configErrors.join("; ")}`);
+  }
+  const canonical = createFeatureFlagsBootstrap(data.config);
+  if (data.config_version !== canonical.configVersion) {
+    throw new HexclaveAssertionError("Feature flag bootstrap config version does not match its definitions.");
+  }
+  const expectedEntries = Object.entries(canonical.flagIdsByKey).sort(([left], [right]) => stringCompare(left, right));
+  const receivedEntries = Object.entries(data.flag_ids_by_key).sort(([left], [right]) => stringCompare(left, right));
+  if (JSON.stringify(expectedEntries) !== JSON.stringify(receivedEntries)) {
+    throw new HexclaveAssertionError("Feature flag bootstrap public-key lookup does not match its definitions.");
   }
 }
 

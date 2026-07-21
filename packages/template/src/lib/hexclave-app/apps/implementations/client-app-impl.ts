@@ -41,7 +41,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
-import React, { useCallback, useEffect, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
+import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { envVars } from "../../../../generated/env";
 import { constructRedirectUrl } from "../../../../utils/url";
@@ -263,9 +263,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
-  protected readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
+  protected readonly _featureFlags = new FeatureFlagController<{
+    session: InternalSession,
+    userId: string,
+    user: Record<string, Json>,
+  }>({
     evaluate: async (identity, request) => await this._interface.evaluateFeatureFlags(request, identity.session),
     sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ batch_id: generateUuid(), exposures }, identity.session),
+    onTeamContextResolved: (teamId) => this._eventTracker?.setTeamContext(teamId),
     cacheTtlMillis: 30_000,
   });
 
@@ -3316,32 +3321,34 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   protected async _getFeatureFlagIdentity() {
-    const user = await this.getUser({ or: "anonymous" });
-    return { cacheKey: user.id, value: { session: user._internalSession, userId: user.id } };
+    const user = await this.getUser({ tokenStore: this._tokenStoreInit, or: "anonymous" });
+    const verifiedEmail = user.primaryEmailVerified ? user.primaryEmail : null;
+    return {
+      cacheKey: user.id,
+      value: {
+        session: user._internalSession,
+        userId: user.id,
+        user: {
+          id: user.id,
+          email: verifiedEmail,
+          primary_email: verifiedEmail,
+          primary_email_verified: user.primaryEmailVerified,
+          signedUpAt: user.signedUpAt.toISOString(),
+        },
+      },
+    };
   }
 
   getFeatureFlag<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<T> {
-    return this._getFeatureFlagIdentity().then(async (identity) => {
-      const value = await this._featureFlags.getFeatureFlag(identity, key, fallback, options);
-      this._eventTracker?.setTeamContext(options?.teamId ?? null);
-      return value;
-    });
+    return this._getFeatureFlagIdentity().then(async (identity) => await this._featureFlags.getFeatureFlag(identity, key, fallback, options));
   }
 
   getFeatureFlagDetails<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): Promise<FeatureFlagDetails<T>> {
-    return this._getFeatureFlagIdentity().then(async (identity) => {
-      const details = await this._featureFlags.getFeatureFlagDetails(identity, key, fallback, options);
-      this._eventTracker?.setTeamContext(options?.teamId ?? null);
-      return details;
-    });
+    return this._getFeatureFlagIdentity().then(async (identity) => await this._featureFlags.getFeatureFlagDetails(identity, key, fallback, options));
   }
 
   getFeatureFlags(requests: readonly FeatureFlagRequest[]): Promise<Map<string, FeatureFlagDetails<Json>>> {
-    return this._getFeatureFlagIdentity().then(async (identity) => {
-      const details = await this._featureFlags.getFeatureFlags(identity, requests);
-      this._eventTracker?.setTeamContext(requests.find((request) => request.options?.teamId != null)?.options?.teamId ?? null);
-      return details;
-    });
+    return this._getFeatureFlagIdentity().then(async (identity) => await this._featureFlags.getFeatureFlags(identity, requests));
   }
 
   async trackFeatureFlagExposure(details: FeatureFlagDetails<Json>): Promise<void> {
@@ -3381,16 +3388,26 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
   }
 
   useFeatureFlagDetails<T extends Json>(key: string, fallback: T, options?: FeatureFlagOptions): FeatureFlagDetails<T> {
-    const user = this.useUser({ or: "anonymous" });
+    const user = this.useUser({ tokenStore: this._tokenStoreInit, or: "anonymous" });
+    const verifiedEmail = user.primaryEmailVerified ? user.primaryEmail : null;
     const identity = useMemo(
-      () => ({ cacheKey: user.id, value: { session: user._internalSession, userId: user.id } }),
-      [user.id, user._internalSession],
+      () => ({
+        cacheKey: user.id,
+        value: {
+          session: user._internalSession,
+          userId: user.id,
+          user: {
+            id: user.id,
+            email: verifiedEmail,
+            primary_email: verifiedEmail,
+            primary_email_verified: user.primaryEmailVerified,
+            signedUpAt: user.signedUpAt.toISOString(),
+          },
+        },
+      }),
+      [user.id, user._internalSession, user.primaryEmailVerified, user.signedUpAt, verifiedEmail],
     );
-    const details = useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
-    useEffect(() => {
-      this._eventTracker?.setTeamContext(options?.teamId ?? null);
-    }, [options?.teamId]);
-    return details;
+    return useFeatureFlagDetailsFromController(this._featureFlags, identity, key, fallback, options);
   }
   // END_PLATFORM
 

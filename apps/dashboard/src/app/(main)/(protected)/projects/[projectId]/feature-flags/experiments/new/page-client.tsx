@@ -117,6 +117,7 @@ function ExperimentWizard() {
   // Set after the first successful config write so retrying (e.g. after a
   // failed start) updates the same experiment instead of creating duplicates.
   const [savedExperimentId, setSavedExperimentId] = useState<string | null>(null);
+  const [runCreated, setRunCreated] = useState(false);
 
   const eligibleFlags = useMemo(
     () => [...section.flags.entries()].filter(([, flag]) => !flag.archived && flag.variants.length >= 2),
@@ -148,6 +149,8 @@ function ExperimentWizard() {
   const validationErrors = useMemo(() => validateExperimentConfig(draft, section), [draft, section]);
 
   const stepIndex = WIZARD_STEPS.findIndex((candidate) => candidate.id === step);
+  const scheduledForFuture = draft.schedule.startAtIso != null
+    && new Date(draft.schedule.startAtIso).getTime() > new Date().getTime();
 
   const save = async (startAfterSave: boolean): Promise<void> => {
     const experimentId = savedExperimentId ?? generateShortId("experiment");
@@ -158,21 +161,27 @@ function ExperimentWizard() {
     });
     if (!updated) return;
     setSavedExperimentId(experimentId);
-    if (startAfterSave) {
-      try {
+    try {
+      if (!runCreated) {
         await createExperimentRun(adminApp, experimentId, toExperimentRunConfig(draft, section));
-        await transitionExperimentRun(adminApp, experimentId, "start");
-      } catch (error) {
-        if (error instanceof FeatureFlagsBackendUnavailableError) {
-          // The config write succeeded, so don't fail the whole flow — land
-          // on the detail page with an explicit notice instead.
-          setStartFailedNotice(
-            "The experiment was saved as a draft, but it could not be started: this server does not expose the experiment-run endpoints yet.",
-          );
-          return;
-        }
-        throw error;
+        setRunCreated(true);
       }
+      // A future start remains an immutable DRAFT run for the schedule
+      // processor. Starting it here would bypass the schedule configured in
+      // the wizard and expose traffic immediately.
+      if (startAfterSave && !scheduledForFuture) {
+        await transitionExperimentRun(adminApp, experimentId, "start");
+      }
+    } catch (error) {
+      if (error instanceof FeatureFlagsBackendUnavailableError) {
+        // The config write succeeded, so don't fail the whole flow — land
+        // on the detail page with an explicit notice instead.
+        setStartFailedNotice(
+          "The experiment definition was saved, but its run could not be created or started: this server does not expose the experiment-run endpoints yet.",
+        );
+        return;
+      }
+      throw error;
     }
     router.push(urlString`/projects/${project.id}/feature-flags/experiments/${experimentId}`);
   };
@@ -386,7 +395,7 @@ function ExperimentWizard() {
               </DesignButton>
               <DesignButton size="sm" disabled={validationErrors.length > 0} onClick={async () => await save(true)}>
                 <RocketLaunchIcon className="h-4 w-4 mr-1" />
-                Save & start
+                {scheduledForFuture ? "Save & schedule" : "Save & start"}
               </DesignButton>
             </div>
           </div>

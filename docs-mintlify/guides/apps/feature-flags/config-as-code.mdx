@@ -46,7 +46,7 @@ In a [development environment](/guides/going-further/local-vs-cloud-dashboard) (
 
 ## Dashboard edits use config paths
 
-When you do edit a flag in the dashboard (e.g. on a cloud project), the dashboard applies the change as a config path update like `featureFlags.flags.<key>`, so only that flag is touched and sibling config is left alone. This is the same path-notation mechanism used across Hexclave config, which is why dashboard edits and config-file edits compose cleanly.
+When you do edit a flag in the dashboard (e.g. on a cloud project), the dashboard applies the change as a config path update like `featureFlags.flags.<internal-id>`, so renaming the public key does not change the flag's identity and sibling config is left alone. This is the same path-notation mechanism used across Hexclave config, which is why dashboard edits and config-file edits compose cleanly.
 
 ## Kill switches are versioned branch configuration
 

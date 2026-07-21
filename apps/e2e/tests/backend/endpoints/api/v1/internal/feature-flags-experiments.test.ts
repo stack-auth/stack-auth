@@ -19,6 +19,7 @@ const DEFAULT_ATTRIBUTION_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 function validExperimentConfig() {
   return {
+    hypothesis: "The treatment improves sign-up completion",
     flag_id: "my-flag",
     assignment_unit: "user",
     traffic_allocation_basis_points: 10000,
@@ -138,7 +139,7 @@ describe("experiment run creation", () => {
 
     const res = await createRun();
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     // config_revision_hash is not stripped by the snapshot serializer, so it
     // is asserted separately and replaced before snapshotting the body.
     expect(res.body.config_revision_hash).toMatch(/^[0-9a-f]{64}$/);
@@ -152,6 +153,7 @@ describe("experiment run creation", () => {
           "control_variant_id": "control",
           "flag_id": "my-flag",
           "guardrail_metrics": [],
+          "hypothesis": "The treatment improves sign-up completion",
           "primary_metric": {
             "direction": "increase",
             "event_name": "signed-up",
@@ -161,7 +163,10 @@ describe("experiment run creation", () => {
           "secondary_metrics": [],
           "traffic_allocation_basis_points": 10000,
           "variants": {
-            "control": { "flag_value": false, "weight_basis_points": 5000 },
+            "control": {
+              "flag_value": false,
+              "weight_basis_points": 5000,
+            },
             "treatment": {
               "flag_value": true,
               "weight_basis_points": 5000,
@@ -605,6 +610,7 @@ describe("experiment schedule processor", () => {
       method: "GET",
       headers: cronHeaders,
     })).status).toBe(200);
+    await updateFeatureFlagConfig(configOptions, true, true);
     expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
 
     await updateFeatureFlagConfig(configOptions, true, false);
@@ -612,6 +618,7 @@ describe("experiment schedule processor", () => {
       method: "GET",
       headers: cronHeaders,
     })).status).toBe(200);
+    await updateFeatureFlagConfig(configOptions, true, true);
     expect((await listRuns()).body.items.find((run: any) => run.id === createRes.body.id).state).toBe("draft");
   });
 

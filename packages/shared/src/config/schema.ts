@@ -727,7 +727,16 @@ const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedCo
 const environmentConfigDefaults = {} as const satisfies DefaultsType<EnvironmentRenderedConfigBeforeDefaults, [typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 const organizationConfigDefaults = {
-  featureFlags: undefined,
+  // Feature-flag editors update definitions independently with dot paths. The
+  // record parents must exist before normalization or the first definition is
+  // indistinguishable from a path into an absent optional subtree and is lost.
+  featureFlags: {
+    flags: (_key: string) => undefined,
+    segments: (_key: string) => undefined,
+    holdouts: (_key: string) => undefined,
+    mutualExclusionGroups: (_key: string) => undefined,
+    experiments: (_key: string) => undefined,
+  },
   rbac: {
     permissions: (key: string) => ({
       containedPermissionIds: (key: string) => undefined,
@@ -1457,6 +1466,22 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
     throw error;
   }
 }
+
+import.meta.vitest?.test("feature flag definitions can be published as first-use dot-path updates", async ({ expect }) => {
+  const result = await getIncompleteConfigWarnings(organizationConfigSchema, {
+    "featureFlags.flags.flag_checkout": {
+      key: "checkout",
+      type: "boolean",
+      enabled: true,
+      allocationSalt: "flag.flag_checkout",
+      variants: { on: { value: true }, off: { value: false } },
+      fallbackVariantKey: "off",
+      rules: { __default: { variantKey: "off" } },
+    },
+  });
+  if (result.status === "error") throw new Error(result.error);
+  expect(result.status).toBe("ok");
+});
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
 
 

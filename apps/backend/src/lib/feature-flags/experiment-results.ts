@@ -120,7 +120,7 @@ WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 conversion_events AS (
   SELECT
     argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
-    argMin(event_at, created_at) AS event_at
+    argMin(event_at, created_at) AS conversion_event_at
   FROM analytics_internal.events
   WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
@@ -143,8 +143,8 @@ conversion_events AS (
 SELECT
   fe.variant_id AS variant_id,
   toUInt64(uniqExactIf(fe.subject_hash,
-    ce.event_at >= fe.first_exposed_at
-    AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
+    ce.conversion_event_at >= fe.first_exposed_at
+    AND ce.conversion_event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
   )) AS converted_subjects
 FROM first_exposures AS fe
 INNER JOIN conversion_events AS ce ON ce.subject_hash = fe.subject_hash
@@ -160,7 +160,7 @@ WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 conversion_events AS (
   SELECT
     argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
-    argMin(event_at, created_at) AS event_at,
+    argMin(event_at, created_at) AS conversion_event_at,
     argMin(coalesce(if(
       {propertyName:String} = 'value',
       toFloat64OrNull(toString(data.value)),
@@ -185,9 +185,9 @@ FROM (
     fe.subject_hash AS subject_hash,
     if(
       {aggregation:String} = 'average',
-      sumIf(ce.value, ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
-        / greatest(toFloat64(countIf(ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))), 1),
-      sumIf(ce.value, ce.event_at >= fe.first_exposed_at AND ce.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
+      sumIf(ce.value, ce.conversion_event_at >= fe.first_exposed_at AND ce.conversion_event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
+        / greatest(toFloat64(countIf(ce.conversion_event_at >= fe.first_exposed_at AND ce.conversion_event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))), 1),
+      sumIf(ce.value, ce.conversion_event_at >= fe.first_exposed_at AND ce.conversion_event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32}))
     ) AS subject_value
   FROM first_exposures AS fe
   INNER JOIN conversion_events AS ce ON ce.subject_hash = fe.subject_hash
@@ -205,15 +205,15 @@ function buildFunnelQuery(stepCount: number): string {
   if (!Number.isInteger(stepCount) || stepCount < 2) {
     throw new HexclaveAssertionError(`Funnel queries need at least 2 steps, got ${stepCount}; experiment config validation should have enforced this`);
   }
-  const stepConditions = Array.from({ length: stepCount }, (_, i) => `se.event_type = {step${i}:String}`).join(", ");
+  const stepConditions = Array.from({ length: stepCount }, (_, i) => `se.conversion_event_type = {step${i}:String}`).join(", ");
   const stepInList = Array.from({ length: stepCount }, (_, i) => `{step${i}:String}`).join(", ");
   return `
 WITH first_exposures AS (${FIRST_EXPOSURES_CTE}),
 step_events AS (
   SELECT
     argMin(${SUBJECT_HASH_SQL}, created_at) AS subject_hash,
-    argMin(event_at, created_at) AS event_at,
-    argMin(event_type, created_at) AS event_type
+    argMin(event_at, created_at) AS conversion_event_at,
+    argMin(event_type, created_at) AS conversion_event_type
   FROM analytics_internal.events
   WHERE project_id = {projectId:String}
     AND branch_id = {branchId:String}
@@ -230,19 +230,23 @@ FROM (
   SELECT
     fe.variant_id AS variant_id,
     fe.subject_hash AS subject_hash,
-    windowFunnel({attributionWindowMillis:UInt64})(
-      toUInt64(toUnixTimestamp64Milli(se.event_at)),
+    windowFunnel({attributionWindowMillis:UInt64}, 'strict_once')(
+      toUInt64(toUnixTimestamp64Milli(se.conversion_event_at)),
       ${stepConditions}
     ) AS funnel_level
   FROM first_exposures AS fe
   INNER JOIN step_events AS se ON se.subject_hash = fe.subject_hash
-  WHERE se.event_at >= fe.first_exposed_at
-    AND se.event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
+  WHERE se.conversion_event_at >= fe.first_exposed_at
+    AND se.conversion_event_at <= fe.first_exposed_at + toIntervalSecond({attributionWindowSeconds:UInt32})
   GROUP BY fe.variant_id, fe.subject_hash
 )
 GROUP BY variant_id
 `;
 }
+
+import.meta.vitest?.test("funnel attribution cannot reuse one event for repeated steps", ({ expect }) => {
+  expect(buildFunnelQuery(2)).toContain("windowFunnel({attributionWindowMillis:UInt64}, 'strict_once')");
+});
 
 type ClickhouseClient = ReturnType<typeof getClickhouseAdminClient>;
 

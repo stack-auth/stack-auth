@@ -51,14 +51,18 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private readonly _featureFlagBootstrapCache = new FeatureFlagBootstrapCache(
     async (etag) => await this._interface.getFeatureFlagsBootstrap(etag),
   );
-  protected override readonly _featureFlags = new FeatureFlagController<{ session: InternalSession, userId: string }>({
+  protected override readonly _featureFlags = new FeatureFlagController<{
+    session: InternalSession,
+    userId: string,
+    user: Record<string, Json>,
+  }>({
     evaluate: async (identity, request) => await this._evaluateFeatureFlagsLocally(identity, request),
     sendExposures: async (identity, exposures) => await this._interface.sendFeatureFlagExposureBatch({ batch_id: generateUuid(), exposures }, identity.session),
     cacheTtlMillis: 30_000,
   });
 
   private async _evaluateFeatureFlagsLocally(
-    identity: { session: InternalSession, userId: string },
+    identity: { session: InternalSession, userId: string, user: Record<string, Json> },
     request: FeatureFlagEvaluateRequest,
   ): Promise<FeatureFlagEvaluateResponse<Json>> {
     let bootstrap: FeatureFlagBootstrapSnapshot;
@@ -87,8 +91,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     const results: FeatureFlagEvaluateResponse<Json>["results"] = {};
     for (const key of request.flag_keys) {
-      const flagId = bootstrap.flag_ids_by_key[key];
-      if (flagId == null) {
+      if (!Object.prototype.hasOwnProperty.call(bootstrap.flag_ids_by_key, key)) {
         results[key] = {
           flag_key: key,
           value: request.fallbacks?.[key] ?? null,
@@ -103,10 +106,12 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         };
         continue;
       }
+      const flagId = bootstrap.flag_ids_by_key[key];
       const evaluated = evaluateFeatureFlag(flagId, bootstrap.config, {
         distinctId: identity.userId,
         userId: identity.userId,
         teamId: request.team_id,
+        user: identity.user,
         context: request.context,
       });
       const localResult: FeatureFlagEvaluateResponse<Json>["results"][string] = {
@@ -136,6 +141,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           fallbacks: { [key]: request.fallbacks?.[key] ?? null },
           user_id: identity.userId,
           team_id: request.team_id,
+          user: identity.user,
           context: request.context,
         }, identity.session);
         const remoteResult = remote.results[key] ?? throwErr(`Remote feature flag token mint omitted ${JSON.stringify(key)}`);
