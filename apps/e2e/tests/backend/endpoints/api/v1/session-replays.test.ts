@@ -226,6 +226,44 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
       lastEventAtMs: Number(row.lastEventAtMs),
     }))).toEqual([{ firstEventAtMs: now + 100, lastEventAtMs: now + 200 }]);
   });
+
+  const concurrentBatchId = randomUUID();
+  const concurrentBodies = [
+    [{ timestamp: now - 1_000, type: 2 }, { timestamp: now - 900, type: 3 }],
+    [{ timestamp: now + 1_000, type: 2 }, { timestamp: now + 1_100, type: 3 }],
+  ];
+  const concurrentResponses = await Promise.all(concurrentBodies.map(async (events) => {
+    return await niceBackendFetch("/api/v1/session-replays/batch", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        browser_session_id: browserSessionId,
+        session_replay_segment_id: sessionReplaySegmentId,
+        batch_id: concurrentBatchId,
+        started_at_ms: now,
+        sent_at_ms: now + 2_000,
+        events,
+      },
+    });
+  }));
+  expect(concurrentResponses.map((response) => ({
+    status: response.status,
+    deduped: response.body?.deduped,
+  })).sort((a, b) => Number(a.deduped) - Number(b.deduped))).toEqual([
+    { status: 200, deduped: false },
+    { status: 200, deduped: true },
+  ]);
+
+  await withInternalDatabase(async (client) => {
+    const bounds = await client.query<{ replayFirstMs: string, replayLastMs: string, chunkFirstMs: string, chunkLastMs: string }>(
+      `SELECT EXTRACT(EPOCH FROM r."startedAt") * 1000 AS "replayFirstMs", EXTRACT(EPOCH FROM r."lastEventAt") * 1000 AS "replayLastMs", EXTRACT(EPOCH FROM MIN(c."firstEventAt")) * 1000 AS "chunkFirstMs", EXTRACT(EPOCH FROM MAX(c."lastEventAt")) * 1000 AS "chunkLastMs" FROM "SessionReplay" r JOIN "SessionReplayChunk" c ON c."tenancyId" = r."tenancyId" AND c."sessionReplayId" = r."id" WHERE r."id" = $1::uuid GROUP BY r."startedAt", r."lastEventAt"`,
+      [recordingId],
+    );
+    expect(bounds.rows).toHaveLength(1);
+    const row = bounds.rows[0];
+    expect(Number(row.replayFirstMs)).toBe(Number(row.chunkFirstMs));
+    expect(Number(row.replayLastMs)).toBe(Number(row.chunkLastMs));
+  });
 });
 
 it("emits $session-replay and $session-replay-segment spans queryable via the spans surface", async ({ expect }) => {
