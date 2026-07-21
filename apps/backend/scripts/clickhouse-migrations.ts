@@ -72,9 +72,11 @@ export async function runClickhouseMigrations() {
   // Comments are lost on CREATE OR REPLACE VIEW, so we re-apply them every migration run.
   // The AI query builder treats these comments as authoritative schema metadata,
   // so a partial application is incompatible with the backend version being deployed.
-  await Promise.all(COLUMN_COMMENTS.map(sql =>
-    client.command({ query: sql })
-  ));
+  // One ALTER per view keeps each view's metadata update atomic and avoids
+  // contending on the same metadata lock with one command per column.
+  for (const sql of COLUMN_COMMENT_SQL) {
+    await client.command({ query: sql });
+  }
 
   // Row policies in parallel
   const tables = [
@@ -665,7 +667,7 @@ WHERE sync_is_deleted = 0;
 // returns useful descriptions for each column. The AI assistant uses
 // SHOW TABLES + DESCRIBE TABLE for schema discovery instead of
 // hardcoded schema in the prompt.
-const COLUMN_COMMENTS: string[] = [
+const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── events ──
   `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known types: \$page-view, \$click, \$token-refresh, \$sign-up-rule-trigger'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
@@ -813,6 +815,57 @@ const COLUMN_COMMENTS: string[] = [
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider_account_id 'User account ID at the external provider'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN created_at 'When this account was linked (UTC)'`,
 ];
+
+const COLUMN_COMMENT_TABLES = [
+  "events",
+  "users",
+  "contact_channels",
+  "teams",
+  "team_member_profiles",
+  "team_permissions",
+  "team_invitations",
+  "email_outboxes",
+  "project_permissions",
+  "notification_preferences",
+  "refresh_tokens",
+  "connected_accounts",
+];
+
+function buildColumnCommentSql(): string[] {
+  const actionsByTable = new Map<string, string[]>();
+  for (const table of COLUMN_COMMENT_TABLES) {
+    actionsByTable.set(table, []);
+  }
+
+  for (const statement of COLUMN_COMMENT_STATEMENTS) {
+    let matched = false;
+    for (const table of COLUMN_COMMENT_TABLES) {
+      const prefix = `ALTER TABLE default.${table} `;
+      if (statement.startsWith(prefix)) {
+        const actions = actionsByTable.get(table);
+        if (actions == null) {
+          throw new Error(`Missing column comment action group for analytics view: ${table}`);
+        }
+        actions.push(statement.slice(prefix.length));
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      throw new Error(`Column comment statement does not target a known analytics view: ${statement}`);
+    }
+  }
+
+  return COLUMN_COMMENT_TABLES.map((table) => {
+    const actions = actionsByTable.get(table);
+    if (actions == null || actions.length === 0) {
+      throw new Error(`No column comments configured for analytics view: ${table}`);
+    }
+    return `ALTER TABLE default.${table}\n  ${actions.join(",\n  ")}`;
+  });
+}
+
+const COLUMN_COMMENT_SQL = buildColumnCommentSql();
 
 const EXTERNAL_ANALYTICS_DB_SQL = `
 CREATE DATABASE IF NOT EXISTS analytics_internal;
