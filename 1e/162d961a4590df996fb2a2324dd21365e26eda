@@ -1,0 +1,19 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_201bcb48228b05::t_2c3839881aeb71 851-859
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "1e162d961a4590df996fb2a2324dd21365e26eda",
+  "prompts": {},
+  "sessions": {
+    "s_201bcb48228b05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f86e3-2b24-7593-9417-18916e7de584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
