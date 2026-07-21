@@ -42,6 +42,16 @@ export function toSpanId<P extends SpanIdPrefix>(prefix: P, rawId: string): `${P
 }
 
 /**
+ * Session replay segment ids are stable for the lifetime of a browser tab, while
+ * the backend may roll that tab into multiple replays after idle/max-duration
+ * boundaries. Include both ids so a later replay cannot replace the earlier
+ * replay's segment row in ClickHouse.
+ */
+export function toSessionReplaySegmentSpanId(replayId: string, sessionReplaySegmentId: string): PrefixedSpanId {
+  return toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, `${replayId}:${sessionReplaySegmentId}`);
+}
+
+/**
  * The `parent_span_ids` an event insert stamps on each row — the full, deduped
  * list of ancestor spans the server can name, root-first: refresh-token, then the
  * session-replay span (via the server-resolved `session_replay_id`), then the
@@ -63,7 +73,7 @@ export function buildEventSpanFields(opts: {
     parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.sessionReplayId));
   }
   if (opts.sessionReplayId && opts.sessionReplaySegmentId) {
-    parentSpanIds.push(toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, opts.sessionReplaySegmentId));
+    parentSpanIds.push(toSessionReplaySegmentSpanId(opts.sessionReplayId, opts.sessionReplaySegmentId));
   }
   return { parent_span_ids: parentSpanIds };
 }
@@ -132,7 +142,7 @@ export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[
  * (epoch ms), so the ReplacingMergeTree keeps the row with the latest end — the end
  * never regresses even if batches insert out of order or a re-write raced on a
  * partial view of the chunks (which self-heals on the next batch). The segment span
- * uses the RECORDING's `sessionReplaySegmentId` — the per-tab id — as its identity.
+ * uses the replay id plus the recording's per-tab id as its identity.
  */
 export async function insertSessionReplaySpans(
   client: ClickHouseClient,
@@ -172,7 +182,7 @@ export async function insertSessionReplaySpans(
 
   const segmentSpan: SpanInsertRow = {
     ...base,
-    id: toSpanId(SPAN_ID_PREFIXES.sessionReplaySegment, opts.sessionReplaySegmentId),
+    id: toSessionReplaySegmentSpanId(opts.replayId, opts.sessionReplaySegmentId),
     span_type: SPAN_TYPES.sessionReplaySegment,
     span_started_at: opts.segmentStartedAt,
     span_ended_at: opts.segmentLastEventAt,
