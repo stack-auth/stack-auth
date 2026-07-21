@@ -34,6 +34,7 @@ export async function runClickhouseMigrations() {
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
     client.command({ query: SPANS_TABLE_BASE_SQL }),
+    client.command({ query: SPAN_WRITES_TABLE_SQL }),
   ]);
 
   await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
@@ -45,6 +46,7 @@ export async function runClickhouseMigrations() {
   // Clickmap materialized view depends on the events table existing; create after the ALTER above
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
+  await client.command({ query: SPAN_WRITES_MV_SQL });
 
   // Create all views in parallel
   await Promise.all([
@@ -302,6 +304,30 @@ CREATE TABLE IF NOT EXISTS analytics_internal.spans (
 ENGINE ReplacingMergeTree(version)
 PARTITION BY toYYYYMM(created_at)
 ORDER BY (project_id, branch_id, id);
+`;
+
+// Immutable billing ledger for custom-span writes. The source spans table is a
+// ReplacingMergeTree whose old versions disappear during background merges, so
+// it cannot answer how many writes were accepted during a billing period. The
+// materialized view records one row for every custom-span row inserted while
+// excluding the free $-prefixed system spans.
+const SPAN_WRITES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.span_writes (
+    project_id String,
+    created_at DateTime64(3, 'UTC')
+)
+ENGINE MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, created_at);
+`;
+
+const SPAN_WRITES_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.span_writes_mv
+TO analytics_internal.span_writes
+AS
+SELECT project_id, created_at
+FROM analytics_internal.spans
+WHERE NOT startsWith(span_type, '$');
 `;
 
 // Customer-facing spans surface. UNION ALL of: (1) the physical spans table

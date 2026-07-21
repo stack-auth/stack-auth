@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SPAN_ID_PREFIXES, buildCustomSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSpanId } from "./spans";
+import { SPAN_ID_PREFIXES, buildCustomSpanRows, buildEventSpanFields, insertSessionReplaySpans, monotoneEndSpanVersion, toSessionReplaySegmentSpanId, toSpanId } from "./spans";
 
 describe("toSpanId", () => {
   it("prefixes raw ids without touching the raw value", () => {
@@ -25,10 +25,19 @@ describe("monotoneEndSpanVersion", () => {
   });
 });
 
+describe("toSessionReplaySegmentSpanId", () => {
+  it("scopes the stable per-tab segment id to its replay", () => {
+    expect(toSessionReplaySegmentSpanId("replay-a", "same-tab")).toBe("srsi-replay-a:same-tab");
+    expect(toSessionReplaySegmentSpanId("replay-a", "same-tab")).not.toBe(
+      toSessionReplaySegmentSpanId("replay-b", "same-tab"),
+    );
+  });
+});
+
 describe("buildEventSpanFields", () => {
   it("lists all known ancestors root-first: refresh-token, replay, segment", () => {
     expect(buildEventSpanFields({ sessionReplayId: "s1", sessionReplaySegmentId: "seg1", refreshTokenId: "r1" })).toEqual({
-      parent_span_ids: ["rti-r1", "sri-s1", "srsi-seg1"],
+      parent_span_ids: ["rti-r1", "sri-s1", "srsi-s1:seg1"],
     });
   });
 
@@ -101,7 +110,7 @@ describe("insertSessionReplaySpans", () => {
     expect(replaySpan.span_ended_at).toBe(replayLastEventAt);
 
     expect(segmentSpan).toMatchObject({
-      id: "srsi-seg1",
+      id: "srsi-replay1:seg1",
       span_type: "$session-replay-segment",
       parent_span_ids: ["rti-rt1", "sri-replay1"],
       session_replay_id: "replay1",
@@ -154,7 +163,7 @@ describe("buildCustomSpanRows", () => {
     expect(rows[0].parent_span_ids).toEqual([
       "rti-rt1",
       "sri-replay1",
-      "srsi-seg1",
+      "srsi-replay1:seg1",
       "cs-0f000000-0000-4000-8000-00000000aaaa",
       "cs-0f000000-0000-4000-8000-00000000bbbb",
     ]);

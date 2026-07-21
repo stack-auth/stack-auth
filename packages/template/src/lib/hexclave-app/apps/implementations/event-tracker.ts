@@ -103,9 +103,10 @@ export type Span = {
    * primitive for post-await code, timers, and third-party callbacks. Under an
    * exact async-context primitive (server today, browsers once AsyncContext
    * ships) the context covers `fn`'s full async extent; on the browser fallback
-   * it is exact for `fn`'s synchronous window.
+   * it is exact for `fn`'s synchronous window. Always returns a promise because
+   * the first server call may need to initialize the async-context primitive.
    */
-  run<T>(fn: () => T): T,
+  run<T>(fn: () => T): Promise<Awaited<T>>,
   /**
    * The cross-tier propagation headers pinned to exactly this span (and its
    * frozen ancestor chain) — for transports the SDK cannot instrument (XHR,
@@ -143,7 +144,7 @@ type Settler = {
 // as "unhandled" (the runtime only reports rejected promises with zero
 // subscribers), while callers who do await still observe it through their own
 // handler. This is what makes fire-and-forget usage safe.
-function preCaught<T>(promise: Promise<T>): Promise<T> {
+export function preCaught<T>(promise: Promise<T>): Promise<T> {
   promise.catch(() => {});
   return promise;
 }
@@ -326,7 +327,7 @@ export function createInertSpan(spanType: string): Span {
     startSpan: (childType: string) => createInertSpan(childType),
     withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
       withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
-    run: <T,>(fn: () => T) => fn(),
+    run: async <T,>(fn: () => T): Promise<Awaited<T>> => await fn(),
     getPropagationHeaders: () => ({}),
     // Still the caller's REAL request — only the telemetry is inert.
     fetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),

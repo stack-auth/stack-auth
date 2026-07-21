@@ -351,13 +351,9 @@ async function countAnalyticsEventsForProjects(projectIds: string[], period: Usa
   return Number(rows[0]?.total ?? 0);
 }
 
-// Counts span WRITES (row versions), not distinct spans, deliberately without
-// FINAL: every custom-span insert into analytics_internal.spans is one debited
-// item at the batch endpoint (re-writes of the same open span are billed per
-// write), so the non-collapsed count is what matches the billing meter.
-// `created_at` is the ingest time, which is when the debit happened. System
-// spans ($-prefixed types: replay/segment mirrors) are written by us for free
-// and excluded.
+// The immutable write ledger receives one row for every accepted custom-span
+// row. Counting the ReplacingMergeTree state table directly would under-report
+// usage after ClickHouse merges old versions of the same span id.
 async function countAnalyticsSpansForProjects(projectIds: string[], period: UsagePeriod): Promise<number> {
   if (projectIds.length === 0) {
     return 0;
@@ -367,11 +363,10 @@ async function countAnalyticsSpansForProjects(projectIds: string[], period: Usag
   const result = await clickhouseClient.query({
     query: `
       SELECT count() AS total
-      FROM analytics_internal.spans
+      FROM analytics_internal.span_writes
       WHERE project_id IN {projectIds:Array(String)}
         AND created_at >= {periodStart:DateTime}
         AND created_at < {periodEnd:DateTime}
-        AND NOT startsWith(span_type, '$')
     `,
     query_params: {
       projectIds,

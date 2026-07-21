@@ -156,8 +156,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * TC39 AsyncContext ships) and the callback's synchronous window in
      * browsers. After an `await` in a browser, parent via the handle you
      * already have — `span.trackEvent` / `span.withSpan` / `span.fetch` /
-     * `span.run` — which is exact everywhere. Opt out of ambient parents per
-     * item with `root: true` or `excludeParentIds`.
+     * `span.run`. Handle-based item methods are exact everywhere; `span.run`
+     * covers its callback's synchronous window in the browser fallback. Opt out
+     * of ambient parents per item with `root: true` or `excludeParentIds`.
      */
     withSpan<T>(spanType: string, fn: (span: Span) => Promise<T> | T): Promise<T>,
     withSpan<T>(spanType: string, options: StartSpanOptions, fn: (span: Span) => Promise<T> | T): Promise<T>,
