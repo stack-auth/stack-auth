@@ -1,0 +1,21 @@
+apps/backend/prisma/migrations/20260701000000_add_session_replay_segment/migration.sql
+  s_201bcb48228b05::t_7a955f2d0e2503 3-5
+apps/backend/prisma/schema.prisma
+  s_201bcb48228b05::t_630f1f6dc9101a 470-472
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "2c01bbd6e9a854c3206e7ec2e06083095cd08fa8",
+  "prompts": {},
+  "sessions": {
+    "s_201bcb48228b05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f86e3-2b24-7593-9417-18916e7de584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
