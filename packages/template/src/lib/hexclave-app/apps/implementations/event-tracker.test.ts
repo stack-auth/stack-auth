@@ -12,6 +12,12 @@ async function advancePastFlush() {
   await Promise.resolve();
 }
 
+// Every batch from a started tracker also carries system span rows (at least
+// the $page-view span); tests about CUSTOM spans filter those out.
+function getCustomSpans<T extends { span_type: string }>(payload: { spans?: T[] }): T[] {
+  return (payload.spans ?? []).filter((span) => !span.span_type.startsWith("$"));
+}
+
 function getSentEventTypes(sentBodies: string[]) {
   const [body] = sentBodies;
 
@@ -521,8 +527,9 @@ describe("EventTracker", () => {
       // Start + setData + end within one flush window: exactly ONE wire row,
       // carrying the latest state (ended, merged data).
       const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_id: string, span_type: string, ended_at_ms: number | null, data: Record<string, unknown>, parent_span_ids: string[] }[] };
-      expect(payload.spans).toHaveLength(1);
-      const row = payload.spans![0];
+      const customSpans = getCustomSpans(payload);
+      expect(customSpans).toHaveLength(1);
+      const row = customSpans[0];
       expect(row.span_id).toBe(span.spanId);
       expect(row.span_type).toBe("checkout-flow");
       expect(row.ended_at_ms).not.toBeNull();
@@ -552,9 +559,10 @@ describe("EventTracker", () => {
       await advancePastFlush();
       await expect(endPromise).resolves.toBeUndefined();
 
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { ended_at_ms: number | null }[] };
-      expect(payload.spans).toHaveLength(1);
-      expect(payload.spans![0].ended_at_ms).toBeTypeOf("number");
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null }[] };
+      const customSpans = getCustomSpans(payload);
+      expect(customSpans).toHaveLength(1);
+      expect(customSpans[0].ended_at_ms).toBeTypeOf("number");
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("endedAtMs must be a finite"));
     } finally {
       tracker.stop();
@@ -581,13 +589,13 @@ describe("EventTracker", () => {
       span.end().catch(() => {});
       await advancePastFlush();
 
-      const first = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { ended_at_ms: number | null, updated_at_ms: number }[] };
-      const second = JSON.parse(sentBodies[1] ?? "{}") as { spans?: { ended_at_ms: number | null, updated_at_ms: number }[] };
-      expect(first.spans![0].ended_at_ms).toBeNull();
-      expect(second.spans![0].ended_at_ms).not.toBeNull();
+      const first = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null, updated_at_ms: number }[] };
+      const second = JSON.parse(sentBodies[1] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null, updated_at_ms: number }[] };
+      expect(getCustomSpans(first)[0].ended_at_ms).toBeNull();
+      expect(getCustomSpans(second)[0].ended_at_ms).not.toBeNull();
       // The end row must always beat the open row in the ReplacingMergeTree,
       // even if the batches arrive out of order server-side.
-      expect(second.spans![0].updated_at_ms).toBeGreaterThan(first.spans![0].updated_at_ms);
+      expect(getCustomSpans(second)[0].updated_at_ms).toBeGreaterThan(getCustomSpans(first)[0].updated_at_ms);
     } finally {
       tracker.stop();
     }
@@ -669,9 +677,10 @@ describe("EventTracker", () => {
       const child = tracker.startSpan("client-continuation", { parentIds: [serverRef] });
       await advancePastFlush();
 
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_id: string, parent_span_ids: string[] }[] };
-      expect(payload.spans![0].span_id).toBe(child.spanId);
-      expect(payload.spans![0].parent_span_ids).toEqual([serverRef.parentSpanIds[0], serverRef.spanId]);
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_id: string, span_type: string, parent_span_ids: string[] }[] };
+      const customSpans = getCustomSpans(payload);
+      expect(customSpans[0].span_id).toBe(child.spanId);
+      expect(customSpans[0].parent_span_ids).toEqual([serverRef.parentSpanIds[0], serverRef.spanId]);
       expect(child.ref()).toEqual({ spanId: child.spanId, parentSpanIds: [serverRef.parentSpanIds[0], serverRef.spanId] });
     } finally {
       tracker.stop();
@@ -762,10 +771,15 @@ describe("EventTracker", () => {
       await Promise.resolve();
 
       const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null }[] };
-      expect(payload.spans).toHaveLength(1);
-      expect(payload.spans![0].span_type).toBe("abandoned-flow");
+      const customSpans = getCustomSpans(payload);
+      expect(customSpans).toHaveLength(1);
+      expect(customSpans[0].span_type).toBe("abandoned-flow");
       // No auto-end on unload: the span survives as an open interval by design.
-      expect(payload.spans![0].ended_at_ms).toBeNull();
+      expect(customSpans[0].ended_at_ms).toBeNull();
+      // The $page-view span, by contrast, IS closed by pagehide — its interval
+      // is the time-on-page.
+      const pageViewSpan = (payload.spans ?? []).find((span) => span.span_type === "$page-view");
+      expect(pageViewSpan?.ended_at_ms).toBeTypeOf("number");
     } finally {
       tracker.stop();
     }
@@ -1060,6 +1074,29 @@ describe("EventTracker ambient modes + span handle kit", () => {
     });
   });
 
+  it("span.getPropagationHeaders carries the span's FROZEN page ancestry once the tracker runs", async () => {
+    vi.useFakeTimers();
+    const tracker = makeTracker([]);
+    try {
+      tracker.start();
+      const pageViewSpanId = tracker.getCurrentPageViewSpanId();
+      expect(pageViewSpanId).toBeTypeOf("string");
+      const span = tracker.startSpan("flow");
+
+      const decoded = decodeSpanContextHeader(span.getPropagationHeaders()["x-hexclave-span-context"]);
+      expect(decoded?.pageViewSpanId).toBe(pageViewSpanId);
+
+      // Navigating replaces the current page — but the header stays pinned to
+      // the page the span STARTED on (frozen, like the custom chain).
+      window.history.pushState({}, "", "/next-page");
+      expect(tracker.getCurrentPageViewSpanId()).not.toBe(pageViewSpanId);
+      const decodedAfterNav = decodeSpanContextHeader(span.getPropagationHeaders()["x-hexclave-span-context"]);
+      expect(decodedAfterNav?.pageViewSpanId).toBe(pageViewSpanId);
+    } finally {
+      tracker.stop();
+    }
+  });
+
   it("span.fetch attaches the pinned header same-origin, skips cross-origin, never clobbers explicit", async () => {
     const calls: { input: unknown, init: RequestInit | undefined }[] = [];
     const originalFetch = globalThis.fetch;
@@ -1083,6 +1120,357 @@ describe("EventTracker ambient modes + span handle kit", () => {
       expect(new Headers(calls[2].init?.headers).get("x-hexclave-span-context")).toBe(explicit);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("EventTracker $page-view span + autocapture", () => {
+  function makeTracker(sentBodies: string[], extraDeps?: Partial<import("./event-tracker").EventTrackerDeps>) {
+    return new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+      ...extraDeps,
+    });
+  }
+
+  type WireSpan = {
+    span_id: string,
+    span_type: string,
+    started_at_ms: number,
+    ended_at_ms: number | null,
+    data: Record<string, unknown>,
+    page_view_span_id?: string,
+  };
+  type WireEvent = { event_type: string, data: Record<string, unknown>, page_view_span_id?: string };
+  type WirePayload = { events?: WireEvent[], spans?: WireSpan[] };
+
+  function allSpans(sentBodies: string[]): WireSpan[] {
+    return sentBodies.flatMap((body) => (JSON.parse(body) as WirePayload).spans ?? []);
+  }
+
+  function allEvents(sentBodies: string[]): WireEvent[] {
+    return sentBodies.flatMap((body) => (JSON.parse(body) as WirePayload).events ?? []);
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("writes a $page-view span per navigation: the old one ends with scroll depth, the new one opens, events re-parent", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const firstSpanId = tracker.getCurrentPageViewSpanId();
+      expect(firstSpanId).toBeTypeOf("string");
+
+      window.history.pushState({}, "", "/second-page");
+      const secondSpanId = tracker.getCurrentPageViewSpanId();
+      expect(secondSpanId).toBeTypeOf("string");
+      expect(secondSpanId).not.toBe(firstSpanId);
+
+      tracker.trackCustomEvent("on_second_page").catch(() => {});
+      await advancePastFlush();
+
+      const pageViewSpans = allSpans(sentBodies).filter((span) => span.span_type === "$page-view");
+      expect(pageViewSpans.map((span) => span.span_id)).toEqual([firstSpanId, secondSpanId]);
+
+      const [first, second] = pageViewSpans;
+      // The first page's interval closed at navigation and absorbed the final
+      // scroll depth into the same row.
+      expect(first.ended_at_ms).toBeTypeOf("number");
+      expect(first.data.entry_type).toBe("initial");
+      expect(first.data.scroll_depth_px).toBeTypeOf("number");
+      expect(first.data.scroll_depth_ratio).toBeTypeOf("number");
+      // A $page-view span never parents under another page.
+      expect(first.page_view_span_id).toBeUndefined();
+      // The second page's interval is still open.
+      expect(second.ended_at_ms).toBeNull();
+      expect(second.data.entry_type).toBe("push");
+
+      // Both the legacy $page-view events and custom events carry the page
+      // ancestry of the page they happened on.
+      const events = allEvents(sentBodies);
+      const pageViewEvents = events.filter((event) => event.event_type === "$page-view");
+      expect(pageViewEvents.map((event) => event.page_view_span_id)).toEqual([firstSpanId, secondSpanId]);
+      expect(events.find((event) => event.event_type === "on_second_page")?.page_view_span_id).toBe(secondSpanId);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("marks the click completing a rapid same-spot burst as rage (earlier clicks stay unmarked)", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"buy\">Buy</button>";
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      for (let i = 0; i < 3; i++) {
+        document.querySelector("#buy")?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 60 }));
+      }
+      await advancePastFlush();
+
+      const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
+      expect(clicks.map((click) => click.data.rage)).toEqual([undefined, undefined, 1]);
+      expect(clicks.every((click) => click.page_view_span_id === undefined)).toBe(false);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("flags outbound links and file-extension downloads on $click", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `
+      <a id="ext" href="https://other.example/whitepaper.pdf">Whitepaper</a>
+      <a id="int" href="/pricing">Pricing</a>
+    `;
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      document.querySelector("#ext")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      document.querySelector("#int")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await advancePastFlush();
+
+      const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
+      const ext = clicks.find((click) => click.data.href === "https://other.example/whitepaper.pdf");
+      const int = clicks.find((click) => click.data.href === "/pricing");
+      expect(ext?.data.outbound).toBe(1);
+      expect(ext?.data.download).toBe(1);
+      expect(int?.data.outbound).toBeUndefined();
+      expect(int?.data.download).toBeUndefined();
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("captures $form-submit with field NAMES only — never values", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = `
+      <form id="quiz" name="quiz-form" action="/submit?token=secret" method="post">
+        <input name="student_name" value="Ada Lovelace" />
+        <input name="answer" value="42" />
+        <input value="unnamed is skipped" />
+        <button type="submit">Submit</button>
+      </form>
+    `;
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      document.querySelector("#quiz")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await advancePastFlush();
+
+      const submit = allEvents(sentBodies).find((event) => event.event_type === "$form-submit");
+      expect(submit).toBeDefined();
+      expect(submit!.data.field_names).toEqual(["student_name", "answer"]);
+      expect(submit!.data.form_id).toBe("quiz");
+      expect(submit!.data.form_name).toBe("quiz-form");
+      // The action's query string (which can carry user-derived values) is
+      // stripped; only the path survives.
+      expect(submit!.data.action_path).toBe("/submit");
+      expect(JSON.stringify(submit!.data)).not.toContain("Ada Lovelace");
+      expect(JSON.stringify(submit!.data)).not.toContain("secret");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("tracks offline periods as $offline spans (open on offline, closed on online)", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("offline"));
+      await advancePastFlush();
+      const openRows = allSpans(sentBodies).filter((span) => span.span_type === "$offline");
+      expect(openRows).toHaveLength(1);
+      expect(openRows[0].ended_at_ms).toBeNull();
+      expect(openRows[0].page_view_span_id).toBe(tracker.getCurrentPageViewSpanId());
+
+      window.dispatchEvent(new Event("online"));
+      await advancePastFlush();
+      const finalRows = allSpans(sentBodies).filter((span) => span.span_type === "$offline");
+      expect(finalRows[finalRows.length - 1].ended_at_ms).toBeTypeOf("number");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("restarts the $page-view span on sign-out rotation without a synthetic $page-view event", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      const beforeRotation = tracker.getCurrentPageViewSpanId();
+      await advancePastFlush();
+
+      tracker.clearBuffer();
+      tracker.setSessionReplaySegmentId("22222222-2222-4222-8222-222222222222");
+      const afterRotation = tracker.getCurrentPageViewSpanId();
+      expect(afterRotation).toBeTypeOf("string");
+      expect(afterRotation).not.toBe(beforeRotation);
+
+      await advancePastFlush();
+      const rotationSpan = allSpans(sentBodies).find((span) => span.span_id === afterRotation);
+      expect(rotationSpan?.span_type).toBe("$page-view");
+      expect(rotationSpan?.data.entry_type).toBe("rotation");
+      // Exactly one $page-view EVENT total (the initial one) — rotation adds none.
+      expect(allEvents(sentBodies).filter((event) => event.event_type === "$page-view")).toHaveLength(1);
+      // The pre-rotation span handle was inert-ified: no post-rotation re-write
+      // of the old span id ships under the new identity.
+      const oldSpanRows = allSpans(sentBodies).filter((span) => span.span_id === beforeRotation);
+      for (const row of oldSpanRows) {
+        expect(row.ended_at_ms).toBeNull();
+      }
+    } finally {
+      tracker.stop();
+    }
+  });
+});
+
+describe("EventTracker integrity signals (opt-in)", () => {
+  function makeTracker(sentBodies: string[], integritySignals: boolean) {
+    return new EventTracker({
+      projectId: "internal",
+      sendBatch: async (body) => {
+        sentBodies.push(body);
+        return Result.ok(new Response());
+      },
+      integritySignals,
+    });
+  }
+
+  function setVisibilityState(state: "visible" | "hidden") {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }
+
+  afterEach(() => {
+    // Restore jsdom's own visibilityState so later tests see "visible".
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    vi.useRealTimers();
+  });
+
+  it("stays silent without the opt-in: no $tab-hidden spans, no clipboard events", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, false);
+    try {
+      tracker.start();
+      setVisibilityState("hidden");
+      setVisibilityState("visible");
+      document.dispatchEvent(new Event("copy", { bubbles: true }));
+      await advancePastFlush();
+
+      const payloads = sentBodies.map((body) => JSON.parse(body) as { events?: { event_type: string }[], spans?: { span_type: string }[] });
+      expect(payloads.flatMap((payload) => payload.spans ?? []).some((span) => span.span_type === "$tab-hidden")).toBe(false);
+      expect(payloads.flatMap((payload) => payload.events ?? []).some((event) => event.event_type === "$copy")).toBe(false);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("opens a $tab-hidden span on hidden and closes it on visible (tab-out interval)", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      setVisibilityState("hidden");
+      // The keepalive flush triggered by going hidden already carries the OPEN
+      // $tab-hidden row — crucial because a hidden tab may never come back.
+      await vi.advanceTimersByTimeAsync(0);
+      const openRows = sentBodies
+        .flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null, page_view_span_id?: string }[] }).spans ?? [])
+        .filter((span) => span.span_type === "$tab-hidden");
+      expect(openRows).toHaveLength(1);
+      expect(openRows[0].ended_at_ms).toBeNull();
+      expect(openRows[0].page_view_span_id).toBe(tracker.getCurrentPageViewSpanId());
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      setVisibilityState("visible");
+      await advancePastFlush();
+      const rows = sentBodies
+        .flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? [])
+        .filter((span) => span.span_type === "$tab-hidden");
+      expect(rows[rows.length - 1].ended_at_ms).toBeTypeOf("number");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("records $window-blur as a span and $context-menu / $print / $fullscreen-exit as events", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<div id=\"content\">text</div>";
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+      document.querySelector("#content")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 6 }));
+      window.dispatchEvent(new Event("beforeprint"));
+      await advancePastFlush();
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? []);
+      const blurRows = spans.filter((span) => span.span_type === "$window-blur");
+      expect(blurRows.length).toBeGreaterThan(0);
+      expect(blurRows[blurRows.length - 1].ended_at_ms).toBeTypeOf("number");
+
+      const events = sentBodies.flatMap((body) => (JSON.parse(body) as { events?: { event_type: string, data: Record<string, unknown> }[] }).events ?? []);
+      const contextMenu = events.find((event) => event.event_type === "$context-menu");
+      expect(contextMenu?.data.tag_name).toBe("div");
+      expect(events.some((event) => event.event_type === "$print")).toBe(true);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("classifies paste origin without ever capturing clipboard content", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<textarea id=\"essay\"></textarea>";
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    const getSelectionSpy = vi.spyOn(document, "getSelection").mockReturnValue({ toString: () => "the answer is 42" } as Selection);
+    try {
+      tracker.start();
+      // Copy on this page (selection mocked — jsdom has no real selections).
+      document.dispatchEvent(new Event("copy", { bubbles: true }));
+
+      const makePaste = (text: string) => {
+        const event = new Event("paste", { bubbles: true });
+        // jsdom cannot construct ClipboardEvent with clipboardData; the handler
+        // only calls clipboardData.getData, so a minimal stand-in suffices.
+        Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+        return event;
+      };
+      document.querySelector("#essay")?.dispatchEvent(makePaste("the answer is 42"));
+      document.querySelector("#essay")?.dispatchEvent(makePaste("copied from ChatGPT"));
+      await advancePastFlush();
+
+      const events = sentBodies.flatMap((body) => (JSON.parse(body) as { events?: { event_type: string, data: Record<string, unknown> }[] }).events ?? []);
+      const copy = events.find((event) => event.event_type === "$copy");
+      expect(copy?.data.selection_length).toBe("the answer is 42".length);
+
+      const pastes = events.filter((event) => event.event_type === "$paste");
+      expect(pastes.map((paste) => paste.data.same_page_origin)).toEqual([1, 0]);
+      expect(pastes.map((paste) => paste.data.length)).toEqual(["the answer is 42".length, "copied from ChatGPT".length]);
+      // The content itself never rides the wire.
+      for (const body of sentBodies) {
+        expect(body).not.toContain("the answer is 42");
+        expect(body).not.toContain("copied from ChatGPT");
+      }
+    } finally {
+      tracker.stop();
+      getSelectionSpy.mockRestore();
     }
   });
 });

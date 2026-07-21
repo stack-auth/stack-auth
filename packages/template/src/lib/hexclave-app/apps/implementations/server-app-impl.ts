@@ -1839,6 +1839,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       refreshTokenId,
       sessionReplayId: sameProject?.sessionReplayId ?? null,
       sessionReplaySegmentId: sameProject?.sessionReplaySegmentId ?? null,
+      pageViewSpanId: sameProject?.pageViewSpanId ?? null,
       customParentSpanIds: sameProject?.customParentSpanIds ?? [],
     };
   }
@@ -1853,7 +1854,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (ambient) {
       return { ...ambient, userId: explicitUserId ?? ambient.userId };
     }
-    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, customParentSpanIds: [] };
+    return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, pageViewSpanId: null, customParentSpanIds: [] };
   }
 
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
@@ -1952,6 +1953,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
         event_at_ms: Date.now(),
         data: { ...data ?? {} },
         ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
+        ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
       },
       settler,
     });
@@ -2007,6 +2009,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       parent_span_ids: parentSpanIds,
       data: { ...accumulatedData },
       updated_at_ms: nextVersion(),
+      ...batchContext.pageViewSpanId !== null ? { page_view_span_id: batchContext.pageViewSpanId } : {},
     });
 
     const span: Span = {
@@ -2046,6 +2049,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
           projectId: this.projectId,
           ...batchContext.sessionReplayId ? { sessionReplayId: batchContext.sessionReplayId } : {},
           ...batchContext.sessionReplaySegmentId ? { sessionReplaySegmentId: batchContext.sessionReplaySegmentId } : {},
+          ...batchContext.pageViewSpanId ? { pageViewSpanId: batchContext.pageViewSpanId } : {},
           customParentSpanIds: [...parentSpanIds, spanId],
         }),
       }),
@@ -2174,9 +2178,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 const SERVER_TELEMETRY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * Buffer coalescing key. customParentSpanIds are intentionally excluded — they are
- * per-item parents (they ride on each row's parent_span_ids), not part of the batch
- * identity, so items sharing user/refresh/replay/segment still batch together.
+ * Buffer coalescing key. customParentSpanIds and pageViewSpanId are intentionally
+ * excluded — they are per-item fields (they ride on each row), not part of the
+ * batch identity, so items sharing user/refresh/replay/segment still batch together.
  */
 function serializeServerBatchKey(context: ServerRequestSpanContext): string {
   return JSON.stringify([context.userId, context.refreshTokenId, context.sessionReplayId, context.sessionReplaySegmentId]);

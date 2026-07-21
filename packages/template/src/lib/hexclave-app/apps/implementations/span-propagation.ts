@@ -49,6 +49,10 @@ export type SpanPropagationContext = {
   projectId: string,
   sessionReplayId?: string,
   sessionReplaySegmentId?: string,
+  /** The sender's current `$page-view` span, so backend telemetry triggered by
+   * this request nests under the page the user was on. Untrusted label, like
+   * the replay/segment ids. */
+  pageViewSpanId?: string,
   customParentSpanIds?: string[],
 };
 
@@ -103,6 +107,7 @@ export function encodeSpanContextHeader(context: SpanPropagationContext): string
   const payload: Record<string, unknown> = { projectId: context.projectId };
   if (context.sessionReplayId) payload.sessionReplayId = context.sessionReplayId;
   if (context.sessionReplaySegmentId) payload.sessionReplaySegmentId = context.sessionReplaySegmentId;
+  if (context.pageViewSpanId) payload.pageViewSpanId = context.pageViewSpanId;
   if (context.customParentSpanIds && context.customParentSpanIds.length > 0) {
     // Cap keeps the NEAREST ancestors (tail of a root-first list) — the same
     // overflow rule resolveParentIds applies to locally-tracked items.
@@ -145,6 +150,9 @@ export function decodeSpanContextHeader(headerValue: string | null | undefined):
   }
   if (typeof obj.sessionReplaySegmentId === "string" && UUID_RE.test(obj.sessionReplaySegmentId)) {
     context.sessionReplaySegmentId = obj.sessionReplaySegmentId;
+  }
+  if (typeof obj.pageViewSpanId === "string" && UUID_RE.test(obj.pageViewSpanId)) {
+    context.pageViewSpanId = obj.pageViewSpanId;
   }
   if (Array.isArray(obj.customParentSpanIds)) {
     const ids = obj.customParentSpanIds

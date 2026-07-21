@@ -505,12 +505,12 @@ it("rejects invalid event_type", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - event_type must be one of $page-view, $click or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
+              - event_type must be one of $page-view, $click, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - event_type must be one of $page-view, $click or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
+            - event_type must be one of $page-view, $click, $form-submit, $window-resize, $copy, $cut, $paste, $context-menu, $print, $fullscreen-exit or a custom name matching /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/
         \`,
       },
       "headers": Headers {
@@ -1270,18 +1270,152 @@ it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap",
   expect(res.body?.error).toContain("Custom event data must be a JSON object");
 });
 
-it("rejects $-prefixed span types", async ({ expect }) => {
+it("rejects $-prefixed span types outside the client-writable system list", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
-  const res = await uploadTelemetryBatch({
-    session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_type: "$reserved" })],
-  });
+  for (const spanType of ["$reserved", "$session-replay", "$refresh-token"]) {
+    const res = await uploadTelemetryBatch({
+      session_replay_segment_id: randomUUID(),
+      spans: [makeCustomSpan({ span_type: spanType })],
+    });
 
-  expect(res.status).toBe(400);
-  expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Invalid span_type");
+    expect(res.status).toBe(400);
+    expect(res.body?.code).toBe("SCHEMA_ERROR");
+    expect(res.body?.error).toContain("span_type must be one of");
+  }
+});
+
+it("accepts a $page-view span (pv- id) with nested system autocapture and custom spans (page ancestry between system and custom)", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const sessionReplaySegmentId = randomUUID();
+  const pageViewSpanId = randomUUID();
+  const tabHiddenSpanId = randomUUID();
+  const customSpanId = randomUUID();
+  const customParent = randomUUID();
+  const now = Date.now();
+
+  const res = await uploadTelemetryBatch({
+    session_replay_segment_id: sessionReplaySegmentId,
+    spans: [
+      makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", data: { path: "/exam", entry_type: "initial" } }),
+      makeCustomSpan({ span_id: tabHiddenSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId }),
+      makeCustomSpan({ span_id: customSpanId, page_view_span_id: pageViewSpanId, parent_span_ids: [customParent] }),
+    ],
+    events: [{
+      event_type: "$paste",
+      event_at_ms: now - 100,
+      data: { length: 12, same_page_origin: 0 },
+      page_view_span_id: pageViewSpanId,
+    }],
+  });
+  expect(res.status).toBe(200);
+  expect(res.body).toEqual({ inserted: 1, accepted_spans: 3 });
+
+  const spanQueryRes = await queryAnalyticsUntil({
+    query: "SELECT id, span_type, parent_span_ids FROM spans WHERE session_replay_segment_id = {segId:String} ORDER BY id",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 3);
+  expect(spanQueryRes?.status).toBe(200);
+  const spanRows = (spanQueryRes?.body as any).result as { id: string, span_type: string, parent_span_ids: string[] }[];
+
+  const pageViewRow = spanRows.find((row) => row.id === `pv-${pageViewSpanId}`);
+  expect(pageViewRow?.span_type).toBe("$page-view");
+  // The page-view span itself parents only under the system ancestry
+  // (refresh-token here — no active replay).
+  expect(pageViewRow?.parent_span_ids).toHaveLength(1);
+  expect(pageViewRow?.parent_span_ids[0]).toMatch(/^rti-/);
+
+  const tabHiddenRow = spanRows.find((row) => row.id === `sas-${tabHiddenSpanId}`);
+  expect(tabHiddenRow?.span_type).toBe("$tab-hidden");
+  expect(tabHiddenRow?.parent_span_ids).toEqual([
+    pageViewRow!.parent_span_ids[0],
+    `pv-${pageViewSpanId}`,
+  ]);
+
+  // Custom span: system ancestry, then the page, then the custom chain.
+  const customRow = spanRows.find((row) => row.id === `cs-${customSpanId}`);
+  expect(customRow?.parent_span_ids).toEqual([
+    pageViewRow!.parent_span_ids[0],
+    `pv-${pageViewSpanId}`,
+    `cs-${customParent}`,
+  ]);
+
+  // The new system EVENT type nests under the page too.
+  const eventQueryRes = await queryAnalyticsUntil({
+    query: "SELECT event_type, parent_span_ids FROM events WHERE session_replay_segment_id = {segId:String}",
+    params: { segId: sessionReplaySegmentId },
+  }, (r) => r.body?.result?.length === 1);
+  expect(eventQueryRes?.status).toBe(200);
+  const eventRow = (eventQueryRes?.body as any).result[0];
+  expect(eventRow.event_type).toBe("$paste");
+  expect(eventRow.parent_span_ids).toEqual([
+    pageViewRow!.parent_span_ids[0],
+    `pv-${pageViewSpanId}`,
+  ]);
+});
+
+it("rejects a $page-view span carrying a page_view_span_id and a span naming itself as its page", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const pageViewSpanId = randomUUID();
+  const nested = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", page_view_span_id: randomUUID() })],
+  });
+  expect(nested.status).toBe(400);
+  expect(nested.body?.code).toBe("SCHEMA_ERROR");
+  expect(nested.body?.error).toContain("A $page-view span must not carry a page_view_span_id");
+
+  const selfReferencing = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId })],
+  });
+  expect(selfReferencing.status).toBe(400);
+  expect(selfReferencing.body?.code).toBe("SCHEMA_ERROR");
+  expect(selfReferencing.body?.error).toContain("must not name itself as its page_view_span_id");
+});
+
+it("rejects invalid page_view_span_id values on events and spans", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  const badEvent = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "$click", event_at_ms: Date.now(), data: {}, page_view_span_id: "not-a-uuid" }],
+  });
+  expect(badEvent.status).toBe(400);
+  expect(badEvent.body?.error).toContain("Invalid page_view_span_id");
+
+  const badSpan = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ page_view_span_id: "not-a-uuid" })],
+  });
+  expect(badSpan.status).toBe(400);
+  expect(badSpan.body?.error).toContain("Invalid page_view_span_id");
+});
+
+it("applies the data size cap to NEW system event types (only $page-view/$click stay permissive)", async ({ expect }) => {
+  await setupAnalyticsProject();
+  await Auth.Otp.signIn();
+
+  // A new system type with oversized data is rejected like a custom event…
+  const oversizedNew = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "$form-submit", event_at_ms: Date.now(), data: { pad: "x".repeat(16_001) } }],
+  });
+  expect(oversizedNew.status).toBe(400);
+  expect(oversizedNew.body?.error).toContain("Event data must be a JSON object");
+
+  // …while the two legacy types stay permissive for deployed-tracker back-compat.
+  const oversizedLegacy = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{ event_type: "$click", event_at_ms: Date.now(), data: { pad: "x".repeat(16_001) } }],
+  });
+  expect(oversizedLegacy.status).toBe(200);
 });
 
 it("rejects spans that end before they start", async ({ expect }) => {
