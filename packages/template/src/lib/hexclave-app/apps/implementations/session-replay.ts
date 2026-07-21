@@ -55,8 +55,10 @@ export type AnalyticsOptions = {
    */
   waitUntil?: (promise: Promise<unknown>) => void,
   /**
-   * Opt-in presence/integrity signals: `$tab-hidden` and `$window-blur` spans
-   * (user left the tab/window), `$copy`/`$cut`/`$paste` (lengths and a
+   * Opt-in presence/integrity signals: an `$away` span per continuous interval
+   * the user spent off the tab/window (its `data.reasons` records which
+   * sensors fired: `tab-hidden`, `window-blur`, or both),
+   * `$copy`/`$cut`/`$paste` (lengths and a
    * same-page-origin flag only — clipboard CONTENT is never captured),
    * `$context-menu`, `$print`, and `$fullscreen-exit` events. Built for
    * review-signal use cases like exam/quiz platforms; all signals are advisory

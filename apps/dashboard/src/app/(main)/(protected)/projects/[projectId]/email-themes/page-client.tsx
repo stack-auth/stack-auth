@@ -7,7 +7,7 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
-import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } from "@phosphor-icons/react";
+import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@hexclave/shared/dist/helpers/emails";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
@@ -193,7 +193,7 @@ export default function PageClient() {
                   onClick: handleSaveTheme
                 }}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid sm:grid-cols-2 gap-4">
                   {themes.map((theme) => (
                     <ThemeOption
                       key={theme.id}
@@ -285,6 +285,7 @@ function ThemeOption({
   const project = hexclaveAdminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
+  const router = useRouter();
   const isDefault = Object.keys(DEFAULT_EMAIL_THEMES).includes(theme.id);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -340,7 +341,18 @@ function ThemeOption({
         </div>
 
         {!isDefault && (
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm hover:bg-primary hover:text-primary-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`email-themes/${theme.id}`);
+              }}
+            >
+              <PencilSimple className="h-4 w-4" />
+            </Button>
             <ActionDialog
               title="Delete Theme"
               description={`Are you sure you want to delete the theme "${theme.displayName}"? This action cannot be undone.`}

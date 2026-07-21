@@ -12,10 +12,11 @@ export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
 export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 16_000;
 export const CUSTOM_TELEMETRY_MAX_PARENT_CHAIN = 10;
 
-// System (`$`-prefixed) EVENT types the browser SDK auto-captures and the
-// analytics batch route accepts on the wire. Shared so the SDK and the route
-// can never disagree about which `$` names are valid — an unknown `$` type
-// 400s the whole batch server-side.
+// System (`$`-prefixed) EVENT types the analytics batch route accepts on the
+// wire. `$page-view` is span-only in current SDKs (see CLIENT_SYSTEM_SPAN_TYPES)
+// but remains accepted here so older trackers that still dual-emit a page-view
+// EVENT are not 400'd. Shared so the SDK and the route can never disagree
+// about which `$` names are valid — an unknown `$` type 400s the whole batch.
 export const SYSTEM_EVENT_TYPES = [
   "$page-view",
   "$click",
@@ -38,13 +39,14 @@ export const PERMISSIVE_DATA_SYSTEM_EVENT_TYPES = ["$page-view", "$click"] as co
 
 // System (`$`-prefixed) SPAN types the browser SDK is allowed to WRITE through
 // the analytics batch route (versioned upserts, same pipeline as custom spans).
-// Server-derived system spans ($refresh-token, $session-replay,
-// $session-replay-segment) are intentionally NOT here — they can never be
-// written by a client.
+// `$page-view` is the canonical page-view write path (interval + hierarchy
+// parent). Metrics/dashboard SQL that need page views query spans directly —
+// they are never projected into default.events. Server-derived system spans
+// ($refresh-token, $session-replay, $session-replay-segment) are intentionally
+// NOT here — they can never be written by a client.
 export const CLIENT_SYSTEM_SPAN_TYPES = [
   "$page-view",
-  "$tab-hidden",
-  "$window-blur",
+  "$away",
   "$offline",
 ] as const;
 

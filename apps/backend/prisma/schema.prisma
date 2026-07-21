@@ -467,8 +467,9 @@ model SessionReplayChunk {
 
 // Maintained per-tab recording-segment bounds, updated O(1) per replay batch with
 // LEAST/GREATEST (see upsertSessionReplaySegmentBounds) instead of re-aggregating
-// min/max over the segment's chunks on every upload. Feeds the $session-replay-segment
-// span's start/end in ClickHouse.
+// min/max over the segment's chunks on every upload. Forward-only — no historical
+// backfill; a segment's bounds appear on the first batch that touches it. Feeds
+// the $session-replay-segment span's start/end in ClickHouse.
 model SessionReplaySegment {
   // The client-minted per-tab segment id. Plain String (not @db.Uuid) to match
   // SessionReplayChunk.sessionReplaySegmentId, which it joins against.
