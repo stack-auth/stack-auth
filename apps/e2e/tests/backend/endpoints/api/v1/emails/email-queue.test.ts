@@ -280,10 +280,11 @@ describe("email queue edge cases", () => {
     const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Transactional Not Skipped Test");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows sent (not skipped despite user being unsubscribed from marketing)
-    const outboxEmails = await getOutboxEmails({ subject: "Transactional Not Skipped Test" });
+    // Verify outbox shows sent (not skipped despite user being unsubscribed from marketing).
+    // Poll for the terminal status: receiving the message in the mailbox only proves the send
+    // started; the outbox row flips "sending" -> "sent" a moment later, so a single read races it.
+    const outboxEmails = await waitForOutboxEmailWithStatus("Transactional Not Skipped Test", "sent");
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("sent");
     expect(outboxEmails[0].is_transactional).toBe(true);
   });
 
@@ -1368,10 +1369,10 @@ describe("theme and template deletion after scheduling", () => {
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows sent
-    outboxEmails = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
+    // Verify outbox shows sent (poll for the terminal status; the row flips "sending" -> "sent"
+    // a moment after the mailbox receives the message, so a single read races it)
+    outboxEmails = await waitForOutboxEmailWithStatus("Theme Fallback Test Email", "sent");
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("sent");
 
     // The email should have been rendered with the default theme
     // This documents the expected behavior - even if theme_id points to a deleted theme,
@@ -1450,10 +1451,10 @@ describe("theme and template deletion after scheduling", () => {
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
-    // Verify outbox shows sent
-    const outboxEmails = await getOutboxEmails({ subject: "Theme Fallback Test Email" });
+    // Verify outbox shows sent (poll for the terminal status; the row flips "sending" -> "sent"
+    // a moment after the mailbox receives the message, so a single read races it)
+    const outboxEmails = await waitForOutboxEmailWithStatus("Theme Fallback Test Email", "sent");
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("sent");
 
     // The email should have been sent even though the theme_id was set to a non-existent value.
     // The getEmailThemeForThemeId function falls back to the project's active theme
@@ -1538,10 +1539,10 @@ describe("theme and template deletion after scheduling", () => {
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].body?.html).toContain("Content from template that will be deleted");
 
-    // Verify outbox shows sent and contains the template source
-    const outboxEmails = await getOutboxEmails({ subject: "Template Deletion Test Email" });
+    // Verify outbox shows sent and contains the template source (poll for the terminal status;
+    // the row flips "sending" -> "sent" a moment after the mailbox receives the message)
+    const outboxEmails = await waitForOutboxEmailWithStatus("Template Deletion Test Email", "sent");
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("sent");
     // The outbox stores the template source directly, not a reference to the template
     expect(outboxEmails[0].tsx_source).toContain("Content from template that will be deleted");
   });
@@ -1627,10 +1628,10 @@ describe("theme and template deletion after scheduling", () => {
     // The email should contain the custom theme wrapper
     expect(messages[0].body?.html).toContain("custom-theme-wrapper");
 
-    // Verify outbox shows sent
-    const outboxEmails = await getOutboxEmails({ subject: "Custom Theme Baseline Test Email" });
+    // Verify outbox shows sent (poll for the terminal status; the row flips "sending" -> "sent"
+    // a moment after the mailbox receives the message, so a single read races it)
+    const outboxEmails = await waitForOutboxEmailWithStatus("Custom Theme Baseline Test Email", "sent");
     expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("sent");
   });
 });
 
