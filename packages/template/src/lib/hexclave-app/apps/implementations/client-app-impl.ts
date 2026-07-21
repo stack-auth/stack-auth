@@ -759,7 +759,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // outgoing fetches so a server `withSpan({ request })` parents under this tab's
     // client session. Gated on a live event tracker (the current per-tab id source,
     // which reflects sign-out rotation). Same-origin only unless extra exact origins
-    // are allowlisted. Idempotent — installFetchSpanPropagation no-ops if already on.
+    // are allowlisted. Multiple app instances share one fail-closed wrapper.
     if (
       analyticsEnabled
       && isBrowserLike()
