@@ -115,7 +115,18 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
             external: true,
           };
         },
-      }
+      },
+      {
+        name: 'stackframe: mark esm output as modules',
+        writeBundle(outputOptions) {
+          if (outputOptions.dir == null || path.basename(outputOptions.dir) !== 'esm') {
+            return;
+          }
+
+          // Strict runtimes like tsx parse ESM output as CJS without this marker.
+          fs.writeFileSync(path.join(outputOptions.dir, 'package.json'), '{"type":"module"}\n');
+        },
+      },
     ],
   }));
 }
