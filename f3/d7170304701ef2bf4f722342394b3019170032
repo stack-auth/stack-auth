@@ -1,0 +1,57 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_201bcb48228b05::t_87c612d570d541 194-228,230-251,333-334,1333-1339,1341,1343-1353
+apps/backend/scripts/clickhouse-migrations.ts
+  s_201bcb48228b05::t_3d5f142a0c4af7 127-129,131,793,795
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_201bcb48228b05::t_d8ae0bd3e9b19f 127,293
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_201bcb48228b05::t_5bccc1e5b9cb6a 270,1281-1320,1443,1445,1456-1457,1468,1470,1502,1504,1532,1534,1556,1558,1590,1592,1650,1667,1694-1695,1710,1712
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_201bcb48228b05::t_6454b5b5a51b3a 278,280-284,286,417
+apps/backend/src/lib/ai/prompts.ts
+  s_201bcb48228b05::t_5caf4d54c6554b 982,1033,1035-1036
+apps/backend/src/lib/seed-dummy-data.ts
+  s_201bcb48228b05::t_2f3c627b6ca2b9 8,1717,1739-1741,1948-1955,1959,1964-1968,1992,2000-2023,2029
+apps/backend/src/lib/spans.test.ts
+  s_201bcb48228b05::t_cd15e8a9671954 135,269,275,303
+apps/backend/src/lib/spans.tsx
+  s_201bcb48228b05::t_3cbd6761feabc0 36-37
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_201bcb48228b05::t_74a60426456525 1609
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnel-graph/page-client.tsx
+  s_201bcb48228b05::t_c40d21e11f618e 34-35,37,39-41,52-53,55-57
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-analytics.tsx
+  s_201bcb48228b05::t_874f43a4ce9ccc 124-151,167,177,191-192,200,202-204,220,226,228-230,260
+apps/dashboard/src/hexclave/client.tsx
+  s_201bcb48228b05::t_0e27886b822bb5 28-32
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_201bcb48228b05::t_6fc5d5fd22861e 1295,1304,1331-1333,1375
+packages/shared/src/utils/telemetry.tsx
+  s_201bcb48228b05::t_73c00a872b424e 15-19,42-46,49
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.admin-analytics.test.ts
+  s_201bcb48228b05::t_bcce3cc729ada5 1-68
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_201bcb48228b05::t_7e2c2bb3475636 716-723,2828-2830
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_201bcb48228b05::t_978ab076bef775 176-177,179,348-349,351,391-394,454-455,743-744,746,1193-1194,1196,1281-1303,1345-1347,1383-1389,1401,1408,1416,1418,1421,1427,1434,1447,1449,1461-1511
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_201bcb48228b05::t_f222db6ca2d2c8 445-447,467,482-486,548-554,600,661-662,838-839,1022-1025,1055-1057,1485-1492,1494,1498,1502,1505-1547,1625,1637-1641,1656,1659,1667,1669-1671,1674,1724-1726
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_201bcb48228b05::t_80051b623a67b8 58-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "f3d7170304701ef2bf4f722342394b3019170032",
+  "prompts": {},
+  "sessions": {
+    "s_201bcb48228b05": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f86e3-2b24-7593-9417-18916e7de584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
