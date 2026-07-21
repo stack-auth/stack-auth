@@ -9,12 +9,9 @@ import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch, w
 // mock) -> memoization -> completion, plus cancel/upgrade/retry and the
 // rollout gate on both sides.
 //
-// Notes on test hygiene: workflows cannot be deleted (versions are kept
-// forever by design), and the internal project is shared across the whole
-// e2e suite. Every workflow created here therefore (a) uses a unique random
-// id, and (b) is "retired" at the end of its test by re-syncing it onto a
-// custom event that is never sent again, so it stops reacting to future
-// platform events/schedules.
+// Notes on test hygiene: the internal project is shared across the whole e2e
+// suite. Every workflow uses a unique id and is deleted so tests exercise
+// the same cleanup path as the dashboard.
 //
 // Dynamic ids/emails make inline snapshots impractical here, so these tests
 // use toMatchObject assertions instead (deliberate deviation from the
@@ -71,23 +68,13 @@ async function updateWorkflowSource(expect: any, workflowId: string, source: str
   });
 }
 
-/** Stops a workflow from reacting to anything ever again (see hygiene note above). */
+/** Permanently removes the workflow, including active work and history. */
 async function retireWorkflow(expect: any, workflowId: string) {
-  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/source`, {
-    method: "PATCH",
+  const response = await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}`, {
+    method: "DELETE",
     accessType: "admin",
-    body: {
-      source: `import { workflow, customEvent } from "@hexclave/workflows";
-export default workflow("${workflowId}", { on: [customEvent("retired-${workflowId}")] }, async (event, step) => {});
-`,
-    },
   });
   expect(response.status).toBe(200);
-  await niceBackendFetch(`/api/v1/internal/workflows/${workflowId}/runs/cancel`, {
-    method: "POST",
-    accessType: "admin",
-    body: {},
-  });
 }
 
 async function sendCustomEvent(expect: any, name: string, data: unknown) {
@@ -121,6 +108,7 @@ describe("rollout gate", () => {
       { method: "GET", path: "/api/v1/internal/workflows" },
       { method: "POST", path: "/api/v1/internal/workflows", body: { id: "gated", source: "x" } },
       { method: "PATCH", path: "/api/v1/internal/workflows/gated/source", body: { source: "x" } },
+      { method: "DELETE", path: "/api/v1/internal/workflows/gated" },
       { method: "GET", path: "/api/v1/internal/workflows/gated/versions" },
       { method: "GET", path: "/api/v1/internal/workflows/gated/runs" },
       { method: "POST", path: "/api/v1/internal/workflows/gated/runs/cancel", body: {} },
@@ -180,6 +168,48 @@ export default workflow("${workflowId}", {
 });
 
 describe("workflow lifecycle", () => {
+  it("orders by latest deployment and deletes active workflows", { timeout: 180_000 }, async ({ expect }) => {
+    await withInternalProject(async () => {
+      const olderWorkflowId = randomSlug("e2e-order-older");
+      const newerWorkflowId = randomSlug("e2e-order-newer");
+      const eventName = randomSlug("e2e-delete-active");
+      const olderSource = `import { workflow, customEvent } from "@hexclave/workflows";
+export default workflow("${olderWorkflowId}", { on: [customEvent("${eventName}")] }, async (event, step) => {
+  await step.sleep("keep-active", "1h");
+});
+`;
+      const newerSource = `import { workflow } from "@hexclave/workflows";
+export default workflow("${newerWorkflowId}", { on: ["user.created"] }, async () => {});
+`;
+
+      await createWorkflow(expect, olderWorkflowId, olderSource);
+      await createWorkflow(expect, newerWorkflowId, newerSource);
+      await updateWorkflowSource(expect, olderWorkflowId, olderSource.replace("1h", "2h"), 2);
+
+      const listResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+      expect(listResponse.status).toBe(200);
+      const workflowIds = listResponse.body.workflows.map((workflow: any) => workflow.id);
+      expect(workflowIds.indexOf(olderWorkflowId)).toBeLessThan(workflowIds.indexOf(newerWorkflowId));
+
+      await sendCustomEvent(expect, eventName, { id: "delete-me" });
+      await pollWithTicks(expect, async () => {
+        const { runs } = await listRuns(olderWorkflowId);
+        return runs.find((run) => run.state === "sleeping") ?? null;
+      }, { timeoutMs: 120_000 });
+
+      await retireWorkflow(expect, olderWorkflowId);
+      const afterDeleteResponse = await niceBackendFetch("/api/v1/internal/workflows", { method: "GET", accessType: "admin" });
+      expect(afterDeleteResponse.body.workflows.map((workflow: any) => workflow.id)).not.toContain(olderWorkflowId);
+      const secondDeleteResponse = await niceBackendFetch(`/api/v1/internal/workflows/${olderWorkflowId}`, {
+        method: "DELETE",
+        accessType: "admin",
+      });
+      expect(secondDeleteResponse.status).toBe(404);
+
+      await retireWorkflow(expect, newerWorkflowId);
+    });
+  });
+
   it("syncs, versions, runs steps durably, memoizes, dedupes by runKey, and injects secrets", { timeout: 180_000 }, async ({ expect }) => {
     await withInternalProject(async () => {
       const workflowId = randomSlug("e2e-lifecycle");
@@ -318,7 +348,7 @@ export default workflow("${workflowId}", {
 }, async (event, step) => {
   const user = await step.run("fetch-user", () => hexclaveApp.getUser(event.data.userId));
   if (user == null) return;
-  await step.run("tag-user", () => hexclaveApp.updateUser(user.id, { serverMetadata: { taggedByWorkflow: true } }));
+  await step.run("tag-user", () => user.update({ serverMetadata: { taggedByWorkflow: true } }));
 });
 `);
       await sendCustomEvent(expect, eventName, { userId });

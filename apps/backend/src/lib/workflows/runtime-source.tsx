@@ -22,6 +22,8 @@
 export const WORKFLOWS_RUNTIME_PACKAGE_SOURCE = `
 // Virtual module "@hexclave/workflows" (workflow runtime, executes in the sandbox).
 
+import { HexclaveAdminApp } from "@hexclave/js";
+
 type SandboxTrigger = { type: "event", eventType: string } | { type: "schedule", cron: string, timezone: string };
 type SandboxStepBagEntry = { kind: "run" | "sleep", stepId: string, result: unknown };
 type SandboxInput = {
@@ -38,7 +40,7 @@ type SandboxInput = {
   event?: { id: string, type: string, tsMillis: number, data: unknown },
   steps?: Record<string, SandboxStepBagEntry>,
   run?: { id: string, workflowId: string, version: number },
-  credentials?: { apiUrl: string, projectId: string, branchId: string, secretServerKey: string },
+  credentials?: { apiUrl: string, projectId: string, branchId: string, secretServerKey: string, superSecretAdminKey: string },
   secrets?: Record<string, string>,
 };
 
@@ -445,207 +447,58 @@ class StepTimeoutMarker {
 
 // ─── hexclaveApp (first-party server API, scoped per-run credentials) ──────
 
-export class HexclaveApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly body: unknown) {
-    super(message);
-    this.name = "HexclaveApiError";
-  }
+const appCredentials = getInput().credentials;
+
+// The real SDK owns request construction. Intercept its API fetches at the
+// runtime boundary to retain workflows' replay-safe idempotency floor for
+// every mutating SDK call without wrapping individual admin-app methods.
+const nativeFetch = globalThis.fetch.bind(globalThis);
+
+function isFirstPartyApiUrl(resourceUrl: string, apiUrl: string): boolean {
+  if (!URL.canParse(resourceUrl) || !URL.canParse(apiUrl)) return false;
+  const request = new URL(resourceUrl);
+  const api = new URL(apiUrl);
+  const apiPath = api.pathname.endsWith("/") ? api.pathname.slice(0, -1) : api.pathname;
+  return request.origin === api.origin
+    && (apiPath.length === 0 || request.pathname === apiPath || request.pathname.startsWith(apiPath + "/"));
 }
 
-async function apiRequest(method: string, path: string, body?: unknown, query?: Record<string, string | undefined>): Promise<{ status: number, body: any }> {
+globalThis.fetch = async (resource, init = {}) => {
+  const resourceRequest = resource instanceof Request ? resource : null;
+  const method = (init.method ?? resourceRequest?.method ?? "GET").toUpperCase();
+  const resourceUrl = resource instanceof URL ? resource.toString() : resourceRequest?.url ?? String(resource);
   const input = getInput();
-  if (input.mode !== "execute" || input.credentials == null) {
-    throw new WorkflowContractViolationError("hexclaveApp can only be used while the workflow is executing (not from runKey functions or module top-level)");
-  }
-  const state = stepState;
-  const headers: Record<string, string> = {
-    "x-stack-access-type": "server",
-    "x-stack-project-id": input.credentials.projectId,
-    "x-stack-branch-id": input.credentials.branchId,
-    "x-stack-secret-server-key": input.credentials.secretServerKey,
-  };
-  if (body !== undefined) headers["content-type"] = "application/json";
-  if (method !== "GET") {
-    if (state?.currentStep != null && input.event != null) {
-      // The idempotency floor: first-party actions are keyed by run + step
-      // (+ call index within the step). The run id is itself deterministic
-      // per (trigger event, workflow), so the key is stable across retries,
-      // upgrades, and restarts — no sequence of platform operations
-      // double-fires an action — while two workflows triggered by the SAME
-      // event can never collide on identical step ids. A renamed step id is
-      // a new key, by design.
-      const runId = input.run != null ? input.run.id : "-";
-      headers["x-hexclave-idempotency-key"] = "wf1:" + runId + ":" + input.event.id + ":" + state.currentStep.stepKey + ":" + state.currentStep.callCounter++;
+  if (method !== "GET" && input.credentials != null && isFirstPartyApiUrl(resourceUrl, input.credentials.apiUrl)) {
+    const headers = new Headers(init.headers ?? resourceRequest?.headers);
+    if (stepState?.currentStep != null && input.event != null) {
+      const runId = input.run?.id ?? "-";
+      headers.set("x-hexclave-idempotency-key", "wf1:" + runId + ":" + input.event.id + ":" + stepState.currentStep.stepKey + ":" + stepState.currentStep.callCounter++);
     } else {
-      console.warn("hexclaveApp." + method + " " + path + " was called outside step.run — it will re-execute on every replay of this workflow and is not protected by the idempotency floor. Wrap it in step.run.");
+      console.warn("A mutating hexclaveApp request was made outside step.run — it will re-execute on every replay. Wrap it in step.run.");
     }
+    return await nativeFetch(resource, { ...init, headers });
   }
-  let url = input.credentials.apiUrl.replace(/\\/+$/, "") + "/api/v1" + path;
-  if (query != null) {
-    const params = Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v as string));
-    if (params.length > 0) url += "?" + params.join("&");
-  }
-  const response = await fetch(url, {
-    method: method,
-    headers: headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  let responseBody: any = null;
-  const text = await response.text();
-  try {
-    responseBody = text.length === 0 ? null : JSON.parse(text);
-  } catch (e) {
-    responseBody = text;
-  }
-  return { status: response.status, body: responseBody };
-}
-
-async function apiRequestOrThrow(method: string, path: string, body?: unknown, query?: Record<string, string | undefined>): Promise<any> {
-  const result = await apiRequest(method, path, body, query);
-  if (result.status >= 400) {
-    const message = (result.body != null && typeof result.body === "object" && typeof result.body.error === "string") ? result.body.error : JSON.stringify(result.body);
-    throw new HexclaveApiError(result.status, "hexclaveApp: " + method + " " + path + " failed with status " + result.status + ": " + message, result.body);
-  }
-  return result.body;
-}
-
-const userUpdateKeyMap: Record<string, string> = {
-  displayName: "display_name",
-  primaryEmail: "primary_email",
-  primaryEmailVerified: "primary_email_verified",
-  primaryEmailAuthEnabled: "primary_email_auth_enabled",
-  clientMetadata: "client_metadata",
-  clientReadOnlyMetadata: "client_read_only_metadata",
-  serverMetadata: "server_metadata",
-  selectedTeamId: "selected_team_id",
-  profileImageUrl: "profile_image_url",
+  return await nativeFetch(resource, init);
 };
-
-function mapUpdateKeys(data: Record<string, unknown>, keyMap: Record<string, string>, context: string): Record<string, unknown> {
-  const mapped: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    const snakeKey = keyMap[key];
-    if (snakeKey == null) throw new WorkflowContractViolationError(context + ": unknown field " + JSON.stringify(key) + " (supported: " + Object.keys(keyMap).join(", ") + ")");
-    mapped[snakeKey] = value;
-  }
-  return mapped;
-}
 
 /**
- * The first-party server API, bound per-run to short-lived scoped
- * credentials injected at invocation. All side-effectful calls must live
- * inside step.run — the runtime warns when they don't.
- *
- * v1 exposes a curated subset of the server SDK surface; the published
- * server SDK replaces this at external launch.
+ * The complete admin SDK, authenticated with a short-lived key set minted
+ * for this run. Manifest/run-key/probe imports receive inert credentials;
+ * noAutomaticPrefetch guarantees those modes never make a request.
  */
-export const hexclaveApp = {
-  async getUser(userId: string): Promise<any | null> {
-    const result = await apiRequest("GET", "/users/" + encodeURIComponent(userId));
-    // 404 = deleted (or never-existing) user: the guard-step pattern relies
-    // on this returning null rather than throwing.
-    if (result.status === 404) return null;
-    if (result.status >= 400) throw new HexclaveApiError(result.status, "hexclaveApp.getUser failed with status " + result.status, result.body);
-    return result.body;
+export const hexclaveApp = new HexclaveAdminApp({
+  baseUrl: appCredentials?.apiUrl ?? "http://workflow-manifest.invalid",
+  projectId: appCredentials?.projectId ?? "workflow-manifest",
+  tokenStore: null,
+  secretServerKey: appCredentials?.secretServerKey ?? "ssk_workflow_manifest",
+  superSecretAdminKey: appCredentials?.superSecretAdminKey ?? "sak_workflow_manifest",
+  extraRequestHeaders: {
+    "x-stack-branch-id": appCredentials?.branchId ?? "main",
   },
-  /** Returns a single page of users (default server page size; pass limit/cursor to page manually). v1 keeps the array shape; a paginated shape comes with the real server SDK at external launch. */
-  async listUsers(options?: { limit?: number, cursor?: string, orderBy?: string, query?: string }): Promise<any[]> {
-    const body = await apiRequestOrThrow("GET", "/users", undefined, {
-      limit: options?.limit != null ? String(options.limit) : undefined,
-      cursor: options?.cursor,
-      order_by: options?.orderBy,
-      query: options?.query,
-    });
-    return body.items;
-  },
-  async updateUser(userId: string, data: Record<string, unknown>): Promise<any> {
-    return await apiRequestOrThrow("PATCH", "/users/" + encodeURIComponent(userId), mapUpdateKeys(data, userUpdateKeyMap, "hexclaveApp.updateUser"));
-  },
-  async sendEmail(options: {
-    userIds?: string[],
-    allUsers?: true,
-    emails?: string[],
-    subject?: string,
-    notificationCategoryName?: string,
-    themeId?: string | null | false,
-    isHighPriority?: boolean,
-    scheduledAtMillis?: number,
-    html?: string,
-    templateId?: string,
-    variables?: Record<string, unknown>,
-    draftId?: string,
-  }): Promise<{ results: unknown[] }> {
-    return await apiRequestOrThrow("POST", "/emails/send-email", {
-      user_ids: options.userIds,
-      all_users: options.allUsers,
-      emails: options.emails,
-      subject: options.subject,
-      notification_category_name: options.notificationCategoryName,
-      theme_id: options.themeId,
-      is_high_priority: options.isHighPriority,
-      scheduled_at_millis: options.scheduledAtMillis,
-      html: options.html,
-      template_id: options.templateId,
-      variables: options.variables,
-      draft_id: options.draftId,
-    });
-  },
-  workflows: {
-    /** Emit a custom event (auto-prefixed to "custom.<name>" on the wire). */
-    async send(name: string, data: unknown): Promise<{ eventId: string }> {
-      const body = await apiRequestOrThrow("POST", "/internal/workflows/events", { name: name, data: data });
-      return { eventId: body.event_id };
-    },
-    async listRuns(filter: { workflow: string, state?: string, runKey?: string, version?: number, cursor?: string, limit?: number, includeState?: boolean }): Promise<{ runs: any[], nextCursor: string | null }> {
-      const body = await apiRequestOrThrow("GET", "/internal/workflows/" + encodeURIComponent(filter.workflow) + "/runs", undefined, {
-        state: filter.state,
-        run_key: filter.runKey,
-        version: filter.version != null ? String(filter.version) : undefined,
-        cursor: filter.cursor,
-        limit: filter.limit != null ? String(filter.limit) : undefined,
-        include_state: filter.includeState != null ? String(filter.includeState) : undefined,
-      });
-      return { runs: body.runs, nextCursor: body.next_cursor };
-    },
-    async getRun(query: { runId: string } | { workflow: string, runKey: string }): Promise<any | null> {
-      if ("runId" in query) {
-        const result = await apiRequest("GET", "/internal/workflows/runs/" + encodeURIComponent(query.runId));
-        if (result.status === 404) return null;
-        if (result.status >= 400) throw new HexclaveApiError(result.status, "hexclaveApp.workflows.getRun failed with status " + result.status, result.body);
-        return result.body;
-      }
-      // runKey addresses the ACTIVE run for that key (keys recur over time,
-      // UUIDs never).
-      const body = await apiRequestOrThrow("GET", "/internal/workflows/" + encodeURIComponent(query.workflow) + "/runs", undefined, {
-        run_key: query.runKey,
-        only_active: "true",
-        limit: "1",
-      });
-      return body.runs.length > 0 ? body.runs[0] : null;
-    },
-    /** Cancel the active run with the given runKey (atomic key lookup). */
-    async cancelRun(query: { workflow: string, runKey: string }): Promise<{ canceledCount: number }> {
-      return await this.cancelRuns({ workflow: query.workflow, runKey: query.runKey });
-    },
-    /** Atomic server-side query-cancel; race-safe against concurrently waking runs. */
-    async cancelRuns(query: { workflow: string, runKey?: string, state?: string, version?: number }): Promise<{ canceledCount: number }> {
-      const body = await apiRequestOrThrow("POST", "/internal/workflows/" + encodeURIComponent(query.workflow) + "/runs/cancel", {
-        run_key: query.runKey,
-        state: query.state,
-        version: query.version,
-      });
-      return { canceledCount: body.canceled_count };
-    },
-    async upgradeRuns(query: { workflow: string, toVersion: number, runKey?: string, fromVersion?: number }): Promise<{ upgradedCount: number, skipped: any[] }> {
-      const body = await apiRequestOrThrow("POST", "/internal/workflows/" + encodeURIComponent(query.workflow) + "/runs/upgrade", {
-        to_version: query.toVersion,
-        run_key: query.runKey,
-        from_version: query.fromVersion,
-      });
-      return { upgradedCount: body.upgraded_count, skipped: body.skipped };
-    },
-  },
-};
+  redirectMethod: "none",
+  noAutomaticPrefetch: true,
+  devTool: false,
+});
 
 // ─── Invocation driver (called by the entry harness, not by user code) ─────
 

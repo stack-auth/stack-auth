@@ -145,6 +145,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     // management verbs live on the admin app only in v1.
     createWorkflow(options: { id: string, displayName?: string, source: string }): Promise<AdminWorkflowSyncResult>,
     updateWorkflowSource(workflowId: string, source: string): Promise<AdminWorkflowSyncResult>,
+    deleteWorkflow(workflowId: string): Promise<void>,
     listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]>,
     listWorkflowRuns(workflowId: string, filter?: AdminWorkflowRunsFilter): Promise<{ runs: AdminWorkflowRun[], nextCursor: string | null }>,
     getWorkflowRun(runId: string): Promise<AdminWorkflowRunDetails>,

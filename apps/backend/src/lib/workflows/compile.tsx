@@ -62,6 +62,13 @@ export function validateWorkflowSource(source: string): Result<null, string> {
   if (sizeBytes > WORKFLOW_SOURCE_MAX_BYTES) {
     return Result.error(`Workflow source is ${sizeBytes} bytes, exceeding the ${WORKFLOW_SOURCE_MAX_BYTES}-byte (128 KiB) limit`);
   }
+  // Non-literal imports can evade an allowlist scanner and resolve arbitrary
+  // packages or Node built-ins at runtime. Workflows do not need dynamic
+  // module loading, so reject import()/require() entirely instead of trying
+  // to approximate JavaScript parsing with a permissive regex.
+  if (/\b(?:import|require)\s*\(/.test(source)) {
+    return Result.error("Dynamic import() and require() are not supported in workflows. Use a static import from the allowed packages.");
+  }
   const disallowed = scanWorkflowImports(source).filter((s) => !isAllowedImport(s));
   if (disallowed.length > 0) {
     return Result.error(
@@ -92,7 +99,7 @@ export async function compileWorkflowBundle(source: string): Promise<Result<{ co
     },
     // The stdlib stays a real import, resolved against the sandbox's
     // nodeModules at the exact pinned version.
-    keepAsImports: STDLIB_PACKAGES,
+    keepAsImports: [...STDLIB_PACKAGES, "@hexclave/js"],
     format: "esm",
     sourcemap: false,
   });
@@ -145,7 +152,10 @@ export async function compileAndExtractWorkflowManifest(source: string, expected
 
   const runtimeEnvVersion = WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION;
   const runtimeEnv = getWorkflowsRuntimeEnv(runtimeEnvVersion);
-  const nodeModules = Object.fromEntries(Object.entries(runtimeEnv.stdlibNodeModules).filter(([pkg]) => usesStdlib.includes(pkg)));
+  const nodeModules = {
+    ...runtimeEnv.runtimeNodeModules,
+    ...Object.fromEntries(Object.entries(runtimeEnv.stdlibNodeModules).filter(([pkg]) => usesStdlib.includes(pkg))),
+  };
 
   const invocationResult = await invokeWorkflowSandbox({
     compiledBundle,

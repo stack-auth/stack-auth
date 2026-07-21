@@ -131,7 +131,7 @@ type StatsRow = { workflowId: string, active: number, sleeping: number, failed7d
 type VolumeRow = { workflowId: string, day: Date, count: number };
 
 export async function listWorkflowsWithStats(tenancy: Tenancy): Promise<WorkflowSummaryJson[]> {
-  const definitions = await globalPrismaClient.$queryRaw<{
+  const definitions = await globalPrismaClient.$replica().$queryRaw<{
     workflowId: string,
     displayName: string,
     latestVersion: number,
@@ -144,7 +144,7 @@ export async function listWorkflowsWithStats(tenancy: Tenancy): Promise<Workflow
     JOIN "WorkflowVersion" v
       ON v."tenancyId" = d."tenancyId" AND v."workflowId" = d."workflowId" AND v."version" = d."latestVersion"
     WHERE d."tenancyId" = ${tenancy.id}::uuid
-    ORDER BY d."createdAt" ASC
+    ORDER BY v."createdAt" DESC, d."workflowId" ASC
   `);
   if (definitions.length === 0) return [];
 
@@ -195,6 +195,49 @@ export async function listWorkflowsWithStats(tenancy: Tenancy): Promise<Workflow
       created_at_millis: definition.createdAt.getTime(),
       last_deployed_at_millis: definition.lastDeployedAt.getTime(),
     };
+  });
+}
+
+/**
+ * Deletes a workflow and all of its version/run history. API keys already
+ * minted for known active runs are revoked in the same transaction.
+ */
+export async function deleteWorkflow(tenancy: Tenancy, workflowId: string): Promise<void> {
+  validateWorkflowId(workflowId);
+
+  const definition = await globalPrismaClient.workflowDefinition.findUnique({
+    where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
+    select: { workflowId: true },
+  });
+  if (definition == null) {
+    throw new StatusError(404, `Workflow "${workflowId}" not found`);
+  }
+
+  const activeRuns = await globalPrismaClient.workflowRun.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      workflowId,
+      state: { in: ["QUEUED", "RUNNING", "SLEEPING"] },
+    },
+    select: { id: true },
+  });
+
+  await retryTransaction(globalPrismaClient, async (tx) => {
+    // Remove the definition first so subsequent engine ticks stop matching
+    // new events while the historical rows are being removed.
+    await tx.workflowDefinition.delete({
+      where: { tenancyId_workflowId: { tenancyId: tenancy.id, workflowId } },
+    });
+    await tx.apiKeySet.deleteMany({
+      where: {
+        projectId: tenancy.project.id,
+        description: { in: activeRuns.map((run) => `workflow-run:${run.id}`) },
+      },
+    });
+    await tx.workflowScheduleCursor.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
+    // Step results and attempts cascade from WorkflowRun.
+    await tx.workflowRun.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
+    await tx.workflowVersion.deleteMany({ where: { tenancyId: tenancy.id, workflowId } });
   });
 }
 
@@ -323,7 +366,7 @@ export async function listWorkflowRuns(tenancy: Tenancy, workflowId: string, fil
 }
 
 export async function getWorkflowRunDetails(tenancy: Tenancy, runId: string): Promise<WorkflowRunDetailsJson> {
-  const rows = await globalPrismaClient.$queryRaw<RunRow[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<RunRow[]>(Prisma.sql`
     SELECT r."id", r."workflowId", r."runKey", r."state"::text AS "state", r."version", r."triggerType", r."triggerPayload",
       r."currentStepKey", r."errorSummary", r."failureKind"::text AS "failureKind", r."lastUpgradeDivergence",
       r."createdAt", r."completedAt", r."wakeAt",

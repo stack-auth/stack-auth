@@ -1,15 +1,20 @@
 "use client";
 
-import { DesignAlert, DesignBadge, DesignButton, DesignCategoryTabs, DesignDialog, DesignInput } from "@/components/design-components";
-import type { AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowUpgradeResult } from "@hexclave/next";
+import { DesignAlert, DesignBadge, DesignButton, DesignCategoryTabs, DesignDialog, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
+import { useRouter } from "@/components/router";
+import { Textarea } from "@/components/ui";
+import type { AdminWorkflow, AdminWorkflowRun, AdminWorkflowRunDetails, AdminWorkflowTrigger, AdminWorkflowUpgradeResult } from "@hexclave/next";
+import { WORKFLOW_ID_REGEX } from "@hexclave/shared/dist/interface/workflows";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
-import { ArrowLeftIcon, PlusIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ArrowLeftIcon, BroadcastIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import { getNewWorkflowSource } from "./example-source";
-import { getRunStateBadgeColor, getRunStateLabel } from "./run-states";
+import { ALL_RUN_STATES, getRunStateBadgeColor, getRunStateLabel, getTriggerKind, type RunState } from "./run-states";
 import {
   EditableCodePanel,
+  NewWorkflowCodePanel,
   useAsyncLoad,
   WorkflowKpiRow,
   WorkflowRunsGrid,
@@ -26,22 +31,29 @@ import {
 export type WorkflowDetailProps = {
   selectedWorkflowId: string | null,
   onSelect: (workflowId: string) => void,
+  onCreateDraft: (workflowId: string) => void,
   onClose: () => void,
 };
 
-export function WorkflowDetail({ selectedWorkflowId, onSelect, onClose }: WorkflowDetailProps) {
+export function WorkflowDetail({ selectedWorkflowId, onSelect, onCreateDraft, onClose }: WorkflowDetailProps) {
   if (selectedWorkflowId == null) {
-    return <WorkflowsIndex onOpen={onSelect} />;
+    return <WorkflowsIndex onOpen={onSelect} onCreateDraft={onCreateDraft} />;
   }
   return <WorkflowDetailInner workflowId={selectedWorkflowId} onClose={onClose} />;
 }
 
-function WorkflowsIndex({ onOpen }: { onOpen: (workflowId: string) => void }) {
+function WorkflowsIndex({ onOpen, onCreateDraft }: { onOpen: (workflowId: string) => void, onCreateDraft: (workflowId: string) => void }) {
   const adminApp = useAdminApp();
   const workflows = adminApp.useWorkflows();
   const [createOpen, setCreateOpen] = useState(false);
   const [newId, setNewId] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  const [deletingWorkflow, setDeletingWorkflow] = useState<AdminWorkflow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const requestDelete = useCallback((workflow: AdminWorkflow) => {
+    setDeleteError(null);
+    setDeletingWorkflow(workflow);
+  }, []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,7 +74,11 @@ function WorkflowsIndex({ onOpen }: { onOpen: (workflowId: string) => void }) {
           description="Create your first workflow to react to platform events (user.created, team.deleted, ...), custom events, or schedules with durable multi-step automations."
         />
       ) : (
-        <WorkflowsTable workflows={workflows} onOpen={onOpen} />
+        <WorkflowsTable
+          workflows={workflows}
+          onOpen={onOpen}
+          onRequestDelete={requestDelete}
+        />
       )}
 
       <DesignDialog
@@ -76,19 +92,22 @@ function WorkflowsIndex({ onOpen }: { onOpen: (workflowId: string) => void }) {
             <DesignButton variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</DesignButton>
             <DesignButton
               disabled={newId.trim().length === 0}
-              onClick={async () => {
+              onClick={() => {
                 setCreateError(null);
                 const workflowId = newId.trim();
-                try {
-                  await adminApp.createWorkflow({ id: workflowId, source: getNewWorkflowSource(workflowId) });
-                  setCreateOpen(false);
-                  onOpen(workflowId);
-                } catch (error) {
-                  setCreateError(error instanceof Error ? error.message : String(error));
+                if (!WORKFLOW_ID_REGEX.test(workflowId)) {
+                  setCreateError("Workflow ids must be 1–64 characters using lowercase letters, digits, and dashes.");
+                  return;
                 }
+                if (workflows.some((workflow) => workflow.id === workflowId)) {
+                  setCreateError(`A workflow with id "${workflowId}" already exists.`);
+                  return;
+                }
+                setCreateOpen(false);
+                onCreateDraft(workflowId);
               }}
             >
-              Create
+              Continue
             </DesignButton>
           </div>
         }
@@ -105,6 +124,41 @@ function WorkflowsIndex({ onOpen }: { onOpen: (workflowId: string) => void }) {
           )}
         </div>
       </DesignDialog>
+
+      <DesignDialog
+        open={deletingWorkflow != null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingWorkflow(null);
+        }}
+        size="md"
+        icon={TrashIcon}
+        title="Delete workflow?"
+        description={deletingWorkflow == null ? undefined : `This permanently deletes ${deletingWorkflow.id}, all versions, and its run history. Active runs are stopped.`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <DesignButton variant="secondary" onClick={() => setDeletingWorkflow(null)}>Cancel</DesignButton>
+            <DesignButton
+              variant="destructive"
+              onClick={async () => {
+                if (deletingWorkflow == null) return;
+                setDeleteError(null);
+                try {
+                  await adminApp.deleteWorkflow(deletingWorkflow.id);
+                  setDeletingWorkflow(null);
+                } catch (error) {
+                  setDeleteError(error instanceof Error ? error.message : String(error));
+                }
+              }}
+            >
+              Delete workflow
+            </DesignButton>
+          </div>
+        }
+      >
+        {deleteError != null && (
+          <DesignAlert variant="error" title="Could not delete workflow" description={deleteError} />
+        )}
+      </DesignDialog>
     </div>
   );
 }
@@ -114,36 +168,98 @@ type DetailTab = "runs" | "code";
 function WorkflowDetailInner({ workflowId, onClose }: { workflowId: string, onClose: () => void }) {
   const adminApp = useAdminApp();
   const workflows = adminApp.useWorkflows();
-  const workflow = workflows.find((w) => w.id === workflowId);
+  const workflow = workflows.find((candidate) => candidate.id === workflowId);
+  const searchParams = useSearchParams();
+
+  if (workflow == null && searchParams.get("new") === "1") {
+    return <NewWorkflowDetail workflowId={workflowId} onClose={onClose} />;
+  }
+  if (workflow == null) {
+    return <MissingWorkflow workflowId={workflowId} onClose={onClose} />;
+  }
+  return <PersistedWorkflowDetail workflow={workflow} onClose={onClose} />;
+}
+
+function BackToWorkflows({ onClick }: { onClick: () => void }) {
+  return (
+    <DesignButton variant="ghost" size="sm" onClick={onClick}>
+      <ArrowLeftIcon className="mr-1 h-3.5 w-3.5" />All workflows
+    </DesignButton>
+  );
+}
+
+function MissingWorkflow({ workflowId, onClose }: { workflowId: string, onClose: () => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div><BackToWorkflows onClick={onClose} /></div>
+      <DesignAlert variant="error" title="Workflow not found" description={`No workflow with id "${workflowId}" exists in this project.`} />
+    </div>
+  );
+}
+
+function NewWorkflowDetail({ workflowId, onClose }: { workflowId: string, onClose: () => void }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  return (
+    <div className="flex flex-col gap-4">
+      <div><BackToWorkflows onClick={onClose} /></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-lg font-semibold">{workflowId}</span>
+        <DesignBadge label="Draft" color="cyan" size="sm" />
+      </div>
+      <NewWorkflowCodePanel
+        workflowId={workflowId}
+        initialSource={getNewWorkflowSource(workflowId)}
+        onCreated={() => router.replace(pathname + "?tab=code&version=1")}
+      />
+    </div>
+  );
+}
+
+function replaceDetailQuery(options: {
+  router: ReturnType<typeof useRouter>,
+  pathname: string,
+  searchParams: ReturnType<typeof useSearchParams>,
+  values: Map<string, string | null>,
+}) {
+  const next = new URLSearchParams(options.searchParams.toString());
+  for (const [key, value] of options.values) {
+    if (value == null) next.delete(key);
+    else next.set(key, value);
+  }
+  const query = next.toString();
+  options.router.replace(options.pathname + (query.length === 0 ? "" : "?" + query));
+}
+
+function isRunState(value: string): value is RunState {
+  return ALL_RUN_STATES.some((state) => state === value);
+}
+
+function PersistedWorkflowDetail({ workflow, onClose }: { workflow: AdminWorkflow, onClose: () => void }) {
+  const workflowId = workflow.id;
+  const adminApp = useAdminApp();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const versionsLoad = useAsyncLoad(async () => await adminApp.listWorkflowVersions(workflowId), [workflowId]);
-  const [tab, setTab] = useState<DetailTab>("runs");
+  const tab: DetailTab = searchParams.get("tab") === "code" ? "code" : "runs";
+  const requestedVersion = searchParams.get("version");
+  const initialVersion = requestedVersion != null && /^\d+$/.test(requestedVersion) ? Number(requestedVersion) : undefined;
+  const [runStateFilter, setRunStateFilter] = useState<RunState | "all">("all");
   const [runsReloadKey, setRunsReloadKey] = useState(0);
   const [openRun, setOpenRun] = useState<AdminWorkflowRun | null>(null);
   const [upgradeResult, setUpgradeResult] = useState<AdminWorkflowUpgradeResult | null>(null);
 
-  if (workflow == null) {
-    // Freshly deleted project data or a stale link; fail soft with a way out.
-    return (
-      <div className="flex flex-col gap-4">
-        <div>
-          <DesignButton variant="ghost" size="sm" onClick={onClose}>
-            <ArrowLeftIcon className="mr-1 h-3.5 w-3.5" />All workflows
-          </DesignButton>
-        </div>
-        <DesignAlert variant="error" title="Workflow not found" description={`No workflow with id "${workflowId}" exists in this project.`} />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <DesignButton variant="ghost" size="sm" onClick={onClose}>
-          <ArrowLeftIcon className="mr-1 h-3.5 w-3.5" />All workflows
-        </DesignButton>
-      </div>
+      <div><BackToWorkflows onClick={onClose} /></div>
 
-      <WorkflowTitleRow workflow={workflow} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <WorkflowTitleRow workflow={workflow} />
+        {workflow.triggers.some((trigger) => getTriggerKind(trigger) === "custom") && (
+          <SendCustomEventDialog triggers={workflow.triggers} onSent={() => setRunsReloadKey((key) => key + 1)} />
+        )}
+      </div>
       <WorkflowKpiRow workflow={workflow} />
 
       <DesignCategoryTabs
@@ -156,19 +272,46 @@ function WorkflowDetailInner({ workflowId, onClose }: { workflowId: string, onCl
           if (id !== "runs" && id !== "code") {
             throw new Error(`Unknown workflow detail tab "${id}"`);
           }
-          setTab(id);
+          replaceDetailQuery({
+            router,
+            pathname,
+            searchParams,
+            values: new Map([
+              ["tab", id === "code" ? "code" : null],
+              ["version", id === "code" ? (searchParams.get("version") ?? String(workflow.latestVersion)) : null],
+            ]),
+          });
         }}
         gradient="blue"
         size="sm"
       />
 
       {tab === "runs" && (
-        <WorkflowRunsGrid
-          workflowId={workflowId}
-          latestVersion={workflow.latestVersion}
-          reloadKey={runsReloadKey}
-          onOpenRun={setOpenRun}
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <label htmlFor="workflow-run-state-filter" className="text-xs text-muted-foreground">State</label>
+            <DesignSelectorDropdown
+              value={runStateFilter}
+              onValueChange={(value) => {
+                if (value === "all" || isRunState(value)) setRunStateFilter(value);
+                else throw new Error(`Unknown workflow run state "${value}"`);
+              }}
+              options={[
+                { value: "all", label: "All states" },
+                ...ALL_RUN_STATES.map((state) => ({ value: state, label: getRunStateLabel(state) })),
+              ]}
+              size="sm"
+              triggerId="workflow-run-state-filter"
+            />
+          </div>
+          <WorkflowRunsGrid
+            workflowId={workflowId}
+            latestVersion={workflow.latestVersion}
+            stateFilter={runStateFilter === "all" ? undefined : runStateFilter}
+            reloadKey={runsReloadKey}
+            onOpenRun={setOpenRun}
+          />
+        </div>
       )}
       {tab === "code" && (
         versionsLoad.error != null ? (
@@ -179,6 +322,13 @@ function WorkflowDetailInner({ workflowId, onClose }: { workflowId: string, onCl
           <EditableCodePanel
             workflowId={workflowId}
             versions={versionsLoad.data}
+            initialVersion={initialVersion}
+            onVersionChange={(version) => replaceDetailQuery({
+              router,
+              pathname,
+              searchParams,
+              values: new Map([["version", String(version)]]),
+            })}
             onSynced={() => versionsLoad.reload()}
             onUpgraded={(result) => {
               setUpgradeResult(result);
@@ -227,6 +377,84 @@ function WorkflowDetailInner({ workflowId, onClose }: { workflowId: string, onCl
         )}
       </DesignDialog>
     </div>
+  );
+}
+
+function getCustomEventName(trigger: AdminWorkflowTrigger): string | null {
+  if (trigger.type !== "event" || !trigger.eventType.startsWith("custom.")) return null;
+  return trigger.eventType.slice("custom.".length);
+}
+
+function SendCustomEventDialog({ triggers, onSent }: { triggers: AdminWorkflowTrigger[], onSent: () => void }) {
+  const adminApp = useAdminApp();
+  const customEventNames = [...new Set(triggers.map(getCustomEventName).filter((name): name is string => name != null))];
+  const [open, setOpen] = useState(false);
+  const [selectedName, setSelectedName] = useState(customEventNames[0] ?? "");
+  const [payload, setPayload] = useState("{}\n");
+  const [result, setResult] = useState<{ eventId: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <DesignDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          setSelectedName(customEventNames[0] ?? "");
+          setResult(null);
+          setError(null);
+        }
+      }}
+      size="lg"
+      icon={BroadcastIcon}
+      title="Send custom event"
+      description="Emit an event into this development environment. Every matching workflow creates a run."
+      trigger={<DesignButton size="sm" variant="outline"><BroadcastIcon className="mr-1 h-3.5 w-3.5" />Send custom event</DesignButton>}
+      footer={
+        <DesignButton
+          size="sm"
+          disabled={selectedName.length === 0}
+          onClick={async () => {
+            setError(null);
+            setResult(null);
+            try {
+              const parsedPayload: unknown = JSON.parse(payload);
+              const sendResult = await adminApp.sendWorkflowEvent(selectedName, parsedPayload);
+              setResult(sendResult);
+              onSent();
+            } catch (sendError) {
+              setError(sendError instanceof Error ? sendError.message : String(sendError));
+            }
+          }}
+        >
+          Send event
+        </DesignButton>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="workflow-custom-event-name" className="text-xs font-medium">Event</label>
+          <DesignSelectorDropdown
+            value={selectedName}
+            onValueChange={setSelectedName}
+            options={customEventNames.map((name) => ({ value: name, label: `custom.${name}` }))}
+            size="sm"
+            triggerId="workflow-custom-event-name"
+          />
+        </div>
+        <label htmlFor="workflow-custom-event-payload" className="text-xs font-medium">JSON payload</label>
+        <Textarea
+          id="workflow-custom-event-payload"
+          value={payload}
+          onChange={(event) => setPayload(event.target.value)}
+          className="min-h-48 font-mono text-xs"
+          aria-label="Custom event JSON payload"
+          spellCheck={false}
+        />
+        {error != null && <DesignAlert variant="error" title="Could not send event" description={error} />}
+        {result != null && <DesignAlert variant="success" title="Event queued" description={`Event id: ${result.eventId}`} />}
+      </div>
+    </DesignDialog>
   );
 }
 

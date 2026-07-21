@@ -227,6 +227,14 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.json();
   }
 
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/internal/workflows/${workflowId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
   async listWorkflowVersions(workflowId: string): Promise<WorkflowVersionJson[]> {
     const response = await this.sendAdminRequest(urlString`/internal/workflows/${workflowId}/versions`, {}, null);
     const result = await response.json() as { versions: WorkflowVersionJson[] };

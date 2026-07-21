@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { getUsedStdlibPackages, scanWorkflowImports, validateWorkflowSource } from "./compile";
+import { compileWorkflowBundle, getUsedStdlibPackages, scanWorkflowImports, validateWorkflowSource } from "./compile";
+import { getWorkflowsRuntimeEnv, WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION } from "./runtime-env";
 
 // Pure-function tests for the sync-time source validation (the esbuild
 // bundling + sandbox manifest path is covered by the workflows e2e tests).
@@ -53,6 +54,18 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
     expect(result.status).toBe("error");
   });
 
+  test("rejects non-literal module loading that could bypass the import allowlist", () => {
+    for (const source of [
+      `const moduleName = "node:fs"; await import(moduleName);`,
+      `await import("node:" + "fs");`,
+      `const moduleName = "node:fs"; require(moduleName);`,
+    ]) {
+      const result = validateWorkflowSource(source);
+      expect(result.status).toBe("error");
+      if (result.status === "error") expect(result.error).toContain("not supported");
+    }
+  });
+
   test("rejects oversized sources with an explicit error (never truncation)", () => {
     const result = validateWorkflowSource("// filler\n".repeat(15_000));
     expect(result.status).toBe("error");
@@ -67,5 +80,25 @@ describe("getUsedStdlibPackages", () => {
     expect(getUsedStdlibPackages(`import { addDays } from "date-fns";`)).toEqual(["date-fns"]);
     expect(getUsedStdlibPackages(`import addWeeks from "date-fns/addWeeks";`)).toEqual(["date-fns"]);
     expect(getUsedStdlibPackages(`import { workflow } from "@hexclave/workflows";`)).toEqual([]);
+  });
+});
+
+describe("workflow runtime dependencies", () => {
+  test("pins the published Hexclave AdminApp package", () => {
+    expect(getWorkflowsRuntimeEnv(WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION).runtimeNodeModules).toEqual({
+      "@hexclave/js": "1.0.52",
+    });
+  });
+
+  test("keeps the real admin SDK as a sandbox-resolved import", async () => {
+    const result = await compileWorkflowBundle(`
+import { workflow } from "@hexclave/workflows";
+export default workflow("x", { on: ["user.created"] }, async () => {});
+`);
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.data.compiledBundle).toContain("@hexclave/js");
+      expect(result.data.compiledBundle).toContain("HexclaveAdminApp");
+    }
   });
 });

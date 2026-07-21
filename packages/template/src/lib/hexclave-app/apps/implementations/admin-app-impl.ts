@@ -551,6 +551,11 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     return adminWorkflowSyncResultFromCrud(result);
   }
 
+  async deleteWorkflow(workflowId: string): Promise<void> {
+    await this._interface.deleteWorkflow(workflowId);
+    await this._adminWorkflowsCache.refresh([]);
+  }
+
   async listWorkflowVersions(workflowId: string): Promise<AdminWorkflowVersion[]> {
     return (await this._interface.listWorkflowVersions(workflowId)).map(adminWorkflowVersionFromCrud);
   }

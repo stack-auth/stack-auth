@@ -46,6 +46,7 @@ export type WorkflowSandboxCredentials = {
   projectId: string,
   branchId: string,
   secretServerKey: string,
+  superSecretAdminKey: string,
 };
 
 export type WorkflowSandboxInput = {

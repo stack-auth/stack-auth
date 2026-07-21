@@ -10,16 +10,28 @@ import { throwErr } from "@hexclave/shared/dist/utils/errors";
 // email-rendering tailwind caret-drift incident; exact pins only.)
 
 export type WorkflowsRuntimeEnv = {
+  // Runtime packages are always installed because the virtual workflows
+  // module imports them even when user source does not.
+  runtimeNodeModules: Record<string, string>,
   // Installed into the sandbox via nodeModules; MUST be exact versions.
   // Only packages the workflow source actually imports are installed (the
   // manifest records usage), so unused pins cost nothing per invocation.
   stdlibNodeModules: Record<string, string>,
 };
 
-export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-20.1";
+export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-21.1";
 
 const WORKFLOWS_RUNTIME_ENVS = new Map<string, WorkflowsRuntimeEnv>([
+  ["2026-07-20.1", {
+    runtimeNodeModules: {},
+    stdlibNodeModules: {
+      "date-fns": "4.1.0",
+    },
+  }],
   [WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION, {
+    runtimeNodeModules: {
+      "@hexclave/js": "1.0.52",
+    },
     stdlibNodeModules: {
       "date-fns": "4.1.0",
     },

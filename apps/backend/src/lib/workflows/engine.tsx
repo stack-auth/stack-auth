@@ -124,7 +124,10 @@ async function loadWorkflowVersion(tenancyId: string, workflowId: string, versio
 
 function getStdlibNodeModules(versionRow: VersionRow): Record<string, string> {
   const env = getWorkflowsRuntimeEnv(versionRow.runtimeEnvVersion);
-  return Object.fromEntries(Object.entries(env.stdlibNodeModules).filter(([pkg]) => versionRow.manifest.uses_stdlib.includes(pkg)));
+  return {
+    ...env.runtimeNodeModules,
+    ...Object.fromEntries(Object.entries(env.stdlibNodeModules).filter(([pkg]) => versionRow.manifest.uses_stdlib.includes(pkg))),
+  };
 }
 
 async function getEnabledTenancy(tenancyId: string, tenancyCache: Map<string, Tenancy | null>): Promise<Tenancy | null> {
@@ -150,7 +153,7 @@ type ScheduledDefinitionRow = {
 };
 
 async function materializeScheduleOccurrences(tenancyCache: Map<string, Tenancy | null>): Promise<boolean> {
-  const definitions = await globalPrismaClient.$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
+  const definitions = await globalPrismaClient.$replica().$queryRaw<ScheduledDefinitionRow[]>(Prisma.sql`
     SELECT d."tenancyId", d."workflowId", d."latestVersion", v."manifest"
     FROM "WorkflowDefinition" d
     JOIN "WorkflowVersion" v
@@ -247,7 +250,7 @@ type DefinitionWithManifest = {
 async function listDefinitionsForTenancy(tenancyId: string, cache: Map<string, DefinitionWithManifest[]>): Promise<DefinitionWithManifest[]> {
   const cached = cache.get(tenancyId);
   if (cached != null) return cached;
-  const rows = await globalPrismaClient.$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
+  const rows = await globalPrismaClient.$replica().$queryRaw<DefinitionWithManifest[]>(Prisma.sql`
     SELECT d."workflowId", d."latestVersion", v."manifest"
     FROM "WorkflowDefinition" d
     JOIN "WorkflowVersion" v
@@ -425,7 +428,7 @@ async function processWorkflowEvents(tenancyCache: Map<string, Tenancy | null>):
   // their runs exist, and run creation is idempotent (deterministic ids), so
   // crash-replays and overlapping ticks are safe — at-least-once with
   // no duplicate runs. The cost is occasional duplicate work under overlap.
-  const events = await globalPrismaClient.$queryRaw<WorkflowEventRow[]>(Prisma.sql`
+  const events = await globalPrismaClient.$replica().$queryRaw<WorkflowEventRow[]>(Prisma.sql`
     SELECT "tenancyId", "id", "type", "payload", "scheduledAt"
     FROM "WorkflowEvent"
     WHERE "processedAt" IS NULL
@@ -497,6 +500,10 @@ async function claimDueRuns(): Promise<ClaimedRunRow[]> {
         (r."state" = 'QUEUED' AND (r."wakeAt" IS NULL OR r."wakeAt" <= NOW()))
         OR (r."state" = 'SLEEPING' AND r."wakeAt" <= NOW())
         OR (r."state" = 'RUNNING' AND r."leaseUntil" <= NOW())
+      )
+      AND EXISTS (
+        SELECT 1 FROM "WorkflowDefinition" d
+        WHERE d."tenancyId" = r."tenancyId" AND d."workflowId" = r."workflowId"
       )
       AND COALESCE(b."count", 0) < ${PER_WORKFLOW_CONCURRENCY}
       ORDER BY r."wakeAt" ASC NULLS FIRST
@@ -611,7 +618,9 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
   const secretsRows = await globalPrismaClient.workflowSecret.findMany({ where: { tenancyId: run.tenancyId } });
   const secrets = Object.fromEntries(secretsRows.map((row) => [row.key, row.value]));
 
-  // Short-lived scoped server credentials, minted per claim. The expiry must
+  // Short-lived project-admin credentials, minted per claim. Workflow source
+  // is admin-authored and deliberately receives the complete AdminApp. The
+  // expiry must
   // cover the longest possible CHAIN of steps under this claim (the lease is
   // renewed at every step boundary, but the credential is not re-minted):
   // tick budget (~13min of chaining) + one full step timeout + slack.
@@ -622,13 +631,14 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     expires_at_millis: Date.now() + WORKFLOW_RUN_CREDENTIAL_TTL_MS,
     has_publishable_client_key: false,
     has_secret_server_key: true,
-    has_super_secret_admin_key: false,
+    has_super_secret_admin_key: true,
   });
   const credentials = {
     apiUrl: getWorkflowsSandboxApiUrl(),
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
     secretServerKey: apiKey.secret_server_key ?? throwErr("createApiKeySet did not return a secret server key"),
+    superSecretAdminKey: apiKey.super_secret_admin_key ?? throwErr("createApiKeySet did not return a super secret admin key"),
   };
 
   const triggerPayload = run.triggerPayload as { ts_millis: number, data: unknown };
@@ -1093,6 +1103,20 @@ export async function retryFailedWorkflowRun(tenancy: Tenancy, runId: string): P
 const RUN_RETENTION_DAYS = 90;
 
 async function pruneWorkflowRetention(): Promise<void> {
+  // A delete can race an event that already cached the old definition. Such
+  // a run is never claimable (the claim query also checks the definition),
+  // and this cleanup prevents the unclaimable row from accumulating.
+  await globalPrismaClient.$executeRaw(Prisma.sql`
+    DELETE FROM "WorkflowRun"
+    WHERE ("tenancyId", "id") IN (
+      SELECT r."tenancyId", r."id" FROM "WorkflowRun" r
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "WorkflowDefinition" d
+        WHERE d."tenancyId" = r."tenancyId" AND d."workflowId" = r."workflowId"
+      )
+      LIMIT 500
+    )
+  `);
   // Terminal runs: 90 days of history (step results/attempts cascade).
   await globalPrismaClient.$executeRaw(Prisma.sql`
     DELETE FROM "WorkflowRun"

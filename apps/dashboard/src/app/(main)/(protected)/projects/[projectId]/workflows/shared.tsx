@@ -1,14 +1,16 @@
 "use client";
 
 import { codePanelHeaderClasses, codePanelShellClasses } from "@/components/code-block";
+import { BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
 import {
   DesignAlert,
   DesignBadge,
   DesignButton,
+  DesignMenu,
   DesignMetricCard,
   DesignSelectorDropdown,
 } from "@/components/design-components";
-import { cn } from "@/components/ui";
+import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
 import Editor, { DiffEditor, type Monaco } from "@monaco-editor/react";
 import type { AdminWorkflow, AdminWorkflowRun, AdminWorkflowSyncResult, AdminWorkflowTrigger, AdminWorkflowUpgradeResult, AdminWorkflowVersion } from "@hexclave/next";
@@ -19,6 +21,7 @@ import {
   LightningIcon,
   MoonIcon,
   PlayIcon,
+  TrashIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
 import {
@@ -30,6 +33,7 @@ import {
   useDataSource,
   type DataGridColumnDef,
   type DataGridDataSource,
+  type DataGridSortModel,
 } from "@hexclave/dashboard-ui-components";
 import { fromNow } from "@hexclave/shared/dist/utils/dates";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -88,10 +92,45 @@ const TRIGGER_ICONS = new Map<"platform" | "custom" | "schedule", React.ElementT
 export function TriggerChip({ trigger }: { trigger: AdminWorkflowTrigger }) {
   const TriggerIcon = TRIGGER_ICONS.get(getTriggerKind(trigger)) ?? LightningIcon;
   return (
-    <span className="inline-flex items-center gap-1 rounded-lg bg-foreground/[0.05] px-2 py-0.5 font-mono text-[11px] text-foreground/80">
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-foreground/[0.05] px-2 py-0.5 font-mono text-[11px] text-foreground/80">
       <TriggerIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
       {getTriggerLabel(trigger)}
     </span>
+  );
+}
+
+/**
+ * One trigger stays readable inline. Multiple triggers collapse to one
+ * compact summary while the tooltip preserves the complete, scan-friendly
+ * list. Only unique trigger kinds contribute icons to the summary.
+ */
+export function WorkflowTriggers({ triggers }: { triggers: AdminWorkflowTrigger[] }) {
+  if (triggers.length < 2) {
+    return triggers.map((trigger) => <TriggerChip key={getTriggerLabel(trigger)} trigger={trigger} />);
+  }
+
+  const kinds = [...new Set(triggers.map(getTriggerKind))];
+  return (
+    <Tooltip delayDuration={150}>
+      <TooltipTrigger asChild>
+        <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-foreground/[0.05] px-2 py-0.5 text-[11px] text-foreground/80">
+          <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+            {kinds.map((kind) => {
+              const TriggerIcon = TRIGGER_ICONS.get(kind) ?? LightningIcon;
+              return <TriggerIcon key={kind} className="h-3 w-3" />;
+            })}
+          </span>
+          {triggers.length} triggers
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="max-w-[420px]">
+        <div className="flex max-h-64 flex-col gap-1 overflow-auto py-0.5">
+          {triggers.map((trigger, index) => (
+            <TriggerChip key={`${getTriggerLabel(trigger)}:${index}`} trigger={trigger} />
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -101,7 +140,7 @@ export function WorkflowTitleRow({ workflow }: { workflow: AdminWorkflow }) {
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-mono text-lg font-semibold">{workflow.id}</span>
       <DesignBadge label={`v${workflow.latestVersion}`} color="blue" size="sm" />
-      {workflow.triggers.map((trigger) => <TriggerChip key={getTriggerLabel(trigger)} trigger={trigger} />)}
+      <WorkflowTriggers triggers={workflow.triggers} />
     </div>
   );
 }
@@ -125,6 +164,7 @@ export function WorkflowKpiRow({ workflow }: { workflow: AdminWorkflow }) {
 // ─── Workflows table (level 1) ─────────────────────────────────────────────
 
 const INFINITE_PAGE_SIZE = 25;
+const DEFAULT_WORKFLOW_SORT: DataGridSortModel = [{ columnId: "lastDeploy", direction: "desc" }];
 
 /**
  * Wraps the (small, fully loaded) workflows array in the async-generator
@@ -158,95 +198,128 @@ export function getInFlightRunCount(workflow: AdminWorkflow): number {
   return workflow.stats.activeRuns + workflow.stats.sleepingRuns;
 }
 
-const workflowColumns: DataGridColumnDef<AdminWorkflow>[] = [
-  {
-    id: "id",
-    header: "Workflow",
-    accessor: "id",
-    width: 250,
-    type: "string",
-    renderCell: ({ row }) => (
-      <div className="flex min-w-0 flex-col">
-        <span className="truncate font-mono text-xs font-medium">{row.id}</span>
-        <span className="truncate text-[11px] text-muted-foreground">{row.displayName}</span>
-      </div>
-    ),
-  },
-  {
-    id: "triggers",
-    header: "Triggers",
-    accessor: (workflow) => workflow.triggers.map(getTriggerLabel).join(", "),
-    width: 230,
-    type: "string",
-    cellOverflow: "wrap",
-    renderCell: ({ row }) => (
-      <div className="flex flex-wrap gap-1 py-1">
-        {row.triggers.map((trigger) => <TriggerChip key={getTriggerLabel(trigger)} trigger={trigger} />)}
-      </div>
-    ),
-  },
-  {
-    id: "latestVersion",
-    header: "Version",
-    accessor: "latestVersion",
-    width: 85,
-    type: "number",
-    align: "left",
-    renderCell: ({ row }) => <span className="font-mono text-xs">v{row.latestVersion}</span>,
-  },
-  {
-    id: "inFlight",
-    header: "In-flight runs",
-    accessor: (workflow) => getInFlightRunCount(workflow),
-    width: 115,
-    type: "number",
-    align: "right",
-    renderCell: ({ row }) => (
-      <span className="text-xs tabular-nums">{getInFlightRunCount(row).toLocaleString()}</span>
-    ),
-  },
-  {
-    id: "runs7d",
-    header: "Runs (7d)",
-    accessor: (workflow) => getRuns7d(workflow),
-    width: 100,
-    type: "number",
-    align: "right",
-    renderCell: ({ row }) => <span className="text-xs tabular-nums">{getRuns7d(row).toLocaleString()}</span>,
-  },
-  {
-    id: "failed7d",
-    header: "Failed (7d)",
-    accessor: (workflow) => workflow.stats.failed7d,
-    width: 100,
-    type: "number",
-    align: "right",
-    renderCell: ({ row }) => (
-      <span className={cn("text-xs tabular-nums", row.stats.failed7d > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
-        {row.stats.failed7d}
-      </span>
-    ),
-  },
-  {
-    id: "lastDeploy",
-    header: "Last deploy",
-    accessor: (workflow) => workflow.lastDeployedAtMillis,
-    width: 110,
-    type: "number",
-    renderCell: ({ row }) => (
-      <span className="text-[11px] text-muted-foreground">{fromNow(new Date(row.lastDeployedAtMillis))}</span>
-    ),
-  },
-];
+function createWorkflowColumns(onRequestDelete: (workflow: AdminWorkflow) => void): DataGridColumnDef<AdminWorkflow>[] {
+  return [
+    {
+      id: "id",
+      header: "Workflow",
+      accessor: "id",
+      width: 250,
+      type: "string",
+      renderCell: ({ row }) => <span className="truncate font-mono text-xs font-medium">{row.id}</span>,
+    },
+    {
+      id: "triggers",
+      header: "Triggers",
+      accessor: (workflow) => workflow.triggers.map(getTriggerLabel).join(", "),
+      width: 230,
+      type: "string",
+      renderCell: ({ row }) => (
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto whitespace-nowrap py-1">
+          <WorkflowTriggers triggers={row.triggers} />
+        </div>
+      ),
+    },
+    {
+      id: "latestVersion",
+      header: "Version",
+      accessor: "latestVersion",
+      width: 85,
+      type: "number",
+      align: "left",
+      renderCell: ({ row }) => <span className="font-mono text-xs">v{row.latestVersion}</span>,
+    },
+    {
+      id: "inFlight",
+      header: "In-flight runs",
+      accessor: (workflow) => getInFlightRunCount(workflow),
+      width: 115,
+      type: "number",
+      align: "right",
+      renderCell: ({ row }) => (
+        <span className="text-xs tabular-nums">{getInFlightRunCount(row).toLocaleString()}</span>
+      ),
+    },
+    {
+      id: "runs7d",
+      header: "Runs (7d)",
+      accessor: (workflow) => getRuns7d(workflow),
+      width: 100,
+      type: "number",
+      align: "right",
+      renderCell: ({ row }) => <span className="text-xs tabular-nums">{getRuns7d(row).toLocaleString()}</span>,
+    },
+    {
+      id: "failed7d",
+      header: "Failed (7d)",
+      accessor: (workflow) => workflow.stats.failed7d,
+      width: 100,
+      type: "number",
+      align: "right",
+      renderCell: ({ row }) => (
+        <span className={cn("text-xs tabular-nums", row.stats.failed7d > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
+          {row.stats.failed7d}
+        </span>
+      ),
+    },
+    {
+      id: "lastDeploy",
+      header: "Last deploy",
+      accessor: (workflow) => workflow.lastDeployedAtMillis,
+      width: 110,
+      type: "number",
+      renderCell: ({ row }) => (
+        <span className="text-[11px] text-muted-foreground">{fromNow(new Date(row.lastDeployedAtMillis))}</span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 52,
+      minWidth: 52,
+      maxWidth: 52,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => (
+        <div onClick={(event) => event.stopPropagation()}>
+          <DesignMenu
+            variant="actions"
+            trigger="icon"
+            triggerLabel={`Actions for ${row.id}`}
+            align="end"
+            withIcons
+            items={[{
+              id: "delete",
+              label: "Delete workflow",
+              icon: <TrashIcon className="h-4 w-4" />,
+              itemVariant: "destructive",
+              onClick: () => onRequestDelete(row),
+            }]}
+          />
+        </div>
+      ),
+    },
+  ];
+}
 
 function getWorkflowRowId(workflow: AdminWorkflow): string {
   return workflow.id;
 }
 
 /** The level-1 workflows table — infinite-scroll grid, same as the Users page. */
-export function WorkflowsTable({ workflows, onOpen }: { workflows: AdminWorkflow[], onOpen: (workflowId: string) => void }) {
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(workflowColumns));
-  const dataSource = useMemo(() => createInMemoryDataSource(workflows, workflowColumns), [workflows]);
+export function WorkflowsTable({ workflows, onOpen, onRequestDelete }: {
+  workflows: AdminWorkflow[],
+  onOpen: (workflowId: string) => void,
+  onRequestDelete: (workflow: AdminWorkflow) => void,
+}) {
+  const workflowColumns = useMemo(() => createWorkflowColumns(onRequestDelete), [onRequestDelete]);
+  const [gridState, setGridState] = useState(() => ({
+    ...createDefaultDataGridState(workflowColumns),
+    sorting: DEFAULT_WORKFLOW_SORT,
+  }));
+  const dataSource = useMemo(() => createInMemoryDataSource(workflows, workflowColumns), [workflows, workflowColumns]);
   const gridData = useDataSource({
     dataSource,
     columns: workflowColumns,
@@ -272,8 +345,7 @@ export function WorkflowsTable({ workflows, onOpen }: { workflows: AdminWorkflow
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
       footer={false}
-      rowHeight="auto"
-      estimatedRowHeight={52}
+      rowHeight={44}
       maxHeight={620}
     />
   );
@@ -446,7 +518,11 @@ function versionSelectorOptions(versions: AdminWorkflowVersion[]) {
   }));
 }
 
+const configuredMonacoInstances = new WeakSet<Monaco>();
+
 export function configureWorkflowsMonaco(monaco: Monaco) {
+  if (configuredMonacoInstances.has(monaco)) return;
+  configuredMonacoInstances.add(monaco);
   monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
     target: monaco.languages.typescript.ScriptTarget.ESNext,
     module: monaco.languages.typescript.ModuleKind.ESNext,
@@ -463,6 +539,15 @@ export function configureWorkflowsMonaco(monaco: Monaco) {
   });
   monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_DTS, "file:///node_modules/@hexclave/workflows/index.d.ts");
   monaco.languages.typescript.typescriptDefaults.addExtraLib(WORKFLOWS_EDITOR_AMBIENT_DTS, "file:///ambient-workflows-stdlib.d.ts");
+  // Use the same generated SDK source bundle as the dashboard's AI editor,
+  // so hexclaveApp exposes the complete HexclaveAdminApp surface rather than
+  // another hand-maintained subset that will drift.
+  for (const file of BUNDLED_TYPE_DEFINITIONS) {
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      file.content,
+      `file:///node_modules/@hexclave/js/${file.path}`,
+    );
+  }
 }
 
 type SaveAlert =
@@ -476,9 +561,11 @@ type SaveAlert =
  * below). Older versions render read-only with an upgrade-runs action in the
  * Save button's place. The deploy label opens a side-by-side diff viewer.
  */
-export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, height = 460 }: {
+export function EditableCodePanel({ workflowId, versions, initialVersion, onVersionChange, onSynced, onUpgraded, height = 460 }: {
   workflowId: string,
   versions: AdminWorkflowVersion[],
+  initialVersion?: number,
+  onVersionChange: (version: number) => void,
   onSynced: (result: AdminWorkflowSyncResult) => void,
   onUpgraded: (result: AdminWorkflowUpgradeResult) => void,
   height?: number,
@@ -486,7 +573,11 @@ export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, 
   const adminApp = useAdminApp();
   const { resolvedTheme } = useTheme();
   const latest = versions.find((version) => version.isLatest) ?? versions[0];
-  const [selectedVersion, setSelectedVersion] = useState(latest.version);
+  const [selectedVersion, setSelectedVersion] = useState(() => (
+    initialVersion != null && versions.some((version) => version.version === initialVersion)
+      ? initialVersion
+      : latest.version
+  ));
   const selected = versions.find((version) => version.version === selectedVersion) ?? latest;
   const [draft, setDraft] = useState(selected.source);
   const [saveAlert, setSaveAlert] = useState<SaveAlert | null>(null);
@@ -584,7 +675,11 @@ export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <DesignSelectorDropdown
           value={String(selectedVersion)}
-          onValueChange={(value) => setSelectedVersion(Number(value))}
+          onValueChange={(value) => {
+            const version = Number(value);
+            setSelectedVersion(version);
+            onVersionChange(version);
+          }}
           options={versionSelectorOptions(versions)}
           size="sm"
         />
@@ -612,6 +707,7 @@ export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, 
                   });
                 }
                 setSelectedVersion(result.version);
+                onVersionChange(result.version);
                 onSynced(result);
               } catch (error) {
                 setSaveAlert({
@@ -684,6 +780,77 @@ export function EditableCodePanel({ workflowId, versions, onSynced, onUpgraded, 
           beforeMount={configureWorkflowsMonaco}
           options={{
             readOnly: !isLatest,
+            minimap: { enabled: false },
+            fontSize: 12,
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            automaticLayout: true,
+            padding: { top: 12, bottom: 12 },
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** A frontend-only v1 draft. Saving is the first API mutation. */
+export function NewWorkflowCodePanel({ workflowId, initialSource, onCreated, height = 460 }: {
+  workflowId: string,
+  initialSource: string,
+  onCreated: (result: AdminWorkflowSyncResult) => void,
+  height?: number,
+}) {
+  const adminApp = useAdminApp();
+  const { resolvedTheme } = useTheme();
+  const [draft, setDraft] = useState(initialSource);
+  const [saveAlert, setSaveAlert] = useState<SaveAlert | null>(null);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <DesignButton
+          size="sm"
+          onClick={async () => {
+            setSaveAlert(null);
+            try {
+              const result = await adminApp.createWorkflow({ id: workflowId, source: draft });
+              setSaveAlert({
+                variant: "success",
+                title: "v1 deployed",
+                description: "The workflow now exists and new matching events can start runs.",
+              });
+              onCreated(result);
+            } catch (error) {
+              setSaveAlert({
+                variant: "error",
+                title: "Deploy failed",
+                description: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }}
+        >
+          Save as v1
+        </DesignButton>
+      </div>
+
+      {saveAlert != null && (
+        <DesignAlert variant={saveAlert.variant} title={saveAlert.title} description={saveAlert.description} />
+      )}
+
+      <div className={codePanelShellClasses}>
+        <div className={codePanelHeaderClasses}>
+          <span className="font-mono text-xs">{getWorkflowFileName(workflowId)}</span>
+          <span className="text-[11px] text-muted-foreground">not deployed</span>
+        </div>
+        <Editor
+          height={height}
+          language="typescript"
+          path={`file:///workflows/${workflowId}.ts`}
+          value={draft}
+          onChange={(value) => setDraft(value ?? "")}
+          theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
+          beforeMount={configureWorkflowsMonaco}
+          options={{
             minimap: { enabled: false },
             fontSize: 12,
             scrollBeyondLastLine: false,

@@ -23,7 +23,7 @@ export default workflow(${JSON.stringify(workflowId)}, {
   if (user == null) return;
 
   await step.run("log-hello", () => {
-    console.log("hello from ${workflowId}:", user.display_name ?? user.id);
+    console.log("hello from ${workflowId}:", user.displayName ?? user.id);
   });
 });
 `;

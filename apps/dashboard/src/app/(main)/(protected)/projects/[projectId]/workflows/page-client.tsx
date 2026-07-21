@@ -1,7 +1,9 @@
 "use client";
 
 import { useUser } from "@hexclave/next";
-import { useState } from "react";
+import { urlString } from "@hexclave/shared/dist/utils/urls";
+import { useRouter } from "@/components/router";
+import { usePathname } from "next/navigation";
 import { PageLayout } from "../page-layout";
 import { useProjectId } from "../use-admin-app";
 import { WorkflowDetail } from "./workflow-detail";
@@ -16,7 +18,13 @@ import { WorkflowDetail } from "./workflow-detail";
 export default function PageClient() {
   const projectId = useProjectId();
   useUser({ or: "redirect", projectIdMustMatch: "internal" });
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+  const workflowsMarker = "/workflows/";
+  const markerIndex = pathname.indexOf(workflowsMarker);
+  const selectedWorkflowId = markerIndex === -1
+    ? null
+    : decodeURIComponent(pathname.slice(markerIndex + workflowsMarker.length).split("/")[0]);
 
   if (projectId !== "internal") {
     return null;
@@ -26,8 +34,9 @@ export default function PageClient() {
     <PageLayout title="Workflows">
       <WorkflowDetail
         selectedWorkflowId={selectedWorkflowId}
-        onSelect={setSelectedWorkflowId}
-        onClose={() => setSelectedWorkflowId(null)}
+        onSelect={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}`)}
+        onCreateDraft={(workflowId) => router.push(urlString`/projects/${projectId}/workflows/${workflowId}?tab=code&new=1`)}
+        onClose={() => router.push(urlString`/projects/${projectId}/workflows`)}
       />
     </PageLayout>
   );
