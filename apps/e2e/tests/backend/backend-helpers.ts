@@ -1298,17 +1298,22 @@ export namespace InternalApiKey {
 // makes otherwise-passing tests flake. If the entitlement really never lands, the
 // caller's own billing-gated assertion is what should (and does) surface it.
 //
-// The budget is deliberately generous. The paid-plan wait (waitForItemQuantityToReach,
-// 8s) is granted through the payments endpoint and materializes quickly, but the
-// free-plan grant rides the `runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(...))`
+// The free-plan grant rides the `runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(...))`
 // fire-and-forget write in teams/crud.tsx, whose TimeFold can be badly backed up on a
-// cold, freshly-started CI shard — we've observed it exceed 30s there while completing
+// cold, freshly-started CI shard — we've observed it take seconds there while completing
 // in well under a second locally. Since this loop returns the instant the entitlement
-// appears, a large cap adds no latency on the happy path; it only bounds the wait when
+// appears, the cap adds no latency on the happy path; it only bounds the wait when
 // materialization has genuinely stalled.
+//
+// The cap is half of Vitest's per-test timeout (see apps/e2e/vitest.config.ts: 60s in CI,
+// 30s locally). This wait runs *inside* Project.create, so a cap at or above the test
+// timeout would turn slow materialization into a hard test timeout — even for tests that
+// never touch billing (e.g. outbox rendering-state tests). Bounding it at half the budget
+// guarantees the wait alone can never time a test out and still leaves ample time for the
+// test body, while giving a stalled TimeFold a fair chance to catch up.
 async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
   const pollIntervalMs = 200;
-  const timeoutMs = 90_000;
+  const timeoutMs = (process.env.CI ? 60_000 : 30_000) / 2;
   const startedAt = performance.now();
 
   while (true) {
