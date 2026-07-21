@@ -1,0 +1,27 @@
+apps/backend/scripts/clickhouse-migrations.ts
+  s_5dc76ef9133451::t_70e9e304f35d79 37,49,309-331
+  s_5dc76ef9133451::t_a019a540c0912f 332
+apps/backend/src/lib/spans.test.ts
+  s_5dc76ef9133451::t_70e9e304f35d79 166
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5dc76ef9133451::t_a1223d486a2eed 225-226
+  s_5dc76ef9133451::t_073f049d777533 215-224,227-229,241,250,257-258,266-271,273-281,283-298,300-319,348
+apps/backend/src/lib/plan-usage.ts
+  s_5dc76ef9133451::t_70e9e304f35d79 354-356,366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "56bf762df4138330732b877fa0c3bb5012a707e5",
+  "prompts": {},
+  "sessions": {
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
