@@ -9,6 +9,7 @@ import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } fro
 import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
 // Runtime-safe: span-propagation only imports TYPES from this module.
 import { buildFetchInitWithSpanContext, encodeSpanContextHeader, SPAN_CONTEXT_HEADER, type SpanPropagationContext } from "./span-propagation";
+import { startWebVitalsCollector, type WebVitalsCollector } from "./web-vitals";
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
@@ -133,6 +134,10 @@ export type SpanUpdateRow = {
   parent_span_ids: string[],
   data: Record<string, unknown>,
   updated_at_ms: number,
+  // The `$page-view` span this span happened on (raw uuid). Client tab state
+  // the server cannot derive — composed into system ancestry server-side (with
+  // the pv- prefix). Frozen at span creation; never set on $page-view rows.
+  page_view_span_id?: string,
 };
 
 type Settler = {
@@ -437,18 +442,62 @@ export type EventTrackerDeps = {
   // Origin policy for span.fetch / propagation headers (same-origin default +
   // exact-origin allowlist). Provided by the app from analytics.spanPropagation.
   getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[] },
+  // Opt-in presence/integrity signals ($tab-hidden, $window-blur, clipboard,
+  // context-menu, print, fullscreen-exit). Default OFF: they are surveillance-
+  // adjacent, so capturing them must be a deliberate customer decision
+  // (AnalyticsOptions.integritySignals), not default autocapture.
+  integritySignals?: boolean,
 };
 
 type TrackedEvent = {
-  // System types ($page-view, $click) from the auto-capture paths, or a custom
-  // name (validated against CUSTOM_TELEMETRY_NAME_RE) from trackEvent().
+  // System types ($page-view, $click, $form-submit, …) from the auto-capture
+  // paths, or a custom name (validated against CUSTOM_TELEMETRY_NAME_RE) from
+  // trackEvent().
   event_type: string,
   event_at_ms: number,
   data: Record<string, unknown>,
   // Custom ancestor chain, root-first, raw span uuids. Omitted for system
   // events; the server composes system ancestry on top for every event.
   parent_span_ids?: string[],
+  // The `$page-view` span the event happened on — see SpanUpdateRow.
+  page_view_span_id?: string,
 };
+
+/**
+ * Internal handle for client-minted SYSTEM spans ($page-view, $tab-hidden, …).
+ * Deliberately NOT a public `Span`: a system span must never enter a custom
+ * parent chain (its raw uuid would get the cs- prefix server-side and dangle as
+ * a broken reference), so the handle exposes only what the tracker itself
+ * needs. All operations are fire-and-forget.
+ */
+type SystemSpanHandle = {
+  readonly spanId: string,
+  readonly spanType: string,
+  isEnded: () => boolean,
+  /** Shallow-merges into the span's data and re-writes the row. */
+  setData: (data: Record<string, unknown>) => void,
+  end: (endedAtMs?: number) => void,
+};
+
+const RAGE_CLICK_WINDOW_MS = 1_000;
+const RAGE_CLICK_RADIUS_PX = 30;
+const RAGE_CLICK_MIN_CLICKS = 3;
+const RESIZE_DEBOUNCE_MS = 500;
+const FORM_FIELD_NAMES_MAX = 50;
+// Click targets whose href looks like a file download even without a `download`
+// attribute (the attribute is also honored; this catches plain file links).
+const DOWNLOAD_EXTENSION_RE = /\.(pdf|zip|gz|tar|tgz|rar|7z|dmg|pkg|exe|msi|apk|csv|tsv|xls[xm]?|doc[xm]?|ppt[xm]?|mp3|wav|mp4|mov|avi|webm)$/i;
+
+// djb2-xor over UTF-16 code units. Used ONLY locally to compare a paste against
+// the last same-page copy; the hash is never transmitted (a hash of short text
+// would be dictionary-reversible, defeating the no-content-capture guarantee).
+function hashTextLocal(text: string): number {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
 
 export class EventTracker {
   private _started = false;
@@ -480,6 +529,27 @@ export class EventTracker {
   private _liveSpanControls = new Set<{ markInert: () => void }>();
   // Batch sends currently on the wire; flush() awaits these.
   private _inFlight = new Set<Promise<void>>();
+
+  // The $page-view span everything on the current page nests under. Replaced on
+  // every navigation; null before start / after teardown.
+  private _pageViewSpan: SystemSpanHandle | null = null;
+  private _maxScrollDepthPx = 0;
+  private _maxScrollDepthRatio = 0;
+  private _webVitals: WebVitalsCollector | null = null;
+  // Which $page-view span the vitals belong to (only ever the tab's initial one).
+  private _webVitalsSpanId: string | null = null;
+  private _recentClicks: { x: number, y: number, atMs: number }[] = [];
+  private _resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  // Presence spans (open while the state holds). Offline is default-on;
+  // tab-hidden/window-blur only exist with integritySignals.
+  private _tabHiddenSpan: SystemSpanHandle | null = null;
+  private _windowBlurSpan: SystemSpanHandle | null = null;
+  private _offlineSpan: SystemSpanHandle | null = null;
+  // Local-only hash of the last same-page copy/cut (see hashTextLocal).
+  private _lastCopyHash: number | null = null;
+  private _wasFullscreen = false;
+  private _detachAutocaptureListeners: (() => void) | null = null;
+  private _detachIntegrityListeners: (() => void) | null = null;
 
   private _deadClickTimer: ReturnType<typeof setInterval> | null = null;
   private _deadClickMutationObserver: MutationObserver | null = null;
@@ -513,6 +583,13 @@ export class EventTracker {
     this._setupPageViewCapture();
     this._setupClickCapture();
     this._setupDeadClickDetection();
+    this._setupAutocaptureListeners();
+    if (this._deps.integritySignals === true) {
+      this._setupIntegritySignals();
+    }
+    // Last: the keepalive-flush listeners must run AFTER the handlers above for
+    // the same events (visibilitychange, pagehide), so rows they enqueue (e.g.
+    // a $tab-hidden open row, the $page-view end row) ride the same flush.
     this._setupPageHideListeners();
 
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
@@ -524,6 +601,9 @@ export class EventTracker {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
+    // Close all open intervals so the final flush carries their ends.
+    this._endPageViewSpan();
+    this._endOpenPresenceSpans();
     runAsynchronously(() => this._flush({ keepalive: true }));
     this._teardown();
   }
@@ -567,11 +647,29 @@ export class EventTracker {
    */
   setSessionReplaySegmentId(id: string) {
     this._sessionReplaySegmentId = id;
+    // Paired with clearBuffer() on sign-out (clearBuffer runs first): the
+    // previous $page-view span and any open presence spans were inert-ified
+    // under the old identity, so the ongoing page needs fresh spans under the
+    // new segment. No legacy $page-view event is emitted — the page was not
+    // re-entered, and a synthetic page view would shift customers' metrics.
+    if (this._started && !this._cancelled && !this._disabled) {
+      this._capturePageView("rotation");
+      this._restartPresenceSpans();
+    }
   }
 
   /** The current per-tab id (reflects sign-out rotation) — used by cross-tier span propagation. */
   getSessionReplaySegmentId(): string {
     return this._sessionReplaySegmentId;
+  }
+
+  /**
+   * The current `$page-view` span id (null before start / after teardown).
+   * Stamped on every buffered event/span and carried by cross-tier propagation,
+   * so all telemetry from this page — including backend spans — nests under it.
+   */
+  getCurrentPageViewSpanId(): string | null {
+    return this._pageViewSpan?.spanId ?? null;
   }
 
   /**
@@ -594,11 +692,13 @@ export class EventTracker {
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     if (this._disabled) return Promise.resolve();
 
+    const pageViewSpanId = this.getCurrentPageViewSpanId();
     const event: TrackedEvent = {
       event_type: eventType,
       event_at_ms: Date.now(),
       data: { ...data ?? {} },
       ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
+      ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
     };
     let settler!: Settler;
     const promise = preCaught(new Promise<void>((resolve, reject) => {
@@ -645,6 +745,9 @@ export class EventTracker {
     // The custom ancestor chain is frozen at creation: parents are identity, not
     // state, so later setGlobalSpan calls or parent mutations never re-parent an
     // existing span (and every re-write of this span carries the same chain).
+    // The page ancestry is frozen for the same reason: a span that outlives its
+    // page stays parented under the page it STARTED on.
+    const pageViewSpanId = this.getCurrentPageViewSpanId();
     const parentSpanIds = resolved.ids;
     const startedAtMs = options?.startedAtMs ?? Date.now();
     let accumulatedData: Record<string, unknown> = { ...options?.data ?? {} };
@@ -667,6 +770,7 @@ export class EventTracker {
         parent_span_ids: parentSpanIds,
         data: { ...accumulatedData },
         updated_at_ms: nextVersion(),
+        ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
       });
     };
 
@@ -709,8 +813,10 @@ export class EventTracker {
       withSpan: <T,>(childType: string, optionsOrFn: StartSpanOptions | ((child: Span) => Promise<T> | T), maybeFn?: (child: Span) => Promise<T> | T) =>
         withSpanImpl((type, opts) => span.startSpan(type, opts), childType, optionsOrFn, maybeFn),
       run: <T,>(fn: () => T) => runWithSpanFrame(span.ref(), fn),
-      getPropagationHeaders: () => ({ [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(this._spanPropagationContext(span)) }),
-      fetch: (input: RequestInfo | URL, init?: RequestInit) => this._spanFetch(span, input, init),
+      // The FROZEN page ancestry rides along (not the current page): headers
+      // pinned to this span must describe this span's context exactly.
+      getPropagationHeaders: () => ({ [SPAN_CONTEXT_HEADER]: encodeSpanContextHeader(this._spanPropagationContext(span, pageViewSpanId)) }),
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => this._spanFetch(span, pageViewSpanId, input, init),
       ref: () => ({ spanId, parentSpanIds: [...parentSpanIds] }),
     };
 
@@ -720,19 +826,78 @@ export class EventTracker {
     return span;
   }
 
+  /**
+   * Starts a client-minted SYSTEM span ($page-view, $tab-hidden, $window-blur,
+   * $offline). Unlike the public startSpan: no name/data validation (callers
+   * are internal), no ambient custom parents (system ancestry — session,
+   * segment, page — is composed server-side from scalar ids), and the row
+   * carries `page_view_span_id` instead of a custom chain. Registered in
+   * _liveSpanControls, so sign-out inert-ifies it like any live span (a span
+   * started under user A must never be re-written under user B).
+   */
+  private _startSystemSpan(spanType: string, opts?: { data?: Record<string, unknown>, pageViewSpanId?: string }): SystemSpanHandle {
+    const spanId = generateUuid();
+    const startedAtMs = Date.now();
+    const pageViewSpanId = opts?.pageViewSpanId;
+    let accumulatedData: Record<string, unknown> = { ...opts?.data ?? {} };
+    let lastVersion = 0;
+    let ended = false;
+    let inert = false;
+    // Same versioning scheme as custom spans (see startSpan's nextVersion).
+    const nextVersion = () => (lastVersion = Math.max(Date.now(), lastVersion + 1));
+    const control = {
+      markInert: () => {
+        inert = true;
+      },
+    };
+    this._liveSpanControls.add(control);
+    const enqueue = (endedAtMs: number | null) => {
+      if (inert || this._disabled) return;
+      this._enqueueSpanUpdate({
+        span_id: spanId,
+        span_type: spanType,
+        started_at_ms: startedAtMs,
+        ended_at_ms: endedAtMs,
+        parent_span_ids: [],
+        data: { ...accumulatedData },
+        updated_at_ms: nextVersion(),
+        ...pageViewSpanId !== undefined ? { page_view_span_id: pageViewSpanId } : {},
+      }).catch(() => {});
+    };
+    enqueue(null);
+    return {
+      spanId,
+      spanType,
+      isEnded: () => ended,
+      setData: (data: Record<string, unknown>) => {
+        if (ended) return;
+        accumulatedData = { ...accumulatedData, ...data };
+        enqueue(null);
+      },
+      end: (endedAtMs?: number) => {
+        if (ended) return;
+        ended = true;
+        this._liveSpanControls.delete(control);
+        enqueue(resolveEndedAtMs(startedAtMs, endedAtMs));
+      },
+    };
+  }
+
   /** The cross-tier context pinned to exactly `span`: its frozen chain (which
-   * already includes the globals/ambient captured at creation) + the per-tab
-   * segment identity. Raw ids — the backend applies the prefixes. */
-  private _spanPropagationContext(span: Span): SpanPropagationContext {
+   * already includes the globals/ambient captured at creation), its frozen page
+   * ancestry, and the per-tab segment identity. Raw ids — the backend applies
+   * the prefixes. */
+  private _spanPropagationContext(span: Span, pageViewSpanId: string | null): SpanPropagationContext {
     const ref = span.ref();
     return {
       projectId: this._deps.projectId,
       sessionReplaySegmentId: this._sessionReplaySegmentId,
       customParentSpanIds: [...ref.parentSpanIds, ref.spanId],
+      ...pageViewSpanId !== null ? { pageViewSpanId } : {},
     };
   }
 
-  private _spanFetch(span: Span, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  private _spanFetch(span: Span, pageViewSpanId: string | null, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
       const policy = this._deps.getPropagationPolicy?.() ?? {
         selfOrigin: typeof window !== "undefined" ? window.location.origin : null,
@@ -741,7 +906,7 @@ export class EventTracker {
       const initWithHeader = buildFetchInitWithSpanContext({
         input,
         init,
-        headerValue: encodeSpanContextHeader(this._spanPropagationContext(span)),
+        headerValue: encodeSpanContextHeader(this._spanPropagationContext(span, pageViewSpanId)),
         selfOrigin: policy.selfOrigin,
         allowedOrigins: policy.allowedOrigins,
       });
@@ -832,33 +997,134 @@ export class EventTracker {
     this._maybeTriggerSizeFlush();
   }
 
-  private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
+  // System events from the auto-capture paths: fire-and-forget (no settler),
+  // no name/data validation (the tracker builds the data itself), always
+  // stamped with the current page ancestry.
+  private _pushSystemEvent(eventType: string, data: Record<string, unknown>) {
+    const pageViewSpanId = this.getCurrentPageViewSpanId();
+    this._pushEvent({
+      event_type: eventType,
+      event_at_ms: Date.now(),
+      data,
+      ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
+    });
+  }
+
+  // "restore" = bfcache revival (pageshow with persisted), "rotation" =
+  // sign-out segment rotation; both restart the SPAN without emitting the
+  // legacy $page-view EVENT (see below).
+  private _capturePageView(entryType: "initial" | "push" | "replace" | "pop" | "restore" | "rotation") {
     const screenObject = window.screen;
     if (!hasScreenDimensions(screenObject)) {
       return;
     }
 
     const url = window.location.href;
-    if (url === this._lastUrl && entryType !== "initial") return;
+    const isForcedRestart = entryType === "initial" || entryType === "restore" || entryType === "rotation";
+    if (url === this._lastUrl && !isForcedRestart) return;
     this._lastUrl = url;
 
-    this._pushEvent({
-      event_type: "$page-view",
-      event_at_ms: Date.now(),
-      data: {
-        url,
-        path: window.location.pathname,
-        referrer: document.referrer,
-        title: document.title,
-        entry_type: entryType,
-        viewport_width: window.innerWidth,
-        viewport_height: window.innerHeight,
-        screen_width: screenObject.width,
-        screen_height: screenObject.height,
-        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-      },
-    });
+    this._endPageViewSpan();
+
+    const pageViewData = {
+      url,
+      path: window.location.pathname,
+      referrer: document.referrer,
+      title: document.title,
+      entry_type: entryType,
+      viewport_width: window.innerWidth,
+      viewport_height: window.innerHeight,
+      screen_width: screenObject.width,
+      screen_height: screenObject.height,
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    };
+
+    // The $page-view SPAN is the hierarchy layer everything on this page nests
+    // under (auto-captured events, custom telemetry, and backend spans via
+    // cross-tier propagation). It ends on the next navigation / pagehide, so
+    // its interval IS the time-on-page.
+    const span = this._startSystemSpan("$page-view", { data: pageViewData });
+    this._pageViewSpan = span;
+    this._resetScrollDepth();
+
+    // Web vitals describe the initial load only, so a collector is attached to
+    // the tab's first $page-view span alone; values are absorbed into its data
+    // as they finalize and frozen when the span ends (updates within a flush
+    // window coalesce into one wire row, so no extra throttling is needed).
+    if (entryType === "initial" && this._webVitals === null) {
+      let collector: WebVitalsCollector | null = null;
+      collector = startWebVitalsCollector(() => {
+        if (collector !== null && !span.isEnded()) {
+          span.setData({ web_vitals: collector.snapshot() });
+        }
+      });
+      if (collector !== null) {
+        this._webVitals = collector;
+        this._webVitalsSpanId = span.spanId;
+      }
+    }
+
+    // The $page-view EVENT is kept alongside the span: the metrics queries
+    // (DAU, referrers, bounce rate, UA breakdown) and the ClickHouse MVs are
+    // built on events, and migrating those is a separate project. "restore"
+    // and "rotation" do NOT emit the event — the pre-span tracker never
+    // emitted one for these transitions, and silently adding page views would
+    // shift every customer's metrics.
+    if (entryType === "initial" || entryType === "push" || entryType === "replace" || entryType === "pop") {
+      this._pushEvent({
+        event_type: "$page-view",
+        event_at_ms: Date.now(),
+        data: { ...pageViewData },
+        page_view_span_id: span.spanId,
+      });
+    }
   }
+
+  /**
+   * Ends the current $page-view span, absorbing the final scroll depth (and web
+   * vitals, when this is the initial page) so the single deduped wire row
+   * carries both the data and the end time.
+   */
+  private _endPageViewSpan() {
+    const span = this._pageViewSpan;
+    if (span === null || span.isEnded()) return;
+    this._sampleScrollDepth();
+    span.setData({
+      scroll_depth_px: Math.round(this._maxScrollDepthPx),
+      // 3 decimals is plenty for a 0..1 ratio and keeps rows stable.
+      scroll_depth_ratio: Math.round(this._maxScrollDepthRatio * 1000) / 1000,
+    });
+    if (this._webVitals !== null && this._webVitalsSpanId === span.spanId) {
+      span.setData({ web_vitals: this._webVitals.snapshot() });
+      this._webVitals.disconnect();
+      this._webVitals = null;
+      this._webVitalsSpanId = null;
+    }
+    span.end();
+  }
+
+  private _resetScrollDepth() {
+    this._maxScrollDepthPx = 0;
+    this._maxScrollDepthRatio = 0;
+    // Sample immediately so a page that is never scrolled still reports the
+    // initially visible depth.
+    this._sampleScrollDepth();
+  }
+
+  // Depth = bottom edge of the viewport within the document. Page-level scroll
+  // only (nested scroll containers do not describe how far down the PAGE the
+  // user got).
+  private _sampleScrollDepth() {
+    const bottom = window.scrollY + window.innerHeight;
+    const height = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+    if (bottom > this._maxScrollDepthPx) this._maxScrollDepthPx = bottom;
+    const ratio = height > 0 ? Math.min(bottom / height, 1) : 0;
+    if (ratio > this._maxScrollDepthRatio) this._maxScrollDepthRatio = ratio;
+  }
+
+  private readonly _onScrollDepth = () => {
+    this._sampleScrollDepth();
+  };
 
   private _setupPageViewCapture() {
     // Fire initial page-view
@@ -937,11 +1203,11 @@ export class EventTracker {
     return parts.join(" > ");
   }
 
-  private _findNearestAnchorHref(element: Element): string | null {
+  private _findNearestAnchor(element: Element): Element | null {
     let current: Element | null = element;
     while (current) {
       if (current.tagName === "A" && current.hasAttribute("href")) {
-        return current.getAttribute("href");
+        return current;
       }
       current = current.parentElement;
     }
@@ -962,13 +1228,39 @@ export class EventTracker {
     const clientYScaled = Math.round(event.clientY / CLICKMAP_SCALE_FACTOR);
     const relativeX = viewportWidth > 0 ? event.clientX / viewportWidth : 0;
 
+    // Rage detection: the click that COMPLETES a burst (>= 3 clicks within a
+    // 30px box inside 1s) is marked in place — earlier clicks of the burst may
+    // already be on the wire, so marking only the completer keeps this a pure
+    // buffer-time flag with no reconciliation.
+    const nowMs = Date.now();
+    this._recentClicks = this._recentClicks.filter((click) => nowMs - click.atMs < RAGE_CLICK_WINDOW_MS);
+    this._recentClicks.push({ x: event.clientX, y: event.clientY, atMs: nowMs });
+    const burstSize = this._recentClicks.filter((click) =>
+      Math.abs(click.x - event.clientX) <= RAGE_CLICK_RADIUS_PX && Math.abs(click.y - event.clientY) <= RAGE_CLICK_RADIUS_PX,
+    ).length;
+
+    const anchor = this._findNearestAnchor(target);
+    const href = anchor?.getAttribute("href") ?? null;
+    let outbound = false;
+    let download = anchor !== null && anchor.hasAttribute("download");
+    if (href !== null) {
+      try {
+        const hrefUrl = new URL(href, window.location.href);
+        outbound = (hrefUrl.protocol === "http:" || hrefUrl.protocol === "https:") && hrefUrl.origin !== window.location.origin;
+        download = download || DOWNLOAD_EXTENSION_RE.test(hrefUrl.pathname);
+      } catch {
+        // Unparsable href: neither flag applies.
+      }
+    }
+
+    const pageViewSpanId = this.getCurrentPageViewSpanId();
     const clickEvent: TrackedEvent = {
       event_type: "$click",
-      event_at_ms: Date.now(),
+      event_at_ms: nowMs,
       data: {
         tag_name: target.tagName.toLowerCase(),
         text: getTextSnippet(target.textContent),
-        href: this._findNearestAnchorHref(target),
+        href,
         selector: this._buildSelector(target),
         elements_chain: buildElementsChain(target),
         pointer_target_fixed: pointerTargetFixed ? 1 : 0,
@@ -986,7 +1278,13 @@ export class EventTracker {
         viewport_width: viewportWidth,
         viewport_height: viewportHeight,
         scale_factor: CLICKMAP_SCALE_FACTOR,
+        // Flags are present-when-set only (like `dead`), so existing rows and
+        // queries with `data.rage = 1`-style filters stay cheap and stable.
+        ...burstSize >= RAGE_CLICK_MIN_CLICKS ? { rage: 1 } : {},
+        ...outbound ? { outbound: 1 } : {},
+        ...download ? { download: 1 } : {},
       },
+      ...pageViewSpanId !== null ? { page_view_span_id: pageViewSpanId } : {},
     };
 
     // Register for dead-click classification before buffering, so a
@@ -1075,16 +1373,300 @@ export class EventTracker {
     this._unclassifiedClicks.clear();
   }
 
+  // ---------------------------------------------------------------------------
+  // Default-on autocapture (page-level scroll depth, bfcache restore, forms,
+  // resize, offline)
+  // ---------------------------------------------------------------------------
+
+  private readonly _onPageShow = (event: PageTransitionEvent) => {
+    // A bfcache restore revives a page whose $page-view span was already ended
+    // by pagehide; the restored view is a new interval on the same URL.
+    if (event.persisted) this._capturePageView("restore");
+  };
+
+  private readonly _onFormSubmit = (event: Event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (isInsideHexclaveUi(form)) return;
+
+    // Field NAMES only, never values — names identify the form shape without
+    // touching what the user typed.
+    const fieldNames: string[] = [];
+    for (const element of Array.from(form.elements)) {
+      const name = element.getAttribute("name");
+      if (name !== null && name !== "" && !fieldNames.includes(name)) {
+        fieldNames.push(name);
+        if (fieldNames.length >= FORM_FIELD_NAMES_MAX) break;
+      }
+    }
+
+    // The action's query string can carry user-derived values; keep only
+    // origin + path (path only when same-origin).
+    let actionPath: string | null = null;
+    try {
+      const actionUrl = new URL(form.action, window.location.href);
+      actionPath = actionUrl.origin === window.location.origin ? actionUrl.pathname : `${actionUrl.origin}${actionUrl.pathname}`;
+    } catch {
+      actionPath = null;
+    }
+
+    this._pushSystemEvent("$form-submit", {
+      selector: this._buildSelector(form),
+      elements_chain: buildElementsChain(form),
+      form_id: form.id === "" ? null : form.id,
+      form_name: form.getAttribute("name"),
+      method: form.method,
+      action_path: actionPath,
+      field_names: fieldNames,
+      url: window.location.href,
+      path: window.location.pathname,
+      title: document.title,
+    });
+  };
+
+  private readonly _onWindowResize = () => {
+    // Trailing debounce: resize fires continuously during a drag; only the
+    // settled size is interesting.
+    if (this._resizeDebounceTimer !== null) clearTimeout(this._resizeDebounceTimer);
+    this._resizeDebounceTimer = setTimeout(() => {
+      this._resizeDebounceTimer = null;
+      const screenObject = window.screen;
+      this._pushSystemEvent("$window-resize", {
+        viewport_width: window.innerWidth,
+        viewport_height: window.innerHeight,
+        screen_width: hasScreenDimensions(screenObject) ? screenObject.width : null,
+        screen_height: hasScreenDimensions(screenObject) ? screenObject.height : null,
+        url: window.location.href,
+        path: window.location.pathname,
+      });
+    }, RESIZE_DEBOUNCE_MS);
+  };
+
+  private readonly _onOffline = () => {
+    if (this._offlineSpan !== null && !this._offlineSpan.isEnded()) return;
+    this._offlineSpan = this._startSystemSpan("$offline", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
+  };
+
+  private readonly _onOnline = () => {
+    this._offlineSpan?.end();
+    this._offlineSpan = null;
+  };
+
+  private _setupAutocaptureListeners() {
+    window.addEventListener("scroll", this._onScrollDepth, { passive: true });
+    window.addEventListener("pageshow", this._onPageShow);
+    document.addEventListener("submit", this._onFormSubmit, { capture: true });
+    window.addEventListener("resize", this._onWindowResize);
+    window.addEventListener("offline", this._onOffline);
+    window.addEventListener("online", this._onOnline);
+    // Reflect a state that is already true at start.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      this._onOffline();
+    }
+    this._detachAutocaptureListeners = () => {
+      window.removeEventListener("scroll", this._onScrollDepth);
+      window.removeEventListener("pageshow", this._onPageShow);
+      document.removeEventListener("submit", this._onFormSubmit, { capture: true });
+      window.removeEventListener("resize", this._onWindowResize);
+      window.removeEventListener("offline", this._onOffline);
+      window.removeEventListener("online", this._onOnline);
+      if (this._resizeDebounceTimer !== null) {
+        clearTimeout(this._resizeDebounceTimer);
+        this._resizeDebounceTimer = null;
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Opt-in integrity signals (AnalyticsOptions.integritySignals). All of these
+  // are ADVISORY: page script cannot prove presence or catch a second device —
+  // they are review signals for tools like exam/quiz platforms, never
+  // enforcement. Clipboard CONTENT is never captured (lengths + a local-only
+  // hash comparison; see hashTextLocal).
+  // ---------------------------------------------------------------------------
+
+  private readonly _onIntegrityVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      if (this._tabHiddenSpan === null || this._tabHiddenSpan.isEnded()) {
+        this._tabHiddenSpan = this._startSystemSpan("$tab-hidden", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
+      }
+    } else {
+      this._tabHiddenSpan?.end();
+      this._tabHiddenSpan = null;
+    }
+  };
+
+  // window blur/focus catches switching to ANOTHER WINDOW while the tab stays
+  // visible (side-by-side windows) — which visibilitychange misses. When the
+  // user switches tabs, both a $window-blur and a $tab-hidden span open; both
+  // raw signals are recorded rather than deduped (which one matters is a
+  // query-time decision).
+  private readonly _onWindowBlur = () => {
+    if (this._windowBlurSpan !== null && !this._windowBlurSpan.isEnded()) return;
+    this._windowBlurSpan = this._startSystemSpan("$window-blur", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
+  };
+
+  private readonly _onWindowFocus = () => {
+    this._windowBlurSpan?.end();
+    this._windowBlurSpan = null;
+  };
+
+  private readonly _onCopyCapture = (event: ClipboardEvent) => {
+    this._recordClipboardCopy("$copy", event);
+  };
+
+  private readonly _onCutCapture = (event: ClipboardEvent) => {
+    this._recordClipboardCopy("$cut", event);
+  };
+
+  private _recordClipboardCopy(eventType: "$copy" | "$cut", event: ClipboardEvent) {
+    const target = event.target;
+    if (target instanceof Element && isInsideHexclaveUi(target)) return;
+    const selection = typeof document.getSelection === "function" ? document.getSelection()?.toString() ?? "" : "";
+    if (selection !== "") this._lastCopyHash = hashTextLocal(selection);
+    this._pushSystemEvent(eventType, {
+      selection_length: selection.length,
+      url: window.location.href,
+      path: window.location.pathname,
+    });
+  }
+
+  private readonly _onPasteCapture = (event: ClipboardEvent) => {
+    const target = event.target;
+    if (target instanceof Element && isInsideHexclaveUi(target)) return;
+    const text = event.clipboardData?.getData("text/plain");
+    const data: Record<string, unknown> = {
+      url: window.location.href,
+      path: window.location.pathname,
+      ...target instanceof Element ? {
+        tag_name: target.tagName.toLowerCase(),
+        selector: this._buildSelector(target),
+      } : {},
+    };
+    if (typeof text === "string") {
+      data.length = text.length;
+      // "Did this paste originate from a copy on this same page?" — the signal
+      // that distinguishes internal shuffling from an external source. Hash
+      // comparison happens locally; the content never leaves the page.
+      data.same_page_origin = this._lastCopyHash !== null && text !== "" && hashTextLocal(text) === this._lastCopyHash ? 1 : 0;
+    }
+    this._pushSystemEvent("$paste", data);
+  };
+
+  private readonly _onContextMenuCapture = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (isInsideHexclaveUi(target)) return;
+    this._pushSystemEvent("$context-menu", {
+      tag_name: target.tagName.toLowerCase(),
+      selector: this._buildSelector(target),
+      x: event.clientX,
+      y: event.clientY,
+      url: window.location.href,
+      path: window.location.pathname,
+    });
+  };
+
+  private readonly _onBeforePrint = () => {
+    this._pushSystemEvent("$print", {
+      url: window.location.href,
+      path: window.location.pathname,
+    });
+  };
+
+  private readonly _onFullscreenChange = () => {
+    const isFullscreen = document.fullscreenElement != null;
+    // Exit-only: entering fullscreen is the expected state for e.g. a
+    // fullscreen-required exam; LEAVING it is the signal.
+    if (this._wasFullscreen && !isFullscreen) {
+      this._pushSystemEvent("$fullscreen-exit", {
+        url: window.location.href,
+        path: window.location.pathname,
+      });
+    }
+    this._wasFullscreen = isFullscreen;
+  };
+
+  private _setupIntegritySignals() {
+    // Registered BEFORE _setupPageHideListeners (see start()) so a $tab-hidden
+    // open row enqueued here rides the same keepalive flush.
+    document.addEventListener("visibilitychange", this._onIntegrityVisibilityChange);
+    window.addEventListener("blur", this._onWindowBlur);
+    window.addEventListener("focus", this._onWindowFocus);
+    document.addEventListener("copy", this._onCopyCapture, { capture: true });
+    document.addEventListener("cut", this._onCutCapture, { capture: true });
+    document.addEventListener("paste", this._onPasteCapture, { capture: true });
+    document.addEventListener("contextmenu", this._onContextMenuCapture, { capture: true });
+    window.addEventListener("beforeprint", this._onBeforePrint);
+    document.addEventListener("fullscreenchange", this._onFullscreenChange);
+    this._wasFullscreen = document.fullscreenElement != null;
+    // Reflect states that are already true at start.
+    if (document.visibilityState === "hidden") this._onIntegrityVisibilityChange();
+    this._detachIntegrityListeners = () => {
+      document.removeEventListener("visibilitychange", this._onIntegrityVisibilityChange);
+      window.removeEventListener("blur", this._onWindowBlur);
+      window.removeEventListener("focus", this._onWindowFocus);
+      document.removeEventListener("copy", this._onCopyCapture, { capture: true });
+      document.removeEventListener("cut", this._onCutCapture, { capture: true });
+      document.removeEventListener("paste", this._onPasteCapture, { capture: true });
+      document.removeEventListener("contextmenu", this._onContextMenuCapture, { capture: true });
+      window.removeEventListener("beforeprint", this._onBeforePrint);
+      document.removeEventListener("fullscreenchange", this._onFullscreenChange);
+    };
+  }
+
+  private _endOpenPresenceSpans() {
+    for (const span of [this._tabHiddenSpan, this._windowBlurSpan, this._offlineSpan]) {
+      if (span !== null && !span.isEnded()) span.end();
+    }
+    this._tabHiddenSpan = null;
+    this._windowBlurSpan = null;
+    this._offlineSpan = null;
+  }
+
+  // Called on sign-out rotation: the old presence spans were inert-ified with
+  // the previous identity, so any state that STILL holds re-opens as a fresh
+  // span under the new segment/page.
+  private _restartPresenceSpans() {
+    this._tabHiddenSpan = null;
+    this._windowBlurSpan = null;
+    this._offlineSpan = null;
+    const pageViewSpanId = this.getCurrentPageViewSpanId() ?? undefined;
+    if (this._deps.integritySignals === true && document.visibilityState === "hidden") {
+      this._tabHiddenSpan = this._startSystemSpan("$tab-hidden", { pageViewSpanId });
+    }
+    if (this._deps.integritySignals === true && !document.hasFocus()) {
+      this._windowBlurSpan = this._startSystemSpan("$window-blur", { pageViewSpanId });
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      this._offlineSpan = this._startSystemSpan("$offline", { pageViewSpanId });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Unload / teardown
+  // ---------------------------------------------------------------------------
+
   private readonly _onPageHide = () => {
+    // pagehide = the page is going away (unload or bfcache entry): close the
+    // $page-view interval so time-on-page is correct, then flush keepalive. A
+    // bfcache restore starts a fresh span via pageshow.
+    this._endPageViewSpan();
+    runAsynchronously(() => this._flush({ keepalive: true }));
+  };
+
+  private readonly _onVisibilityChangeFlush = () => {
+    // A hidden tab is the last reliable moment to ship on mobile (pagehide may
+    // never fire). The page may come back, so the $page-view span stays open.
     runAsynchronously(() => this._flush({ keepalive: true }));
   };
 
   private _setupPageHideListeners() {
     window.addEventListener("pagehide", this._onPageHide);
-    document.addEventListener("visibilitychange", this._onPageHide);
+    document.addEventListener("visibilitychange", this._onVisibilityChangeFlush);
     this._detachListeners = () => {
       window.removeEventListener("pagehide", this._onPageHide);
-      document.removeEventListener("visibilitychange", this._onPageHide);
+      document.removeEventListener("visibilitychange", this._onVisibilityChangeFlush);
     };
   }
 
@@ -1093,6 +1675,25 @@ export class EventTracker {
       this._detachListeners();
       this._detachListeners = null;
     }
+    if (this._detachAutocaptureListeners) {
+      this._detachAutocaptureListeners();
+      this._detachAutocaptureListeners = null;
+    }
+    if (this._detachIntegrityListeners) {
+      this._detachIntegrityListeners();
+      this._detachIntegrityListeners = null;
+    }
+    if (this._webVitals !== null) {
+      this._webVitals.disconnect();
+      this._webVitals = null;
+      this._webVitalsSpanId = null;
+    }
+    this._pageViewSpan = null;
+    this._tabHiddenSpan = null;
+    this._windowBlurSpan = null;
+    this._offlineSpan = null;
+    this._recentClicks = [];
+    this._lastCopyHash = null;
 
     // Restore history methods
     const historyObject = window.history;

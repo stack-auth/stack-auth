@@ -1,4 +1,5 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { CLIENT_SYSTEM_SPAN_TYPES, PAGE_VIEW_SPAN_TYPE } from "@hexclave/shared/dist/utils/telemetry";
 import { stripLoneSurrogates, type ClickHouseClient } from "./clickhouse";
 
 /**
@@ -26,6 +27,17 @@ export const SPAN_ID_PREFIXES = {
   // the client-generated raw uuid and to every id inside a client-supplied parent
   // chain — clients only ever transmit raw custom uuids, never prefixed ids.
   custom: "cs-",
+  // The client-minted `$page-view` span (one per navigation per tab). Gets its
+  // own prefix rather than sharing `sas-` because page-view ids are referenced
+  // from OTHER rows' parent_span_ids (via the per-item `page_view_span_id` wire
+  // field), so the parent array stays self-describing about which ancestor is
+  // the page.
+  pageView: "pv-",
+  // Client-minted system autocapture spans other than `$page-view` ($tab-hidden,
+  // $window-blur, $offline). These are never referenced as parents by other
+  // rows, so one shared prefix is enough — the span row's own span_type carries
+  // the distinction.
+  systemAutocapture: "sas-",
 } as const;
 
 export type SpanIdPrefix = typeof SPAN_ID_PREFIXES[keyof typeof SPAN_ID_PREFIXES];
@@ -140,11 +152,16 @@ export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[
 }
 
 /**
- * One custom span as it arrives on the wire from the SDK (inside the analytics
- * events batch). Ids are raw uuids; `parent_span_ids` is the client's CUSTOM
- * ancestor chain only (root-first) — system ancestry is composed server-side.
+ * One span as it arrives on the wire from the SDK (inside the analytics events
+ * batch): either a user-defined custom span or a client-minted system
+ * autocapture span (`CLIENT_SYSTEM_SPAN_TYPES`). Ids are raw uuids;
+ * `parent_span_ids` is the client's CUSTOM ancestor chain only (root-first) —
+ * system ancestry (refresh-token/replay/segment/page-view) is composed
+ * server-side. `page_view_span_id` names the `$page-view` span the item
+ * happened on; it is client tab state the server cannot derive, so it rides
+ * per-item (a batch can straddle a navigation).
  */
-export type CustomSpanWireItem = {
+export type BatchSpanWireItem = {
   span_id: string,
   span_type: string,
   started_at_ms: number,
@@ -152,7 +169,22 @@ export type CustomSpanWireItem = {
   parent_span_ids: string[],
   data: unknown,
   updated_at_ms: number,
+  page_view_span_id?: string | null,
 };
+
+/**
+ * The id prefix a wire span's own row id gets, by type. The `$page-view` /
+ * autocapture distinction matters (see SPAN_ID_PREFIXES); any other `$` type is
+ * unreachable here (the route schema rejects it) and asserts as a backstop.
+ */
+export function wireSpanIdPrefix(spanType: string): SpanIdPrefix {
+  if (spanType === PAGE_VIEW_SPAN_TYPE) return SPAN_ID_PREFIXES.pageView;
+  if ((CLIENT_SYSTEM_SPAN_TYPES as readonly string[]).includes(spanType)) return SPAN_ID_PREFIXES.systemAutocapture;
+  if (spanType.startsWith("$")) {
+    throw new HexclaveAssertionError(`Span type ${JSON.stringify(spanType)} is not a writable system span type and not a valid custom type. The route schema should have rejected it.`);
+  }
+  return SPAN_ID_PREFIXES.custom;
+}
 
 // How far into the future a client-supplied `updated_at_ms` may run before we
 // clamp it. A skewed clock only corrupts ordering among that user's own span
@@ -174,18 +206,20 @@ export function clientUpdatedAtSpanVersion(updatedAtMs: number, serverNowMs: num
 }
 
 /**
- * Builds `analytics_internal.spans` rows for SDK-created custom spans. Each
- * row's `parent_span_ids` is the server-known system ancestry (same gating as
- * event rows — see `buildEventSpanFields`) followed by the client's custom
- * chain, every custom id prefixed `cs-`. The version is the client's
- * `updated_at_ms` — per-span monotonic by SDK construction, so the row carrying
- * the latest update wins in the ReplacingMergeTree regardless of insert order
- * (an end row can never be shadowed by a late-arriving open row). The replay
- * spans' end-time-as-version scheme is unusable here: two data re-writes while
- * the span is still open would collide at the same version.
+ * Builds `analytics_internal.spans` rows for SDK-sent wire spans (custom spans
+ * and client-minted system autocapture spans). Each row's `parent_span_ids` is
+ * the server-known system ancestry (same gating as event rows — see
+ * `buildEventSpanFields`), then the item's `$page-view` ancestor (`pv-`) when
+ * the client named one, then the client's custom chain, every custom id
+ * prefixed `cs-`. The version is the client's `updated_at_ms` — per-span
+ * monotonic by SDK construction, so the row carrying the latest update wins in
+ * the ReplacingMergeTree regardless of insert order (an end row can never be
+ * shadowed by a late-arriving open row). The replay spans' end-time-as-version
+ * scheme is unusable here: two data re-writes while the span is still open
+ * would collide at the same version.
  */
-export function buildCustomSpanRows(opts: {
-  spans: CustomSpanWireItem[],
+export function buildBatchSpanRows(opts: {
+  spans: BatchSpanWireItem[],
   projectId: string,
   branchId: string,
   userId: string | null,
@@ -201,19 +235,27 @@ export function buildCustomSpanRows(opts: {
   }).parent_span_ids;
 
   return opts.spans.map((span) => {
-    // The route schema is the primary gate; this backstop keeps the invariant
-    // even for future callers: `$…` span types are reserved for system spans
-    // and must never be writable through the custom-span path.
-    if (span.span_type.startsWith("$")) {
-      throw new HexclaveAssertionError(`Custom span types must not start with "$". Received: ${JSON.stringify(span.span_type)}`);
+    // wireSpanIdPrefix asserts on `$` types outside CLIENT_SYSTEM_SPAN_TYPES
+    // (the route schema is the primary gate; this keeps the invariant for any
+    // future caller). Server-derived span types can never be written here.
+    const idPrefix = wireSpanIdPrefix(span.span_type);
+    // A `$page-view` span IS the page — parenting one page-view under another
+    // would make the hierarchy lie. The route schema rejects this; assert so a
+    // future non-route caller cannot reintroduce it.
+    if (span.span_type === PAGE_VIEW_SPAN_TYPE && span.page_view_span_id != null) {
+      throw new HexclaveAssertionError("A $page-view span must not itself carry a page_view_span_id");
+    }
+    if (span.page_view_span_id != null && span.page_view_span_id === span.span_id) {
+      throw new HexclaveAssertionError("A span must not name itself as its page_view_span_id");
     }
     return {
-      id: toSpanId(SPAN_ID_PREFIXES.custom, span.span_id),
+      id: toSpanId(idPrefix, span.span_id),
       span_type: span.span_type,
       span_started_at: new Date(span.started_at_ms),
       span_ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
       parent_span_ids: [
         ...systemAncestry,
+        ...span.page_view_span_id != null ? [toSpanId(SPAN_ID_PREFIXES.pageView, span.page_view_span_id)] : [],
         ...span.parent_span_ids.map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
       ],
       data: JSON.stringify(stripLoneSurrogates(span.data)),

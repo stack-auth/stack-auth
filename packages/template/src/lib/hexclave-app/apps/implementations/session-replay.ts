@@ -55,6 +55,18 @@ export type AnalyticsOptions = {
    */
   waitUntil?: (promise: Promise<unknown>) => void,
   /**
+   * Opt-in presence/integrity signals: `$tab-hidden` and `$window-blur` spans
+   * (user left the tab/window), `$copy`/`$cut`/`$paste` (lengths and a
+   * same-page-origin flag only — clipboard CONTENT is never captured),
+   * `$context-menu`, `$print`, and `$fullscreen-exit` events. Built for
+   * review-signal use cases like exam/quiz platforms; all signals are advisory
+   * (page script cannot prove presence), and because they are
+   * surveillance-adjacent they default to OFF.
+   *
+   * @default false
+   */
+  integritySignals?: boolean,
+  /**
    * Cross-tier span propagation. When on, the browser attaches an
    * `x-hexclave-span-context` header to SAME-ORIGIN outgoing `fetch` requests, so a
    * server span opened with `serverApp.withSpan(type, { request })` parents under
