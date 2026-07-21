@@ -1,0 +1,34 @@
+apps/backend/src/lib/spans.tsx
+  s_5dc76ef9133451::t_455658db519585 50-58,81,240,280
+  s_5dc76ef9133451::t_7a197daafbfdb6 49
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_5dc76ef9133451::t_455658db519585 14,161,177-180,183-187,189-194,196-206,208-209,211-216,218-252,254-258,269-271,287,290-291,306-307
+apps/backend/src/lib/plan-usage.ts
+  s_5dc76ef9133451::t_455658db519585 354-356,366
+apps/backend/scripts/clickhouse-migrations.ts
+  s_5dc76ef9133451::t_455658db519585 37,49,309-331
+  s_5dc76ef9133451::t_8a4197a38d6367 332
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_5dc76ef9133451::t_02a243033b3e4a 224-254,307,349
+  s_5dc76ef9133451::t_455658db519585 256-270,282,291,298-299,308-309,311-319,321-336,338-348,350-357,386
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_5dc76ef9133451::t_455658db519585 3,5-6,11-35,165-176,204-214,269-270
+apps/backend/src/lib/spans.test.ts
+  s_5dc76ef9133451::t_455658db519585 2,28-36,40,113,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "412720724698a957e410ecc17d3b43d1bd464fb4",
+  "prompts": {},
+  "sessions": {
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
