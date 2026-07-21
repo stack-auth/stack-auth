@@ -156,8 +156,23 @@ export const POST = createSmartRouteHandler({
     const replayId = recentSession?.id ?? randomUUID();
     const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;
 
-    const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
-    const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, lastMs);
+    // A retry's body is not authoritative: callers may resend the same batch ID
+    // with different events. Read the durable chunk before updating projections
+    // so an idempotent retry cannot permanently expand the replay's bounds.
+    let chunk = await prisma.sessionReplayChunk.findUnique({
+      where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
+      select: {
+        s3Key: true,
+        sessionReplaySegmentId: true,
+        firstEventAt: true,
+        lastEventAt: true,
+      },
+    });
+    let deduped = chunk != null;
+    const authoritativeFirstMs = chunk?.firstEventAt.getTime() ?? firstMs;
+    const authoritativeLastMs = chunk?.lastEventAt.getTime() ?? lastMs;
+    const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, authoritativeFirstMs);
+    const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, authoritativeLastMs);
     const replay = await prisma.sessionReplay.upsert({
       where: { tenancyId_id: { tenancyId, id: replayId } },
       create: {
@@ -180,20 +195,10 @@ export const POST = createSmartRouteHandler({
       },
     });
 
-    // A retry must still repair the idempotent bounds/span projections. The
+    // A retry must still repair the idempotent segment/span projections. The
     // chunk row is the durable source of truth for those projections; returning
     // early here would strand them if the first request failed after creating
     // the chunk.
-    let chunk = await prisma.sessionReplayChunk.findUnique({
-      where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
-      select: {
-        s3Key: true,
-        sessionReplaySegmentId: true,
-        firstEventAt: true,
-        lastEventAt: true,
-      },
-    });
-    let deduped = chunk != null;
     if (chunk == null) {
       const payload = {
         v: 1,
