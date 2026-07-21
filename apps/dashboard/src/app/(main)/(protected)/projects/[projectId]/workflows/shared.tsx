@@ -123,7 +123,11 @@ export function WorkflowTriggers({ triggers }: { triggers: AdminWorkflowTrigger[
           {triggers.length} triggers
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom" align="start" className="max-w-[420px]">
+      <TooltipContent
+        side="bottom"
+        align="start"
+        className="max-w-[420px] border-border bg-popover text-popover-foreground opacity-100 shadow-xl dark:bg-popover dark:text-popover-foreground"
+      >
         <div className="flex max-h-64 flex-col gap-1 overflow-auto py-0.5">
           {triggers.map((trigger, index) => (
             <TriggerChip key={`${getTriggerLabel(trigger)}:${index}`} trigger={trigger} />

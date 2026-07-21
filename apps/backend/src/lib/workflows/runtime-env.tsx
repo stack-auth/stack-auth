@@ -19,11 +19,19 @@ export type WorkflowsRuntimeEnv = {
   stdlibNodeModules: Record<string, string>,
 };
 
-export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-21.1";
+export const WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION = "2026-07-21.2";
 
 const WORKFLOWS_RUNTIME_ENVS = new Map<string, WorkflowsRuntimeEnv>([
   ["2026-07-20.1", {
     runtimeNodeModules: {},
+    stdlibNodeModules: {
+      "date-fns": "4.1.0",
+    },
+  }],
+  ["2026-07-21.1", {
+    runtimeNodeModules: {
+      "@hexclave/js": "1.0.52",
+    },
     stdlibNodeModules: {
       "date-fns": "4.1.0",
     },

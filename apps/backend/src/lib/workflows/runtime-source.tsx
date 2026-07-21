@@ -488,7 +488,11 @@ globalThis.fetch = async (resource, init = {}) => {
  */
 export const hexclaveApp = new HexclaveAdminApp({
   baseUrl: appCredentials?.apiUrl ?? "http://workflow-manifest.invalid",
-  projectId: appCredentials?.projectId ?? "workflow-manifest",
+  // SDK construction validates project IDs before any request is made. The
+  // manifest identity must therefore use the one reserved non-UUID project
+  // ID; the invalid hostname and inert keys still guarantee that accidentally
+  // using hexclaveApp while analyzing a workflow cannot reach a real project.
+  projectId: appCredentials?.projectId ?? "internal",
   tokenStore: null,
   secretServerKey: appCredentials?.secretServerKey ?? "ssk_workflow_manifest",
   superSecretAdminKey: appCredentials?.superSecretAdminKey ?? "sak_workflow_manifest",

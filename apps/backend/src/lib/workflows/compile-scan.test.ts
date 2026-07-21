@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { compileWorkflowBundle, getUsedStdlibPackages, scanWorkflowImports, validateWorkflowSource } from "./compile";
 import { getWorkflowsRuntimeEnv, WORKFLOWS_CURRENT_RUNTIME_ENV_VERSION } from "./runtime-env";
+import { WORKFLOWS_RUNTIME_PACKAGE_SOURCE } from "./runtime-source";
 
 // Pure-function tests for the sync-time source validation (the esbuild
 // bundling + sandbox manifest path is covered by the workflows e2e tests).
@@ -100,5 +101,10 @@ export default workflow("x", { on: ["user.created"] }, async () => {});
       expect(result.data.compiledBundle).toContain("@hexclave/js");
       expect(result.data.compiledBundle).toContain("HexclaveAdminApp");
     }
+  });
+
+  test("constructs the inert manifest AdminApp with the reserved internal project ID", () => {
+    expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).toContain('projectId: appCredentials?.projectId ?? "internal"');
+    expect(WORKFLOWS_RUNTIME_PACKAGE_SOURCE).not.toContain('projectId: appCredentials?.projectId ?? "workflow-manifest"');
   });
 });
