@@ -1,0 +1,42 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_5dc76ef9133451::t_3567f5f4167f9d 1039
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_5dc76ef9133451::t_5581a6329baac4 864,866,1044,1058,1069,1071-1075,1103-1104
+  s_5dc76ef9133451::t_41ff06469082c3 917
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_5dc76ef9133451::t_a668132dbd5805 330
+  s_5dc76ef9133451::t_b79cdabab9fc5c 106-107
+  s_5dc76ef9133451::t_3567f5f4167f9d 109,147
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_5dc76ef9133451::t_c488d476461a38 762
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_5dc76ef9133451::t_b79cdabab9fc5c 159-161
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.test.ts
+  s_5dc76ef9133451::t_76a15fb5c23628 263,266,269-270,274,281,284-296,302
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_5dc76ef9133451::t_3567f5f4167f9d 41,1784,1787
+packages/template/src/lib/hexclave-app/apps/implementations/span-propagation.ts
+  s_5dc76ef9133451::t_c488d476461a38 250,258,265-271,278-284,295,299-304,308-310,312-314,329-330,332
+  s_5dc76ef9133451::t_7d4fbdd1b72c65 317-319
+  s_5dc76ef9133451::t_205ce5d3fcd61c 316
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.ts
+  s_5dc76ef9133451::t_3567f5f4167f9d 78-81,83-84,88,95-96,98-99
+packages/template/src/lib/hexclave-app/apps/implementations/span-context.test.ts
+  s_5dc76ef9133451::t_c488d476461a38 56-63,149,151,195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "dadbe321df6b2c7c1951e8e618a6cd739efc0242",
+  "prompts": {},
+  "sessions": {
+    "s_5dc76ef9133451": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f81de-0cf6-7780-a2a6-e9fba38440d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
