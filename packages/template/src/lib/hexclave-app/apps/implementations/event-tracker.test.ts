@@ -1036,7 +1036,7 @@ describe("EventTracker ambient modes + span handle kit", () => {
       tracker.start();
       const span = tracker.startSpan("flow");
       // e.g. a third-party callback, far from any withSpan prologue:
-      span.run(() => {
+      await span.run(() => {
         tracker.trackCustomEvent("from_callback").catch(() => {});
       });
       await advancePastFlush();

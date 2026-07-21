@@ -1,4 +1,3 @@
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import type { SpanRef } from "./event-tracker";
 import { ensureAsyncContext, getAsyncLocalStorage, isAsyncContextSettled, syncStack, type SyncFrame } from "./span-context-state";
 
@@ -76,38 +75,27 @@ export async function runWithSpanContext<T>(frame: SpanRef, fn: () => Promise<T>
 /**
  * Re-enters `ref` as an ambient frame for `fn` — the manual-rebind primitive
  * behind `span.run()`, for post-await code, timers, and third-party callbacks.
- * Synchronous: under ALS/AsyncContext the context covers `fn`'s full async
- * extent; on the sync-stack fallback it is exact for `fn`'s synchronous window.
- * If `fn` returns a promise the frame stays on the stack until settle (for
- * correct pop ordering) but is not ambient after the prologue ends.
+ * Always awaits the async-context probe before invoking `fn`, so the first call
+ * in a Node process gets the same full-async-extent guarantee as later calls.
+ * On the sync-stack browser fallback it remains exact for `fn`'s synchronous
+ * window only.
  */
-export function runWithSpanFrame<T>(ref: SpanRef, fn: () => T): T {
-  if (!isAsyncContextSettled()) {
-    runAsynchronously(ensureAsyncContext(), { noErrorLogging: true });
-  }
+export async function runWithSpanFrame<T>(ref: SpanRef, fn: () => T): Promise<Awaited<T>> {
+  if (!isAsyncContextSettled()) await ensureAsyncContext();
   const als = getAsyncLocalStorage();
   if (als) {
     const enclosing = als.getStore() ?? [];
-    return als.run([...enclosing, ref], fn);
+    return await als.run([...enclosing, ref], fn);
   }
   const syncFrame: SyncFrame = { ref, prologueOpen: true };
   syncStack.push(syncFrame);
-  const pop = () => {
-    const index = syncStack.lastIndexOf(syncFrame);
-    if (index !== -1) syncStack.splice(index, 1);
-  };
   try {
     const result = fn();
     syncFrame.prologueOpen = false;
-    if (result !== null && result !== undefined && typeof (result as { then?: unknown }).then === "function") {
-      runAsynchronously(Promise.resolve(result).finally(pop), { noErrorLogging: true });
-    } else {
-      pop();
-    }
-    return result;
-  } catch (error) {
+    return await result;
+  } finally {
     syncFrame.prologueOpen = false;
-    pop();
-    throw error;
+    const index = syncStack.lastIndexOf(syncFrame);
+    if (index !== -1) syncStack.splice(index, 1);
   }
 }

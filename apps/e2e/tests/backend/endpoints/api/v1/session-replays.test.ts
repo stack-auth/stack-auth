@@ -1,9 +1,37 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { Client } from "pg";
 import { PLAN_LIMITS } from "@hexclave/shared/dist/plans";
+import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
+import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
 import { wait } from "@hexclave/shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+
+function getInternalDatabaseConnectionString(): string {
+  const connectionString = getEnvVariable(
+    "HEXCLAVE_DATABASE_CONNECTION_STRING",
+    getEnvVariable("STACK_DATABASE_CONNECTION_STRING", ""),
+  );
+  if (connectionString === "") {
+    throw new HexclaveAssertionError("Session replay E2E tests require a configured internal database connection string");
+  }
+  return connectionString;
+}
+
+async function withInternalDatabase<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client({
+    connectionString: getInternalDatabaseConnectionString(),
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
+  });
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.end();
+  }
+}
 
 async function uploadBatch(options: {
   browserSessionId: string,
@@ -134,6 +162,18 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
   expect(typeof first.body?.session_replay_id).toBe("string");
 
   const recordingId = first.body?.session_replay_id;
+  if (typeof recordingId !== "string") {
+    throw new HexclaveAssertionError("Successful session replay upload did not return a replay id");
+  }
+
+  // Simulate a failure after the durable chunk was created but before the
+  // idempotent segment projection completed. Retrying the batch must repair it.
+  await withInternalDatabase(async (client) => {
+    await client.query(
+      `DELETE FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
+      [recordingId, sessionReplaySegmentId],
+    );
+  });
 
   const second = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
@@ -161,6 +201,17 @@ it("stores session replay batch metadata and dedupes by (session_replay_id, batc
     }
   `);
   expect(second.body?.session_replay_id).toBe(recordingId);
+
+  await withInternalDatabase(async (client) => {
+    const repairedSegments = await client.query<{ firstEventAtMs: string, lastEventAtMs: string }>(
+      `SELECT EXTRACT(EPOCH FROM "firstEventAt") * 1000 AS "firstEventAtMs", EXTRACT(EPOCH FROM "lastEventAt") * 1000 AS "lastEventAtMs" FROM "SessionReplaySegment" WHERE "sessionReplayId" = $1::uuid AND "id" = $2`,
+      [recordingId, sessionReplaySegmentId],
+    );
+    expect(repairedSegments.rows.map((row) => ({
+      firstEventAtMs: Number(row.firstEventAtMs),
+      lastEventAtMs: Number(row.lastEventAtMs),
+    }))).toEqual([{ firstEventAtMs: now + 100, lastEventAtMs: now + 200 }]);
+  });
 });
 
 it("emits $session-replay and $session-replay-segment spans queryable via the spans surface", async ({ expect }) => {
@@ -215,8 +266,8 @@ it("emits $session-replay and $session-replay-segment spans queryable via the sp
   expect(replaySpan.session_replay_segment_id).toBeNull();
 
   // Segment span (per tab): ancestor list is root-first [refresh-token, replay];
-  // its identity is the recording's per-tab session_replay_segment_id.
-  expect(segmentSpan.id).toBe(`srsi-${sessionReplaySegmentId}`);
+  // its identity combines the replay id with the recording's per-tab segment id.
+  expect(segmentSpan.id).toBe(`srsi-${replayId}:${sessionReplaySegmentId}`);
   expect(segmentSpan.parent_span_ids).toHaveLength(2);
   expect(segmentSpan.parent_span_ids[0]).toMatch(/^rti-/);
   expect(segmentSpan.parent_span_ids[1]).toBe(`sri-${replayId}`);

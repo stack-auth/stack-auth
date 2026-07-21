@@ -260,29 +260,45 @@ describe("installFetchSpanPropagation", () => {
     expect((calls[0].input as Request).headers.get(SPAN_CONTEXT_HEADER)).toBe(explicit);
   });
 
-  it("is idempotent and uninstalls cleanly", async () => {
+  it("shares one wrapper across providers and uninstalls after the last provider", async () => {
     install({ projectId: "p", sessionReplaySegmentId: SEG });
     const second = installFetchSpanPropagation({ getContext: () => null, getSelfOrigin: () => SELF, getAllowedOrigins: () => [] });
-    expect(second).toBeNull();
+    expect(second).toBeTypeOf("function");
     uninstall?.();
     uninstall = undefined;
+    expect((globalThis as { fetch: typeof fetch }).fetch).not.toBe(originalFetch);
+    second?.();
     expect((globalThis as { fetch: typeof fetch }).fetch).toBe(originalFetch);
   });
 
-  it("updates the shared provider when another app installs after the wrapper is already active", async () => {
+  it("fails closed when two eligible apps provide different project contexts", async () => {
     install({ projectId: "first", sessionReplaySegmentId: SEG });
     const second = installFetchSpanPropagation({
       getContext: () => ({ projectId: "second", customParentSpanIds: [CUSTOM_A] }),
       getSelfOrigin: () => SELF,
       getAllowedOrigins: () => [],
     });
-    expect(second).toBeNull();
+    expect(second).toBeTypeOf("function");
 
     await (globalThis as { fetch: typeof fetch }).fetch("/api/x");
+    expect(sentHeader()).toBeNull();
+    second?.();
+  });
+
+  it("uses the sole provider whose origin policy permits the target", async () => {
+    install({ projectId: "first", sessionReplaySegmentId: SEG });
+    const second = installFetchSpanPropagation({
+      getContext: () => ({ projectId: "second", customParentSpanIds: [CUSTOM_A] }),
+      getSelfOrigin: () => SELF,
+      getAllowedOrigins: () => ["https://api.example.com"],
+    });
+
+    await (globalThis as { fetch: typeof fetch }).fetch("https://api.example.com/x");
 
     expect(decodeSpanContextHeader(sentHeader())).toEqual({
       projectId: "second",
       customParentSpanIds: [CUSTOM_A],
     });
+    second?.();
   });
 });

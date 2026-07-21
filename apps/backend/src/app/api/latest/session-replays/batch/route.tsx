@@ -11,7 +11,7 @@ import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip as gzipCb, gunzipSync } from "node:zlib";
@@ -158,7 +158,7 @@ export const POST = createSmartRouteHandler({
 
     const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
     const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, lastMs);
-    await prisma.sessionReplay.upsert({
+    const replay = await prisma.sessionReplay.upsert({
       where: { tenancyId_id: { tenancyId, id: replayId } },
       create: {
         id: replayId,
@@ -174,82 +174,90 @@ export const POST = createSmartRouteHandler({
         lastEventAt: new Date(newLastEventAtMs),
         shouldUpdateSequenceId: true,
       },
+      select: {
+        startedAt: true,
+        lastEventAt: true,
+      },
     });
 
-    // If we already have this batch for this session, return deduped without touching S3.
-    const existingChunk = await prisma.sessionReplayChunk.findUnique({
+    // A retry must still repair the idempotent bounds/span projections. The
+    // chunk row is the durable source of truth for those projections; returning
+    // early here would strand them if the first request failed after creating
+    // the chunk.
+    let chunk = await prisma.sessionReplayChunk.findUnique({
       where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
-      select: { s3Key: true },
+      select: {
+        s3Key: true,
+        sessionReplaySegmentId: true,
+        firstEventAt: true,
+        lastEventAt: true,
+      },
     });
-    if (existingChunk) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {
-          session_replay_id: replayId,
-          batch_id: batchId,
-          s3_key: existingChunk.s3Key,
-          deduped: true,
-        },
+    let deduped = chunk != null;
+    if (chunk == null) {
+      const payload = {
+        v: 1,
+        session_replay_id: replayId,
+        browser_session_id: browserSessionId,
+        session_replay_segment_id: sessionReplaySegmentId,
+        batch_id: batchId,
+        started_at_ms: body.started_at_ms,
+        sent_at_ms: body.sent_at_ms,
+        events: body.events,
       };
-    }
+      const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+      const gzipped = new Uint8Array(await gzip(payloadBytes));
 
-    const payload = {
-      v: 1,
-      session_replay_id: replayId,
-      browser_session_id: browserSessionId,
-      session_replay_segment_id: sessionReplaySegmentId,
-      batch_id: batchId,
-      started_at_ms: body.started_at_ms,
-      sent_at_ms: body.sent_at_ms,
-      events: body.events,
-    };
-    const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
-    const gzipped = new Uint8Array(await gzip(payloadBytes));
-
-    await uploadBytes({
-      key: s3Key,
-      body: gzipped,
-      contentType: "application/json",
-      contentEncoding: "gzip",
-      private: true,
-    });
-
-    try {
-      await prisma.sessionReplayChunk.create({
-        data: {
-          tenancyId,
-          sessionReplayId: replayId,
-          batchId,
-          sessionReplaySegmentId,
-          browserSessionId,
-          s3Key,
-          eventCount: body.events.length,
-          byteLength: gzipped.byteLength,
-          firstEventAt: new Date(firstMs),
-          lastEventAt: new Date(lastMs),
-        },
+      await uploadBytes({
+        key: s3Key,
+        body: gzipped,
+        contentType: "application/json",
+        contentEncoding: "gzip",
+        private: true,
       });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        return {
-          statusCode: 200,
-          bodyType: "json",
-          body: {
-            session_replay_id: replayId,
-            batch_id: batchId,
-            s3_key: s3Key,
-            deduped: true,
-          },
-        };
-      }
-      throw e;
-    }
 
-    await prisma.sessionReplay.update({
-      where: { tenancyId_id: { tenancyId, id: replayId } },
-      data: { shouldUpdateSequenceId: true },
-    });
+      try {
+        chunk = await prisma.sessionReplayChunk.create({
+          data: {
+            tenancyId,
+            sessionReplayId: replayId,
+            batchId,
+            sessionReplaySegmentId,
+            browserSessionId,
+            s3Key,
+            eventCount: body.events.length,
+            byteLength: gzipped.byteLength,
+            firstEventAt: new Date(firstMs),
+            lastEventAt: new Date(lastMs),
+          },
+          select: {
+            s3Key: true,
+            sessionReplaySegmentId: true,
+            firstEventAt: true,
+            lastEventAt: true,
+          },
+        });
+      } catch (e) {
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
+          throw e;
+        }
+        // A concurrent copy of this batch won the unique-key race. Read its
+        // authoritative metadata and continue through the shared repair path.
+        chunk = await prisma.sessionReplayChunk.findUnique({
+          where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
+          select: {
+            s3Key: true,
+            sessionReplaySegmentId: true,
+            firstEventAt: true,
+            lastEventAt: true,
+          },
+        });
+        if (chunk == null) {
+          throw new HexclaveAssertionError("Session replay chunk unique-key conflict was reported, but the winning row could not be read");
+        }
+        deduped = true;
+      }
+    }
 
     // Fold this batch's event-time bounds into the maintained per-segment row
     // (O(1) LEAST/GREATEST upsert — see upsertSessionReplaySegmentBounds). On-path
@@ -258,9 +266,9 @@ export const POST = createSmartRouteHandler({
     const segmentBounds = await upsertSessionReplaySegmentBounds(prisma, {
       tenancyId,
       sessionReplayId: replayId,
-      sessionReplaySegmentId,
-      batchFirstEventAt: new Date(firstMs),
-      batchLastEventAt: new Date(lastMs),
+      sessionReplaySegmentId: chunk.sessionReplaySegmentId,
+      batchFirstEventAt: chunk.firstEventAt,
+      batchLastEventAt: chunk.lastEventAt,
     });
 
     // Additionally mirror this replay into the spans telemetry surface, written
@@ -276,11 +284,11 @@ export const POST = createSmartRouteHandler({
           projectId,
           branchId,
           replayId,
-          sessionReplaySegmentId,
+          sessionReplaySegmentId: chunk.sessionReplaySegmentId,
           projectUserId,
           refreshTokenId,
-          replayStartedAt: new Date(newStartedAtMs),
-          replayLastEventAt: new Date(newLastEventAtMs),
+          replayStartedAt: replay.startedAt,
+          replayLastEventAt: replay.lastEventAt,
           segmentStartedAt: segmentBounds.firstEventAt,
           segmentLastEventAt: segmentBounds.lastEventAt,
         });
@@ -295,8 +303,8 @@ export const POST = createSmartRouteHandler({
       body: {
         session_replay_id: replayId,
         batch_id: batchId,
-        s3_key: s3Key,
-        deduped: false,
+        s3_key: chunk.s3Key,
+        deduped,
       },
     };
   },

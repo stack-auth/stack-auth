@@ -38,7 +38,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
 import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
@@ -1781,10 +1781,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // under the client session ($refresh-token/$session-replay/$session-replay-segment).
     if (options?.request) {
       const { request, ...rest } = options;
-      return (async () => {
+      return preCaught((async () => {
         const context = await this._resolveServerRequestContext(request, options.userId ?? null);
         await runWithServerRequestContext(context, () => this._trackServerEvent(eventType, data, rest, context.userId));
-      })();
+      })());
     }
     return this._trackServerEvent(eventType, data, options, options?.userId ?? null);
   }

@@ -861,8 +861,9 @@ it("rejects the whole batch when span quota is insufficient and refunds the even
 // ============================================================================
 
 async function setupAnalyticsProject() {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const project = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  return project;
 }
 
 async function uploadTelemetryBatch(
@@ -913,7 +914,7 @@ async function uploadSessionReplayBatch(options: {
 function currentRefreshTokenId(): string {
   const accessToken = backendContext.value.userAuth?.accessToken;
   if (accessToken == null) throw new Error("Expected signed-in user auth before reading refresh token id");
-  const payloadPart = accessToken.split(".")[1];
+  const payloadPart = accessToken.split(".").at(1);
   if (payloadPart == null) throw new Error("Expected JWT access token with payload");
   const parsed: unknown = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf-8"));
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -1040,7 +1041,7 @@ it("server-auth telemetry parents under the forwarded client-session context", a
     events: [{ event_type: "server_action", event_at_ms: now - 100, data: { ok: true }, parent_span_ids: [customParent] }],
   }, { accessType: "server" });
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ inserted: 1 });
+  expect(res.body).toEqual({ inserted: 1, accepted_spans: 0 });
 
   const queryRes = await queryAnalyticsUntil({
     query: "SELECT event_type, parent_span_ids, refresh_token_id, session_replay_id, session_replay_segment_id, user_id FROM events WHERE session_replay_segment_id = {segId:String}",
@@ -1054,7 +1055,7 @@ it("server-auth telemetry parents under the forwarded client-session context", a
   expect(row.parent_span_ids).toEqual([
     `rti-${refreshTokenId}`,
     `sri-${sessionReplayId}`,
-    `srsi-${sessionReplaySegmentId}`,
+    `srsi-${sessionReplayId}:${sessionReplaySegmentId}`,
     `cs-${customParent}`,
   ]);
   // Scalar columns are stamped too (not just parent_span_ids), so replay filtering works.
@@ -1065,8 +1066,13 @@ it("server-auth telemetry parents under the forwarded client-session context", a
 });
 
 it("rejects forwarded server replay context without the matching refresh-token root", async ({ expect }) => {
-  await setupAnalyticsProject();
+  const { createProjectResponse } = await setupAnalyticsProject();
   await Auth.Otp.signIn();
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+  const [eventsBefore, spansBefore] = await Promise.all([
+    waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsEvents, { minimumElapsedMs: 5000 }),
+    waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsSpans, { minimumElapsedMs: 5000 }),
+  ]);
   const sessionReplaySegmentId = randomUUID();
   const replayBatch = await uploadSessionReplayBatch({
     browserSessionId: randomUUID(),
@@ -1094,6 +1100,8 @@ it("rejects forwarded server replay context without the matching refresh-token r
   }, { accessType: "server" });
   expect(wrongRefresh.status).toBe(400);
   expect(wrongRefresh.body).toBe("session_replay_id does not correspond to the forwarded refresh token and user");
+  expect(await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents)).toBe(eventsBefore);
+  expect(await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsSpans)).toBe(spansBefore);
 });
 
 it("does not derive a fallback replay from another user when server auth supplies user_id", async ({ expect }) => {

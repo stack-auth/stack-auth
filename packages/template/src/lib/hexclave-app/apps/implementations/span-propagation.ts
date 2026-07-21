@@ -247,7 +247,7 @@ export type FetchSpanPropagationOptions = {
 type FetchSpanPropagationState = {
   originalFetch: typeof fetch,
   wrappedFetch: typeof fetch,
-  options: FetchSpanPropagationOptions,
+  providers: Set<FetchSpanPropagationOptions>,
 };
 
 function getFetchSpanPropagationState(): FetchSpanPropagationState | null {
@@ -255,27 +255,33 @@ function getFetchSpanPropagationState(): FetchSpanPropagationState | null {
   if (typeof value !== "object" || value === null) return null;
   const candidate = value as Partial<FetchSpanPropagationState>;
   if (typeof candidate.originalFetch !== "function" || typeof candidate.wrappedFetch !== "function") return null;
-  if (candidate.options === undefined) return null;
+  if (!(candidate.providers instanceof Set)) return null;
   return candidate as FetchSpanPropagationState;
 }
 
 /**
  * Installs a global `fetch` wrapper that attaches `x-hexclave-span-context` to
  * same-origin (or allowlisted) outgoing requests. Idempotent (a global marker
- * guards against HMR / multiple app instances), but later app instances update
- * the shared provider so the wrapper does not keep the first app's project/session
- * forever. It chains through the existing fetch so it composes with other wrappers
- * (Sentry/OTel), and never lets propagation throw into the caller's request.
- * Header merging preserves native fetch header semantics exactly, then adds ours.
- * Returns an uninstaller, or null if fetch is unavailable or already wrapped.
+ * guards against HMR / multiple app instances). Every app registers a provider;
+ * the wrapper attaches a header only when all eligible providers agree on the
+ * same context. Ambiguous same-origin multi-project requests fail closed instead
+ * of silently labeling one project's traffic as another's. It chains through the
+ * existing fetch so it composes with other wrappers (Sentry/OTel), and never lets
+ * propagation throw into the caller's request. Returns an uninstaller, or null if
+ * fetch is unavailable or a foreign value already occupies the marker.
  */
 export function installFetchSpanPropagation(options: FetchSpanPropagationOptions): (() => void) | null {
   const g = globalThis as typeof globalThis & Record<string, unknown>;
   if (typeof g.fetch !== "function") return null;
   const existingState = getFetchSpanPropagationState();
   if (existingState) {
-    existingState.options = options;
-    return null;
+    existingState.providers.add(options);
+    return () => {
+      existingState.providers.delete(options);
+      if (existingState.providers.size !== 0) return;
+      if (g.fetch === existingState.wrappedFetch) g.fetch = existingState.originalFetch;
+      if (g[FETCH_WRAP_MARKER] === existingState) delete g[FETCH_WRAP_MARKER];
+    };
   }
   if (g[FETCH_WRAP_MARKER]) return null;
 
@@ -286,26 +292,31 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
   const state: FetchSpanPropagationState = {
     originalFetch,
     wrappedFetch: originalFetch,
-    options,
+    providers: new Set([options]),
   };
 
   const wrapped = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    try {
-      const context = state.options.getContext();
-      if (context) {
+    const candidates = new Map<string, RequestInit>();
+    for (const provider of state.providers) {
+      try {
+        const context = provider.getContext();
+        if (!context) continue;
+        const headerValue = encodeSpanContextHeader(context);
         const initWithHeader = buildFetchInitWithSpanContext({
           input,
           init,
-          headerValue: encodeSpanContextHeader(context),
-          selfOrigin: state.options.getSelfOrigin(),
-          allowedOrigins: state.options.getAllowedOrigins(),
+          headerValue,
+          selfOrigin: provider.getSelfOrigin(),
+          allowedOrigins: provider.getAllowedOrigins(),
         });
-        if (initWithHeader) {
-          return callFetch(input, initWithHeader);
-        }
+        if (initWithHeader) candidates.set(headerValue, initWithHeader);
+      } catch {
+        // A broken provider must not affect the request or the other providers.
       }
-    } catch {
-      // Any failure in propagation falls through to the untouched request.
+    }
+    if (candidates.size === 1) {
+      const candidate = candidates.values().next();
+      if (!candidate.done) return callFetch(input, candidate.value);
     }
     return callFetch(input as RequestInfo | URL, init);
   }) as typeof fetch;
@@ -315,7 +326,9 @@ export function installFetchSpanPropagation(options: FetchSpanPropagationOptions
   g[FETCH_WRAP_MARKER] = state;
 
   return () => {
+    state.providers.delete(options);
+    if (state.providers.size !== 0) return;
     if (g.fetch === wrapped) g.fetch = originalFetch;
-    delete g[FETCH_WRAP_MARKER];
+    if (g[FETCH_WRAP_MARKER] === state) delete g[FETCH_WRAP_MARKER];
   };
 }

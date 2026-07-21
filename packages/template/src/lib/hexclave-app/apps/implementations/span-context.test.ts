@@ -53,6 +53,14 @@ describe("span context (AsyncLocalStorage)", () => {
       expect(getAmbientSpanRefs()).toEqual([{ spanId: "child", parentSpanIds: ["root-ancestor"] }]);
     });
   });
+
+  it("waits for the first async-context probe before invoking a manual frame", async () => {
+    __setAsyncContextModeForTesting("auto");
+    await runWithSpanFrame(ref("first-manual"), async () => {
+      await Promise.resolve();
+      expect(ambientIds()).toEqual(["first-manual"]);
+    });
+  });
 });
 
 describe("span context (sync-stack fallback)", () => {
@@ -138,9 +146,9 @@ describe("span context (sync-stack fallback)", () => {
     });
   });
 
-  it("runWithSpanFrame re-binds a frame exactly for a synchronous window", () => {
+  it("runWithSpanFrame re-binds a frame exactly for a synchronous window", async () => {
     __setAsyncContextModeForTesting("sync-stack");
-    const result = runWithSpanFrame(ref("manual"), () => {
+    const result = await runWithSpanFrame(ref("manual"), () => {
       expect(ambientIds()).toEqual(["manual"]);
       return 42;
     });
@@ -180,14 +188,11 @@ describe("span context (sync-stack fallback)", () => {
     };
 
     const result = runWithSpanFrame(ref("thenable"), () => thenable);
-    expect(result).toBe(thenable);
     expect(ambientIds()).toEqual([]);
     expect(syncStack).toHaveLength(1);
-    const settled = Promise.resolve(thenable);
     await Promise.resolve();
     for (const resolve of waiters) resolve("done");
-    await settled;
-    await Promise.resolve();
+    await expect(result).resolves.toBe("done");
     expect(getAmbientSpanRefs()).toEqual([]);
     expect(syncStack).toHaveLength(0);
   });
