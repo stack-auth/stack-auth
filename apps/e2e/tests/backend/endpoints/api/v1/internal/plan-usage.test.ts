@@ -122,22 +122,26 @@ const SEEDED_EMAIL_SUBJECT = "Plan usage test email";
 
 async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSendingAt: Date | null): Promise<void> {
   const renderedAt = new Date();
-  // These are synthetic rows we insert purely to be counted by plan usage; they must never be picked up
-  // by the real email-queue worker. If "isQueued" were true, the worker would dispatch the not-yet-sent
-  // row (the one with a null startedSendingAt) and stamp its startedSendingAt to ~now -- which lands
-  // inside the active subscription window and inflates the metered email count nondeterministically
-  // (it only happens when the worker runs before the test's assertions, e.g. on slower CI shards).
+  // These are synthetic rows we insert purely to be counted by plan usage; they must never be touched
+  // by the real email-queue worker. We mark them "isPaused" because that is the single flag every worker
+  // stage checks (render, queue, and send all require isPaused = FALSE). This matters for the not-yet-sent
+  // row (the one with a null startedSendingAt): it is fully rendered, so the send step would otherwise
+  // claim any non-paused row whose startedSendingAt IS NULL and stamp it to ~now -- which lands inside the
+  // active subscription window and inflates the metered email count nondeterministically (only when the
+  // worker runs before the test's assertions, e.g. on slower CI shards). "isQueued" alone does not prevent
+  // this: the send step claims the row regardless of "isQueued" once it is rendered and not started sending.
+  // Pausing is safe for the count because plan usage windows purely on startedSendingAt, never on isPaused.
   await client.query(
     `
       INSERT INTO "EmailOutbox"
         ("tenancyId", "id", "createdAt", "updatedAt", "tsxSource", "isHighPriority", "to", "extraRenderVariables",
          "shouldSkipDeliverabilityCheck", "createdWith", "renderedByWorkerId", "startedRenderingAt",
          "finishedRenderingAt", "renderedHtml", "renderedSubject", "renderedIsTransactional",
-         "scheduledAt", "isQueued", "startedSendingAt", "finishedSendingAt", "canHaveDeliveryInfo")
+         "scheduledAt", "isQueued", "isPaused", "startedSendingAt", "finishedSendingAt", "canHaveDeliveryInfo")
       VALUES
         ($1::uuid, gen_random_uuid(), $4, $4, '', false, $2::jsonb, '{}'::jsonb,
          true, 'PROGRAMMATIC_CALL', $3::uuid, $4, $4, '<p>usage test</p>',
-         $7, true, $4, false, $5, $5, $6)
+         $7, true, $4, false, true, $5, $5, $6)
     `,
     [
       tenancyId,
