@@ -122,6 +122,11 @@ const SEEDED_EMAIL_SUBJECT = "Plan usage test email";
 
 async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSendingAt: Date | null): Promise<void> {
   const renderedAt = new Date();
+  // These are synthetic rows we insert purely to be counted by plan usage; they must never be picked up
+  // by the real email-queue worker. If "isQueued" were true, the worker would dispatch the not-yet-sent
+  // row (the one with a null startedSendingAt) and stamp its startedSendingAt to ~now -- which lands
+  // inside the active subscription window and inflates the metered email count nondeterministically
+  // (it only happens when the worker runs before the test's assertions, e.g. on slower CI shards).
   await client.query(
     `
       INSERT INTO "EmailOutbox"
@@ -132,7 +137,7 @@ async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSe
       VALUES
         ($1::uuid, gen_random_uuid(), $4, $4, '', false, $2::jsonb, '{}'::jsonb,
          true, 'PROGRAMMATIC_CALL', $3::uuid, $4, $4, '<p>usage test</p>',
-         $7, true, $4, true, $5, $5, $6)
+         $7, true, $4, false, $5, $5, $6)
     `,
     [
       tenancyId,
