@@ -713,7 +713,14 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
     this._analyticsOptions = resolvedOptions.analytics;
 
-    const analyticsEnabled = this._analyticsOptions?.enabled !== false;
+    // Client analytics (events + replays) needs a refreshable client session.
+    // Apps authenticated via projectOwnerSession use HexclaveAdminInterface, whose
+    // fetchNewAccessToken intentionally refuses to refresh — so starting a
+    // SessionRecorder/EventTracker here would only spam flush failures once the
+    // short-lived access token expires. Dashboard recording belongs on the
+    // internal StackClientApp, not on per-project owned admin apps.
+    const canRefreshClientAccessTokens = !("projectOwnerSession" in this._interface.options);
+    const analyticsEnabled = canRefreshClientAccessTokens && this._analyticsOptions?.enabled !== false;
 
     const sessionReplayOptions = getSessionReplayOptions(this._analyticsOptions);
     // One per-tab id shared by the SessionRecorder and EventTracker, so replay
@@ -2818,6 +2825,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         tokenStore: null,
         projectOwnerSession: session,
         noAutomaticPrefetch: true,
+        // Explicit: owned admin apps must not record under the customer project.
+        // Constructor also refuses analytics when projectOwnerSession is set.
+        analytics: { enabled: false },
       }));
     }
     return this._ownedAdminApps.get([session, forProjectId])!;

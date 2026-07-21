@@ -121,6 +121,34 @@ type LoadState =
   | { status: "error" }
   | { status: "ready", data: AnalyticsData };
 
+// `$page-view` is a span. Shape span rows like events via UNION ALL inside
+// these queries — never by projecting into default.events (that dual-wrote
+// the same fact as event + span in the traces UI).
+function userTelemetrySubquery(startParam: "since" | "prevSince", endParam: "until"): string {
+  return `(
+    SELECT
+      event_type,
+      event_at,
+      data,
+      session_replay_id
+    FROM events
+    WHERE user_id = {userId:String}
+      AND event_at >= {${startParam}:DateTime}
+      AND event_at < {${endParam}:DateTime}
+    UNION ALL
+    SELECT
+      CAST('$page-view', 'LowCardinality(String)') AS event_type,
+      span_started_at AS event_at,
+      CAST(data, 'JSON') AS data,
+      session_replay_id
+    FROM spans
+    WHERE span_type = '$page-view'
+      AND user_id = {userId:String}
+      AND span_started_at >= {${startParam}:DateTime}
+      AND span_started_at < {${endParam}:DateTime}
+  )`;
+}
+
 // Single pass over [prevSince, until). Each metric splits into a current and
 // previous bucket via countIf, so trend deltas come for free. When the caller
 // wants no previous-period comparison (e.g. day filter is active), pass
@@ -136,10 +164,7 @@ const SUMMARY_QUERY = `
     toString(countIf(event_at >= {prevSince:DateTime} AND event_at < {since:DateTime} AND event_type = '$click')) AS prev_clicks,
     toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL AND event_at >= {prevSince:DateTime} AND event_at < {since:DateTime})) AS prev_sessions,
     CAST(maxIf(event_at, event_at >= {since:DateTime}), 'Nullable(String)') AS last_event_at
-  FROM events
-  WHERE user_id = {userId:String}
-    AND event_at >= {prevSince:DateTime}
-    AND event_at < {until:DateTime}
+  FROM ${userTelemetrySubquery("prevSince", "until")}
 `;
 
 const DAILY_QUERY = `
@@ -149,10 +174,7 @@ const DAILY_QUERY = `
     toString(countIf(event_type = '$page-view')) AS page_views,
     toString(countIf(event_type = '$click')) AS clicks,
     toString(uniqExactIf(session_replay_id, session_replay_id IS NOT NULL)) AS sessions
-  FROM events
-  WHERE user_id = {userId:String}
-    AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
+  FROM ${userTelemetrySubquery("since", "until")}
   GROUP BY day
   ORDER BY day ASC
 `;
@@ -166,8 +188,8 @@ const TOP_PAGES_QUERY = `
       NULLIF(
         replaceRegexpOne(
           COALESCE(
-            NULLIF(CAST(data.path, 'Nullable(String)'), ''),
-            NULLIF(CAST(data.url, 'Nullable(String)'), ''),
+            NULLIF(JSONExtractString(data, 'path'), ''),
+            NULLIF(JSONExtractString(data, 'url'), ''),
             ''
           ),
           '[?#].*',
@@ -175,11 +197,11 @@ const TOP_PAGES_QUERY = `
         ),
         ''
       ) AS path
-    FROM events
+    FROM spans
     WHERE user_id = {userId:String}
-      AND event_type = '$page-view'
-      AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
+      AND span_type = '$page-view'
+      AND span_started_at >= {since:DateTime}
+      AND span_started_at < {until:DateTime}
   )
   WHERE path IS NOT NULL
   GROUP BY path
@@ -195,17 +217,17 @@ const TOP_REFERRERS_QUERY = `
     SELECT
       NULLIF(
         replaceRegexpOne(
-          COALESCE(NULLIF(CAST(data.referrer, 'Nullable(String)'), ''), ''),
+          COALESCE(NULLIF(JSONExtractString(data, 'referrer'), ''), ''),
           '[?#].*',
           ''
         ),
         ''
       ) AS referrer
-    FROM events
+    FROM spans
     WHERE user_id = {userId:String}
-      AND event_type = '$page-view'
-      AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
+      AND span_type = '$page-view'
+      AND span_started_at >= {since:DateTime}
+      AND span_started_at < {until:DateTime}
   )
   WHERE referrer IS NOT NULL
   GROUP BY referrer
@@ -235,10 +257,7 @@ const RECENT_EVENTS_QUERY = `
     ) AS url,
     CAST(data.text, 'Nullable(String)') AS click_text,
     CAST(data.tag_name, 'Nullable(String)') AS tag_name
-  FROM events
-  WHERE user_id = {userId:String}
-    AND event_at >= {since:DateTime}
-    AND event_at < {until:DateTime}
+  FROM ${userTelemetrySubquery("since", "until")}
   ORDER BY event_at DESC
   LIMIT {limit:UInt32}
   OFFSET {offset:UInt32}

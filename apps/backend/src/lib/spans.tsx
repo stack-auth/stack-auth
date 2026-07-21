@@ -33,8 +33,8 @@ export const SPAN_ID_PREFIXES = {
   // field), so the parent array stays self-describing about which ancestor is
   // the page.
   pageView: "pv-",
-  // Client-minted system autocapture spans other than `$page-view` ($tab-hidden,
-  // $window-blur, $offline). These are never referenced as parents by other
+  // Client-minted system autocapture spans other than `$page-view` ($away,
+  // $offline). These are never referenced as parents by other
   // rows, so one shared prefix is enough — the span row's own span_type carries
   // the distinction.
   systemAutocapture: "sas-",
