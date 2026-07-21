@@ -727,6 +727,26 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
   `);
 });
 
+it("all exposed analytics columns should have descriptions", async ({ expect }) => {
+  const response = await runQuery({
+    query: `
+      SELECT table, name
+      FROM system.columns
+      WHERE database = currentDatabase()
+        AND comment = ''
+      ORDER BY table, position
+    `,
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "result": [] },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("can read the current database", async ({ expect }) => {
   const response = await runQuery({
     query: "SELECT currentDatabase()",
