@@ -1,0 +1,49 @@
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_c69dfab9f1cab0::t_9cc2dac8f977c8 1464-1479
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.tsx
+  s_a9cf6d5172f128::t_a0c4a43baa35d6 52-63
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_a9cf6d5172f128::t_9e6ec1126eca62 1133-1135
+package.json
+  s_c10ba1e2df5e24::t_48cf65c297ba5b 60
+apps/backend/src/lib/spans.test.ts
+  s_a9cf6d5172f128::t_e44f0c40f56546 35-38,40
+apps/backend/src/lib/spans.tsx
+  s_a9cf6d5172f128::t_37e34049b58d83 53-63,77
+apps/dashboard/src/lib/prefetch/url-prefetcher.tsx
+  s_c69dfab9f1cab0::t_01ca05b24d70d0 13-23,25-46
+  s_c69dfab9f1cab0::t_31513da42da580 24
+  s_c69dfab9f1cab0::t_8088608e366ca1 54-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cb9e5bc61032133835eeedd07aec477bd076cfa3",
+  "prompts": {},
+  "sessions": {
+    "s_a9cf6d5172f128": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c682497a-8d88-49f7-949c-0beb8da43d94",
+        "model": "grok-4.5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c10ba1e2df5e24": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3be5f395-3f61-4190-9686-c973af009fb0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    },
+    "s_c69dfab9f1cab0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "da0e54e9-e406-458b-9e56-831823f94042",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
