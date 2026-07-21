@@ -70,14 +70,11 @@ export async function runClickhouseMigrations() {
 
   // Add column comments to all views so DESCRIBE TABLE returns useful descriptions.
   // Comments are lost on CREATE OR REPLACE VIEW, so we re-apply them every migration run.
-  // Using allSettled so a stale comment (e.g. renamed column) doesn't break startup.
-  const commentResults = await Promise.allSettled(COLUMN_COMMENTS.map(sql =>
+  // The AI query builder treats these comments as authoritative schema metadata,
+  // so a partial application is incompatible with the backend version being deployed.
+  await Promise.all(COLUMN_COMMENTS.map(sql =>
     client.command({ query: sql })
   ));
-  const commentFailures = commentResults.filter(r => r.status === "rejected");
-  if (commentFailures.length > 0) {
-    console.warn(`[clickhouse-migrations] ${commentFailures.length}/${COLUMN_COMMENTS.length} column comment(s) failed to apply`);
-  }
 
   // Row policies in parallel
   const tables = [
