@@ -44,7 +44,14 @@ const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
 
 export default function createJsLibraryTsupConfig(_options: { barrelFiles?: string[] | undefined, onSuccess?: string | ((...args: unknown[]) => void) | undefined }) {
   return defineConfig((inlineConfig) => ({
-    entry: ['src/**/*.(ts|tsx|js|jsx)'],
+    // Tests run directly from source and are not public package entry points.
+    // Excluding them avoids compiling and caching duplicate JS, declarations,
+    // and source maps without changing test coverage or package exports.
+    entry: [
+      'src/**/*.(ts|tsx|js|jsx)',
+      '!src/**/*.test.(ts|tsx|js|jsx)',
+      '!src/**/*.spec.(ts|tsx|js|jsx)',
+    ],
     sourcemap: true,
     clean: false,
     deps: {
@@ -92,6 +99,9 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
       format: {
         esm: {
           outDir: 'dist/esm',
+          // Package exports resolve types from dist/, so emitting the same
+          // declarations into dist/esm doubles declaration work and payload.
+          dts: false,
           outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
         },
         cjs: {
