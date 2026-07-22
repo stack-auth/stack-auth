@@ -4,7 +4,14 @@ import { KnownErrors } from "@hexclave/shared/dist/known-errors";
 import { describe, expect, it, vi } from "vitest";
 import * as errors from "@hexclave/shared/dist/utils/errors";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { analyticsOptionsFromJson, analyticsOptionsToJson, getSessionReplayOptions, SessionRecorder } from "./session-replay";
+import { analyticsOptionsFromJson, analyticsOptionsToJson, canInlineStylesheetLink, getSessionReplayOptions, SessionRecorder } from "./session-replay";
+
+const rrwebMocks = vi.hoisted(() => {
+  const takeFullSnapshot = vi.fn();
+  const record = Object.assign(vi.fn(() => () => {}), { takeFullSnapshot });
+  return { record, takeFullSnapshot };
+});
+vi.mock("rrweb", () => ({ record: rrwebMocks.record }));
 
 describe("session replay options", () => {
   it("enables replays by default", () => {
@@ -42,6 +49,164 @@ describe("analytics option JSON conversion", () => {
 
     expect(roundTripped?.enabled).toBe(false);
     expect(roundTripped?.replays?.blockClass).toEqual(/stack-sensitive/u);
+  });
+});
+
+describe("canInlineStylesheetLink", () => {
+  function makeLink(sheet: unknown): HTMLLinkElement {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    Object.defineProperty(link, "sheet", { value: sheet });
+    return link;
+  }
+
+  it("is false when the sheet hasn't been attached", () => {
+    expect(canInlineStylesheetLink(makeLink(null))).toBe(false);
+  });
+
+  it("is false when reading cssRules throws (cross-origin without CORS)", () => {
+    const sheet = {
+      get cssRules(): CSSRuleList {
+        throw new DOMException("not allowed", "SecurityError");
+      },
+    };
+    expect(canInlineStylesheetLink(makeLink(sheet))).toBe(false);
+  });
+
+  it("is false for an empty sheet", () => {
+    expect(canInlineStylesheetLink(makeLink({ cssRules: [] }))).toBe(false);
+  });
+
+  it("is true for a readable non-empty sheet", () => {
+    expect(canInlineStylesheetLink(makeLink({ cssRules: [{}] }))).toBe(true);
+  });
+});
+
+describe("SessionRecorder stylesheet re-snapshot", () => {
+  function makeRecorder() {
+    return new SessionRecorder(
+      {
+        projectId: "test-project",
+        sendBatch: async () => Result.ok(new Response("ok", { status: 200 })),
+      },
+      {},
+    );
+  }
+
+  async function startRecorder(recorder: SessionRecorder) {
+    recorder.start();
+    // Flush the dynamic import("rrweb") microtasks so record() runs and the
+    // stylesheet-load listener is attached.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(rrwebMocks.record).toHaveBeenCalledTimes(1);
+  }
+
+  function attachStylesheetLink(options: { sheet: unknown }): HTMLLinkElement {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://example.com/app.css";
+    Object.defineProperty(link, "sheet", { value: options.sheet });
+    document.head.appendChild(link);
+    return link;
+  }
+
+  it("re-takes a full snapshot (debounced) when a stylesheet finishes loading during recording", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const recorder = makeRecorder();
+
+    try {
+      await startRecorder(recorder);
+
+      const link = attachStylesheetLink({ sheet: { cssRules: [{}] } });
+      link.dispatchEvent(new Event("load"));
+
+      // Debounced: nothing happens immediately...
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(900);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      // ...and a second stylesheet finishing resets the debounce window...
+      const link2 = attachStylesheetLink({ sheet: { cssRules: [{}] } });
+      link2.dispatchEvent(new Event("load"));
+      await vi.advanceTimersByTimeAsync(900);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      // ...then exactly ONE snapshot fires for both stylesheets.
+      await vi.advanceTimersByTimeAsync(200);
+      expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
+
+      // No further snapshots without further stylesheet loads.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rrwebMocks.takeFullSnapshot).toHaveBeenCalledTimes(1);
+
+      link.remove();
+      link2.remove();
+    } finally {
+      recorder.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not re-snapshot for stylesheets rrweb can't inline, or for non-stylesheet loads", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const recorder = makeRecorder();
+
+    try {
+      await startRecorder(recorder);
+
+      // Cross-origin stylesheet without CORS: cssRules access throws.
+      const crossOriginLink = attachStylesheetLink({
+        sheet: {
+          get cssRules(): CSSRuleList {
+            throw new DOMException("not allowed", "SecurityError");
+          },
+        },
+      });
+      crossOriginLink.dispatchEvent(new Event("load"));
+
+      // Image load events must be ignored.
+      const img = document.createElement("img");
+      document.body.appendChild(img);
+      img.dispatchEvent(new Event("load"));
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      crossOriginLink.remove();
+      img.remove();
+    } finally {
+      recorder.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a pending re-snapshot when recording stops", async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const recorder = makeRecorder();
+
+    try {
+      await startRecorder(recorder);
+
+      const link = attachStylesheetLink({ sheet: { cssRules: [{}] } });
+      link.dispatchEvent(new Event("load"));
+
+      recorder.stop();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      // The listener is detached too: loads after stop() schedule nothing.
+      link.dispatchEvent(new Event("load"));
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(rrwebMocks.takeFullSnapshot).not.toHaveBeenCalled();
+
+      link.remove();
+    } finally {
+      recorder.stop();
+      vi.useRealTimers();
+    }
   });
 });
 
