@@ -16,7 +16,7 @@
     "@hexclave/shared": "workspace:*",
     "@sentry/nextjs": "^10.45.0",
     "@vercel/mcp-adapter": "^1.0.0",
-    "next": "16.2.9",
+    "next": "16.3.0-canary.86",
     "posthog-node": "^4.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

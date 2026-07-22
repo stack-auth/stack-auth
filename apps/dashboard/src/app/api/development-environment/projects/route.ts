@@ -2,7 +2,6 @@ import { getPublicEnvVar } from "@/lib/env";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest } from "@/lib/remote-development-environment/security";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
