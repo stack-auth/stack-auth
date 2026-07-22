@@ -1,0 +1,41 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.test.ts
+  s_ab2b6b8a3caaa2::t_e38ba8a9d08991 137,140-143
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/trace-utils.ts
+  s_ab2b6b8a3caaa2::t_e38ba8a9d08991 79-81
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/waterfall.tsx
+  s_ab2b6b8a3caaa2::t_1f72c5c9eb126f 143,192-195,204,209,212-216,230-234,237
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.tsx
+  s_ab2b6b8a3caaa2::t_e38ba8a9d08991 32,52-56,61-64,127-130,135-142,228,240-254,257-258
+  s_ab2b6b8a3caaa2::t_1005c8df2ed9c4 116,134,145
+  s_ab2b6b8a3caaa2::t_79d3114dcfbb8b 143,146-153,256,259,270,272-274,276
+  s_ab2b6b8a3caaa2::t_86ef142ef6359c 65,144
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_ab2b6b8a3caaa2::t_7c7cbd1a52c8ff 105,118,176-177
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/span-tree.tsx
+  s_ab2b6b8a3caaa2::t_e38ba8a9d08991 105-110
+apps/dashboard/src/lib/prefetch/url-prefetcher.tsx
+  s_ab2b6b8a3caaa2::t_7c7cbd1a52c8ff 57-63
+package.json
+  s_ab2b6b8a3caaa2::t_7c7cbd1a52c8ff 60
+apps/backend/src/lib/spans.tsx
+  s_ab2b6b8a3caaa2::t_7c7cbd1a52c8ff 77-81
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_ab2b6b8a3caaa2::t_7c7cbd1a52c8ff 45,55-57
+  s_ab2b6b8a3caaa2::t_22eb5ccafeedb6 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "f9bc83eb3e40628412b70f96b964d1b213fedec5",
+  "prompts": {},
+  "sessions": {
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
