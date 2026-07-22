@@ -433,7 +433,8 @@ it("cannot revoke another team's invitation by passing a team_id the caller cont
   await Project.createAndSwitch();
   const { userId: attackerId } = await Auth.fastSignUp();
 
-  // Team A: attacker holds $remove_members here.
+  // Team A: attacker holds $remove_members here. Team permissions are scoped to membership,
+  // so the attacker must be a member before the grant (and later revoke) is meaningful.
   const { teamId: teamA } = await Team.create();
   await Team.addMember(teamA, attackerId);
   await niceBackendFetch(`/api/v1/team-permissions/${teamA}/${attackerId}/$remove_members`, {

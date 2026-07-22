@@ -2,6 +2,35 @@
 
 ---
 
+## 7/17/26
+
+- Added "Continue in your own agent" links to AI chats.
+- Improved onboarding walkthrough visuals and setup guidance.
+
+## 7/10/26
+
+- New CLI Auth dashboard app and a browser `<script>` setup path that works without a bundler.
+- The project overview globe now centers on the viewer, and the onboarding auth preview is interactive.
+- Payments customers now support manual item quantity adjustments directly from the dashboard.
+- Fixes for user-page syncing, session replay playback freezes, and runaway infinite scrolling.
+- Improved docs discoverability and dashboard resilience when internal billing data is temporarily unavailable.
+
+## 7/3/26
+
+- New navigation funnel graph, recent sign-up rule activity, and project IDs in platform analytics.
+- Payments checkout now surfaces errors clearly, with a more polished onboarding flow.
+- Expanded email delivery to arbitrary recipients on managed domains, plus filtered user exports and safer user dialogs.
+- Leaner dashboard downloads and local-dashboard support for `hexclave exec`, with one unified development environment workflow.
+- Large session replays are compressed to avoid dropped recordings, alongside faster analytics and Payments data processing.
+
+## 6/26/26
+
+- Unified payments customers table with "Create checkout" available everywhere and idempotent webhook handling.
+- Faster project onboarding with a preview project pool for instant creation and prefetched email themes.
+- New Usage settings page with performance improvements and a "View usage" shortcut from limit banners.
+- TypeScript 6.0 upgrade, STACK_* → HEXCLAVE_* env-var rename, and devtool indicator auto-visibility.
+- Stability fixes for session recording flush limits, duplicate-email sign-up errors, and recurring production errors.
+
 ## 6/19/26
 
 - New clickmap heatmaps for route analytics — visualize where users click on any page.

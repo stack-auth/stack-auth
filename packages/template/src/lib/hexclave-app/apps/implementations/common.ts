@@ -8,6 +8,7 @@ import { ReactPromise, runAsynchronously } from "@hexclave/shared/dist/utils/pro
 import { suspendIfSsr, use } from "@hexclave/shared/dist/utils/react";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { Store } from "@hexclave/shared/dist/utils/stores";
+import { deindent } from "@hexclave/shared/dist/utils/strings";
 import { getDefaultApiUrls } from "@hexclave/shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../../generated/env";
@@ -40,7 +41,23 @@ const showMissingConfigAlertInBrowser = (message: string) => {
 };
 
 const throwMissingProjectIdError = (): never => {
-  const message = "Welcome to Hexclave! It seems that you haven't provided a project ID. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the HEXCLAVE_PROJECT_ID environment variable.";
+  const message = deindent`
+    Welcome to Hexclave!
+
+    It seems that you haven't provided a project ID.
+
+    ${envVars.NODE_ENV?.includes("dev") ? deindent`
+      You are running this app in development mode. Make sure that your start command is wrapped in a call to the Hexclave CLI: \`npx @hexclave/cli dev --config-file <file> -- <command>\`
+
+      Alternatively, you can also connect to a Cloud project's environment variables instead by creating a project on the Hexclave dashboard at https://app.hexclave.com and put its information in the HEXCLAVE_PROJECT_ID environment variable.
+    ` : envVars.NODE_ENV?.includes("prod") ? deindent`
+      It seems you are running a project in production. Please create a project on the Hexclave dashboard at https://app.hexclave.com and put it in the HEXCLAVE_PROJECT_ID environment variable.
+    ` : deindent`
+      - If you are running a development project and would like to connect the local Hexclave dashboard, wrap your start command in: \`npx @hexclave/cli dev --config-file <file> -- <command>\`
+
+      - If you are running a project in production and would like to connect to Hexclave Cloud, create a project on the Hexclave dashboard at https://app.hexclave.com and put its information in the HEXCLAVE_PROJECT_ID environment variable.
+    `}
+  `;
   showMissingConfigAlertInBrowser(message);
   return throwErr(new Error(message));
 };

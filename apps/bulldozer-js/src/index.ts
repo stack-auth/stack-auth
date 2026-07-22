@@ -129,8 +129,8 @@ function serviceMemoryUsage() {
   };
 }
 
-function logBulldozerService(event: string, fields: Record<string, unknown>, options?: { suppressInNodeEnvDevelopment?: boolean }) {
-  if (options?.suppressInNodeEnvDevelopment === true && shouldSuppressPeriodicBulldozerLogs) return;
+function logBulldozerService(event: string, fields: Record<string, unknown>, options?: { periodic?: boolean }) {
+  if (options?.periodic === true && shouldSuppressPeriodicBulldozerLogs) return;
   console.log(JSON.stringify({
     component: "bulldozer-js",
     event,
@@ -285,7 +285,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
     logBulldozerService("http-handler-start", {
       label,
       memory: serviceMemoryUsage(),
-    }, { suppressInNodeEnvDevelopment: true });
+    }, { periodic: true });
     try {
       const operationStartedAt = performance.now();
       const body = await operation();
@@ -302,7 +302,7 @@ async function handler(label: string, operation: () => Promise<unknown>) {
         responseSerializationMs,
         elapsedMs: performance.now() - startedAt,
         memory: serviceMemoryUsage(),
-      }, { suppressInNodeEnvDevelopment: true });
+      }, { periodic: true });
       return response;
     } catch (error) {
       if (StatusError.isStatusError(error) && error.isClientError()) {
@@ -910,6 +910,9 @@ const bulldozerServerSecret = process.env.HEXCLAVE_BULLDOZER_SERVER_SECRET ?? ""
 if (bulldozerServerSecret.length === 0) {
   throw new HexclaveAssertionError("bulldozer-js refuses to start: HEXCLAVE_BULLDOZER_SERVER_SECRET is not set. This shared secret authenticates the backend to bulldozer-js and must be configured (it has a default in .env.development for local/self-host).");
 }
+let isShuttingDown = false;
+let shutdownPromise: Promise<void> | null = null;
+let stopHttpServer: (() => void | Promise<void>) | undefined;
 
 const app = new Elysia({ adapter: node() })
   .use(instrumentation)
@@ -924,6 +927,10 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .get("/health", () => ({ ok: true }))
+  .post("/internal/wait-until-durable", () => handler("wait-until-durable", async () => {
+    await bulldozerDb.waitUntilCurrentStateDurable();
+    return ok();
+  }))
   .post("/internal/payments/verify-data-integrity", () => handler("verify-data-integrity", async () => ok()))
   .get("/v1/:tenancyId/transactions", ({ params, query }) => handler("list-transactions", async () => {
     const parsedLimit = Number.parseInt(typeof query.limit === "string" ? query.limit : "50", 10);
@@ -1030,9 +1037,47 @@ const app = new Elysia({ adapter: node() })
   .post("/v1/:tenancyId/test-mode/subscriptions/:subscriptionId/end", () => notImplemented("end-test-mode-subscription"))
   .post("/v1/:tenancyId/test-mode/one-time-purchases", () => notImplemented("create-test-mode-one-time-purchase"))
   .post("/v1/:tenancyId/test-mode/subscriptions/:subscriptionId/switch", () => notImplemented("switch-test-mode-subscription"))
-  .listen(port);
+  .listen(port, (server) => {
+    // @elysiajs/node 1.4.5 does not assign the server to app.server, so
+    // Elysia.stop() throws even though the callback's server is running.
+    stopHttpServer = () => server.stop();
+  });
 
 console.log(`Bulldozer JS server listening on http://localhost:${app.server?.port ?? port}`);
+
+function shutDown(): Promise<void> {
+  if (shutdownPromise === null) {
+    isShuttingDown = true;
+    shutdownPromise = traceSpan("bulldozer-js.shutdown", async () => {
+      try {
+        // Do not force-close active requests; database.close() serializes behind
+        // any in-flight write or tick before draining the retained write seq.
+        if (stopHttpServer === undefined) throw new Error("Bulldozer HTTP server started without providing a stop handle");
+        await stopHttpServer();
+      } finally {
+        await bulldozerDb.close();
+      }
+    });
+  }
+  return shutdownPromise;
+}
+
+function requestShutdown(signal: "SIGINT" | "SIGTERM") {
+  logBulldozerService("service-shutdown-requested", { signal });
+  runAsynchronously(async () => {
+    await shutDown();
+    process.exitCode = signal === "SIGINT" ? 130 : 0;
+    logBulldozerService("service-shutdown-complete", { signal, exitCode: process.exitCode });
+  }, {
+    onError: () => {
+      process.exitCode = 1;
+    },
+  });
+}
+
+process.on("SIGINT", () => requestShutdown("SIGINT"));
+process.on("SIGTERM", () => requestShutdown("SIGTERM"));
+
 const startupFields = {
   port: app.server?.port ?? port,
   pid: process.pid,
@@ -1046,7 +1091,7 @@ const startupFields = {
   heapGcMaxPasses: HEAP_GC_MAX_PASSES,
   memory: serviceMemoryUsage(),
 };
-logBulldozerService("service-started", startupFields, { suppressInNodeEnvDevelopment: true });
+logBulldozerService("service-started", startupFields, { periodic: true });
 
 // Emit every boot to Sentry so restart/crash loops are visible. An OOM kill (and
 // most hard crashes) terminate the process before anything can be reported, so we
@@ -1065,7 +1110,7 @@ if (sentryEnabled) {
 // backwards wall-clock jump can't rewind it.
 runAsynchronously(async () => {
   let lastTickMillis = 0;
-  while (true) {
+  while (!isShuttingDown) {
     await traceSpan("bulldozer-js-tick-loop-iteration", async () => {
       const tickStartedAt = performance.now();
       try {
@@ -1086,9 +1131,11 @@ runAsynchronously(async () => {
           slowThresholdMs: TICK_LOOP_SLOW_MS,
           lastTickMillis,
           memory: serviceMemoryUsage(),
-        }, { suppressInNodeEnvDevelopment: true });
+        }, { periodic: true });
       }
-      await wait(1000);
+      // The HTTP server owns this periodic loop's lifetime; after it closes,
+      // waiting for the next tick must not keep the process alive.
+      await wait(1000, { unref: true });
     });
   }
 });

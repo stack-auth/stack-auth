@@ -64,6 +64,7 @@ export const resetPasswordVerificationCodeHandler = createVerificationCodeHandle
       data: {
         password,
       },
+      allowedErrorTypes: [KnownErrors.UserNotFound],
     });
 
 

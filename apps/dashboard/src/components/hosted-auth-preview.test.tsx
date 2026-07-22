@@ -31,7 +31,9 @@ describe("HostedAuthMethodPreview", () => {
     expect(tabsList.getAttribute("class")).toContain("dark:bg-zinc-900/45");
     expect(tabsList.querySelector("[aria-hidden]")?.getAttribute("class")).toContain("dark:bg-zinc-800/80");
 
-    const emailInput = screen.getByLabelText("Email");
+    // Both the magic-link and email+password tab panels render an "Email" field, so scope to the
+    // magic-link input (the default active tab) to disambiguate.
+    const emailInput = screen.getByLabelText("Email", { selector: "#hosted-preview-email" });
     fireEvent.change(emailInput, { target: { value: "hello@example.com" } });
     expect(emailInput).toHaveProperty("value", "hello@example.com");
     expect(emailInput.getAttribute("class")).toContain("bg-white/45");

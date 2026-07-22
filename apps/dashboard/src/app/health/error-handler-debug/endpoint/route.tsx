@@ -1,7 +1,7 @@
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { connection } from "next/server";
 
-export const dynamic = "force-dynamic";
-
-export function GET() {
+export async function GET() {
+  await connection();
   throw new HexclaveAssertionError(`Server debug error thrown successfully!`);
 }

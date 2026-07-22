@@ -411,12 +411,12 @@ function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
             If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "@hexclave/js/config";
+            import type { HexclaveConfig } from "@hexclave/js";
 
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`@hexclave/js/config\` path (never from \`@hexclave/js\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`@hexclave/js\` package.
 
             Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
 
@@ -975,13 +975,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "${packageName}/config";
+            import type { HexclaveConfig } from "${packageName}";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`${packageName}/config\` path (never from \`${packageName}\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`${packageName}\` package.
 
             ${isAiPrompt ? deindent`
               If you already know which apps you want to enable and how to configure them, you can also set the \`config\` object to the desired configuration directly. Refer to the per-app setup instructions for more information. However, in most cases, you would probably want to let the user onboard manually through the show-onboarding flow.
@@ -1007,7 +1007,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks." : ""}
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks. Do not run `npm run dev:inner`, as that will skip past the Hexclave server." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">

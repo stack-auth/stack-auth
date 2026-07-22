@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest } from "@/lib/remote-development-environment/security";
 
-export const runtime = "nodejs";
 
 const INTERNAL_PROJECT_ID = "internal";
 
