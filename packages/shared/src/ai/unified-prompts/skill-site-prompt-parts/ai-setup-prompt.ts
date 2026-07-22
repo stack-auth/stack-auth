@@ -411,12 +411,12 @@ function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
             If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "@hexclave/js/config";
+            import type { HexclaveConfig } from "@hexclave/js";
 
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`@hexclave/js/config\` path (never from \`@hexclave/js\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`@hexclave/js\` package.
 
             Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
 
@@ -559,7 +559,7 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
     };
     \`\`\`
 
-    For large OAuth providers like Google and GitHub, Hexclave automatically provides a client ID and secret, so no extra provider setup is needed.
+    For some OAuth providers like Google and GitHub, Hexclave automatically provides a client ID and secret, so no extra provider setup is needed.
 
     Then wire the SDK setup above: create the Hexclave App object, wrap React apps in the provider, and add auth pages where your framework needs them. OAuth client IDs/secrets and trusted domains are environment-specific, so leave placeholders or ask the user for those instead of inventing them. See [Auth providers](https://docs.hexclave.com/guides/apps/authentication/auth-providers) and [hexclave.config.ts: Auth](https://docs.hexclave.com/guides/going-further/hexclave-config#auth).
   `,
@@ -784,6 +784,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
   const isDefinitelyVanillaReact = mainType === "react";
   const isMaybeVanillaReact = isDefinitelyVanillaReact || mainType === "ai-prompt";
   const isDefinitelyVite = isDefinitelyTanstackStart;
+  const isMaybeNoBundler = mainType === "js" || mainType === "ai-prompt";
 
   const isDefinitelyBackend = mainType === "nodejs" || mainType === "bun" || mainType === "nextjs";
   const isMaybeBackend = isDefinitelyBackend || mainType === "js" || mainType === "ai-prompt";
@@ -842,7 +843,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           - React: \`@hexclave/react\`
           - TanStack Start: \`@hexclave/tanstack-start\`
           - Other & vanilla JS: \`@hexclave/js\`
-            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\`
+            - Vanilla JS in browser with no bundler: Cannot use npm packages, so use ESM imports with \`https://esm.sh/@hexclave/js\` in a \`<script type="module">\` tag (see the "Browser \`<script>\` tag" section below). This is significantly less preferred than installing the npm package with a bundler, and environment variables do not work with it.
 
           You can install the correct JavaScript Hexclave SDK into your project by running the following command:
         ` : deindent`
@@ -875,6 +876,44 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             },
           });
           \`\`\`
+        ` : ""}
+
+        ${isMaybeFrontend && isMaybeNoBundler ? deindent`
+          #### Browser \`<script>\` tag (no bundler)
+
+          <Note>
+            This approach is significantly less preferred than installing the \`@hexclave/js\` npm package and using a bundler. Reach for it only for quick prototypes, static HTML pages, or environments where you genuinely cannot run a build step. Prefer the npm setup above whenever possible.
+          </Note>
+
+          If you cannot use npm or a bundler, load the SDK directly from [esm.sh](https://esm.sh) inside a \`<script type="module">\` tag and expose the app on the global scope:
+
+          \`\`\`html
+          <script type="module">
+            // Pin a specific version so a new release cannot unexpectedly break your page.
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
+
+            globalThis.hexclaveClientApp = new HexclaveClientApp({
+              // Environment variables are NOT read with this approach, so the project ID
+              // (and the publishable client key, if the project has requirePublishableClientKey
+              // enabled) MUST be passed explicitly here.
+              projectId: "your-project-id",
+              tokenStore: "cookie",
+              urls: {
+                default: {
+                  type: "hosted",
+                },
+              },
+            });
+          </script>
+          \`\`\`
+
+          Any other script on the page can then use the app through the global, for example \`await globalThis.hexclaveClientApp.getUser()\`.
+
+          Important caveats for this approach:
+
+          - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
+          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -936,13 +975,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "${packageName}/config";
+            import type { HexclaveConfig } from "${packageName}";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`${packageName}/config\` path (never from \`${packageName}\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`${packageName}\` package.
 
             ${isAiPrompt ? deindent`
               If you already know which apps you want to enable and how to configure them, you can also set the \`config\` object to the desired configuration directly. Refer to the per-app setup instructions for more information. However, in most cases, you would probably want to let the user onboard manually through the show-onboarding flow.
@@ -968,7 +1007,7 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             }
             \`\`\`
 
-            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks." : ""}
+            \`hexclave dev\` injects all necessary environment variables into the app process automatically, so the app is ready to use without any extra environment variable setup.${isAiPrompt ? " It injects non-sensitive environment variables (eg. the project ID) with and without the prefixes \`NEXT_PUBLIC_\` and \`VITE_\`, so no extra environment variable setup is necessary for most frameworks. Do not run `npm run dev:inner`, as that will skip past the Hexclave server." : ""}
           </Accordion>
 
           <Accordion title="Option 2: Connecting to a production project hosted in the cloud">

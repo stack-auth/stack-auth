@@ -132,6 +132,22 @@
       "persistent": true,
       "cache": false
     },
+    "//#build-packages:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-sdks:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-openapi-docs:watch": {
+      "persistent": true,
+      "cache": false
+    },
+    "//#generate-setup-prompt-docs:watch": {
+      "persistent": true,
+      "cache": false
+    },
     "dev:tui": {
       "persistent": true,
       "cache": false

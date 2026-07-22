@@ -44,6 +44,10 @@ export function ItemQuantityChangeDialog(props: Props) {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Snapshot the quantity at dialog open: the live prop updates mid-submit
+  // (the SDK refreshes the item cache before resolving), which would flip the
+  // "X → Y" preview to the post-change values right before the dialog closes.
+  const [quantityAtOpen, setQuantityAtOpen] = useState(props.currentQuantity);
 
   // Reset the form whenever the dialog is (re)opened so stale input doesn't
   // leak across invocations.
@@ -52,11 +56,13 @@ export function ItemQuantityChangeDialog(props: Props) {
       setQuantityText("");
       setDescription("");
       setError(null);
+      setQuantityAtOpen(props.currentQuantity);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot only on open
   }, [props.open]);
 
   const parsedQuantity = parseQuantityChange(quantityText);
-  const newQuantity = parsedQuantity == null ? null : props.currentQuantity + parsedQuantity;
+  const newQuantity = parsedQuantity == null ? null : quantityAtOpen + parsedQuantity;
 
   const submit = async () => {
     if (parsedQuantity == null) {
@@ -143,7 +149,7 @@ export function ItemQuantityChangeDialog(props: Props) {
             <Typography type="label" className="text-muted-foreground text-xs">
               {newQuantity == null
                 ? "Positive values add to the balance, negative values subtract."
-                : `New balance: ${props.currentQuantity} → ${newQuantity}`}
+                : `New balance: ${quantityAtOpen} → ${newQuantity}`}
             </Typography>
           )}
         </div>

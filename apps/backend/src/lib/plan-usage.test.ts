@@ -1,7 +1,7 @@
 import { ITEM_IDS, UNLIMITED } from "@hexclave/shared/dist/plans";
-import type { SubscriptionRow } from "./payments/schema/types";
-import { buildUsageRow, getNextPlanId, getPlanUsagePeriod } from "./plan-usage";
 import { describe, expect, it } from "vitest";
+import type { SubscriptionRow } from "./payments/schema/types";
+import { buildUsageRow, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip } from "./plan-usage";
 
 function createSubscriptionPeriod(startMillis: number, endMillis: number): SubscriptionRow {
   return {
@@ -131,6 +131,34 @@ describe("plan upgrade targets", () => {
         "team": "growth",
       }
     `);
+  });
+});
+
+describe("readBillingSubscriptionMapOrSkip", () => {
+  it("returns the subscription map when the bulldozer read succeeds", async () => {
+    const start = Date.UTC(2026, 4, 15);
+    const end = Date.UTC(2026, 5, 15);
+    const subMap = { sub_1: createSubscriptionPeriod(start, end) };
+    const result = await readBillingSubscriptionMapOrSkip(() => Promise.resolve(subMap));
+    expect(result).toBe(subMap);
+  });
+
+  it("falls back to an empty map (free plan) instead of throwing when bulldozer is down", async () => {
+    // Regression: plan usage is read on the dashboard's own pages (overview
+    // limit banners, usage page). A bulldozer outage here used to bubble a 500
+    // and take the whole dashboard down. It must now degrade to "no
+    // subscription" (free plan) rather than failing the page.
+    const result = await readBillingSubscriptionMapOrSkip(() => {
+      throw new Error("Mock Bulldozer unreachable — this is not an error, instead an intentional test condition we create to test the fallback logic");
+    });
+    expect(result).toEqual({});
+  });
+
+  it("also swallows async rejections from the bulldozer read", async () => {
+    const result = await readBillingSubscriptionMapOrSkip(async () => {
+      throw new Error("Mock Bulldozer timed out — this is not an error, instead an intentional test condition we create to test the fallback logic");
+    });
+    expect(result).toEqual({});
   });
 });
 
