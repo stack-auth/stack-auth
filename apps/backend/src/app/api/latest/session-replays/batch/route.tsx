@@ -1,7 +1,6 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
@@ -156,34 +155,9 @@ export const POST = createSmartRouteHandler({
     const replayId = recentSession?.id ?? randomUUID();
     const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;
 
-    const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
-    const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, lastMs);
-    const replay = await prisma.sessionReplay.upsert({
-      where: { tenancyId_id: { tenancyId, id: replayId } },
-      create: {
-        id: replayId,
-        tenancyId,
-        projectUserId,
-        refreshTokenId,
-        startedAt: new Date(firstMs),
-        lastEventAt: new Date(newLastEventAtMs),
-        shouldUpdateSequenceId: true,
-      },
-      update: {
-        startedAt: new Date(newStartedAtMs),
-        lastEventAt: new Date(newLastEventAtMs),
-        shouldUpdateSequenceId: true,
-      },
-      select: {
-        startedAt: true,
-        lastEventAt: true,
-      },
-    });
-
-    // A retry must still repair the idempotent bounds/span projections. The
-    // chunk row is the durable source of truth for those projections; returning
-    // early here would strand them if the first request failed after creating
-    // the chunk.
+    // A retry's body is not authoritative: callers may resend the same batch ID
+    // with different events. Read the durable chunk before updating projections
+    // so an idempotent retry cannot permanently expand the replay's bounds.
     let chunk = await prisma.sessionReplayChunk.findUnique({
       where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
       select: {
@@ -194,6 +168,26 @@ export const POST = createSmartRouteHandler({
       },
     });
     let deduped = chunk != null;
+    if (recentSession == null) {
+      // The replay row must exist before its first chunk because of the foreign
+      // key. Its initial bounds are repaired from the durable chunk below.
+      await prisma.sessionReplay.create({
+        data: {
+          id: replayId,
+          tenancyId,
+          projectUserId,
+          refreshTokenId,
+          startedAt: new Date(firstMs),
+          lastEventAt: new Date(lastMs),
+          shouldUpdateSequenceId: true,
+        },
+      });
+    }
+
+    // A retry must still repair the idempotent segment/span projections. The
+    // chunk row is the durable source of truth for those projections; returning
+    // early here would strand them if the first request failed after creating
+    // the chunk.
     if (chunk == null) {
       const payload = {
         v: 1,
@@ -216,48 +210,54 @@ export const POST = createSmartRouteHandler({
         private: true,
       });
 
-      try {
-        chunk = await prisma.sessionReplayChunk.create({
-          data: {
-            tenancyId,
-            sessionReplayId: replayId,
-            batchId,
-            sessionReplaySegmentId,
-            browserSessionId,
-            s3Key,
-            eventCount: body.events.length,
-            byteLength: gzipped.byteLength,
-            firstEventAt: new Date(firstMs),
-            lastEventAt: new Date(lastMs),
-          },
-          select: {
-            s3Key: true,
-            sessionReplaySegmentId: true,
-            firstEventAt: true,
-            lastEventAt: true,
-          },
-        });
-      } catch (e) {
-        if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") {
-          throw e;
-        }
-        // A concurrent copy of this batch won the unique-key race. Read its
-        // authoritative metadata and continue through the shared repair path.
-        chunk = await prisma.sessionReplayChunk.findUnique({
-          where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
-          select: {
-            s3Key: true,
-            sessionReplaySegmentId: true,
-            firstEventAt: true,
-            lastEventAt: true,
-          },
-        });
-        if (chunk == null) {
-          throw new HexclaveAssertionError("Session replay chunk unique-key conflict was reported, but the winning row could not be read");
-        }
-        deduped = true;
+      // A single statement both wins the unique-key race or returns the winner.
+      // A catch-then-read sequence can briefly miss the concurrent committed row
+      // on databases with read routing, turning a harmless duplicate into a 500.
+      const chunkRows = await prisma.$queryRaw<Array<{
+        s3Key: string,
+        sessionReplaySegmentId: string,
+        firstEventAt: Date,
+        lastEventAt: Date,
+        inserted: boolean,
+      }>>`
+        INSERT INTO "SessionReplayChunk" (
+          "id", "tenancyId", "sessionReplayId", "batchId",
+          "sessionReplaySegmentId", "browserSessionId", "s3Key",
+          "eventCount", "byteLength", "firstEventAt", "lastEventAt"
+        ) VALUES (
+          ${randomUUID()}::uuid, ${tenancyId}::uuid, ${replayId}::uuid, ${batchId}::uuid,
+          ${sessionReplaySegmentId}, ${browserSessionId}, ${s3Key},
+          ${body.events.length}, ${gzipped.byteLength}, ${new Date(firstMs)}, ${new Date(lastMs)}
+        )
+        ON CONFLICT ("tenancyId", "sessionReplayId", "batchId") DO UPDATE
+          SET "id" = "SessionReplayChunk"."id"
+        RETURNING "s3Key", "sessionReplaySegmentId", "firstEventAt", "lastEventAt", (xmax = 0) AS "inserted"
+      `;
+      if (chunkRows.length !== 1) {
+        throw new HexclaveAssertionError("Session replay chunk upsert did not return exactly one row");
       }
+      const insertedChunk = chunkRows[0];
+      chunk = insertedChunk;
+      deduped = !insertedChunk.inserted;
     }
+
+    // Only durable chunk metadata may advance replay bounds. The atomic update
+    // makes concurrent first-seen copies idempotent after their unique-key race
+    // and prevents distinct concurrent batches from losing each other's bounds.
+    const replayRows = await prisma.$queryRaw<{ startedAt: Date, lastEventAt: Date }[]>`
+      UPDATE "SessionReplay"
+      SET
+        "startedAt" = LEAST("startedAt", ${chunk.firstEventAt}),
+        "lastEventAt" = GREATEST("lastEventAt", ${chunk.lastEventAt}),
+        "shouldUpdateSequenceId" = TRUE,
+        "updatedAt" = NOW()
+      WHERE "tenancyId" = ${tenancyId}::uuid AND "id" = ${replayId}::uuid
+      RETURNING "startedAt", "lastEventAt"
+    `;
+    if (replayRows.length !== 1) {
+      throw new HexclaveAssertionError("Session replay bounds update did not return exactly one replay row");
+    }
+    const replay = replayRows[0];
 
     // Fold this batch's event-time bounds into the maintained per-segment row
     // (O(1) LEAST/GREATEST upsert — see upsertSessionReplaySegmentBounds). On-path
