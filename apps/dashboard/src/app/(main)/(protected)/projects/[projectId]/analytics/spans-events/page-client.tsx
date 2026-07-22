@@ -58,6 +58,14 @@ ORDER BY s.span_started_at DESC
 LIMIT 3000
 `;
 
+const ACTIVE_REFRESH_TOKEN_ROOTS_QUERY = `
+${SPAN_SELECT_SQL}
+WHERE s.span_type = '$refresh-token'
+  AND (s.span_ended_at IS NULL OR s.span_ended_at >= now64(3) - INTERVAL {hours:UInt32} HOUR)
+ORDER BY s.span_started_at DESC
+LIMIT 3000
+`;
+
 const SPANS_BY_ID_QUERY = `
 ${SPAN_SELECT_SQL}
 WHERE s.id IN ({spanIds:Array(String)})
@@ -223,7 +231,7 @@ export default function PageClient() {
     setLoading(true);
     setError(null);
     try {
-      const [spansResponse, eventsResponse] = await Promise.all([
+      const [spansResponse, eventsResponse, refreshTokenRootsResponse] = await Promise.all([
         adminApp.queryAnalytics({
           query: RECENT_SPANS_QUERY,
           params: { hours },
@@ -232,6 +240,15 @@ export default function PageClient() {
         }),
         adminApp.queryAnalytics({
           query: EVENTS_QUERY,
+          params: { hours },
+          include_all_branches: false,
+          timeout_ms: 30000,
+        }),
+        // Reserve a separate result budget for long-lived system roots. They
+        // remain useful standalone traces in All scope even when no visible
+        // descendant references them, and must not compete with recent spans.
+        adminApp.queryAnalytics({
+          query: ACTIVE_REFRESH_TOKEN_ROOTS_QUERY,
           params: { hours },
           include_all_branches: false,
           timeout_ms: 30000,
@@ -255,6 +272,7 @@ export default function PageClient() {
       if (seq !== requestSeqRef.current) return;
       setSpans(parseUniqueSpanRows([
         ...spansResponse.result,
+        ...refreshTokenRootsResponse.result,
         ...(parentSpansResponse?.result ?? []),
       ]));
       setEvents(eventsResponse.result.map(parseEventRow).filter((event): event is EventInput => event != null));

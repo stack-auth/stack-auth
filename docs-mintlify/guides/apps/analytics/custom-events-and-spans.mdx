@@ -173,7 +173,7 @@ export const hexclaveServerApp = new HexclaveServerApp({
 | Event/span type names | Start with a letter; then letters, digits, `_`, `.`, `:`, `-`; at most 64 characters. `$`-prefixed names are reserved for system telemetry. |
 | `data` payloads | Plain JSON-serializable object, at most 16,000 bytes serialized (for spans, the limit applies to the accumulated merged data) |
 | Parent chain | At most 10 ancestors; on overflow the nearest 10 are kept (with a console warning) |
-| Parent ids | Span handles, `ref()` objects, or prefixed raw span ids such as `cs-<uuid>` |
+| Parent ids | Span handles, `ref()` objects, or raw unprefixed span UUIDs |
 | `userId` and scalar session ids | Raw UUIDs (without span-type prefixes) |
 | Browser flush | Every 10 seconds, or at 50 buffered items / ~64 KB, plus on tab hide |
 | Server flush | Next microtask; no timer — `await` or `flush()` is the delivery guarantee |
