@@ -24,8 +24,19 @@ describe("payments schema", () => {
       updatedAtMillis: 500,
     };
     snapshot = await set(snapshot, schema.subscriptions, initial.id, rebased as unknown as PiledriverObject);
-    snapshot = await set(snapshot, schema.subscriptions, initial.id, {
+    const secondRebase = {
       ...rebased,
+      product: product({
+        analytics_events: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" },
+        analytics_spans: { quantity: 250, repeat: [1, "month"], expires: "when-repeated" },
+        session_replays: { quantity: 50, repeat: [1, "month"], expires: "when-repeated" },
+      }),
+      // Distinct database rewrites can legitimately share millisecond precision.
+      updatedAtMillis: 500,
+    };
+    snapshot = await set(snapshot, schema.subscriptions, initial.id, secondRebase as unknown as PiledriverObject);
+    snapshot = await set(snapshot, schema.subscriptions, initial.id, {
+      ...secondRebase,
       status: "past_due",
       updatedAtMillis: 600,
     } as unknown as PiledriverObject);
@@ -34,9 +45,13 @@ describe("payments schema", () => {
     expect(await balanceAt(snapshot, group, "analytics_spans", 499)).toBe(0);
     expect(await balanceAt(snapshot, group, "analytics_spans", 500)).toBe(250);
     expect(await balanceAt(snapshot, group, "analytics_spans", 600)).toBe(250);
+    expect(await balanceAt(snapshot, group, "session_replays", 500)).toBe(50);
     const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
-    expect(txns.find(txn => txn.txnId === "sub-rebase:sub-rebase:500")?.entries).toMatchObject([
+    expect(txns.find(txn => txn.txnId === "sub-rebase:sub-rebase:1")?.entries).toMatchObject([
       { type: "item-quantity-change", itemId: "analytics_spans", quantity: 250 },
+    ]);
+    expect(txns.find(txn => txn.txnId === "sub-rebase:sub-rebase:2")?.entries).toMatchObject([
+      { type: "item-quantity-change", itemId: "session_replays", quantity: 50 },
     ]);
   });
 

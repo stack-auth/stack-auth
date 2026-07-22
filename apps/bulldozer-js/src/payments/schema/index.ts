@@ -61,6 +61,8 @@ type SubscriptionFoldState = {
   itemRepeatSchedule: RepeatSchedule,
   outstandingGrants: OutstandingGrant[],
   repeatCount: number,
+  // Optional for folds persisted before subscription-rebase grants existed.
+  rebaseCount?: number,
 };
 type OtpFoldState = {
   purchaseId: string,
@@ -324,6 +326,7 @@ function subscriptionInitialState(row: SubscriptionRow): SubscriptionFoldState {
     itemRepeatSchedule: repeatSchedule(row.product, row.quantity, row.createdAtMillis),
     outstandingGrants: outstandingGrants(row.product, row.quantity, startTxnId, hasMoneyTransfer ? 3 : 2),
     repeatCount: 0,
+    rebaseCount: 0,
   };
 }
 
@@ -437,7 +440,8 @@ function subscriptionAddedItemsStep(
     .filter(([itemId]) => !(itemId in previous.product.includedItems));
   if (addedItems.length === 0) return null;
 
-  const txnId = `sub-rebase:${row.id}:${row.updatedAtMillis}`;
+  const rebaseCount = (previous.rebaseCount ?? 0) + 1;
+  const txnId = `sub-rebase:${row.id}:${rebaseCount}`;
   const grants = addedItems.map(([itemId, item]) => {
     const expiresWhen = normalizedExpiresWhen(item);
     const nextRepeatMillis = updated.itemRepeatSchedule[itemId].nextRepeatMillis;
@@ -459,7 +463,7 @@ function subscriptionAddedItemsStep(
     })),
   ];
   return {
-    state: { ...updated, outstandingGrants: nextOutstanding },
+    state: { ...updated, outstandingGrants: nextOutstanding, rebaseCount },
     event: toPiledriverObject({
       type: "item-grant-repeat",
       transactionId: txnId,
