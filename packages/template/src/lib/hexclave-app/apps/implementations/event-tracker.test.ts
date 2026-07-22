@@ -1214,7 +1214,28 @@ describe("EventTracker $page-view span + autocapture", () => {
 
       const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
       expect(clicks.map((click) => click.data.rage)).toEqual([undefined, undefined, 1]);
-      expect(clicks.every((click) => click.page_view_span_id === undefined)).toBe(false);
+      clicks.forEach((click) => expect(click.page_view_span_id).toBeTypeOf("string"));
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("does not carry a rage-click burst across an SPA page view", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"buy\">Buy</button>";
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      for (let i = 0; i < 2; i++) {
+        document.querySelector("#buy")?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 60 }));
+      }
+      window.history.pushState({}, "", "/after-navigation");
+      document.querySelector("#buy")?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 60 }));
+      await advancePastFlush();
+
+      const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
+      expect(clicks.map((click) => click.data.rage)).toEqual([undefined, undefined, undefined]);
     } finally {
       tracker.stop();
     }
@@ -1275,6 +1296,29 @@ describe("EventTracker $page-view span + autocapture", () => {
       expect(JSON.stringify(submit!.data)).not.toContain("secret");
     } finally {
       tracker.stop();
+    }
+  });
+
+  it("drops an oversized autocapture item without poisoning the shared batch", async () => {
+    vi.useFakeTimers();
+    const fieldName = `field-${"x".repeat(17_000)}`;
+    document.body.innerHTML = `<form id="oversized"><input name="${fieldName}" /></form>`;
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      tracker.start();
+      document.querySelector("#oversized")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      tracker.trackCustomEvent("still_valid").catch(() => {});
+      await advancePastFlush();
+
+      const events = allEvents(sentBodies);
+      expect(events.some((event) => event.event_type === "$form-submit")).toBe(false);
+      expect(events.some((event) => event.event_type === "still_valid")).toBe(true);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("dropping $form-submit"));
+    } finally {
+      tracker.stop();
+      warning.mockRestore();
     }
   });
 
@@ -1504,6 +1548,27 @@ describe("EventTracker integrity signals (opt-in)", () => {
       expect(rows[rows.length - 1].ended_at_ms).toBeTypeOf("number");
       // reasons record what fired during the interval, not the final state.
       expect(rows[rows.length - 1].data.reasons).toEqual(["window-blur", "tab-hidden"]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("ends open away and offline intervals before the pagehide keepalive flush", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("offline"));
+      window.dispatchEvent(new Event("pagehide"));
+      await vi.advanceTimersByTimeAsync(0);
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? []);
+      for (const spanType of ["$away", "$offline"]) {
+        const rows = spans.filter((span) => span.span_type === spanType);
+        expect(rows[rows.length - 1]?.ended_at_ms).toBeTypeOf("number");
+      }
     } finally {
       tracker.stop();
     }

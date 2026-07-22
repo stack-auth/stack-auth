@@ -4,7 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, type ClientSystemSpanType, type SystemEventType } from "@hexclave/shared/dist/utils/telemetry";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
 // Runtime-safe: span-propagation only imports TYPES from this module.
@@ -843,7 +843,7 @@ export class EventTracker {
    * _liveSpanControls, so sign-out inert-ifies it like any live span (a span
    * started under user A must never be re-written under user B).
    */
-  private _startSystemSpan(spanType: string, opts?: { data?: Record<string, unknown>, pageViewSpanId?: string }): SystemSpanHandle {
+  private _startSystemSpan(spanType: ClientSystemSpanType, opts?: { data?: Record<string, unknown>, pageViewSpanId?: string }): SystemSpanHandle {
     const spanId = generateUuid();
     const startedAtMs = Date.now();
     const pageViewSpanId = opts?.pageViewSpanId;
@@ -1005,10 +1005,16 @@ export class EventTracker {
     this._maybeTriggerSizeFlush();
   }
 
-  // System events from the auto-capture paths: fire-and-forget (no settler),
-  // no name/data validation (the tracker builds the data itself), always
-  // stamped with the current page ancestry.
-  private _pushSystemEvent(eventType: string, data: Record<string, unknown>) {
+  // System events from the auto-capture paths are fire-and-forget (no settler)
+  // and always stamped with the current page ancestry. Their DOM-derived data
+  // is still bounded locally: one oversized selector/URL must not make the
+  // server reject every otherwise-valid item in the shared batch.
+  private _pushSystemEvent(eventType: SystemEventType, data: Record<string, unknown>) {
+    const dataError = getCustomTelemetryDataError(data);
+    if (dataError !== null) {
+      console.warn(`Hexclave analytics: dropping ${eventType}: ${dataError}`);
+      return;
+    }
     const pageViewSpanId = this.getCurrentPageViewSpanId();
     this._pushEvent({
       event_type: eventType,
@@ -1058,6 +1064,9 @@ export class EventTracker {
     const span = this._startSystemSpan("$page-view", { data: pageViewData });
     this._pageViewSpan = span;
     this._resetScrollDepth();
+    // Rage bursts describe repeated interaction with one page. Carrying the
+    // prior route's clicks into an SPA navigation creates false positives.
+    this._recentClicks = [];
 
     // Web vitals describe the initial load only, so a collector is attached to
     // the tab's first $page-view span alone; values are absorbed into its data
@@ -1684,6 +1693,7 @@ export class EventTracker {
     // $page-view interval so time-on-page is correct, then flush keepalive. A
     // bfcache restore starts a fresh span via pageshow.
     this._endPageViewSpan();
+    this._endOpenPresenceSpans();
     runAsynchronously(() => this._flush({ keepalive: true }));
   };
 

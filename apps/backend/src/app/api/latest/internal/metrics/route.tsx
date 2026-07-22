@@ -1298,6 +1298,8 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
   WHERE span_type = '$page-view'
 `;
 
+// Older SDKs wrote page views as events. Keep those rows throughout the
+// retention window while current SDKs contribute span-only page views.
 const PAGE_VIEWS_AND_CLICKS_SQL = `
   SELECT
     event_type,
@@ -1313,10 +1315,14 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     created_at,
     parent_span_ids
   FROM analytics_internal.events
-  WHERE event_type = '$click'
+  WHERE event_type IN ('$click', '$page-view')
   UNION ALL
   ${PAGE_VIEWS_FROM_SPANS_SQL}
 `;
+
+export function getAnalyticsOverviewTelemetrySqlForTest(): string {
+  return PAGE_VIEWS_AND_CLICKS_SQL;
+}
 
 async function loadAnalyticsOverview(
   tenancy: Tenancy,

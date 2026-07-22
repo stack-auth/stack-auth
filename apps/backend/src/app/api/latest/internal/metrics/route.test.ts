@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnalyticsOverviewUserAgentFilterFragmentsForTest,
+  getAnalyticsOverviewTelemetrySqlForTest,
   getMetricsWindowBounds,
   isMetricsRevenueInvoiceStatus,
   normalizeAnalyticsOverviewFilters,
@@ -63,5 +64,13 @@ describe("internal metrics helpers", () => {
         "usesRawUserAgentAllowlist": false,
       }
     `);
+  });
+
+  it("keeps legacy page-view events alongside current page-view spans during the retention window", () => {
+    const sql = getAnalyticsOverviewTelemetrySqlForTest();
+
+    expect(sql).toContain("event_type IN ('$click', '$page-view')");
+    expect(sql).toContain("FROM analytics_internal.spans FINAL");
+    expect(sql).toContain("WHERE span_type = '$page-view'");
   });
 });

@@ -1239,7 +1239,7 @@ it("rejects custom event data that is not a plain object", async ({ expect }) =>
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects custom event data larger than the serialized size cap", async ({ expect }) => {
@@ -1253,7 +1253,7 @@ it("rejects custom event data larger than the serialized size cap", async ({ exp
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap", async ({ expect }) => {
@@ -1267,7 +1267,7 @@ it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap",
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects $-prefixed span types outside the client-writable system list", async ({ expect }) => {
@@ -1357,7 +1357,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   ]);
 });
 
-it("rejects a $page-view span carrying a page_view_span_id and a span naming itself as its page", async ({ expect }) => {
+it("rejects a $page-view span carrying page or custom ancestry and a span naming itself as its page", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
@@ -1368,7 +1368,14 @@ it("rejects a $page-view span carrying a page_view_span_id and a span naming its
   });
   expect(nested.status).toBe(400);
   expect(nested.body?.code).toBe("SCHEMA_ERROR");
-  expect(nested.body?.error).toContain("A $page-view span must not carry a page_view_span_id");
+  expect(nested.body?.error).toContain("A $page-view span must not carry page_view_span_id or parent_span_ids");
+
+  const customParented = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", parent_span_ids: [randomUUID()] })],
+  });
+  expect(customParented.status).toBe(400);
+  expect(customParented.body?.error).toContain("A $page-view span must not carry page_view_span_id or parent_span_ids");
 
   const selfReferencing = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),

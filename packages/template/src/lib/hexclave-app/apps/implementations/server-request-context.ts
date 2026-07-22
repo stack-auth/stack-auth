@@ -45,6 +45,7 @@ export function withExplicitServerUser(
     refreshTokenId: null,
     sessionReplayId: null,
     sessionReplaySegmentId: null,
+    pageViewSpanId: null,
     customParentSpanIds: [],
   };
 }

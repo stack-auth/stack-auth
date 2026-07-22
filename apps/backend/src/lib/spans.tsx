@@ -242,8 +242,8 @@ export function buildBatchSpanRows(opts: {
     // A `$page-view` span IS the page — parenting one page-view under another
     // would make the hierarchy lie. The route schema rejects this; assert so a
     // future non-route caller cannot reintroduce it.
-    if (span.span_type === PAGE_VIEW_SPAN_TYPE && span.page_view_span_id != null) {
-      throw new HexclaveAssertionError("A $page-view span must not itself carry a page_view_span_id");
+    if (span.span_type === PAGE_VIEW_SPAN_TYPE && (span.page_view_span_id != null || span.parent_span_ids.length > 0)) {
+      throw new HexclaveAssertionError("A $page-view span must not itself carry page_view_span_id or parent_span_ids");
     }
     if (span.page_view_span_id != null && span.page_view_span_id === span.span_id) {
       throw new HexclaveAssertionError("A span must not name itself as its page_view_span_id");

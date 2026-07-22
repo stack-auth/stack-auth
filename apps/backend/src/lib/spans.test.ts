@@ -293,11 +293,15 @@ describe("buildBatchSpanRows", () => {
     ]);
   });
 
-  it("refuses a $page-view span that carries a page_view_span_id, and a span naming itself as its page", () => {
+  it("refuses a $page-view span that carries page or custom ancestry, and a span naming itself as its page", () => {
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$page-view", page_view_span_id: "0f000000-0000-4000-8000-00000000cccc" }],
-    })).toThrowError(/must not itself carry a page_view_span_id/);
+    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, span_type: "$page-view", parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"] }],
+    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$away", page_view_span_id: baseSpan.span_id }],
