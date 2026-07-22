@@ -124,7 +124,7 @@ export const POST = createSmartRouteHandler({
         yupObject({
           span_id: yupString().defined().matches(UUID_RE, "Invalid span_id"),
           // Custom names, or the client-writable system autocapture types
-          // ($page-view, $tab-hidden, …). All other `$…` span types are
+          // ($page-view, $away, …). All other `$…` span types are
           // server-derived and can never be written through this endpoint.
           span_type: yupString().defined().test(
             "span-type",
@@ -149,8 +149,10 @@ export const POST = createSmartRouteHandler({
           (span) => span.ended_at_ms == null || span.ended_at_ms >= span.started_at_ms,
         ).test(
           "page-view-span-parent",
-          "A $page-view span must not carry a page_view_span_id, and a span must not name itself as its page_view_span_id",
-          (span) => span.page_view_span_id == null || (span.span_type !== PAGE_VIEW_SPAN_TYPE && span.page_view_span_id !== span.span_id),
+          "A $page-view span must not carry page_view_span_id or parent_span_ids, and a span must not name itself as its page_view_span_id",
+          (span) => (
+            span.span_type !== PAGE_VIEW_SPAN_TYPE || (span.page_view_span_id == null && span.parent_span_ids.length === 0)
+          ) && (span.page_view_span_id == null || span.page_view_span_id !== span.span_id),
         ),
       ).optional().max(MAX_SPANS),
     }).defined().test(
@@ -290,7 +292,7 @@ export const POST = createSmartRouteHandler({
     // request is rejected, so a partial batch never burns quota.
     //
     // Only CUSTOM spans are billable. System autocapture spans ($page-view,
-    // $tab-hidden, …) are free — the interaction is already metered via its
+    // $away, …) are free — the interaction is already metered via its
     // event counterpart, and the span_writes usage-measurement MV excludes
     // `$`-prefixed types, so debiting them here would silently drift quota
     // away from the usage the customer sees.

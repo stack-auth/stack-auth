@@ -4,7 +4,7 @@ import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
-import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
+import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, type ClientSystemSpanType, type SystemEventType } from "@hexclave/shared/dist/utils/telemetry";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanContext, runWithSpanFrame } from "./span-context";
 // Runtime-safe: span-propagation only imports TYPES from this module.
@@ -442,9 +442,9 @@ export type EventTrackerDeps = {
   // Origin policy for span.fetch / propagation headers (same-origin default +
   // exact-origin allowlist). Provided by the app from analytics.spanPropagation.
   getPropagationPolicy?: () => { selfOrigin: string | null, allowedOrigins: readonly string[] },
-  // Opt-in presence/integrity signals ($tab-hidden, $window-blur, clipboard,
-  // context-menu, print, fullscreen-exit). Default OFF: they are surveillance-
-  // adjacent, so capturing them must be a deliberate customer decision
+  // Opt-in presence/integrity signals ($away, clipboard, context-menu, print,
+  // fullscreen-exit). Default OFF: they are surveillance-adjacent, so capturing
+  // them must be a deliberate customer decision
   // (AnalyticsOptions.integritySignals), not default autocapture.
   integritySignals?: boolean,
 };
@@ -464,7 +464,7 @@ type TrackedEvent = {
 };
 
 /**
- * Internal handle for client-minted SYSTEM spans ($page-view, $tab-hidden, …).
+ * Internal handle for client-minted SYSTEM spans ($page-view, $away, …).
  * Deliberately NOT a public `Span`: a system span must never enter a custom
  * parent chain (its raw uuid would get the cs- prefix server-side and dangle as
  * a broken reference), so the handle exposes only what the tracker itself
@@ -478,6 +478,11 @@ type SystemSpanHandle = {
   setData: (data: Record<string, unknown>) => void,
   end: (endedAtMs?: number) => void,
 };
+
+// Sensors feeding the unified `$away` presence span. Recorded (without the $)
+// in the span's data.reasons so "window blurred but tab still visible"
+// (side-by-side windows) stays distinguishable from a real tab switch.
+type AwayReason = "tab-hidden" | "window-blur";
 
 const RAGE_CLICK_WINDOW_MS = 1_000;
 const RAGE_CLICK_RADIUS_PX = 30;
@@ -540,10 +545,13 @@ export class EventTracker {
   private _webVitalsSpanId: string | null = null;
   private _recentClicks: { x: number, y: number, atMs: number }[] = [];
   private _resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  // Presence spans (open while the state holds). Offline is default-on;
-  // tab-hidden/window-blur only exist with integritySignals.
-  private _tabHiddenSpan: SystemSpanHandle | null = null;
-  private _windowBlurSpan: SystemSpanHandle | null = null;
+  // Presence spans (open while the state holds). Offline is default-on; $away
+  // (tab hidden and/or window blurred) only exists with integritySignals.
+  private _awaySpan: SystemSpanHandle | null = null;
+  // Sensors currently holding the user away (empty = present), and the union
+  // of sensors seen during the open $away span (mirrored to its data.reasons).
+  private _awayReasons = new Set<AwayReason>();
+  private _awaySpanSeenReasons = new Set<AwayReason>();
   private _offlineSpan: SystemSpanHandle | null = null;
   // Local-only hash of the last same-page copy/cut (see hashTextLocal).
   private _lastCopyHash: number | null = null;
@@ -589,7 +597,7 @@ export class EventTracker {
     }
     // Last: the keepalive-flush listeners must run AFTER the handlers above for
     // the same events (visibilitychange, pagehide), so rows they enqueue (e.g.
-    // a $tab-hidden open row, the $page-view end row) ride the same flush.
+    // an $away open row, the $page-view end row) ride the same flush.
     this._setupPageHideListeners();
 
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
@@ -650,8 +658,8 @@ export class EventTracker {
     // Paired with clearBuffer() on sign-out (clearBuffer runs first): the
     // previous $page-view span and any open presence spans were inert-ified
     // under the old identity, so the ongoing page needs fresh spans under the
-    // new segment. No legacy $page-view event is emitted — the page was not
-    // re-entered, and a synthetic page view would shift customers' metrics.
+    // new segment. Page views are span-only; rotation just restarts the
+    // `$page-view` interval under the new identity (same as restore).
     if (this._started && !this._cancelled && !this._disabled) {
       this._capturePageView("rotation");
       this._restartPresenceSpans();
@@ -827,15 +835,15 @@ export class EventTracker {
   }
 
   /**
-   * Starts a client-minted SYSTEM span ($page-view, $tab-hidden, $window-blur,
-   * $offline). Unlike the public startSpan: no name/data validation (callers
+   * Starts a client-minted SYSTEM span ($page-view, $away, $offline). Unlike
+   * the public startSpan: no name/data validation (callers
    * are internal), no ambient custom parents (system ancestry — session,
    * segment, page — is composed server-side from scalar ids), and the row
    * carries `page_view_span_id` instead of a custom chain. Registered in
    * _liveSpanControls, so sign-out inert-ifies it like any live span (a span
    * started under user A must never be re-written under user B).
    */
-  private _startSystemSpan(spanType: string, opts?: { data?: Record<string, unknown>, pageViewSpanId?: string }): SystemSpanHandle {
+  private _startSystemSpan(spanType: ClientSystemSpanType, opts?: { data?: Record<string, unknown>, pageViewSpanId?: string }): SystemSpanHandle {
     const spanId = generateUuid();
     const startedAtMs = Date.now();
     const pageViewSpanId = opts?.pageViewSpanId;
@@ -997,10 +1005,16 @@ export class EventTracker {
     this._maybeTriggerSizeFlush();
   }
 
-  // System events from the auto-capture paths: fire-and-forget (no settler),
-  // no name/data validation (the tracker builds the data itself), always
-  // stamped with the current page ancestry.
-  private _pushSystemEvent(eventType: string, data: Record<string, unknown>) {
+  // System events from the auto-capture paths are fire-and-forget (no settler)
+  // and always stamped with the current page ancestry. Their DOM-derived data
+  // is still bounded locally: one oversized selector/URL must not make the
+  // server reject every otherwise-valid item in the shared batch.
+  private _pushSystemEvent(eventType: SystemEventType, data: Record<string, unknown>) {
+    const dataError = getCustomTelemetryDataError(data);
+    if (dataError !== null) {
+      console.warn(`Hexclave analytics: dropping ${eventType}: ${dataError}`);
+      return;
+    }
     const pageViewSpanId = this.getCurrentPageViewSpanId();
     this._pushEvent({
       event_type: eventType,
@@ -1011,8 +1025,10 @@ export class EventTracker {
   }
 
   // "restore" = bfcache revival (pageshow with persisted), "rotation" =
-  // sign-out segment rotation; both restart the SPAN without emitting the
-  // legacy $page-view EVENT (see below).
+  // sign-out segment rotation; both restart the span the same way as a
+  // navigation. Page views are span-only — readers that need them query
+  // `default.spans` / `analytics_internal.spans` (`span_type = '$page-view'`),
+  // never `default.events`.
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop" | "restore" | "rotation") {
     const screenObject = window.screen;
     if (!hasScreenDimensions(screenObject)) {
@@ -1042,10 +1058,15 @@ export class EventTracker {
     // The $page-view SPAN is the hierarchy layer everything on this page nests
     // under (auto-captured events, custom telemetry, and backend spans via
     // cross-tier propagation). It ends on the next navigation / pagehide, so
-    // its interval IS the time-on-page.
+    // its interval IS the time-on-page. There is no companion `$page-view`
+    // EVENT — projecting spans into default.events made the traces UI show
+    // the same fact twice (diamond + bar).
     const span = this._startSystemSpan("$page-view", { data: pageViewData });
     this._pageViewSpan = span;
     this._resetScrollDepth();
+    // Rage bursts describe repeated interaction with one page. Carrying the
+    // prior route's clicks into an SPA navigation creates false positives.
+    this._recentClicks = [];
 
     // Web vitals describe the initial load only, so a collector is attached to
     // the tab's first $page-view span alone; values are absorbed into its data
@@ -1062,21 +1083,6 @@ export class EventTracker {
         this._webVitals = collector;
         this._webVitalsSpanId = span.spanId;
       }
-    }
-
-    // The $page-view EVENT is kept alongside the span: the metrics queries
-    // (DAU, referrers, bounce rate, UA breakdown) and the ClickHouse MVs are
-    // built on events, and migrating those is a separate project. "restore"
-    // and "rotation" do NOT emit the event — the pre-span tracker never
-    // emitted one for these transitions, and silently adding page views would
-    // shift every customer's metrics.
-    if (entryType === "initial" || entryType === "push" || entryType === "replace" || entryType === "pop") {
-      this._pushEvent({
-        event_type: "$page-view",
-        event_at_ms: Date.now(),
-        data: { ...pageViewData },
-        page_view_span_id: span.spanId,
-      });
     }
   }
 
@@ -1485,31 +1491,68 @@ export class EventTracker {
   // hash comparison; see hashTextLocal).
   // ---------------------------------------------------------------------------
 
+  // One `$away` span per continuous away interval, fed by two sensors:
+  // visibilitychange (tab switch / minimize) and window blur/focus, which
+  // catches switching to ANOTHER WINDOW while the tab stays visible — a case
+  // visibilitychange misses. A tab switch fires both sensors; recording one
+  // span whose data.reasons holds the union of sensors that fired during the
+  // interval keeps the distinction without emitting overlapping spans that
+  // every consumer would have to merge.
+
   private readonly _onIntegrityVisibilityChange = () => {
-    if (document.visibilityState === "hidden") {
-      if (this._tabHiddenSpan === null || this._tabHiddenSpan.isEnded()) {
-        this._tabHiddenSpan = this._startSystemSpan("$tab-hidden", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
-      }
-    } else {
-      this._tabHiddenSpan?.end();
-      this._tabHiddenSpan = null;
-    }
+    this._setAwayReason("tab-hidden", document.visibilityState === "hidden");
   };
 
-  // window blur/focus catches switching to ANOTHER WINDOW while the tab stays
-  // visible (side-by-side windows) — which visibilitychange misses. When the
-  // user switches tabs, both a $window-blur and a $tab-hidden span open; both
-  // raw signals are recorded rather than deduped (which one matters is a
-  // query-time decision).
   private readonly _onWindowBlur = () => {
-    if (this._windowBlurSpan !== null && !this._windowBlurSpan.isEnded()) return;
-    this._windowBlurSpan = this._startSystemSpan("$window-blur", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
+    this._setAwayReason("window-blur", true);
   };
 
   private readonly _onWindowFocus = () => {
-    this._windowBlurSpan?.end();
-    this._windowBlurSpan = null;
+    this._setAwayReason("window-blur", false);
   };
+
+  private _currentAwayReasons(): Set<AwayReason> {
+    const reasons = new Set<AwayReason>();
+    if (document.visibilityState === "hidden") reasons.add("tab-hidden");
+    if (typeof document.hasFocus === "function" && !document.hasFocus()) reasons.add("window-blur");
+    return reasons;
+  }
+
+  private _setAwayReason(reason: AwayReason, active: boolean) {
+    if (active) {
+      this._awayReasons.add(reason);
+    } else {
+      this._awayReasons.delete(reason);
+    }
+    this._reconcileAwaySpan();
+  }
+
+  private _reconcileAwaySpan() {
+    if (this._awayReasons.size === 0) {
+      this._awaySpan?.end();
+      this._awaySpan = null;
+      return;
+    }
+    if (this._awaySpan === null || this._awaySpan.isEnded()) {
+      this._awaySpanSeenReasons = new Set(this._awayReasons);
+      this._awaySpan = this._startSystemSpan("$away", {
+        data: { reasons: [...this._awaySpanSeenReasons] },
+        pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined,
+      });
+      return;
+    }
+    // Already away: a second sensor firing extends the row's reasons; the
+    // interval itself is unchanged. A sensor CLEARING while others still hold
+    // (e.g. focus returns to a hidden tab) is not removed — reasons record
+    // what fired during the interval, not the instantaneous state.
+    const unseen = [...this._awayReasons].filter((reason) => !this._awaySpanSeenReasons.has(reason));
+    if (unseen.length > 0) {
+      for (const reason of unseen) {
+        this._awaySpanSeenReasons.add(reason);
+      }
+      this._awaySpan.setData({ reasons: [...this._awaySpanSeenReasons] });
+    }
+  }
 
   private readonly _onCopyCapture = (event: ClipboardEvent) => {
     this._recordClipboardCopy("$copy", event);
@@ -1588,7 +1631,7 @@ export class EventTracker {
   };
 
   private _setupIntegritySignals() {
-    // Registered BEFORE _setupPageHideListeners (see start()) so a $tab-hidden
+    // Registered BEFORE _setupPageHideListeners (see start()) so an $away
     // open row enqueued here rides the same keepalive flush.
     document.addEventListener("visibilitychange", this._onIntegrityVisibilityChange);
     window.addEventListener("blur", this._onWindowBlur);
@@ -1600,8 +1643,11 @@ export class EventTracker {
     window.addEventListener("beforeprint", this._onBeforePrint);
     document.addEventListener("fullscreenchange", this._onFullscreenChange);
     this._wasFullscreen = document.fullscreenElement != null;
-    // Reflect states that are already true at start.
-    if (document.visibilityState === "hidden") this._onIntegrityVisibilityChange();
+    // Reflect state that is already true at start. Focus is deliberately NOT
+    // probed here: document.hasFocus() is unreliable while a page is still
+    // loading, and a background-tab load is already covered by
+    // visibilityState — the first real blur/focus event syncs the sensor.
+    this._setAwayReason("tab-hidden", document.visibilityState === "hidden");
     this._detachIntegrityListeners = () => {
       document.removeEventListener("visibilitychange", this._onIntegrityVisibilityChange);
       window.removeEventListener("blur", this._onWindowBlur);
@@ -1616,11 +1662,10 @@ export class EventTracker {
   }
 
   private _endOpenPresenceSpans() {
-    for (const span of [this._tabHiddenSpan, this._windowBlurSpan, this._offlineSpan]) {
+    for (const span of [this._awaySpan, this._offlineSpan]) {
       if (span !== null && !span.isEnded()) span.end();
     }
-    this._tabHiddenSpan = null;
-    this._windowBlurSpan = null;
+    this._awaySpan = null;
     this._offlineSpan = null;
   }
 
@@ -1628,18 +1673,14 @@ export class EventTracker {
   // the previous identity, so any state that STILL holds re-opens as a fresh
   // span under the new segment/page.
   private _restartPresenceSpans() {
-    this._tabHiddenSpan = null;
-    this._windowBlurSpan = null;
+    this._awaySpan = null;
     this._offlineSpan = null;
-    const pageViewSpanId = this.getCurrentPageViewSpanId() ?? undefined;
-    if (this._deps.integritySignals === true && document.visibilityState === "hidden") {
-      this._tabHiddenSpan = this._startSystemSpan("$tab-hidden", { pageViewSpanId });
-    }
-    if (this._deps.integritySignals === true && !document.hasFocus()) {
-      this._windowBlurSpan = this._startSystemSpan("$window-blur", { pageViewSpanId });
+    if (this._deps.integritySignals === true) {
+      this._awayReasons = this._currentAwayReasons();
+      this._reconcileAwaySpan();
     }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      this._offlineSpan = this._startSystemSpan("$offline", { pageViewSpanId });
+      this._offlineSpan = this._startSystemSpan("$offline", { pageViewSpanId: this.getCurrentPageViewSpanId() ?? undefined });
     }
   }
 
@@ -1652,6 +1693,7 @@ export class EventTracker {
     // $page-view interval so time-on-page is correct, then flush keepalive. A
     // bfcache restore starts a fresh span via pageshow.
     this._endPageViewSpan();
+    this._endOpenPresenceSpans();
     runAsynchronously(() => this._flush({ keepalive: true }));
   };
 
@@ -1689,8 +1731,9 @@ export class EventTracker {
       this._webVitalsSpanId = null;
     }
     this._pageViewSpan = null;
-    this._tabHiddenSpan = null;
-    this._windowBlurSpan = null;
+    this._awaySpan = null;
+    this._awayReasons.clear();
+    this._awaySpanSeenReasons.clear();
     this._offlineSpan = null;
     this._recentClicks = [];
     this._lastCopyHash = null;

@@ -67,6 +67,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       productRevokedAt: null,
       creationSource: "PURCHASE_PAGE",
       createdAt: now,
+      updatedAt: now,
     });
   }
 
@@ -179,6 +180,7 @@ describe.sequential("ensureFreePlanForBillingTeam (real DB)", () => {
       productRevokedAt: null,
       creationSource: "PURCHASE_PAGE",
       createdAt: yesterday,
+      updatedAt: yesterday,
     });
 
     // Precondition: the team has exactly one sub on record, and it is the

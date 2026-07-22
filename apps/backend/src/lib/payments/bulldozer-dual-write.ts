@@ -38,6 +38,7 @@ export function subscriptionToStoredRow(sub: {
   productRevokedAt: Date | null,
   creationSource: string,
   createdAt: Date,
+  updatedAt: Date,
 }): Record<string, unknown> {
   return {
     id: sub.id,
@@ -59,6 +60,7 @@ export function subscriptionToStoredRow(sub: {
     productRevokedAtMillis: dateToMillis(sub.productRevokedAt),
     creationSource: sub.creationSource,
     createdAtMillis: dateToMillis(sub.createdAt),
+    updatedAtMillis: dateToMillis(sub.updatedAt),
   };
 }
 

@@ -25,6 +25,11 @@ export const hexclaveClientApp = new StackClientApp({
   },
   analytics: {
     enabled: !isRemoteDevelopmentEnvironment,
+    // Dogfood the full autocapture surface on the internal dashboard so
+    // session-replay markers / analytics tables see $form-submit,
+    // $window-resize, and the integrity-signal events ($copy/$paste/…) —
+    // not just $click/$page-view. Off by default for customer apps.
+    integritySignals: !isRemoteDevelopmentEnvironment,
     replays: {
       maskAllInputs: false,
       enabled: !isPreview && !isRemoteDevelopmentEnvironment,

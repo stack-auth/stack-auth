@@ -5,7 +5,7 @@ import { startWebVitalsCollector } from "./web-vitals";
 // injected by the test. The collector only relies on observe({type, buffered})
 // and callback(list.getEntries()).
 class MockPerformanceObserver {
-  static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event"];
+  static supportedEntryTypes = ["navigation", "paint", "largest-contentful-paint", "layout-shift", "event", "first-input"];
   static instances: MockPerformanceObserver[] = [];
 
   observedType: string | null = null;
@@ -98,6 +98,25 @@ describe("startWebVitalsCollector", () => {
     // A later entry for the same interaction can only raise its duration.
     events.emit([{ interactionId: 2, duration: 400 }]);
     expect(collector.snapshot().inp_ms).toBe(400);
+  });
+
+  it("reports a fast first interaction that the thresholded event observer omits", () => {
+    const { collector } = startWithMock();
+
+    MockPerformanceObserver.byType("first-input").emit([{ interactionId: 4, duration: 18 }]);
+
+    expect(collector.snapshot().inp_ms).toBe(18);
+  });
+
+  it("uses the longest observed interaction when a complete native interaction count is unavailable", () => {
+    const { collector } = startWithMock();
+    MockPerformanceObserver.byType("event").emit([
+      { interactionId: 1, duration: 100 },
+      { interactionId: 2, duration: 500 },
+      { interactionId: 3, duration: 250 },
+    ]);
+
+    expect(collector.snapshot().inp_ms).toBe(500);
   });
 
   it("freezes the snapshot after disconnect", () => {

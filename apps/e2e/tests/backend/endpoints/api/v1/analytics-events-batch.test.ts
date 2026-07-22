@@ -1239,7 +1239,7 @@ it("rejects custom event data that is not a plain object", async ({ expect }) =>
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects custom event data larger than the serialized size cap", async ({ expect }) => {
@@ -1253,7 +1253,7 @@ it("rejects custom event data larger than the serialized size cap", async ({ exp
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap", async ({ expect }) => {
@@ -1267,7 +1267,7 @@ it("rejects custom event data whose UTF-8 bytes exceed the serialized size cap",
 
   expect(res.status).toBe(400);
   expect(res.body?.code).toBe("SCHEMA_ERROR");
-  expect(res.body?.error).toContain("Custom event data must be a JSON object");
+  expect(res.body?.error).toContain("Event data must be a JSON object");
 });
 
 it("rejects $-prefixed span types outside the client-writable system list", async ({ expect }) => {
@@ -1292,7 +1292,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
 
   const sessionReplaySegmentId = randomUUID();
   const pageViewSpanId = randomUUID();
-  const tabHiddenSpanId = randomUUID();
+  const awaySpanId = randomUUID();
   const customSpanId = randomUUID();
   const customParent = randomUUID();
   const now = Date.now();
@@ -1301,7 +1301,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
     session_replay_segment_id: sessionReplaySegmentId,
     spans: [
       makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", data: { path: "/exam", entry_type: "initial" } }),
-      makeCustomSpan({ span_id: tabHiddenSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId }),
+      makeCustomSpan({ span_id: awaySpanId, span_type: "$away", page_view_span_id: pageViewSpanId, data: { reasons: ["tab-hidden"] } }),
       makeCustomSpan({ span_id: customSpanId, page_view_span_id: pageViewSpanId, parent_span_ids: [customParent] }),
     ],
     events: [{
@@ -1328,9 +1328,9 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   expect(pageViewRow?.parent_span_ids).toHaveLength(1);
   expect(pageViewRow?.parent_span_ids[0]).toMatch(/^rti-/);
 
-  const tabHiddenRow = spanRows.find((row) => row.id === `sas-${tabHiddenSpanId}`);
-  expect(tabHiddenRow?.span_type).toBe("$tab-hidden");
-  expect(tabHiddenRow?.parent_span_ids).toEqual([
+  const awayRow = spanRows.find((row) => row.id === `sas-${awaySpanId}`);
+  expect(awayRow?.span_type).toBe("$away");
+  expect(awayRow?.parent_span_ids).toEqual([
     pageViewRow!.parent_span_ids[0],
     `pv-${pageViewSpanId}`,
   ]);
@@ -1357,7 +1357,7 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   ]);
 });
 
-it("rejects a $page-view span carrying a page_view_span_id and a span naming itself as its page", async ({ expect }) => {
+it("rejects a $page-view span carrying page or custom ancestry and a span naming itself as its page", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
@@ -1368,11 +1368,18 @@ it("rejects a $page-view span carrying a page_view_span_id and a span naming its
   });
   expect(nested.status).toBe(400);
   expect(nested.body?.code).toBe("SCHEMA_ERROR");
-  expect(nested.body?.error).toContain("A $page-view span must not carry a page_view_span_id");
+  expect(nested.body?.error).toContain("A $page-view span must not carry page_view_span_id or parent_span_ids");
+
+  const customParented = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$page-view", parent_span_ids: [randomUUID()] })],
+  });
+  expect(customParented.status).toBe(400);
+  expect(customParented.body?.error).toContain("A $page-view span must not carry page_view_span_id or parent_span_ids");
 
   const selfReferencing = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$tab-hidden", page_view_span_id: pageViewSpanId })],
+    spans: [makeCustomSpan({ span_id: pageViewSpanId, span_type: "$away", page_view_span_id: pageViewSpanId })],
   });
   expect(selfReferencing.status).toBe(400);
   expect(selfReferencing.body?.code).toBe("SCHEMA_ERROR");

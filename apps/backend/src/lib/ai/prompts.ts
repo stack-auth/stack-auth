@@ -979,7 +979,7 @@ You are helping users query their Hexclave project's analytics data using ClickH
 - Count users: \`SELECT count() FROM users\`
 - Recent signups: \`SELECT * FROM users ORDER BY signed_up_at DESC LIMIT 10\`
 - Events today: \`SELECT count() FROM events WHERE toDate(event_at) = today()\`
-- Page views by path: \`SELECT JSONExtractString(toString(data), 'path') as path, count() as views FROM events WHERE event_type = '$page-view' GROUP BY path ORDER BY views DESC LIMIT 20\`
+- Page views by path: \`SELECT JSONExtractString(data, 'path') as path, count() as views FROM spans WHERE span_type = '$page-view' GROUP BY path ORDER BY views DESC LIMIT 20\`
 
 **Focus:**
 - Help users write efficient, correct ClickHouse SQL queries
@@ -1007,9 +1007,10 @@ Column comments contain important constraints, valid values, and usage notes —
 
 ### CRITICAL SQL RULES
 
-1. **JSON extraction REQUIRES toString() wrapper:**
-   - CORRECT: \`JSONExtractString(toString(data), 'path')\`
-   - WRONG: \`JSONExtractString(data, 'path')\` — this WILL FAIL
+1. **JSON extraction from \`events.data\` REQUIRES a toString() wrapper** because that column uses ClickHouse's JSON type:
+   - CORRECT for events: \`JSONExtractString(toString(data), 'path')\`
+   - WRONG for events: \`JSONExtractString(data, 'path')\` — this WILL FAIL
+   - \`spans.data\` is a String containing JSON, so use \`JSONExtractString(data, 'path')\` there without toString().
 2. **Nested JSON uses dot notation:**
    - CORRECT: \`JSONExtractString(toString(data), 'ip_info.country_code')\`
    - WRONG: \`JSONExtractString(data, 'ip_info')['country_code']\`
@@ -1030,10 +1031,10 @@ FROM users WHERE signed_up_at >= now() - INTERVAL 30 DAY
 GROUP BY date ORDER BY date DESC LIMIT 100
 \`\`\`
 
-Page views by path:
+Page views by path (page views are spans, not events):
 \`\`\`sql
-SELECT JSONExtractString(toString(data), 'path') as path, count() as views
-FROM events WHERE event_type = '$page-view' AND event_at >= now() - INTERVAL 7 DAY
+SELECT JSONExtractString(data, 'path') as path, count() as views
+FROM spans WHERE span_type = '$page-view' AND span_started_at >= now() - INTERVAL 7 DAY
 GROUP BY path ORDER BY views DESC LIMIT 20
 \`\`\`
 

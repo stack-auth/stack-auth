@@ -132,8 +132,7 @@ describe("insertSessionReplaySpans", () => {
 describe("wireSpanIdPrefix", () => {
   it("routes $page-view to pv-, other client system types to sas-, and custom names to cs-", () => {
     expect(wireSpanIdPrefix("$page-view")).toBe("pv-");
-    expect(wireSpanIdPrefix("$tab-hidden")).toBe("sas-");
-    expect(wireSpanIdPrefix("$window-blur")).toBe("sas-");
+    expect(wireSpanIdPrefix("$away")).toBe("sas-");
     expect(wireSpanIdPrefix("$offline")).toBe("sas-");
     expect(wireSpanIdPrefix("checkout-flow")).toBe("cs-");
   });
@@ -267,13 +266,13 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [
         { ...baseSpan, span_type: "$page-view" },
-        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$tab-hidden" },
+        { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$away" },
       ],
     });
     expect(rows[0].id).toBe(`pv-${baseSpan.span_id}`);
     expect(rows[0].span_type).toBe("$page-view");
     expect(rows[1].id).toBe("sas-0f000000-0000-4000-8000-000000000002");
-    expect(rows[1].span_type).toBe("$tab-hidden");
+    expect(rows[1].span_type).toBe("$away");
   });
 
   it("inserts the pv- ancestor between the system ancestry and the custom chain", () => {
@@ -294,14 +293,18 @@ describe("buildBatchSpanRows", () => {
     ]);
   });
 
-  it("refuses a $page-view span that carries a page_view_span_id, and a span naming itself as its page", () => {
+  it("refuses a $page-view span that carries page or custom ancestry, and a span naming itself as its page", () => {
     expect(() => buildBatchSpanRows({
       ...baseOpts,
       spans: [{ ...baseSpan, span_type: "$page-view", page_view_span_id: "0f000000-0000-4000-8000-00000000cccc" }],
-    })).toThrowError(/must not itself carry a page_view_span_id/);
+    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
     expect(() => buildBatchSpanRows({
       ...baseOpts,
-      spans: [{ ...baseSpan, span_type: "$tab-hidden", page_view_span_id: baseSpan.span_id }],
+      spans: [{ ...baseSpan, span_type: "$page-view", parent_span_ids: ["0f000000-0000-4000-8000-00000000aaaa"] }],
+    })).toThrowError(/must not itself carry page_view_span_id or parent_span_ids/);
+    expect(() => buildBatchSpanRows({
+      ...baseOpts,
+      spans: [{ ...baseSpan, span_type: "$away", page_view_span_id: baseSpan.span_id }],
     })).toThrowError(/must not name itself/);
   });
 });

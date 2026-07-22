@@ -189,18 +189,60 @@ type TimelineMarker = {
   label: string,
 };
 
+const TIMELINE_EVENT_LABELS = new Map([
+  ["$copy", "Copy"],
+  ["$cut", "Cut"],
+  ["$paste", "Paste"],
+  ["$context-menu", "Context menu"],
+  ["$print", "Print"],
+  ["$fullscreen-exit", "Fullscreen exit"],
+]);
+
+const TIMELINE_MARKER_CLASS_NAMES = new Map([
+  ["$click", "bg-blue-500/70 hover:bg-blue-400"],
+  ["$page-view", "bg-emerald-500/70 hover:bg-emerald-400"],
+  ["$form-submit", "bg-amber-500/70 hover:bg-amber-400"],
+  ["$window-resize", "bg-sky-500/70 hover:bg-sky-400"],
+  ["$copy", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$cut", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$paste", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$context-menu", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$print", "bg-violet-500/70 hover:bg-violet-400"],
+  ["$fullscreen-exit", "bg-violet-500/70 hover:bg-violet-400"],
+]);
+
 function formatEventTooltip(event: TimelineEvent): string {
   const d = event.data;
-  if (event.eventType === "$click") {
-    const tag = (d.tag_name as string) || "element";
-    return `Clicked ${tag}`;
+  switch (event.eventType) {
+    case "$click": {
+      const tag = (d.tag_name as string) || "element";
+      return `Clicked ${tag}`;
+    }
+    case "$page-view": {
+      const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
+      const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
+      return truncated;
+    }
+    case "$form-submit": {
+      const formId = typeof d.form_id === "string" && d.form_id !== "" ? d.form_id : null;
+      const formName = typeof d.form_name === "string" && d.form_name !== "" ? d.form_name : null;
+      return `Form submit${formId != null ? ` #${formId}` : formName != null ? ` ${formName}` : ""}`;
+    }
+    case "$window-resize": {
+      const w = d.viewport_width;
+      const h = d.viewport_height;
+      if (typeof w === "number" && typeof h === "number") return `Resize ${w}×${h}`;
+      return "Window resize";
+    }
+    default: {
+      return TIMELINE_EVENT_LABELS.get(event.eventType) ?? event.eventType;
+    }
   }
-  if (event.eventType === "$page-view") {
-    const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
-    const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
-    return truncated;
-  }
-  return event.eventType;
+}
+
+function markerClassName(eventType: string): string {
+  // Custom events (and any future system types) share a neutral marker.
+  return TIMELINE_MARKER_CLASS_NAMES.get(eventType) ?? "bg-zinc-500/70 hover:bg-zinc-400";
 }
 
 function DisplayDate({ date }: { date: Date }) {
@@ -276,16 +318,13 @@ const TimelineMarkersLane = React.memo(function TimelineMarkersLane({
       {markers.map((marker, i) => {
         const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
         if (left < 0 || left > 100) return null;
-        const isClick = marker.eventType === "$click";
         return (
           <div
             key={i}
             className={cn(
               "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
-              "transition-colors",
-              isClick
-                ? "bg-blue-500/70 hover:bg-blue-400"
-                : "bg-emerald-500/70 hover:bg-emerald-400",
+              "transition-colors hover:transition-none",
+              markerClassName(marker.eventType),
             )}
             style={{ left: `${left}%`, marginLeft: "-1.5px" }}
             onMouseEnter={() => setHoveredMarkerIndex(i)}
@@ -1284,12 +1323,26 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
     setTimelineEvents([]);
     runAsynchronously(async () => {
       const res = await serverApp.queryAnalytics({
+        // All analytics events stamped with this replay — not just the
+        // historical $click/$page-view pair. Autocapture now also emits
+        // $form-submit / $window-resize (and opt-in integrity signals), plus
+        // any custom trackEvent() names; filtering here was hiding them from
+        // the transport markers even when they were present in ClickHouse.
+        // Events + `$page-view` spans (page views are spans, not events — do
+        // not project them into default.events or they dual-appear in traces).
         query: `SELECT event_type,
-                       toUnixTimestamp64Milli(event_at) as event_at_ms,
+                       toUnixTimestamp64Milli(event_at) AS event_at_ms,
                        data
-                FROM default.events
-                WHERE session_replay_id = {id:String}
-                  AND event_type IN ('$click', '$page-view')
+                FROM (
+                  SELECT event_type, event_at, toString(data) AS data
+                  FROM default.events
+                  WHERE session_replay_id = {id:String}
+                  UNION ALL
+                  SELECT span_type AS event_type, span_started_at AS event_at, data
+                  FROM default.spans
+                  WHERE session_replay_id = {id:String}
+                    AND span_type = '$page-view'
+                )
                 ORDER BY event_at ASC
                 LIMIT 2000`,
         params: { id: selectedRecordingId },

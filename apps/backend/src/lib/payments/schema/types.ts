@@ -101,6 +101,7 @@ export type SubscriptionRow = {
   productRevokedAtMillis: number | null,
   creationSource: PurchaseCreationSource,
   createdAtMillis: number,
+  updatedAtMillis: number,
 };
 
 export type SubscriptionInvoiceRow = {

@@ -75,13 +75,12 @@ export async function runClickhouseMigrations() {
 
   // Add column comments to all views so DESCRIBE TABLE returns useful descriptions.
   // Comments are lost on CREATE OR REPLACE VIEW, so we re-apply them every migration run.
-  // Using allSettled so a stale comment (e.g. renamed column) doesn't break startup.
-  const commentResults = await Promise.allSettled(COLUMN_COMMENTS.map(sql =>
-    client.command({ query: sql })
-  ));
-  const commentFailures = commentResults.filter(r => r.status === "rejected");
-  if (commentFailures.length > 0) {
-    console.warn(`[clickhouse-migrations] ${commentFailures.length}/${COLUMN_COMMENTS.length} column comment(s) failed to apply`);
+  // The AI query builder treats these comments as authoritative schema metadata,
+  // so a partial application is incompatible with the backend version being deployed.
+  // One ALTER per view keeps each view's metadata update atomic and avoids
+  // contending on the same metadata lock with one command per column.
+  for (const sql of COLUMN_COMMENT_SQL) {
+    await client.command({ query: sql });
   }
 
   // Row policies in parallel
@@ -125,8 +124,11 @@ PARTITION BY toYYYYMM(event_at)
 ORDER BY (project_id, branch_id, event_at);
 `;
 
+// Physical events only. `$page-view` is a SPAN (see default.spans) — never
+// project spans into this view or the traces UI shows the same fact twice
+// (event diamond + span bar). Metrics that need page views query spans directly.
 const EVENTS_VIEW_SQL = `
-CREATE OR REPLACE VIEW default.events 
+CREATE OR REPLACE VIEW default.events
 SQL SECURITY DEFINER
 AS
 SELECT *
@@ -786,11 +788,11 @@ WHERE sync_is_deleted = 0;
 // returns useful descriptions for each column. The AI assistant uses
 // SHOW TABLES + DESCRIBE TABLE for schema discovery instead of
 // hardcoded schema in the prompt.
-const COLUMN_COMMENTS: string[] = [
+const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── events ──
-  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$page-view, \$click, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger; other values are customer-defined custom events'`,
+  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger; other values are customer-defined custom events. Page views are NOT events — query default.spans WHERE span_type = \$page-view'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
-  `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$page-view → {is_anonymous, path, referrer}; \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
+  `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
   `ALTER TABLE default.events COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,
   `ALTER TABLE default.events COMMENT COLUMN branch_id 'Branch identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,
   `ALTER TABLE default.events COMMENT COLUMN user_id 'User who triggered the event. Always populated despite Nullable type'`,
@@ -935,6 +937,57 @@ const COLUMN_COMMENTS: string[] = [
   `ALTER TABLE default.connected_accounts COMMENT COLUMN provider_account_id 'User account ID at the external provider'`,
   `ALTER TABLE default.connected_accounts COMMENT COLUMN created_at 'When this account was linked (UTC)'`,
 ];
+
+const COLUMN_COMMENT_TABLES = [
+  "events",
+  "users",
+  "contact_channels",
+  "teams",
+  "team_member_profiles",
+  "team_permissions",
+  "team_invitations",
+  "email_outboxes",
+  "project_permissions",
+  "notification_preferences",
+  "refresh_tokens",
+  "connected_accounts",
+];
+
+function buildColumnCommentSql(): string[] {
+  const actionsByTable = new Map<string, string[]>();
+  for (const table of COLUMN_COMMENT_TABLES) {
+    actionsByTable.set(table, []);
+  }
+
+  for (const statement of COLUMN_COMMENT_STATEMENTS) {
+    let matched = false;
+    for (const table of COLUMN_COMMENT_TABLES) {
+      const prefix = `ALTER TABLE default.${table} `;
+      if (statement.startsWith(prefix)) {
+        const actions = actionsByTable.get(table);
+        if (actions == null) {
+          throw new Error(`Missing column comment action group for analytics view: ${table}`);
+        }
+        actions.push(statement.slice(prefix.length));
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      throw new Error(`Column comment statement does not target a known analytics view: ${statement}`);
+    }
+  }
+
+  return COLUMN_COMMENT_TABLES.map((table) => {
+    const actions = actionsByTable.get(table);
+    if (actions == null || actions.length === 0) {
+      throw new Error(`No column comments configured for analytics view: ${table}`);
+    }
+    return `ALTER TABLE default.${table}\n  ${actions.join(",\n  ")}`;
+  });
+}
+
+const COLUMN_COMMENT_SQL = buildColumnCommentSql();
 
 const EXTERNAL_ANALYTICS_DB_SQL = `
 CREATE DATABASE IF NOT EXISTS analytics_internal;

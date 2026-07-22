@@ -5,6 +5,7 @@ import { getClickhouseAdminClient, type ClickHouseClient } from '@/lib/clickhous
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { isPreviewModeEnabled } from '@/lib/preview-mode';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
+import { SPAN_ID_PREFIXES, toSpanId } from '@/lib/spans';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction, type PrismaClientTransaction } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
@@ -1713,7 +1714,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
  *
  *   1. ProjectUser rows with back-dated signedUpAt/createdAt
  *   2. $token-refresh events in ClickHouse with geolocated ip_info
- *   3. $page-view events in ClickHouse for daily visitors/page views/referrers
+ *   3. $page-view spans in ClickHouse for daily visitors/page views/referrers
  *   4. $click events in ClickHouse for the clicks chart
  */
 async function seedBulkSignupsAndActivity(options: {
@@ -1735,6 +1736,9 @@ async function seedBulkSignupsAndActivity(options: {
 
   const dayOffsets = distributeBulkSignups(count, days, rand, now);
   const clickhouseRows: Array<Record<string, unknown>> = [];
+  // Page views are spans; seed them into analytics_internal.spans so overview
+  // metrics (which query spans, not events) pick them up.
+  const pageViewSpanRows: Array<Record<string, unknown>> = [];
 
   let created = 0;
   let updated = 0;
@@ -1936,23 +1940,37 @@ async function seedBulkSignupsAndActivity(options: {
       });
 
       const pageViewCount = 1 + Math.floor(rand() * 4);
+      let clickPageViewSpanId: string | null = null;
       for (let p = 0; p < pageViewCount; p++) {
         const pvOffset = Math.floor(rand() * 3600) * 1000;
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
         const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
-        clickhouseRows.push({
-          event_type: '$page-view',
-          event_at: formatClickhouseTimestamp(pvTime),
-          data: {
+        // `v` is part of the namespace because a returning user can have
+        // several visits on the same sampled day; each page view must remain a
+        // distinct ReplacingMergeTree row.
+        const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`);
+        clickPageViewSpanId ??= spanId;
+        pageViewSpanRows.push({
+          id: toSpanId(SPAN_ID_PREFIXES.pageView, spanId),
+          span_type: '$page-view',
+          span_started_at: formatClickhouseTimestamp(pvTime),
+          span_ended_at: formatClickhouseTimestamp(pvTime),
+          parent_span_ids: [],
+          data: JSON.stringify({
             path: BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)],
             referrer: p === 0 ? pickBulkReferrer(rand) : '',
             is_anonymous: false,
-          },
+          }),
           project_id: tenancy.project.id,
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
+          refresh_token_id: null,
+          session_replay_id: null,
+          session_replay_segment_id: null,
+          // Seed rows are write-once; version = start ms is enough for uniqueness.
+          version: pvTime.getTime(),
         });
       }
 
@@ -1971,12 +1989,18 @@ async function seedBulkSignupsAndActivity(options: {
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
+          // Raw seed inserts bypass the API's page_view_span_id-to-parent
+          // composition, so write the same canonical pv- ancestry directly.
+          parent_span_ids: [toSpanId(
+            SPAN_ID_PREFIXES.pageView,
+            clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
+          )],
         });
       }
     }
   }
 
-  console.log(`[seed-activity] Flushing ${clickhouseRows.length} events to ClickHouse...`);
+  console.log(`[seed-activity] Flushing ${clickhouseRows.length} events + ${pageViewSpanRows.length} $page-view spans to ClickHouse...`);
   // Large batches: ClickHouse ingests tens of thousands of rows per insert
   // happily, so a bigger batch means far fewer HTTP round-trips.
   const BATCH = 10_000;
@@ -1984,22 +2008,36 @@ async function seedBulkSignupsAndActivity(options: {
   for (let i = 0; i < clickhouseRows.length; i += BATCH) {
     clickhouseBatches.push(clickhouseRows.slice(i, i + BATCH));
   }
-  await Promise.all(clickhouseBatches.map((batch) => clickhouse.insert({
-    table: 'analytics_internal.events',
-    values: batch,
-    format: 'JSONEachRow',
-    clickhouse_settings: {
-      date_time_input_format: 'best_effort',
-      async_insert: 1,
-    },
-  })));
+  const pageViewSpanBatches: Array<Array<Record<string, unknown>>> = [];
+  for (let i = 0; i < pageViewSpanRows.length; i += BATCH) {
+    pageViewSpanBatches.push(pageViewSpanRows.slice(i, i + BATCH));
+  }
+  await Promise.all([
+    ...clickhouseBatches.map((batch) => clickhouse.insert({
+      table: 'analytics_internal.events',
+      values: batch,
+      format: 'JSONEachRow',
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+      },
+    })),
+    ...pageViewSpanBatches.map((batch) => clickhouse.insert({
+      table: 'analytics_internal.spans',
+      values: batch,
+      format: 'JSONEachRow',
+      clickhouse_settings: {
+        date_time_input_format: 'best_effort',
+        async_insert: 1,
+      },
+    })),
+  ]);
 
   const tokenRefreshCount = clickhouseRows.filter(r => r.event_type === '$token-refresh').length;
-  const pageViewCount = clickhouseRows.filter(r => r.event_type === '$page-view').length;
   const clickCount = clickhouseRows.filter(r => r.event_type === '$click').length;
 
   console.log(`[seed-activity] Done. created=${created} updated=${updated}`);
-  console.log(`[seed-activity] Events: $token-refresh=${tokenRefreshCount} $page-view=${pageViewCount} $click=${clickCount} total=${clickhouseRows.length}`);
+  console.log(`[seed-activity] Events: $token-refresh=${tokenRefreshCount} $click=${clickCount} total=${clickhouseRows.length}; $page-view spans=${pageViewSpanRows.length}`);
 }
 
 /**

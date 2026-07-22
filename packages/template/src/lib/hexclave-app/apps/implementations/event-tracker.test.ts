@@ -73,7 +73,6 @@ describe("EventTracker", () => {
       // exactly one click event either way.
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
         [
-          "$page-view",
           "$click",
         ]
       `);
@@ -174,10 +173,10 @@ describe("EventTracker", () => {
 
       await advancePastFlush();
 
+      // Dev-tool clicks are ignored; page views are span-only so the events
+      // array is empty (the batch still carries the $page-view span).
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
-        [
-          "$page-view",
-        ]
+        []
       `);
     } finally {
       tracker.stop();
@@ -346,10 +345,10 @@ describe("EventTracker", () => {
       document.querySelector("#late")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await vi.advanceTimersByTimeAsync(500);
 
+      // First flush ships only the $page-view span (no events yet — the click
+      // is held for dead-click classification).
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
-        [
-          "$page-view",
-        ]
+        []
       `);
 
       // By the next flush the sweep has classified it (dead — nothing
@@ -389,12 +388,10 @@ describe("EventTracker", () => {
 
       await advancePastFlush();
 
-      expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
-        [
-          "$page-view",
-          "$page-view",
-        ]
-      `);
+      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, data: { entry_type?: string } }[] };
+      const pageViewSpans = (payload.spans ?? []).filter((span) => span.span_type === "$page-view");
+      expect(pageViewSpans.map((span) => span.data.entry_type)).toEqual(["initial", "push"]);
+      expect(getSentEventTypes(sentBodies)).toEqual([]);
     } finally {
       tracker.stop();
     }
@@ -454,8 +451,8 @@ describe("EventTracker", () => {
       await expect(promise).resolves.toBeUndefined();
 
       const payload = JSON.parse(sentBodies[0] ?? "{}") as { events: { event_type: string, data: Record<string, unknown>, parent_span_ids?: string[] }[] };
-      expect(payload.events.map((event) => event.event_type)).toEqual(["$page-view", "checkout_completed"]);
-      const custom = payload.events[1];
+      expect(payload.events.map((event) => event.event_type)).toEqual(["checkout_completed"]);
+      const custom = payload.events[0];
       expect(custom.data).toEqual({ cart_size: 3 });
       // No parents were given and no globals are set — the key is omitted
       // entirely (the server stamps system ancestry on every event anyway).
@@ -743,9 +740,10 @@ describe("EventTracker", () => {
       await advancePastFlush();
 
       for (const body of sentBodies) {
-        const payload = JSON.parse(body) as { events: { event_type: string }[], spans?: unknown[] };
+        const payload = JSON.parse(body) as { events?: { event_type: string }[], spans?: unknown[] };
+        // clearBuffer inert-ifies open handles; nothing custom may ship after.
         expect(payload.spans).toBeUndefined();
-        expect(payload.events.every((event) => event.event_type === "$page-view")).toBe(true);
+        expect(payload.events ?? []).toEqual([]);
       }
     } finally {
       tracker.stop();
@@ -1192,11 +1190,10 @@ describe("EventTracker $page-view span + autocapture", () => {
       expect(second.ended_at_ms).toBeNull();
       expect(second.data.entry_type).toBe("push");
 
-      // Both the legacy $page-view events and custom events carry the page
-      // ancestry of the page they happened on.
+      // Custom events carry the page ancestry of the page they happened on.
+      // Page views themselves are span-only (no companion $page-view event).
       const events = allEvents(sentBodies);
-      const pageViewEvents = events.filter((event) => event.event_type === "$page-view");
-      expect(pageViewEvents.map((event) => event.page_view_span_id)).toEqual([firstSpanId, secondSpanId]);
+      expect(events.filter((event) => event.event_type === "$page-view")).toHaveLength(0);
       expect(events.find((event) => event.event_type === "on_second_page")?.page_view_span_id).toBe(secondSpanId);
     } finally {
       tracker.stop();
@@ -1217,7 +1214,28 @@ describe("EventTracker $page-view span + autocapture", () => {
 
       const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
       expect(clicks.map((click) => click.data.rage)).toEqual([undefined, undefined, 1]);
-      expect(clicks.every((click) => click.page_view_span_id === undefined)).toBe(false);
+      clicks.forEach((click) => expect(click.page_view_span_id).toBeTypeOf("string"));
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("does not carry a rage-click burst across an SPA page view", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "<button id=\"buy\">Buy</button>";
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      for (let i = 0; i < 2; i++) {
+        document.querySelector("#buy")?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 60 }));
+      }
+      window.history.pushState({}, "", "/after-navigation");
+      document.querySelector("#buy")?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 50, clientY: 60 }));
+      await advancePastFlush();
+
+      const clicks = allEvents(sentBodies).filter((event) => event.event_type === "$click");
+      expect(clicks.map((click) => click.data.rage)).toEqual([undefined, undefined, undefined]);
     } finally {
       tracker.stop();
     }
@@ -1281,6 +1299,52 @@ describe("EventTracker $page-view span + autocapture", () => {
     }
   });
 
+  it("drops an oversized autocapture item without poisoning the shared batch", async () => {
+    vi.useFakeTimers();
+    const fieldName = `field-${"x".repeat(17_000)}`;
+    document.body.innerHTML = `<form id="oversized"><input name="${fieldName}" /></form>`;
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      tracker.start();
+      document.querySelector("#oversized")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      tracker.trackCustomEvent("still_valid").catch(() => {});
+      await advancePastFlush();
+
+      const events = allEvents(sentBodies);
+      expect(events.some((event) => event.event_type === "$form-submit")).toBe(false);
+      expect(events.some((event) => event.event_type === "still_valid")).toBe(true);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("dropping $form-submit"));
+    } finally {
+      tracker.stop();
+      warning.mockRestore();
+    }
+  });
+
+  it("captures $window-resize after the trailing debounce settles", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies);
+    try {
+      tracker.start();
+      // Continuous resize stream — only the settled size should land.
+      window.dispatchEvent(new Event("resize"));
+      window.dispatchEvent(new Event("resize"));
+      await vi.advanceTimersByTimeAsync(499);
+      expect(allEvents(sentBodies).some((event) => event.event_type === "$window-resize")).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await advancePastFlush();
+      const resize = allEvents(sentBodies).find((event) => event.event_type === "$window-resize");
+      expect(resize).toBeDefined();
+      expect(resize!.data.viewport_width).toBe(window.innerWidth);
+      expect(resize!.data.viewport_height).toBe(window.innerHeight);
+    } finally {
+      tracker.stop();
+    }
+  });
+
   it("tracks offline periods as $offline spans (open on offline, closed on online)", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
@@ -1322,8 +1386,9 @@ describe("EventTracker $page-view span + autocapture", () => {
       const rotationSpan = allSpans(sentBodies).find((span) => span.span_id === afterRotation);
       expect(rotationSpan?.span_type).toBe("$page-view");
       expect(rotationSpan?.data.entry_type).toBe("rotation");
-      // Exactly one $page-view EVENT total (the initial one) — rotation adds none.
-      expect(allEvents(sentBodies).filter((event) => event.event_type === "$page-view")).toHaveLength(1);
+      // Page views are span-only — neither the initial capture nor rotation
+      // emits a companion $page-view event.
+      expect(allEvents(sentBodies).filter((event) => event.event_type === "$page-view")).toHaveLength(0);
       // The pre-rotation span handle was inert-ified: no post-rotation re-write
       // of the old span id ships under the new identity.
       const oldSpanRows = allSpans(sentBodies).filter((span) => span.span_id === beforeRotation);
@@ -1359,7 +1424,13 @@ describe("EventTracker integrity signals (opt-in)", () => {
     vi.useRealTimers();
   });
 
-  it("stays silent without the opt-in: no $tab-hidden spans, no clipboard events", async () => {
+  function awayRows(sentBodies: string[]) {
+    return sentBodies
+      .flatMap((body) => (JSON.parse(body) as { spans?: { span_id: string, span_type: string, ended_at_ms: number | null, page_view_span_id?: string, data: Record<string, unknown> }[] }).spans ?? [])
+      .filter((span) => span.span_type === "$away");
+  }
+
+  it("stays silent without the opt-in: no $away spans, no clipboard events", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies, false);
@@ -1371,14 +1442,14 @@ describe("EventTracker integrity signals (opt-in)", () => {
       await advancePastFlush();
 
       const payloads = sentBodies.map((body) => JSON.parse(body) as { events?: { event_type: string }[], spans?: { span_type: string }[] });
-      expect(payloads.flatMap((payload) => payload.spans ?? []).some((span) => span.span_type === "$tab-hidden")).toBe(false);
+      expect(payloads.flatMap((payload) => payload.spans ?? []).some((span) => span.span_type === "$away")).toBe(false);
       expect(payloads.flatMap((payload) => payload.events ?? []).some((event) => event.event_type === "$copy")).toBe(false);
     } finally {
       tracker.stop();
     }
   });
 
-  it("opens a $tab-hidden span on hidden and closes it on visible (tab-out interval)", async () => {
+  it("opens an $away span on hidden and closes it on visible (tab-out interval)", async () => {
     vi.useFakeTimers();
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies, true);
@@ -1386,28 +1457,25 @@ describe("EventTracker integrity signals (opt-in)", () => {
       tracker.start();
       setVisibilityState("hidden");
       // The keepalive flush triggered by going hidden already carries the OPEN
-      // $tab-hidden row — crucial because a hidden tab may never come back.
+      // $away row — crucial because a hidden tab may never come back.
       await vi.advanceTimersByTimeAsync(0);
-      const openRows = sentBodies
-        .flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null, page_view_span_id?: string }[] }).spans ?? [])
-        .filter((span) => span.span_type === "$tab-hidden");
+      const openRows = awayRows(sentBodies);
       expect(openRows).toHaveLength(1);
       expect(openRows[0].ended_at_ms).toBeNull();
+      expect(openRows[0].data.reasons).toEqual(["tab-hidden"]);
       expect(openRows[0].page_view_span_id).toBe(tracker.getCurrentPageViewSpanId());
 
       await vi.advanceTimersByTimeAsync(5_000);
       setVisibilityState("visible");
       await advancePastFlush();
-      const rows = sentBodies
-        .flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? [])
-        .filter((span) => span.span_type === "$tab-hidden");
+      const rows = awayRows(sentBodies);
       expect(rows[rows.length - 1].ended_at_ms).toBeTypeOf("number");
     } finally {
       tracker.stop();
     }
   });
 
-  it("records $window-blur as a span and $context-menu / $print / $fullscreen-exit as events", async () => {
+  it("records window blur as an $away span and $context-menu / $print / $fullscreen-exit as events", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<div id=\"content\">text</div>";
     const sentBodies: string[] = [];
@@ -1420,15 +1488,87 @@ describe("EventTracker integrity signals (opt-in)", () => {
       window.dispatchEvent(new Event("beforeprint"));
       await advancePastFlush();
 
-      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? []);
-      const blurRows = spans.filter((span) => span.span_type === "$window-blur");
+      const blurRows = awayRows(sentBodies);
       expect(blurRows.length).toBeGreaterThan(0);
+      expect(blurRows[blurRows.length - 1].data.reasons).toEqual(["window-blur"]);
       expect(blurRows[blurRows.length - 1].ended_at_ms).toBeTypeOf("number");
 
       const events = sentBodies.flatMap((body) => (JSON.parse(body) as { events?: { event_type: string, data: Record<string, unknown> }[] }).events ?? []);
       const contextMenu = events.find((event) => event.event_type === "$context-menu");
       expect(contextMenu?.data.tag_name).toBe("div");
       expect(events.some((event) => event.event_type === "$print")).toBe(true);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("merges a tab switch (blur + hidden) into ONE $away span whose reasons record both sensors", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      // A real tab switch fires blur first, then visibilitychange(hidden).
+      window.dispatchEvent(new Event("blur"));
+      setVisibilityState("hidden");
+      await vi.advanceTimersByTimeAsync(5_000);
+      // Return: visible + focus. Only then does the interval close.
+      setVisibilityState("visible");
+      window.dispatchEvent(new Event("focus"));
+      await advancePastFlush();
+
+      const rows = awayRows(sentBodies);
+      const ids = new Set(rows.map((row) => row.span_id));
+      expect(ids.size).toBe(1);
+      const last = rows[rows.length - 1];
+      expect(last.data.reasons).toEqual(["window-blur", "tab-hidden"]);
+      expect(last.ended_at_ms).toBeTypeOf("number");
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("keeps the $away span open while any sensor still holds (focus back to a hidden tab)", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("blur"));
+      setVisibilityState("hidden");
+      // Focus returns but the tab is still hidden — still away.
+      window.dispatchEvent(new Event("focus"));
+      await advancePastFlush();
+      const openRows = awayRows(sentBodies);
+      expect(openRows[openRows.length - 1].ended_at_ms).toBeNull();
+
+      setVisibilityState("visible");
+      await advancePastFlush();
+      const rows = awayRows(sentBodies);
+      expect(rows[rows.length - 1].ended_at_ms).toBeTypeOf("number");
+      // reasons record what fired during the interval, not the final state.
+      expect(rows[rows.length - 1].data.reasons).toEqual(["window-blur", "tab-hidden"]);
+    } finally {
+      tracker.stop();
+    }
+  });
+
+  it("ends open away and offline intervals before the pagehide keepalive flush", async () => {
+    vi.useFakeTimers();
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("offline"));
+      window.dispatchEvent(new Event("pagehide"));
+      await vi.advanceTimersByTimeAsync(0);
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: { span_type: string, ended_at_ms: number | null }[] }).spans ?? []);
+      for (const spanType of ["$away", "$offline"]) {
+        const rows = spans.filter((span) => span.span_type === spanType);
+        expect(rows[rows.length - 1]?.ended_at_ms).toBeTypeOf("number");
+      }
     } finally {
       tracker.stop();
     }
