@@ -9,6 +9,7 @@ import {
   ActionCell,
   Alert,
   AvatarCell,
+  AvatarCellSkeleton,
   Badge,
   Button,
   Checkbox,
@@ -1552,9 +1553,13 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       width: 200,
       renderCell: ({ row }) => (
         row.customerType === 'user' ? (
-          <UserCell userId={row.customerId} />
+          <Suspense fallback={<AvatarCellSkeleton />}>
+            <UserCell userId={row.customerId} />
+          </Suspense>
         ) : row.customerType === 'team' ? (
-          <TeamCell teamId={row.customerId} />
+          <Suspense fallback={<AvatarCellSkeleton />}>
+            <TeamCell teamId={row.customerId} />
+          </Suspense>
         ) : (
           <div className="flex items-center gap-2">
             <AvatarCell fallback="?" />

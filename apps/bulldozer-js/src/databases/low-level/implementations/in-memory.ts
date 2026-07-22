@@ -154,6 +154,9 @@ export function declareInMemoryLowLevelDatabase(dbId: string): LowLevelDatabase 
     combineSeqs(...seqs) {
       return this.initialSeq;
     },
+    async close() {
+      // In-memory databases have no external resources to release.
+    },
     async debugSnapshot() {
       return await traceSpanHot({ description: "bulldozer-js.low-level.in-memory.debugSnapshot", attributes: { "bulldozer.low_level.backend": "in-memory" } }, async () => {
         const stores: Record<string, LowLevelDatabaseDebugEntry[]> = {};

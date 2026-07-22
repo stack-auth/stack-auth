@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/skills",
-  "version": "1.0.46",
+  "version": "1.0.55",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@hexclave/shared": "workspace:*",
+    "@sentry/nextjs": "^10.45.0",
     "next": "16.2.9",
     "react": "19.2.3",
     "react-dom": "19.2.3"

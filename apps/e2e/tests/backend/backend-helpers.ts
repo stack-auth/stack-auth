@@ -1,5 +1,6 @@
 import type { ProjectConfigOverride } from "@hexclave/shared/dist/config/schema";
 import { AdminUserProjectsCrud } from "@hexclave/shared/dist/interface/crud/projects";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@hexclave/shared/dist/utils/crypto";
 import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -1272,6 +1273,71 @@ export namespace InternalApiKey {
   }
 }
 
+// A new project's billing team is granted the free plan in the same
+// transaction as the team create, but the Bulldozer write that actually
+// materializes the entitlement is fired asynchronously and its item
+// quantities (auth_users, analytics_timeout_seconds, emails_per_month, ...)
+// only appear once the subscription TimeFold catches up (see
+// apps/backend/.../teams/crud.tsx and lib/payments/ensure-free-plan.ts).
+// Until then the team's item quantities read as 0, and billing-gated
+// endpoints transiently reject: analytics queries throw
+// ITEM_QUANTITY_INSUFFICIENT_AMOUNT, user sign-ups trip the auth-users soft
+// limit, email sends hit a zero email quota, etc. Tests create a project and
+// immediately exercise those endpoints, so give the entitlement a chance to
+// materialize here. All plan items are emitted atomically by the subscription
+// TimeFold, so a single item crossing above zero implies the rest are present.
+//
+// This is a best-effort readiness wait, not an assertion: on timeout we return
+// and let the caller proceed rather than throwing. Two reasons. (1) Not every
+// created team has (or is expected to have) a free-plan entitlement — the grant
+// only happens for internal-project teams with a configured `free` product (see
+// teams/crud.tsx), so a hard failure here would wrongly break callers that only
+// need a project record and never touch billing. (2) Materialization latency is
+// an environment condition (Bulldozer load), not a test failure; under a heavily
+// loaded CI shard it can exceed the timeout, and turning that into a thrown error
+// makes otherwise-passing tests flake. If the entitlement really never lands, the
+// caller's own billing-gated assertion is what should (and does) surface it.
+//
+// The free-plan grant rides the `runAsynchronouslyAndWaitUntil(bulldozerWriteSubscription(...))`
+// fire-and-forget write in teams/crud.tsx, whose TimeFold can be badly backed up on a
+// cold, freshly-started CI shard — we've observed it take seconds there while completing
+// in well under a second locally. Since this loop returns the instant the entitlement
+// appears, the cap adds no latency on the happy path; it only bounds the wait when
+// materialization has genuinely stalled.
+//
+// The cap is half of Vitest's per-test timeout (see apps/e2e/vitest.config.ts: 60s in CI,
+// 30s locally). This wait runs *inside* Project.create, so a cap at or above the test
+// timeout would turn slow materialization into a hard test timeout — even for tests that
+// never touch billing (e.g. outbox rendering-state tests). Bounding it at half the budget
+// guarantees the wait alone can never time a test out and still leaves ample time for the
+// test body, while giving a stalled TimeFold a fair chance to catch up.
+async function waitForBillingTeamPlanEntitlement(ownerTeamId: string): Promise<void> {
+  const pollIntervalMs = 200;
+  const timeoutMs = (process.env.CI ? 60_000 : 30_000) / 2;
+  const startedAt = performance.now();
+
+  while (true) {
+    const quantity = await withInternalProject(async () => {
+      const response = await niceBackendFetch(
+        `/api/v1/payments/items/team/${encodeURIComponent(ownerTeamId)}/${ITEM_IDS.analyticsTimeoutSeconds}`,
+        { accessType: "server" },
+      );
+      if (response.status !== 200) {
+        throw new HexclaveAssertionError("Failed to read billing-team item quantity while waiting for plan entitlement", { ownerTeamId, response });
+      }
+      const quantity = response.body.quantity;
+      if (typeof quantity !== "number") {
+        throw new HexclaveAssertionError("Expected billing-team item quantity to be a number", { ownerTeamId, quantity });
+      }
+      return quantity;
+    });
+    if (quantity > 0) return;
+
+    if (performance.now() - startedAt > timeoutMs) return;
+    await wait(pollIntervalMs);
+  }
+}
+
 export namespace Project {
   export async function create(body?: any) {
     const ownerTeamId = body?.owner_team_id ?? (await User.getCurrent()).selected_team_id;
@@ -1295,6 +1361,15 @@ export namespace Project {
         id: expect.any(String),
       },
     });
+    // Wait on the owner team the backend actually recorded, not the pre-request
+    // value: the request body is merged with `...body`, so a caller could override
+    // owner_team_id, and it's the created project's owner team that the free-plan
+    // entitlement is granted to. Fall back to the resolved value if the response
+    // omits it.
+    const createdOwnerTeamId = response.body.owner_team_id ?? ownerTeamId;
+    if (createdOwnerTeamId != null) {
+      await waitForBillingTeamPlanEntitlement(createdOwnerTeamId);
+    }
     return {
       createProjectResponse: response,
       projectId: response.body.id as string,
@@ -1772,11 +1847,34 @@ export namespace Payments {
       }
       headers["stripe-signature"] = header;
     }
-    return await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
+    const res = await niceBackendFetch("/api/latest/integrations/stripe/webhooks", {
       method: "POST",
       headers,
       body: payload,
     });
+    // The webhook route acks Stripe immediately and processes the event in a
+    // fire-and-forget background task. E2E tests read side effects (transactions,
+    // subscriptions, ...) right after, so we deterministically wait for that
+    // background work to finish before returning. Only do this when the event was
+    // actually accepted for processing (a successful, non-deduplicated ack);
+    // signature-rejection tests never spawn background work.
+    if (res.status === 200 && res.body?.received === true && res.body?.deduplicated !== true) {
+      await flushBackgroundTasks();
+    }
+    return res;
   }
 
+}
+
+// Waits for any in-flight background tasks (e.g. async Stripe webhook processing)
+// to finish. Backed by the internal flush-background-tasks endpoint.
+export async function flushBackgroundTasks() {
+  const res = await withInternalProject(async () => {
+    return await niceBackendFetch("/api/latest/internal/flush-background-tasks", {
+      method: "POST",
+      accessType: "admin",
+      body: {},
+    });
+  });
+  expect(res.status).toBe(200);
 }

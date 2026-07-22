@@ -1,4 +1,5 @@
 import { decodeBase64, encodeBase64 } from "@hexclave/shared/dist/utils/bytes";
+import { shouldSuppressPeriodicBulldozerLogs } from "../../logging.js";
 import { traceSpan, traceSpanHot } from "../../otel.js";
 import { Database, DatabaseSeq } from "../index.js";
 import { LowLevelDatabase, LowLevelDatabaseDebugSnapshot } from "../low-level/index.js";
@@ -659,32 +660,34 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
           })
           .sort((a, b) => b.count - a.count)
           .slice(0, 10);
-        console.debug("bulldozer-js piledriver setRootObject timing", {
-          elapsedMs: performance.now() - startedAt,
-          serializePiledriverObjectMs,
-          serializeCpuMs,
-          serializeCpuToWallRatio: serializePiledriverObjectMs === 0 ? 0 : serializeCpuMs / serializePiledriverObjectMs,
-          rootStoreSetAllMs,
-          rootValueBytes: buffer.byteLength,
-          primitiveNodes: timingStats.primitiveNodes,
-          arrayNodes: timingStats.arrayNodes,
-          arrayItems: timingStats.arrayItems,
-          objectNodes: timingStats.objectNodes,
-          objectEntries: timingStats.objectEntries,
-          heapReferenceNodes: timingStats.heapReferenceNodes,
-          serializeToJsonableTotalMs: timingStats.serializeToJsonableTotalMs,
-          jsonStringifyTotalMs: timingStats.jsonStringifyTotalMs,
-          textEncodeTotalMs: timingStats.textEncodeTotalMs,
-          heapObjectCacheHits: timingStats.heapObjectCacheHits,
-          heapObjectCacheMisses: timingStats.heapObjectCacheMisses,
-          heapObjectCacheHitAwaitTotalMs: timingStats.heapObjectCacheHitAwaitTotalMs,
-          heapObjectCacheMissAwaitTotalMs: timingStats.heapObjectCacheMissAwaitTotalMs,
-          heapObjectGetTotalMs: timingStats.heapObjectGetTotalMs,
-          heapObjectSerializeTotalMs: timingStats.heapObjectSerializeTotalMs,
-          heapObjectInsertAwaitTotalMs: timingStats.heapObjectInsertAwaitTotalMs,
-          topHeapObjectCacheMissShapes,
-          topSerializationBranches,
-        });
+        if (!shouldSuppressPeriodicBulldozerLogs) {
+          console.debug("bulldozer-js piledriver setRootObject timing", {
+            elapsedMs: performance.now() - startedAt,
+            serializePiledriverObjectMs,
+            serializeCpuMs,
+            serializeCpuToWallRatio: serializePiledriverObjectMs === 0 ? 0 : serializeCpuMs / serializePiledriverObjectMs,
+            rootStoreSetAllMs,
+            rootValueBytes: buffer.byteLength,
+            primitiveNodes: timingStats.primitiveNodes,
+            arrayNodes: timingStats.arrayNodes,
+            arrayItems: timingStats.arrayItems,
+            objectNodes: timingStats.objectNodes,
+            objectEntries: timingStats.objectEntries,
+            heapReferenceNodes: timingStats.heapReferenceNodes,
+            serializeToJsonableTotalMs: timingStats.serializeToJsonableTotalMs,
+            jsonStringifyTotalMs: timingStats.jsonStringifyTotalMs,
+            textEncodeTotalMs: timingStats.textEncodeTotalMs,
+            heapObjectCacheHits: timingStats.heapObjectCacheHits,
+            heapObjectCacheMisses: timingStats.heapObjectCacheMisses,
+            heapObjectCacheHitAwaitTotalMs: timingStats.heapObjectCacheHitAwaitTotalMs,
+            heapObjectCacheMissAwaitTotalMs: timingStats.heapObjectCacheMissAwaitTotalMs,
+            heapObjectGetTotalMs: timingStats.heapObjectGetTotalMs,
+            heapObjectSerializeTotalMs: timingStats.heapObjectSerializeTotalMs,
+            heapObjectInsertAwaitTotalMs: timingStats.heapObjectInsertAwaitTotalMs,
+            topHeapObjectCacheMissShapes,
+            topSerializationBranches,
+          });
+        }
         return { seq: rootSeq };
       });
     },
@@ -696,6 +699,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     },
     combineSeqs(...seqs) {
       return lowLevelDb.combineSeqs(...seqs);
+    },
+    async close() {
+      await lowLevelDb.close();
     },
     waitUntilAvailable(seq) {
       return traceSpan("bulldozer-js.piledriver.waitUntilAvailable", async () => await lowLevelDb.waitUntilAvailable(seq));
