@@ -24,12 +24,14 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 type CliAuthSummary = {
-  total_attempts: number,
-  completed_attempts: number,
-  used_attempts: number,
-  expired_attempts: number,
-  pending_attempts: number,
-  active_tokens: number,
+  attempts_in_window: number,
+  completed_attempts_in_window: number,
+  used_attempts_in_window: number,
+  expired_attempts_in_window: number,
+  pending_attempts_in_window: number,
+  active_tokens_in_lookup_window: number,
+  attempt_window_limit: number,
+  active_token_lookup_window_limit: number,
 };
 
 type CliAuthAttempt = {
@@ -96,7 +98,7 @@ function formatRelativeTime(dateStr: string): string {
 export default function PageClient() {
   return (
     <AppEnabledGuard appId="cli-auth">
-      <PageLayout title="CLI Auth" description="Monitor CLI authentication sessions and active tokens">
+      <PageLayout title="CLI Auth" description="Monitor recent authentication attempts and CLI sessions">
         <CliAuthContent />
       </PageLayout>
     </AppEnabledGuard>
@@ -138,7 +140,7 @@ function CliAuthContent() {
     return (
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+          {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-20 w-full rounded-xl" />)}
         </div>
         <Skeleton className="h-64 w-full rounded-xl" />
         <Skeleton className="h-64 w-full rounded-xl" />
@@ -161,8 +163,8 @@ function CliAuthContent() {
 
 function CliAuthDashboard({ data }: { data: CliAuthData }) {
   const { summary, recent_attempts, active_cli_users } = data;
-  const activeUsers = active_cli_users.filter((u) => !u.is_expired);
-  const expiredUsers = active_cli_users.filter((u) => u.is_expired);
+  const activeUsers = active_cli_users.filter((user) => !user.is_expired);
+  const expiredUsers = active_cli_users.filter((user) => user.is_expired);
 
   return (
     <div className="flex flex-col gap-4">
@@ -172,28 +174,28 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
         description={<>
           CLI Auth allows users to authenticate from command-line tools using a browser-based login flow.
           The CLI initiates a session, the user confirms in a browser, and a refresh token is issued to the CLI.
+          Metrics below are bounded snapshots: attempt counts cover the newest {summary.attempt_window_limit} attempts,
+          and CLI sessions are discovered from the newest {summary.active_token_lookup_window_limit} attempts.
         </>}
       />
 
-      {/* Summary KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <KpiCard label="Total" value={summary.total_attempts} icon={<TerminalWindowIcon className="h-4 w-4" />} />
-        <KpiCard label="Used" value={summary.used_attempts} icon={<CheckCircleIcon className="h-4 w-4 text-emerald-500" />} />
-        <KpiCard label="Ready" value={summary.completed_attempts} icon={<CheckCircleIcon className="h-4 w-4 text-blue-500" />} />
-        <KpiCard label="Expired" value={summary.expired_attempts} icon={<XCircleIcon className="h-4 w-4 text-red-500" />} />
-        <KpiCard label="Active tokens" value={summary.active_tokens} icon={<UserIcon className="h-4 w-4 text-blue-500" />} />
+        <KpiCard label="Recent attempts" value={summary.attempts_in_window} icon={<TerminalWindowIcon className="h-4 w-4" />} />
+        <KpiCard label="Used" value={summary.used_attempts_in_window} icon={<CheckCircleIcon className="h-4 w-4 text-emerald-500" />} />
+        <KpiCard label="Ready" value={summary.completed_attempts_in_window} icon={<CheckCircleIcon className="h-4 w-4 text-blue-500" />} />
+        <KpiCard label="Expired" value={summary.expired_attempts_in_window} icon={<XCircleIcon className="h-4 w-4 text-red-500" />} />
+        <KpiCard label="Active tokens" value={summary.active_tokens_in_lookup_window} icon={<UserIcon className="h-4 w-4 text-blue-500" />} />
       </div>
 
-      {/* Active CLI Users */}
       <DesignCard
         title="Active CLI Sessions"
-        subtitle={`${activeUsers.length} user${activeUsers.length === 1 ? "" : "s"} with active CLI refresh tokens`}
+        subtitle={`${summary.active_tokens_in_lookup_window} active token${summary.active_tokens_in_lookup_window === 1 ? "" : "s"} found in the latest ${summary.active_token_lookup_window_limit} attempts`}
         icon={UserIcon}
         glassmorphic
       >
         {activeUsers.length === 0 ? (
           <div className="py-6 text-center">
-            <Typography variant="secondary" className="text-xs">No active CLI sessions.</Typography>
+            <Typography variant="secondary" className="text-xs">No active CLI sessions in the lookup window.</Typography>
           </div>
         ) : (
           <div className="divide-y divide-border/40">
@@ -203,7 +205,7 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
                   <Typography className="text-sm font-medium truncate">
                     {user.display_name ?? user.primary_email ?? user.user_id}
                   </Typography>
-                  {user.primary_email && user.display_name && (
+                  {user.primary_email != null && user.display_name != null && (
                     <Typography variant="secondary" className="text-xs truncate">{user.primary_email}</Typography>
                   )}
                 </div>
@@ -224,17 +226,15 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
         )}
         {expiredUsers.length > 0 && (
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors hover:transition-none">
-              {expiredUsers.length} expired session{expiredUsers.length === 1 ? "" : "s"}
+            <summary className="cursor-pointer text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground hover:transition-none">
+              {expiredUsers.length} expired session{expiredUsers.length === 1 ? "" : "s"} in the lookup window
             </summary>
             <div className="mt-2 divide-y divide-border/40">
               {expiredUsers.map((user) => (
                 <div key={`${user.user_id}-${user.token_created_at}`} className="flex items-center justify-between gap-3 py-2.5 opacity-60">
-                  <div className="flex flex-col gap-0.5 min-w-0">
-                    <Typography className="text-sm truncate">
-                      {user.display_name ?? user.primary_email ?? user.user_id}
-                    </Typography>
-                  </div>
+                  <Typography className="text-sm truncate">
+                    {user.display_name ?? user.primary_email ?? user.user_id}
+                  </Typography>
                   <div className="flex items-center gap-3 shrink-0">
                     <Typography variant="secondary" className="text-[11px]">
                       Expired {user.expires_at != null ? formatRelativeTime(user.expires_at) : ""}
@@ -248,7 +248,6 @@ function CliAuthDashboard({ data }: { data: CliAuthData }) {
         )}
       </DesignCard>
 
-      {/* Recent Attempts */}
       <DesignCard
         title="Recent Login Attempts"
         subtitle="Last 50 CLI authentication attempts"

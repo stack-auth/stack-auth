@@ -2,8 +2,6 @@ import { getPublicEnvVar } from "@/lib/env";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 // The dev tool overlay runs inside the customer's own app, which lives on a
 // different localhost origin than the development-environment dashboard on
 // :26700. It therefore has no browser secret and must reach this endpoint

@@ -1,6 +1,6 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { drainInFlightPromises } from "@/utils/background-tasks";
-import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
 // Test/dev-only hook that awaits any in-flight background tasks spawned via
 // `runAsynchronouslyAndWaitUntil` (e.g. Stripe webhook processing, which is
@@ -18,7 +18,11 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: adminAuthTypeSchema,
-      tenancy: adaptSchema.defined(),
+      tenancy: yupObject({
+        project: yupObject({
+          id: yupString().oneOf(["internal"]).defined(),
+        }).defined(),
+      }).defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),

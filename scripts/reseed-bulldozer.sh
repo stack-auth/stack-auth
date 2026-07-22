@@ -15,29 +15,139 @@ PORT_PREFIX="${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}"
 BULLDOZER_PORT="${PORT_PREFIX}46"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BULLDOZER_DIR="$REPO_ROOT/apps/bulldozer-js"
+DATA_DIR="$BULLDOZER_DIR/.data"
+TEMP_DATA_DIR=""
+BACKUP_DATA_DIR="$BULLDOZER_DIR/.data-backup.untracked.$$"
+BULLDOZER_SECRET="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+BULLDOZER_PID=""
 
-echo "Wiping bulldozer-js LMDB store at $BULLDOZER_DIR/.data ..."
-rm -rf "$BULLDOZER_DIR/.data"
+port_is_open() {
+  node - "$BULLDOZER_PORT" <<'NODE'
+const net = require("node:net");
+const port = Number(process.argv[2]);
+const socket = net.createConnection({ host: "127.0.0.1", port });
+socket.setTimeout(250);
+socket.once("connect", () => {
+  socket.destroy();
+  process.exit(0);
+});
+socket.once("error", () => process.exit(1));
+socket.once("timeout", () => {
+  socket.destroy();
+  process.exit(1);
+});
+NODE
+}
 
-echo "Starting temporary bulldozer-js on port $BULLDOZER_PORT ..."
-# Run the server directly (single node process, so we can reliably kill it) via
-# tsx's node loader — the same entrypoint the package's `start` script uses.
-(
-  cd "$BULLDOZER_DIR" && NODE_ENV=development exec node --import tsx --expose-gc src/index.ts
-) &
-BULLDOZER_PID=$!
-
-cleanup() {
+stop_bulldozer() {
+  if [[ -z "$BULLDOZER_PID" ]]; then
+    return
+  fi
   echo "Shutting down temporary bulldozer-js (pid $BULLDOZER_PID) ..."
   kill "$BULLDOZER_PID" 2>/dev/null || true
   wait "$BULLDOZER_PID" 2>/dev/null || true
+  BULLDOZER_PID=""
+}
+
+stop_bulldozer_cleanly() {
+  if [[ -z "$BULLDOZER_PID" ]]; then
+    echo "Temporary bulldozer-js is not running; refusing to install its store." >&2
+    return 1
+  fi
+  local pid="$BULLDOZER_PID"
+  echo "Gracefully shutting down temporary bulldozer-js (pid $pid) ..."
+  kill "$pid" 2>/dev/null || true
+  local process_status=0
+  wait "$pid" || process_status=$?
+  BULLDOZER_PID=""
+  if [[ "$process_status" -ne 0 ]]; then
+    echo "Temporary bulldozer-js did not shut down cleanly (status $process_status); keeping the existing store." >&2
+    return 1
+  fi
+}
+
+cleanup() {
+  stop_bulldozer
+  if [[ -n "$TEMP_DATA_DIR" && -d "$TEMP_DATA_DIR" ]]; then
+    rm -rf "$TEMP_DATA_DIR"
+  fi
+  if [[ -e "$BACKUP_DATA_DIR" ]]; then
+    if [[ ! -e "$DATA_DIR" ]]; then
+      mv "$BACKUP_DATA_DIR" "$DATA_DIR"
+    else
+      rm -rf "$BACKUP_DATA_DIR"
+    fi
+  fi
 }
 trap cleanup EXIT
 
-echo "Waiting for bulldozer-js to accept connections on port $BULLDOZER_PORT ..."
-pnpm exec wait-on -t 60000 "tcp:localhost:$BULLDOZER_PORT"
+if port_is_open; then
+  echo "Cannot re-seed bulldozer-js: port $BULLDOZER_PORT is already in use." >&2
+  echo "Stop the existing bulldozer-js process and run restart-deps again." >&2
+  exit 1
+fi
+
+# Build the replacement store separately. The existing store remains untouched
+# unless startup and the full Postgres backfill both succeed.
+TEMP_DATA_DIR="$(mktemp -d "$BULLDOZER_DIR/.data-reseed.untracked.XXXXXX")"
+TEMP_LMDB_PATH="$TEMP_DATA_DIR/bulldozer-js-lmdb"
+
+echo "Starting temporary bulldozer-js on port $BULLDOZER_PORT ..."
+(
+  cd "$BULLDOZER_DIR" && \
+    NODE_ENV=development \
+    BULLDOZER_JS_PORT="$BULLDOZER_PORT" \
+    HEXCLAVE_BULLDOZER_SERVER_SECRET="$BULLDOZER_SECRET" \
+    HEXCLAVE_BULLDOZER_JS_LMDB_PATH="$TEMP_LMDB_PATH" \
+    exec node --import tsx --expose-gc src/index.ts
+) &
+BULLDOZER_PID=$!
+
+echo "Waiting for temporary bulldozer-js to accept connections on port $BULLDOZER_PORT ..."
+ready=0
+for ((attempt = 0; attempt < 120; attempt++)); do
+  if ! kill -0 "$BULLDOZER_PID" 2>/dev/null; then
+    process_status=0
+    wait "$BULLDOZER_PID" || process_status=$?
+    BULLDOZER_PID=""
+    echo "Temporary bulldozer-js exited before becoming ready (status $process_status)." >&2
+    exit 1
+  fi
+  if port_is_open; then
+    ready=1
+    break
+  fi
+  sleep 0.5
+done
+if [[ "$ready" -ne 1 ]]; then
+  echo "Temporary bulldozer-js did not become ready within 60 seconds." >&2
+  exit 1
+fi
 
 echo "Running Postgres->bulldozer backfill ..."
-pnpm run db:backfill-bulldozer-from-prisma
+HEXCLAVE_BULLDOZER_SERVER_SECRET="$BULLDOZER_SECRET" \
+  HEXCLAVE_BULLDOZER_SERVER_URL="http://127.0.0.1:$BULLDOZER_PORT" \
+  pnpm run db:backfill-bulldozer-from-prisma
+
+echo "Waiting for the replacement store to become durable ..."
+curl --silent --show-error --fail-with-body \
+  --retry 3 \
+  --retry-all-errors \
+  --connect-timeout 10 \
+  --max-time 300 \
+  --request POST \
+  --header "Authorization: Bearer $BULLDOZER_SECRET" \
+  "http://127.0.0.1:$BULLDOZER_PORT/internal/wait-until-durable" \
+  --output /dev/null
+
+stop_bulldozer_cleanly
+
+echo "Replacing bulldozer-js LMDB store at $DATA_DIR ..."
+if [[ -e "$DATA_DIR" ]]; then
+  mv "$DATA_DIR" "$BACKUP_DATA_DIR"
+fi
+mv "$TEMP_DATA_DIR" "$DATA_DIR"
+TEMP_DATA_DIR=""
+rm -rf "$BACKUP_DATA_DIR"
 
 echo "Bulldozer re-seed complete."
