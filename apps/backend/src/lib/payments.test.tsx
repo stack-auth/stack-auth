@@ -89,7 +89,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
       stripeSubscriptionId: `stripe-${id}`, status: 'active',
       currentPeriodStart: now, currentPeriodEnd: periodEnd,
       cancelAtPeriodEnd: false, canceledAt: null, endedAt: null, refundedAt: null, productRevokedAt: null,
-      creationSource: 'TEST_MODE', createdAt: now,
+      creationSource: 'TEST_MODE', createdAt: now, updatedAt: now,
     });
   };
 
@@ -234,4 +234,3 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
     )).rejects.toThrowError('Price not found');
   });
 });
-

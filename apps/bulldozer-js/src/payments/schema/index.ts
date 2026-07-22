@@ -424,6 +424,59 @@ function subscriptionUpdatedState(state: SubscriptionFoldState, row: Subscriptio
   };
 }
 
+// A product-version rebase must not rewrite the immutable subscription-start
+// transaction, but newly introduced items must be usable immediately rather
+// than waiting until their first repeat boundary. Append a distinct transaction
+// for those items and track its grant refs in the fold for later expiry/repeat.
+function subscriptionAddedItemsStep(
+  previous: SubscriptionFoldState,
+  updated: SubscriptionFoldState,
+  row: SubscriptionRow,
+): { state: SubscriptionFoldState, event: PiledriverObject } | null {
+  const addedItems = Object.entries(row.product.includedItems)
+    .filter(([itemId]) => !(itemId in previous.product.includedItems));
+  if (addedItems.length === 0) return null;
+
+  const txnId = `sub-rebase:${row.id}:${row.updatedAtMillis}`;
+  const grants = addedItems.map(([itemId, item]) => {
+    const expiresWhen = normalizedExpiresWhen(item);
+    const nextRepeatMillis = updated.itemRepeatSchedule[itemId].nextRepeatMillis;
+    return {
+      itemId,
+      quantity: item.quantity * row.quantity,
+      expiresWhen,
+      expiresAtMillis: grantExpiryMillis(expiresWhen, nextRepeatMillis, row.endedAtMillis),
+    };
+  });
+  const nextOutstanding = [
+    ...updated.outstandingGrants,
+    ...grants.map((grant, entryIndex) => ({
+      txnId,
+      entryIndex,
+      itemId: grant.itemId,
+      quantity: grant.quantity,
+      expiresWhen: grant.expiresWhen,
+    })),
+  ];
+  return {
+    state: { ...updated, outstandingGrants: nextOutstanding },
+    event: toPiledriverObject({
+      type: "item-grant-repeat",
+      transactionId: txnId,
+      sourceType: "subscription",
+      sourceId: row.id,
+      tenancyId: row.tenancyId,
+      customerId: row.customerId,
+      customerType: row.customerType,
+      itemGrants: grants,
+      previousGrantsToExpire: [],
+      paymentProvider: paymentProvider(row.creationSource),
+      effectiveAtMillis: row.updatedAtMillis,
+      createdAtMillis: row.updatedAtMillis,
+    }),
+  };
+}
+
 function otpInitialState(row: OneTimePurchaseRow): OtpFoldState {
   const provider = paymentProvider(row.creationSource);
   const hasMoneyTransfer = provider !== "test_mode" && Object.keys(chargedAmount(row.product, row.priceId, row.quantity)).length > 0;
@@ -741,7 +794,9 @@ export function createPaymentsSchema() {
           return { newState: _state, nextTriggerTime: null };
         }
         const sub = rowObject<SubscriptionRow>(row.rowData);
-        const updated = subscriptionUpdatedState(state, sub);
+        let updated = subscriptionUpdatedState(state, sub);
+        const addedItems = subscriptionAddedItemsStep(state, updated, sub);
+        if (addedItems != null) updated = addedItems.state;
         // Mirror the initial reducer's immediate-end shortcut for ends introduced by a rewrite:
         // plan switching ends the replaced subscription by rewriting its row and expects the
         // revocation to be visible in the same write (e.g. the switch endpoint's one-time-purchase
@@ -749,9 +804,20 @@ export function createPaymentsSchema() {
         // product transiently granted.
         const hasRepeat = Object.values(updated.itemRepeatSchedule).some(schedule => schedule.nextRepeatMillis !== null);
         if (updated.endedAtMillis !== null && !hasRepeat && updated.endedAtMillis < sub.currentPeriodEndMillis) {
-          return { newState: toPiledriverObject(updated), nextTriggerTime: null, appendRowData: toPiledriverObject([subscriptionEndEvent(updated)]) };
+          return {
+            newState: toPiledriverObject(updated),
+            nextTriggerTime: null,
+            appendRowData: toPiledriverObject([
+              ...(addedItems == null ? [] : [addedItems.event]),
+              subscriptionEndEvent(updated),
+            ]),
+          };
         }
-        return { newState: toPiledriverObject(updated), nextTriggerTime: dateFromMillis(soonestNextMillis(updated, updated.endedAtMillis)) };
+        return {
+          newState: toPiledriverObject(updated),
+          nextTriggerTime: dateFromMillis(soonestNextMillis(updated, updated.endedAtMillis)),
+          ...(addedItems == null ? {} : { appendRowData: toPiledriverObject([addedItems.event]) }),
+        };
       },
     }), { input: "payments-subscriptions" }),
     table("payments-subscription-timefold-events", defineFlatMapTable(row => Array.isArray(row.rowData) ? row.rowData : []), { input: "payments-subscription-timefold" }),
@@ -875,12 +941,12 @@ export function createPaymentsSchema() {
       return toPiledriverObject({ txnId: `sub-end:${event.subscriptionId}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "subscription-end", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-subscription-end-events-natural" }),
     table("payments-txn-item-grant-repeat", defineMapTable(row => {
-      const event = rowObject<{ sourceId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, previousGrantsToExpire: Array<{ transactionId: string, entryIndex: number, itemId: string, quantity: number }>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
+      const event = rowObject<{ transactionId?: string, sourceId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, previousGrantsToExpire: Array<{ transactionId: string, entryIndex: number, itemId: string, quantity: number }>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);
       const entries: TransactionEntryData[] = [
         ...event.previousGrantsToExpire.map(entry => ({ type: "item-quantity-expire" as const, customerType: event.customerType, customerId: event.customerId, adjustedTransactionId: entry.transactionId, adjustedEntryIndex: entry.entryIndex, quantity: entry.quantity, itemId: entry.itemId })),
         ...event.itemGrants.map(grant => ({ type: "item-quantity-change" as const, customerType: event.customerType, customerId: event.customerId, itemId: grant.itemId, quantity: grant.quantity, expiresWhen: grant.expiresWhen, stampedExpiresAtMillis: grant.expiresAtMillis })),
       ];
-      return toPiledriverObject({ txnId: `igr:${event.sourceId}:${event.effectiveAtMillis}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "item-grant-repeat", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
+      return toPiledriverObject({ txnId: event.transactionId ?? `igr:${event.sourceId}:${event.effectiveAtMillis}`, tenancyId: event.tenancyId, effectiveAtMillis: event.effectiveAtMillis, type: "item-grant-repeat", entries, customerType: event.customerType, customerId: event.customerId, paymentProvider: event.paymentProvider, createdAtMillis: event.createdAtMillis });
     }), { input: "payments-item-grant-repeat-events" }),
     table("payments-txn-one-time-purchase", defineMapTable(row => {
       const event = rowObject<{ purchaseId: string, tenancyId: string, effectiveAtMillis: number, customerType: CustomerType, customerId: string, productId: string | null, priceId: string | null, product: ProductSnapshot, productLineId: string | null, quantity: number, chargedAmount: Record<string, string>, itemGrants: ItemGrant[], paymentProvider: PaymentProvider, createdAtMillis: number }>(row.rowData);

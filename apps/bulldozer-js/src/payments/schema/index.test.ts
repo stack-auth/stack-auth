@@ -6,6 +6,40 @@ import { asRecord, balanceAt, collect, customerGroup, initializedSnapshot, MONTH
 import type { CustomerType, TransactionRow } from "./types.js";
 
 describe("payments schema", () => {
+  it("grants an item added by a subscription product-version rebase immediately", async () => {
+    const schema = createPaymentsSchema();
+    let snapshot = await initializedSnapshot();
+    const initial = subscription("sub-rebase", {
+      product: product({ analytics_events: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" } }),
+      createdAtMillis: 100,
+      updatedAtMillis: 100,
+    });
+    snapshot = await set(snapshot, schema.subscriptions, initial.id, initial as unknown as PiledriverObject);
+    const rebased = {
+      ...initial,
+      product: product({
+        analytics_events: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" },
+        analytics_spans: { quantity: 250, repeat: [1, "month"], expires: "when-repeated" },
+      }),
+      updatedAtMillis: 500,
+    };
+    snapshot = await set(snapshot, schema.subscriptions, initial.id, rebased as unknown as PiledriverObject);
+    snapshot = await set(snapshot, schema.subscriptions, initial.id, {
+      ...rebased,
+      status: "past_due",
+      updatedAtMillis: 600,
+    } as unknown as PiledriverObject);
+
+    const group = customerGroup("customer-sub-rebase");
+    expect(await balanceAt(snapshot, group, "analytics_spans", 499)).toBe(0);
+    expect(await balanceAt(snapshot, group, "analytics_spans", 500)).toBe(250);
+    expect(await balanceAt(snapshot, group, "analytics_spans", 600)).toBe(250);
+    const txns = (await rowDatas(snapshot, schema.transactions, group)) as unknown as TransactionRow[];
+    expect(txns.find(txn => txn.txnId === "sub-rebase:sub-rebase:500")?.entries).toMatchObject([
+      { type: "item-quantity-change", itemId: "analytics_spans", quantity: 250 },
+    ]);
+  });
+
   it("generates subscription renewal events and ignores creation invoices", async () => {
     const schema = createPaymentsSchema();
     let snapshot = await initializedSnapshot();

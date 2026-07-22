@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Stripe from "stripe";
+import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { getOrUndefined } from "@hexclave/shared/dist/utils/objects";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import {
   runRegenInternalSubscriptionsToLatest,
   type StripeClientForRegen,
@@ -487,29 +489,18 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
   });
 
-  it("Bulldozer end-to-end: after regen, getItemQuantityForCustomer for a newly-added item returns the expected non-zero quantity", async () => {
+  it("Bulldozer end-to-end: regen grants analytics_spans to an existing subscription", async () => {
     const { tenancy } = await getInternal();
     const teamId = randomUUID();
     const growth = getOrUndefined(tenancy.config.payments.products, "growth");
     if (growth == null) throw new Error("Internal tenancy missing `growth` product");
 
-    // Pick an existing item (e.g. analytics_events) and forge a "stale"
-    // snapshot that's missing it. After the regen, its quantity in
-    // payments-item-quantities should reflect what `growth.includedItems`
-    // says for that item. This proves the TimeFold → LFold chain
-    // recomputed from the fresh snapshot, which is what we depend on.
-    const candidateItemId = Object.keys(growth.includedItems).find(
-      (k) => {
-        const itemConfig = growth.includedItems[k];
-        const q = (itemConfig as { quantity?: unknown }).quantity;
-        return typeof q === "number" && q > 0;
-      },
-    );
-    if (candidateItemId == null) {
-      throw new Error("growth product has no positive-quantity included item to use for this test");
+    const stale = withoutItem(growth, ITEM_IDS.analyticsSpans);
+    const analyticsSpansItem = getOrUndefined(growth.includedItems, ITEM_IDS.analyticsSpans);
+    if (analyticsSpansItem == null || typeof analyticsSpansItem.quantity !== "number") {
+      throw new Error("Internal growth plan must include a numeric analytics_spans entitlement");
     }
-    const stale = withoutItem(growth, candidateItemId);
-    const expectedQuantity = (growth.includedItems[candidateItemId] as { quantity: number }).quantity;
+    const expectedQuantity = analyticsSpansItem.quantity;
 
     await seedSubscription({
       tenancyId: tenancy.id,
@@ -526,7 +517,7 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     const beforeQty = await getItemQuantityForCustomer({
       prisma: globalPrismaClient,
       tenancyId: tenancy.id,
-      itemId: candidateItemId,
+      itemId: ITEM_IDS.analyticsSpans,
       customerId: teamId,
       customerType: "team",
     });
@@ -540,13 +531,20 @@ describe.sequential("runRegenInternalSubscriptionsToLatest (real DB)", () => {
     expect(result.mutated).toBe(1);
     expect(result.dbWrites).toBe(1);
 
-    const afterQty = await getItemQuantityForCustomer({
-      prisma: globalPrismaClient,
-      tenancyId: tenancy.id,
-      itemId: candidateItemId,
-      customerId: teamId,
-      customerType: "team",
-    });
-    expect(afterQty).toBe(expectedQuantity);
+    const startedAt = performance.now();
+    while (true) {
+      const afterQty = await getItemQuantityForCustomer({
+        prisma: globalPrismaClient,
+        tenancyId: tenancy.id,
+        itemId: ITEM_IDS.analyticsSpans,
+        customerId: teamId,
+        customerType: "team",
+      });
+      if (afterQty === expectedQuantity) break;
+      if (performance.now() - startedAt > 8_000) {
+        expect(afterQty).toBe(expectedQuantity);
+      }
+      await wait(200);
+    }
   });
 });
