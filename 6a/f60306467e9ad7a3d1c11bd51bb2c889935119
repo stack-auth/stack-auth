@@ -1,0 +1,47 @@
+apps/backend/src/lib/openapi.tsx
+  s_fbbdd8c03f8e8a::t_4470e84f82d045 196,198-201,223,231,234,237,241,251,259,262,322,329
+  s_fbbdd8c03f8e8a::t_d0750a8c9149ee 197,220
+  s_fbbdd8c03f8e8a::t_e068f011a57e32 221,224
+apps/mcp/src/mcp-handler.ts
+  s_fbbdd8c03f8e8a::t_1b8c81a501db4b 60-65,156-158,160
+packages/shared/src/ai/hexclave-ask.ts
+  s_fbbdd8c03f8e8a::t_1c383a667cc9e3 104-133,135-136
+  s_fbbdd8c03f8e8a::t_1b8c81a501db4b 27-29,35,134,161
+apps/skills/src/ask-route.ts
+  s_fbbdd8c03f8e8a::t_129d936f307cf7 105-110,138
+  s_fbbdd8c03f8e8a::t_ba905d37fe62dc 139-141
+apps/skills/src/ask-route.test.ts
+  s_fbbdd8c03f8e8a::t_035cfd880e5932 255-262
+  s_fbbdd8c03f8e8a::t_ba905d37fe62dc 227-254,263-267
+docs-mintlify/openapi/webhooks.json
+  s_fbbdd8c03f8e8a::t_4bf3c494065cf9 154-157,180-183,188-191,418-421,444-447,452-455,1128
+packages/shared/src/ai/hexclave-ask.test.ts
+  s_fbbdd8c03f8e8a::t_1b8c81a501db4b 11-12,14,22,26,29-47
+  s_fbbdd8c03f8e8a::t_1823ef537859ef 27-28
+  s_fbbdd8c03f8e8a::t_1c383a667cc9e3 1-10,13,15-21,23-25,48-50
+docs/openapi/webhooks.json
+  s_fbbdd8c03f8e8a::t_c32a36f597c0d2 154-157,418-421,444-447,452-455
+  s_fbbdd8c03f8e8a::t_41db0ee8ea4a71 180-183,188-191,1128
+apps/backend/src/lib/openapi.test.ts
+  s_fbbdd8c03f8e8a::t_e068f011a57e32 12,38-41
+  s_fbbdd8c03f8e8a::t_1d09a826f5d059 1,10-11,13-14,16
+  s_fbbdd8c03f8e8a::t_4470e84f82d045 2-9,15,17-37,42-62
+docs/.gitignore
+  s_fbbdd8c03f8e8a::t_41db0ee8ea4a71 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "6af60306467e9ad7a3d1c11bd51bb2c889935119",
+  "prompts": {},
+  "sessions": {
+    "s_fbbdd8c03f8e8a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8c36-20b0-7153-9967-7e69393dc5a4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
