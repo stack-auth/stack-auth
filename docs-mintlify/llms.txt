@@ -32,7 +32,7 @@ Below are some reminders on Hexclave and how to learn more about it. If you're s
 - You can use the `npx @hexclave/cli exec <javascript>` command to run JavaScript with a pre-configured HexclaveServerApp available as `hexclaveServerApp`. This allows you to read and write from and to the Hexclave project as you would on the dashboard, but from the CLI. To read and write project configuration, see the note on the config file above.
   - For advanced read queries, you can use `hexclaveServerApp.queryAnalytics("<clickhouse-sql>")`. Use `SHOW TABLES` and `DESCRIBE TABLE` to understand the schema of the available tables (columns have comments that may be useful as a description).
 - Hexclave was formerly known as Stack Auth. You may still see references to it as Stack Auth in some places.
-- When a human is talking about Users, more often than not, they are referring to non-anonymous users. Make sure to decide whether to filter anonymous users out in SQL queries based on suspected intent.
+- When a human is talking about Users, more often than not, they are referring to non-anonymous users. Make sure to decide whether to filter anonymous users out in SQL queries based on suspected intent. For example, when reporting number of users, or recent sign-ups, almost certainly they're just asking about non-anonymous users.
 
 ## Docs
 
