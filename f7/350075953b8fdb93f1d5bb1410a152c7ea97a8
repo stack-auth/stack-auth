@@ -1,0 +1,23 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/trace-utils.ts
+  s_bf48bba2d6780e::t_31e87fdc4eedcd 1
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_bf48bba2d6780e::t_31e87fdc4eedcd 391
+apps/dashboard/src/lib/prefetch/url-prefetcher.tsx
+  s_bf48bba2d6780e::t_31e87fdc4eedcd 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "f7350075953b8fdb93f1d5bb1410a152c7ea97a8",
+  "prompts": {},
+  "sessions": {
+    "s_bf48bba2d6780e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f879a-1a0e-70b3-a61b-e4eccf8a5ede",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
