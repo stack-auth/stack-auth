@@ -4,7 +4,9 @@
 
 ## 7/24/26
 
-- _(entries added throughout the week)_
+![Analytics table search bar](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-analytics-search.png)
+
+- Analytics tables now have an inline search bar that filters rows instantly, with AI-powered natural-language filters shown as removable chips.
 
 ## 7/10/26
 
