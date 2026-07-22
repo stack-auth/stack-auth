@@ -29,6 +29,7 @@ export const SYSTEM_EVENT_TYPES = [
   "$print",
   "$fullscreen-exit",
 ] as const;
+export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
 
 // The two original system event types predate the per-item data size cap, so
 // deployed trackers may send data the cap would reject; their data stays
@@ -49,6 +50,7 @@ export const CLIENT_SYSTEM_SPAN_TYPES = [
   "$away",
   "$offline",
 ] as const;
+export type ClientSystemSpanType = typeof CLIENT_SYSTEM_SPAN_TYPES[number];
 
 export const PAGE_VIEW_SPAN_TYPE = "$page-view";
 

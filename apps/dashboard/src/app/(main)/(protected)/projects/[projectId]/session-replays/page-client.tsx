@@ -1346,7 +1346,6 @@ export default function PageClient({ initialReplayId, lockedUserId }: PageClient
                   SELECT event_type, event_at, toString(data) AS data
                   FROM default.events
                   WHERE session_replay_id = {id:String}
-                    AND event_type != '$page-view'
                   UNION ALL
                   SELECT span_type AS event_type, span_started_at AS event_at, data
                   FROM default.spans

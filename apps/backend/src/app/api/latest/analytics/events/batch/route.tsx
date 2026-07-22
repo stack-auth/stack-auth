@@ -149,8 +149,10 @@ export const POST = createSmartRouteHandler({
           (span) => span.ended_at_ms == null || span.ended_at_ms >= span.started_at_ms,
         ).test(
           "page-view-span-parent",
-          "A $page-view span must not carry a page_view_span_id, and a span must not name itself as its page_view_span_id",
-          (span) => span.page_view_span_id == null || (span.span_type !== PAGE_VIEW_SPAN_TYPE && span.page_view_span_id !== span.span_id),
+          "A $page-view span must not carry page_view_span_id or parent_span_ids, and a span must not name itself as its page_view_span_id",
+          (span) => (
+            span.span_type !== PAGE_VIEW_SPAN_TYPE || (span.page_view_span_id == null && span.parent_span_ids.length === 0)
+          ) && (span.page_view_span_id == null || span.page_view_span_id !== span.span_id),
         ),
       ).optional().max(MAX_SPANS),
     }).defined().test(

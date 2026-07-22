@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAnonymousAnalyticsTokenStore, makeAnonymousAnalyticsTokenStorageKey, parseAnonymousAnalyticsTokens } from "./analytics-session";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000000000";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
 });
 
@@ -35,5 +36,33 @@ describe("anonymous analytics session", () => {
     store.set({ accessToken: null, refreshToken: null });
 
     expect(localStorage.getItem(makeAnonymousAnalyticsTokenStorageKey(PROJECT_ID))).toBeNull();
+  });
+
+  it("keeps an in-memory identity when browser storage access is blocked", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Blocked by privacy policy", "SecurityError");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Blocked by privacy policy", "SecurityError");
+    });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const store = createAnonymousAnalyticsTokenStore(PROJECT_ID);
+    store.set({ accessToken: "access-token", refreshToken: "refresh-token" });
+
+    expect(store.get()).toEqual({ accessToken: "access-token", refreshToken: "refresh-token" });
+    expect(warning).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the updated in-memory identity when persistence exceeds quota", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = createAnonymousAnalyticsTokenStore(PROJECT_ID);
+
+    store.set({ accessToken: "access-token", refreshToken: "refresh-token" });
+
+    expect(store.get()).toEqual({ accessToken: "access-token", refreshToken: "refresh-token" });
   });
 });

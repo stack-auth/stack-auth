@@ -27,6 +27,29 @@ export type ServerRequestSpanContext = {
   customParentSpanIds: string[],
 };
 
+/**
+ * Applies an explicit server-side user attribution to request context. Session
+ * ancestry is only valid when the authenticated request user matches; if the
+ * identity differs (including an anonymous request), detach every request-
+ * derived id instead of creating mixed-user telemetry.
+ */
+export function withExplicitServerUser(
+  context: ServerRequestSpanContext,
+  explicitUserId: string | null,
+): ServerRequestSpanContext {
+  if (explicitUserId == null || explicitUserId === context.userId) {
+    return { ...context, userId: explicitUserId ?? context.userId };
+  }
+  return {
+    userId: explicitUserId,
+    refreshTokenId: null,
+    sessionReplayId: null,
+    sessionReplaySegmentId: null,
+    pageViewSpanId: null,
+    customParentSpanIds: [],
+  };
+}
+
 type AsyncLocalStorageLike = {
   run: <T>(store: ServerRequestSpanContext, fn: () => T) => T,
   getStore: () => ServerRequestSpanContext | undefined,

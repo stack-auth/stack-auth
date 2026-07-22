@@ -1940,12 +1940,17 @@ async function seedBulkSignupsAndActivity(options: {
       });
 
       const pageViewCount = 1 + Math.floor(rand() * 4);
+      let clickPageViewSpanId: string | null = null;
       for (let p = 0; p < pageViewCount; p++) {
         const pvOffset = Math.floor(rand() * 3600) * 1000;
         // Clamp to `now`: visitTime is already clamped, but adding the offset
         // can push a same-day event past `now` into the future.
         const pvTime = new Date(Math.min(visitTime.getTime() + pvOffset, now.getTime()));
-        const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${p}`);
+        // `v` is part of the namespace because a returning user can have
+        // several visits on the same sampled day; each page view must remain a
+        // distinct ReplacingMergeTree row.
+        const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`);
+        clickPageViewSpanId ??= spanId;
         pageViewSpanRows.push({
           id: toSpanId(SPAN_ID_PREFIXES.pageView, spanId),
           span_type: '$page-view',
@@ -1984,6 +1989,12 @@ async function seedBulkSignupsAndActivity(options: {
           branch_id: tenancy.branchId,
           user_id: userId,
           team_id: null,
+          // Raw seed inserts bypass the API's page_view_span_id-to-parent
+          // composition, so write the same canonical pv- ancestry directly.
+          parent_span_ids: [toSpanId(
+            SPAN_ID_PREFIXES.pageView,
+            clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
+          )],
         });
       }
     }

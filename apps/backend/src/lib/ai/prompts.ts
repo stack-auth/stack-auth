@@ -1007,9 +1007,10 @@ Column comments contain important constraints, valid values, and usage notes —
 
 ### CRITICAL SQL RULES
 
-1. **JSON extraction REQUIRES toString() wrapper:**
-   - CORRECT: \`JSONExtractString(toString(data), 'path')\`
-   - WRONG: \`JSONExtractString(data, 'path')\` — this WILL FAIL
+1. **JSON extraction from \`events.data\` REQUIRES a toString() wrapper** because that column uses ClickHouse's JSON type:
+   - CORRECT for events: \`JSONExtractString(toString(data), 'path')\`
+   - WRONG for events: \`JSONExtractString(data, 'path')\` — this WILL FAIL
+   - \`spans.data\` is a String containing JSON, so use \`JSONExtractString(data, 'path')\` there without toString().
 2. **Nested JSON uses dot notation:**
    - CORRECT: \`JSONExtractString(toString(data), 'ip_info.country_code')\`
    - WRONG: \`JSONExtractString(data, 'ip_info')['country_code']\`

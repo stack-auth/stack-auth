@@ -40,12 +40,6 @@ const INP_DURATION_THRESHOLD_MS = 40;
 // library): the reported value is the min(floor(count/50), N-1)-th longest, so
 // anything beyond the top 10 can never be selected for realistic counts.
 const INP_LONGEST_KEPT = 10;
-// Fallback cap for counting distinct interactions when
-// `performance.interactionCount` is unavailable: past this many, the count (and
-// therefore the estimate's percentile index) stops moving. Bounds the id set on
-// pathological always-open pages.
-const INP_MAX_COUNTED_INTERACTIONS = 5000;
-
 type LongestInteraction = { id: number, durationMs: number };
 
 function supportsEntryType(type: string): boolean {
@@ -72,10 +66,38 @@ export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollecto
   let clsSessionLastTs = 0;
 
   // INP bookkeeping (mirrors the web-vitals library): the longest interactions
-  // by id, plus a distinct-interaction count to pick the percentile index.
+  // by id. The native distinct-interaction count is used to pick the percentile
+  // index when available; without it, the duration-threshold observer is not a
+  // complete denominator, so the honest fallback is the longest interaction.
   const longestInteractions: LongestInteraction[] = [];
   const longestById = new Map<number, LongestInteraction>();
-  const countedInteractionIds = new Set<number>();
+
+  const recordInteraction = (entry: PerformanceEntry): boolean => {
+    if (!("interactionId" in entry) || typeof entry.interactionId !== "number" || entry.interactionId === 0) return false;
+    if (typeof entry.duration !== "number") return false;
+
+    const existing = longestById.get(entry.interactionId);
+    if (existing) {
+      existing.durationMs = Math.max(existing.durationMs, entry.duration);
+    } else {
+      longestInteractions.push({ id: entry.interactionId, durationMs: entry.duration });
+      longestById.set(entry.interactionId, longestInteractions[longestInteractions.length - 1]);
+    }
+    longestInteractions.sort((a, b) => b.durationMs - a.durationMs);
+    while (longestInteractions.length > INP_LONGEST_KEPT) {
+      const dropped = longestInteractions.pop();
+      if (dropped !== undefined) longestById.delete(dropped.id);
+    }
+
+    const nativeInteractionCount: unknown = Reflect.get(performance, "interactionCount");
+    const index = typeof nativeInteractionCount === "number"
+      ? Math.min(Math.floor(nativeInteractionCount / 50), longestInteractions.length - 1)
+      : 0;
+    const inp = Math.round(longestInteractions[index].durationMs);
+    if (inp === state.inp_ms) return false;
+    state.inp_ms = inp;
+    return true;
+  };
 
   const tryObserve = (type: string, callback: (entries: PerformanceEntry[]) => void, extraOptions?: Record<string, unknown>) => {
     if (!supportsEntryType(type)) return;
@@ -140,40 +162,21 @@ export function startWebVitalsCollector(onUpdate: () => void): WebVitalsCollecto
   tryObserve("event", (entries) => {
     let changed = false;
     for (const entry of entries) {
-      if (!("interactionId" in entry) || typeof entry.interactionId !== "number" || entry.interactionId === 0) continue;
-      if (entry.duration < INP_DURATION_THRESHOLD_MS) continue;
-      if (countedInteractionIds.size < INP_MAX_COUNTED_INTERACTIONS) {
-        countedInteractionIds.add(entry.interactionId);
-      }
-
-      const existing = longestById.get(entry.interactionId);
-      if (existing) {
-        existing.durationMs = Math.max(existing.durationMs, entry.duration);
-      } else {
-        longestInteractions.push({ id: entry.interactionId, durationMs: entry.duration });
-        longestById.set(entry.interactionId, longestInteractions[longestInteractions.length - 1]);
-      }
-      longestInteractions.sort((a, b) => b.durationMs - a.durationMs);
-      while (longestInteractions.length > INP_LONGEST_KEPT) {
-        const dropped = longestInteractions.pop();
-        if (dropped) longestById.delete(dropped.id);
-      }
-
-      const interactionCount = (() => {
-        const native: unknown = (performance as unknown as { interactionCount?: unknown }).interactionCount;
-        return typeof native === "number" ? native : countedInteractionIds.size;
-      })();
-      // The list always holds >= 1 entry here (the current interaction was
-      // just inserted or updated), so the index is always in range.
-      const index = Math.min(Math.floor(interactionCount / 50), longestInteractions.length - 1);
-      const inp = Math.round(longestInteractions[index].durationMs);
-      if (inp !== state.inp_ms) {
-        state.inp_ms = inp;
-        changed = true;
-      }
+      if (recordInteraction(entry)) changed = true;
     }
     if (changed) onUpdate();
   }, { durationThreshold: INP_DURATION_THRESHOLD_MS });
+
+  // `event` intentionally filters durations below 40ms. `first-input` supplies
+  // the valid fast single-interaction case and dedupes by interactionId when
+  // the same first interaction also appears in the event stream.
+  tryObserve("first-input", (entries) => {
+    let changed = false;
+    for (const entry of entries) {
+      if (recordInteraction(entry)) changed = true;
+    }
+    if (changed) onUpdate();
+  });
 
   return {
     snapshot: () => ({ ...state }),

@@ -197,11 +197,8 @@ const TOP_PAGES_QUERY = `
         ),
         ''
       ) AS path
-    FROM spans
-    WHERE user_id = {userId:String}
-      AND span_type = '$page-view'
-      AND span_started_at >= {since:DateTime}
-      AND span_started_at < {until:DateTime}
+    FROM ${userTelemetrySubquery("since", "until")}
+    WHERE event_type = '$page-view'
   )
   WHERE path IS NOT NULL
   GROUP BY path
@@ -223,11 +220,8 @@ const TOP_REFERRERS_QUERY = `
         ),
         ''
       ) AS referrer
-    FROM spans
-    WHERE user_id = {userId:String}
-      AND span_type = '$page-view'
-      AND span_started_at >= {since:DateTime}
-      AND span_started_at < {until:DateTime}
+    FROM ${userTelemetrySubquery("since", "until")}
+    WHERE event_type = '$page-view'
   )
   WHERE referrer IS NOT NULL
   GROUP BY referrer
