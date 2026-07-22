@@ -1,0 +1,152 @@
+docs-mintlify/guides/getting-started/setup.mdx
+  s_5a4f0bcc2f8c9d::t_5eb91e98aa5c67 9
+apps/dashboard/src/components/hexclave-companion.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 99-102,366,477
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1494-1496
+apps/internal-tool/src/hexclave.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 20-21,23-28,30-53
+docs-mintlify/llms.txt
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 35
+docs-mintlify/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+sdks/spec/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+docs/README.md
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1,3,5,7,9-13,15
+apps/dashboard/src/app/(main)/purchase/return/page-client.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 8,21,25-29,35
+apps/dashboard/src/app/layout.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 11,15,99-103
+apps/dashboard/src/components/entity-kpi-cards.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 169-172
+apps/dev-launchpad/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+packages/dashboard-ui-components/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/internal-tool/src/app/layout.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,5,10-19,26-36
+apps/dashboard/src/lib/prefetch/hook-prefetcher.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 79
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/globe-section-with-data.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 29-32
+apps/dashboard/src/app/(main)/purchase/get-api-base-url.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-10
+examples/e-commerce/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+packages/sc/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+packages/template/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 5
+examples/convex/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/e2e/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/backend/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,103
+examples/demo/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+packages/shared/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+packages/cli/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+docs/public/index.html
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-12
+apps/bulldozer-js/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/dashboard/src/app/(main)/purchase/[code]/page-client.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 14,72-76,116,141-147,149,168,191,214-218
+  s_5a4f0bcc2f8c9d::t_e52ae4eaeaa740 219
+docs/vercel.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-2374
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 35
+packages/tanstack-start/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+scripts/generate-docs-legacy-redirects.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-363
+examples/js-example/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_5a4f0bcc2f8c9d::t_5eb91e98aa5c67 3
+apps/dashboard/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,82
+examples/react-example/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+examples/docs-examples/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+sdks/implementations/swift/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/dashboard/src/app/rde-debug/page.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4-5,39-53,63-77,79,81-109,112,117-120,124-129,136-157,159-163,165-185,187-190,192-211,213-216,218-233,235-238,240
+apps/skills/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,18
+apps/mcp/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,19
+examples/middleware/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/hosted-components/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+examples/lovable-react-18-example/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+packages/react/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+apps/dashboard/src/app/health/error-handler-debug/endpoint/route.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 2,4-5
+packages/next/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+apps/dashboard/src/app/(main)/purchase/return/page.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-2,5,7-9
+packages/template/package-template.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 16
+packages/ui/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+examples/supabase/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 79-80
+apps/backend/scripts/generate-openapi-fumadocs.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 14,81,86
+docs/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3,5
+apps/internal-tool/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4,24
+examples/cjs-test/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+examples/tanstack-start-demo/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/page-client.tsx
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 66-69
+packages/js/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 4
+apps/dashboard/next.config.mjs
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 74-75
+scripts/test-docs-legacy-redirects.ts
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 1-130
+packages/shared-backend/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/mock-oauth-server/package.json
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 3
+apps/dev-launchpad/public/index.html
+  s_5a4f0bcc2f8c9d::t_df5df68d4ace61 230-231
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_5a4f0bcc2f8c9d::t_5eb91e98aa5c67 1
+pnpm-lock.yaml
+  s_5a4f0bcc2f8c9d::t_b15e0d798cbe36 185,232-233,496,517,520,547,561-562,900-901,947,950,952-953,1012,1014-1015,1039,1045,1536,1539,1757,2035,2300,5338-5339,5362-5363,5380-5381,5400-5401,5421-5422,5442-5443,5463-5464,5482-5483,5506-5507,9005-9006,9009-9010,9016-9017,9020-9021,9024-9025,9027,9029-9030,9033-9034,14362-14363,15037-15040,20865,20868-20871,20971,21013,21035,21077,21099,21101-21103,21201,21203,21205,21233,21235,21237,21265,21267-21268,21338,21340,21373,21375,21538,21558,21567,21576,21585,21594,21603,21612,21624,23395,23403,23413,23421,23431,23439,25972,25986,25999,26012,26024,26037,27114,27118,27124,27128,27133,27135,27138,27143,27145-27149,28454,28458,28465,28468,28470,28496,28498,31856,31858,33448,33455,34078,34080,34230,34234,34238,34242,34246,34250,34422,34424,34428,34433-34440,34447,34449,34453,34458-34465,34472,34474,34478,34483-34490,34497,34499,34503,34508-34515,35202-35210,35275-35280,37455-37482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "63701c9c6abc4032fdae246dda9791a50ed24039",
+  "prompts": {},
+  "sessions": {
+    "s_5a4f0bcc2f8c9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8c14-940b-7462-b140-b869202ab575",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
