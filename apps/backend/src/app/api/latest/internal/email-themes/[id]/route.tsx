@@ -51,3 +51,37 @@ export const PATCH = createSmartRouteHandler({
     };
   },
 });
+
+export const DELETE = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    params: yupObject({
+      id: yupString().uuid().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({}).defined(),
+  }),
+  async handler({ auth: { tenancy }, params: { id } }) {
+    await internalEmailThemesCudHandlers.adminDelete({
+      tenancy,
+      allowedErrorTypes: [StatusError],
+      id,
+      data: [],
+    });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {},
+    };
+  },
+});
