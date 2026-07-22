@@ -1,0 +1,42 @@
+apps/backend/src/lib/payments/schema/types.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 104
+apps/bulldozer-js/src/payments/schema/index.test.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 9-17,19-24,31-35,37-42
+  s_ab2b6b8a3caaa2::t_dd5ec61313e356 18,25-30,36
+apps/backend/src/scripts/regen-internal-subscriptions-to-latest.test.ts
+  s_ab2b6b8a3caaa2::t_0e627f7243cf0f 7,492,498,520,534-548
+  s_ab2b6b8a3caaa2::t_2be34cb5a35618 4,499-501,503
+apps/backend/src/lib/plan-usage.test.ts
+  s_ab2b6b8a3caaa2::t_5ebd89a17ba62a 32
+apps/backend/src/lib/payments/bulldozer-dual-write.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 41,63
+apps/bulldozer-js/src/payments/schema/performance.test.ts
+  s_ab2b6b8a3caaa2::t_5ebd89a17ba62a 56
+apps/bulldozer-js/src/payments/schema/index.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 427-442,444-479,797-799,807-814,816-820,944,949
+  s_ab2b6b8a3caaa2::t_659897eedda8be 443
+apps/backend/src/lib/payments/ensure-free-plan.test.ts
+  s_ab2b6b8a3caaa2::t_5ebd89a17ba62a 70,183
+apps/bulldozer-js/src/payments/schema/types.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 66
+apps/bulldozer-js/src/payments/schema/schema-test-helpers.ts
+  s_ab2b6b8a3caaa2::t_3be2454715b98a 79
+apps/backend/src/lib/payments.test.tsx
+  s_ab2b6b8a3caaa2::t_5ebd89a17ba62a 92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "d4ad8a420ab0d75b45766dfb837cd0aa2311e9ad",
+  "prompts": {},
+  "sessions": {
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
