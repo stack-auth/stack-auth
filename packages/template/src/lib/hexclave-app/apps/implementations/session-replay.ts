@@ -151,6 +151,28 @@ const MAX_SINGLE_EVENT_BYTES = 8 * 1024 * 1024 - BATCH_ENVELOPE_OVERHEAD_BYTES;
 // Reused across the emit hot path to avoid per-event allocation.
 const textEncoder = new TextEncoder();
 
+// Trailing debounce for the stylesheet-load re-snapshot (see the comment in
+// _startRecording): several stylesheets finishing around the same time (initial
+// page load, a route navigation adding multiple chunks) should produce ONE
+// extra full snapshot, not one per stylesheet.
+const STYLESHEET_RESNAPSHOT_DEBOUNCE_MS = 1_000;
+
+/**
+ * Whether rrweb would be able to inline this just-loaded stylesheet link into
+ * a full snapshot: the sheet must exist, its rules must be readable (reading
+ * `cssRules` of a cross-origin stylesheet served without CORS headers throws),
+ * and it must be non-empty. Exported for tests.
+ */
+export function canInlineStylesheetLink(link: HTMLLinkElement): boolean {
+  const sheet = link.sheet;
+  if (sheet == null) return false;
+  try {
+    return sheet.cssRules.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export type StoredSession = {
   session_id: string,
   created_at_ms: number,
@@ -245,6 +267,7 @@ export class SessionRecorder {
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
   private _flushInProgress = false;
+  private _resnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   // Hexclave rebrand: legacy key used for dual-read fallback only.
@@ -453,6 +476,75 @@ export class SessionRecorder {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (this._cancelled) return;
 
+    // rrweb v1 only inlines a `<link rel="stylesheet">` into a snapshot when
+    // its CSS is already loaded and readable at serialization time. Two paths
+    // systematically miss that window: (1) the initial full snapshot is taken
+    // as soon as the SDK boots, which can be before head stylesheets finish
+    // loading (async SDK scripts are not blocked by pending stylesheets), and
+    // (2) links inserted later (e.g. Next.js App Router route CSS on client
+    // navigation) are serialized by the mutation observer at insert time,
+    // before their CSS has loaded. In both cases only the href is recorded, so
+    // playback depends on re-fetching the original asset URL — which 404s once
+    // hashed assets are redeployed — and the replay renders as unstyled raw
+    // HTML. Fix: whenever a stylesheet link finishes loading while recording,
+    // re-take a debounced full snapshot; the sheet is now loaded, so rrweb
+    // inlines it and the recording becomes self-contained. Stylesheets that
+    // were already inlined never fire another load event, so this adds no
+    // snapshots in the steady state. Attached BEFORE record() so a stylesheet
+    // finishing between the initial snapshot and listener setup is not missed
+    // (the resulting extra snapshot is harmless). Resource load events don't
+    // bubble, but they do pass document in the capture phase.
+    const onResourceLoad = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLLinkElement)) return;
+      if (!target.relList.contains("stylesheet")) return;
+      // If rrweb couldn't inline this sheet anyway (cross-origin without CORS,
+      // empty sheet), a new snapshot wouldn't help — skip the cost.
+      if (!canInlineStylesheetLink(target)) return;
+      if (this._resnapshotTimer !== null) clearTimeout(this._resnapshotTimer);
+      this._resnapshotTimer = setTimeout(() => {
+        this._resnapshotTimer = null;
+        if (this._cancelled || !this._recording || !this._rrwebModule) return;
+        if (this._takingSnapshot) return;
+        this._takingSnapshot = true;
+        try {
+          this._rrwebModule.record.takeFullSnapshot();
+        } finally {
+          this._takingSnapshot = false;
+        }
+      }, STYLESHEET_RESNAPSHOT_DEBOUNCE_MS);
+    };
+    document.addEventListener("load", onResourceLoad, true);
+
+    try {
+      this._startRrwebRecording();
+    } catch (e) {
+      // record() threw before _detachListeners was set up; don't leak the
+      // stylesheet-load listener attached above.
+      document.removeEventListener("load", onResourceLoad, true);
+      throw e;
+    }
+
+    this._recording = true;
+
+    const onPageHide = () => {
+      runAsynchronously(() => this._flush({ keepalive: true }));
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onPageHide);
+    this._detachListeners = () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onPageHide);
+      document.removeEventListener("load", onResourceLoad, true);
+      if (this._resnapshotTimer !== null) {
+        clearTimeout(this._resnapshotTimer);
+        this._resnapshotTimer = null;
+      }
+    };
+  }
+
+  private _startRrwebRecording() {
+    if (!this._rrwebModule) throwErr("_startRrwebRecording called before rrweb was imported — this should never happen");
     this._stopRecording = this._rrwebModule.record({
       emit: (event) => {
         const nowMs = Date.now();
@@ -487,18 +579,6 @@ export class SessionRecorder {
       ...(this._replayOptions.blockClass !== undefined ? { blockClass: this._replayOptions.blockClass } : {}),
       ...(this._replayOptions.blockSelector !== undefined ? { blockSelector: this._replayOptions.blockSelector } : {}),
     }) ?? null;
-
-    this._recording = true;
-
-    const onPageHide = () => {
-      runAsynchronously(() => this._flush({ keepalive: true }));
-    };
-    window.addEventListener("pagehide", onPageHide);
-    document.addEventListener("visibilitychange", onPageHide);
-    this._detachListeners = () => {
-      window.removeEventListener("pagehide", onPageHide);
-      document.removeEventListener("visibilitychange", onPageHide);
-    };
   }
 
   private _stopCurrentRecording() {
