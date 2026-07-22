@@ -192,6 +192,12 @@ export const ALL_APPS = {
     tags: ["auth", "developers"],
     stage: "alpha",
   },
+  "deployments": {
+    displayName: "Deployments",
+    subtitle: "Configure and connect the services that run your app",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;
 
 export function getParentAppId(appId: AppId): AppId | null {
