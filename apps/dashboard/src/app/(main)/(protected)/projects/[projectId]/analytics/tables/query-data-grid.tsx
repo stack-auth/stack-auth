@@ -108,11 +108,19 @@ export type QueryDataGridProps = {
     | ReactNode
     | ((ctx: QueryDataGridToolbarContext<RowData>) => ReactNode),
   /**
-   * Extra content slotted into the default toolbar, to the LEFT of
-   * the built-in columns / export actions. Can be a node or a function
-   * receiving the extended context.
+   * Extra content slotted into the default toolbar's leading cluster
+   * (after search), e.g. filters or a row-count badge. Can be a node or
+   * a function receiving the extended context.
    */
   toolbarExtra?:
+    | ReactNode
+    | ((ctx: QueryDataGridToolbarContext<RowData>) => ReactNode),
+  /**
+   * Extra content in the trailing action cluster, immediately before
+   * Columns / Export (e.g. a labeled Refresh). Can be a node or a
+   * function receiving the extended context.
+   */
+  toolbarActions?:
     | ReactNode
     | ((ctx: QueryDataGridToolbarContext<RowData>) => ReactNode),
   /** Whether the default row-click-to-inspect dialog is enabled. Defaults to `true`. */
@@ -133,6 +141,8 @@ export type QueryDataGridProps = {
   fillHeight?: boolean,
   /** Sticky top offset forwarded to the underlying DataGrid. */
   stickyTop?: number | string,
+  /** Where the horizontal scrollbar is shown when columns overflow. */
+  horizontalScrollbarPosition?: "top" | "bottom",
 };
 
 export type QueryDataGridHandle = {
@@ -320,6 +330,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       toolbar,
       searchBar,
       toolbarExtra,
+      toolbarActions,
       enableRowDetailDialog = true,
       onRowClick,
       onError,
@@ -329,6 +340,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       footer = false,
       fillHeight = true,
       stickyTop,
+      horizontalScrollbarPosition,
     },
     ref,
   ) {
@@ -343,10 +355,6 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     // read the latest column list without being re-created every time
     // the schema updates.
     const discoveredColumnsRef = useRef<string[]>([]);
-    const queryRef = useRef(query);
-    queryRef.current = query;
-    const modeRef = useRef(mode);
-    modeRef.current = mode;
     const enableSearchFilterRef = useRef(enableQuickSearchFilter);
     enableSearchFilterRef.current = enableQuickSearchFilter;
     const defaultOrderByRef = useRef(defaultOrderBy);
@@ -370,12 +378,12 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       };
     });
 
-    // Whenever the query changes we want fresh columns + a reset sort
-    // so a leftover sort from a previous schema doesn't crash the
-    // next query (nonexistent column in ORDER BY).
+    // Whenever the query changes, reset sort / search / page so a leftover
+    // ORDER BY from a previous schema can't crash the next fetch. Keep the
+    // last discovered columns — clearing them would leave the grid with an
+    // empty schema during the reload (blank pane instead of a shimmer), and
+    // the next successful page overwrites them anyway.
     useEffect(() => {
-      setDiscoveredColumns([]);
-      discoveredColumnsRef.current = [];
       setError(null);
       setGridState((prev) => ({
         ...prev,
@@ -430,6 +438,9 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       [discoveredColumns],
     );
 
+    // Capture `query` and `mode` so the generator identity and the SQL it
+    // executes change together. useDataSource keys off that identity to
+    // refetch when either input changes.
     const dataSource = useMemo<DataGridDataSource<RowData>>(() => {
       return async function* (params) {
         setError(null);
@@ -452,8 +463,8 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
           const applyFilter = enableSearchFilterRef.current;
 
           const finalQuery = buildFinalQuery({
-            baseQuery: queryRef.current,
-            mode: modeRef.current,
+            baseQuery: query,
+            mode,
             orderBy,
             orderDir,
             search: applyFilter ? search : "",
@@ -495,7 +506,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
           yield { rows: [], hasMore: false };
         }
       };
-    }, [serverApp]);
+    }, [serverApp, query, mode]);
 
     const getRowId = useCallback((row: RowData): string => {
       if (typeof row[INTERNAL_ROW_ID_KEY] === "string") return row[INTERNAL_ROW_ID_KEY];
@@ -562,11 +573,10 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
      *
      * Priority:
      *  1. `toolbar` (full override)  — caller owns the whole row
-     *  2. `searchBar` provided       — render our own DataGridToolbar
-     *     wrapper that hides the built-in quick search and slots the
-     *     caller's node where it used to live; keeps Columns/Export
-     *     intact. `toolbarExtra` (if provided) is passed through as
-     *     the built-in extras slot.
+     *  2. `searchBar` or `toolbarActions` provided — render our own
+     *     DataGridToolbar wrapper. The built-in quick search is hidden only
+     *     when `searchBar` replaces it; Columns/Export stay intact and the
+     *     leading/trailing extension slots are passed through.
      *  3. neither                    — undefined, so the DataGrid
      *     falls back to its default toolbar behaviour (built-in
      *     quick search, extras, columns, export).
@@ -582,16 +592,23 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             : typeof toolbarExtra === "function"
               ? toolbarExtra(extended)
               : toolbarExtra;
+        const actions =
+          toolbarActions === undefined
+            ? undefined
+            : typeof toolbarActions === "function"
+              ? toolbarActions(extended)
+              : toolbarActions;
         return (
           <DataGridToolbar
             ctx={ctx}
             extra={extras}
             extraLeading={leading}
-            hideQuickSearch
+            extraActions={actions}
+            hideQuickSearch={searchBar !== undefined}
           />
         );
       },
-      [searchBar, toolbarExtra, extendCtx],
+      [searchBar, toolbarExtra, toolbarActions, extendCtx],
     );
 
     const renderForwardedToolbar = useCallback(
@@ -604,7 +621,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
 
     const resolvedToolbar = toolbar
       ? renderForwardedToolbar
-      : searchBar !== undefined
+      : searchBar !== undefined || toolbarActions !== undefined
         ? renderCustomToolbar
         : undefined;
 
@@ -612,11 +629,11 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       // When we've already built a custom toolbar above for the
       // `searchBar` case, the `toolbarExtra` prop is consumed inside
       // that custom toolbar — don't also pass it to DataGrid.
-      if (toolbar || searchBar !== undefined) return undefined;
+      if (toolbar || searchBar !== undefined || toolbarActions !== undefined) return undefined;
       if (toolbarExtra === undefined) return undefined;
       if (typeof toolbarExtra !== "function") return toolbarExtra;
       return (ctx: DataGridToolbarContext<RowData>) => toolbarExtra(extendCtx(ctx));
-    }, [toolbar, searchBar, toolbarExtra, extendCtx]);
+    }, [toolbar, searchBar, toolbarActions, toolbarExtra, extendCtx]);
 
     return (
       <div className={fillHeight ? "flex flex-1 min-h-0 flex-col" : "flex flex-col"}>
@@ -654,6 +671,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               selectionMode="none"
               fillHeight={fillHeight}
               stickyTop={stickyTop}
+              horizontalScrollbarPosition={horizontalScrollbarPosition}
               toolbar={resolvedToolbar}
               toolbarExtra={resolvedToolbarExtra}
               footer={footer ? undefined : false}
@@ -662,7 +680,11 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               emptyState={
                 emptyState ?? (
                   <div className="flex flex-col items-center justify-center gap-4 py-16">
-                    <Typography variant="secondary">No data available</Typography>
+                    <Typography variant="secondary">
+                      {gridState.quickSearch.trim().length > 0
+                        ? "No rows match your search"
+                        : "No data available"}
+                    </Typography>
                   </div>
                 )
               }
