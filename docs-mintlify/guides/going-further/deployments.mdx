@@ -1,0 +1,77 @@
+---
+title: "Deployments"
+description: "Deploy your app's services with `hexclave deploy`, from your machine or CI"
+sidebarTitle: "Deployments"
+---
+
+The Deployments app lets you host your app's frontends and APIs alongside your Hexclave backend. You configure each service once (framework, build commands, env vars, domains) and deploy it with a single CLI command; the source is uploaded and built remotely. Deployments is currently in alpha.
+
+## Set up a service
+
+Enable the Deployments app in the dashboard, then add a service on the board and configure its build settings there. That's all you need — `hexclave deploy <service>` run from your app's directory uses the configuration stored in Hexclave.
+
+Alternatively, keep the configuration in your repo by defining the service in a `hexclave.config.ts` under `deployments.services` (when present, it governs the deploy and is upserted back to Hexclave — config as code):
+
+```ts title="hexclave.config.ts"
+import type { HexclaveConfig } from "@hexclave/js/config"; // replace `js` with the correct framework SDK package
+
+export const config: HexclaveConfig = {
+  deployments: {
+    services: {
+      web: {
+        rootDirectory: "./",          // the local source directory to upload
+        framework: "nextjs",
+        installCommand: "pnpm install",
+        buildCommand: "pnpm build",
+        outputDirectory: ".next",
+        domains: {
+          "example-com": { hostname: "example.com", isPrimary: true },
+        },
+      },
+    },
+  },
+};
+```
+
+All fields are optional — omit what the platform can auto-detect. This file is safe to commit: env vars never go in it.
+
+## Deploy
+
+From the directory containing your config file:
+
+```sh title="Terminal"
+hexclave deploy web
+```
+
+The CLI packages the service's root directory (respecting `.gitignore` and `.vercelignore`, and always excluding `node_modules` and `.git`), uploads it, and starts a remote build. Without a config file, the root directory comes from the service's stored configuration, resolved against the current directory. It always deploys to production, never prompts, and exits as soon as the build is queued, printing the run id. Follow the build in the dashboard's Deployments tab.
+
+Options: `--config <path>` (default: auto-discover `hexclave.config.ts` in the current directory, dashboard configuration otherwise), `--cloud-project-id <id>` (default: the `HEXCLAVE_PROJECT_ID` env var), and `--env KEY=VALUE` (repeatable, see below).
+
+## Env vars
+
+Env vars are supplied at deploy time with `--env`, never in the config file, so no secret is ever committed:
+
+```sh title="Terminal"
+hexclave deploy web --env DATABASE_URL="$DATABASE_URL" --env NEXT_PUBLIC_HEXCLAVE_PROJECT_ID='{hexclave.projectId}'
+```
+
+Values may contain `{service.output}` references — pointers that Hexclave resolves server-side and pushes to the deployment as encrypted env vars. The managed `hexclave` service exposes `projectId`, `apiUrl`, `jwksUrl`, `publishableClientKey`, and `secretServerKey`; other services expose `url` and `previewUrl`. You can also manage a persistent env var set per service in the dashboard's Variables tab.
+
+## Deploying from GitHub Actions
+
+In CI, authenticate with an API key instead of `hexclave login`: set `HEXCLAVE_PROJECT_ID` and `HEXCLAVE_SECRET_SERVER_KEY` (from your project's API Keys page) as repository secrets.
+
+```yaml title=".github/workflows/deploy.yml"
+- run: npm i -g @hexclave/cli
+- run: hexclave deploy web --env DATABASE_URL="$DATABASE_URL"
+  env:
+    HEXCLAVE_PROJECT_ID: ${{ secrets.HEXCLAVE_PROJECT_ID }}
+    HEXCLAVE_SECRET_SERVER_KEY: ${{ secrets.HEXCLAVE_SECRET_SERVER_KEY }}
+    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+```
+
+Note that `hexclave deploy` is fire-and-forget: the job succeeds once the build is queued, even if the build later fails. Check the run's status in the dashboard, or poll it via the API with the printed run id.
+
+## Custom domains
+
+Add domains in the dashboard's Domains tab (or under `domains` in the config file). After adding one, the tab shows the DNS records to create and re-checks verification automatically until they're live.

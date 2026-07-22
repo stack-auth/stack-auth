@@ -77,6 +77,7 @@ export function getAccentClasses(accent: Accent): AccentClasses {
 export const STATUS_META = new Map<string, { label: string, color: "green" | "cyan" | "orange" | "red" }>([
   ["deployed", { label: "Deployed", color: "green" }],
   ["building", { label: "Building", color: "cyan" }],
-  ["sleeping", { label: "Sleeping", color: "orange" }],
-  ["crashed", { label: "Crashed", color: "red" }],
+  ["not_deployed", { label: "Not deployed", color: "orange" }],
+  ["canceled", { label: "Cancelled", color: "orange" }],
+  ["crashed", { label: "Failed", color: "red" }],
 ]);

@@ -5,7 +5,7 @@
 // service (the source of the output) into the service that owns the env var
 // (the target), so a connection line is drawn source → target.
 
-import { NODE_HEIGHT, NODE_WIDTH, type Service } from "./mock-data";
+import { NODE_HEIGHT, NODE_WIDTH, type BoardService } from "./board-model";
 
 // Matches a whole-value or inline reference token. Service and output names use
 // the same character class as our service names / output keys.
@@ -41,7 +41,7 @@ export type Connection = {
 
 // Derive the set of connections from every env var reference on the board.
 // Deduplicated per (source, target) pair; self-references are ignored.
-export function deriveConnections(services: Service[]): Connection[] {
+export function deriveConnections(services: BoardService[]): Connection[] {
   const byName = new Map(services.map((s) => [s.name, s]));
   const counts = new Map<string, Connection>();
 
@@ -77,7 +77,7 @@ export type EdgeAnchors = {
 // Anchor points on the node edges. Nodes have a fixed footprint (NODE_WIDTH x
 // NODE_HEIGHT), so anchors are pure geometry — no DOM measurement needed, which
 // keeps drag updates cheap and jitter-free.
-export function getEdgeAnchors(from: Service, to: Service): EdgeAnchors {
+export function getEdgeAnchors(from: BoardService, to: BoardService): EdgeAnchors {
   const fromCenterX = from.x + NODE_WIDTH / 2;
   const toCenterX = to.x + NODE_WIDTH / 2;
   const reversed = toCenterX < fromCenterX;

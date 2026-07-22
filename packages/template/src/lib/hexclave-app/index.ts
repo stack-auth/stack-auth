@@ -106,6 +106,10 @@ export type {
 } from "./project-configs";
 
 export type {
+  AdminDeploymentDomainJson,
+  AdminDeploymentRunJson,
+  AdminDeploymentServiceBuildOptions,
+  AdminDeploymentServiceJson,
   AdminOwnedProject,
   AdminProject,
   AdminProjectCreateOptions,

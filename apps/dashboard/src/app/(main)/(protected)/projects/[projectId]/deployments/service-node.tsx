@@ -2,11 +2,11 @@
 
 import { cn } from "@/components/ui";
 import { ArrowsOutCardinalIcon, GlobeSimpleIcon, LightningIcon } from "@phosphor-icons/react";
-import { NODE_HEIGHT, NODE_WIDTH, getServiceTypeMeta, type Service } from "./mock-data";
+import { NODE_HEIGHT, NODE_WIDTH, getServiceTypeMeta, type BoardService } from "./board-model";
 import { STATUS_META, getAccentClasses, type VariantConfig } from "./variants";
 
 type ServiceNodeProps = {
-  service: Service,
+  service: BoardService,
   variant: VariantConfig,
   selected: boolean,
   dragging: boolean,

@@ -8,6 +8,7 @@ import { cliVersion } from "./lib/own-package.js";
 import { AuthError, CliError } from "./lib/errors.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
+import { registerDeployCommand } from "./commands/deploy.js";
 import { registerExecCommand } from "./commands/exec.js";
 import { registerConfigCommand } from "./commands/config-file.js";
 import { registerInitCommand } from "./commands/init.js";
@@ -28,6 +29,7 @@ program
 registerLoginCommand(program);
 registerLogoutCommand(program);
 registerExecCommand(program);
+registerDeployCommand(program);
 registerConfigCommand(program);
 registerInitCommand(program);
 registerProjectCommand(program);

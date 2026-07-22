@@ -36,6 +36,52 @@ export type ChatContent = Array<
   | { type: "tool-call", toolName: string, toolCallId: string, args: any, argsText: string, result: any }
 >;
 
+export type AdminDeploymentRunJson = {
+  id: string,
+  service_id: string,
+  status: "queued" | "building" | "ready" | "error" | "canceled",
+  target: string,
+  triggered_by: string,
+  url: string | null,
+  error: string | null,
+  created_at_millis: number,
+  finished_at_millis: number | null,
+};
+
+export type AdminDeploymentServiceJson = {
+  id: string,
+  framework: string | null,
+  install_command: string | null,
+  build_command: string | null,
+  output_directory: string | null,
+  root_directory: string | null,
+  provisioned: boolean,
+  status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
+  has_successful_deploy: boolean,
+  url: string | null,
+  env_vars: { id: string, key: string, value: string, is_secret: boolean }[],
+  domains: { hostname: string, is_primary: boolean, verified: boolean }[],
+  latest_run: AdminDeploymentRunJson | null,
+};
+
+// null means "unset this field" (falls back to platform auto-detection);
+// undefined means "leave unchanged".
+export type AdminDeploymentServiceBuildOptions = {
+  framework?: string | null,
+  install_command?: string | null,
+  build_command?: string | null,
+  output_directory?: string | null,
+  root_directory?: string | null,
+};
+
+export type AdminDeploymentDomainJson = {
+  hostname: string,
+  is_primary: boolean,
+  verified: boolean,
+  pending_first_deploy: boolean,
+  dns_records: { type: string, name: string, value: string }[],
+};
+
 export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
   | {
     superSecretAdminKey: string,
@@ -1202,6 +1248,121 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  // ---- Deployments app ------------------------------------------------------
+
+  async listDeploymentServices(): Promise<AdminDeploymentServiceJson[]> {
+    const response = await this.sendAdminRequest(
+      "/deployments/services",
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async createDeploymentService(id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson> {
+    const response = await this.sendAdminRequest(
+      "/deployments/services",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ id, ...build }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateDeploymentService(serviceId: string, update: AdminDeploymentServiceBuildOptions & {
+    env_vars?: { key: string, value: string, is_secret?: boolean }[],
+  }): Promise<AdminDeploymentServiceJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(update),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteDeploymentService(serviceId: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async listDeploymentRuns(serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/runs` + (options?.limit !== undefined ? `?limit=${options.limit}` : ""),
+      { method: "GET" },
+      null,
+    );
+    return (await response.json()).items;
+  }
+
+  async getDeploymentRunLogs(runId: string, options?: { signal?: AbortSignal }): Promise<string> {
+    // The endpoint streams chunked plain text until the run is terminal (or a
+    // server-side cap); reading the full body gives "the logs so far". Pass a
+    // signal so an abandoned view can abort — otherwise the server keeps
+    // following the build for minutes.
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/runs/${runId}/logs`,
+      { method: "GET", signal: options?.signal },
+      null,
+    );
+    return await response.text();
+  }
+
+  async fetchDeploymentRuntimeLogs(serviceId: string, options?: { signal?: AbortSignal }): Promise<Response> {
+    // Returns the raw Response: the endpoint live-tails runtime logs as
+    // chunked plain text for several minutes, so callers must read the body
+    // incrementally (response.body.getReader()) rather than awaiting text().
+    return await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/runtime-logs`,
+      { method: "GET", signal: options?.signal },
+      null,
+    );
+  }
+
+  async addDeploymentServiceDomain(serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ hostname, ...(options?.isPrimary ? { is_primary: true } : {}) }),
+      },
+      null,
+    );
+  }
+
+  async getDeploymentServiceDomain(serviceId: string, hostname: string): Promise<AdminDeploymentDomainJson> {
+    const response = await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains/${hostname}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async deleteDeploymentServiceDomain(serviceId: string, hostname: string): Promise<void> {
+    await this.sendAdminRequest(
+      urlString`/deployments/services/${serviceId}/domains/${hostname}`,
+      { method: "DELETE" },
+      null,
+    );
   }
 
 }

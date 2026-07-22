@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@hexclave/shared/dist/apps/apps-ui";
-import { BarChart3, ClipboardList, Code, CreditCard, Headset, KeyRound, Mail, Mails, MousePointerClick, PlayCircle, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { BarChart3, ClipboardList, Code, CreditCard, Headset, KeyRound, Mail, Mails, MousePointerClick, PlayCircle, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook, Workflow } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -46,6 +46,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
   clickmaps: MousePointerClick,
   "session-replays": PlayCircle,
   "cli-auth": Code,
+  deployments: Workflow,
 };
 
 function createSvgIcon(ChildrenComponent: () => React.ReactNode): (props: React.SVGProps<SVGSVGElement>) => React.ReactNode {

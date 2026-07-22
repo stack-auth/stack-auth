@@ -2,9 +2,10 @@
 
 import { DesignBadge, DesignButton } from "@/components/design-components";
 import { ActionDialog, Typography, cn } from "@/components/ui";
+import type { AdminDeploymentRunJson, AdminProject } from "@hexclave/next";
 import { XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { getServiceTypeMeta, type BuildConfig, type Deployment, type EnvVar, type Service } from "./mock-data";
+import { getServiceTypeMeta, type BoardService } from "./board-model";
 import {
   DeploymentDetailContent,
   DeploymentsContent,
@@ -17,19 +18,15 @@ import {
 import { STATUS_META, getAccentClasses } from "./variants";
 
 type ServiceDetailPaneProps = {
-  service: Service,
-  services: Service[],
-  shouldFocusName: boolean,
-  onNameFocused: () => void,
+  service: BoardService,
+  services: BoardService[],
+  project: AdminProject,
+  // True when the project's config is pushed from a config file or GitHub:
+  // service definitions (name, build config, domains) can't be edited here.
+  readOnly: boolean,
   onClose: () => void,
-  onRename: (id: string, name: string) => void,
-  onAddEnvVar: (id: string) => void,
-  onUpdateEnvVar: (id: string, envId: string, patch: Partial<Pick<EnvVar, "key" | "value">>) => void,
-  onRemoveEnvVar: (id: string, envId: string) => void,
-  onDeleteService: (id: string) => void,
-  onAddDomain: (id: string, hostname: string) => void,
-  onRemoveDomain: (id: string, domainId: string) => void,
-  onUpdateBuildConfig: (id: string, patch: Partial<BuildConfig>) => void,
+  onDeleted: () => void,
+  refresh: () => Promise<void>,
 };
 
 type PanelTabId = "overview" | "variables" | "deployments" | "logs" | "domains" | "settings";
@@ -44,9 +41,9 @@ const TABS: { id: PanelTabId, label: string }[] = [
 ];
 
 export function ServiceDetailPane(props: ServiceDetailPaneProps) {
-  const { service, services } = props;
+  const { service, services, project, readOnly, refresh } = props;
   const [tab, setTab] = useState<PanelTabId>("overview");
-  const [openDeployment, setOpenDeployment] = useState<Deployment | null>(null);
+  const [openRun, setOpenRun] = useState<AdminDeploymentRunJson | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isHexclave = service.type === "hexclave";
@@ -55,29 +52,29 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
 
-  // When a different service is selected, jump back to Overview so a freshly
-  // created service shows its name field, and reset the drill-in / dialog.
+  // When a different service is selected, jump back to Overview and reset the
+  // drill-in / dialog.
   useEffect(() => {
-    setOpenDeployment(null);
+    setTab("overview");
+    setOpenRun(null);
     setDeleteOpen(false);
-    if (props.shouldFocusName) setTab("overview");
-  }, [service.id, props.shouldFocusName]);
+  }, [service.id]);
 
   const selectTab = (id: PanelTabId) => {
     setTab(id);
-    setOpenDeployment(null);
+    setOpenRun(null);
   };
 
-  const content = openDeployment ? (
-    <DeploymentDetailContent deployment={openDeployment} onBack={() => setOpenDeployment(null)} />
+  const content = openRun ? (
+    <DeploymentDetailContent run={openRun} project={project} onBack={() => setOpenRun(null)} />
   ) : (() => {
     switch (tab) {
-      case "overview": { return <OverviewContent service={service} isHexclave={isHexclave} onRename={props.onRename} shouldFocusName={props.shouldFocusName} onNameFocused={props.onNameFocused} />; }
-      case "variables": { return <VariablesContent service={service} services={services} onAddEnvVar={props.onAddEnvVar} onUpdateEnvVar={props.onUpdateEnvVar} onRemoveEnvVar={props.onRemoveEnvVar} />; }
-      case "deployments": { return <DeploymentsContent service={service} onOpenDeployment={setOpenDeployment} />; }
-      case "logs": { return <LogsContent service={service} />; }
-      case "domains": { return <DomainsContent service={service} isHexclave={isHexclave} onAddDomain={props.onAddDomain} onRemoveDomain={props.onRemoveDomain} />; }
-      case "settings": { return <SettingsContent service={service} isHexclave={isHexclave} onUpdateBuildConfig={props.onUpdateBuildConfig} onRequestDelete={() => setDeleteOpen(true)} />; }
+      case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
+      case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} refresh={refresh} />; }
+      case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
+      case "logs": { return <LogsContent service={service} project={project} isHexclave={isHexclave} />; }
+      case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
+      case "settings": { return <SettingsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} onRequestDelete={() => setDeleteOpen(true)} />; }
     }
   })();
 
@@ -101,7 +98,7 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
 
       <div className="flex gap-0.5 overflow-x-auto border-b border-border/60 px-1.5">
         {TABS.map((t) => {
-          const active = tab === t.id && !openDeployment;
+          const active = tab === t.id;
           return (
             <button
               key={t.id}
@@ -125,8 +122,14 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
         onOpenChange={setDeleteOpen}
         danger
         title="Delete service"
-        description={`This permanently removes "${service.name}" and all of its configuration. This can't be undone.`}
-        okButton={{ label: "Delete service", onClick: async () => { props.onDeleteService(service.id); } }}
+        description={`This permanently removes "${service.name}", including its deployment target and all of its configuration. This can't be undone.`}
+        okButton={{
+          label: "Delete service",
+          onClick: async () => {
+            await project.deleteDeploymentService(service.id);
+            props.onDeleted();
+          },
+        }}
         cancelButton
       />
     </div>

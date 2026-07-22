@@ -73,6 +73,8 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  deploymentServices  DeploymentService[]
+  deploymentSourceUploads DeploymentSourceUpload[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1527,4 +1529,146 @@ model DeletedRow {
   // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
   @@index([tenancyId, tableName, sequenceId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
+}
+
+// ================== Deployments ==================
+// Operational state for the Deployments app. The service DEFINITIONS
+// (framework, build config, desired domains) live in the environment config
+// under `deployments.services.<serviceId>` so they follow the project's config
+// source (dashboard / config file / GitHub); these tables only hold what the
+// config cannot: the lazily-provisioned Vercel project id, per-service env
+// vars set through the dashboard UI, domain verification state as reported by
+// Vercel, and the deployment runs themselves.
+
+model DeploymentService {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The user-facing service id — the key under `deployments.services` in the
+  // environment config (e.g. "api").
+  serviceId String
+
+  // Set when the Vercel project is lazily provisioned on first deploy.
+  vercelProjectId String?
+
+  // Build configuration as last sent to Vercel (operational cache — the
+  // authoritative definition lives in the environment config).
+  framework       String?
+  installCommand  String?
+  buildCommand    String?
+  outputDirectory String?
+  rootDirectory   String?
+
+  tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  envVars DeploymentServiceEnvVar[]
+  domains DeploymentServiceDomain[]
+  runs    DeploymentRun[]
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, serviceId])
+}
+
+model DeploymentServiceEnvVar {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  key String
+  // May contain `{serviceId.outputKey}` references; resolved server-side when
+  // pushed to Vercel.
+  value    String
+  isSecret Boolean @default(false)
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deploymentServiceId, key])
+}
+
+model DeploymentServiceDomain {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  hostname  String
+  isPrimary Boolean @default(false)
+  // Vercel-reported verification state, refreshed whenever the domain is read.
+  verified Boolean @default(false)
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@unique([tenancyId, deploymentServiceId, hostname])
+}
+
+enum DeploymentRunStatus {
+  QUEUED
+  BUILDING
+  READY
+  ERROR
+  CANCELED
+}
+
+model DeploymentRun {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deploymentServiceId String @db.Uuid
+
+  vercelDeploymentId  String?
+  vercelDeploymentUrl String?
+
+  status DeploymentRunStatus @default(QUEUED)
+  // "production" | "preview" (kept a string to match Vercel's target values)
+  target String
+  // Free-form descriptor of what triggered the run (e.g. "cli").
+  triggeredBy String
+
+  error      String?
+  finishedAt DateTime?
+
+  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
+}
+
+// Short-lived tarball uploads for `hexclave deploy`: the CLI requests an
+// upload slot, PUTs the tarball, then references it in the deploy request.
+// Rows are deleted on consumption; expired leftovers are cleaned up
+// opportunistically whenever a new upload slot is created.
+model DeploymentSourceUpload {
+  tenancyId String @db.Uuid
+
+  id String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Null until the CLI actually PUTs the tarball.
+  data      Bytes?
+  expiresAt DateTime
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([expiresAt])
 }

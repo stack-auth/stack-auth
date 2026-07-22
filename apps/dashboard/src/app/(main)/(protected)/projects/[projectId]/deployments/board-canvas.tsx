@@ -1,21 +1,21 @@
 "use client";
 
-import { DesignButton } from "@/components/design-components";
-import { Popover, PopoverContent, PopoverTrigger, cn } from "@/components/ui";
-import { MinusIcon, PlusIcon, TriangleIcon } from "@phosphor-icons/react";
+import { DesignButton, DesignInput } from "@/components/design-components";
+import { Popover, PopoverContent, PopoverTrigger, Spinner, cn } from "@/components/ui";
+import { getPublicEnvVar } from "@/lib/env";
+import type { AdminDeploymentServiceJson, PushedConfigSource } from "@hexclave/next";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { GitBranchIcon, LockSimpleIcon, MinusIcon, PlusIcon, TriangleIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildEdgePath, deriveConnections, getEdgeAnchors } from "./connections";
+import { useAdminApp } from "../use-admin-app";
 import {
   NODE_HEIGHT,
   NODE_WIDTH,
-  defaultBuildConfig,
-  getInitialServices,
+  buildBoardServices,
   getServiceTypeMeta,
-  type BuildConfig,
-  type EnvVar,
-  type Service,
-  type ServiceType,
-} from "./mock-data";
+  type BoardService,
+} from "./board-model";
+import { buildEdgePath, deriveConnections, getEdgeAnchors } from "./connections";
 import { ServiceDetailPane } from "./service-detail-pane";
 import { ServiceNode } from "./service-node";
 import { BLUEPRINT_VARIANT, getAccentClasses } from "./variants";
@@ -26,6 +26,10 @@ const DRAG_THRESHOLD = 4;
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.5;
+
+// The board data is cheap to fetch, so a simple always-on poll keeps deploy
+// statuses fresh without a websocket.
+const REFRESH_INTERVAL_MS = 15_000;
 
 function clampZoom(z: number): number {
   return Math.min(Math.max(z, MIN_ZOOM), MAX_ZOOM);
@@ -40,23 +44,73 @@ type Interaction =
 
 export function BoardCanvas() {
   const variant = BLUEPRINT_VARIANT;
-  const [services, setServices] = useState<Service[]>(getInitialServices);
+  const adminApp = useAdminApp();
+  const project = adminApp.useProject();
+
+  const [apiServices, setApiServices] = useState<AdminDeploymentServiceJson[] | null>(null);
+  const [configSource, setConfigSource] = useState<PushedConfigSource | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [services, source] = await Promise.all([
+        project.listDeploymentServices(),
+        project.getPushedConfigSource(),
+      ]);
+      setApiServices(services);
+      setConfigSource(source);
+      setLoadError(null);
+    } catch (error) {
+      // Keep whatever data we have; the board shows the error banner.
+      setLoadError(error instanceof Error ? error.message : String(error));
+    }
+  }, [project]);
+
+  useEffect(() => {
+    runAsynchronously(refresh());
+    const interval = setInterval(() => runAsynchronously(refresh()), REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  // Config definitions are read-only in the dashboard when the config is
+  // pushed from a config file or GitHub (deploy-time env vars still work).
+  const readOnly = configSource != null && configSource.type !== "unlinked";
+  const readOnlySourceLabel = configSource?.type === "pushed-from-github" ? "GitHub" : "a config file";
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  // The just-created service whose name input should grab focus.
-  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
+  // In-session drag positions, keyed by service id, on top of the
+  // deterministic layout. Not persisted — a refresh resets the layout.
+  const [positionOverrides, setPositionOverrides] = useState<Map<string, { x: number, y: number }>>(new Map());
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const idCounter = useRef(0);
-  const nextId = (prefix: string) => `${prefix}_${idCounter.current++}`;
 
-  const selected = services.find((s) => s.id === selectedId) ?? null;
-  const connections = useMemo(() => deriveConnections(services), [services]);
+  const hexclaveApiHost = useMemo(() => {
+    const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL");
+    if (apiUrl == null || apiUrl === "") return "api.hexclave.com";
+    try {
+      return new URL(apiUrl).host;
+    } catch {
+      return "api.hexclave.com";
+    }
+  }, []);
+
+  const services = useMemo(() => {
+    if (apiServices == null) return null;
+    return buildBoardServices(apiServices, hexclaveApiHost).map((service) => {
+      const override = positionOverrides.get(service.id);
+      return override != null ? { ...service, x: override.x, y: override.y } : service;
+    });
+  }, [apiServices, hexclaveApiHost, positionOverrides]);
+
+  const selected = services?.find((s) => s.id === selectedId) ?? null;
+  const connections = useMemo(() => deriveConnections(services ?? []), [services]);
 
   const linkedIds = useMemo(() => {
     if (!selectedId) return new Set<string>();
@@ -68,23 +122,19 @@ export function BoardCanvas() {
     return ids;
   }, [connections, selectedId]);
 
-  // Center the initial services once the viewport actually has a size (its
-  // layout isn't settled on the first mount tick, which would otherwise center
-  // on the world origin). Because view state is not persisted, a page refresh
-  // re-runs this and resets the user to center.
+  // Center the board once the viewport has a size and the services are known.
+  const centeredRef = useRef(false);
   useEffect(() => {
     const vp = viewportRef.current;
-    if (!vp) return;
-    let done = false;
+    if (!vp || services == null || centeredRef.current) return;
     const center = () => {
-      if (done) return;
+      if (centeredRef.current) return;
       const width = vp.clientWidth;
       const height = vp.clientHeight;
-      if (width === 0 || height === 0) return;
-      done = true;
-      const initial = getInitialServices();
-      const xs = initial.map((s) => s.x + NODE_WIDTH / 2);
-      const ys = initial.map((s) => s.y + NODE_HEIGHT / 2);
+      if (width === 0 || height === 0 || services.length === 0) return;
+      centeredRef.current = true;
+      const xs = services.map((s) => s.x + NODE_WIDTH / 2);
+      const ys = services.map((s) => s.y + NODE_HEIGHT / 2);
       const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
       const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
       setView({ x: width / 2 - cx, y: height / 2 - cy, zoom: 1 });
@@ -94,7 +144,7 @@ export function BoardCanvas() {
     observer.observe(vp);
     center();
     return () => observer.disconnect();
-  }, []);
+  }, [services]);
 
   const zoomTowards = useCallback((factor: number, cx: number, cy: number) => {
     setView((v) => {
@@ -139,7 +189,7 @@ export function BoardCanvas() {
     if (e.button !== 0) return;
     // Keep the viewport pan handler from also firing.
     e.stopPropagation();
-    const service = services.find((s) => s.id === serviceId);
+    const service = services?.find((s) => s.id === serviceId);
     if (!service) return;
     interactionRef.current = {
       mode: "node",
@@ -179,7 +229,7 @@ export function BoardCanvas() {
         const zoom = viewRef.current.zoom;
         const x = it.startWorldX + (e.clientX - it.startClientX) / zoom;
         const y = it.startWorldY + (e.clientY - it.startClientY) / zoom;
-        setServices((prev) => prev.map((s) => (s.id === it.id ? { ...s, x, y } : s)));
+        setPositionOverrides((prev) => new Map(prev).set(it.id, { x, y }));
       } else {
         it.moved = true;
         setView((v) => ({ ...v, x: it.startViewX + (e.clientX - it.startClientX), y: it.startViewY + (e.clientY - it.startClientY) }));
@@ -211,76 +261,15 @@ export function BoardCanvas() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const handleAddService = useCallback((type: ServiceType) => {
-    const id = nextId("svc");
-    setServices((prev) => {
-      const sameType = prev.filter((s) => s.type === type).length;
-      // Drop new nodes near the current center of the viewport, in world space.
-      const vp = viewportRef.current;
-      const v = viewRef.current;
-      const worldCenterX = vp ? (vp.clientWidth / 2 - v.x) / v.zoom - NODE_WIDTH / 2 : 400;
-      const worldCenterY = vp ? (vp.clientHeight / 2 - v.y) / v.zoom - NODE_HEIGHT / 2 : 200;
-      const created: Service = {
-        id,
-        name: `${getServiceTypeMeta(type).label.toLowerCase()}-${sameType + 1}`,
-        type,
-        x: worldCenterX + (prev.length % 3) * 24,
-        y: worldCenterY + (prev.length % 3) * 24,
-        status: "building",
-        region: "us-east",
-        source: "github.com/acme/new-app",
-        envVars: [],
-        domains: [],
-        buildConfig: defaultBuildConfig(type),
-      };
-      return [...prev, created];
-    });
-    setSelectedId(id);
-    setPendingFocusId(id);
-  }, []);
-
-  const handleRename = useCallback((id: string, name: string) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-  }, []);
-
-  const handleAddEnvVar = useCallback((id: string) => {
-    const envId = nextId("env");
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, envVars: [...s.envVars, { id: envId, key: "", value: "" }] } : s)));
-  }, []);
-
-  const handleUpdateEnvVar = useCallback((id: string, envId: string, patch: Partial<Pick<EnvVar, "key" | "value">>) => {
-    setServices((prev) => prev.map((s) =>
-      s.id === id ? { ...s, envVars: s.envVars.map((e) => (e.id === envId ? { ...e, ...patch } : e)) } : s,
-    ));
-  }, []);
-
-  const handleRemoveEnvVar = useCallback((id: string, envId: string) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, envVars: s.envVars.filter((e) => e.id !== envId) } : s)));
-  }, []);
-
-  const handleDeleteService = useCallback((id: string) => {
-    setServices((prev) => {
-      const target = prev.find((s) => s.id === id);
-      if (!target || target.type === "hexclave") return prev;
-      return prev.filter((s) => s.id !== id);
-    });
-    setSelectedId((cur) => (cur === id ? null : cur));
-  }, []);
-
-  const handleAddDomain = useCallback((id: string, hostname: string) => {
-    const domainId = nextId("dom");
-    setServices((prev) => prev.map((s) =>
-      s.id === id ? { ...s, domains: [...s.domains, { id: domainId, hostname, primary: false, verified: false }] } : s,
-    ));
-  }, []);
-
-  const handleRemoveDomain = useCallback((id: string, domainId: string) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, domains: s.domains.filter((d) => d.id !== domainId) } : s)));
-  }, []);
-
-  const handleUpdateBuildConfig = useCallback((id: string, patch: Partial<BuildConfig>) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, buildConfig: { ...s.buildConfig, ...patch } } : s)));
-  }, []);
+  const handleAddService = useCallback(async () => {
+    const name = newServiceName.trim().toLowerCase();
+    if (name === "") return;
+    await project.createDeploymentService(name, {});
+    setAddOpen(false);
+    setNewServiceName("");
+    await refresh();
+    setSelectedId(name);
+  }, [newServiceName, project, refresh]);
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-2xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]">
@@ -307,39 +296,63 @@ export function BoardCanvas() {
           backgroundPosition: `${view.x}px ${view.y}px`,
         }}
       >
-        {/* Transformed world layer. */}
-        <div className="absolute left-0 top-0" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: "0 0" }}>
-          <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
-            {connections.map((connection) => {
-              const from = services.find((s) => s.id === connection.fromId);
-              const to = services.find((s) => s.id === connection.toId);
-              if (!from || !to) return null;
-              const anchors = getEdgeAnchors(from, to);
-              const path = buildEdgePath(anchors, variant.connectorStyle);
-              const accent = getAccentClasses(getServiceTypeMeta(from.type).accent);
-              const active = selectedId === from.id || selectedId === to.id;
-              const dimmed = selectedId != null && !active;
-              return (
-                <g key={connection.id} className={cn(accent.stroke, "transition-opacity duration-150")} opacity={dimmed ? 0.25 : 1}>
-                  <path d={path} fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.75} strokeDasharray={variant.connectorDashed ? "5 5" : undefined} strokeLinecap="round" />
-                  <circle cx={anchors.end.x} cy={anchors.end.y} r={active ? 4 : 3} fill="currentColor" />
-                </g>
-              );
-            })}
-          </svg>
+        {services == null ? (
+          <div className="flex h-full items-center justify-center">
+            <Spinner />
+          </div>
+        ) : (
+          // Transformed world layer.
+          <div className="absolute left-0 top-0" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: "0 0" }}>
+            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
+              {connections.map((connection) => {
+                const from = services.find((s) => s.id === connection.fromId);
+                const to = services.find((s) => s.id === connection.toId);
+                if (!from || !to) return null;
+                const anchors = getEdgeAnchors(from, to);
+                const path = buildEdgePath(anchors, variant.connectorStyle);
+                const accent = getAccentClasses(getServiceTypeMeta(from.type).accent);
+                const active = selectedId === from.id || selectedId === to.id;
+                const dimmed = selectedId != null && !active;
+                return (
+                  <g key={connection.id} className={cn(accent.stroke, "transition-opacity duration-150")} opacity={dimmed ? 0.25 : 1}>
+                    <path d={path} fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 1.75} strokeDasharray={variant.connectorDashed ? "5 5" : undefined} strokeLinecap="round" />
+                    <circle cx={anchors.end.x} cy={anchors.end.y} r={active ? 4 : 3} fill="currentColor" />
+                  </g>
+                );
+              })}
+            </svg>
 
-          {services.map((service) => (
-            <ServiceNode
-              key={service.id}
-              service={service}
-              variant={variant}
-              selected={selectedId === service.id}
-              dragging={draggingId === service.id}
-              linked={linkedIds.has(service.id)}
-              onPointerDown={handleNodePointerDown}
-            />
-          ))}
-        </div>
+            {services.map((service) => (
+              <ServiceNode
+                key={service.id}
+                service={service}
+                variant={variant}
+                selected={selectedId === service.id}
+                dragging={draggingId === service.id}
+                linked={linkedIds.has(service.id)}
+                onPointerDown={handleNodePointerDown}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Read-only / error banners — top-left. */}
+      <div data-board-chrome onPointerDown={(e) => e.stopPropagation()} className="absolute left-3 top-3 z-20 flex max-w-[60%] flex-col gap-2">
+        {readOnly && (
+          <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-500/30 backdrop-blur-md dark:text-amber-300">
+            {configSource.type === "pushed-from-github" ? <GitBranchIcon className="h-4 w-4 shrink-0" /> : <LockSimpleIcon className="h-4 w-4 shrink-0" />}
+            <span>
+              This project&apos;s config is managed by {readOnlySourceLabel}. Edit your repo&apos;s <span className="font-mono">hexclave.config.ts</span> to change services.
+            </span>
+          </div>
+        )}
+        {loadError != null && (
+          <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-700 ring-1 ring-red-500/30 backdrop-blur-md dark:text-red-300">
+            <WarningCircleIcon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 break-words">Failed to load deployments: {loadError}</span>
+          </div>
+        )}
       </div>
 
       {/* Zoom controls — bottom-left. */}
@@ -353,26 +366,49 @@ export function BoardCanvas() {
         </button>
       </div>
 
-      {/* Add service — top-right. Only Vercel services can be added. */}
+      {/* Add service — top-right. Disabled when the config is pushed from a
+          config file or GitHub (definitions are read-only then). */}
       <div data-board-chrome onPointerDown={(e) => e.stopPropagation()} className="absolute right-3 top-3 z-20">
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
+        <Popover
+          open={addOpen}
+          onOpenChange={(open) => {
+            setAddOpen(open);
+            if (!open) setNewServiceName("");
+          }}
+        >
           <PopoverTrigger asChild>
-            <DesignButton size="sm" variant="outline">
+            <DesignButton size="sm" variant="outline" disabled={readOnly || services == null}>
               <PlusIcon className="mr-2 h-4 w-4" />
               Add Service
             </DesignButton>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-44 p-1">
-            <button
-              onClick={() => {
-                setAddOpen(false);
-                handleAddService("vercel");
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground transition-colors duration-150 hover:bg-foreground/[0.06] hover:transition-none"
-            >
+          <PopoverContent align="end" className="w-64 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
               <TriangleIcon className="h-4 w-4 text-cyan-500" weight="fill" />
-              Vercel
-            </button>
+              New Vercel service
+            </div>
+            <DesignInput
+              autoFocus
+              value={newServiceName}
+              size="sm"
+              placeholder="e.g. web, api, docs"
+              className="font-mono"
+              onChange={(e) => setNewServiceName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runAsynchronouslyWithAlert(handleAddService());
+              }}
+            />
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Lowercase letters, digits, hyphens, and underscores. This is the name you&apos;ll pass to <span className="font-mono">hexclave deploy</span>.
+            </p>
+            <DesignButton
+              size="sm"
+              className="mt-2 w-full"
+              disabled={newServiceName.trim() === ""}
+              onClick={handleAddService}
+            >
+              Create service
+            </DesignButton>
           </PopoverContent>
         </Popover>
       </div>
@@ -386,21 +422,18 @@ export function BoardCanvas() {
           selected ? "translate-x-0" : "pointer-events-none translate-x-full",
         )}
       >
-        {selected && (
+        {selected && services != null && (
           <ServiceDetailPane
             service={selected}
             services={services}
-            shouldFocusName={selected.id === pendingFocusId}
-            onNameFocused={() => setPendingFocusId(null)}
+            project={project}
+            readOnly={readOnly}
             onClose={() => setSelectedId(null)}
-            onRename={handleRename}
-            onAddEnvVar={handleAddEnvVar}
-            onUpdateEnvVar={handleUpdateEnvVar}
-            onRemoveEnvVar={handleRemoveEnvVar}
-            onDeleteService={handleDeleteService}
-            onAddDomain={handleAddDomain}
-            onRemoveDomain={handleRemoveDomain}
-            onUpdateBuildConfig={handleUpdateBuildConfig}
+            onDeleted={() => {
+              setSelectedId(null);
+              runAsynchronously(refresh());
+            }}
+            refresh={refresh}
           />
         )}
       </div>

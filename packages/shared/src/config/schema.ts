@@ -293,6 +293,39 @@ const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
 });
 
+// --- Deployments Schema ---
+// Service DEFINITIONS (framework, build config, desired domains) live in the
+// branch config so they follow the project's config source: pushable from
+// hexclave.config.ts / GitHub, or editable in the dashboard when the config is
+// unlinked. Operational state (Vercel project id, deployment runs, domain
+// verification) lives in the backend database instead, keyed by the service id.
+// Domains are a record (not an array) keyed by a user-specified id, mirroring
+// domains.trustedDomains — arrays don't merge well with dot-notation overrides.
+const branchDeploymentsSchema = yupObject({
+  services: yupRecord(
+    // "hexclave" is the managed backend's slot on the deployments board; a
+    // config entry must never shadow it, so it's rejected at the schema level
+    // (not just in the dashboard-create route — pushed configs go through
+    // validation too).
+    userSpecifiedIdSchema("serviceId").notOneOf(["hexclave"], 'The service id "hexclave" is reserved for the managed Hexclave service'),
+    yupObject({
+      framework: yupString().optional(),
+      installCommand: yupString().optional(),
+      buildCommand: yupString().optional(),
+      outputDirectory: yupString().optional(),
+      rootDirectory: yupString().optional(),
+      domains: yupRecord(
+        userSpecifiedIdSchema("domainId"),
+        yupObject({
+          hostname: yupString().defined(),
+          isPrimary: yupBoolean().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+// --- END Deployments Schema ---
+
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   "sourceOfTruth",
@@ -327,6 +360,7 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
+  deployments: branchDeploymentsSchema,
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -872,6 +906,20 @@ const organizationConfigDefaults = {
     externalDatabases: (key: string) => ({
       type: undefined,
       connectionString: undefined,
+    }),
+  },
+
+  deployments: {
+    services: (key: string) => ({
+      framework: undefined,
+      installCommand: undefined,
+      buildCommand: undefined,
+      outputDirectory: undefined,
+      rootDirectory: undefined,
+      domains: (domainKey: string) => ({
+        hostname: undefined,
+        isPrimary: false,
+      }),
     }),
   },
 

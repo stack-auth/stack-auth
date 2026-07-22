@@ -185,6 +185,23 @@ const branchSchemaFuzzerConfig = [{
   onboarding: [{
     requireEmailVerification: [true, false],
   }],
+  deployments: [{
+    services: [{
+      "some-service-id": [{
+        framework: ["nextjs", "vite", ""],
+        installCommand: ["pnpm install", ""],
+        buildCommand: ["pnpm build", ""],
+        outputDirectory: [".next", "dist", ""],
+        rootDirectory: ["./", "./apps/web", ""],
+        domains: [{
+          "some-domain-id": [{
+            hostname: ["example.com", "www.example.com", ""],
+            isPrimary: [true, false],
+          }],
+        }],
+      }],
+    }],
+  }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
 const environmentSchemaFuzzerConfig = [{

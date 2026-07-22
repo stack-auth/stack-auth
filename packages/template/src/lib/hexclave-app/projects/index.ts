@@ -3,8 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
+import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
+
+export type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -139,6 +142,67 @@ export type AdminProject = {
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
   useProductionModeErrors(this: AdminProject): ProductionModeError[],
+
+  /**
+   * Lists the project's deployment services (definitions from the config,
+   * merged with their operational state: deploy status, env vars, domains).
+   */
+  listDeploymentServices(this: AdminProject): Promise<AdminDeploymentServiceJson[]>,
+
+  /**
+   * Creates a new deployment service definition. Only available when the
+   * project's config source is the dashboard (`unlinked`).
+   */
+  createDeploymentService(this: AdminProject, id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson>,
+
+  /**
+   * Updates a deployment service. Build fields require the config source to be
+   * the dashboard; `env_vars` replace the dashboard-managed env var set and
+   * work regardless of the config source.
+   */
+  updateDeploymentService(this: AdminProject, serviceId: string, update: AdminDeploymentServiceBuildOptions & {
+    env_vars?: { key: string, value: string, is_secret?: boolean }[],
+  }): Promise<AdminDeploymentServiceJson>,
+
+  /**
+   * Deletes a deployment service, including its provisioned deployment target.
+   * Only available when the project's config source is the dashboard.
+   */
+  deleteDeploymentService(this: AdminProject, serviceId: string): Promise<void>,
+
+  /**
+   * Lists the most recent deployment runs of a service, newest first.
+   */
+  listDeploymentRuns(this: AdminProject, serviceId: string, options?: { limit?: number }): Promise<AdminDeploymentRunJson[]>,
+
+  /**
+   * Returns the build logs of a deployment run collected so far (the server
+   * follows a running build for a while before returning).
+   */
+  getDeploymentRunLogs(this: AdminProject, runId: string, options?: { signal?: AbortSignal }): Promise<string>,
+
+  /**
+   * Opens a live tail of the service's runtime logs (chunked plain text, held
+   * open for a few minutes). Read the returned Response's body incrementally;
+   * awaiting `text()` would block until the tail ends.
+   */
+  fetchDeploymentRuntimeLogs(this: AdminProject, serviceId: string, options?: { signal?: AbortSignal }): Promise<Response>,
+
+  /**
+   * Adds a custom domain to a deployment service.
+   */
+  addDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void>,
+
+  /**
+   * Returns a domain's verification state and the DNS records the user must
+   * create. Poll this until `verified` is true.
+   */
+  getDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string): Promise<AdminDeploymentDomainJson>,
+
+  /**
+   * Removes a custom domain from a deployment service.
+   */
+  deleteDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string): Promise<void>,
 } & Project;
 
 export type AdminOwnedProject = {
