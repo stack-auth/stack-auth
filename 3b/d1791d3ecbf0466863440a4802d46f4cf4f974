@@ -1,0 +1,23 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/spans-events/page-client.test.ts
+  s_ab2b6b8a3caaa2::t_1005c8df2ed9c4 1-37
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_ab2b6b8a3caaa2::t_7325e20fd76b3f 9,21,172-182
+  s_ab2b6b8a3caaa2::t_09ef112ea25333 183-192
+  s_ab2b6b8a3caaa2::t_8cfdc3be1a208c 193-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "3bd1791d3ecbf0466863440a4802d46f4cf4f974",
+  "prompts": {},
+  "sessions": {
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
