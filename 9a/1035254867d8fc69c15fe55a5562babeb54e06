@@ -1,0 +1,21 @@
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.test.ts
+  s_723c53522b5785::t_9959767b45e0be 7-14,55-212
+packages/template/src/lib/hexclave-app/apps/implementations/session-replay.ts
+  s_723c53522b5785::t_8d06f9ec46af54 123-144,239,448-516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "9a1035254867d8fc69c15fe55a5562babeb54e06",
+  "prompts": {},
+  "sessions": {
+    "s_723c53522b5785": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8ae1-87a9-7ef1-86c3-412206bad74a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
