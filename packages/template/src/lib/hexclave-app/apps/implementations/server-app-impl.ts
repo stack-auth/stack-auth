@@ -42,7 +42,7 @@ import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameErr
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
 import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
-import { getServerRequestContext, runWithServerRequestContext, type ServerRequestSpanContext } from "./server-request-context";
+import { getServerRequestContext, runWithServerRequestContext, withExplicitServerUser, type ServerRequestSpanContext } from "./server-request-context";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -1820,27 +1820,27 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * yields an empty context so the span still records.
    */
   private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
-    let userId: string | null = explicitUserId;
+    let userId: string | null = null;
     let refreshTokenId: string | null = null;
     try {
       const session = await this._getSession(request);
       const tokens = await session.fetchNewTokens();
       if (tokens?.refreshToken != null) {
         refreshTokenId = tokens.accessToken.payload.refresh_token_id;
-        if (userId == null) userId = tokens.accessToken.payload.sub;
+        userId = tokens.accessToken.payload.sub;
       }
     } catch {
       // Best-effort; no session context.
     }
     const decoded = decodeSpanContextHeader(readSpanContextHeader(request.headers));
     const sameProject = decoded !== null && decoded.projectId === this.projectId ? decoded : null;
-    return {
+    return withExplicitServerUser({
       userId,
       refreshTokenId,
       sessionReplayId: sameProject?.sessionReplayId ?? null,
       sessionReplaySegmentId: sameProject?.sessionReplaySegmentId ?? null,
       customParentSpanIds: sameProject?.customParentSpanIds ?? [],
-    };
+    }, explicitUserId);
   }
 
   /**
@@ -1851,7 +1851,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _currentServerBatchContext(explicitUserId: string | null): ServerRequestSpanContext {
     const ambient = getServerRequestContext();
     if (ambient) {
-      return { ...ambient, userId: explicitUserId ?? ambient.userId };
+      return withExplicitServerUser(ambient, explicitUserId);
     }
     return { userId: explicitUserId, refreshTokenId: null, sessionReplayId: null, sessionReplaySegmentId: null, customParentSpanIds: [] };
   }
