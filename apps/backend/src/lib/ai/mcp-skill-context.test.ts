@@ -55,8 +55,9 @@ describe("getMcpSkillContextPrompt", () => {
     }));
   });
 
-  it("throws a descriptive timeout error when the docs body stalls mid-stream", async () => {
+  it("returns a sanitized error when the docs body stalls mid-stream", async () => {
     vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     // Simulates real fetch behavior: headers arrive immediately, but the body stream never
     // produces data. Like undici, aborting the request signal errors the pending body read.
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
@@ -73,7 +74,11 @@ describe("getMcpSkillContextPrompt", () => {
     try {
       const promptPromise = getMcpSkillContextPrompt("ask_hexclave");
       // attach the rejection expectation before advancing timers so the rejection is never unhandled
-      const expectation = expect(promptPromise).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
+      const expectation = expect(promptPromise).rejects.toMatchObject({
+        message: "Service Unavailable",
+        name: "StatusError",
+        statusCode: 503,
+      });
       await vi.advanceTimersByTimeAsync(5_000);
       await expectation;
     } finally {
@@ -81,21 +86,32 @@ describe("getMcpSkillContextPrompt", () => {
     }
   });
 
-  it("fails loudly when the documentation cannot be fetched", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("missing", { status: 503, statusText: "Service Unavailable" }),
-    );
+  it("consumes failed responses before returning a sanitized error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = new Response("missing", { status: 503, statusText: "Service Unavailable" });
+    const textSpy = vi.spyOn(response, "text");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
 
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Failed to fetch docs from https://docs.hexclave.com/llms-full.txt: 503 Service Unavailable]`);
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toMatchObject({
+      message: "Service Unavailable",
+      name: "StatusError",
+      statusCode: 503,
+    });
+    expect(textSpy).toHaveBeenCalledOnce();
   });
 
-  it("throws a descriptive error when the fetch times out", async () => {
+  it("returns a sanitized error when the fetch times out", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(globalThis, "fetch").mockImplementation(() => {
       const err = new DOMException("The operation was aborted", "AbortError");
       return Promise.reject(err);
     });
 
-    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toThrowErrorMatchingInlineSnapshot(`[Error: Docs fetch from https://docs.hexclave.com/llms-full.txt timed out after 5000ms]`);
+    await expect(getMcpSkillContextPrompt("ask_hexclave")).rejects.toMatchObject({
+      message: "Service Unavailable",
+      name: "StatusError",
+      statusCode: 503,
+    });
   });
 
   it("returns cached documentation on subsequent calls within TTL", async () => {

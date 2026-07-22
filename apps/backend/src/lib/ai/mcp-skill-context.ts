@@ -1,3 +1,5 @@
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+
 const HEXCLAVE_DOCS_FULL_URL = "https://docs.hexclave.com/llms-full.txt";
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL_MS = 5 * 60 * 1_000; // 5 minutes
@@ -24,6 +26,7 @@ async function fetchDocsText(): Promise<string> {
     });
 
     if (!response.ok) {
+      await response.text();
       throw new Error(
         `Failed to fetch docs from ${HEXCLAVE_DOCS_FULL_URL}: ${response.status} ${response.statusText}`,
       );
@@ -53,7 +56,13 @@ export async function getMcpSkillContextPrompt(toolName: string | null | undefin
     return "";
   }
 
-  const docsContext = await fetchDocsText();
+  let docsContext: string;
+  try {
+    docsContext = await fetchDocsText();
+  } catch (error: unknown) {
+    captureError("mcp-skill-context-docs-fetch", error);
+    throw new StatusError(StatusError.ServiceUnavailable);
+  }
 
   return `
 
