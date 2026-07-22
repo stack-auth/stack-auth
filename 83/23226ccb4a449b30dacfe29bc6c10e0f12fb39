@@ -1,0 +1,23 @@
+packages/template/src/lib/hexclave-app/apps/implementations/server-request-context.ts
+  s_ab2b6b8a3caaa2::t_f857946aea755c 26-47
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_ab2b6b8a3caaa2::t_f857946aea755c 45,1823,1830,1837,1843,1854
+packages/template/src/lib/hexclave-app/apps/implementations/server-request-context.test.ts
+  s_ab2b6b8a3caaa2::t_f857946aea755c 1-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "8323226ccb4a449b30dacfe29bc6c10e0f12fb39",
+  "prompts": {},
+  "sessions": {
+    "s_ab2b6b8a3caaa2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8705-5d70-7493-b77f-2796eef3f541",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
