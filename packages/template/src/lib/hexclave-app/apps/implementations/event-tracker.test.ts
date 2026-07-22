@@ -1574,6 +1574,38 @@ describe("EventTracker integrity signals (opt-in)", () => {
     }
   });
 
+  it("restarts still-active away and offline intervals after a bfcache restore", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    setVisibilityState("hidden");
+    const sentBodies: string[] = [];
+    const tracker = makeTracker(sentBodies, true);
+    try {
+      tracker.start();
+      window.dispatchEvent(new Event("pagehide"));
+      await vi.advanceTimersByTimeAsync(0);
+
+      const pageShow = new Event("pageshow");
+      Object.defineProperty(pageShow, "persisted", { value: true });
+      window.dispatchEvent(pageShow);
+      await advancePastFlush();
+
+      const spans = sentBodies.flatMap((body) => (JSON.parse(body) as { spans?: { span_id: string, span_type: string, ended_at_ms: number | null, page_view_span_id?: string }[] }).spans ?? []);
+      for (const spanType of ["$away", "$offline"]) {
+        const rows = spans.filter((span) => span.span_type === spanType);
+        expect(new Set(rows.map((row) => row.span_id)).size).toBe(2);
+        expect(rows[rows.length - 1]).toMatchObject({
+          ended_at_ms: null,
+          page_view_span_id: expect.any(String),
+        });
+        expect(rows[rows.length - 1]?.page_view_span_id).not.toBe(rows[0]?.page_view_span_id);
+      }
+    } finally {
+      tracker.stop();
+      Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });
+    }
+  });
+
   it("classifies paste origin without ever capturing clipboard content", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<textarea id=\"essay\"></textarea>";
