@@ -131,6 +131,52 @@ describe("extractLatestQuery", () => {
     expect(extractLatestQuery(messages)).toBeNull();
   });
 
+  it("ignores schema-discovery queries (DESCRIBE / SHOW) and keeps the row filter", () => {
+    const messages = fixture([
+      {
+        id: "user-1",
+        role: "user",
+        content: [{ type: "text", text: "verified users" }],
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "queryAnalytics",
+            args: { query: "DESCRIBE TABLE users" },
+            argsText: '{"query":"DESCRIBE TABLE users"}',
+            result: { success: true },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-2",
+            toolName: "queryAnalytics",
+            args: { query: "SELECT * FROM users WHERE primary_email_verified = 1" },
+            argsText: "",
+            result: { success: true },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-3",
+            toolName: "queryAnalytics",
+            args: { query: "SHOW TABLES" },
+            argsText: '{"query":"SHOW TABLES"}',
+            result: { success: true },
+          },
+        ],
+      },
+    ]);
+
+    expect(extractLatestQuery(messages)).toEqual({
+      query: "SELECT * FROM users WHERE primary_email_verified = 1",
+      toolCallIndex: 2,
+      requestText: "verified users",
+    });
+  });
+
   it("ignores tool calls from unrelated tools", () => {
     const messages = fixture([
       {

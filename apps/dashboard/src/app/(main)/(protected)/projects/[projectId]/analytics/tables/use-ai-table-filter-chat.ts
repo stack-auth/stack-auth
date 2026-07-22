@@ -13,6 +13,15 @@ const QUERY_ANALYTICS_TOOL = "queryAnalytics";
 
 type QueryToolPart = ToolCallContentPart<{ query?: string }, unknown>;
 
+/**
+ * The filter prompt tells the AI to run schema-discovery statements (DESCRIBE
+ * TABLE / SHOW TABLES) through the same queryAnalytics tool before committing
+ * a row filter. Those calls must never be mistaken for the committed filter.
+ */
+function isSchemaDiscoveryQuery(query: string): boolean {
+  return /^\s*(describe|desc|show)\b/i.test(query);
+}
+
 function isQueryAnalyticsToolPart(
   part: ThreadMessage["content"][number],
 ): part is QueryToolPart {
@@ -58,7 +67,7 @@ export function extractLatestQuery(messages: readonly ThreadMessage[]): {
       toolCallIndex += 1;
       if (!isSuccessfulQueryToolPart(part)) continue;
       const query = typeof part.args.query === "string" ? part.args.query : null;
-      if (query && query.trim().length > 0) {
+      if (query && query.trim().length > 0 && !isSchemaDiscoveryQuery(query)) {
         latest = {
           query,
           toolCallIndex,
@@ -139,7 +148,9 @@ export function useAiTableFilterChat(tableName: string): AiTableFilterChat {
     [backendBaseUrl, currentUser, projectId, tableName],
   );
 
-  const runtime = useLocalThreadRuntime(adapter, { maxSteps: 1 });
+  // Multiple steps so the AI can run DESCRIBE TABLE for schema discovery
+  // before committing the actual row filter in a later tool call.
+  const runtime = useLocalThreadRuntime(adapter, { maxSteps: 4 });
 
   const [snapshot, setSnapshot] = useState(() => {
     const s = runtime.thread.getState();

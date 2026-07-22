@@ -15,24 +15,106 @@ jobs:
   all-good:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       checks: read
       contents: read
     env:
       REPO: ${{ github.repository }}
       COMMIT: ${{ github.sha }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      EVENT_NAME: ${{ github.event_name }}
+      REF_NAME: ${{ github.ref_name }}
     steps:
-      - name: Wait for 60 seconds
-        run: sleep 60
-
-      - name: Poll Checks API until complete
+      - name: Wait for every expected workflow and check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          echo "Checking check runs for commit ${COMMIT} in repo ${REPO}..."
-          
+          # This is deliberately an explicit contract. Discovering only the
+          # workflow runs or check runs that already exist has an open-world
+          # race: a queued workflow may not have reported either one yet.
+          expected_workflows=(
+            "e2e-fallback-tests.yaml"
+            "lint-and-build.yaml"
+            "docker-server-build-run.yaml"
+            "setup-tests.yaml"
+            "check-prisma-migrations.yaml"
+            "e2e-custom-base-port-api-tests.yaml"
+            "table-of-contents.yaml"
+            "setup-tests-with-custom-base-port.yaml"
+            "fast-fail-tests.yaml"
+            "e2e-api-tests.yaml"
+          )
+          case "$EVENT_NAME" in
+            pull_request)
+              expected_workflows+=("db-migration-backwards-compatibility.yaml")
+              ;;
+            push)
+              expected_workflows+=("docker-server-build-push.yaml")
+              if [ "$REF_NAME" = "dev" ]; then
+                expected_workflows+=("db-migration-backwards-compatibility.yaml")
+              elif [ "$REF_NAME" = "main" ]; then
+                expected_workflows+=("npm-publish.yaml")
+              else
+                echo "Unexpected push branch for all-good: ${REF_NAME}" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unexpected event for all-good: ${EVENT_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+          function candidate_shas() {
+            printf '%s\n' "$COMMIT"
+            if [ -n "${PR_HEAD_SHA:-}" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
+              printf '%s\n' "$PR_HEAD_SHA"
+            fi
+          }
+
+          function get_workflow_runs() {
+            local responses_file
+            responses_file=$(mktemp)
+
+            while IFS= read -r sha; do
+              local page=1
+              while true; do
+                local response
+                if ! response=$(curl -sS --fail-with-body \
+                  --retry 3 \
+                  --retry-all-errors \
+                  --connect-timeout 10 \
+                  --max-time 30 \
+                  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/repos/${REPO}/actions/runs?event=${EVENT_NAME}&head_sha=${sha}&per_page=100&page=${page}"); then
+                  echo "Error fetching workflow runs for ${sha}" >&2
+                  rm -f "$responses_file"
+                  return 1
+                fi
+                if ! jq -c '.workflow_runs[]?' <<< "$response" >> "$responses_file"; then
+                  echo "Invalid Actions API response for ${sha}" >&2
+                  rm -f "$responses_file"
+                  return 1
+                fi
+                local page_count
+                if ! page_count=$(jq '.workflow_runs | length' <<< "$response"); then
+                  echo "Invalid Actions API response for ${sha}" >&2
+                  rm -f "$responses_file"
+                  return 1
+                fi
+                [ "$page_count" -lt 100 ] && break
+                page=$((page + 1))
+              done
+            done < <(candidate_shas)
+
+            jq -s '{ workflow_runs: unique_by(.id) }' "$responses_file"
+            rm -f "$responses_file"
+          }
+
           function get_check_runs() {
             local endpoint=$1
             local page=1
@@ -88,75 +170,81 @@ jobs:
 
             printf '%s\n' "$combined"
           }
-          
+
           function count_pending_checks() {
             local response=$1
             echo "$response" | jq '([.check_runs[]? | select(.status != "completed" and .name != "all-good" and .name != "claude-review")] | length) // 0'
           }
-          
+
           function count_failed_checks() {
             local response=$1
-            echo "$response" | jq '([.check_runs[]? | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good" and .name != "claude-review")] | length) // 0'
+            echo "$response" | jq '([.check_runs[]? | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good" and .name != "claude-review")] | length) // 0'
           }
-          
+
+          deadline=$(( $(date +%s) + 21600 ))
           while true; do
-            # Always check the current commit's checks
-            commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
-            commit_total=$(echo "$commit_response" | jq -r '.total_count // 0')
-            
-            # If this is a PR, check the PR's head commit checks
-            pr_total=0
-            pr_response='{"total_count":0,"check_runs":[]}'
-            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
-              pr_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs")
-              pr_total=$(echo "$pr_response" | jq -r '.total_count // 0')
-              echo "Found ${commit_total} current commit checks and ${pr_total} PR head commit checks"
-            else
-              echo "Found ${commit_total} commit checks"
-            fi
-            
-            # If no checks found at all, wait and retry
-            if [ "$commit_total" -eq 0 ] && { [ -z "$PR_HEAD_SHA" ] || [ "$pr_total" -eq 0 ]; }; then
-              echo "No check runs found. Waiting..."
-              sleep 10
-              continue
-            fi
-            
-            # Check for pending runs in both current and PR head commit checks
-            commit_pending=$(count_pending_checks "$commit_response")
-            pr_pending=0
-            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
-              pr_pending=$(count_pending_checks "$pr_response")
-            fi
-            
-            total_pending=$((commit_pending + pr_pending))
-            if [ "$total_pending" -gt 0 ]; then
-              echo "$total_pending check run(s) still in progress. Waiting..."
-              sleep 10
-              continue
-            fi
-            
-            # Check for failures in both current and PR head commit checks
-            commit_failed=$(count_failed_checks "$commit_response")
-            pr_failed=0
-            if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
-              pr_failed=$(count_failed_checks "$pr_response")
-            fi
-            
-            total_failed=$((commit_failed + pr_failed))
-            if [ "$total_failed" -eq 0 ]; then
-              echo "All check runs passed!"
-              exit 0
-            else
-              echo "The following check run(s) failed:"
-              # Failed checks on the current commit (excluding claude-review)
-              echo "$commit_response" | jq -r '.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "claude-review") | .name' | sed 's/^/  - /'
-              # Failed checks on the PR head commit (if different, excluding claude-review)
-              if [ -n "$PR_HEAD_SHA" ] && [ "$PR_HEAD_SHA" != "$COMMIT" ]; then
-                echo "$pr_response" | jq -r '.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "claude-review") | .name' | sed 's/^/  - /'
+            workflow_response=$(get_workflow_runs)
+            missing_workflows=()
+            pending_workflows=()
+            failed_workflows=()
+
+            for workflow_file in "${expected_workflows[@]}"; do
+              workflow_path=".github/workflows/${workflow_file}"
+              latest=$(jq -c --arg path "$workflow_path" '
+                [.workflow_runs[]? | select(.path == $path)]
+                | if length == 0 then null else max_by(.id) end
+              ' <<< "$workflow_response")
+              if [ "$latest" = "null" ]; then
+                missing_workflows+=("$workflow_file")
+                continue
               fi
-              echo "$commit_response"
-              echo "$pr_response"
+
+              status=$(jq -r '.status' <<< "$latest")
+              conclusion=$(jq -r '.conclusion // ""' <<< "$latest")
+              if [ "$status" != "completed" ]; then
+                pending_workflows+=("${workflow_file} (${status})")
+              elif [ "$conclusion" != "success" ] && [ "$conclusion" != "skipped" ] && [ "$conclusion" != "neutral" ]; then
+                failed_workflows+=("${workflow_file} (${conclusion})")
+              fi
+            done
+
+            if [ "${#failed_workflows[@]}" -gt 0 ]; then
+              echo "Expected workflow failures:"
+              printf '  - %s\n' "${failed_workflows[@]}"
               exit 1
             fi
+
+            if [ "${#missing_workflows[@]}" -gt 0 ] || [ "${#pending_workflows[@]}" -gt 0 ]; then
+              if [ "${#missing_workflows[@]}" -gt 0 ]; then
+                echo "Expected workflows not reported yet:"
+                printf '  - %s\n' "${missing_workflows[@]}"
+              fi
+              if [ "${#pending_workflows[@]}" -gt 0 ]; then
+                echo "Expected workflows still running:"
+                printf '  - %s\n' "${pending_workflows[@]}"
+              fi
+            else
+              # Expected GitHub workflows are now a closed, complete set. Check
+              # every check run currently attached to this event's commit too,
+              # so already-reported external checks can still block the gate.
+              commit_response=$(get_check_runs "https://api.github.com/repos/${REPO}/commits/${COMMIT}/check-runs")
+              pending_checks=$(count_pending_checks "$commit_response")
+              failed_checks=$(count_failed_checks "$commit_response")
+              if [ "$failed_checks" -gt 0 ]; then
+                echo "The following check run(s) failed:"
+                echo "$commit_response" | jq -r '.check_runs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .name != "all-good" and .name != "claude-review") | .name' | sed 's/^/  - /'
+                exit 1
+              fi
+              if [ "$pending_checks" -eq 0 ]; then
+                echo "Every expected workflow and reported check passed."
+                exit 0
+              fi
+              echo "${pending_checks} reported check run(s) still in progress."
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Timed out after six hours waiting for the expected CI contract." >&2
+              exit 1
+            fi
+            sleep 30
           done
