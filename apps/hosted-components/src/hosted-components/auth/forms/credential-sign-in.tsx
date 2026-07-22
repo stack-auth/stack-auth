@@ -7,9 +7,13 @@ import { Button, Input, Label, PasswordInput } from "~/components/ui";
 import { FormWarningText } from "../supporting/form-elements";
 import { isValidEmail } from "../supporting/utils";
 
-export function CredentialSignIn() {
+export function CredentialSignIn(props: {
+  email: string,
+  onEmailChange: (email: string) => void,
+}) {
   const app = useStackApp();
-  const [email, setEmail] = useState("");
+  const email = props.email;
+  const setEmail = props.onEmailChange;
   const [password, setPassword] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -52,6 +56,7 @@ export function CredentialSignIn() {
         id="email"
         type="email"
         autoComplete="email"
+        autoFocus
         className="h-10 rounded-xl border-border bg-background"
         value={email}
         onChange={(event) => {

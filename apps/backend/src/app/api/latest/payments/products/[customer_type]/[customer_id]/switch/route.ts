@@ -314,7 +314,7 @@ export const POST = createSmartRouteHandler({
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: existingSub.id } },
       });
-      await bulldozerWriteSubscription(prisma, updatedSub);
+      await bulldozerWriteSubscription(updatedSub);
     } else {
       // No existing Stripe subscription — create a new one. This happens when
       // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
@@ -375,7 +375,7 @@ export const POST = createSmartRouteHandler({
       const createdSub = await prisma.subscription.findUniqueOrThrow({
         where: { tenancyId_stripeSubscriptionId: { tenancyId: auth.tenancy.id, stripeSubscriptionId: createdSubscription.id } },
       });
-      await bulldozerWriteSubscription(prisma, createdSub);
+      await bulldozerWriteSubscription(createdSub);
     }
 
     return {

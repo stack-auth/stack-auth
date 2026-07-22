@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -55,6 +58,10 @@ vi.mock("@/components/design-components/select", () => ({
   ),
 }));
 
+vi.mock("@/components/hosted-auth-preview", () => ({
+  HostedAuthMethodPreview: () => <div>Hosted auth preview</div>,
+}));
+
 vi.mock("@/components/router", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -93,7 +100,6 @@ vi.mock("@/components/config-update", () => ({
 
 vi.mock("@hexclave/next", () => ({
   AdminOwnedProject: class {},
-  AuthPage: () => <div>Auth preview</div>,
 }));
 
 vi.mock("@hexclave/shared/dist/utils/oauth", () => ({
@@ -170,6 +176,19 @@ function createDeferred<T>() {
 }
 
 describe("ProjectOnboardingWizard", () => {
+  it("keeps the hosted auth preview interactive", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(testDir, "project-onboarding-wizard.tsx"), "utf-8");
+
+    const previewBlockMatch = source.match(/(<[^>]*HostedAuthMethodPreview[\s\S]*?\/>[\s\S]{0,300})/);
+    expect(previewBlockMatch).not.toBeNull();
+    const previewBlock = previewBlockMatch![1];
+
+    expect(previewBlock).not.toContain("pointer-events-none");
+    expect(previewBlock).not.toContain("inert");
+    expect(previewBlock).not.toContain("bg-transparent");
+  });
+
   it("keeps required apps when normalizing persisted onboarding state", () => {
     const normalizedState = normalizeProjectOnboardingState({
       selected_config_choice: "create-new",

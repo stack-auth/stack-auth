@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
+  DATA_GRID_DEFAULT_STRINGS,
   DataGrid,
+  DataGridToolbar,
   isDataGridInteractiveRowClickTarget,
+  useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridProps,
 } from "./index";
 
@@ -47,11 +51,47 @@ const wideColumns: DataGridColumnDef<Row>[] = [
   },
 ];
 
+describe("DataGridToolbar action divider", () => {
+  const ctx = {
+    state: createDefaultDataGridState(columns),
+    onChange: vi.fn(),
+    columns,
+    visibleColumns: columns,
+    totalRowCount: 1,
+    selectedRowCount: 0,
+    strings: DATA_GRID_DEFAULT_STRINGS,
+    exportCsv: vi.fn(),
+  };
+
+  afterEach(cleanup);
+
+  it("does not render a divider for an empty React node", () => {
+    const { container } = render(
+      <DataGridToolbar ctx={ctx} extraActions={false} />,
+    );
+
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).toBeNull();
+  });
+
+  it("renders the divider when an action is visible", () => {
+    const { container, getByRole } = render(
+      <DataGridToolbar
+        ctx={ctx}
+        extraActions={<button type="button">Refresh</button>}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Refresh" })).not.toBeNull();
+    expect(container.querySelector(".mx-0\\.5.h-4.w-px")).not.toBeNull();
+  });
+});
+
 type ObserverRecord = {
   options?: IntersectionObserverInit,
 };
 
 let intersectionObserverRecords: ObserverRecord[] = [];
+let intersectionObserverInstances: MockIntersectionObserver[] = [];
 
 class MockIntersectionObserver implements IntersectionObserver {
   readonly root: Element | Document | null;
@@ -74,6 +114,7 @@ class MockIntersectionObserver implements IntersectionObserver {
       : [options?.threshold ?? 0];
     this.record = { options };
     intersectionObserverRecords.push(this.record);
+    intersectionObserverInstances.push(this);
   }
 
   disconnect() {}
@@ -162,6 +203,24 @@ function DataGridHarness(props: { fillHeight?: boolean }) {
   );
 }
 
+function PaginatedDataGridHarness() {
+  const [state, setState] = useState(() => createDefaultDataGridState(columns));
+
+  return (
+    <div style={{ height: 400 }}>
+      <DataGrid<Row>
+        columns={columns}
+        rows={[{ id: "row-1", name: "Row 1" }]}
+        getRowId={(row) => row.id}
+        state={state}
+        onChange={setState}
+        paginationMode="paginated"
+        fillHeight={false}
+      />
+    </div>
+  );
+}
+
 function InteractiveDataGridHarness(props: {
   onSortChange?: DataGridProps<Row>["onSortChange"],
   onSelectionChange?: DataGridProps<Row>["onSelectionChange"],
@@ -182,7 +241,9 @@ function InteractiveDataGridHarness(props: {
   );
 }
 
-function WideDataGridHarness() {
+function WideDataGridHarness(props: {
+  horizontalScrollbarPosition?: "top" | "bottom",
+} = {}) {
   const [state, setState] = useState(() => createDefaultDataGridState(wideColumns));
 
   return (
@@ -193,6 +254,7 @@ function WideDataGridHarness() {
         getRowId={(row) => row.id}
         state={state}
         onChange={setState}
+        horizontalScrollbarPosition={props.horizontalScrollbarPosition}
       />
     </div>
   );
@@ -255,14 +317,164 @@ describe("DataGrid infinite scroll observer", () => {
     expect(intersectionObserverRecords.at(-1)?.options?.root).toBe(scrollContainer);
   });
 
-  it("falls back to the viewport when the page owns vertical scrolling", async () => {
-    render(<DataGridHarness fillHeight={false} />);
+  // Regression: an infinite grid left unbounded (`fillHeight={false}`, no `maxHeight`) used to
+  // grow its scroll container to fit every loaded row, which defeats virtualization (the
+  // virtualizer measures the container as fully visible and mounts every row) and OOMs the tab on
+  // large datasets. Such grids now fall back to a default `maxHeight`, so the grid owns its own
+  // bounded scroll container and observes against it rather than the viewport.
+  it("bounds an unbounded infinite grid and observes against its own scroll container", async () => {
+    const { container } = render(<DataGridHarness fillHeight={false} />);
 
     await waitFor(() => {
       expect(intersectionObserverRecords.length).toBeGreaterThan(0);
     });
 
-    expect(intersectionObserverRecords.at(-1)?.options?.root ?? null).toBeNull();
+    const grid = container.querySelector('[role="grid"]');
+    expect(grid).not.toBeNull();
+    const scrollContainer = grid?.children.item(1);
+
+    expect(intersectionObserverRecords.at(-1)?.options?.root).toBe(scrollContainer);
+  });
+
+  it("applies a default maxHeight to an otherwise-unbounded infinite grid", () => {
+    const { container } = render(<DataGridHarness fillHeight={false} />);
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    expect(grid).not.toBeNull();
+    expect(grid?.style.maxHeight).toBe("calc(100dvh - 16rem)");
+  });
+
+  it("does not force a maxHeight onto a paginated grid", () => {
+    const { container } = render(<PaginatedDataGridHarness />);
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    expect(grid).not.toBeNull();
+    expect(grid?.style.maxHeight).toBe("");
+  });
+});
+
+// Drives a real `useDataSource` infinite-scroll grid whose data source
+// always reports `hasMore: true`, mirroring a project with a long
+// transaction / customer history (e.g. the transactions table and customers
+// tab). Used to prove the sentinel doesn't thrash its IntersectionObserver.
+function InfiniteScrollLoadMoreHarness({ onFetch }: { onFetch: () => void }) {
+  const [state, setState] = useState(() => createDefaultDataGridState(columns));
+  const dataSource = useMemo<DataGridDataSource<Row>>(
+    () => {
+      let page = 0;
+      return async function* () {
+        onFetch();
+        const current = page++;
+        yield {
+          rows: [{ id: `row-${current}`, name: `Row ${current}` }],
+          hasMore: true,
+          nextCursor: `cursor-${current}`,
+        };
+      };
+    },
+    [onFetch],
+  );
+
+  const gridData = useDataSource<Row>({
+    dataSource,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: state.sorting,
+    quickSearch: state.quickSearch,
+    pagination: state.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <div style={{ height: 400 }}>
+      <DataGrid<Row>
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={(row) => row.id}
+        state={state}
+        onChange={setState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoading={gridData.isLoading}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+      />
+    </div>
+  );
+}
+
+describe("DataGrid infinite scroll observer stability", () => {
+  beforeEach(() => {
+    intersectionObserverRecords = [];
+    intersectionObserverInstances = [];
+
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect() {
+        return {
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 44,
+          top: 0,
+          left: 0,
+          right: 320,
+          bottom: 44,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  // Regression: the sentinel used to re-create its IntersectionObserver every
+  // time the `onLoadMore` callback changed identity (which happens on every
+  // `isLoadingMore` / `hasMore` toggle). A freshly-created observer re-reports
+  // the sentinel's current intersection state, so a sentinel that stays in
+  // view fires `onLoadMore` again after every page — auto-loading the entire
+  // history back-to-back and OOM-crashing the tab ("Aw snap") on large
+  // datasets. The observer must stay stable across load-more cycles.
+  it("does not re-create the observer on load-more cycles", async () => {
+    const onFetch = vi.fn();
+    render(<InfiniteScrollLoadMoreHarness onFetch={onFetch} />);
+
+    // Initial page load, after which the sentinel (and its observer) mounts.
+    await waitFor(() => expect(onFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(intersectionObserverInstances.length).toBeGreaterThan(0));
+
+    const observersBeforeLoadMore = intersectionObserverInstances.length;
+
+    // Simulate the sentinel scrolling into view exactly once.
+    await act(async () => {
+      intersectionObserverInstances.at(-1)?.trigger();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(onFetch).toHaveBeenCalledTimes(2));
+
+    // A single scroll-in must trigger a single fetch, without spawning new
+    // observers — otherwise each new observer would re-fire and runaway.
+    expect(intersectionObserverInstances.length).toBe(observersBeforeLoadMore);
   });
 });
 
@@ -405,5 +617,91 @@ describe("DataGrid horizontal scrolling", () => {
     expect(stickyChrome).toBeInstanceOf(HTMLElement);
     expect((stickyChrome as HTMLElement).className).toContain("overflow-visible");
     expect(container.textContent).toContain("Email");
+  });
+
+  it("puts the horizontal scrollbar under the column headers when position is top", () => {
+    const { container } = render(<WideDataGridHarness horizontalScrollbarPosition="top" />);
+
+    const stickyChrome = container.querySelector('[role="grid"]')?.firstElementChild;
+    expect(stickyChrome).toBeInstanceOf(HTMLElement);
+    const headerScroll = stickyChrome?.querySelector(".overflow-x-auto");
+    expect(headerScroll).toBeInstanceOf(HTMLElement);
+
+    const bodyScroll = container.querySelector('[role="grid"]')?.children.item(1);
+    expect(bodyScroll).toBeInstanceOf(HTMLElement);
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-x-hidden");
+    expect((bodyScroll as HTMLElement).className).toContain("overflow-y-auto");
+
+    Object.defineProperty(headerScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+    Object.defineProperty(bodyScroll as HTMLElement, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    (headerScroll as HTMLElement).scrollLeft = 120;
+    fireEvent.scroll(headerScroll as HTMLElement);
+    expect((bodyScroll as HTMLElement).scrollLeft).toBe(120);
+  });
+});
+
+describe("DataGrid loading skeleton", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a full-width shimmer when loading before any columns are known", () => {
+    function SchemaPendingHarness() {
+      const [state, setState] = useState(() => createDefaultDataGridState([]));
+      return (
+        <DataGrid<Row>
+          columns={[]}
+          rows={[]}
+          getRowId={(row) => row.id}
+          state={state}
+          onChange={setState}
+          isLoading
+        />
+      );
+    }
+
+    const { container } = render(<SchemaPendingHarness />);
+
+    const skeleton = container.querySelector("[data-data-grid-schema-pending-skeleton]");
+    expect(skeleton).toBeInstanceOf(HTMLElement);
+    // Five placeholder columns × 10 rows → visible shimmer cells, not an empty pane.
+    expect(skeleton?.querySelectorAll("[role='row']").length).toBe(10);
+  });
+
+  it("uses per-column skeleton rows once the schema is known", () => {
+    function KnownSchemaHarness() {
+      const [state, setState] = useState(() => createDefaultDataGridState(columns));
+      return (
+        <DataGrid<Row>
+          columns={columns}
+          rows={[]}
+          getRowId={(row) => row.id}
+          state={state}
+          onChange={setState}
+          isLoading
+        />
+      );
+    }
+
+    const { container } = render(<KnownSchemaHarness />);
+
+    expect(container.querySelector("[data-data-grid-schema-pending-skeleton]")).toBeNull();
+    const rowsClip = container.querySelector("[data-data-grid-rows-clip]");
+    expect(rowsClip?.querySelectorAll("[role='row']").length).toBe(8);
   });
 });

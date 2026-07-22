@@ -526,7 +526,7 @@ function FilterMenuContent({
     <DropdownMenuPortal>
       <DropdownMenuContent
         align="end"
-        className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-foreground/[0.08] bg-background p-0 shadow-lg"
+        className="w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-black/[0.08] bg-white p-0 shadow-lg ring-1 ring-black/[0.06] dark:border-white/[0.08] dark:bg-background dark:ring-white/[0.08]"
       >
         <DropdownMenuLabel className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
           Filter analytics by

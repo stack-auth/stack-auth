@@ -1,7 +1,42 @@
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { getJwtInfo } from "@hexclave/shared/dist/utils/jwt";
+import { wait } from "@hexclave/shared/dist/utils/promises";
 import { OAuthUserInfo, validateUserInfo } from "../utils";
 import { OAuthBaseProvider, TokenSet } from "./base";
+
+const USER_INFO_401_RETRY_DELAYS_MS = [1000, 2000];
+
+// `any` because fetch's json() is `any`; the shape is validated by validateUserInfo at the call site
+async function fetchRawGithubUserInfo(tokenSet: TokenSet): Promise<any> {
+  for (let attempt = 1; ; attempt++) {
+    const rawUserInfoRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokenSet.accessToken}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (rawUserInfoRes.ok) {
+      return await rawUserInfoRes.json();
+    }
+    // Retry only 401s: GitHub sometimes rejects freshly-issued tokens for 1-3s until they
+    // propagate across its infrastructure (https://github.com/orgs/community/discussions/162975).
+    if (rawUserInfoRes.status !== 401 || attempt > USER_INFO_401_RETRY_DELAYS_MS.length) {
+      // `attempt` is only in the extras, not the message, so Sentry keeps one grouping per status.
+      throw new HexclaveAssertionError(`Error fetching user info from GitHub provider: Status code ${rawUserInfoRes.status}`, {
+        rawUserInfoRes,
+        rawUserInfoResText: await rawUserInfoRes.text(),
+        attempt,
+        hasAccessToken: !!tokenSet.accessToken,
+        hasRefreshToken: !!tokenSet.refreshToken,
+        accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
+        jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
+      });
+    }
+    // Release the intermediate 401 response's connection instead of holding it until GC
+    await rawUserInfoRes.body?.cancel();
+    await wait(USER_INFO_401_RETRY_DELAYS_MS[attempt - 1]);
+  }
+}
 
 export class GithubProvider extends OAuthBaseProvider {
   private constructor(
@@ -40,23 +75,7 @@ export class GithubProvider extends OAuthBaseProvider {
   }
 
   async postProcessUserInfo(tokenSet: TokenSet): Promise<OAuthUserInfo> {
-    const rawUserInfoRes = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${tokenSet.accessToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (!rawUserInfoRes.ok) {
-      throw new HexclaveAssertionError("Error fetching user info from GitHub provider: Status code " + rawUserInfoRes.status, {
-        rawUserInfoRes,
-        rawUserInfoResText: await rawUserInfoRes.text(),
-        hasAccessToken: !!tokenSet.accessToken,
-        hasRefreshToken: !!tokenSet.refreshToken,
-        accessTokenExpiredAt: tokenSet.accessTokenExpiredAt,
-        jwtInfo: await getJwtInfo({ jwt: tokenSet.accessToken }),
-      });
-    }
-    const rawUserInfo = await rawUserInfoRes.json();
+    const rawUserInfo = await fetchRawGithubUserInfo(tokenSet);
 
     const emailsRes = await fetch("https://api.github.com/user/emails", {
       headers: {
@@ -104,3 +123,70 @@ export class GithubProvider extends OAuthBaseProvider {
     return res.ok;
   }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────────
+
+import.meta.vitest?.describe("fetchRawGithubUserInfo(...)", () => {
+  const { vi, test, afterEach } = import.meta.vitest!;
+
+  const testTokenSet: TokenSet = { accessToken: "ghu_test_token", accessTokenExpiredAt: null };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test("returns user info on first success without retrying", async ({ expect }) => {
+    const fetchMock = vi.fn(async () => Response.json({ id: 123, name: "Test" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await fetchRawGithubUserInfo(testTokenSet);
+    expect(result).toEqual({ id: 123, name: "Test" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries 401s with 1s then 2s delays and succeeds", async ({ expect }) => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const fetchMock = vi.fn(async () => ++callCount <= 2
+      ? new Response("Bad credentials", { status: 401 })
+      : Response.json({ id: 123 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const promise = fetchRawGithubUserInfo(testTokenSet);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await promise).toEqual({ id: 123 });
+  });
+
+  test("throws with the attempt count in extras after 401 retries are exhausted", async ({ expect }) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response("Bad credentials", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const promise = fetchRawGithubUserInfo(testTokenSet);
+    const rejection = expect(promise).rejects.toMatchObject({
+      message: expect.stringContaining("Error fetching user info from GitHub provider: Status code 401"),
+      extraData: expect.objectContaining({ attempt: 3 }),
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test("does not retry non-401 statuses", async ({ expect }) => {
+    const fetchMock = vi.fn(async () => new Response("Forbidden", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchRawGithubUserInfo(testTokenSet)).rejects.toMatchObject({
+      message: expect.stringContaining("Error fetching user info from GitHub provider: Status code 403"),
+      extraData: expect.objectContaining({ attempt: 1 }),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

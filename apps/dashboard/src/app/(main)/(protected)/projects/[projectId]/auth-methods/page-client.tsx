@@ -3,6 +3,7 @@
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { ActionDialog, BrandIcons, BrowserFrame, FormControl, FormField, FormItem, FormLabel, FormMessage, InlineCode, Label, SimpleTooltip, Switch, Typography } from "@/components/ui";
 import { FormDialog } from "@/components/form-dialog";
+import { HostedAuthMethodPreview } from "@/components/hosted-auth-preview";
 import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardInternalUser } from "@/lib/dashboard-user";
 import {
@@ -31,17 +32,18 @@ import {
   UserCircleIcon,
   UserPlusIcon,
 } from "@phosphor-icons/react";
-import { AdminProject, AuthPage } from "@hexclave/next";
+import { AdminProject } from "@hexclave/next";
 import type { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import type { RestrictedReason } from "@hexclave/shared/dist/schema-fields";
 import { urlSchema, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
-import { HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { captureError, HexclaveAssertionError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { allProviders } from "@hexclave/shared/dist/utils/oauth";
 import { typedFromEntries, typedEntries } from "@hexclave/shared/dist/utils/objects";
 import { resolvePlanId } from "@hexclave/shared/dist/plans";
 import { generateUuid } from "@hexclave/shared/dist/utils/uuids";
-import { useId, useMemo, useState } from "react";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
+import { Suspense, useEffect, useId, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -192,7 +194,24 @@ function AddCustomOidcButton({ onClick }: { onClick: () => void }) {
     return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
   }
 
-  return <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />;
+  // The plan check reads the internal project's owned products from bulldozer.
+  // That gate must not break the auth-methods page if bulldozer is down: on a
+  // read failure (or while it loads) we report it and fall back to the locked
+  // (non-Team) state, which is the same safe default as having no owner team.
+  return (
+    <ErrorBoundary errorComponent={({ error }) => <AddCustomOidcButtonPlanReadFailed onClick={onClick} error={error} />}>
+      <Suspense fallback={<AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />}>
+        <AddCustomOidcButtonInner team={ownerTeam} onClick={onClick} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function AddCustomOidcButtonPlanReadFailed({ onClick, error }: { onClick: () => void, error: unknown }) {
+  useEffect(() => {
+    captureError("auth-methods:custom-oidc-plan-gate", error);
+  }, [error]);
+  return <AddCustomOidcButtonDisabled onClick={onClick} isTeamPlanOrAbove={false} />;
 }
 
 function AddCustomOidcButtonInner({
@@ -751,12 +770,14 @@ function ProviderInlineRow({ provider }: { provider: AdminOAuthProviderConfig })
 
 function LivePreviewBody({
   config,
+  projectDisplayName,
   passwordEnabled,
   otpEnabled,
   passkeyEnabled,
   enabledProviders,
 }: {
   config: AdminProject['config'],
+  projectDisplayName: string,
   passwordEnabled: boolean,
   otpEnabled: boolean,
   passkeyEnabled: boolean,
@@ -766,17 +787,16 @@ function LivePreviewBody({
     <div className="self-stretch py-2 min-w-[400px] items-center">
       <BrowserFrame url="your-website.com/signin">
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <div className='w-full sm:max-w-xs m-auto scale-90 pointer-events-none' inert>
-            <div className="absolute inset-0 bg-transparent z-10"></div>
-            <AuthPage
-              type="sign-in"
-              mockProject={{
+          <div className="w-full sm:max-w-xs m-auto scale-90">
+            <HostedAuthMethodPreview
+              project={{
+                displayName: projectDisplayName,
                 config: {
-                  ...config,
+                  signUpEnabled: config.signUpEnabled,
                   credentialEnabled: passwordEnabled,
                   magicLinkEnabled: otpEnabled,
-                  passkeyEnabled: passkeyEnabled,
-                  oauthProviders: enabledProviders,
+                  passkeyEnabled,
+                  oauthProviders: enabledProviders.map((provider) => ({ id: provider.id })),
                 },
               }}
             />
@@ -1145,6 +1165,7 @@ export default function PageClient() {
             >
               <LivePreviewBody
                 config={project.config}
+                projectDisplayName={project.displayName}
                 passwordEnabled={passwordEnabled}
                 otpEnabled={otpEnabled}
                 passkeyEnabled={passkeyEnabled}

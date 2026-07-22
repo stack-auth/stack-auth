@@ -4,11 +4,18 @@ import { UserTable } from "@/components/data-table/user-table";
 import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { useMetricsUserCountsOrThrow } from "@/lib/hexclave-app-internals";
+import {
+  fetchMetricsOrThrow,
+  fetchMetricsUserCountsOrThrow,
+  type MetricsResponse,
+  type MetricsUserCounts,
+  useMetricsUserCountsOrThrow,
+} from "@/lib/hexclave-app-internals";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -27,7 +34,13 @@ function captureUsersMetricsErrorOnce(error: Error) {
 function TotalUsersDisplay() {
   const hexclaveAdminApp = useAdminApp();
   const metrics = useMetricsUserCountsOrThrow(hexclaveAdminApp);
+  return <TotalUsersText metrics={metrics} />;
+}
 
+function TotalUsersText(props: {
+  metrics: MetricsUserCounts,
+}) {
+  const { metrics } = props;
   const anonymousUsersCount = metrics.anonymous_users;
   const nonAnonymousUsersCount = metrics.total_users - anonymousUsersCount;
 
@@ -57,15 +70,54 @@ function TotalUsersErrorComponent(props: { error: unknown }) {
   return <>Unavailable</>;
 }
 
+type UsersMetricsSnapshot = {
+  metrics: MetricsResponse,
+  userCounts: MetricsUserCounts,
+};
+
 export default function PageClient() {
   const hexclaveAdminApp = useAdminApp();
   const firstUserPage = hexclaveAdminApp.useUsers({ limit: 1 });
-  const [refreshKey, setRefreshKey] = useState(0);
+  const tableReloadRef = useRef<() => void>(() => {});
+  const [usersMetricsSnapshot, setUsersMetricsSnapshot] = useState<UsersMetricsSnapshot | null>(null);
 
-  const handleRefresh = async () => {
-    await (hexclaveAdminApp as any)._refreshUsers();
-    setRefreshKey((k) => k + 1);
-  };
+  const refreshUsersMetrics = useCallback(async () => {
+    const [metrics, userCounts] = await Promise.all([
+      fetchMetricsOrThrow(hexclaveAdminApp, false),
+      fetchMetricsUserCountsOrThrow(hexclaveAdminApp),
+    ]);
+    setUsersMetricsSnapshot({ metrics, userCounts });
+  }, [hexclaveAdminApp]);
+
+  useEffect(() => {
+    const refresh = () => runAsynchronously(refreshUsersMetrics);
+    const refreshAfterPageRestore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        refresh();
+      }
+    };
+    refresh();
+    window.addEventListener("pageshow", refreshAfterPageRestore);
+    return () => window.removeEventListener("pageshow", refreshAfterPageRestore);
+  }, [refreshUsersMetrics]);
+
+  const handleTableReloadChange = useCallback((reload: () => void) => {
+    tableReloadRef.current = reload;
+  }, []);
+
+  const handleUserMutated = useCallback(() => {
+    tableReloadRef.current();
+    runAsynchronouslyWithAlert(refreshUsersMetrics);
+  }, [refreshUsersMetrics]);
+
+  const handleRefresh = useCallback(() => {
+    tableReloadRef.current();
+    runAsynchronouslyWithAlert(refreshUsersMetrics);
+  }, [refreshUsersMetrics]);
+
+  const hasUsers = usersMetricsSnapshot != null
+    ? usersMetricsSnapshot.userCounts.total_users - usersMetricsSnapshot.userCounts.anonymous_users > 0
+    : firstUserPage.length > 0;
 
   return (
     <AppEnabledGuard appId="authentication">
@@ -74,9 +126,13 @@ export default function PageClient() {
         description={<>
           Total:{" "}
           <ErrorBoundary errorComponent={TotalUsersErrorComponent}>
-            <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
-              <TotalUsersDisplay key={refreshKey} />
-            </Suspense>
+            {usersMetricsSnapshot != null ? (
+              <TotalUsersText metrics={usersMetricsSnapshot.userCounts} />
+            ) : (
+              <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
+                <TotalUsersDisplay />
+              </Suspense>
+            )}
           </ErrorBoundary>
         </>}
         actions={
@@ -89,20 +145,21 @@ export default function PageClient() {
             <UserDialog
               type="create"
               trigger={<Button>Create User</Button>}
+              onUserMutated={handleUserMutated}
             />
           </div>
         }
       >
-        {firstUserPage.length > 0 ? null : (
+        {hasUsers ? null : (
           <Alert variant='success'>
             Congratulations on starting your project! Check the <StyledLink href="https://docs.hexclave.com">documentation</StyledLink> to add your first users.
           </Alert>
         )}
 
-        <UsersKpiCards />
+        <UsersKpiCards metrics={usersMetricsSnapshot?.metrics} />
 
         <div data-walkthrough="users-table">
-          <UserTable key={refreshKey} />
+          <UserTable onUserMutated={handleUserMutated} onReloadChange={handleTableReloadChange} />
         </div>
       </PageLayout>
     </AppEnabledGuard>

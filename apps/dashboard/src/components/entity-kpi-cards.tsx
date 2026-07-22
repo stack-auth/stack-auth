@@ -34,6 +34,7 @@ type EntityKpiCardsProps = {
   /** Pulls the four series out of the shared metrics response. */
   source: (metrics: Metrics) => EntityKpiSeries,
   labels: EntityKpiLabels,
+  metrics?: Metrics,
 };
 
 const capturedKpiErrors = new WeakMap<Error, Set<string>>();
@@ -59,9 +60,12 @@ function formatCompact(n: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-function KpiGridContent({ source, labels }: { source: EntityKpiCardsProps["source"], labels: EntityKpiLabels }) {
-  const hexclaveAdminApp = useAdminApp();
-  const metrics = useMetricsOrThrow(hexclaveAdminApp, false);
+function KpiGrid(props: {
+  metrics: Metrics,
+  source: EntityKpiCardsProps["source"],
+  labels: EntityKpiLabels,
+}) {
+  const { metrics, source, labels } = props;
   const { dailyNew, splitTotal, splitNew, totalCount } = source(metrics);
 
   const new7 = sumLast(dailyNew, 7);
@@ -145,6 +149,12 @@ function KpiGridContent({ source, labels }: { source: EntityKpiCardsProps["sourc
   );
 }
 
+function KpiGridContent({ source, labels }: { source: EntityKpiCardsProps["source"], labels: EntityKpiLabels }) {
+  const hexclaveAdminApp = useAdminApp();
+  const metrics = useMetricsOrThrow(hexclaveAdminApp, false);
+  return <KpiGrid metrics={metrics} source={source} labels={labels} />;
+}
+
 function KpiSkeletonGrid() {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -155,7 +165,7 @@ function KpiSkeletonGrid() {
   );
 }
 
-export function EntityKpiCards({ errorTag, source, labels }: EntityKpiCardsProps) {
+export function EntityKpiCards({ errorTag, source, labels, metrics }: EntityKpiCardsProps) {
   const ErrorComponent = ({ error }: { error: unknown }) => {
     if (error instanceof Error) {
       captureKpiErrorOnce(error, errorTag);
@@ -164,9 +174,13 @@ export function EntityKpiCards({ errorTag, source, labels }: EntityKpiCardsProps
   };
   return (
     <ErrorBoundary errorComponent={ErrorComponent}>
-      <Suspense fallback={<KpiSkeletonGrid />}>
-        <KpiGridContent source={source} labels={labels} />
-      </Suspense>
+      {metrics != null ? (
+        <KpiGrid metrics={metrics} source={source} labels={labels} />
+      ) : (
+        <Suspense fallback={<KpiSkeletonGrid />}>
+          <KpiGridContent source={source} labels={labels} />
+        </Suspense>
+      )}
     </ErrorBoundary>
   );
 }

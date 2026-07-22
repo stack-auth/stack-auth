@@ -103,9 +103,9 @@ async function waitForAnalyticsRowsForSessionReplaySegment(
   expectedCount: number,
 ): Promise<void> {
   for (let i = 0; i < 30; i++) {
-    const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    const response = await niceBackendFetch("/api/v1/analytics/query", {
       method: "POST",
-      accessType: "admin",
+      accessType: "server",
       body: {
         query: `
           SELECT count() AS count

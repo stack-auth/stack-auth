@@ -66,6 +66,7 @@ it("should be able to provision a new project if neon client details are correct
           "team_member_default_permissions": [{ "id": "team_member" }],
           "user_default_permissions": [],
         },
+        "config_warnings": [],
         "created_at_millis": <stripped field 'created_at_millis'>,
         "description": "Created with Neon",
         "display_name": "Test project",
@@ -78,6 +79,7 @@ it("should be able to provision a new project if neon client details are correct
         "logo_url": null,
         "onboarding_status": "completed",
         "owner_team_id": null,
+        "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },
     }
