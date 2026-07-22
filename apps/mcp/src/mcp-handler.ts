@@ -57,6 +57,12 @@ function logAskDiagnostic(diagnostic: HexclaveAskDiagnostic): void {
       }));
       break;
     }
+    case "request-error": {
+      captureError("mcp-ask-hexclave-request-error", new HexclaveAssertionError("Hexclave MCP ask_hexclave request failed", {
+        cause: diagnostic.error,
+      }));
+      break;
+    }
     default: {
       const _exhaustive: never = diagnostic;
       throw new Error(`Unhandled ask diagnostic: ${JSON.stringify(_exhaustive)}`);
@@ -147,8 +153,11 @@ export function createHexclaveMcpHandler(config: { streamableHttpEndpoint: strin
             };
           }
 
+          const continuation = result.conversationId == null
+            ? ""
+            : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]`;
           return {
-            content: [{ type: "text", text: `${result.text}\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next ask_hexclave call to continue this conversation]` }],
+            content: [{ type: "text", text: `${result.text}${continuation}` }],
           };
         },
       );

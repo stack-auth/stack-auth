@@ -102,6 +102,12 @@ function logAskDiagnostic(diagnostic: HexclaveAskDiagnostic): void {
       }));
       break;
     }
+    case "request-error": {
+      captureError("skill-site-ask-request-error", new HexclaveAssertionError("Hexclave AI ask endpoint request failed", {
+        cause: diagnostic.error,
+      }));
+      break;
+    }
     default: {
       const _exhaustive: never = diagnostic;
       throw new Error(`Unhandled ask diagnostic: ${JSON.stringify(_exhaustive)}`);
@@ -129,7 +135,10 @@ async function callUnifiedAiEndpoint(req: Request): Promise<Response> {
     return textResponse(result.message, 502);
   }
 
-  return textResponse(`${result.text}\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next /ask request to continue this conversation]`);
+  const continuationGuidance = result.conversationId == null
+    ? ""
+    : `\n\n[conversationId: ${result.conversationId} - pass this value as the conversationId parameter in your next /ask request to continue this conversation]`;
+  return textResponse(`${result.text}${continuationGuidance}`);
 }
 
 export async function handleAskToolRoute(req: Request): Promise<Response> {

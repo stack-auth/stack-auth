@@ -24,12 +24,15 @@ export type HexclaveAskDiagnostic = {
 } | {
   event: "malformed-json",
   error: unknown,
+} | {
+  event: "request-error",
+  error: unknown,
 };
 
 export type HexclaveAskResult = {
   status: "ok",
   text: string,
-  conversationId: string,
+  conversationId?: string,
 } | {
   status: "error",
   message: string,
@@ -98,27 +101,39 @@ export async function callHexclaveAskAi(options: {
   // mid-body would otherwise hang forever. Aborting the signal also errors pending body
   // reads, which is why the AbortError classification lives in the outer catch below.
   try {
-    const response = await fetch(`${options.backendApiBaseUrl.replace(/\/$/, "")}/api/latest/ai/query/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quality: "smart",
-        speed: "fast",
-        tools: ["docs"],
-        systemPrompt: "docs-ask-ai",
-        messages: [{ role: "user", content: options.question }],
-        mcpCallMetadata: {
-          // Both the skill.hexclave.com/ask endpoint and the MCP server's ask_hexclave tool
-          // are the same docs assistant exposed through two transports, so they share one
-          // tool name — the backend keys its docs-context behavior on it.
-          toolName: "ask_hexclave",
-          reason: options.reason,
-          userPrompt: options.userPrompt,
-          conversationId: options.conversationId,
-        },
-      }),
-      signal: controller.signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${options.backendApiBaseUrl.replace(/\/$/, "")}/api/latest/ai/query/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quality: "smart",
+          speed: "fast",
+          tools: ["docs"],
+          systemPrompt: "docs-ask-ai",
+          messages: [{ role: "user", content: options.question }],
+          mcpCallMetadata: {
+            // Both the skill.hexclave.com/ask endpoint and the MCP server's ask_hexclave tool
+            // are the same docs assistant exposed through two transports, so they share one
+            // tool name — the backend keys its docs-context behavior on it.
+            toolName: "ask_hexclave",
+            reason: options.reason,
+            userPrompt: options.userPrompt,
+            conversationId: options.conversationId,
+          },
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        throw error;
+      }
+
+      // Connection failures contain environment-specific details and must not cross either
+      // public transport. Keep timeout handling in the outer catch so it remains diagnostic.
+      options.onDiagnostic?.({ event: "request-error", error });
+      return { status: "error", message: HEXCLAVE_ASK_PUBLIC_ERROR_MESSAGE };
+    }
 
     if (!response.ok) {
       const body = await response.text();
@@ -143,7 +158,7 @@ export async function callHexclaveAskAi(options: {
     return {
       status: "ok",
       text: getAiResponseText(body),
-      conversationId: body.conversationId ?? options.conversationId ?? "",
+      conversationId: body.conversationId ?? options.conversationId ?? undefined,
     };
   } catch (error) {
     // `controller.signal.aborted` is checked in addition to the DOMException, because some

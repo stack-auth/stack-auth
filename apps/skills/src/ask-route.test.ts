@@ -224,6 +224,47 @@ describe("skill-site ask route", () => {
     }
   });
 
+  it("does not advertise continuation when the backend returns no conversation ID", async () => {
+    const previousFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      finalText: "Start with the JavaScript SDK.",
+    })));
+    globalThis.fetch = fetchMock;
+
+    try {
+      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("Start with the JavaScript SDK.");
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it("returns a controlled error when connecting to the backend fails", async () => {
+    const previousFetch = globalThis.fetch;
+    const fetchError = new TypeError("connect ECONNREFUSED 127.0.0.1:8102");
+    const fetchMock = vi.fn(async () => {
+      throw fetchError;
+    });
+    globalThis.fetch = fetchMock;
+
+    try {
+      const response = await handleAskToolRoute(new Request("https://skill.hexclave.com/ask?question=Hello"));
+      expect(response.status).toBe(502);
+      expect(await response.text()).toBe("Hexclave AI is temporarily unavailable. Please try again later.");
+      expect(globalVar.hexclaveCapturedErrors?.at(-1)).toMatchObject({
+        location: "skill-site-ask-request-error",
+        level: "error",
+        error: expect.objectContaining({
+          message: "Hexclave AI ask endpoint request failed",
+          name: "HexclaveAssertionError",
+        }),
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it("derives the local backend from the skills port", async () => {
     const previousFetch = globalThis.fetch;
     const previousHexclaveApiUrl = process.env.NEXT_PUBLIC_HEXCLAVE_API_URL;
