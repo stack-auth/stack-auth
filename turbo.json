@@ -6,8 +6,6 @@
     "CRON_SECRET",
     "CRON_SECRET_OLD",
     "BLOB_READ_WRITE_TOKEN",
-    "NEXT_PUBLIC_*",
-    "VITE_*",
     "NEXT_PUBLIC_SENTRY_*",
     "SENTRY_*",
     "VERCEL_GIT_COMMIT_SHA",
@@ -37,7 +35,8 @@
         "^build"
       ],
       "outputs": [
-        ".next",
+        ".next/**",
+        "!.next/cache/**",
         "dist/**",
         "lib/**",
         "*.js",
@@ -79,7 +78,8 @@
         "^build"
       ],
       "outputs": [
-        ".next",
+        ".next/**",
+        "!.next/cache/**",
         "dist/**",
         "lib/**",
         "*.js",
@@ -101,28 +101,81 @@
         "dist/**"
       ]
     },
+    "@hexclave/template#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_HEXCLAVE_*",
+        "NEXT_PUBLIC_STACK_*",
+        "VITE_HEXCLAVE_*",
+        "VITE_STACK_*"
+      ]
+    },
     "@hexclave/next#build": {
       "dependsOn": [
         "^build",
         "@hexclave/template#build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_HEXCLAVE_*",
+        "NEXT_PUBLIC_STACK_*",
+        "VITE_HEXCLAVE_*",
+        "VITE_STACK_*"
       ]
     },
     "@hexclave/react#build": {
       "dependsOn": [
         "^build",
         "@hexclave/template#build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_HEXCLAVE_*",
+        "NEXT_PUBLIC_STACK_*",
+        "VITE_HEXCLAVE_*",
+        "VITE_STACK_*"
       ]
     },
     "@hexclave/tanstack-start#build": {
       "dependsOn": [
         "^build",
         "@hexclave/template#build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_HEXCLAVE_*",
+        "NEXT_PUBLIC_STACK_*",
+        "VITE_HEXCLAVE_*",
+        "VITE_STACK_*"
       ]
     },
     "@hexclave/js#build": {
       "dependsOn": [
         "^build",
         "@hexclave/template#build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_HEXCLAVE_*",
+        "NEXT_PUBLIC_STACK_*",
+        "VITE_HEXCLAVE_*",
+        "VITE_STACK_*"
+      ]
+    },
+    "@hexclave/hosted-components#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "VITE_*"
+      ]
+    },
+    "@hexclave/example-tanstack-start-demo#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "VITE_*"
       ]
     },
     "clean": {
