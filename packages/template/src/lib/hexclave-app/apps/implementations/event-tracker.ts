@@ -1387,7 +1387,13 @@ export class EventTracker {
   private readonly _onPageShow = (event: PageTransitionEvent) => {
     // A bfcache restore revives a page whose $page-view span was already ended
     // by pagehide; the restored view is a new interval on the same URL.
-    if (event.persisted) this._capturePageView("restore");
+    if (event.persisted) {
+      this._capturePageView("restore");
+      // pagehide closed presence spans before its keepalive flush. Browsers do
+      // not replay offline/visibility events for state that remained true while
+      // frozen, so restore must sample those sensors again under the new view.
+      this._restartPresenceSpans();
+    }
   };
 
   private readonly _onFormSubmit = (event: Event) => {
