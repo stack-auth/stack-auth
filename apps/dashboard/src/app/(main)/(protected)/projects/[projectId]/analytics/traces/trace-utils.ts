@@ -1,4 +1,4 @@
-// Pure trace-tree construction for the Spans & Events page. Operates on
+// Pure trace-tree construction for the Traces page. Operates on
 // already-parsed rows (epoch ms, not ClickHouse date strings) so the module
 // stays focused and unit-testable.
 

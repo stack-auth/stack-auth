@@ -388,7 +388,7 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
-      { displayName: "Traces", href: "./spans-events" },
+      { displayName: "Traces", href: "./traces" },
       { displayName: "Replays", href: "../session-replays" },
       { displayName: "Clickmaps", href: "./clickmaps" },
       { displayName: "Queries", href: "./queries" },
