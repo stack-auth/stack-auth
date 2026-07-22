@@ -287,16 +287,16 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
+      // The generated GitHub sync workflow installs the repo's dependencies
+      // before running the CLI, so jiti resolves the config's SDK import (e.g.
+      // `@hexclave/js`) from the project's own node_modules.
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = parseConfigOverride(configModule.config);
       if (config == null) {
-        const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
-        // The lightweight `/config` entrypoint only exists on Hexclave-branded packages;
-        // legacy `@stackframe/*` releases predate it, so import from their root.
-        const exampleImport = examplePkg.startsWith("@hexclave/") ? `${examplePkg}/config` : examplePkg;
+        const exampleImport = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
         throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
       }
 
