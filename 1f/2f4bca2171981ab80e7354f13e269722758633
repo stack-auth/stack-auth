@@ -1,0 +1,183 @@
+packages/template/package-template.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 16
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/search-bar-logic.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-208
+apps/dashboard/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/e2e/tests/backend/backend-helpers.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3,1276-1340,1364-1372
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding-workflow.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 55-75
+apps/backend/src/oauth/providers/github.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3,7-40,78,126-192
+packages/shared-backend/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/skills/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/backend/src/lib/emails.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4,102-107,110-116
+apps/backend/src/lib/ai/prompts.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 47,52,1071-1113
+examples/supabase/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/dashboard-ui-components/src/components/data-grid/data-grid-toolbar.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 274,278-280,288-291,333,336,348-357
+apps/dashboard/src/components/vibe-coding/chat-adapters.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 111-119,123,129,135-139
+packages/shared/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/ui/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/table-search-bar.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-351
+apps/hosted-components/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+configs/tsdown/js-library.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 11-111,219-247
+packages/js/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+docs-mintlify/guides/going-further/local-vs-cloud-dashboard.mdx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 28
+docs-mintlify/guides/getting-started/setup.mdx
+  s_7eb69d1377aeb0::t_a3bc03b51be576 9,767,773,972,978,1242,1248,1443,1449,1682,1688,1887,1893,2040,2045,2201,2206
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4,17-18,142-145,151-153,155,157-158,160-168,171-181,187-189,193-205,207,209-211,222-228,230-241,244-281,283-313
+examples/cjs-test/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/backend/src/lib/email-queue-step.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 767
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/link-existing-onboarding-workflow.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 39-51
+packages/shared/src/utils/dates.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 148,152-155,210-225
+  s_7eb69d1377aeb0::t_9718bf8639821c 226
+examples/tanstack-start-demo/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/e2e/tests/backend/endpoints/api/v1/email-themes.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 397-504
+apps/e2e/tests/backend/endpoints/api/v1/analytics-query.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 724-743
+apps/e2e/tests/backend/endpoints/api/v1/emails/email-queue.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 283-286,1372-1374,1454-1456,1542-1544,1631-1633
+apps/backend/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+examples/middleware/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_7eb69d1377aeb0::t_2cd1d2cd509b0e 3
+docs/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+examples/docs-examples/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+docs-mintlify/guides/going-further/hexclave-config.mdx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 12,34
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/query-data-grid.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 111-113,118-125,144-145,333,343,381-385,441-443,466-467,509,576-579,595-600,606-607,611,624,632,636,674,683-687
+packages/dashboard-ui-components/src/components/data-grid/types.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 348-354
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/use-ai-table-filter-chat.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-200
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 414,419,978,984
+sdks/implementations/swift/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+sdks/spec/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/e2e/tests/backend/endpoints/api/v1/internal/plan-usage.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 118-122,125-133,140,144,153,158-172,230-248,251-260,264,331,336-347,380-384,387,392,396-397
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/search-bar-logic.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-251
+examples/js-example/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/shared/src/config-rendering.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 12,56,93,98,101
+apps/backend/src/app/api/latest/internal/email-themes/[id]/route.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 54-87
+docs-mintlify/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/cli/src/commands/config-file.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 290-292,299
+packages/cli/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/bulldozer-js/src/logging.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-6
+apps/mcp/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/dashboard-ui-components/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/e2e/tests/backend/endpoints/api/v1/send-email.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 318-355
+examples/convex/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/tanstack-start/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+apps/internal-tool/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+apps/mock-oauth-server/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/sc/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/template/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 5
+examples/demo/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/bulldozer-js/src/index.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 132-133,288,305,1094,1134
+packages/template/src/config.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-6
+apps/dev-launchpad/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+packages/next/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+examples/react-example/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+apps/e2e/tests/backend/endpoints/api/v1/ai-query.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 329-330
+examples/lovable-react-18-example/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+packages/dashboard-ui-components/src/components/data-grid/data-grid.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 65-70,385-393,423-488,724,1055-1059,1062-1068,1071-1090,1199-1205,1209,1212-1230,1232-1237,1247-1250,1252,1255,1267-1287
+packages/dashboard-ui-components/src/components/data-grid/data-grid.test.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 8,10,54-88,244-246,257,621-706
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/email-themes/page-client.tsx
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 10,196,288,344-355
+examples/e-commerce/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/dashboard/src/components/vibe-coding/index.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 2
+apps/e2e/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/e2e/tests/general/cli.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 402,517
+packages/react/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 4
+apps/e2e/tests/snapshot-serializer.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 150-157
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/use-ai-table-filter-chat.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1-258
+.cursor/commands/pre-push.md
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 1
+apps/bulldozer-js/package.json
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 3
+apps/backend/src/lib/plan-usage.test.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 2,152,158-160
+apps/backend/scripts/clickhouse-migrations.ts
+  s_7eb69d1377aeb0::t_b6ff3e852fdc15 73-78,670,819-868
+  s_7eb69d1377aeb0::t_a36035c2cf9f5d 869
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "1f2f4bca2171981ab80e7354f13e269722758633",
+  "prompts": {},
+  "sessions": {
+    "s_7eb69d1377aeb0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8b69-2916-7482-9dd8-0db7fce57b83",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
