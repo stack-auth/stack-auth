@@ -29,7 +29,7 @@ import {
 } from "./trace-utils";
 import { TraceWaterfall, type TraceBreadcrumb } from "./waterfall";
 
-const SPANS_QUERY = `
+const SPAN_SELECT_SQL = `
 SELECT
   s.id,
   s.span_type,
@@ -49,20 +49,18 @@ LEFT ANY JOIN default.users AS u
   ON s.project_id = u.project_id
   AND s.branch_id = u.branch_id
   AND s.user_id = toString(u.id)
-WHERE
-  -- Normal spans: started in the window.
-  s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-  -- $refresh-token spans use token created_at as span_started_at, which is often
-  -- older than the window even while the session is live. Keep tokens that are
-  -- still open or that ended inside the window so $page-view/$click parented
-  -- only under rti-… (event batch raced ahead of the first replay batch) remain
-  -- attachable in the waterfall.
-  OR (
-    s.span_type = '$refresh-token'
-    AND (s.span_ended_at IS NULL OR s.span_ended_at >= now64(3) - INTERVAL {hours:UInt32} HOUR)
-  )
+`;
+
+const RECENT_SPANS_QUERY = `
+${SPAN_SELECT_SQL}
+WHERE s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
 ORDER BY s.span_started_at DESC
 LIMIT 3000
+`;
+
+const SPANS_BY_ID_QUERY = `
+${SPAN_SELECT_SQL}
+WHERE s.id IN ({spanIds:Array(String)})
 `;
 
 // Events are not browsable on this page, but they still render as markers
@@ -115,7 +113,7 @@ function parseSpanRow(row: Record<string, unknown>): SpanInput | null {
   };
 }
 
-function parseEventRow(row: Record<string, unknown>): EventInput | null {
+export function parseEventRow(row: Record<string, unknown>): EventInput | null {
   const eventType = row.event_type;
   const eventAt = row.event_at;
   if (typeof eventType !== "string" || !isDateValue(eventAt)) return null;
@@ -126,8 +124,31 @@ function parseEventRow(row: Record<string, unknown>): EventInput | null {
     eventType,
     atMs: parseClickHouseDate(eventAt).getTime(),
     parentSpanIds,
-    raw: row,
+    // Depending on the analytics response surface, events.data can arrive as
+    // either decoded JSON or its serialized representation. Normalize it just
+    // like spans so the shared detail dialog always renders structured data.
+    raw: { ...row, data: tryParseJson(row.data) },
   };
+}
+
+export function collectRefreshTokenParentIds(rows: Record<string, unknown>[]): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!Array.isArray(row.parent_span_ids)) continue;
+    for (const parentId of row.parent_span_ids) {
+      if (typeof parentId === "string" && parentId.startsWith("rti-")) ids.add(parentId);
+    }
+  }
+  return [...ids];
+}
+
+export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[] {
+  const spansById = new Map<string, SpanInput>();
+  for (const row of rows) {
+    const span = parseSpanRow(row);
+    if (span != null && !spansById.has(span.id)) spansById.set(span.id, span);
+  }
+  return [...spansById.values()];
 }
 
 function Segmented<T extends string | number>({ value, onChange, options }: {
@@ -204,7 +225,7 @@ export default function PageClient() {
     try {
       const [spansResponse, eventsResponse] = await Promise.all([
         adminApp.queryAnalytics({
-          query: SPANS_QUERY,
+          query: RECENT_SPANS_QUERY,
           params: { hours },
           include_all_branches: false,
           timeout_ms: 30000,
@@ -216,8 +237,26 @@ export default function PageClient() {
           timeout_ms: 30000,
         }),
       ]);
+      // A refresh-token span can start days before the selected window. Fetch
+      // the exact roots referenced by the visible rows separately so the 3,000
+      // recent-span cap cannot evict them and orphan their event markers.
+      const refreshTokenParentIds = collectRefreshTokenParentIds([
+        ...spansResponse.result,
+        ...eventsResponse.result,
+      ]);
+      const parentSpansResponse = refreshTokenParentIds.length === 0
+        ? null
+        : await adminApp.queryAnalytics({
+          query: SPANS_BY_ID_QUERY,
+          params: { spanIds: refreshTokenParentIds },
+          include_all_branches: false,
+          timeout_ms: 30000,
+        });
       if (seq !== requestSeqRef.current) return;
-      setSpans(spansResponse.result.map(parseSpanRow).filter((span): span is SpanInput => span != null));
+      setSpans(parseUniqueSpanRows([
+        ...spansResponse.result,
+        ...(parentSpansResponse?.result ?? []),
+      ]));
       setEvents(eventsResponse.result.map(parseEventRow).filter((event): event is EventInput => event != null));
       setNowMs(Date.now());
     } catch (e) {
@@ -228,12 +267,13 @@ export default function PageClient() {
     }
   }, [adminApp, hours]);
 
-  const lastLoadedHoursRef = useRef<number | null>(null);
+  const lastAutomaticLoadRef = useRef<{ adminApp: typeof adminApp, hours: number } | null>(null);
   useEffect(() => {
-    if (lastLoadedHoursRef.current === hours) return;
-    lastLoadedHoursRef.current = hours;
+    const lastLoad = lastAutomaticLoadRef.current;
+    if (lastLoad?.adminApp === adminApp && lastLoad.hours === hours) return;
+    lastAutomaticLoadRef.current = { adminApp, hours };
     runAsynchronouslyWithAlert(loadData);
-  }, [hours, loadData]);
+  }, [adminApp, hours, loadData]);
 
   const scopedSpans = useMemo(
     () => (scope === "custom" ? spans.filter((span) => !isSystemSpanType(span.spanType)) : spans),

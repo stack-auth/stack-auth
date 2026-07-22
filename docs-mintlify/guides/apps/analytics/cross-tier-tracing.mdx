@@ -42,7 +42,7 @@ Details worth knowing:
 
 ### Other transports
 
-For XHR, `sendBeacon`, WebSocket handshakes, or manually-built requests, get the header yourself:
+For XHR or manually-built requests that allow custom headers, get the header yourself:
 
 ```tsx
 const headers = hexclaveClientApp.getSpanPropagationHeaders();
@@ -51,6 +51,10 @@ const headers = hexclaveClientApp.getSpanPropagationHeaders();
 // pin to a specific span instead of the ambient context:
 const pinned = span.getPropagationHeaders();
 ```
+
+Browser `navigator.sendBeacon` calls and WebSocket handshakes do not support
+custom HTTP headers. Carry the serialized context in an application-level
+payload or protocol message if the receiving service needs to restore it.
 
 `getSpanPropagationHeaders({ root: true })` drops the ambient custom spans but still carries the tab segment id — session attribution is identity, not parenting. `span.fetch(url)` is a convenience that performs a `fetch` with the header pinned to that span, following the same origin policy.
 

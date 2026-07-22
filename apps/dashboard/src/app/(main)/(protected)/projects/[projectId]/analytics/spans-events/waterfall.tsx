@@ -140,6 +140,7 @@ export function TraceWaterfall({
 
   const [view, setView] = useState<ViewWindow>(FULL_VIEW);
   const [dragSelection, setDragSelection] = useState<DragSelection | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
   const rootSpanId = trace.root.span.id;
@@ -188,6 +189,10 @@ export function TraceWaterfall({
     return () => container.removeEventListener("wheel", handleWheel);
   }, []);
 
+  useEffect(() => () => {
+    dragCleanupRef.current?.();
+  }, []);
+
   const startTimelineDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -196,13 +201,19 @@ export function TraceWaterfall({
     event.stopPropagation();
     const anchor = timelineFraction(event.clientX, rect);
     setDragSelection({ anchor, current: anchor });
+    dragCleanupRef.current?.();
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       setDragSelection({ anchor, current: timelineFraction(moveEvent.clientX, rect) });
     };
-    const handlePointerUp = (upEvent: PointerEvent) => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+      dragCleanupRef.current = null;
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      cleanup();
       const current = timelineFraction(upEvent.clientX, rect);
       setDragSelection(null);
       const start = Math.min(anchor, current);
@@ -216,8 +227,14 @@ export function TraceWaterfall({
         };
       });
     };
+    const handlePointerCancel = () => {
+      cleanup();
+      setDragSelection(null);
+    };
+    dragCleanupRef.current = cleanup;
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
   };
 
   const toggleCollapsed = (node: TraceNode, recursive: boolean) => {

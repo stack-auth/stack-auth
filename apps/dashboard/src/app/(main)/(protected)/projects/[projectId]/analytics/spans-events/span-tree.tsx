@@ -102,8 +102,12 @@ function TreeNode({
     ? node.children.filter((child) => subtreeMatches(child, needle))
     : node.children;
   const hasChildren = visibleChildren.length > 0;
-  const expanded = expandedOverrides.get(node.span.id)
-    ?? (isSearching ? hasChildren : node.depth < DEFAULT_EXPANDED_DEPTH);
+  // Search must reveal matching descendants even when the user manually
+  // collapsed an ancestor before typing the query. Restore their override once
+  // the query is cleared instead of mutating that preference during search.
+  const expanded = isSearching
+    ? hasChildren
+    : (expandedOverrides.get(node.span.id) ?? node.depth < DEFAULT_EXPANDED_DEPTH);
   const isActive = node.span.id === activeSpanId;
   const isRoot = node.depth === 0;
   const userProfileImageUrl = stringValue(node.span.raw.user_profile_image_url);

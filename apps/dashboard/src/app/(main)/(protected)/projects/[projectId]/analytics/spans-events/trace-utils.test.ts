@@ -134,13 +134,13 @@ describe("buildTraces", () => {
 
 describe("getTraceScaleEnd", () => {
   it("extends an open trace through now even when its latest observation is at the start", () => {
-    expect(getTraceScaleEnd({ startMs: 1000, endMs: null }, 10_000)).toBe(10_000);
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: null, latestMs: 1000 }, 10_000)).toBe(10_000);
   });
 
-  it("uses a closed end, clamps future ends to now, and preserves a non-zero scale", () => {
-    expect(getTraceScaleEnd({ startMs: 1000, endMs: 5000 }, 10_000)).toBe(5000);
-    expect(getTraceScaleEnd({ startMs: 1000, endMs: 50_000 }, 10_000)).toBe(10_000);
-    expect(getTraceScaleEnd({ startMs: 1000, endMs: 1000 }, 10_000)).toBe(1001);
+  it("includes late observations, clamps future ends to now, and preserves a non-zero scale", () => {
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 5000, latestMs: 7000 }, 10_000)).toBe(7000);
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 50_000, latestMs: 5000 }, 10_000)).toBe(10_000);
+    expect(getTraceScaleEnd({ startMs: 1000, endMs: 1000, latestMs: 1000 }, 10_000)).toBe(1001);
   });
 });
 

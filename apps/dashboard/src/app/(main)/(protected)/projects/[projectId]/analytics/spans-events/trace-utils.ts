@@ -76,8 +76,9 @@ export function panViewWindow(view: ViewWindow, deltaFrac: number): ViewWindow {
 }
 
 /** Timeline end clamped to now; an open trace continues through now. */
-export function getTraceScaleEnd(trace: Pick<Trace, "startMs" | "endMs">, nowMs: number): number {
-  return Math.max(Math.min(trace.endMs ?? nowMs, nowMs), trace.startMs + 1);
+export function getTraceScaleEnd(trace: Pick<Trace, "startMs" | "endMs" | "latestMs">, nowMs: number): number {
+  const observedEnd = trace.endMs == null ? nowMs : Math.max(trace.endMs, trace.latestMs);
+  return Math.max(Math.min(observedEnd, nowMs), trace.startMs + 1);
 }
 
 /**

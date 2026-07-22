@@ -102,7 +102,7 @@ For ambient parenting to work, the SDK has to answer one question every time you
 
 **In the browser**, no such primitive exists. The SDK can only be *certain* while your callback runs synchronously — from the moment it starts until its first `await`. After that, app-level calls stop seeing the span as an ambient parent. You can get a *missing* link, but never a *wrong* one (a missing parent is visible and fixable; a wrong parent would silently corrupt traces).
 
-After an `await` in the browser, parent via the handle you already have — `span.trackEvent` / `span.withSpan` / `span.fetch` / `span.run` — which is exact everywhere:
+After an `await` in the browser, use the handle directly — `span.trackEvent` / `span.withSpan` / `span.fetch` — or use `span.run(...)` only to synchronously rebind an app-level tracking call. The browser fallback does not preserve ambient context across another `await`:
 
 ```tsx
 await hexclaveClientApp.withSpan("checkout", async (span) => {
@@ -115,7 +115,7 @@ await hexclaveClientApp.withSpan("checkout", async (span) => {
 });
 ```
 
-`step-2` still carries the full session ancestry (sign-in / replay / tab) — those parents come from the session's identity, not from inference — so it still appears under this user's tab. It is only missing from the `checkout` span's subtree: a visible gap in the waterfall, fixable by switching that one call to `span.trackEvent` (or wrapping the post-await work in `span.run(...)`).
+`step-2` still carries the full session ancestry (sign-in / replay / tab) — those parents come from the session's identity, not from inference — so it still appears under this user's tab. It is only missing from the `checkout` span's subtree: a visible gap in the waterfall, fixable by switching that one call to `span.trackEvent` (or synchronously calling it inside `span.run(() => ...)`).
 
 ### Explicit control
 
@@ -173,7 +173,8 @@ export const hexclaveServerApp = new HexclaveServerApp({
 | Event/span type names | Start with a letter; then letters, digits, `_`, `.`, `:`, `-`; at most 64 characters. `$`-prefixed names are reserved for system telemetry. |
 | `data` payloads | Plain JSON-serializable object, at most 16,000 bytes serialized (for spans, the limit applies to the accumulated merged data) |
 | Parent chain | At most 10 ancestors; on overflow the nearest 10 are kept (with a console warning) |
-| Parent ids / `userId` | Must be UUIDs |
+| Parent ids | Span handles, `ref()` objects, or prefixed raw span ids such as `cs-<uuid>` |
+| `userId` and scalar session ids | Raw UUIDs (without span-type prefixes) |
 | Browser flush | Every 10 seconds, or at 50 buffered items / ~64 KB, plus on tab hide |
 | Server flush | Next microtask; no timer — `await` or `flush()` is the delivery guarantee |
 

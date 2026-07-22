@@ -54,7 +54,13 @@ const urlPrefetchers: Record<string, UrlPrefetcher[]> = {
     // the project overview page renders the AnalyticsEventLimitBanner
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
-  "/projects/*/analytics/**": [
+  "/projects/*/analytics/queries": [
+    ...usageLimitBannerPrefetchers("analytics_events"),
+  ],
+  "/projects/*/analytics/spans-events": [
+    ...usageLimitBannerPrefetchers("analytics_events"),
+  ],
+  "/projects/*/analytics/tables": [
     ...usageLimitBannerPrefetchers("analytics_events"),
   ],
   "/projects/*/session-replays": [
