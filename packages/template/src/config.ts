@@ -1,10 +1,9 @@
-// Lightweight, side-effect-free entrypoint for authoring `hexclave.config.ts`
-// files. Importing from here (e.g. `@hexclave/next/config`) gives you the
-// `defineHexclaveConfig` helper and config types WITHOUT pulling in the
-// framework runtime (React, server-only, Next.js internals). That matters
-// because tooling such as the local dashboard evaluates your config file in a
-// plain Node context — importing `defineHexclaveConfig` from the package root
-// would drag in the whole SDK and fail to load.
+// Retained only for backwards compatibility with config files that still import
+// from `<pkg>/config` (e.g. `@hexclave/next/config`). New config files should
+// import `defineHexclaveConfig` and the config types from the SDK package root
+// (e.g. `@hexclave/next`) — the SDK roots are side-effect-free enough to load in
+// a plain Node context (as the local dashboard and CLI do), so the separate
+// `/config` entrypoint is no longer necessary and is not recommended anymore.
 //
 // Hexclave aliases and legacy Stack* names — @deprecated JSDoc lives on the
 // original declarations in @hexclave/shared/config so it survives dts bundling

@@ -1,7 +1,7 @@
 import { ITEM_IDS, UNLIMITED } from "@hexclave/shared/dist/plans";
+import { describe, expect, it } from "vitest";
 import type { SubscriptionRow } from "./payments/schema/types";
 import { buildUsageRow, getNextPlanId, getPlanUsagePeriod, readBillingSubscriptionMapOrSkip } from "./plan-usage";
-import { describe, expect, it } from "vitest";
 
 function createSubscriptionPeriod(startMillis: number, endMillis: number): SubscriptionRow {
   return {
@@ -150,13 +150,15 @@ describe("readBillingSubscriptionMapOrSkip", () => {
     // and take the whole dashboard down. It must now degrade to "no
     // subscription" (free plan) rather than failing the page.
     const result = await readBillingSubscriptionMapOrSkip(() => {
-      throw new Error("bulldozer unreachable");
+      throw new Error("Mock Bulldozer unreachable — this is not an error, instead an intentional test condition we create to test the fallback logic");
     });
     expect(result).toEqual({});
   });
 
   it("also swallows async rejections from the bulldozer read", async () => {
-    const result = await readBillingSubscriptionMapOrSkip(() => Promise.reject(new Error("bulldozer timed out")));
+    const result = await readBillingSubscriptionMapOrSkip(async () => {
+      throw new Error("Mock Bulldozer timed out — this is not an error, instead an intentional test condition we create to test the fallback logic");
+    });
     expect(result).toEqual({});
   });
 });
