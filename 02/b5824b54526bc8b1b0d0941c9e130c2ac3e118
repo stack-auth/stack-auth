@@ -1,0 +1,22 @@
+apps/backend/src/lib/ai/mcp-skill-context.ts
+  s_578a920309ae19::t_46617c4acb5d1e 1-2,29,59-65
+apps/backend/src/lib/ai/mcp-skill-context.test.ts
+  s_578a920309ae19::t_b685d7acad56cf 58
+  s_578a920309ae19::t_46617c4acb5d1e 60,77-81,89-93,95-100,103-104,110-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "02b5824b54526bc8b1b0d0941c9e130c2ac3e118",
+  "prompts": {},
+  "sessions": {
+    "s_578a920309ae19": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8b8c-3334-76b2-8b38-9d0ff0a040e6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
