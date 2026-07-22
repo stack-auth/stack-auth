@@ -6,7 +6,7 @@ import { it } from "../../../../helpers";
 import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
 
-async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+async function runQuery(body: { query: string, params?: Record<string, unknown>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
   const response = await niceBackendFetch("/api/v1/analytics/query", {
@@ -18,7 +18,7 @@ async function runQuery(body: { query: string, params?: Record<string, string>, 
   return response;
 }
 
-async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: Record<string, unknown>, timeout_ms?: number }) {
   const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
@@ -164,6 +164,32 @@ it("can execute a query with parameters", async ({ expect }) => {
     NiceResponse {
       "status": 200,
       "body": { "result": [{ "value": "hello world" }] },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("can execute a query with an array parameter", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT arraySort({values:Array(String)}) as value",
+    params: {
+      values: ["second", "first"],
+    },
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [
+          {
+            "value": [
+              "first",
+              "second",
+            ],
+          },
+        ],
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
