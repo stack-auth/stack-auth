@@ -9,7 +9,6 @@ import { DesignAlert } from "@/components/design-components/alert";
 import { DesignCard } from "@/components/design-components/card";
 import { Skeleton, Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { useHostedBackUrl } from "@/lib/hosted-back-url";
 import { ArrowLeftIcon, XCircleIcon } from "@phosphor-icons/react";
 import { inlineProductSchema } from "@hexclave/shared/dist/schema-fields";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
@@ -96,7 +95,6 @@ export default function PageClient({ code }: { code: string }) {
   const searchParams = useSearchParams();
   const rawReturnUrl = searchParams.get("return_url");
   const returnUrl = rawReturnUrl && isValidReturnUrl(rawReturnUrl) ? rawReturnUrl : null;
-  const backUrl = useHostedBackUrl(returnUrl);
 
   const quantityNumber = useMemo((): number => {
     const n = parseInt(quantityInput, 10);
@@ -228,9 +226,6 @@ export default function PageClient({ code }: { code: string }) {
     return (
       <div data-hexclave-purchase-page className="relative flex min-h-screen items-center justify-center bg-white px-6 dark:bg-zinc-950">
         <div className="w-full max-w-md text-center">
-          <div className="mb-4 text-left">
-            <BackButton url={backUrl} />
-          </div>
           <DesignCard glassmorphic contentClassName="flex flex-col items-center gap-4 p-8">
             <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
               <XCircleIcon className="size-6 text-destructive" weight="fill" />
@@ -255,9 +250,13 @@ export default function PageClient({ code }: { code: string }) {
         {/* Left Panel: Product & Pricing Selection */}
         <div className="flex flex-1 flex-col border-b border-border/40 bg-white dark:bg-zinc-950 lg:w-1/2 lg:border-b-0 lg:border-r">
           <div className="mx-auto w-full max-w-md px-6 pb-12 pt-10 lg:pt-12">
-            <div className="mb-6">
-              <BackButton url={backUrl} />
-            </div>
+            {/* Only link back once validate-code has succeeded — the server rejects return_urls that
+                are not on the project's trusted domains, so a loaded `data` implies returnUrl is safe. */}
+            {returnUrl != null && data != null && (
+              <div className="mb-6">
+                <BackButton url={returnUrl} />
+              </div>
+            )}
             {loading ? (
               <div className="space-y-5">
                 <Skeleton className="size-12 rounded-full" />

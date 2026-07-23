@@ -1,7 +1,7 @@
 import { Skeleton, cn } from "~/components/ui";
 import { Bell, Contact, CreditCard, Key, Monitor, PlusCircle, Settings, ShieldCheck } from "lucide-react";
 import React, { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Team, useStackApp, useUser } from "@hexclave/react";
+import { Team, hexclaveAppInternalsSymbol, useStackApp, useUser } from "@hexclave/react";
 import { HostedFullPage } from "./hosted-full-page";
 import { SidebarLayout } from './sidebar-layout';
 import { ProfilePage } from "./profile-page/profile-page";
@@ -27,32 +27,43 @@ const Icon = ({ name }: { name: keyof typeof iconMap }) => {
 
 const emptyTeams: Team[] = [];
 
-function getReferrerSnapshot(): string {
-  if (typeof document === "undefined") return "";
-  return document.referrer;
+function getBackUrlParamSnapshot(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URL(window.location.href).searchParams.get("back_url");
 }
 
-function subscribeToReferrer() {
-  // document.referrer never changes after page load, so no-op subscription
+function subscribeToBackUrlParam() {
+  // The back_url search param never changes after page load (in-page navigation is hash-based),
+  // so a no-op subscription is enough.
   return () => {};
 }
 
-function useExternalBackUrl(): string | null {
-  const referrer = useSyncExternalStore(subscribeToReferrer, getReferrerSnapshot, () => "");
-  return useMemo(() => {
-    if (!referrer || !URL.canParse(referrer)) return null;
-    const parsed = new URL(referrer);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-    if (parsed.origin === window.location.origin) return null;
-    return referrer;
-  }, [referrer]);
-}
-
 function useAccountSettingsBackUrl(): string {
-  const externalBackUrl = useExternalBackUrl();
-  // Direct visits and same-origin navigations do not have a useful referrer, but the full-page
-  // account settings route still needs an obvious way back to the hosted app surface.
-  return externalBackUrl ?? "/";
+  const stackApp = useStackApp();
+  // `back_url` is set by the SDK's redirectToAccountSettings() and points to the exact page the user
+  // came from. We can't use document.referrer here because it only carries the origin on cross-origin
+  // navigations (default Referrer-Policy: strict-origin-when-cross-origin).
+  const rawBackUrl = useSyncExternalStore(subscribeToBackUrlParam, getBackUrlParamSnapshot, () => null);
+  const candidateBackUrl = useMemo(() => {
+    if (rawBackUrl == null || !URL.canParse(rawBackUrl)) return null;
+    const parsed = new URL(rawBackUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return rawBackUrl;
+  }, [rawBackUrl]);
+  const [trustedBackUrl, setTrustedBackUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (candidateBackUrl == null) return;
+    // Anyone can link to this page with an arbitrary back_url, so only use it if it points to one of
+    // the project's trusted domains — otherwise the hosted origin would act as an open redirect.
+    runAsynchronouslyWithAlert(async () => {
+      if (await stackApp[hexclaveAppInternalsSymbol].isTrustedRedirectUrl(candidateBackUrl)) {
+        setTrustedBackUrl(candidateBackUrl);
+      }
+    });
+  }, [stackApp, candidateBackUrl]);
+  // Direct visits do not have a usable back_url, but the full-page account settings route still needs
+  // an obvious way back to the hosted app surface.
+  return trustedBackUrl ?? "/";
 }
 
 const EmailsAndAuthPage = React.lazy(async () => ({

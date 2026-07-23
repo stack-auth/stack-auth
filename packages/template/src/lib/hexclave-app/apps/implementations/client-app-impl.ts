@@ -3113,14 +3113,27 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       return crossDomainRedirectUrl;
     }
 
+    // The hosted account settings page shows a "Back" link to the page the user came from. We pass the
+    // exact URL as a query param because document.referrer only carries the origin on cross-origin
+    // navigations (default Referrer-Policy: strict-origin-when-cross-origin). The hosted page validates
+    // this param against the project's trusted domains before using it.
+    let planUrl = plan.url;
+    if (handlerName === "accountSettings" && currentUrl != null) {
+      const targetUrl = new URL(planUrl, currentUrl);
+      if (targetUrl.origin !== currentUrl.origin && !targetUrl.searchParams.has("back_url")) {
+        targetUrl.searchParams.set("back_url", currentUrl.toString());
+        planUrl = targetUrl.toString();
+      }
+    }
+
     const redirectUrl = currentUrl != null && handlerName !== "signOut" && handlerName !== "afterSignOut" && handlerName !== "oauthCallback"
       ? await this._addNestedCrossDomainAuthParamsToRedirectUrl({
-        url: plan.url,
+        url: planUrl,
         currentUrl,
         awaitPendingAuthResolutions: internalOptions?.awaitPendingAuthResolutions,
         overrideTokenStoreInit: internalOptions?.overrideTokenStoreInit,
       })
-      : plan.url;
+      : planUrl;
     if (!await this._isTrusted(redirectUrl)) {
       throw new Error(`Redirect URL ${redirectUrl} is not trusted; should be relative.`);
     }
@@ -4220,6 +4233,9 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       awaitPendingAuthResolutions: async () => {
         await this._awaitPendingAuthResolutions();
+      },
+      isTrustedRedirectUrl: async (url: string) => {
+        return await this._isTrusted(url);
       },
     };
   };

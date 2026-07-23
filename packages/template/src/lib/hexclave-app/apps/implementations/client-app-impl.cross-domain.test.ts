@@ -86,6 +86,44 @@ describe("StackClientApp cross-domain auth", () => {
     }
   });
 
+  it("appends back_url to cross-origin account settings redirects", async () => {
+    const previousWindow = Reflect.get(globalThis, "window");
+    const hadPreviousWindow = Reflect.has(globalThis, "window");
+    Reflect.set(globalThis, "window", {
+      location: {
+        href: "https://my-app.example.com/settings?tab=profile",
+        origin: "https://my-app.example.com",
+      },
+    });
+
+    try {
+      const clientApp = new StackClientApp({
+        baseUrl: "http://localhost:12345",
+        projectId: "00000000-0000-4000-8000-000000000000",
+        publishableClientKey: "stack-pk-test",
+        tokenStore: "memory",
+        redirectMethod: "none",
+        urls: {
+          accountSettings: "https://auth.example.com/handler/account-settings",
+        },
+        noAutomaticPrefetch: true,
+      });
+      vi.spyOn(clientApp as any, "_fetchCurrentRefreshTokenIdIfSignedIn").mockResolvedValue(null);
+      vi.spyOn(clientApp as any, "_isTrusted").mockResolvedValue(true);
+
+      const redirectUrl = new URL(await clientApp[hexclaveAppInternalsSymbol].getRedirectToHandlerUrl("accountSettings"));
+      expect(redirectUrl.origin).toBe("https://auth.example.com");
+      expect(redirectUrl.pathname).toBe("/handler/account-settings");
+      expect(redirectUrl.searchParams.get("back_url")).toBe("https://my-app.example.com/settings?tab=profile");
+    } finally {
+      if (hadPreviousWindow) {
+        Reflect.set(globalThis, "window", previousWindow);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("uses the fresh post-auth refresh token when minting a cross-domain handoff", async () => {
     const freshAccessToken = createAccessTokenString("fresh-refresh-token-id");
     const clientApp = new StackClientApp({

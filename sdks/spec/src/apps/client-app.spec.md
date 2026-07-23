@@ -999,7 +999,11 @@ Methods:
   redirectToAfterSignUp()    - redirect to afterSignUp URL
   redirectToAfterSignOut()   - redirect to afterSignOut URL
   redirectToHome()           - redirect to home URL
-  redirectToAccountSettings() - redirect to accountSettings URL
+  redirectToAccountSettings() - redirect to accountSettings URL. If the target is cross-origin (e.g. the
+                                hosted account settings page), append a `back_url` query param set to the
+                                current URL (unless already present), so the hosted page can render a
+                                "Back" link to the exact page the user came from. The hosted page must
+                                validate `back_url` against the project's trusted domains before using it.
   redirectToForgotPassword() - redirect to forgotPassword URL
   redirectToPasswordReset()  - redirect to passwordReset URL
   redirectToEmailVerification() - redirect to emailVerification URL
