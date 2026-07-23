@@ -10,9 +10,12 @@ import { isValidEmail } from "../supporting/utils";
 
 export function CredentialSignUp(props: {
   noPasswordRepeat?: boolean,
+  email: string,
+  onEmailChange: (email: string) => void,
 }) {
   const app = useStackApp();
-  const [email, setEmail] = useState("");
+  const email = props.email;
+  const setEmail = props.onEmailChange;
   const [password, setPassword] = useState("");
   const [passwordRepeat, setPasswordRepeat] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export function CredentialSignUp(props: {
         id="email"
         type="email"
         autoComplete="email"
+        autoFocus
         className="h-10 rounded-xl border-border bg-background"
         value={email}
         onChange={(event) => {

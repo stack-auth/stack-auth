@@ -2,7 +2,6 @@ import { getPublicEnvVar } from "@/lib/env";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 type HealthResponse = {
   ok: boolean,

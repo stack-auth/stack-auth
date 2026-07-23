@@ -191,7 +191,6 @@ export const ALL_APPS = {
     subtitle: "Monitor CLI authentication sessions and active tokens",
     tags: ["auth", "developers"],
     stage: "alpha",
-    parentAppId: "authentication",
   },
 } as const satisfies Record<string, App>;
 

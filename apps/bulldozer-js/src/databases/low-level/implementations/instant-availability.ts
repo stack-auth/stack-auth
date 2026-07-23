@@ -52,6 +52,8 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   let underlyingAvailableSeqRecords = 1;
   const pendingSeqRecords = new Set<SeqRecord>();
   let currentWriteGateOperation: Promise<void> = Promise.resolve();
+  let isClosing = false;
+  let closePromise: Promise<void> | null = null;
   let pendingSeqRecordsChangedResolve: () => void;
   let pendingSeqRecordsChanged = new Promise<void>(resolve => {
     pendingSeqRecordsChangedResolve = resolve;
@@ -92,6 +94,7 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
   };
   const withWriteGate = async <T>(operation: () => Promise<T>): Promise<T> => {
     return await traceSpanHot({ description: "bulldozer-js.low-level.instant.withWriteGate", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
+      if (isClosing) throw new Error("Instant-availability database is closing and cannot accept writes");
       const previousOperation = currentWriteGateOperation;
       let releaseCurrentOperation: () => void;
       currentWriteGateOperation = new Promise<void>(resolve => {
@@ -281,6 +284,20 @@ export function declareInstantAvailabilityLowLevelDatabase(wrapped: LowLevelData
       if (uniqueSeqs.size === 1) return seqs[0];
       if (seqs.every(seq => getSeqId(seq) === initialSeqId)) return initialSeq;
       return createSeq((async () => wrapped.combineSeqs(...await Promise.all(seqs.map(async seq => await getUnderlyingSeq(seq)))))());
+    },
+    close() {
+      if (closePromise === null) {
+        isClosing = true;
+        closePromise = traceSpanHot({ description: "bulldozer-js.low-level.instant.close", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => {
+          await currentWriteGateOperation;
+          try {
+            await Promise.all([...pendingSeqRecords].map(async record => await record.underlyingAvailable));
+          } finally {
+            await wrapped.close();
+          }
+        });
+      }
+      return closePromise;
     },
     async debugSnapshot() {
       return await traceSpanHot({ description: "bulldozer-js.low-level.instant.debugSnapshot", attributes: { "bulldozer.low_level.backend": "instant-availability" } }, async () => await wrapped.debugSnapshot?.() ?? { stores: {}, dumps: {} });
