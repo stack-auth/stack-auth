@@ -38,13 +38,15 @@ type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
 // -- shared bits ------------------------------------------------------------
 
-export function runStatusMeta(status: AdminDeploymentRunJson["status"]): { label: string, color: DesignBadgeColor, icon: React.ElementType } {
+export function runStatusMeta(status: AdminDeploymentRunJson["status"]): { label: string, color: DesignBadgeColor, icon: React.ElementType, spin: boolean } {
   switch (status) {
-    case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon }; }
-    case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon }; }
-    case "ready": { return { label: "Ready", color: "green", icon: CheckCircleIcon }; }
-    case "error": { return { label: "Failed", color: "red", icon: XCircleIcon }; }
-    case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon }; }
+    // `spin` marks the non-terminal "building" state so the CircleNotch icon
+    // animates (via `animate-spin`) instead of sitting frozen mid-notch.
+    case "queued": { return { label: "Queued", color: "blue", icon: ClockIcon, spin: false }; }
+    case "building": { return { label: "Building", color: "cyan", icon: CircleNotchIcon, spin: true }; }
+    case "ready": { return { label: "Ready", color: "green", icon: CheckCircleIcon, spin: false }; }
+    case "error": { return { label: "Failed", color: "red", icon: XCircleIcon, spin: false }; }
+    case "canceled": { return { label: "Cancelled", color: "orange", icon: ProhibitIcon, spin: false }; }
   }
 }
 
@@ -270,7 +272,7 @@ export function OverviewContent({ service, project, isHexclave }: {
           <SectionLabel>Latest deployment</SectionLabel>
           <div className="rounded-xl bg-foreground/[0.03] p-3 ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
             <div className="flex items-center gap-2">
-              <DesignBadge label={latestMeta.label} color={latestMeta.color} size="sm" icon={LatestIcon} />
+              <DesignBadge label={latestMeta.label} color={latestMeta.color} size="sm" icon={LatestIcon} iconClassName={latestMeta.spin ? "animate-spin" : undefined} />
               <span className="text-[11px] text-muted-foreground">{latestRun.target} · {formatRunTime(latestRun.created_at_millis)} · via {latestRun.triggered_by === "server" ? "CLI" : "dashboard session"}</span>
             </div>
             {latestRun.url != null && (
@@ -567,7 +569,7 @@ export function DeploymentsContent({ service, project, isHexclave, onOpenRun }: 
             onClick={() => onOpenRun(run)}
             className="flex w-full items-start gap-3 rounded-xl bg-foreground/[0.02] p-3 text-left ring-1 ring-black/[0.04] transition-colors duration-150 hover:bg-foreground/[0.05] hover:transition-none dark:ring-white/[0.04]"
           >
-            <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} contentMode="icon" />
+            <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} contentMode="icon" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-foreground">
                 {run.url != null ? new URL(run.url).host : `Deployment ${run.id.slice(0, 8)}`}
@@ -661,7 +663,7 @@ export function DeploymentDetailContent({ run: initialRun, project, onBack }: { 
 
       <div className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
-          <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} />
+          <DesignBadge label={meta.label} color={meta.color} size="sm" icon={Icon} iconClassName={meta.spin ? "animate-spin" : undefined} />
           <span className="text-[11px] text-muted-foreground">{run.target} · {formatRunTime(run.created_at_millis)}</span>
         </div>
         {run.url != null && <ExternalLink hostname={new URL(run.url).host} />}
