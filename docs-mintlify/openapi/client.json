@@ -4499,6 +4499,9 @@
                       "example": "MyMusic",
                       "description": "Human-readable project display name. This is not a unique identifier."
                     },
+                    "is_development_environment": {
+                      "type": "boolean"
+                    },
                     "pushed_config_error": {
                       "type": [
                         "object",
@@ -4531,6 +4534,7 @@
                   "required": [
                     "id",
                     "display_name",
+                    "is_development_environment",
                     "config_warnings"
                   ]
                 }
