@@ -61,8 +61,6 @@ export type WorkflowSandboxInput = {
   run?: { id: string, workflowId: string, version: number },
   /** Present in execute mode; run-key/probe/manifest never execute user side effects. */
   credentials?: WorkflowSandboxCredentials,
-  /** Dashboard-configured env secrets; present in execute mode only. */
-  secrets?: Record<string, string>,
 };
 
 export type WorkflowSandboxError = {

@@ -1645,7 +1645,7 @@ model WorkflowRun {
 
   // The id of the WorkflowEvent that triggered this run. Not a foreign key
   // on purpose: events are retention-pruned independently of runs, and the
-  // id must survive as a value (it keys the idempotency floor).
+  // id must survive as a value (it identifies the trigger event).
   // triggerType/triggerPayload are denormalized snapshots because the
   // handler replays against them on every invocation.
   triggerEventId String? @db.Uuid
@@ -1665,7 +1665,8 @@ model WorkflowRun {
   // a retry backoff), SLEEPING = durable timer. Null while RUNNING (leased).
   wakeAt DateTime?
   // Lease for crash recovery: a RUNNING run whose lease expired is re-claimed
-  // by a later tick. Safe because of the idempotency floor.
+  // by a later tick. Re-claiming re-executes from the last committed step, so
+  // step execution is at-least-once (a crashed worker may re-run a step).
   leaseUntil DateTime?
   // Fencing token, rotated on every claim: post-invocation transitions
   // require the claimant's token, so a stale worker that lost its lease
@@ -1830,43 +1831,4 @@ model WorkflowScheduleCursor {
   updatedAt DateTime @updatedAt
 
   @@id([tenancyId, workflowId, scheduleKey])
-}
-
-// Per-environment key/value secrets, injected as env vars into the workflow
-// sandbox at invocation. Never included in bundles or run state.
-model WorkflowSecret {
-  tenancyId String @db.Uuid
-  // The env var name, e.g. "SLACK_WEBHOOK_URL".
-  key   String
-  value String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([tenancyId, key])
-}
-
-// Generic idempotency-key records backing the x-hexclave-idempotency-key
-// request header (see smart-route-handler). Introduced for the workflows
-// idempotency floor: first-party actions inside steps are keyed by trigger
-// event + step id, so retries/upgrades/restarts never double-fire them.
-// responseStatus/responseBody are null while the original request is still
-// executing ("pending"); a concurrent duplicate gets a 409.
-model IdempotencyKeyRecord {
-  tenancyId String @db.Uuid
-  key       String
-
-  // Hash of (method, path, body) — reusing a key with a different request is
-  // an explicit error rather than a silent wrong-response replay.
-  requestHash String
-
-  responseStatus Int?
-  responseBody   Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([tenancyId, key])
-  // Retention pruning (records are dead weight after ~30 days).
-  @@index([createdAt], map: "IdempotencyKeyRecord_createdAt_idx")
 }

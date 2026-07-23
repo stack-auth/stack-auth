@@ -83,7 +83,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
   & AsyncStoreProperty<"workflows", [], AdminWorkflow[], true>
-  & AsyncStoreProperty<"workflowSecrets", [], { key: string, createdAtMillis: number, updatedAtMillis: number }[], true>
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
   & AsyncStoreProperty<
     "transactions",
@@ -153,8 +152,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     upgradeWorkflowRuns(workflowId: string, options: { toVersion: number, runKey?: string, fromVersion?: number }): Promise<AdminWorkflowUpgradeResult>,
     retryWorkflowRun(runId: string): Promise<void>,
     sendWorkflowEvent(name: string, data?: unknown): Promise<{ eventId: string }>,
-    setWorkflowSecret(key: string, value: string): Promise<void>,
-    deleteWorkflowSecret(key: string): Promise<void>,
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,

@@ -11,7 +11,6 @@ import { runAsynchronously, wait } from "@hexclave/shared/dist/utils/promises";
 import { traceSpan } from "@hexclave/shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
-import { withRequestIdempotency } from "./idempotency";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -279,10 +278,7 @@ export function createSmartRouteHandler<
       Sentry.setContext("stack-parsed-smart-request", smartReq as any);
     }
 
-    // Requests carrying an idempotency key (the workflows runtime's
-    // first-party calls) get exactly-once response semantics; everything
-    // else passes straight through. See idempotency.tsx.
-    let smartRes = await withRequestIdempotency(fullReq, async () => await traceSpan({
+    let smartRes = await traceSpan({
       description: 'calling smart route handler callback',
       attributes: {
         "user.id": fullReq.auth?.user?.id ?? "<none>",
@@ -298,7 +294,7 @@ export function createSmartRouteHandler<
       },
     }, async () => {
       return await handler.handler(smartReq as any, fullReq);
-    }));
+    });
 
     return await traceSpan("validating smart response", async () => {
       return await validateSmartResponse(nextRequest, fullReq, smartRes, handler.response);

@@ -39,9 +39,6 @@ export const postMigration = async (sql: Sql) => {
         "table_name": "WorkflowScheduleCursor",
       },
       {
-        "table_name": "WorkflowSecret",
-      },
-      {
         "table_name": "WorkflowStepAttempt",
       },
       {

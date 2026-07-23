@@ -21,7 +21,7 @@ import { compileAndExtractWorkflowManifest } from "./compile";
 
 // Static route segments under /internal/workflows/ that would shadow a
 // workflow of the same name — refuse to create those.
-const RESERVED_WORKFLOW_IDS = ["runs", "events", "secrets", "definitions"];
+const RESERVED_WORKFLOW_IDS = ["runs", "events", "definitions"];
 
 export function validateWorkflowId(workflowId: string): void {
   if (!WORKFLOW_ID_REGEX.test(workflowId)) {

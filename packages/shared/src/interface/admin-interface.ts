@@ -31,7 +31,6 @@ import type {
   WorkflowRunDetailsJson,
   WorkflowRunJson,
   WorkflowRunsFilterJson,
-  WorkflowSecretJson,
   WorkflowSummaryJson,
   WorkflowSyncResultJson,
   WorkflowUpgradeRunsResultJson,
@@ -309,32 +308,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
       null,
     );
     return await response.json();
-  }
-
-  async listWorkflowSecrets(): Promise<WorkflowSecretJson[]> {
-    const response = await this.sendAdminRequest(`/internal/workflows/secrets`, {}, null);
-    const result = await response.json() as { secrets: WorkflowSecretJson[] };
-    return result.secrets;
-  }
-
-  async setWorkflowSecret(key: string, value: string): Promise<void> {
-    await this.sendAdminRequest(
-      `/internal/workflows/secrets`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      },
-      null,
-    );
-  }
-
-  async deleteWorkflowSecret(key: string): Promise<void> {
-    await this.sendAdminRequest(
-      urlString`/internal/workflows/secrets/${key}`,
-      { method: "DELETE" },
-      null,
-    );
   }
 
   async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {

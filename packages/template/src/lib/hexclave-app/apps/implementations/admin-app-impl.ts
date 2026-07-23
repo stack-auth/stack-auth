@@ -99,9 +99,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   private readonly _adminWorkflowsCache = createCache(async () => {
     return await this._interface.listWorkflows();
   });
-  private readonly _adminWorkflowSecretsCache = createCache(async () => {
-    return await this._interface.listWorkflowSecrets();
-  });
   private readonly _adminTeamPermissionDefinitionsCache = createCache(async () => {
     return await this._interface.listTeamPermissionDefinitions();
   });
@@ -501,14 +498,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
     const crud = useAsyncCache(this._adminWorkflowsCache, [], "adminApp.useWorkflows()");
     return useMemo(() => crud.map(adminWorkflowFromCrud), [crud]);
   }
-  useWorkflowSecrets(): { key: string, createdAtMillis: number, updatedAtMillis: number }[] {
-    const crud = useAsyncCache(this._adminWorkflowSecretsCache, [], "adminApp.useWorkflowSecrets()");
-    return useMemo(() => crud.map((secret) => ({
-      key: secret.key,
-      createdAtMillis: secret.created_at_millis,
-      updatedAtMillis: secret.updated_at_millis,
-    })), [crud]);
-  }
   // END_PLATFORM
   async listEmailThemes(): Promise<{ id: string, displayName: string }[]> {
     const crud = Result.orThrow(await this._adminEmailThemesCache.getOrWait([], "write-only"));
@@ -620,25 +609,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
   async sendWorkflowEvent(name: string, data?: unknown): Promise<{ eventId: string }> {
     const result = await this._interface.sendWorkflowEvent(name, data ?? null);
     return { eventId: result.event_id };
-  }
-
-  async listWorkflowSecrets(): Promise<{ key: string, createdAtMillis: number, updatedAtMillis: number }[]> {
-    const crud = Result.orThrow(await this._adminWorkflowSecretsCache.getOrWait([], "write-only"));
-    return crud.map((secret) => ({
-      key: secret.key,
-      createdAtMillis: secret.created_at_millis,
-      updatedAtMillis: secret.updated_at_millis,
-    }));
-  }
-
-  async setWorkflowSecret(key: string, value: string): Promise<void> {
-    await this._interface.setWorkflowSecret(key, value);
-    await this._adminWorkflowSecretsCache.refresh([]);
-  }
-
-  async deleteWorkflowSecret(key: string): Promise<void> {
-    await this._interface.deleteWorkflowSecret(key);
-    await this._adminWorkflowSecretsCache.refresh([]);
   }
 
   async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {

@@ -16,7 +16,8 @@ export type WorkflowInvocationFailure = {
   // "runtime-error": the invocation succeeded but our runtime harness threw
   // (a platform bug — user-code errors come back as normal outcomes).
   // "timeout": the engine-side backstop timer fired; the sandbox may still
-  // be running, which is safe because of the idempotency floor.
+  // be running, so the run will later be re-claimed and re-executed from the
+  // last committed step (at-least-once step execution).
   kind: "invocation-error" | "runtime-error" | "timeout",
   message: string,
 };
@@ -45,7 +46,7 @@ export async function invokeWorkflowSandbox(options: {
           // Step execution is side-effectful; running it twice for a
           // cross-engine comparison would double-fire the effects.
           disableSanityTest: true,
-          // The prelude embeds per-run credentials and secrets — never let
+          // The prelude embeds per-run credentials — never let
           // the raw code reach error reports.
           logSafeCode: `<workflow bundle, ${options.compiledBundle.length} bundle bytes + redacted input prelude, mode ${options.input.mode}>`,
         }),

@@ -46,7 +46,11 @@ const RUN_CLAIM_BATCH_SIZE = 5;
 const PER_WORKFLOW_CONCURRENCY = 10;
 // Lease must outlive the longest possible invocation (10min step cap +
 // engine-side slack); an expired lease means the worker died and the run is
-// re-claimable. Safe because of the idempotency floor.
+// re-claimable. Re-claiming re-executes from the last committed step, so
+// step execution is at-least-once: a step may run again (and re-fire its
+// first-party side effects) if the worker died after acting but before the
+// step result committed. Acceptable for the internal-only v1; a dedup floor
+// for that crash window is deferred to a later version.
 const RUN_LEASE_MS = 12 * 60 * 1000;
 // See the credential-minting comment in executeClaimedRun.
 const WORKFLOW_RUN_CREDENTIAL_TTL_MS = 35 * 60 * 1000;
@@ -615,9 +619,6 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
     return;
   }
 
-  const secretsRows = await globalPrismaClient.workflowSecret.findMany({ where: { tenancyId: run.tenancyId } });
-  const secrets = Object.fromEntries(secretsRows.map((row) => [row.key, row.value]));
-
   // Short-lived project-admin credentials, minted per claim. Workflow source
   // is admin-authored and deliberately receives the complete AdminApp. The
   // expiry must
@@ -696,7 +697,6 @@ async function executeClaimedRun(run: ClaimedRunRow, tenancy: Tenancy, deadlineM
       steps: bag,
       run: { id: run.id, workflowId: run.workflowId, version: currentVersion },
       credentials,
-      secrets,
     };
 
     const attemptStartedAt = new Date();
@@ -1131,14 +1131,6 @@ async function pruneWorkflowRetention(): Promise<void> {
     WHERE ("tenancyId", "id") IN (
       SELECT "tenancyId", "id" FROM "WorkflowEvent"
       WHERE "processedAt" IS NOT NULL AND "createdAt" < NOW() - make_interval(days => 30)
-      LIMIT 1000
-    )
-  `);
-  await globalPrismaClient.$executeRaw(Prisma.sql`
-    DELETE FROM "IdempotencyKeyRecord"
-    WHERE ("tenancyId", "key") IN (
-      SELECT "tenancyId", "key" FROM "IdempotencyKeyRecord"
-      WHERE "createdAt" < NOW() - make_interval(days => 30)
       LIMIT 1000
     )
   `);

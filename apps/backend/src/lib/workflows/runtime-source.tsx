@@ -41,7 +41,6 @@ type SandboxInput = {
   steps?: Record<string, SandboxStepBagEntry>,
   run?: { id: string, workflowId: string, version: number },
   credentials?: { apiUrl: string, projectId: string, branchId: string, secretServerKey: string, superSecretAdminKey: string },
-  secrets?: Record<string, string>,
 };
 
 function getInput(): SandboxInput {
@@ -226,9 +225,9 @@ type StepState = {
   keyCounts: Map<string, number>,
   completedSleeps: { stepKey: string, stepId: string, untilMillis: number }[],
   inlineSleepUsedMs: number,
-  // Non-null while a step.run callback is executing; used both to forbid
-  // parallel/nested steps and to key first-party idempotency headers.
-  currentStep: { stepKey: string, callCounter: number } | null,
+  // Non-null while a step.run callback is executing; used to forbid
+  // parallel/nested steps.
+  currentStep: { stepKey: string } | null,
 };
 
 let stepState: StepState | null = null;
@@ -307,7 +306,7 @@ function makeStep(input: SandboxInput): Step {
       limits.maxStepTimeoutMs,
     );
 
-    state.currentStep = { stepKey: stepKey, callCounter: 0 };
+    state.currentStep = { stepKey: stepKey };
     const startedAt = Date.now();
     let result: T;
     try {
@@ -449,38 +448,6 @@ class StepTimeoutMarker {
 
 const appCredentials = getInput().credentials;
 
-// The real SDK owns request construction. Intercept its API fetches at the
-// runtime boundary to retain workflows' replay-safe idempotency floor for
-// every mutating SDK call without wrapping individual admin-app methods.
-const nativeFetch = globalThis.fetch.bind(globalThis);
-
-function isFirstPartyApiUrl(resourceUrl: string, apiUrl: string): boolean {
-  if (!URL.canParse(resourceUrl) || !URL.canParse(apiUrl)) return false;
-  const request = new URL(resourceUrl);
-  const api = new URL(apiUrl);
-  const apiPath = api.pathname.endsWith("/") ? api.pathname.slice(0, -1) : api.pathname;
-  return request.origin === api.origin
-    && (apiPath.length === 0 || request.pathname === apiPath || request.pathname.startsWith(apiPath + "/"));
-}
-
-globalThis.fetch = async (resource, init = {}) => {
-  const resourceRequest = resource instanceof Request ? resource : null;
-  const method = (init.method ?? resourceRequest?.method ?? "GET").toUpperCase();
-  const resourceUrl = resource instanceof URL ? resource.toString() : resourceRequest?.url ?? String(resource);
-  const input = getInput();
-  if (method !== "GET" && input.credentials != null && isFirstPartyApiUrl(resourceUrl, input.credentials.apiUrl)) {
-    const headers = new Headers(init.headers ?? resourceRequest?.headers);
-    if (stepState?.currentStep != null && input.event != null) {
-      const runId = input.run?.id ?? "-";
-      headers.set("x-hexclave-idempotency-key", "wf1:" + runId + ":" + input.event.id + ":" + stepState.currentStep.stepKey + ":" + stepState.currentStep.callCounter++);
-    } else {
-      console.warn("A mutating hexclaveApp request was made outside step.run — it will re-execute on every replay. Wrap it in step.run.");
-    }
-    return await nativeFetch(resource, { ...init, headers });
-  }
-  return await nativeFetch(resource, init);
-};
-
 /**
  * The complete admin SDK, authenticated with a short-lived key set minted
  * for this run. Manifest/run-key/probe imports receive inert credentials;
@@ -557,10 +524,6 @@ export async function runWorkflowInvocation(rawInput: unknown, loadModule: () =>
   });
 
   try {
-    // Secrets become env vars before ANY user code (including module
-    // top-level) runs, so process.env.MY_SECRET works everywhere.
-    if (input.secrets != null) Object.assign(process.env, input.secrets);
-
     let mod: any;
     try {
       mod = await loadModule();

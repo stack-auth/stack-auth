@@ -116,9 +116,6 @@ describe("rollout gate", () => {
       { method: "GET", path: `/api/v1/internal/workflows/runs/${someUuid}` },
       { method: "POST", path: `/api/v1/internal/workflows/runs/${someUuid}/retry`, body: {} },
       { method: "POST", path: "/api/v1/internal/workflows/events", body: { name: "gated", data: {} } },
-      { method: "GET", path: "/api/v1/internal/workflows/secrets" },
-      { method: "POST", path: "/api/v1/internal/workflows/secrets", body: { key: "GATED", value: "x" } },
-      { method: "DELETE", path: "/api/v1/internal/workflows/secrets/GATED" },
     ];
     for (const route of routes) {
       const response = await niceBackendFetch(route.path, {
@@ -210,18 +207,10 @@ export default workflow("${newerWorkflowId}", { on: ["user.created"] }, async ()
     });
   });
 
-  it("syncs, versions, runs steps durably, memoizes, dedupes by runKey, and injects secrets", { timeout: 180_000 }, async ({ expect }) => {
+  it("syncs, versions, runs steps durably, memoizes, and dedupes by runKey", { timeout: 180_000 }, async ({ expect }) => {
     await withInternalProject(async () => {
       const workflowId = randomSlug("e2e-lifecycle");
       const eventName = randomSlug("e2e-ping");
-      const secretKey = `E2E_SECRET_${generateSecureRandomString(6).replace(/[^a-zA-Z0-9]/g, "").toUpperCase() || "X"}`;
-
-      const setSecretResponse = await niceBackendFetch("/api/v1/internal/workflows/secrets", {
-        method: "POST",
-        accessType: "admin",
-        body: { key: secretKey, value: "hunter2" },
-      });
-      expect(setSecretResponse.status).toBe(200);
 
       const source = `import { workflow, customEvent } from "@hexclave/workflows";
 
@@ -232,7 +221,6 @@ export default workflow("${workflowId}", {
 }, async (event, step) => {
   const doubled = await step.run("double", () => event.data.amount * 2);
   await step.sleep("short-nap", "1s");
-  const secretValue = await step.run("read-secret", () => process.env["${secretKey}"] ?? null);
   console.log("processed order", event.data.orderId);
 });
 `;
@@ -290,23 +278,15 @@ export default workflow("${workflowId}", {
         state: "completed",
         version: 1,
         trigger_type: `custom.${eventName}`,
-        steps_recorded: 3,
+        steps_recorded: 2,
         error_summary: null,
       });
       expect(details.trigger_payload).toEqual({ orderId: "o1", amount: 21 });
       const stepsByKey = new Map<string, any>(details.steps.map((step: any) => [step.step_key, step]));
       expect(stepsByKey.get("double")).toMatchObject({ kind: "run", result: 42, executed_at_version: 1 });
       expect(stepsByKey.get("short-nap")).toMatchObject({ kind: "sleep" });
-      expect(stepsByKey.get("read-secret")).toMatchObject({ kind: "run", result: "hunter2" });
       const logs = details.step_attempts.map((attempt: any) => attempt.logs ?? "").join("\n");
       expect(logs).toContain("processed order o1");
-
-      // Secrets are write-only: the list shows keys, never values.
-      const secretsResponse = await niceBackendFetch("/api/v1/internal/workflows/secrets", { method: "GET", accessType: "admin" });
-      expect(secretsResponse.body.secrets.find((secret: any) => secret.key === secretKey)).toMatchObject({ key: secretKey });
-      expect(JSON.stringify(secretsResponse.body)).not.toContain("hunter2");
-      const deleteSecretResponse = await niceBackendFetch(`/api/v1/internal/workflows/secrets/${secretKey}`, { method: "DELETE", accessType: "admin" });
-      expect(deleteSecretResponse.status).toBe(200);
 
       await retireWorkflow(expect, workflowId);
     });

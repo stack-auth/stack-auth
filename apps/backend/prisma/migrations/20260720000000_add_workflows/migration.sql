@@ -125,30 +125,6 @@ CREATE TABLE "WorkflowScheduleCursor" (
     CONSTRAINT "WorkflowScheduleCursor_pkey" PRIMARY KEY ("tenancyId","workflowId","scheduleKey")
 );
 
--- CreateTable
-CREATE TABLE "WorkflowSecret" (
-    "tenancyId" UUID NOT NULL,
-    "key" TEXT NOT NULL,
-    "value" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "WorkflowSecret_pkey" PRIMARY KEY ("tenancyId","key")
-);
-
--- CreateTable
-CREATE TABLE "IdempotencyKeyRecord" (
-    "tenancyId" UUID NOT NULL,
-    "key" TEXT NOT NULL,
-    "requestHash" TEXT NOT NULL,
-    "responseStatus" INTEGER,
-    "responseBody" JSONB,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "IdempotencyKeyRecord_pkey" PRIMARY KEY ("tenancyId","key")
-);
-
 -- CreateIndex
 CREATE INDEX "WorkflowRun_list_idx" ON "WorkflowRun"("tenancyId", "workflowId", "state", "createdAt" DESC);
 
@@ -169,9 +145,6 @@ CREATE INDEX "WorkflowEvent_outbox_idx" ON "WorkflowEvent"("processedAt", "sched
 
 -- CreateIndex
 CREATE INDEX "WorkflowEvent_tenancy_created_idx" ON "WorkflowEvent"("tenancyId", "createdAt");
-
--- CreateIndex
-CREATE INDEX "IdempotencyKeyRecord_createdAt_idx" ON "IdempotencyKeyRecord"("createdAt");
 
 -- AddForeignKey
 ALTER TABLE "WorkflowStepResult" ADD CONSTRAINT "WorkflowStepResult_tenancyId_runId_fkey" FOREIGN KEY ("tenancyId", "runId") REFERENCES "WorkflowRun"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;

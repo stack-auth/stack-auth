@@ -260,9 +260,3 @@ export type WorkflowRunsFilterJson = {
   /** Include each run's memoized state bag (steps) in the response. */
   include_state?: boolean,
 };
-
-export type WorkflowSecretJson = {
-  key: string,
-  created_at_millis: number,
-  updated_at_millis: number,
-};
