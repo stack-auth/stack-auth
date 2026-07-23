@@ -96,6 +96,10 @@ const sidebarItems: SidebarItem[] = [
   }
 ];
 
+// Docs sidebar item stays in sidebarItems for future re-enable, but is hidden until
+// UnifiedDocsWidget is wired to Mintlify docs URLs (old /docs-embed routes are gone).
+const visibleSidebarItems = sidebarItems.filter((item) => item.id !== 'docs');
+
 const MIN_DRAWER_WIDTH = 400;
 const MAX_DRAWER_WIDTH = 800;
 const DEFAULT_DRAWER_WIDTH = 480;
@@ -359,8 +363,7 @@ export function HexclaveCompanion({ className, glassBg = false }: { className?: 
         } else {
           // Keep current width but ensure item is active
           if (!activeItem) {
-             // If dragged open from closed state without clicking specific item, default to docs
-             setActiveItem('docs');
+             setActiveItem('ask-ai');
           }
         }
       } else {
@@ -471,7 +474,7 @@ export function HexclaveCompanion({ className, glassBg = false }: { className?: 
         // Shape morphing
         isOpen ? "rounded-l-2xl rounded-r-none border-r-0 translate-x-px" : "rounded-full mr-3"
       )}>
-        {sidebarItems.map(item => (
+        {visibleSidebarItems.map(item => (
           <Tooltip key={item.id}>
             <TooltipTrigger asChild>
               <Button

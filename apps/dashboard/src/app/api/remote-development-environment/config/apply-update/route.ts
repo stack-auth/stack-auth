@@ -4,7 +4,6 @@ import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-developme
 import { assertRemoteDevelopmentEnvironmentBrowserRequest, assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 import { isValidConfig } from "@hexclave/shared/dist/config/format";
 
-export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const securityResponse = req.headers.has("authorization")
