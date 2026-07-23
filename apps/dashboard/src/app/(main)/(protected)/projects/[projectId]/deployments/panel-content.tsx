@@ -18,7 +18,6 @@ import {
   LightningIcon,
   LinkSimpleIcon,
   LockSimpleIcon,
-  LockSimpleOpenIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   ProhibitIcon,
@@ -32,7 +31,6 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getServiceOutputs, type BoardService, type EnvVar } from "./board-model";
-import { parseReferences } from "./connections";
 
 type DesignBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
 
@@ -213,10 +211,18 @@ function CodeSnippet({ code }: { code: string }) {
 }
 
 function DeployCodeHint({ service, project }: { service: BoardService, project: AdminProject }) {
+  // Every secret env var needs its value passed at deploy time, so bake the
+  // flags into the copyable command instead of letting the first deploy fail
+  // with a missing-secret error. Deduplicated: several env vars may reference
+  // the SAME secret key, but the CLI rejects repeated --secret keys.
+  const secretFlags = [...new Set(service.envVars
+    .flatMap((envVar) => envVar.type === "secret" && envVar.secretKey != null && envVar.secretKey !== "" ? [envVar.secretKey] : []))]
+    .map((secretKey) => ` --secret ${secretKey}=<value>`)
+    .join("");
   const deployCommands = [
     "# from your project directory",
     "npx @hexclave/cli@latest login",
-    `npx @hexclave/cli@latest deploy ${service.id} --cloud-project-id ${project.id}`,
+    `npx @hexclave/cli@latest deploy ${service.id} --cloud-project-id ${project.id}${secretFlags}`,
   ].join("\n");
 
   return (
@@ -292,26 +298,48 @@ export function OverviewContent({ service, project, isHexclave }: {
 
 // -- Variables --------------------------------------------------------------
 
+type DraftEnvVarType = "plain" | "secret" | "connection";
+
 type DraftEnvVar = {
   localId: string,
   key: string,
+  type: DraftEnvVarType,
+  // Literal value for plain vars, "serviceId.outputKey" for connections.
   value: string,
-  isSecret: boolean,
+  // The secret's name for secret vars — its VALUE is supplied at deploy time
+  // via `hexclave deploy --secret <key>=<value>` and never shown here.
+  secretKey: string,
 };
 
+const ENV_VAR_TYPE_OPTIONS: { id: DraftEnvVarType, label: string }[] = [
+  { id: "plain", label: "Value" },
+  { id: "secret", label: "Secret" },
+  { id: "connection", label: "Connection" },
+];
+
+// Must match the backend's secret key validation.
+const SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+
 function draftsFromService(envVars: EnvVar[]): DraftEnvVar[] {
-  return envVars.map((envVar) => ({ localId: envVar.id, key: envVar.key, value: envVar.value, isSecret: envVar.isSecret }));
+  return envVars.map((envVar) => ({
+    localId: `existing_${envVar.key}`,
+    key: envVar.key,
+    type: envVar.type,
+    value: envVar.value ?? "",
+    secretKey: envVar.secretKey ?? "",
+  }));
 }
 
 function draftsEqual(a: DraftEnvVar[], b: DraftEnvVar[]): boolean {
-  return a.length === b.length && a.every((envVar, i) => envVar.key === b[i].key && envVar.value === b[i].value && envVar.isSecret === b[i].isSecret);
+  return a.length === b.length && a.every((envVar, i) => envVar.key === b[i].key && envVar.type === b[i].type && envVar.value === b[i].value && envVar.secretKey === b[i].secretKey);
 }
 
-export function VariablesContent({ service, services, project, isHexclave, refresh }: {
+export function VariablesContent({ service, services, project, isHexclave, readOnly, refresh }: {
   service: BoardService,
   services: BoardService[],
   project: AdminProject,
   isHexclave: boolean,
+  readOnly: boolean,
   refresh: () => Promise<void>,
 }) {
   const [drafts, setDrafts] = useState<DraftEnvVar[]>(() => draftsFromService(service.envVars));
@@ -332,6 +360,20 @@ export function VariablesContent({ service, services, project, isHexclave, refre
 
   const dirty = !draftsEqual(drafts, savedDrafts);
 
+  // The board polls in the background, so the SAME service's env set can
+  // change under an open tab (e.g. a CLI config-as-code deploy). While the
+  // tab is pristine, follow along — otherwise Discard would restore stale
+  // data and a later Save would silently revert the concurrent change.
+  // Unsaved edits always win over the poll.
+  useEffect(() => {
+    if (serviceIdRef.current !== service.id) return;
+    if (dirty) return;
+    const fresh = draftsFromService(service.envVars);
+    if (draftsEqual(fresh, savedDrafts)) return;
+    setDrafts(fresh);
+    setSavedDrafts(fresh);
+  }, [service.id, service.envVars, dirty, savedDrafts]);
+
   if (isHexclave) {
     return (
       <div className="h-full overflow-y-auto p-4">
@@ -342,17 +384,18 @@ export function VariablesContent({ service, services, project, isHexclave, refre
     );
   }
 
-  const referenceItems = services
+  // Keyed by service ID (not display name) — the stored connection value is a
+  // server-side id reference.
+  const connectionTargets = services
     .filter((s) => s.id !== service.id)
     .flatMap((s) =>
       getServiceOutputs(s.type).map((output) => ({
-        id: `${s.name}.${output.key}`,
-        label: `${s.name}.${output.key}`,
-        token: `{${s.name}.${output.key}}`,
+        id: `${s.id}.${output.key}`,
+        label: `${s.id}.${output.key}`,
       })),
     );
 
-  const updateDraft = (localId: string, patch: Partial<Pick<DraftEnvVar, "key" | "value" | "isSecret">>) => {
+  const updateDraft = (localId: string, patch: Partial<Pick<DraftEnvVar, "key" | "type" | "value" | "secretKey">>) => {
     setDrafts((prev) => prev.map((envVar) => (envVar.localId === localId ? { ...envVar, ...patch } : envVar)));
   };
 
@@ -362,13 +405,44 @@ export function VariablesContent({ service, services, project, isHexclave, refre
     // otherwise they'd look persisted but silently vanish on the next load.
     const cleanedDrafts = drafts
       .filter((envVar) => envVar.key.trim() !== "")
-      .map((envVar) => ({ ...envVar, key: envVar.key.trim() }));
+      .map((envVar) => ({ ...envVar, key: envVar.key.trim(), secretKey: envVar.secretKey.trim() }));
+    // Local validation failures surface inline only (no rethrow — the button
+    // wrapper would additionally pop a raw generic alert on top).
+    // The env set is saved as a record keyed by the env var key, so duplicate
+    // keys would silently overwrite each other — reject them instead.
+    const duplicateKey = cleanedDrafts.map((envVar) => envVar.key).find((key, i, keys) => keys.indexOf(key) !== i);
+    if (duplicateKey != null) {
+      setSaveError(`Duplicate variable key "${duplicateKey}". Each variable needs a unique key.`);
+      return;
+    }
+    for (const envVar of cleanedDrafts) {
+      if (envVar.type === "secret" && !SECRET_KEY_REGEX.test(envVar.secretKey)) {
+        setSaveError(`The secret variable "${envVar.key}" needs a secret name (letters, numbers, underscores, and hyphens) to pass at deploy time.`);
+        return;
+      }
+      if (envVar.type === "connection" && envVar.value === "") {
+        setSaveError(`The connection variable "${envVar.key}" needs a service output to connect to.`);
+        return;
+      }
+    }
     try {
       await project.updateDeploymentService(service.id, {
-        env_vars: cleanedDrafts.map((envVar) => ({ key: envVar.key, value: envVar.value, is_secret: envVar.isSecret })),
+        env: Object.fromEntries(cleanedDrafts.map((envVar) => [
+          envVar.key,
+          envVar.type === "secret"
+            ? { type: "secret" as const, key: envVar.secretKey }
+            : envVar.type === "connection"
+              ? { type: "connection" as const, value: envVar.value }
+              : { value: envVar.value },
+        ])),
       });
-      setDrafts(cleanedDrafts);
       setSavedDrafts(cleanedDrafts);
+      // Functional update rather than the click-time snapshot: keystrokes
+      // typed while the request was in flight must survive the save (they
+      // simply leave the tab dirty again). Only mirror the cleanup itself.
+      setDrafts((prev) => prev
+        .filter((envVar) => envVar.key.trim() !== "")
+        .map((envVar) => ({ ...envVar, key: envVar.key.trim(), secretKey: envVar.secretKey.trim() })));
       await refresh();
     } catch (error) {
       setSaveError(errorMessageOf(error));
@@ -378,77 +452,106 @@ export function VariablesContent({ service, services, project, isHexclave, refre
 
   return (
     <div className="h-full space-y-3 overflow-y-auto p-4">
+      {readOnly && (
+        <p className="text-[11px] text-muted-foreground">
+          Variables are part of the service definition, which is managed by your config source. Edit the <span className="font-mono">env</span> section of your repo&apos;s <span className="font-mono">hexclave.config.ts</span> to change them.
+        </p>
+      )}
+
       {drafts.length === 0 && (
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-          No variables yet. Add one to configure this service.
+          No variables yet.{readOnly ? "" : " Add one to configure this service."}
         </div>
       )}
 
-      {drafts.map((envVar) => {
-        const refs = parseReferences(envVar.value);
-        return (
-          <div key={envVar.localId} className="space-y-1.5 rounded-xl bg-foreground/[0.02] p-2.5 ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
-            <div className="flex items-center gap-1.5">
-              <DesignInput value={envVar.key} size="sm" placeholder="KEY" className="font-mono" onChange={(e) => updateDraft(envVar.localId, { key: e.target.value })} />
-              <DesignButton variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-red-500" onClick={() => setDrafts((prev) => prev.filter((e) => e.localId !== envVar.localId))} aria-label="Remove variable">
-                <TrashIcon className="h-3.5 w-3.5" />
-              </DesignButton>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <DesignInput
-                value={envVar.value}
-                size="sm"
-                placeholder="value"
-                className="font-mono"
-                type={envVar.isSecret ? "password" : "text"}
-                onChange={(e) => updateDraft(envVar.localId, { value: e.target.value })}
-              />
-              <DesignButton
-                variant="ghost"
-                size="icon"
-                className={cn("h-7 w-7 shrink-0", envVar.isSecret ? "text-amber-500" : "text-muted-foreground")}
-                aria-label={envVar.isSecret ? "Marked as secret (click to unmark)" : "Mark as secret"}
-                onClick={() => updateDraft(envVar.localId, { isSecret: !envVar.isSecret })}
-              >
-                {envVar.isSecret ? <LockSimpleIcon className="h-3.5 w-3.5" weight="fill" /> : <LockSimpleOpenIcon className="h-3.5 w-3.5" />}
-              </DesignButton>
-              <div className="shrink-0">
-                <DesignMenu
-                  variant="actions"
-                  trigger="icon"
-                  triggerLabel="Insert reference"
-                  triggerIcon={<LinkSimpleIcon className="h-4 w-4" />}
-                  label="Reference an output"
-                  align="end"
-                  items={referenceItems.length > 0
-                    ? referenceItems.map((item) => ({ id: item.id, label: item.label, onClick: () => updateDraft(envVar.localId, { value: item.token }) }))
-                    : [{ id: "none", label: "No other services to reference", onClick: () => undefined }]}
-                />
-              </div>
-            </div>
-            {refs.map((ref) => (
-              <ResolvedReference key={ref.raw} serviceName={ref.serviceName} outputKey={ref.outputKey} services={services} />
-            ))}
+      {drafts.map((envVar) => (
+        <div key={envVar.localId} className="space-y-1.5 rounded-xl bg-foreground/[0.02] p-2.5 ring-1 ring-black/[0.04] dark:ring-white/[0.04]">
+          <div className="flex items-center gap-1.5">
+            <DesignInput value={envVar.key} size="sm" placeholder="KEY" className="font-mono" disabled={readOnly} onChange={(e) => updateDraft(envVar.localId, { key: e.target.value })} />
+            {!readOnly && (
+              <>
+                <div className="shrink-0">
+                  <DesignMenu
+                    variant="selector"
+                    trigger="button"
+                    triggerLabel={ENV_VAR_TYPE_OPTIONS.find((o) => o.id === envVar.type)?.label ?? envVar.type}
+                    label="Variable type"
+                    align="end"
+                    options={ENV_VAR_TYPE_OPTIONS}
+                    value={envVar.type}
+                    onValueChange={(value) => updateDraft(envVar.localId, { type: value as DraftEnvVarType })}
+                  />
+                </div>
+                <DesignButton variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-red-500" onClick={() => setDrafts((prev) => prev.filter((e) => e.localId !== envVar.localId))} aria-label="Remove variable">
+                  <TrashIcon className="h-3.5 w-3.5" />
+                </DesignButton>
+              </>
+            )}
           </div>
-        );
-      })}
 
-      <DesignButton
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={() => {
-          const localId = `new_${localIdCounter.current++}`;
-          setDrafts((prev) => [...prev, { localId, key: "", value: "", isSecret: false }]);
-        }}
-      >
-        <PlusIcon className="mr-2 h-4 w-4" />
-        Add variable
-      </DesignButton>
+          {envVar.type === "plain" && (
+            <DesignInput
+              value={envVar.value}
+              size="sm"
+              placeholder="value"
+              className="font-mono"
+              disabled={readOnly}
+              onChange={(e) => updateDraft(envVar.localId, { value: e.target.value })}
+            />
+          )}
+
+          {envVar.type === "secret" && (
+            <>
+              <DesignInput
+                value={envVar.secretKey}
+                size="sm"
+                placeholder="secret name, e.g. db_connection"
+                className="font-mono"
+                disabled={readOnly}
+                onChange={(e) => updateDraft(envVar.localId, { secretKey: e.target.value })}
+              />
+              <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/[0.06] px-2 py-1 text-[11px] text-muted-foreground ring-1 ring-amber-500/20">
+                <LockSimpleIcon className="h-3 w-3 shrink-0 text-amber-500" weight="fill" />
+                <span className="min-w-0 truncate">
+                  Value is supplied at deploy time: <span className="font-mono text-foreground">--secret {envVar.secretKey === "" ? "<name>" : envVar.secretKey}=&lt;value&gt;</span>
+                </span>
+              </div>
+            </>
+          )}
+
+          {envVar.type === "connection" && (
+            <>
+              {!readOnly && (
+                <ConnectionSelect
+                  value={envVar.value}
+                  options={connectionTargets}
+                  onChange={(value) => updateDraft(envVar.localId, { value })}
+                />
+              )}
+              {envVar.value !== "" && <ConnectionTarget value={envVar.value} services={services} />}
+            </>
+          )}
+        </div>
+      ))}
+
+      {!readOnly && (
+        <DesignButton
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => {
+            const localId = `new_${localIdCounter.current++}`;
+            setDrafts((prev) => [...prev, { localId, key: "", type: "plain", value: "", secretKey: "" }]);
+          }}
+        >
+          <PlusIcon className="mr-2 h-4 w-4" />
+          Add variable
+        </DesignButton>
+      )}
 
       {saveError != null && <InlineError message={saveError} />}
 
-      {dirty && (
+      {dirty && !readOnly && (
         <div className="flex items-center justify-end gap-2">
           <DesignButton
             variant="ghost"
@@ -469,8 +572,85 @@ export function VariablesContent({ service, services, project, isHexclave, refre
   );
 }
 
-function ResolvedReference({ serviceName, outputKey, services }: { serviceName: string, outputKey: string, services: BoardService[] }) {
-  const source = services.find((s) => s.name === serviceName);
+// Searchable output picker for connection env vars — same combobox pattern as
+// FrameworkSelect above. A plain dropdown menu doesn't cut it here: a board
+// can have many services × outputs, so the list must be height-capped,
+// scrollable, and filterable.
+function ConnectionSelect({ value, options, onChange }: {
+  value: string,
+  options: { id: string, label: string }[],
+  onChange: (value: string) => void,
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const filtered = options.filter((option) => option.label.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setQuery("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-8 w-full items-center gap-2 rounded-xl border border-black/[0.08] bg-white/80 px-3 shadow-sm ring-1 ring-black/[0.08] transition-all duration-150 hover:bg-white hover:transition-none dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]"
+        >
+          <LinkSimpleIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className={cn("min-w-0 flex-1 truncate text-left font-mono text-xs", value === "" && "font-sans text-sm text-muted-foreground")}>
+            {value === "" ? "Select an output…" : value}
+          </span>
+          <CaretDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <div className="flex items-center gap-2 border-b border-border/60 px-2.5 py-2">
+          <MagnifyingGlassIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search outputs…"
+            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+          />
+        </div>
+        <div className="max-h-56 overflow-y-auto p-1">
+          {filtered.map((option) => {
+            const isSelected = option.id === value;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 font-mono text-xs transition-colors duration-150 hover:bg-foreground/[0.06] hover:transition-none"
+              >
+                <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+                {isSelected && <CheckIcon className="h-4 w-4 shrink-0 text-primary" />}
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="px-2 py-4 text-center text-xs text-muted-foreground">
+              {options.length === 0 ? "No other services to connect to" : "No outputs found"}
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ConnectionTarget({ value, services }: { value: string, services: BoardService[] }) {
+  const dotIndex = value.indexOf(".");
+  const serviceId = dotIndex > 0 ? value.slice(0, dotIndex) : value;
+  const outputKey = dotIndex > 0 ? value.slice(dotIndex + 1) : "";
+  const source = services.find((s) => s.id === serviceId);
   const output = source ? getServiceOutputs(source.type).find((o) => o.key === outputKey) : undefined;
   const resolved = source != null && output != null;
 
@@ -482,11 +662,11 @@ function ResolvedReference({ serviceName, outputKey, services }: { serviceName: 
       <LinkSimpleIcon className="h-3 w-3 shrink-0" />
       {resolved ? (
         <span className="min-w-0 truncate">
-          Linked to <span className="font-mono font-medium text-foreground">{serviceName}.{outputKey}</span>
+          Linked to <span className="font-mono font-medium text-foreground">{serviceId}.{outputKey}</span>
           {output.secret ? " · secret, resolved at deploy time" : " · resolved at deploy time"}
         </span>
       ) : (
-        <span className="min-w-0 truncate">Unknown reference <span className="font-mono">{serviceName}.{outputKey}</span></span>
+        <span className="min-w-0 truncate">Unknown output <span className="font-mono">{value}</span></span>
       )}
     </div>
   );
@@ -891,11 +1071,10 @@ function DomainDetails({ project, serviceId, hostname, onVerifiedChange }: {
   );
 }
 
-export function DomainsContent({ service, project, isHexclave, readOnly, refresh }: {
+export function DomainsContent({ service, project, isHexclave, refresh }: {
   service: BoardService,
   project: AdminProject,
   isHexclave: boolean,
-  readOnly: boolean,
   refresh: () => Promise<void>,
 }) {
   const [newDomain, setNewDomain] = useState("");
@@ -903,7 +1082,9 @@ export function DomainsContent({ service, project, isHexclave, readOnly, refresh
   const [actionError, setActionError] = useState<{ message: string, detail?: string } | null>(null);
 
   const domains = service.api?.domains ?? [];
-  const canEdit = !isHexclave && !readOnly;
+  // Domains are operational state (not part of the config-managed definition),
+  // so they stay editable even when the config comes from a file or GitHub.
+  const canEdit = !isHexclave;
 
   const handleAdd = useCallback(async () => {
     const trimmed = newDomain.trim().toLowerCase();
@@ -939,12 +1120,6 @@ export function DomainsContent({ service, project, isHexclave, readOnly, refresh
           </DesignButton>
         </div>
       )}
-      {readOnly && !isHexclave && (
-        <p className="text-[11px] text-muted-foreground">
-          Domains are part of the service definition, which is managed by your config source. Edit your repo&apos;s <span className="font-mono">hexclave.config.ts</span> to change them.
-        </p>
-      )}
-
       {actionError != null && <InlineError message={actionError.message} detail={actionError.detail} />}
 
       <div className="space-y-2">
@@ -1058,6 +1233,19 @@ export function SettingsContent({ service, project, isHexclave, readOnly, refres
     }
   }, [service]);
 
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
+  // Same follow-the-poll-while-pristine behavior as the Variables tab: build
+  // settings can change under an open tab via a CLI config-as-code deploy.
+  useEffect(() => {
+    if (serviceIdRef.current !== service.id) return;
+    if (dirty) return;
+    const fresh = buildDraftFromService(service);
+    if (JSON.stringify(fresh) === JSON.stringify(savedDraft)) return;
+    setDraft(fresh);
+    setSavedDraft(fresh);
+  }, [service, dirty, savedDraft]);
+
   if (isHexclave) {
     return (
       <div className="h-full overflow-y-auto p-4">
@@ -1067,8 +1255,6 @@ export function SettingsContent({ service, project, isHexclave, readOnly, refres
       </div>
     );
   }
-
-  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
   const fields: { key: keyof BuildDraft, label: string, placeholder: string }[] = [
     { key: "rootDirectory", label: "Root directory", placeholder: "./" },

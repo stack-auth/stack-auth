@@ -23,7 +23,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     SELECT table_name
     FROM information_schema.tables
     WHERE table_schema = 'public'
-      AND table_name IN ('DeploymentService', 'DeploymentServiceEnvVar', 'DeploymentServiceDomain', 'DeploymentRun', 'DeploymentSourceUpload')
+      AND table_name IN ('DeploymentService', 'DeploymentServiceDomain', 'DeploymentRun', 'DeploymentSourceUpload')
     ORDER BY table_name
   `;
   expect(Array.from(tables)).toMatchInlineSnapshot(`
@@ -38,16 +38,12 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
         "table_name": "DeploymentServiceDomain",
       },
       {
-        "table_name": "DeploymentServiceEnvVar",
-      },
-      {
         "table_name": "DeploymentSourceUpload",
       },
     ]
   `);
 
   const serviceId = randomUUID();
-  const envVarId = randomUUID();
   const domainId = randomUUID();
   const runId = randomUUID();
   const uploadId = randomUUID();
@@ -55,10 +51,6 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   await sql`
     INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId", "framework", "installCommand", "buildCommand", "outputDirectory", "rootDirectory")
     VALUES (${ctx.tenancyId}::uuid, ${serviceId}::uuid, NOW(), 'api', 'nextjs', 'pnpm install', 'pnpm build', '.next', './')
-  `;
-  await sql`
-    INSERT INTO "DeploymentServiceEnvVar" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "key", "value", "isSecret")
-    VALUES (${ctx.tenancyId}::uuid, ${envVarId}::uuid, NOW(), ${serviceId}::uuid, 'HEXCLAVE_PROJECT_ID', '{hexclave.projectId}', false)
   `;
   await sql`
     INSERT INTO "DeploymentServiceDomain" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "hostname", "isPrimary", "verified")
@@ -83,15 +75,11 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}::uuid, 'NOT_A_STATUS', 'production', 'cli')
   `).rejects.toThrow(/invalid input value for enum/);
 
-  // Unique constraints: serviceId per tenancy, env var key per service, hostname per service.
+  // Unique constraints: serviceId per tenancy, hostname per service.
   await expect(sql`
     INSERT INTO "DeploymentService" ("tenancyId", "id", "updatedAt", "serviceId")
     VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), 'api')
   `).rejects.toThrow(/DeploymentService_tenancyId_serviceId_key/);
-  await expect(sql`
-    INSERT INTO "DeploymentServiceEnvVar" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "key", "value")
-    VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}::uuid, 'HEXCLAVE_PROJECT_ID', 'other')
-  `).rejects.toThrow(/DeploymentServiceEnvVar_tenancyId_deploymentServiceId_key_key/);
   await expect(sql`
     INSERT INTO "DeploymentServiceDomain" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "hostname")
     VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}::uuid, 'example.com')
@@ -115,9 +103,9 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
 
   // Foreign keys: children of a service that doesn't exist are rejected.
   await expect(sql`
-    INSERT INTO "DeploymentServiceEnvVar" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "key", "value")
-    VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${randomUUID()}::uuid, 'SOME_KEY', 'some-value')
-  `).rejects.toThrow(/DeploymentServiceEnvVar_tenancyId_deploymentServiceId_fkey/);
+    INSERT INTO "DeploymentServiceDomain" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "hostname")
+    VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${randomUUID()}::uuid, 'orphan.example.com')
+  `).rejects.toThrow(/DeploymentServiceDomain_tenancyId_deploymentServiceId_fkey/);
   // ... and a service can't belong to another tenancy's child rows (composite FK
   // includes tenancyId, so referencing the service from the wrong tenancy fails).
   await expect(sql`

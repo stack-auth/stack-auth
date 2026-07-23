@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
     const definitions = listServiceDefinitions(auth.tenancy);
     const operationalRows = await prisma.deploymentService.findMany({
       where: { tenancyId: auth.tenancy.id },
-      include: { envVars: true, domains: true },
+      include: { domains: true },
     });
     const operationalByServiceId = new Map(operationalRows.map((row) => [row.serviceId, row]));
     const items = await Promise.all([...definitions.entries()]
@@ -101,12 +101,13 @@ export const POST = createSmartRouteHandler({
       tenancy: auth.tenancy,
       serviceId: body.id,
       definition: {
+        type: "vercel",
         framework: body.framework ?? undefined,
         installCommand: body.install_command ?? undefined,
         buildCommand: body.build_command ?? undefined,
         outputDirectory: body.output_directory ?? undefined,
         rootDirectory: body.root_directory ?? undefined,
-        domains: {},
+        env: {},
       },
       operational: null,
     });

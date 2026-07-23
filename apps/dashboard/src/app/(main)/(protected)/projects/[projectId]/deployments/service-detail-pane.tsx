@@ -22,7 +22,8 @@ type ServiceDetailPaneProps = {
   services: BoardService[],
   project: AdminProject,
   // True when the project's config is pushed from a config file or GitHub:
-  // service definitions (name, build config, domains) can't be edited here.
+  // service definitions (name, build config, env vars) can't be edited here.
+  // Domains are operational state and stay editable regardless.
   readOnly: boolean,
   onClose: () => void,
   onDeleted: () => void,
@@ -70,10 +71,10 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
   ) : (() => {
     switch (tab) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} refresh={refresh} />; }
+      case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
       case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
       case "logs": { return <LogsContent service={service} project={project} isHexclave={isHexclave} />; }
-      case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
+      case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} onRequestDelete={() => setDeleteOpen(true)} />; }
     }
   })();

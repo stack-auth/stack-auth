@@ -20,7 +20,7 @@ export function ServiceNode({ service, variant, selected, dragging, linked, onPo
   const accent = getAccentClasses(meta.accent);
   const Icon = meta.icon;
   const status = STATUS_META.get(service.status);
-  const referenceCount = service.envVars.filter((e) => e.value.includes("{") && e.value.includes("}")).length;
+  const referenceCount = service.envVars.filter((e) => e.type === "connection").length;
 
   return (
     <div

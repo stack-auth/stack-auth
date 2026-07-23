@@ -134,6 +134,7 @@ const docsJson = {
               "guides/apps/api-keys/overview",
               "guides/apps/data-vault/overview",
               "guides/apps/webhooks/overview",
+              "guides/apps/deployments/overview",
               "guides/apps/launch-checklist/overview"
             ]
           },
@@ -257,6 +258,10 @@ const docsJson = {
     {
       "source": "/guides/going-further/backend-integration",
       "destination": "/guides/going-further/local-vs-cloud-dashboard"
+    },
+    {
+      "source": "/guides/going-further/deployments",
+      "destination": "/guides/apps/deployments/overview"
     }
   ]
 } as const;

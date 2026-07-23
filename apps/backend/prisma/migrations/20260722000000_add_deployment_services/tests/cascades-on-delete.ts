@@ -24,10 +24,6 @@ const seedServiceWithChildren = async (sql: Sql, tenancyId: string, serviceId: s
     VALUES (${tenancyId}::uuid, ${serviceId}::uuid, NOW(), ${serviceKey})
   `;
   await sql`
-    INSERT INTO "DeploymentServiceEnvVar" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "key", "value")
-    VALUES (${tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}::uuid, 'SOME_KEY', 'some-value')
-  `;
-  await sql`
     INSERT INTO "DeploymentServiceDomain" ("tenancyId", "id", "updatedAt", "deploymentServiceId", "hostname")
     VALUES (${tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${serviceId}::uuid, 'cascade.example.com')
   `;
@@ -38,8 +34,7 @@ const seedServiceWithChildren = async (sql: Sql, tenancyId: string, serviceId: s
 };
 
 const countChildren = async (sql: Sql, tenancyId: string) => {
-  const [envVars, domains, runs, services, uploads] = await Promise.all([
-    sql`SELECT count(*)::int AS count FROM "DeploymentServiceEnvVar" WHERE "tenancyId" = ${tenancyId}::uuid`,
+  const [domains, runs, services, uploads] = await Promise.all([
     sql`SELECT count(*)::int AS count FROM "DeploymentServiceDomain" WHERE "tenancyId" = ${tenancyId}::uuid`,
     sql`SELECT count(*)::int AS count FROM "DeploymentRun" WHERE "tenancyId" = ${tenancyId}::uuid`,
     sql`SELECT count(*)::int AS count FROM "DeploymentService" WHERE "tenancyId" = ${tenancyId}::uuid`,
@@ -47,7 +42,6 @@ const countChildren = async (sql: Sql, tenancyId: string) => {
   ]);
   return {
     services: services[0].count as number,
-    envVars: envVars[0].count as number,
     domains: domains[0].count as number,
     runs: runs[0].count as number,
     uploads: uploads[0].count as number,
@@ -55,20 +49,20 @@ const countChildren = async (sql: Sql, tenancyId: string) => {
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
-  // Deleting a service cascades to its env vars, domains, and runs.
+  // Deleting a service cascades to its domains and runs.
   const serviceId = randomUUID();
   await seedServiceWithChildren(sql, ctx.tenancyId, serviceId, "cascade-a");
   await sql`
     INSERT INTO "DeploymentSourceUpload" ("tenancyId", "id", "updatedAt", "data", "expiresAt")
     VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), '\\x00'::bytea, NOW() + INTERVAL '15 minutes')
   `;
-  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 1, envVars: 1, domains: 1, runs: 1, uploads: 1 });
+  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 1, domains: 1, runs: 1, uploads: 1 });
 
   await sql`DELETE FROM "DeploymentService" WHERE "tenancyId" = ${ctx.tenancyId}::uuid AND "id" = ${serviceId}::uuid`;
-  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 0, envVars: 0, domains: 0, runs: 0, uploads: 1 });
+  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 0, domains: 0, runs: 0, uploads: 1 });
 
   // Deleting the project cascades through the tenancy to all deployment rows.
   await seedServiceWithChildren(sql, ctx.tenancyId, randomUUID(), "cascade-b");
   await sql`DELETE FROM "Project" WHERE "id" = ${ctx.projectId}`;
-  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 0, envVars: 0, domains: 0, runs: 0, uploads: 0 });
+  expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 0, domains: 0, runs: 0, uploads: 0 });
 };

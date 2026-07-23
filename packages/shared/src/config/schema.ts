@@ -294,13 +294,51 @@ const branchOnboardingSchema = yupObject({
 });
 
 // --- Deployments Schema ---
-// Service DEFINITIONS (framework, build config, desired domains) live in the
+// Service DEFINITIONS (type, framework, build config, env vars) live in the
 // branch config so they follow the project's config source: pushable from
 // hexclave.config.ts / GitHub, or editable in the dashboard when the config is
-// unlinked. Operational state (Vercel project id, deployment runs, domain
-// verification) lives in the backend database instead, keyed by the service id.
-// Domains are a record (not an array) keyed by a user-specified id, mirroring
-// domains.trustedDomains — arrays don't merge well with dot-notation overrides.
+// unlinked. Operational state (Vercel project id, deployment runs, custom
+// domains and their verification) lives in the backend database instead, keyed
+// by the service id.
+export const DEPLOYMENT_ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const DEPLOYMENT_SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+// A connection value is `<serviceId>.<outputKey>` — a typed pointer to another
+// service's output (e.g. "hexclave.projectId") that the backend resolves at
+// deploy time. This is deliberately its own env var TYPE rather than a
+// `{serviceId.outputKey}` interpolation syntax inside plain values: with
+// interpolation, a literal value that happens to contain `{...}` would be
+// misinterpreted as a reference, so plain values must stay entirely literal.
+export const DEPLOYMENT_CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+$/;
+
+// One env var, discriminated by `type`:
+// - absent (plain): a literal `value`, committed to the config.
+// - "secret": only the secret's name (`key`) is in the config; its value must
+//   be supplied at deploy time via `hexclave deploy --secret <key>=<value>`
+//   and is never persisted by Hexclave.
+// - "connection": `value` names another service's output (see the regex
+//   comment above); resolved server-side at deploy time.
+// Exported so the backend's deployments API routes validate request bodies
+// with the exact same rules as pushed configs.
+export const deploymentEnvVarSchema = yupObject({
+  type: yupString().oneOf(["secret", "connection"]).optional(),
+  value: yupString().when("type", ([type], schema) => {
+    switch (type) {
+      case "secret": {
+        return schema.oneOf([undefined], 'deployment env vars with type "secret" must not have a value — the value is supplied at deploy time via `hexclave deploy --secret <key>=<value>`');
+      }
+      case "connection": {
+        return schema.defined().matches(DEPLOYMENT_CONNECTION_VALUE_REGEX, 'deployment env vars with type "connection" must reference a service output like "hexclave.projectId"');
+      }
+      default: {
+        return schema.defined();
+      }
+    }
+  }),
+  key: yupString().when("type", ([type], schema) => type === "secret"
+    ? schema.defined().matches(DEPLOYMENT_SECRET_KEY_REGEX, "deployment secret keys must contain only letters, numbers, underscores, and hyphens")
+    : schema.oneOf([undefined], 'deployment env vars may only have a key when their type is "secret"')),
+});
+
 const branchDeploymentsSchema = yupObject({
   services: yupRecord(
     // "hexclave" is the managed backend's slot on the deployments board; a
@@ -309,20 +347,70 @@ const branchDeploymentsSchema = yupObject({
     // validation too).
     userSpecifiedIdSchema("serviceId").notOneOf(["hexclave"], 'The service id "hexclave" is reserved for the managed Hexclave service'),
     yupObject({
+      // Which platform runs the service. Only Vercel-backed services exist
+      // today, but the field is required so configs stay unambiguous once more
+      // types are added (every write path must state what it's creating).
+      type: yupString().oneOf(["vercel"]).defined(),
       framework: yupString().optional(),
       installCommand: yupString().optional(),
       buildCommand: yupString().optional(),
       outputDirectory: yupString().optional(),
       rootDirectory: yupString().optional(),
-      domains: yupRecord(
-        userSpecifiedIdSchema("domainId"),
-        yupObject({
-          hostname: yupString().defined(),
-          isPrimary: yupBoolean().optional(),
-        }),
+      env: yupRecord(
+        yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "deployment env var keys must start with a letter or underscore and contain only letters, digits, and underscores"),
+        deploymentEnvVarSchema,
       ),
     }),
   ),
+});
+
+import.meta.vitest?.test("branchDeploymentsSchema accepts all three env var types", async ({ expect }) => {
+  await expect(branchDeploymentsSchema.validate({
+    services: {
+      web: {
+        type: "vercel",
+        rootDirectory: "./",
+        framework: "nextjs",
+        env: {
+          MY_ENV_VAR: { value: "true" },
+          DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
+          NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+        },
+      },
+    },
+  }, { abortEarly: false })).resolves.toBeDefined();
+});
+
+import.meta.vitest?.test("branchDeploymentsSchema rejects services without a type", async ({ expect }) => {
+  await expect(branchDeploymentsSchema.validate({
+    services: {
+      web: { framework: "nextjs" },
+    },
+  }, { abortEarly: false })).rejects.toThrow(/type/);
+});
+
+import.meta.vitest?.test("branchDeploymentsSchema rejects invalid env var shapes", async ({ expect }) => {
+  // A secret with an inline value would defeat the whole point of secrets.
+  await expect(branchDeploymentsSchema.validate({
+    services: { web: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } },
+  }, { abortEarly: false })).rejects.toThrow(/must not have a value/);
+  // A secret without a key can never be filled at deploy time.
+  await expect(branchDeploymentsSchema.validate({
+    services: { web: { type: "vercel", env: { A: { type: "secret" } } } },
+  }, { abortEarly: false })).rejects.toThrow(/key/);
+  // Plain values may not carry a secret key.
+  await expect(branchDeploymentsSchema.validate({
+    services: { web: { type: "vercel", env: { A: { value: "x", key: "a" } } } },
+  }, { abortEarly: false })).rejects.toThrow(/only have a key/);
+  // Connections must point at `<serviceId>.<outputKey>` — braces in particular
+  // are the OLD interpolation syntax and must not validate.
+  await expect(branchDeploymentsSchema.validate({
+    services: { web: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } },
+  }, { abortEarly: false })).rejects.toThrow(/service output/);
+  // Env var keys must be valid POSIX-ish env var names.
+  await expect(branchDeploymentsSchema.validate({
+    services: { web: { type: "vercel", env: { "1BAD": { value: "x" } } } },
+  }, { abortEarly: false })).rejects.toThrow(/env var keys/);
 });
 // --- END Deployments Schema ---
 
@@ -608,9 +696,67 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-07-23: deployments.services entries gained a required `type` and lost `domains`
+  // (custom domains are now purely operational state in the backend database). Service ids
+  // cannot contain dots, so the path segment positions below are exact.
+  if (isBranchOrHigher) {
+    res = removeProperty(res, p => p.length >= 4 && p[0] === "deployments" && p[1] === "services" && p[3] === "domains");
+    // Only whole-object service entries can be defaulted here; dot-notation
+    // field overrides (e.g. `deployments.services.web.framework`) always edit
+    // an entry that was originally created as a whole object, so this covers
+    // every service that exists.
+    res = mapProperty(res, p => p.length === 3 && p[0] === "deployments" && p[1] === "services", (value) => {
+      if (isObjectLike(value) && !("type" in value)) {
+        return { ...value, type: "vercel" };
+      }
+      return value;
+    });
+  }
+  // END
+
   // return the result
   return res;
 };
+
+import.meta.vitest?.test("migrateConfigOverride migrates legacy deployment service entries", ({ expect }) => {
+  expect(migrateConfigOverride("branch", {
+    deployments: {
+      services: {
+        web: {
+          framework: "nextjs",
+          domains: {
+            "example-com": { hostname: "example.com", isPrimary: true },
+          },
+        },
+      },
+    },
+  })).toEqual({
+    deployments: {
+      services: {
+        web: {
+          type: "vercel",
+          framework: "nextjs",
+        },
+      },
+    },
+  });
+  // Dot-notation variants: whole-entry keys get the type default, nested
+  // domain keys are dropped, and field-level keys pass through untouched.
+  expect(migrateConfigOverride("branch", {
+    "deployments.services.web": { framework: "nextjs" },
+    "deployments.services.web.domains.example-com": { hostname: "example.com" },
+    "deployments.services.api.buildCommand": "pnpm build",
+  })).toEqual({
+    "deployments.services.web": { type: "vercel", framework: "nextjs" },
+    "deployments.services.api.buildCommand": "pnpm build",
+  });
+  // Entries that already have a type are left alone.
+  expect(migrateConfigOverride("branch", {
+    "deployments.services.web": { type: "vercel", framework: "nextjs" },
+  })).toEqual({
+    "deployments.services.web": { type: "vercel", framework: "nextjs" },
+  });
+});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {
@@ -911,14 +1057,16 @@ const organizationConfigDefaults = {
 
   deployments: {
     services: (key: string) => ({
+      type: undefined,
       framework: undefined,
       installCommand: undefined,
       buildCommand: undefined,
       outputDirectory: undefined,
       rootDirectory: undefined,
-      domains: (domainKey: string) => ({
-        hostname: undefined,
-        isPrimary: false,
+      env: (envVarKey: string) => ({
+        type: undefined,
+        value: undefined,
+        key: undefined,
       }),
     }),
   },

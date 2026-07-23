@@ -13,57 +13,69 @@ const CONFIG_FILE_CANDIDATES = ["hexclave.config.ts", "hexclave.config.js", "sta
 export type DeployOptions = {
   config?: string,
   cloudProjectId?: string,
-  env: string[],
+  secret: string[],
 };
 
-export type ParsedEnvVar = { key: string, value: string };
+const SECRET_KEY_REGEX = /^[a-zA-Z0-9_-]+$/;
+const ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
+// Must match the backend's connection value validation: `<serviceId>.<outputKey>`.
+const CONNECTION_VALUE_REGEX = /^[a-zA-Z0-9_-]+\.[A-Za-z0-9_]+$/;
 
 /**
- * Parses repeated `--env KEY=VALUE` options. Values may contain `=` (only the
- * first one separates key from value) and `{service.output}` references, which
- * are resolved server-side. Exported for unit tests.
+ * Parses repeated `--secret KEY=VALUE` options. Values may contain `=` (only
+ * the first one separates key from value). Keys are the secret keys named by
+ * `type: "secret"` env vars in the config; values are never persisted by
+ * Hexclave. Exported for unit tests.
  */
-export function parseEnvOptions(envOptions: string[]): ParsedEnvVar[] {
-  const seen = new Set<string>();
-  return envOptions.map((option) => {
+export function parseSecretOptions(secretOptions: string[]): Map<string, string> {
+  const secrets = new Map<string, string>();
+  for (const option of secretOptions) {
     const separatorIndex = option.indexOf("=");
     if (separatorIndex <= 0) {
-      throw new CliError(`Invalid --env value ${JSON.stringify(option)}. Expected the KEY=VALUE format.`);
+      throw new CliError(`Invalid --secret value ${JSON.stringify(option)}. Expected the KEY=VALUE format.`);
     }
     const key = option.slice(0, separatorIndex);
     const value = option.slice(separatorIndex + 1);
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new CliError(`Invalid --env key ${JSON.stringify(key)}. Keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
+    if (!SECRET_KEY_REGEX.test(key)) {
+      throw new CliError(`Invalid --secret key ${JSON.stringify(key)}. Secret keys must contain only letters, numbers, underscores, and hyphens.`);
     }
-    if (seen.has(key)) {
-      throw new CliError(`Duplicate --env key ${JSON.stringify(key)}.`);
+    if (secrets.has(key)) {
+      throw new CliError(`Duplicate --secret key ${JSON.stringify(key)}.`);
     }
-    seen.add(key);
-    return { key, value };
-  });
+    secrets.set(key, value);
+  }
+  return secrets;
 }
 
-export type ServiceBuildConfig = {
+// The config-side shape of one env var. Mirrors the schema of
+// `deployments.services.<name>.env.<KEY>` and is sent to the deploy endpoint
+// verbatim.
+export type ServiceEnvVarConfig =
+  | { value: string }
+  | { type: "secret", key: string }
+  | { type: "connection", value: string };
+
+export type ServiceDefinition = {
   framework?: string,
   installCommand?: string,
   buildCommand?: string,
   outputDirectory?: string,
   rootDirectory?: string,
-  domains: string[],
+  env: Record<string, ServiceEnvVarConfig>,
 };
 
 /**
- * Extracts one service's build config from a loaded config module. The config
+ * Extracts one service's definition from a loaded config module. The config
  * file holds it under `deployments.services.<name>` — the exact shape that
  * `hexclave config push` pushes as branch config. Exported for unit tests.
  */
-export function extractServiceBuildConfig(config: unknown, serviceName: string): ServiceBuildConfig {
+export function extractServiceDefinition(config: unknown, serviceName: string): ServiceDefinition {
   if (config == null || typeof config !== "object") {
     throw new CliError("Config file must export a plain `config` object.");
   }
   const services = (config as { deployments?: { services?: unknown } }).deployments?.services;
   if (services == null || typeof services !== "object") {
-    throw new CliError("The config file has no `deployments.services` section. Add one, e.g.:\n  export const config = {\n    deployments: {\n      services: {\n        " + serviceName + ": { rootDirectory: \"./\", framework: \"nextjs\" },\n      },\n    },\n  };");
+    throw new CliError("The config file has no `deployments.services` section. Add one, e.g.:\n  export const config = {\n    deployments: {\n      services: {\n        " + serviceName + ": { type: \"vercel\", rootDirectory: \"./\", framework: \"nextjs\" },\n      },\n    },\n  };");
   }
   const service = (services as Record<string, unknown>)[serviceName];
   if (service == null || typeof service !== "object") {
@@ -71,6 +83,11 @@ export function extractServiceBuildConfig(config: unknown, serviceName: string):
     throw new CliError(`No service named ${JSON.stringify(serviceName)} in the config file's \`deployments.services\`.${available.length > 0 ? ` Available services: ${available.join(", ")}` : ""}`);
   }
   const record = service as Record<string, unknown>;
+  if (record.type !== "vercel") {
+    throw new CliError(record.type === undefined
+      ? `\`deployments.services.${serviceName}\` has no \`type\`. Add \`type: "vercel"\`.`
+      : `\`deployments.services.${serviceName}.type\` must be "vercel" (got ${JSON.stringify(record.type)}).`);
+  }
   const readString = (key: string): string | undefined => {
     const value = record[key];
     if (value === undefined) return undefined;
@@ -79,27 +96,83 @@ export function extractServiceBuildConfig(config: unknown, serviceName: string):
     }
     return value;
   };
-  const domains: string[] = [];
-  if (record.domains !== undefined) {
-    if (record.domains == null || typeof record.domains !== "object" || Array.isArray(record.domains)) {
-      throw new CliError(`\`deployments.services.${serviceName}.domains\` must be a record of domain entries, e.g. { "example-com": { hostname: "example.com" } }.`);
-    }
-    for (const [domainKey, domainValue] of Object.entries(record.domains as Record<string, unknown>)) {
-      const hostname = (domainValue as { hostname?: unknown } | null)?.hostname;
-      if (typeof hostname !== "string" || hostname === "") {
-        throw new CliError(`\`deployments.services.${serviceName}.domains.${domainKey}\` must have a \`hostname\` string.`);
-      }
-      domains.push(hostname);
-    }
-  }
   return {
     framework: readString("framework"),
     installCommand: readString("installCommand"),
     buildCommand: readString("buildCommand"),
     outputDirectory: readString("outputDirectory"),
     rootDirectory: readString("rootDirectory"),
-    domains,
+    env: extractServiceEnv(record.env, serviceName),
   };
+}
+
+function extractServiceEnv(env: unknown, serviceName: string): Record<string, ServiceEnvVarConfig> {
+  if (env === undefined) return {};
+  if (env == null || typeof env !== "object" || Array.isArray(env)) {
+    throw new CliError(`\`deployments.services.${serviceName}.env\` must be a record of env var entries, e.g. { MY_VAR: { value: "some-value" } }.`);
+  }
+  const result: Record<string, ServiceEnvVarConfig> = {};
+  for (const [envVarKey, entryValue] of Object.entries(env as Record<string, unknown>)) {
+    const path = `\`deployments.services.${serviceName}.env.${envVarKey}\``;
+    if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
+      throw new CliError(`${path} has an invalid key. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
+    }
+    if (entryValue == null || typeof entryValue !== "object") {
+      throw new CliError(`${path} must be an object like { value: "..." }, { type: "secret", key: "..." }, or { type: "connection", value: "service.output" }.`);
+    }
+    const entry = entryValue as { type?: unknown, value?: unknown, key?: unknown };
+    switch (entry.type) {
+      case undefined: {
+        if (typeof entry.value !== "string") {
+          throw new CliError(`${path} must have a string \`value\` (or a \`type\` of "secret" or "connection").`);
+        }
+        if (entry.key !== undefined) {
+          throw new CliError(`${path} must not have a \`key\` — that's only for env vars with \`type: "secret"\`.`);
+        }
+        result[envVarKey] = { value: entry.value };
+        break;
+      }
+      case "secret": {
+        if (typeof entry.key !== "string" || !SECRET_KEY_REGEX.test(entry.key)) {
+          throw new CliError(`${path} has type "secret" and must have a \`key\` naming the secret to pass at deploy time (letters, numbers, underscores, and hyphens only).`);
+        }
+        if (entry.value !== undefined) {
+          throw new CliError(`${path} has type "secret" and must not have a \`value\` — pass it at deploy time with --secret ${entry.key}=<value> instead, so it is never committed.`);
+        }
+        result[envVarKey] = { type: "secret", key: entry.key };
+        break;
+      }
+      case "connection": {
+        if (typeof entry.value !== "string" || !CONNECTION_VALUE_REGEX.test(entry.value)) {
+          throw new CliError(`${path} has type "connection" and must have a \`value\` referencing a service output like "hexclave.projectId".`);
+        }
+        result[envVarKey] = { type: "connection", value: entry.value };
+        break;
+      }
+      default: {
+        throw new CliError(`${path} has an unknown \`type\` ${JSON.stringify(entry.type)}. Supported: "secret", "connection", or no type for a plain value.`);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Checks the provided secrets against the secret keys the env definitions
+ * reference, so a missing or misspelled secret fails BEFORE packaging and
+ * uploading. The backend re-checks this authoritatively. Exported for unit
+ * tests.
+ */
+export function assertSecretsMatchEnv(env: Record<string, ServiceEnvVarConfig>, secrets: ReadonlyMap<string, string>): void {
+  const referencedKeys = new Set(Object.values(env).flatMap((entry) => "type" in entry && entry.type === "secret" ? [entry.key] : []));
+  const missing = [...referencedKeys].filter((key) => !secrets.has(key));
+  if (missing.length > 0) {
+    throw new CliError(`Missing secret values for: ${missing.join(", ")}. This service's env vars reference these secrets — pass them with --secret <key>=<value>.`);
+  }
+  const unused = [...secrets.keys()].filter((key) => !referencedKeys.has(key));
+  if (unused.length > 0) {
+    throw new CliError(`Unknown --secret key(s): ${unused.join(", ")}. No env var of this service references them — check for typos, or add an env var with \`type: "secret"\` referencing them.`);
+  }
 }
 
 /**
@@ -203,19 +276,20 @@ export function registerDeployCommand(program: Command) {
     .description("Deploy a service defined under `deployments.services` in your hexclave.config.ts. Uploads the service's source directory; the build runs remotely. Fire-and-forget: prints the run id and exits once the deploy is queued.")
     .option("--config <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
-    .option("--env <KEY=VALUE>", "Env var for this deploy (repeatable). Values may contain {service.output} references, which are resolved server-side.", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .option("--secret <KEY=VALUE>", "Value for a secret env var of this deploy (repeatable). KEY is the secret key named by a `type: \"secret\"` env var in the config; the value is pushed to the deployment target and never persisted by Hexclave.", (value: string, previous: string[]) => [...previous, value], [] as string[])
     .addHelpText("after", "\nAuthentication: uses HEXCLAVE_SECRET_SERVER_KEY if set (recommended for CI), otherwise your `hexclave login` session.")
     .action(async (service: string, opts: DeployOptions) => {
       const auth = resolveAuth(resolveProjectId(opts.cloudProjectId));
-      const envVars = parseEnvOptions(opts.env);
+      const secrets = parseSecretOptions(opts.secret);
       const authHeaders = await buildAuthHeadersFactory(auth);
 
       const configPath = resolveDeployConfigPath(opts.config, process.cwd());
-      let buildConfig: ServiceBuildConfig;
+      let definition: ServiceDefinition | undefined;
       let rootDirectory: string;
       if (configPath != null) {
-        // Config-as-code mode: the config file's build config governs this
-        // deploy and is upserted into the service definition by the backend.
+        // Config-as-code mode: the config file's definition (build config and
+        // env vars) governs this deploy and is upserted into the service
+        // definition by the backend.
         const { createJiti } = await import("jiti");
         const jiti = createJiti(import.meta.url);
         let configModule: { config?: unknown };
@@ -227,21 +301,29 @@ export function registerDeployCommand(program: Command) {
         if (configModule.config == null) {
           throw new CliError(`Config file ${configPath} must export a \`config\` object (e.g. \`export const config = { deployments: { services: { ... } } }\`).`);
         }
-        buildConfig = extractServiceBuildConfig(configModule.config, service);
+        definition = extractServiceDefinition(configModule.config, service);
+        // Fail on missing/misspelled secrets BEFORE packaging and uploading.
+        // The backend re-checks this authoritatively.
+        assertSecretsMatchEnv(definition.env, secrets);
         // The source directory is the service's rootDirectory, resolved
         // relative to the config file (not the cwd) so deploys behave the same
         // from anywhere in the repo.
-        rootDirectory = path.resolve(path.dirname(configPath), buildConfig.rootDirectory ?? ".");
+        rootDirectory = path.resolve(path.dirname(configPath), definition.rootDirectory ?? ".");
       } else {
-        // Dashboard mode: no config file, so the service's configuration as
+        // Dashboard mode: no config file, so the service's definition as
         // stored on the backend governs the deploy (the service must already
-        // exist there). Only the root directory matters locally — it decides
-        // what gets packaged — and is resolved against the cwd.
+        // exist there). The root directory decides what gets packaged and is
+        // resolved against the cwd; the stored env definitions let us check
+        // the provided secrets before uploading.
         const remoteService = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(service)}`, { method: "GET" });
         const remoteRootDirectory = typeof remoteService?.root_directory === "string" && remoteService.root_directory !== "" ? remoteService.root_directory : ".";
-        // Send no build config: the backend falls back to the stored
-        // definition field-by-field.
-        buildConfig = { domains: [] };
+        const remoteEnv: Record<string, ServiceEnvVarConfig> = {};
+        for (const envVar of Array.isArray(remoteService?.env) ? remoteService.env : []) {
+          if (envVar?.type === "secret" && typeof envVar.secret_key === "string" && typeof envVar.key === "string") {
+            remoteEnv[envVar.key] = { type: "secret", key: envVar.secret_key };
+          }
+        }
+        assertSecretsMatchEnv(remoteEnv, secrets);
         rootDirectory = path.resolve(process.cwd(), remoteRootDirectory);
         console.error(`No config file found — using the service configuration stored in Hexclave (root directory: ${remoteRootDirectory}).`);
       }
@@ -263,19 +345,26 @@ export function registerDeployCommand(program: Command) {
       });
 
       console.error(`Starting deployment of ${JSON.stringify(service)}...`);
+      // Without a config file, build_config and env are omitted entirely: the
+      // backend then uses the stored definition field-by-field. WITH a config
+      // file, absent build fields are sent as null ("unset") — the file is the
+      // whole truth, so deleting a field from it must actually remove the
+      // stored value instead of silently keeping it forever.
       const deployResponse = await deployApiFetch(auth, authHeaders, `/deployments/services/${encodeURIComponent(service)}/deploy`, {
         method: "POST",
         jsonBody: {
           upload_id: upload.id,
-          build_config: {
-            ...(buildConfig.framework !== undefined ? { framework: buildConfig.framework } : {}),
-            ...(buildConfig.installCommand !== undefined ? { install_command: buildConfig.installCommand } : {}),
-            ...(buildConfig.buildCommand !== undefined ? { build_command: buildConfig.buildCommand } : {}),
-            ...(buildConfig.outputDirectory !== undefined ? { output_directory: buildConfig.outputDirectory } : {}),
-            ...(buildConfig.rootDirectory !== undefined ? { root_directory: buildConfig.rootDirectory } : {}),
-            ...(buildConfig.domains.length > 0 ? { domains: buildConfig.domains } : {}),
-          },
-          env: envVars,
+          ...(definition !== undefined ? {
+            build_config: {
+              framework: definition.framework ?? null,
+              install_command: definition.installCommand ?? null,
+              build_command: definition.buildCommand ?? null,
+              output_directory: definition.outputDirectory ?? null,
+              root_directory: definition.rootDirectory ?? null,
+            },
+            env: definition.env,
+          } : {}),
+          ...(secrets.size > 0 ? { secrets: Object.fromEntries(secrets) } : {}),
         },
       });
       if (typeof deployResponse?.run_id !== "string") {

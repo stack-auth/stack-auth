@@ -5,22 +5,39 @@
 // - "service id" is the user-facing key under `deployments.services` in the
 //   config (e.g. "api"). It's what the CLI and all API routes use.
 // - The DeploymentService Prisma row is purely operational (Vercel project id,
-//   last-deployed build config, env vars, runs) and is created lazily.
+//   last-deployed build config, custom domains, runs) and is created lazily.
+//   Env vars are NOT stored there: their definitions live in the config, and
+//   secret values only ever pass through at deploy time.
 
 import { getBranchConfigOverrideSource, overrideBranchConfigOverride } from "@/lib/config";
 import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction, globalPrismaClient } from "@/prisma-client";
 import type { DeploymentRunStatus, Prisma } from "@/generated/prisma/client";
-import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
+import { CompleteConfig, DEPLOYMENT_CONNECTION_VALUE_REGEX, DEPLOYMENT_ENV_VAR_KEY_REGEX, DEPLOYMENT_SECRET_KEY_REGEX } from "@hexclave/shared/dist/config/schema";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError, captureError, throwErr } from "@hexclave/shared/dist/utils/errors";
 import { filterUndefined } from "@hexclave/shared/dist/utils/objects";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { parseTar } from "@hexclave/shared/dist/utils/tar";
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
 
 export type DeploymentServiceDefinition = CompleteConfig["deployments"]["services"][string];
+export type DeploymentEnvVarConfig = DeploymentServiceDefinition["env"][string];
+
+/**
+ * Converts a request body's env record (yup-validated, so fields are OPTIONAL)
+ * into the rendered-config shape (fields present but possibly undefined) —
+ * the two are not mutually assignable under exactOptionalPropertyTypes.
+ */
+export function envRecordFromRequestBody(env: Record<string, { type?: "secret" | "connection", value?: string, key?: string }>): Record<string, DeploymentEnvVarConfig> {
+  return Object.fromEntries(Object.entries(env).map(([envVarKey, config]) => [envVarKey, {
+    type: config.type,
+    value: config.value,
+    key: config.key,
+  }]));
+}
 
 // Sizes are generous for "source of a web app without node_modules" while
 // still bounding what a hostile upload can make the backend allocate.
@@ -31,11 +48,8 @@ export const UPLOAD_EXPIRY_MS = 15 * 60 * 1000;
 
 export const MAX_UPLOAD_BYTES = MAX_TARBALL_GZIPPED_BYTES;
 
-// Matches the reference syntax used by the dashboard's Variables tab:
-// `{serviceId.outputKey}` inside an env var value.
-const REFERENCE_REGEX = /\{([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\}/g;
-
-export const ENV_VAR_KEY_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const ENV_VAR_KEY_REGEX = DEPLOYMENT_ENV_VAR_KEY_REGEX;
+export const SECRET_KEY_REGEX = DEPLOYMENT_SECRET_KEY_REGEX;
 
 // The managed Hexclave service occupies this service id on the board; a config
 // entry must never shadow it.
@@ -73,17 +87,29 @@ export async function assertServiceDefinitionsEditable(tenancy: Tenancy): Promis
   }
 }
 
+/**
+ * Updates a service definition. `null` build fields delete the config key
+ * (falling back to platform auto-detection); `undefined` leaves it unchanged.
+ * `env`, when given, replaces the service's WHOLE env var set (setting the
+ * single `...env` path key swaps the entire subtree while leaving the
+ * service's other fields untouched — dot-notation override semantics). Both
+ * land in one override write so a failure in between can't leave the
+ * definition half-updated.
+ */
 export async function updateServiceDefinitionInConfig(tenancy: Tenancy, serviceId: string, definition: Partial<{
   framework: string | null,
   installCommand: string | null,
   buildCommand: string | null,
   outputDirectory: string | null,
   rootDirectory: string | null,
-}>): Promise<void> {
-  const configOverrideOverride = Object.fromEntries(
-    Object.entries(filterUndefined(definition))
-      .map(([key, value]) => [`deployments.services.${serviceId}.${key}`, value]),
-  );
+}>, env?: Record<string, DeploymentEnvVarConfig>): Promise<void> {
+  const configOverrideOverride = {
+    ...Object.fromEntries(
+      Object.entries(filterUndefined(definition))
+        .map(([key, value]) => [`deployments.services.${serviceId}.${key}`, value]),
+    ),
+    ...(env !== undefined ? { [`deployments.services.${serviceId}.env`]: envRecordForConfigWrite(env) } : {}),
+  };
   if (Object.keys(configOverrideOverride).length === 0) return;
   await overrideBranchConfigOverride({
     projectId: tenancy.project.id,
@@ -98,21 +124,33 @@ export async function createServiceDefinitionInConfig(tenancy: Tenancy, serviceI
   buildCommand?: string,
   outputDirectory?: string,
   rootDirectory?: string,
+  env?: Record<string, DeploymentEnvVarConfig>,
 }): Promise<void> {
   await overrideBranchConfigOverride({
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
     branchConfigOverrideOverride: {
       [`deployments.services.${serviceId}`]: {
+        // Only Vercel-backed services can be created today; the config schema
+        // requires the type so every entry states what it is.
+        type: "vercel",
         ...definition.framework != null ? { framework: definition.framework } : {},
         ...definition.installCommand != null ? { installCommand: definition.installCommand } : {},
         ...definition.buildCommand != null ? { buildCommand: definition.buildCommand } : {},
         ...definition.outputDirectory != null ? { outputDirectory: definition.outputDirectory } : {},
         ...definition.rootDirectory != null ? { rootDirectory: definition.rootDirectory } : {},
+        ...definition.env != null && Object.keys(definition.env).length > 0 ? { env: envRecordForConfigWrite(definition.env) } : {},
       },
     },
   });
 }
+
+// Explicit `undefined` fields must not be written into the stored config
+// (they aren't valid JSON values), so each entry is filtered at this boundary.
+function envRecordForConfigWrite(env: Record<string, DeploymentEnvVarConfig>): Record<string, Partial<DeploymentEnvVarConfig>> {
+  return Object.fromEntries(Object.entries(env).map(([envVarKey, config]) => [envVarKey, filterUndefined(config)]));
+}
+
 
 export async function deleteServiceDefinitionFromConfig(tenancy: Tenancy, serviceId: string): Promise<void> {
   await overrideBranchConfigOverride({
@@ -136,22 +174,6 @@ export function normalizeHostnameOrThrow(hostname: string): string {
     throw new StatusError(400, `Invalid domain hostname ${JSON.stringify(hostname)} — must be a bare hostname like app.example.com, not a URL.`);
   }
   return normalized;
-}
-
-/**
- * Turns a hostname into a config record key. Config keys can't contain dots,
- * so the readable part replaces them with hyphens; the hash suffix keeps the
- * mapping INJECTIVE (e.g. `a.b.com` vs `a-b.com` must not share a key, or one
- * would silently overwrite the other in the config record) and caps the key
- * within the 63-char id limit for arbitrarily long hostnames. Deterministic on
- * purpose: the same hostname always maps to the same key, which makes domain
- * upserts idempotent.
- */
-export function domainKeyForHostname(hostname: string): string {
-  const normalized = normalizeHostnameOrThrow(hostname);
-  const readable = normalized.replace(/[^a-z0-9_-]/g, "-").replace(/^-+/, "").slice(0, 50).replace(/-+$/, "");
-  const hash = createHash("sha256").update(normalized).digest("hex").slice(0, 8);
-  return `${readable}-${hash}`;
 }
 
 export async function getOrCreateOperationalService(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string) {
@@ -236,32 +258,99 @@ export function isTerminalRunStatus(status: DeploymentRunStatus): boolean {
   return status === "READY" || status === "ERROR" || status === "CANCELED";
 }
 
-export type ResolvedEnvVars = {
-  resolved: { key: string, value: string }[],
-  // Every resolved value that came from a secret output; used to redact log
-  // streams as defense-in-depth.
-  secretValues: string[],
-};
+// A definition env var narrowed into its three valid shapes. The rendered
+// config type leaves `type`/`value`/`key` independently optional, so this is
+// the boundary where the coupling rules become explicit.
+export type NormalizedDeploymentEnvVar =
+  | { type: "plain", value: string }
+  | { type: "secret", secretKey: string }
+  | { type: "connection", serviceId: string, outputKey: string };
 
 /**
- * Resolves `{serviceId.outputKey}` references server-side. Supported outputs:
- * - `{hexclave.projectId|apiUrl|jwksUrl|publishableClientKey|secretServerKey}`
- *   from the managed Hexclave service, and
- * - `{<serviceId>.url|previewUrl}` from other deployment services.
- * Error messages only ever contain the reference token itself (a pointer),
- * never any resolved value.
+ * Narrows a definition env var into one of the three valid shapes, or throws a
+ * clean 400. Invalid combinations are rejected by the config schema, but a
+ * config override edited through the raw config endpoints can still store an
+ * INCOMPLETE entry (missing fields only warn there), so this must be a
+ * user-facing error rather than an assertion.
  */
+export function normalizeEnvVarConfig(envVarKey: string, config: DeploymentEnvVarConfig): NormalizedDeploymentEnvVar {
+  switch (config.type) {
+    case "secret": {
+      // The format check matters beyond schema validation: an empty or
+      // malformed key stored via a raw config-override edit would otherwise
+      // surface as an unfillable `--secret =<value>` flag downstream.
+      if (config.key == null || !DEPLOYMENT_SECRET_KEY_REGEX.test(config.key)) {
+        throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has type "secret" but no valid secret key. Add a \`key\` naming the secret to pass at deploy time (letters, numbers, underscores, and hyphens).`);
+      }
+      return { type: "secret", secretKey: config.key };
+    }
+    case "connection": {
+      if (config.value == null || !DEPLOYMENT_CONNECTION_VALUE_REGEX.test(config.value)) {
+        throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has type "connection" but its value is not a service output reference like "hexclave.projectId".`);
+      }
+      // The regex guarantees exactly one dot (neither side's character class
+      // allows one), so this split is unambiguous.
+      const dotIndex = config.value.indexOf(".");
+      return { type: "connection", serviceId: config.value.slice(0, dotIndex), outputKey: config.value.slice(dotIndex + 1) };
+    }
+    case undefined: {
+      if (config.value == null) {
+        throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has no value. Add a \`value\`, or give it a type ("secret" or "connection").`);
+      }
+      return { type: "plain", value: config.value };
+    }
+    default: {
+      // TS considers the switch exhaustive, but the value comes from the
+      // rendered config — a write path that skips validation (or a direct DB
+      // edit) could store any string, and returning undefined here would crash
+      // callers with a TypeError instead of a clean per-entry error.
+      throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} has an unknown type ${JSON.stringify(config.type)}. Supported: "secret", "connection", or no type for a plain value.`);
+    }
+  }
+}
+
+/**
+ * Resolves a service's definition env vars into the literal key/value pairs to
+ * push to the deployment target:
+ * - plain vars pass through,
+ * - secret vars are filled from the deploy-time `secrets` (missing or unused
+ *   secrets are a 400 — failing loud beats silently deploying without them),
+ * - connection vars resolve another service's output server-side. Supported
+ *   outputs: `hexclave.{projectId|apiUrl|jwksUrl|publishableClientKey|secretServerKey}`
+ *   from the managed Hexclave service, and `<serviceId>.{url|previewUrl}` from
+ *   other deployment services.
+ * Error messages only ever contain reference tokens (pointers), never any
+ * resolved value.
+ */
+// The outputs each service kind exposes. Must stay in sync with the resolvers
+// below (resolveHexclaveOutput / resolveServiceOutput); kept as data so
+// resolveEnvVars can tell STATIC errors (unknown output — a typo, rejected
+// even in best-effort mode) apart from DYNAMIC ones (not resolvable yet).
+const HEXCLAVE_OUTPUT_KEYS = ["projectId", "apiUrl", "jwksUrl", "publishableClientKey", "secretServerKey"];
+const SERVICE_OUTPUT_KEYS = ["url", "previewUrl"];
+
 export async function resolveEnvVars(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
-  envVars: { key: string, value: string }[],
-}): Promise<ResolvedEnvVars> {
-  const { tenancy, prisma, envVars } = options;
+  // The service these env vars belong to; used to reject self-referential
+  // connections (a service whose env needs its own deployment output can
+  // never be deployed for the first time).
+  serviceId: string,
+  env: Record<string, DeploymentEnvVarConfig>,
+  // "best-effort-without-secrets" is for write-through pushes from the
+  // dashboard's Variables tab: no secret values exist there, and a connection
+  // may legitimately not resolve yet (e.g. its target service hasn't deployed
+  // — deploy ORDER must not matter when wiring services up), so both are left
+  // for the next deploy instead of failing the save. A deploy, in contrast,
+  // must fail loudly on either. Static errors (unknown service/output,
+  // self-reference) fail in BOTH modes — they're typos, not pending states.
+  secrets: ReadonlyMap<string, string> | "best-effort-without-secrets",
+}): Promise<{ key: string, value: string }[]> {
+  const { tenancy, prisma, serviceId, env, secrets } = options;
   const definitions = listServiceDefinitions(tenancy);
-  const secretValues: string[] = [];
 
-  // Cache per-service/per-output resolution so N references to the same output
-  // don't repeat DB queries.
+  // Cache per-service/per-output resolution so N connections to the same
+  // output don't repeat DB queries.
   const outputCache = new Map<string, Promise<{ value: string, secret: boolean }>>();
   const resolveOutput = (serviceId: string, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> => {
     const cacheKey = `${serviceId}\0${outputKey}`;
@@ -272,7 +361,7 @@ export async function resolveEnvVars(options: {
         return await resolveHexclaveOutput(tenancy, outputKey, raw);
       }
       if (!definitions.has(serviceId)) {
-        throw new StatusError(400, `Env var reference ${raw} points to a service that doesn't exist in this project's configuration.`);
+        throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project's configuration.`);
       }
       return await resolveServiceOutput(prisma, tenancy, serviceId, outputKey, raw);
     })();
@@ -280,25 +369,76 @@ export async function resolveEnvVars(options: {
     return promise;
   };
 
-  const resolved = await Promise.all(envVars.map(async (envVar) => {
-    if (!ENV_VAR_KEY_REGEX.test(envVar.key)) {
-      throw new StatusError(400, `Invalid env var key: ${JSON.stringify(envVar.key)}. Keys must match ${ENV_VAR_KEY_REGEX.toString()}.`);
+  const missingSecretKeys: string[] = [];
+  const referencedSecretKeys = new Set<string>();
+  const resolved: { key: string, value: string }[] = [];
+  for (const [envVarKey, config] of Object.entries(env)) {
+    if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
+      throw new StatusError(400, `Invalid env var key: ${JSON.stringify(envVarKey)}. Keys must match ${ENV_VAR_KEY_REGEX.toString()}.`);
     }
-    const matches = [...envVar.value.matchAll(REFERENCE_REGEX)];
-    let value = envVar.value;
-    for (const match of matches) {
-      const output = await resolveOutput(match[1], match[2], match[0]);
-      // Function replacer: a plain string replacement would interpret `$&`,
-      // `$'` etc. inside the resolved value (secrets can contain `$`).
-      value = value.replace(match[0], () => output.value);
-      if (output.secret) {
-        secretValues.push(output.value);
+    const normalized = normalizeEnvVarConfig(envVarKey, config);
+    switch (normalized.type) {
+      case "plain": {
+        resolved.push({ key: envVarKey, value: normalized.value });
+        break;
+      }
+      case "secret": {
+        referencedSecretKeys.add(normalized.secretKey);
+        if (secrets === "best-effort-without-secrets") break;
+        const secretValue = secrets.get(normalized.secretKey);
+        if (secretValue == null) {
+          missingSecretKeys.push(normalized.secretKey);
+          break;
+        }
+        resolved.push({ key: envVarKey, value: secretValue });
+        break;
+      }
+      case "connection": {
+        const raw = `${normalized.serviceId}.${normalized.outputKey}`;
+        // Static validation first — these can never become resolvable later,
+        // so they fail even in best-effort mode.
+        if (normalized.serviceId === serviceId) {
+          throw new StatusError(400, `The env var ${JSON.stringify(envVarKey)} connects to the service's own output "${raw}". A service cannot reference itself — its first deploy could never satisfy it.`);
+        }
+        if (normalized.serviceId === HEXCLAVE_SERVICE_ID) {
+          if (!HEXCLAVE_OUTPUT_KEYS.includes(normalized.outputKey)) {
+            throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: ${HEXCLAVE_OUTPUT_KEYS.join(", ")}.`);
+          }
+        } else {
+          if (!definitions.has(normalized.serviceId)) {
+            throw new StatusError(400, `The env var connection "${raw}" points to a service that doesn't exist in this project's configuration.`);
+          }
+          if (!SERVICE_OUTPUT_KEYS.includes(normalized.outputKey)) {
+            throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: ${SERVICE_OUTPUT_KEYS.join(", ")}.`);
+          }
+        }
+        try {
+          const output = await resolveOutput(normalized.serviceId, normalized.outputKey, raw);
+          resolved.push({ key: envVarKey, value: output.value });
+        } catch (e) {
+          // See the `secrets` option comment: pending connections are skipped
+          // in best-effort mode (only for user-facing resolution failures —
+          // anything else is still a real error).
+          if (!(secrets === "best-effort-without-secrets" && e instanceof StatusError)) {
+            throw e;
+          }
+        }
+        break;
       }
     }
-    return { key: envVar.key, value };
-  }));
+  }
 
-  return { resolved, secretValues };
+  if (missingSecretKeys.length > 0) {
+    throw new StatusError(400, `Missing secret values for: ${missingSecretKeys.join(", ")}. This service's env vars reference these secrets — pass them with \`--secret <key>=<value>\`.`);
+  }
+  if (secrets !== "best-effort-without-secrets") {
+    const unusedSecretKeys = [...secrets.keys()].filter((key) => !referencedSecretKeys.has(key));
+    if (unusedSecretKeys.length > 0) {
+      throw new StatusError(400, `Unknown secrets: ${unusedSecretKeys.join(", ")}. No env var of this service references ${unusedSecretKeys.length === 1 ? "this secret key" : "these secret keys"} — check for typos, or add an env var with \`type: "secret"\` referencing it.`);
+    }
+  }
+
+  return resolved;
 }
 
 async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> {
@@ -325,7 +465,7 @@ async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: s
         orderBy: { createdAt: "desc" },
       });
       if (keySet == null) {
-        throw new StatusError(400, `Env var reference ${raw} can't be resolved because the project has no active API key of that kind. Create one in the dashboard under "API Keys" first.`);
+        throw new StatusError(400, `The env var connection "${raw}" can't be resolved because the project has no active API key of that kind. Create one in the dashboard under "API Keys" first.`);
       }
       if (outputKey === "publishableClientKey") {
         return { value: keySet.publishableClientKey ?? throwErr("publishableClientKey is null despite filter; this should never happen"), secret: false };
@@ -333,14 +473,14 @@ async function resolveHexclaveOutput(tenancy: Tenancy, outputKey: string, raw: s
       return { value: keySet.secretServerKey ?? throwErr("secretServerKey is null despite filter; this should never happen"), secret: true };
     }
     default: {
-      throw new StatusError(400, `Env var reference ${raw} uses an unknown output. The hexclave service exposes: projectId, apiUrl, jwksUrl, publishableClientKey, secretServerKey.`);
+      throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. The hexclave service exposes: projectId, apiUrl, jwksUrl, publishableClientKey, secretServerKey.`);
     }
   }
 }
 
 async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string, outputKey: string, raw: string): Promise<{ value: string, secret: boolean }> {
   if (outputKey !== "url" && outputKey !== "previewUrl") {
-    throw new StatusError(400, `Env var reference ${raw} uses an unknown output. Deployment services expose: url, previewUrl.`);
+    throw new StatusError(400, `The env var connection "${raw}" uses an unknown output. Deployment services expose: url, previewUrl.`);
   }
   const service = await prisma.deploymentService.findUnique({
     where: {
@@ -359,6 +499,13 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
       return { value: `https://${primaryDomain.hostname}`, secret: false };
     }
   }
+  // Without a verified domain this deliberately resolves to the latest READY
+  // run's IMMUTABLE per-deployment URL, not a stable project alias: the
+  // platform-owned Vercel project's default alias is an internal name we don't
+  // want baked into customer builds, and a connection consumer is re-resolved
+  // on ITS next deploy anyway. The tradeoff (consumer pins the producer's
+  // deployment until the consumer redeploys) is accepted for now; a stable
+  // per-service domain would remove it.
   const latestReadyRun = service == null ? null : await prisma.deploymentRun.findFirst({
     where: {
       tenancyId: tenancy.id,
@@ -370,28 +517,24 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
     orderBy: { createdAt: "desc" },
   });
   if (latestReadyRun?.vercelDeploymentUrl == null) {
-    throw new StatusError(400, `Env var reference ${raw} can't be resolved because the service ${JSON.stringify(serviceId)} has no successful ${outputKey === "url" ? "production" : "preview"} deployment yet. Deploy it first.`);
+    throw new StatusError(400, `The env var connection "${raw}" can't be resolved because the service ${JSON.stringify(serviceId)} has no successful ${outputKey === "url" ? "production" : "preview"} deployment yet. Deploy it first.`);
   }
   return { value: `https://${latestReadyRun.vercelDeploymentUrl}`, secret: false };
 }
 
 /**
- * Everything we know to be secret for a service's log streams: literal values
- * of is_secret dashboard vars, resolved values of secret outputs, and — independently
- * of any env var — every secret API key of the project itself. The last one
- * matters for CLI deploys: --env values are not persisted anywhere, so a
- * `{hexclave.secretServerKey}` reference passed at deploy time can't be
- * re-derived from stored env vars, but the underlying key values can. (Literal
- * secrets passed via --env that Hexclave has never seen can't be redacted;
- * they are the caller's own values.)
+ * Everything we can re-derive as secret for a service's log streams: every
+ * secret API key of the project. This covers the `hexclave.secretServerKey`
+ * connection output — the one secret Hexclave itself injects into builds.
+ * Values supplied via `--secret` are deliberately never persisted, so they
+ * cannot be redacted here; they are the caller's own values, and keeping them
+ * out of Hexclave entirely is the point of the secret env var type.
  */
 export async function collectLogRedactionSecrets(options: {
-  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
-  serviceEnvVars: { key: string, value: string, isSecret: boolean }[],
 }): Promise<string[]> {
-  const { prisma, tenancy, serviceEnvVars } = options;
-  const secretValues: string[] = serviceEnvVars.filter((envVar) => envVar.isSecret).map((envVar) => envVar.value);
+  const { tenancy } = options;
+  const secretValues: string[] = [];
   const apiKeySets = await globalPrismaClient.apiKeySet.findMany({
     where: { projectId: tenancy.project.id },
     select: { secretServerKey: true, superSecretAdminKey: true },
@@ -399,25 +542,6 @@ export async function collectLogRedactionSecrets(options: {
   for (const keySet of apiKeySets) {
     if (keySet.secretServerKey != null) secretValues.push(keySet.secretServerKey);
     if (keySet.superSecretAdminKey != null) secretValues.push(keySet.superSecretAdminKey);
-  }
-  // Resolve var-by-var: a single unresolvable reference (e.g. a referenced
-  // service was deleted since) must not disable redaction for every OTHER
-  // resolved secret. The failed var's own reference was never pushed as
-  // plaintext anyway, so skipping just it is safe.
-  for (const envVar of serviceEnvVars) {
-    try {
-      const resolved = await resolveEnvVars({
-        tenancy,
-        prisma,
-        envVars: [{ key: envVar.key, value: envVar.value }],
-      });
-      secretValues.push(...resolved.secretValues);
-      if (envVar.isSecret) {
-        secretValues.push(...resolved.resolved.map((r) => r.value));
-      }
-    } catch {
-      // See comment above — skip only this var.
-    }
   }
   return secretValues;
 }
@@ -467,33 +591,29 @@ export async function startDeployment(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   serviceId: string,
-  // Passed explicitly (rather than read from tenancy.config) because the deploy
-  // route may have just written the definition to the config, and the tenancy
-  // object's rendered config is a snapshot from the start of the request.
+  // The EFFECTIVE definition for this build: the route has already merged the
+  // deploy request's build config and env into it (and it is passed explicitly
+  // rather than read from tenancy.config because the route may have just
+  // written it — the tenancy's rendered config is a snapshot from the start of
+  // the request).
   definition: DeploymentServiceDefinition,
-  buildConfig: {
-    framework?: string,
-    installCommand?: string,
-    buildCommand?: string,
-    outputDirectory?: string,
-    rootDirectory?: string,
-  },
-  envVars: { key: string, value: string }[],
+  // Already resolved by the caller (via resolveEnvVars) BEFORE the upload was
+  // consumed, so a missing secret or dangling connection fails the request
+  // without spending the upload.
+  resolvedEnvVars: { key: string, value: string }[],
   target: "production" | "preview",
   tarballGzipped: Uint8Array,
   triggeredBy: string,
 }): Promise<StartDeploymentResult> {
-  const { tenancy, prisma, serviceId, definition, buildConfig, envVars, target, tarballGzipped, triggeredBy } = options;
+  const { tenancy, prisma, serviceId, definition, resolvedEnvVars, target, tarballGzipped, triggeredBy } = options;
   const client = getVercelDeploymentsClientOrThrow();
 
-  // The deploy request's build config wins over the stored definition for this
-  // build (config-as-code: the CLI sends what's in the user's config file).
   const effectiveBuildConfig = {
-    framework: buildConfig.framework ?? definition.framework,
-    installCommand: buildConfig.installCommand ?? definition.installCommand,
-    buildCommand: buildConfig.buildCommand ?? definition.buildCommand,
-    outputDirectory: buildConfig.outputDirectory ?? definition.outputDirectory,
-    rootDirectory: buildConfig.rootDirectory ?? definition.rootDirectory,
+    framework: definition.framework,
+    installCommand: definition.installCommand,
+    buildCommand: definition.buildCommand,
+    outputDirectory: definition.outputDirectory,
+    rootDirectory: definition.rootDirectory,
   };
 
   const service = await getOrCreateOperationalService(prisma, tenancy, serviceId);
@@ -556,15 +676,26 @@ export async function startDeployment(options: {
     },
   });
 
-  // Env push: the deploy request's env set is what gets pushed for this build.
-  // It UPSERTS (keys not in this set — e.g. dashboard-managed vars — are left
-  // in place on the Vercel project; removing a var is an explicit dashboard/
-  // API action, not something a deploy does implicitly). References are
-  // resolved server-side; the resolved values go to Vercel as encrypted env
-  // vars and are never persisted or logged on our side.
-  const { resolved } = await resolveEnvVars({ tenancy, prisma, envVars });
+  // Env push: the definition's resolved env set is authoritative for the
+  // Vercel project — upsert the current set, then delete keys no longer in the
+  // definition so a var removed from the config actually stops being injected
+  // into builds. (The dashboard PATCH does the same reconciliation; without
+  // this, CLI/GitHub-managed configs — whose PATCH route is read-only — could
+  // never remove a var.) The resolved set covers the WHOLE definition here:
+  // deploys fail earlier on missing secrets or unresolvable connections, so
+  // diffing against it cannot delete a merely-skipped key. Resolved values go
+  // to Vercel as encrypted env vars and are never persisted or logged on our
+  // side — secret values in particular exist only in this request and on
+  // Vercel.
   try {
-    await client.upsertEnvVars(vercelProjectId, resolved);
+    await client.upsertEnvVars(vercelProjectId, resolvedEnvVars);
+    const definitionKeys = new Set(resolvedEnvVars.map((envVar) => envVar.key));
+    const vercelVars = await client.listEnvVarKeys(vercelProjectId);
+    for (const vercelVar of vercelVars) {
+      if (!definitionKeys.has(vercelVar.key)) {
+        await client.deleteEnvVar(vercelProjectId, vercelVar.id);
+      }
+    }
   } catch (e) {
     sanitizeVercelError(e, "Pushing env vars to the deployment failed");
   }
@@ -621,77 +752,76 @@ export async function startDeployment(options: {
     },
   });
 
-  // Write-through for the domains in the service definition. Failures here
-  // must not fail the deploy itself (the build is already running), so domain
-  // sync problems are surfaced when the user opens the Domains tab instead.
-  await syncDefinitionDomainsToVercel({ tenancy, prisma, serviceDbId: service.id, definition, client, vercelProjectId });
+  // Write-through for the service's domains. Failures here must not fail the
+  // deploy itself (the build is already running), so domain sync problems are
+  // surfaced when the user opens the Domains tab instead.
+  await syncServiceDomainsToVercel({ tenancy, prisma, serviceDbId: service.id, client, vercelProjectId });
 
   return { runId: run.id };
 }
 
 /**
- * Ensures every domain in the service definition exists on the Vercel project
- * and mirrors Vercel's verification state into our rows. Intentionally
- * tolerant: a domain that Vercel rejects (e.g. in use by another team) is
- * recorded as unverified rather than failing the caller — the Domains tab
- * shows per-domain state and errors.
+ * Ensures every domain row of the service exists on the Vercel project and
+ * mirrors Vercel's verification state back into the rows. Domains added in the
+ * dashboard before the first deploy only exist as rows (there is no Vercel
+ * project yet), so this runs on every deploy to push them once the project is
+ * provisioned — and it self-heals rows that drifted from Vercel afterwards.
+ * Intentionally tolerant: a domain that Vercel rejects (e.g. in use by another
+ * team) is recorded as unverified rather than failing the caller — the Domains
+ * tab shows per-domain state and errors.
  */
-export async function syncDefinitionDomainsToVercel(options: {
+export async function syncServiceDomainsToVercel(options: {
   tenancy: Tenancy,
   prisma: PrismaClientTransaction,
   serviceDbId: string,
-  definition: DeploymentServiceDefinition,
   client: VercelDeploymentsClient,
   vercelProjectId: string,
 }): Promise<void> {
-  const { tenancy, prisma, serviceDbId, definition, client, vercelProjectId } = options;
-  for (const domain of Object.values(definition.domains)) {
-    const hostname = domain.hostname;
-    if (hostname == null || hostname === "") continue;
-    let verified = false;
+  const { tenancy, prisma, serviceDbId, client, vercelProjectId } = options;
+  const domains = await prisma.deploymentServiceDomain.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      deploymentServiceId: serviceDbId,
+    },
+  });
+  for (const domain of domains) {
+    // null = the check didn't complete; the row is left untouched then, so a
+    // transient Vercel/network error during a deploy can't clobber a
+    // previously-verified domain back to unverified (which would also make
+    // `<service>.url` connections resolve to the wrong URL until re-checked).
+    let verified: boolean | null = null;
     try {
       let vercelDomain;
       try {
-        vercelDomain = await client.getProjectDomain(vercelProjectId, hostname);
+        vercelDomain = await client.getProjectDomain(vercelProjectId, domain.hostname);
       } catch (e) {
         if (e instanceof VercelApiError && e.status === 404) {
-          vercelDomain = await client.addProjectDomain(vercelProjectId, hostname);
+          vercelDomain = await client.addProjectDomain(vercelProjectId, domain.hostname);
         } else {
           throw e;
         }
       }
       // "Live" needs both the ownership check and correctly-pointed DNS; see
       // the domain read route for why these are separate signals.
-      verified = vercelDomain.verified && !await client.isDomainMisconfigured(hostname);
+      verified = vercelDomain.verified && !await client.isDomainMisconfigured(domain.hostname);
     } catch (e) {
       // NOTHING here may fail the caller — the build is already running on
       // Vercel, so a domain hiccup (4xx like domain-in-use, a transient 5xx,
       // or a network error) must not turn a started deploy into an error.
-      // Keep the row unverified; the Domains tab surfaces details on read.
-      if (!(e instanceof VercelApiError && e.status >= 400 && e.status < 500)) {
+      // A 4xx is a real answer from Vercel about THIS domain (e.g. in use by
+      // another team) — record it as unverified; anything else is transient.
+      if (e instanceof VercelApiError && e.status >= 400 && e.status < 500) {
+        verified = false;
+      } else {
         captureError("deployments-domain-sync", e);
       }
     }
-    await prisma.deploymentServiceDomain.upsert({
-      where: {
-        tenancyId_deploymentServiceId_hostname: {
-          tenancyId: tenancy.id,
-          deploymentServiceId: serviceDbId,
-          hostname,
-        },
-      },
-      update: {
-        isPrimary: domain.isPrimary,
-        verified,
-      },
-      create: {
-        tenancyId: tenancy.id,
-        deploymentServiceId: serviceDbId,
-        hostname,
-        isPrimary: domain.isPrimary,
-        verified,
-      },
-    });
+    if (verified != null) {
+      await prisma.deploymentServiceDomain.update({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: domain.id } },
+        data: { verified },
+      });
+    }
   }
 }
 
@@ -753,6 +883,7 @@ export function computeDnsRecords(hostname: string, apexName: string, verificati
 
 export type DeploymentServiceApiShape = {
   id: string,
+  type: "vercel",
   framework: string | null,
   install_command: string | null,
   build_command: string | null,
@@ -764,7 +895,11 @@ export type DeploymentServiceApiShape = {
   // code" CLI instructions visible until this flips to true.
   has_successful_deploy: boolean,
   url: string | null,
-  env_vars: { id: string, key: string, value: string, is_secret: boolean }[],
+  // The definition's env vars, normalized: `value` is the literal value for
+  // plain vars and the "serviceId.outputKey" reference for connections;
+  // `secret_key` is set for secret vars (their values are never stored, so
+  // there is nothing else to show).
+  env: { key: string, type: "plain" | "secret" | "connection", value: string | null, secret_key: string | null }[],
   domains: { hostname: string, is_primary: boolean, verified: boolean }[],
   latest_run: DeploymentRunApiShape | null,
 };
@@ -804,7 +939,7 @@ export function runToApiShape(run: {
   };
 }
 
-type OperationalServiceWithChildren = Prisma.DeploymentServiceGetPayload<{ include: { envVars: true, domains: true } }>;
+type OperationalServiceWithChildren = Prisma.DeploymentServiceGetPayload<{ include: { domains: true } }>;
 
 export async function serviceToApiShape(options: {
   prisma: PrismaClientTransaction,
@@ -874,32 +1009,42 @@ export async function serviceToApiShape(options: {
     ? `https://${verifiedPrimary.hostname}`
     : (latestRun?.status === "READY" && latestRun.vercelDeploymentUrl != null ? `https://${latestRun.vercelDeploymentUrl}` : null);
 
-  // The domain list is the union of the definition (desired state) and the
-  // operational rows (Vercel-synced state); definition order first, then any
-  // operational-only rows (e.g. rows left behind after the definition changed
-  // under a GitHub-sourced config) so they stay visible and manageable.
-  const operationalByHostname = new Map((operational?.domains ?? []).map((d) => [d.hostname, d]));
-  const domains: DeploymentServiceApiShape["domains"] = [];
-  for (const domain of Object.values(definition.domains)) {
-    if (domain.hostname == null || domain.hostname === "") continue;
-    const row = operationalByHostname.get(domain.hostname);
-    domains.push({
-      hostname: domain.hostname,
-      is_primary: domain.isPrimary,
-      verified: row?.verified ?? false,
-    });
-    operationalByHostname.delete(domain.hostname);
-  }
-  for (const row of operationalByHostname.values()) {
-    domains.push({
+  const domains = (operational?.domains ?? [])
+    .map((row) => ({
       hostname: row.hostname,
       is_primary: row.isPrimary,
       verified: row.verified,
+    }))
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || stringCompare(a.hostname, b.hostname));
+
+  const env: DeploymentServiceApiShape["env"] = [];
+  for (const [envVarKey, config] of Object.entries(definition.env)) {
+    // Tolerate incomplete entries (possible via raw config-override edits —
+    // see normalizeEnvVarConfig): one bad entry must not take down the whole
+    // service list. Deploys of this service still fail loudly on it.
+    let normalized;
+    try {
+      normalized = normalizeEnvVarConfig(envVarKey, config);
+    } catch (e) {
+      if (!(e instanceof StatusError)) throw e;
+      captureError("deployments-env-var-config-invalid", new HexclaveAssertionError(`Skipping invalid deployment env var config entry ${JSON.stringify(envVarKey)} of service ${JSON.stringify(serviceId)}`, { cause: e }));
+      continue;
+    }
+    env.push({
+      key: envVarKey,
+      type: normalized.type,
+      value: normalized.type === "plain" ? normalized.value : normalized.type === "connection" ? `${normalized.serviceId}.${normalized.outputKey}` : null,
+      secret_key: normalized.type === "secret" ? normalized.secretKey : null,
     });
   }
+  env.sort((a, b) => stringCompare(a.key, b.key));
 
   return {
     id: serviceId,
+    // `undefined` can only occur for entries written through the raw config
+    // endpoints without a type (everything else validates it); rendering those
+    // as vercel beats breaking the whole board over a display value.
+    type: definition.type ?? "vercel",
     framework: definition.framework ?? operational?.framework ?? null,
     install_command: definition.installCommand ?? operational?.installCommand ?? null,
     build_command: definition.buildCommand ?? operational?.buildCommand ?? null,
@@ -909,12 +1054,7 @@ export async function serviceToApiShape(options: {
     status,
     has_successful_deploy: hasSuccessfulDeploy,
     url,
-    env_vars: (operational?.envVars ?? []).map((envVar) => ({
-      id: envVar.id,
-      key: envVar.key,
-      value: envVar.value,
-      is_secret: envVar.isSecret,
-    })).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    env,
     domains,
     latest_run: latestRun == null ? null : runToApiShape(latestRun, serviceId),
   };

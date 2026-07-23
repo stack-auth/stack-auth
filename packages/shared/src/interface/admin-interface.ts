@@ -48,8 +48,30 @@ export type AdminDeploymentRunJson = {
   finished_at_millis: number | null,
 };
 
+// One env var of a deployment service, normalized from the config-side
+// definition: "plain" vars carry their literal `value`, "connection" vars
+// carry the "serviceId.outputKey" reference they resolve to at deploy time,
+// and "secret" vars carry only the `secret_key` whose value is supplied via
+// `hexclave deploy --secret <key>=<value>` (never stored).
+export type AdminDeploymentEnvVarJson = {
+  key: string,
+  type: "plain" | "secret" | "connection",
+  value: string | null,
+  secret_key: string | null,
+};
+
+// The config-side shape of one env var, mirroring
+// `deployments.services.<id>.env.<KEY>` in hexclave.config.ts: no type means a
+// plain value, "secret" requires `key`, "connection" requires a
+// "serviceId.outputKey" `value`.
+export type AdminDeploymentEnvVarOptions =
+  | { type?: undefined, value: string }
+  | { type: "secret", key: string }
+  | { type: "connection", value: string };
+
 export type AdminDeploymentServiceJson = {
   id: string,
+  type: "vercel",
   framework: string | null,
   install_command: string | null,
   build_command: string | null,
@@ -59,7 +81,7 @@ export type AdminDeploymentServiceJson = {
   status: "not_deployed" | "queued" | "building" | "deployed" | "failed" | "canceled",
   has_successful_deploy: boolean,
   url: string | null,
-  env_vars: { id: string, key: string, value: string, is_secret: boolean }[],
+  env: AdminDeploymentEnvVarJson[],
   domains: { hostname: string, is_primary: boolean, verified: boolean }[],
   latest_run: AdminDeploymentRunJson | null,
 };
@@ -1277,7 +1299,8 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
   }
 
   async updateDeploymentService(serviceId: string, update: AdminDeploymentServiceBuildOptions & {
-    env_vars?: { key: string, value: string, is_secret?: boolean }[],
+    // Replaces the service's whole env var set (config-side definition shape).
+    env?: Record<string, AdminDeploymentEnvVarOptions>,
   }): Promise<AdminDeploymentServiceJson> {
     const response = await this.sendAdminRequest(
       urlString`/deployments/services/${serviceId}`,

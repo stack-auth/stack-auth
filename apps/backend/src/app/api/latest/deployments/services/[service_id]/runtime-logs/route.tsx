@@ -56,7 +56,6 @@ export const GET = createSmartRouteHandler({
           serviceId: params.service_id,
         },
       },
-      include: { envVars: true },
     });
     if (service?.vercelProjectId == null) {
       throw new StatusError(400, "This service has not been deployed yet, so there are no runtime logs.");
@@ -80,9 +79,7 @@ export const GET = createSmartRouteHandler({
 
     const client = getVercelDeploymentsClientOrThrow();
     const secretValues = await collectLogRedactionSecrets({
-      prisma,
       tenancy: auth.tenancy,
-      serviceEnvVars: service.envVars,
     });
 
     let upstream;

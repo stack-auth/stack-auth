@@ -76,7 +76,6 @@
             "group": "Going Further",
             "pages": [
               "guides/going-further/cli",
-              "guides/going-further/deployments",
               "guides/going-further/local-vs-cloud-dashboard",
               "guides/going-further/hexclave-config"
             ]
@@ -133,6 +132,7 @@
               "guides/apps/api-keys/overview",
               "guides/apps/data-vault/overview",
               "guides/apps/webhooks/overview",
+              "guides/apps/deployments/overview",
               "guides/apps/launch-checklist/overview"
             ]
           },
@@ -256,6 +256,10 @@
     {
       "source": "/guides/going-further/backend-integration",
       "destination": "/guides/going-further/local-vs-cloud-dashboard"
+    },
+    {
+      "source": "/guides/going-further/deployments",
+      "destination": "/guides/apps/deployments/overview"
     }
   ]
 }

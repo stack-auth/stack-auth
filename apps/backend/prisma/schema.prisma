@@ -1533,12 +1533,13 @@ model DeletedRow {
 
 // ================== Deployments ==================
 // Operational state for the Deployments app. The service DEFINITIONS
-// (framework, build config, desired domains) live in the environment config
+// (type, framework, build config, env vars) live in the environment config
 // under `deployments.services.<serviceId>` so they follow the project's config
 // source (dashboard / config file / GitHub); these tables only hold what the
-// config cannot: the lazily-provisioned Vercel project id, per-service env
-// vars set through the dashboard UI, domain verification state as reported by
-// Vercel, and the deployment runs themselves.
+// config cannot: the lazily-provisioned Vercel project id, custom domains and
+// their verification state as reported by Vercel, and the deployment runs
+// themselves. Note that env vars are NOT stored here: their definitions live
+// in the config, and secret values only ever pass through at deploy time.
 
 model DeploymentService {
   tenancyId String @db.Uuid
@@ -1564,34 +1565,11 @@ model DeploymentService {
   rootDirectory   String?
 
   tenancy Tenancy                   @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  envVars DeploymentServiceEnvVar[]
   domains DeploymentServiceDomain[]
   runs    DeploymentRun[]
 
   @@id([tenancyId, id])
   @@unique([tenancyId, serviceId])
-}
-
-model DeploymentServiceEnvVar {
-  tenancyId String @db.Uuid
-
-  id String @default(uuid()) @db.Uuid
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  deploymentServiceId String @db.Uuid
-
-  key String
-  // May contain `{serviceId.outputKey}` references; resolved server-side when
-  // pushed to Vercel.
-  value    String
-  isSecret Boolean @default(false)
-
-  service DeploymentService @relation(fields: [tenancyId, deploymentServiceId], references: [tenancyId, id], onDelete: Cascade)
-
-  @@id([tenancyId, id])
-  @@unique([tenancyId, deploymentServiceId, key])
 }
 
 model DeploymentServiceDomain {

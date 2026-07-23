@@ -39,7 +39,6 @@ export const GET = createSmartRouteHandler({
           id: params.run_id,
         },
       },
-      include: { service: { include: { envVars: true } } },
     });
     if (run == null) {
       throw new StatusError(404, "No deployment run found with the given id.");
@@ -53,9 +52,7 @@ export const GET = createSmartRouteHandler({
     // Builds run user code that may print env values, so redact everything we
     // know to be secret (see collectLogRedactionSecrets).
     const secretValues = await collectLogRedactionSecrets({
-      prisma,
       tenancy: auth.tenancy,
-      serviceEnvVars: run.service.envVars,
     });
 
     const encoder = new TextEncoder();

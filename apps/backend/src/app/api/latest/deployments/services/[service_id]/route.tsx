@@ -1,9 +1,10 @@
-import { DeploymentServiceDefinition, ENV_VAR_KEY_REGEX, assertServiceDefinitionsEditable, deleteServiceDefinitionFromConfig, getServiceDefinitionOrThrow, getOrCreateOperationalService, resolveEnvVars, serviceToApiShape, updateServiceDefinitionInConfig } from "@/lib/deployments";
+import { DeploymentServiceDefinition, assertServiceDefinitionsEditable, deleteServiceDefinitionFromConfig, envRecordFromRequestBody, getServiceDefinitionOrThrow, resolveEnvVars, serviceToApiShape, updateServiceDefinitionInConfig } from "@/lib/deployments";
 import { getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "@/lib/deployments/vercel-client";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { DEPLOYMENT_ENV_VAR_KEY_REGEX, deploymentEnvVarSchema } from "@hexclave/shared/dist/config/schema";
+import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 
 const paramsSchema = yupObject({
@@ -24,7 +25,7 @@ async function loadServiceForResponse(tenancy: Tenancy, serviceId: string, defin
         serviceId,
       },
     },
-    include: { envVars: true, domains: true },
+    include: { domains: true },
   });
   return await serviceToApiShape({
     prisma,
@@ -64,7 +65,7 @@ export const GET = createSmartRouteHandler({
 export const PATCH = createSmartRouteHandler({
   metadata: {
     summary: "Update deployment service",
-    description: "Updates a deployment service. Build configuration fields edit the definition in the project configuration (only when the config is managed by the dashboard); env_vars replace the dashboard-managed env var set and are pushed to the deployment target if it has been provisioned.",
+    description: "Updates a deployment service definition in the project configuration (only when the config is managed by the dashboard). `env` replaces the service's whole env var set; resolvable vars are pushed to the deployment target if it has been provisioned (secret vars are pushed on the next deploy, when their values are supplied).",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -77,11 +78,11 @@ export const PATCH = createSmartRouteHandler({
       build_command: yupString().nullable().optional(),
       output_directory: yupString().nullable().optional(),
       root_directory: yupString().nullable().optional(),
-      env_vars: yupArray(yupObject({
-        key: yupString().defined().matches(ENV_VAR_KEY_REGEX, "Invalid env var key"),
-        value: yupString().defined(),
-        is_secret: yupBoolean().optional(),
-      }).defined()).optional(),
+      // Same shape as `deployments.services.<id>.env` in the config.
+      env: yupRecord(
+        yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "Invalid env var key"),
+        deploymentEnvVarSchema.defined(),
+      ).optional(),
     }).defined(),
     method: yupString().oneOf(["PATCH"]).defined(),
   }),
@@ -93,6 +94,7 @@ export const PATCH = createSmartRouteHandler({
   handler: async ({ auth, params, body }) => {
     let definition = getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const requestEnv = body.env !== undefined ? envRecordFromRequestBody(body.env) : undefined;
 
     const definitionPatch = {
       framework: body.framework,
@@ -101,10 +103,26 @@ export const PATCH = createSmartRouteHandler({
       outputDirectory: body.output_directory,
       rootDirectory: body.root_directory,
     };
-    const hasDefinitionChanges = Object.values(definitionPatch).some((value) => value !== undefined);
+    // Resolved BEFORE the config write: static errors (self-references,
+    // connections to nonexistent services/outputs) must reject the save
+    // instead of persisting a typo that only surfaces at the next deploy.
+    // Dynamic failures and secret entries are skipped (best-effort mode) — a
+    // var whose type changed to "secret" keeps its old Vercel value until the
+    // next deploy overwrites it — and the result is reused for the Vercel
+    // write-through below.
+    const resolvedEnv = requestEnv === undefined ? undefined : await resolveEnvVars({
+      tenancy: auth.tenancy,
+      prisma,
+      serviceId: params.service_id,
+      env: requestEnv,
+      secrets: "best-effort-without-secrets",
+    });
+    const hasDefinitionChanges = Object.values(definitionPatch).some((value) => value !== undefined) || requestEnv !== undefined;
     if (hasDefinitionChanges) {
+      // Env vars are part of the definition, so like the build fields they are
+      // only editable when the dashboard owns the config.
       await assertServiceDefinitionsEditable(auth.tenancy);
-      await updateServiceDefinitionInConfig(auth.tenancy, params.service_id, definitionPatch);
+      await updateServiceDefinitionInConfig(auth.tenancy, params.service_id, definitionPatch, requestEnv);
       // The tenancy's rendered config snapshot predates our write; overlay the
       // patch so the response reflects what we just persisted.
       definition = {
@@ -116,54 +134,32 @@ export const PATCH = createSmartRouteHandler({
           outputDirectory: definitionPatch.outputDirectory,
           rootDirectory: definitionPatch.rootDirectory,
         }).filter(([, value]) => value !== undefined).map(([key, value]) => [key, value ?? undefined])),
+        ...(requestEnv !== undefined ? { env: requestEnv } : {}),
       };
     }
 
-    if (body.env_vars !== undefined) {
-      const duplicateKey = body.env_vars.map((e) => e.key).find((key, i, keys) => keys.indexOf(key) !== i);
-      if (duplicateKey != null) {
-        throw new StatusError(400, `Duplicate env var key: ${JSON.stringify(duplicateKey)}`);
-      }
-      const service = await getOrCreateOperationalService(prisma, auth.tenancy, params.service_id);
-      const existingVars = await prisma.deploymentServiceEnvVar.findMany({
-        where: { tenancyId: auth.tenancy.id, deploymentServiceId: service.id },
-      });
-      const newKeys = new Set(body.env_vars.map((envVar) => envVar.key));
-      const removedKeys = existingVars.filter((envVar) => !newKeys.has(envVar.key)).map((envVar) => envVar.key);
-
-      // Full replace of the dashboard-managed set, atomically — a failure
-      // between delete and create must not wipe the stored env vars.
-      const newEnvVars = body.env_vars;
-      await retryTransaction(prisma, async (tx) => {
-        await tx.deploymentServiceEnvVar.deleteMany({
-          where: { tenancyId: auth.tenancy.id, deploymentServiceId: service.id },
-        });
-        if (newEnvVars.length > 0) {
-          await tx.deploymentServiceEnvVar.createMany({
-            data: newEnvVars.map((envVar) => ({
-              tenancyId: auth.tenancy.id,
-              deploymentServiceId: service.id,
-              key: envVar.key,
-              value: envVar.value,
-              isSecret: envVar.is_secret ?? false,
-            })),
-          });
-        }
-      });
-
+    if (requestEnv !== undefined && resolvedEnv !== undefined) {
       // Write-through to Vercel once the project exists; before provisioning
       // there's nothing to push (the first deploy pushes the current set).
-      if (service.vercelProjectId != null) {
+      const service = await prisma.deploymentService.findUnique({
+        where: {
+          tenancyId_serviceId: {
+            tenancyId: auth.tenancy.id,
+            serviceId: params.service_id,
+          },
+        },
+      });
+      if (service?.vercelProjectId != null) {
         const client = getVercelDeploymentsClientOrThrow();
-        const { resolved } = await resolveEnvVars({ tenancy: auth.tenancy, prisma, envVars: body.env_vars });
         try {
-          await client.upsertEnvVars(service.vercelProjectId, resolved);
-          if (removedKeys.length > 0) {
-            const vercelVars = await client.listEnvVarKeys(service.vercelProjectId);
-            for (const vercelVar of vercelVars) {
-              if (removedKeys.includes(vercelVar.key)) {
-                await client.deleteEnvVar(service.vercelProjectId, vercelVar.id);
-              }
+          await client.upsertEnvVars(service.vercelProjectId, resolvedEnv);
+          // Keys removed from the definition are deleted from the Vercel
+          // project so stale values can't linger in future builds.
+          const newKeys = new Set(Object.keys(requestEnv));
+          const vercelVars = await client.listEnvVarKeys(service.vercelProjectId);
+          for (const vercelVar of vercelVars) {
+            if (!newKeys.has(vercelVar.key)) {
+              await client.deleteEnvVar(service.vercelProjectId, vercelVar.id);
             }
           }
         } catch (e) {

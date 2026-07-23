@@ -3,11 +3,11 @@ import { AdminUserProjectsCrud, ProjectsCrud } from "@hexclave/shared/dist/inter
 import { ProjectOnboardingStatus } from "@hexclave/shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@hexclave/shared/dist/config/schema";
-import type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+import type { AdminDeploymentDomainJson, AdminDeploymentEnvVarOptions, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
-export type { AdminDeploymentDomainJson, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
+export type { AdminDeploymentDomainJson, AdminDeploymentEnvVarJson, AdminDeploymentEnvVarOptions, AdminDeploymentRunJson, AdminDeploymentServiceBuildOptions, AdminDeploymentServiceJson } from "@hexclave/shared/dist/interface/admin-interface";
 
 /**
  * SDK type for pushed config source (camelCase for SDK).
@@ -156,12 +156,14 @@ export type AdminProject = {
   createDeploymentService(this: AdminProject, id: string, build: AdminDeploymentServiceBuildOptions): Promise<AdminDeploymentServiceJson>,
 
   /**
-   * Updates a deployment service. Build fields require the config source to be
-   * the dashboard; `env_vars` replace the dashboard-managed env var set and
-   * work regardless of the config source.
+   * Updates a deployment service definition. Env vars are part of the
+   * definition, so like the build fields they require the config source to be
+   * the dashboard (`unlinked`); `env` replaces the service's whole env var
+   * set. Secret env var VALUES are never set here — they are supplied at
+   * deploy time via `hexclave deploy --secret <key>=<value>`.
    */
   updateDeploymentService(this: AdminProject, serviceId: string, update: AdminDeploymentServiceBuildOptions & {
-    env_vars?: { key: string, value: string, is_secret?: boolean }[],
+    env?: Record<string, AdminDeploymentEnvVarOptions>,
   }): Promise<AdminDeploymentServiceJson>,
 
   /**

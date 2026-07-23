@@ -2,110 +2,177 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { extractServiceBuildConfig, parseEnvOptions, resolveDeployConfigPath } from "./deploy.js";
+import { assertSecretsMatchEnv, extractServiceDefinition, parseSecretOptions, resolveDeployConfigPath, type ServiceEnvVarConfig } from "./deploy.js";
 
-describe("parseEnvOptions", () => {
+describe("parseSecretOptions", () => {
   it("parses KEY=VALUE pairs", () => {
-    expect(parseEnvOptions(["A=1", "B_2=two"])).toEqual([
-      { key: "A", value: "1" },
-      { key: "B_2", value: "two" },
-    ]);
+    expect(parseSecretOptions(["a=1", "db_connection=two"])).toEqual(new Map([
+      ["a", "1"],
+      ["db_connection", "two"],
+    ]));
   });
 
   it("keeps everything after the first = as the value", () => {
-    expect(parseEnvOptions(["DATABASE_URL=postgres://user:pass@host/db?a=b"])).toEqual([
-      { key: "DATABASE_URL", value: "postgres://user:pass@host/db?a=b" },
-    ]);
-  });
-
-  it("keeps {service.output} references verbatim", () => {
-    expect(parseEnvOptions(["HEXCLAVE_PROJECT_ID={hexclave.projectId}"])).toEqual([
-      { key: "HEXCLAVE_PROJECT_ID", value: "{hexclave.projectId}" },
-    ]);
+    expect(parseSecretOptions(["db_connection=postgres://user:pass@host/db?a=b"])).toEqual(new Map([
+      ["db_connection", "postgres://user:pass@host/db?a=b"],
+    ]));
   });
 
   it("allows empty values", () => {
-    expect(parseEnvOptions(["EMPTY="])).toEqual([{ key: "EMPTY", value: "" }]);
+    expect(parseSecretOptions(["empty="])).toEqual(new Map([["empty", ""]]));
   });
 
   it("rejects entries without =", () => {
-    expect(() => parseEnvOptions(["NOVALUE"])).toThrow("KEY=VALUE");
+    expect(() => parseSecretOptions(["novalue"])).toThrow("KEY=VALUE");
   });
 
   it("rejects entries with an empty key", () => {
-    expect(() => parseEnvOptions(["=value"])).toThrow("KEY=VALUE");
+    expect(() => parseSecretOptions(["=value"])).toThrow("KEY=VALUE");
   });
 
   it("rejects invalid keys", () => {
-    expect(() => parseEnvOptions(["1BAD=x"])).toThrow("Invalid --env key");
-    expect(() => parseEnvOptions(["BAD-KEY=x"])).toThrow("Invalid --env key");
+    expect(() => parseSecretOptions(["bad key=x"])).toThrow("Invalid --secret key");
+    expect(() => parseSecretOptions(["bad.key=x"])).toThrow("Invalid --secret key");
   });
 
   it("rejects duplicate keys", () => {
-    expect(() => parseEnvOptions(["A=1", "A=2"])).toThrow("Duplicate --env key");
+    expect(() => parseSecretOptions(["a=1", "a=2"])).toThrow("Duplicate --secret key");
   });
 });
 
-describe("extractServiceBuildConfig", () => {
+describe("extractServiceDefinition", () => {
   const config = {
     deployments: {
       services: {
         api: {
+          type: "vercel",
           framework: "nextjs",
           installCommand: "pnpm install",
           buildCommand: "pnpm build",
           outputDirectory: ".next",
           rootDirectory: "./api",
-          domains: {
-            "example-com": { hostname: "example.com" },
-            "www-example-com": { hostname: "www.example.com", isPrimary: true },
+          env: {
+            MY_ENV_VAR: { value: "true" },
+            DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
+            NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
           },
         },
-        minimal: {},
+        minimal: { type: "vercel" },
       },
     },
   };
 
   it("extracts a fully specified service", () => {
-    expect(extractServiceBuildConfig(config, "api")).toEqual({
+    expect(extractServiceDefinition(config, "api")).toEqual({
       framework: "nextjs",
       installCommand: "pnpm install",
       buildCommand: "pnpm build",
       outputDirectory: ".next",
       rootDirectory: "./api",
-      domains: ["example.com", "www.example.com"],
+      env: {
+        MY_ENV_VAR: { value: "true" },
+        DATABASE_CONNECTION_STRING: { type: "secret", key: "db_connection" },
+        NEXT_PUBLIC_HEXCLAVE_PROJECT_ID: { type: "connection", value: "hexclave.projectId" },
+      },
     });
   });
 
   it("extracts a minimal service", () => {
-    expect(extractServiceBuildConfig(config, "minimal")).toEqual({
+    expect(extractServiceDefinition(config, "minimal")).toEqual({
       framework: undefined,
       installCommand: undefined,
       buildCommand: undefined,
       outputDirectory: undefined,
       rootDirectory: undefined,
-      domains: [],
+      env: {},
     });
   });
 
   it("lists available services when the requested one is missing", () => {
-    expect(() => extractServiceBuildConfig(config, "web")).toThrow("Available services: api, minimal");
+    expect(() => extractServiceDefinition(config, "web")).toThrow("Available services: api, minimal");
   });
 
   it("rejects configs without a deployments.services section", () => {
-    expect(() => extractServiceBuildConfig({}, "api")).toThrow("deployments.services");
+    expect(() => extractServiceDefinition({}, "api")).toThrow("deployments.services");
   });
 
-  it("rejects non-record domains", () => {
-    expect(() => extractServiceBuildConfig({
-      deployments: { services: { api: { domains: ["example.com"] } } },
-    }, "api")).toThrow("must be a record of domain entries");
+  it("rejects services without a type", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { framework: "nextjs" } } },
+    }, "api")).toThrow('Add `type: "vercel"`');
+  });
+
+  it("rejects services with an unknown type", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "netlify" } } },
+    }, "api")).toThrow('must be "vercel"');
   });
 
   it("rejects non-string build fields", () => {
-    expect(() => extractServiceBuildConfig({
-      deployments: { services: { api: { buildCommand: 42 } } },
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", buildCommand: 42 } } },
     }, "api")).toThrow("must be a string");
+  });
+
+  it("rejects invalid env var keys", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { "1BAD": { value: "x" } } } } },
+    }, "api")).toThrow("invalid key");
+  });
+
+  it("rejects secret env vars with an inline value", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } } },
+    }, "api")).toThrow("must not have a `value`");
+  });
+
+  it("rejects secret env vars without a key", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { A: { type: "secret" } } } } },
+    }, "api")).toThrow("must have a `key`");
+  });
+
+  it("rejects plain env vars with a secret key", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { A: { value: "x", key: "a" } } } } },
+    }, "api")).toThrow("must not have a `key`");
+  });
+
+  it("rejects the legacy {service.output} interpolation syntax in connections", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } } },
+    }, "api")).toThrow("service output");
+  });
+
+  it("rejects unknown env var types", () => {
+    expect(() => extractServiceDefinition({
+      deployments: { services: { api: { type: "vercel", env: { A: { type: "literal", value: "x" } } } } },
+    }, "api")).toThrow("unknown `type`");
+  });
+});
+
+describe("assertSecretsMatchEnv", () => {
+  const env: Record<string, ServiceEnvVarConfig> = {
+    PLAIN: { value: "x" },
+    DB: { type: "secret", key: "db_connection" },
+    API: { type: "secret", key: "api-key" },
+    PROJECT: { type: "connection", value: "hexclave.projectId" },
+  };
+
+  it("accepts exactly matching secrets", () => {
+    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"], ["api-key", "b"]]))).not.toThrow();
+  });
+
+  it("rejects missing secrets", () => {
+    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"]]))).toThrow("Missing secret values for: api-key");
+  });
+
+  it("rejects unknown secrets", () => {
+    expect(() => assertSecretsMatchEnv(env, new Map([["db_connection", "a"], ["api-key", "b"], ["typo", "c"]]))).toThrow("Unknown --secret key(s): typo");
+  });
+
+  it("accepts no secrets when none are referenced", () => {
+    expect(() => assertSecretsMatchEnv({ PLAIN: { value: "x" } }, new Map())).not.toThrow();
   });
 });
 

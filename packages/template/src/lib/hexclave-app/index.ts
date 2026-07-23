@@ -107,6 +107,8 @@ export type {
 
 export type {
   AdminDeploymentDomainJson,
+  AdminDeploymentEnvVarJson,
+  AdminDeploymentEnvVarOptions,
   AdminDeploymentRunJson,
   AdminDeploymentServiceBuildOptions,
   AdminDeploymentServiceJson,

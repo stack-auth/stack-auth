@@ -1,7 +1,7 @@
-import { assertServiceDefinitionsEditable, computeDnsRecords, getServiceDefinitionOrThrow } from "@/lib/deployments";
+import { computeDnsRecords, getServiceDefinitionOrThrow } from "@/lib/deployments";
 import { VercelApiError, getVercelDeploymentsClientOrThrow, sanitizeVercelError } from "@/lib/deployments/vercel-client";
-import { overrideBranchConfigOverride } from "@/lib/config";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { Tenancy } from "@/lib/tenancies";
+import { PrismaClientTransaction, getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
@@ -16,12 +16,30 @@ const paramsSchema = yupObject({
   hostname: yupString().defined().lowercase(),
 }).defined();
 
-function findDefinitionDomainOrThrow(definition: { domains: Record<string, { hostname?: string, isPrimary?: boolean }> }, hostname: string) {
-  const entry = Object.entries(definition.domains).find(([, d]) => d.hostname === hostname);
-  if (entry == null) {
+// Domains are purely operational state, so the row is the source of truth
+// (the service itself must still exist in the project's configuration).
+async function findDomainRowOrThrow(prisma: PrismaClientTransaction, tenancy: Tenancy, serviceId: string, hostname: string) {
+  const service = await prisma.deploymentService.findUnique({
+    where: {
+      tenancyId_serviceId: {
+        tenancyId: tenancy.id,
+        serviceId,
+      },
+    },
+  });
+  const domain = service == null ? null : await prisma.deploymentServiceDomain.findUnique({
+    where: {
+      tenancyId_deploymentServiceId_hostname: {
+        tenancyId: tenancy.id,
+        deploymentServiceId: service.id,
+        hostname,
+      },
+    },
+  });
+  if (service == null || domain == null) {
     throw new StatusError(404, `The domain ${JSON.stringify(hostname)} is not configured on this service.`);
   }
-  return { key: entry[0], domain: entry[1] };
+  return { service, domain };
 }
 
 export const GET = createSmartRouteHandler({
@@ -53,20 +71,11 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    const definition = getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
-    const { domain } = findDefinitionDomainOrThrow(definition, params.hostname);
-
+    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const service = await prisma.deploymentService.findUnique({
-      where: {
-        tenancyId_serviceId: {
-          tenancyId: auth.tenancy.id,
-          serviceId: params.service_id,
-        },
-      },
-    });
+    const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
 
-    if (service?.vercelProjectId == null) {
+    if (service.vercelProjectId == null) {
       // Not provisioned yet: Vercel doesn't know the domain, but the A/CNAME
       // guidance is static, so the user can already set up their DNS.
       return {
@@ -74,7 +83,7 @@ export const GET = createSmartRouteHandler({
         bodyType: "json",
         body: {
           hostname: params.hostname,
-          is_primary: domain.isPrimary ?? false,
+          is_primary: domain.isPrimary,
           verified: false,
           pending_first_deploy: true,
           dns_records: computeDnsRecords(params.hostname, guessApexName(params.hostname), undefined),
@@ -110,22 +119,9 @@ export const GET = createSmartRouteHandler({
     }
     const isLive = vercelDomain.verified && !misconfigured;
 
-    await prisma.deploymentServiceDomain.upsert({
-      where: {
-        tenancyId_deploymentServiceId_hostname: {
-          tenancyId: auth.tenancy.id,
-          deploymentServiceId: service.id,
-          hostname: params.hostname,
-        },
-      },
-      update: { verified: isLive },
-      create: {
-        tenancyId: auth.tenancy.id,
-        deploymentServiceId: service.id,
-        hostname: params.hostname,
-        isPrimary: domain.isPrimary ?? false,
-        verified: isLive,
-      },
+    await prisma.deploymentServiceDomain.update({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: domain.id } },
+      data: { verified: isLive },
     });
 
     return {
@@ -133,7 +129,7 @@ export const GET = createSmartRouteHandler({
       bodyType: "json",
       body: {
         hostname: params.hostname,
-        is_primary: domain.isPrimary ?? false,
+        is_primary: domain.isPrimary,
         verified: isLive,
         pending_first_deploy: false,
         // TXT ownership challenges only apply while the ownership check is
@@ -147,7 +143,7 @@ export const GET = createSmartRouteHandler({
 export const DELETE = createSmartRouteHandler({
   metadata: {
     summary: "Remove domain from deployment service",
-    description: "Removes a domain from a deployment service (definition, deployment target, and operational state).",
+    description: "Removes a domain from a deployment service (deployment target and operational state).",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -164,42 +160,23 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    const definition = getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
-    const { key } = findDefinitionDomainOrThrow(definition, params.hostname);
-    await assertServiceDefinitionsEditable(auth.tenancy);
-
+    getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const service = await prisma.deploymentService.findUnique({
-      where: {
-        tenancyId_serviceId: {
-          tenancyId: auth.tenancy.id,
-          serviceId: params.service_id,
-        },
-      },
-    });
-    if (service?.vercelProjectId != null) {
+    const { service, domain } = await findDomainRowOrThrow(prisma, auth.tenancy, params.service_id, params.hostname);
+
+    if (service.vercelProjectId != null) {
       try {
         await getVercelDeploymentsClientOrThrow().removeProjectDomain(service.vercelProjectId, params.hostname);
       } catch (e) {
         sanitizeVercelError(e, "Removing the domain failed");
       }
     }
-    await overrideBranchConfigOverride({
-      projectId: auth.tenancy.project.id,
-      branchId: auth.tenancy.branchId,
-      branchConfigOverrideOverride: {
-        [`deployments.services.${params.service_id}.domains.${key}`]: null,
+    await prisma.deploymentServiceDomain.deleteMany({
+      where: {
+        tenancyId: auth.tenancy.id,
+        id: domain.id,
       },
     });
-    if (service != null) {
-      await prisma.deploymentServiceDomain.deleteMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          deploymentServiceId: service.id,
-          hostname: params.hostname,
-        },
-      });
-    }
     return {
       statusCode: 200,
       bodyType: "json",

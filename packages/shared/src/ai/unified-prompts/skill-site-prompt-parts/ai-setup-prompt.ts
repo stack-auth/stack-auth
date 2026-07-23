@@ -737,6 +737,9 @@ const appSetupPrompt: Record<PublicAppSetupPromptId, string> =
   "session-replays": deindent`
     The Session Replays app does not require any additional setup after enabling the Analytics app. See [Analytics](https://docs.hexclave.com/guides/apps/analytics/overview) for more information.
   `,
+  "deployments": deindent`
+    The Deployments app hosts your app's frontends and APIs next to the Hexclave backend. Define each service under \`deployments.services\` in \`hexclave.config.ts\` (with \`type: "vercel"\`, build settings, and env vars — plain values, secrets passed via \`hexclave deploy --secret\`, or connections to other services' outputs), then deploy it with \`hexclave deploy <service>\`. See [Deployments](https://docs.hexclave.com/guides/apps/deployments/overview).
+  `,
 };
 export const appSetupPrompts = deindent`
   ## Setting up individual apps

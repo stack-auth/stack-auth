@@ -19,20 +19,6 @@ CREATE TABLE "DeploymentService" (
 );
 
 -- CreateTable
-CREATE TABLE "DeploymentServiceEnvVar" (
-    "tenancyId" UUID NOT NULL,
-    "id" UUID NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "deploymentServiceId" UUID NOT NULL,
-    "key" TEXT NOT NULL,
-    "value" TEXT NOT NULL,
-    "isSecret" BOOLEAN NOT NULL DEFAULT false,
-
-    CONSTRAINT "DeploymentServiceEnvVar_pkey" PRIMARY KEY ("tenancyId","id")
-);
-
--- CreateTable
 CREATE TABLE "DeploymentServiceDomain" (
     "tenancyId" UUID NOT NULL,
     "id" UUID NOT NULL,
@@ -80,9 +66,6 @@ CREATE TABLE "DeploymentSourceUpload" (
 CREATE UNIQUE INDEX "DeploymentService_tenancyId_serviceId_key" ON "DeploymentService"("tenancyId", "serviceId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "DeploymentServiceEnvVar_tenancyId_deploymentServiceId_key_key" ON "DeploymentServiceEnvVar"("tenancyId", "deploymentServiceId", "key");
-
--- CreateIndex
 CREATE UNIQUE INDEX "DeploymentServiceDomain_tenancyId_deploymentServiceId_hostn_key" ON "DeploymentServiceDomain"("tenancyId", "deploymentServiceId", "hostname");
 
 -- CreateIndex
@@ -93,9 +76,6 @@ CREATE INDEX "DeploymentSourceUpload_expiresAt_idx" ON "DeploymentSourceUpload"(
 
 -- AddForeignKey
 ALTER TABLE "DeploymentService" ADD CONSTRAINT "DeploymentService_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "DeploymentServiceEnvVar" ADD CONSTRAINT "DeploymentServiceEnvVar_tenancyId_deploymentServiceId_fkey" FOREIGN KEY ("tenancyId", "deploymentServiceId") REFERENCES "DeploymentService"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DeploymentServiceDomain" ADD CONSTRAINT "DeploymentServiceDomain_tenancyId_deploymentServiceId_fkey" FOREIGN KEY ("tenancyId", "deploymentServiceId") REFERENCES "DeploymentService"("tenancyId", "id") ON DELETE CASCADE ON UPDATE CASCADE;

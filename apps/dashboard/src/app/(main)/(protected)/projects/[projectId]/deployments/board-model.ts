@@ -12,11 +12,15 @@ export type ServiceType = "hexclave" | "vercel";
 // the managed Hexclave node and never-deployed services render meaningfully.
 export type ServiceStatus = "deployed" | "building" | "not_deployed" | "crashed" | "canceled";
 
+// Mirrors the API's normalized env var shape: "plain" vars carry their literal
+// value, "connection" vars carry the "serviceId.outputKey" reference they
+// resolve to at deploy time, and "secret" vars carry only the secret key whose
+// value is supplied via `hexclave deploy --secret` (never stored).
 export type EnvVar = {
-  id: string,
   key: string,
-  value: string,
-  isSecret: boolean,
+  type: "plain" | "secret" | "connection",
+  value: string | null,
+  secretKey: string | null,
 };
 
 export type BoardService = {
@@ -49,8 +53,8 @@ export type ServiceOutput = {
   secret?: boolean,
 };
 
-// The outputs each service *type* exposes for other services to reference in
-// env var values (as `{serviceId.outputKey}`). Must stay in sync with the
+// The outputs each service *type* exposes for other services' connection env
+// vars (referenced as `serviceId.outputKey`). Must stay in sync with the
 // server-side resolver (apps/backend/src/lib/deployments — resolveEnvVars).
 const OUTPUTS_BY_TYPE = new Map<ServiceType, ServiceOutput[]>([
   ["hexclave", [
@@ -160,11 +164,11 @@ export function buildBoardServices(apiServices: AdminDeploymentServiceJson[], he
       status: apiStatusToBoardStatus(apiService.status),
       source: apiService.framework != null && apiService.framework !== "" ? apiService.framework : "Deployed with `hexclave deploy`",
       domain: apiService.domains.find((d) => d.is_primary)?.hostname ?? hostnameOfUrl(apiService.url),
-      envVars: apiService.env_vars.map((envVar) => ({
-        id: envVar.id,
+      envVars: apiService.env.map((envVar) => ({
         key: envVar.key,
+        type: envVar.type,
         value: envVar.value,
-        isSecret: envVar.is_secret,
+        secretKey: envVar.secret_key,
       })),
       api: apiService,
     });
