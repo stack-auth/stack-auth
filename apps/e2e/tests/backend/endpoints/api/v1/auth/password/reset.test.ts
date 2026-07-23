@@ -163,6 +163,38 @@ it("should be able to check the password reset code without using it", async ({ 
   `);
 });
 
+it("should return USER_NOT_FOUND if the user was deleted after the reset code was sent", async ({ expect }) => {
+  const { userId } = await Auth.Password.signUpWithEmail();
+  await Auth.signOut();
+  const resetCode = await getResetCode();
+  const deleteResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(deleteResponse.status).toBe(200);
+  const response = await niceBackendFetch("/api/v1/auth/password/reset", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      code: resetCode,
+      password: "this-is-a-new-password",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "USER_NOT_FOUND",
+        "error": "User not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "USER_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it.todo("should not be able to reset password if password authentication is disabled on the project after the verification code was sent");
 
 it.todo("should not be able to reset password if email authentication is disabled on the user after the verification code was sent");

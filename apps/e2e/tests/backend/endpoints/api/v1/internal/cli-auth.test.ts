@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 it("returns bounded CLI authentication metrics without exposing login secrets", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -38,4 +38,48 @@ it("returns bounded CLI authentication metrics without exposing login secrets", 
   expect(response.body.active_cli_users).toEqual([]);
   expect(JSON.stringify(response.body)).not.toContain(createdAttempt.body.polling_code);
   expect(JSON.stringify(response.body)).not.toContain(createdAttempt.body.login_code);
+});
+
+it("returns completed CLI sessions with a count matching the active rows", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const user = await Auth.fastSignUp();
+
+  const createdAttempt = await niceBackendFetch("/api/latest/auth/cli", {
+    method: "POST",
+    accessType: "server",
+    body: {},
+  });
+  const completedAttempt = await niceBackendFetch("/api/latest/auth/cli/complete", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      login_code: createdAttempt.body.login_code,
+      mode: "complete",
+      refresh_token: user.refreshToken,
+    },
+  });
+  expect(completedAttempt.status).toBe(200);
+
+  const polledAttempt = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "server",
+    body: { polling_code: createdAttempt.body.polling_code },
+  });
+  expect(polledAttempt.status).toBe(201);
+
+  const response = await niceBackendFetch("/api/latest/internal/cli-auth", {
+    method: "GET",
+    accessType: "admin",
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.body.summary.active_tokens_in_lookup_window).toBe(1);
+  expect(response.body.active_cli_users).toHaveLength(1);
+  expect(response.body.active_cli_users[0]).toMatchObject({
+    user_id: user.userId,
+    is_expired: false,
+  });
+  expect(response.body.active_cli_users.filter((session: { is_expired: boolean }) => !session.is_expired)).toHaveLength(
+    response.body.summary.active_tokens_in_lookup_window,
+  );
 });

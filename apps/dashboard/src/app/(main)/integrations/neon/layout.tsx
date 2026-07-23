@@ -1,5 +1,3 @@
-export { generateStaticParams } from "@/lib/generate-empty-static-params";
-
 export const metadata = {
   title: "Neon x Hexclave",
 };

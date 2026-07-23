@@ -16,11 +16,16 @@ describe("createConfigFileJiti", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("loads config authoring imports when the project has no SDK installed", async () => {
+  // The project has no node_modules, so both the canonical root import and the
+  // deprecated `/config` subpath must fall back to the CLI's bundled SDK copy.
+  it.each([
+    ["root package", "@hexclave/js"],
+    ["legacy /config subpath", "@hexclave/js/config"],
+  ])("loads config authoring imports from the %s when the project has no SDK installed", async (_label, importSpecifier) => {
     const configPath = path.join(tmpDir, "hexclave.config.ts");
     fs.writeFileSync(
       configPath,
-      'import { defineHexclaveConfig } from "@hexclave/js/config";\nexport const config = defineHexclaveConfig({ auth: { allowSignUp: true } });\n',
+      `import { defineHexclaveConfig } from "${importSpecifier}";\nexport const config = defineHexclaveConfig({ auth: { allowSignUp: true } });\n`,
     );
 
     const configModule = await createConfigFileJiti(configPath).import<{ config: { auth: { allowSignUp: boolean } } }>(configPath);
