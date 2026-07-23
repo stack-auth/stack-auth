@@ -213,22 +213,8 @@ function CodeSnippet({ code }: { code: string }) {
 function DeployCodeHint({ service, project }: { service: BoardService, project: AdminProject }) {
   const deployCommands = [
     "# from your project directory",
-    "npm i -g @hexclave/cli",
-    "hexclave login",
-    `hexclave deploy ${service.id}`,
-  ].join("\n");
-  const configSnippet = [
-    `import type { HexclaveConfig } from "@hexclave/js/config"; // replace \`js\` with the correct framework SDK package`,
-    ``,
-    `export const config: HexclaveConfig = {`,
-    `  deployments: {`,
-    `    services: {`,
-    `      ${service.id}: {`,
-    `        rootDirectory: "./",`,
-    `      },`,
-    `    },`,
-    `  },`,
-    `};`,
+    "npx @hexclave/cli@latest login",
+    `npx @hexclave/cli@latest deploy ${service.id} --cloud-project-id ${project.id}`,
   ].join("\n");
 
   return (
@@ -241,14 +227,6 @@ function DeployCodeHint({ service, project }: { service: BoardService, project: 
         This service has no deployment yet. Deploy it from your app&apos;s directory with the Hexclave CLI — the build settings you configure here are used automatically:
       </p>
       <CodeSnippet code={deployCommands} />
-      <p className="text-xs text-muted-foreground">
-        Optionally, keep the build config in your repo instead with a <span className="font-mono">hexclave.config.ts</span> (it takes precedence when present):
-      </p>
-      <CodeSnippet code={configSnippet} />
-      <p className="text-[11px] text-muted-foreground">
-        In CI, skip <span className="font-mono">hexclave login</span> and set <span className="font-mono">HEXCLAVE_PROJECT_ID={project.id}</span> and{" "}
-        <span className="font-mono">HEXCLAVE_SECRET_SERVER_KEY</span> (from an API key set) as secrets instead.
-      </p>
     </div>
   );
 }
