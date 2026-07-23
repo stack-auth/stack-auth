@@ -8,7 +8,6 @@ import { Tabs, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, XIcon } from "@phosphor-icons/react";
-import { getHexclaveApiBaseUrl } from '@hexclave/shared/dist/utils/cloud-hosts';
 import { remindersPrompt } from '@hexclave/shared/dist/ai/unified-prompts/reminders';
 import { use } from "@hexclave/shared/dist/utils/react";
 import { deindent } from '@hexclave/shared/dist/utils/strings';
@@ -66,9 +65,7 @@ function getManualSetupDocsUrl() {
 }
 
 function getSetupApiBaseUrl() {
-  // Prefer the hexclave-branded host post-rebrand: the deployment env var may still be set to the
-  // legacy api.stack-auth.com, but the two cloud hosts are equivalent, so show the hexclave brand.
-  return getHexclaveApiBaseUrl(getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL);
+  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL;
 }
 
 function buildCloudSetupPrompt(options: {
@@ -80,20 +77,17 @@ function buildCloudSetupPrompt(options: {
   const normalizedDocsBaseUrl = docsBaseUrl.replace(/\/$/, '');
   const reminders = remindersPrompt.replaceAll(PROD_DOCS_BASE_URL, normalizedDocsBaseUrl);
 
-  // The SDK's baked-in default base URL is the production cloud API (api.hexclave.com). Both cloud
-  // brands (api.stack-auth.com / api.hexclave.com) resolve to it, so when this deployment is the
-  // production cloud there's no point telling the agent to set a custom API URL — it's already the
-  // default. Omit it in that case; otherwise surface the hexclave-branded URL (dev/staging cloud
-  // deployments and self-host custom domains).
-  const hexclaveApiBaseUrl = getHexclaveApiBaseUrl(apiBaseUrl);
-  const isDefaultApiBaseUrl = hexclaveApiBaseUrl === PROD_API_BASE_URL;
+  // The SDK's baked-in default base URL is the production cloud API, so there's no point telling
+  // the agent to set a custom API URL when the deployment already uses it — omit the line in that
+  // case. Non-default deployments (dev/staging cloud, self-host custom domains) still show it.
+  const isDefaultApiBaseUrl = apiBaseUrl === PROD_API_BASE_URL;
 
   const projectValues = isDefaultApiBaseUrl
     ? deindent`
       - Hexclave project ID: ${projectId}
     `
     : deindent`
-      - Hexclave API URL: ${hexclaveApiBaseUrl}
+      - Hexclave API URL: ${apiBaseUrl}
       - Hexclave project ID: ${projectId}
     `;
 
