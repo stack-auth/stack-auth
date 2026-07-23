@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BPS_TOTAL,
   bpsToPercentText,
+  changeFlagDraftType,
   describeCurrentRollout,
   FLAG_OPERATOR_METADATA,
   FLAG_OPERATORS,
@@ -15,6 +16,7 @@ import {
   toExperimentRunConfig,
   parseFeatureFlagsSection,
   percentToBps,
+  suggestFlagKey,
   validateExperimentConfig,
   validateFlagConfig,
   validateFlagKey,
@@ -127,6 +129,69 @@ describe("validateFlagKey", () => {
     expect(validateFlagKey("2fast")).not.toBeNull();
     expect(validateFlagKey("has spaces")).not.toBeNull();
     expect(validateFlagKey("a".repeat(65))).not.toBeNull();
+  });
+});
+
+describe("suggestFlagKey", () => {
+  it("slugifies human-readable names", () => {
+    expect(suggestFlagKey("Checkout Redesign")).toMatchInlineSnapshot(`"checkout-redesign"`);
+    expect(suggestFlagKey("  New   pricing (v2)!  ")).toMatchInlineSnapshot(`"new-pricing-v2"`);
+    expect(suggestFlagKey("Émile's café_flag")).toMatchInlineSnapshot(`"emile-s-cafe-flag"`);
+  });
+
+  it("prefixes names that would start with a digit", () => {
+    expect(suggestFlagKey("2FA rollout")).toMatchInlineSnapshot(`"flag-2fa-rollout"`);
+  });
+
+  it("returns an empty string when nothing usable remains", () => {
+    expect(suggestFlagKey("")).toBe("");
+    expect(suggestFlagKey("   ")).toBe("");
+    expect(suggestFlagKey("!!! ???")).toBe("");
+  });
+
+  it("truncates to the key length limit without a trailing dash", () => {
+    const suggested = suggestFlagKey(`${"a".repeat(63)} b`);
+    expect(suggested).toBe("a".repeat(63));
+    expect(suggested.length).toBeLessThanOrEqual(64);
+  });
+
+  it("always yields either an empty string or a valid key", () => {
+    const names = [
+      "Checkout Redesign", "2FA rollout", "über größe", "flag--with--dashes",
+      "-leading-dash", "🚀 Launch!", "日本語のみ", "a", "A".repeat(200),
+    ];
+    for (const name of names) {
+      const suggested = suggestFlagKey(name);
+      if (suggested !== "") expect(validateFlagKey(suggested)).toBeNull();
+    }
+  });
+});
+
+describe("changeFlagDraftType", () => {
+  it("re-seeds variant values while keeping IDs and labels", () => {
+    const flag = makeFlag();
+    const changed = changeFlagDraftType(flag, "string");
+    expect(changed.type).toBe("string");
+    expect(changed.variants.map((variant) => variant.id)).toEqual(["variant-on", "variant-off"]);
+    expect(changed.variants.map((variant) => variant.label)).toEqual(["On", "Off"]);
+    expect(changed.variants.every((variant) => validateVariantJsonValue("string", variant.jsonValue) == null)).toBe(true);
+    // References survive because IDs do, so the changed draft still validates.
+    expect(validateFlagConfig("checkout-redesign", { ...changed, internalId: "flag_other" }, makeSection())).toEqual([]);
+  });
+
+  it("seeds valid defaults for every flag type", () => {
+    const flag = makeFlag();
+    for (const type of ["string", "number", "json", "boolean"] as const) {
+      const changed = changeFlagDraftType(flag, type);
+      for (const variant of changed.variants) {
+        expect(validateVariantJsonValue(type, variant.jsonValue)).toBeNull();
+      }
+    }
+  });
+
+  it("returns the draft unchanged when the type stays the same", () => {
+    const flag = makeFlag({ variants: [{ id: "variant-on", label: "On", jsonValue: "true" }] });
+    expect(changeFlagDraftType(flag, "boolean")).toBe(flag);
   });
 });
 

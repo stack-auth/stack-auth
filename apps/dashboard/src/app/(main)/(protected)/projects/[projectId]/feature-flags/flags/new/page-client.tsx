@@ -7,7 +7,7 @@ import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { useState } from "react";
 import { PageLayout } from "../../../page-layout";
 import { useAdminApp } from "../../../use-admin-app";
-import { createEmptyFlagDraft, FlagEditor } from "../../flag-editor";
+import { createEmptyFlagDraft, FlagCreateForm } from "../../flag-create-form";
 import { useFeatureFlagsSection } from "../../shared";
 
 export default function PageClient() {
@@ -20,14 +20,13 @@ export default function PageClient() {
 
   return (
     <PageLayout
-      title="New feature flag"
-      description="Define the flag, its variants, and how it rolls out"
+      title="Create a feature flag"
+      description="Name it and create it — it starts off, so nothing changes until you choose a rollout"
     >
-      <FlagEditor
-        mode="create"
+      <FlagCreateForm
         initialFlag={initialFlag}
         section={section}
-        onPublish={async (flagKey, flag) => {
+        onCreate={async (flagKey, flag) => {
           const updated = await updateConfig({
             adminApp,
             configUpdate: featureFlagConfigUpdates(flag.internalId, flagKey, flag, section),

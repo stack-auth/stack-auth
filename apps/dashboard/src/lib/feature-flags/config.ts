@@ -209,6 +209,61 @@ export function validateFlagKey(key: string): string | null {
   return null;
 }
 
+/**
+ * Suggests an SDK key from a human-readable display name, e.g.
+ * "Checkout Redesign!" → "checkout-redesign". The create form keeps the key in
+ * sync with the name through this function until the developer edits the key
+ * manually. Returns "" when nothing usable remains (the form then treats the
+ * key as still-missing rather than inventing one).
+ *
+ * The output is always either "" or a key that passes `validateFlagKey`:
+ * diacritics are folded (é → e), everything outside [a-z0-9] collapses into
+ * single dashes, and names starting with a digit get a "flag-" prefix (keys
+ * must start with a letter, and dropping the digits would mangle names like
+ * "2fa rollout" beyond recognition).
+ */
+export function suggestFlagKey(displayName: string): string {
+  const slug = displayName
+    .normalize("NFKD")
+    .replace(/[\u{300}-\u{36f}]/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug.length === 0) return "";
+  const prefixed = /^[a-z]/.test(slug) ? slug : `flag-${slug}`;
+  // Truncating to the 64-char key limit can leave a trailing dash; strip it so
+  // the suggestion never fails validation.
+  return prefixed.slice(0, 64).replace(/-+$/g, "");
+}
+
+/** Default JSON-encoded value for a newly added variant of the given flag type. */
+export function defaultVariantJsonValue(type: FlagValueType, index: number): string {
+  switch (type) {
+    case "boolean": { return index === 0 ? "true" : "false"; }
+    case "string": { return JSON.stringify(""); }
+    case "number": { return "0"; }
+    case "json": { return "{}"; }
+  }
+}
+
+/**
+ * Returns a copy of a flag draft with a different value type. Variant values
+ * are re-seeded so drafts don't carry values of the previous type into the new
+ * one; IDs and labels stay, so fallback/default/rule references remain valid.
+ * Only meaningful before creation — the type is immutable once published.
+ */
+export function changeFlagDraftType(flag: FlagConfig, type: FlagValueType): FlagConfig {
+  if (type === flag.type) return flag;
+  return {
+    ...flag,
+    type,
+    variants: flag.variants.map((variant, index) => ({
+      ...variant,
+      jsonValue: defaultVariantJsonValue(type, index),
+    })),
+  };
+}
+
 export function formatBps(bps: number): string {
   // Show up to two decimals but strip trailing zeros ("33.33%", "50%", "0.01%").
   const percent = bps / 100;

@@ -13,6 +13,7 @@ import {
 } from "@/components/design-components";
 import {
   BPS_TOTAL,
+  defaultVariantJsonValue,
   FLAG_OPERATORS,
   formatBps,
   getOperatorMetadataOrThrow,
@@ -62,28 +63,33 @@ const COMMON_ATTRIBUTES = [
 const CUSTOM_ATTRIBUTE_OPTION = "__custom__";
 
 export type FlagEditorProps = {
-  mode: "create" | "edit",
-  /** Initial public key in edit mode; ignored in create mode. */
-  fixedFlagKey?: string,
+  /** The flag's current public key. The editor allows renaming it. */
+  fixedFlagKey: string,
   initialFlag: FlagConfig,
   section: FeatureFlagsSection,
   /** Called after the publish review is confirmed and validation passed. */
   onPublish: (flagKey: string, flag: FlagConfig) => Promise<void>,
 };
 
+/**
+ * Full management surface for an existing flag. Creating a flag deliberately
+ * does NOT use this editor — it goes through the much smaller
+ * `FlagCreateForm` (flag-create-form.tsx). This editor exposes the entire
+ * evaluator model, which is the right altitude for managing a live rollout
+ * but overwhelming when all you want is a new flag.
+ */
 export function FlagEditor(props: FlagEditorProps) {
-  const [flagKey, setFlagKey] = useState(props.fixedFlagKey ?? "");
+  const [flagKey, setFlagKey] = useState(props.fixedFlagKey);
   const [draft, setDraft] = useState<FlagConfig>(props.initialFlag);
   const [reviewOpen, setReviewOpen] = useState(false);
   const displayNameId = useId();
   const keyId = useId();
   const descriptionId = useId();
-  const exclusionGroupId = useId();
 
   const update = (patch: Partial<FlagConfig>) => setDraft((current) => ({ ...current, ...patch }));
 
   const keyError = flagKey.length > 0 ? validateFlagKey(flagKey) : null;
-  const keyTakenError = props.section.flags.has(flagKey) && (props.mode === "create" || flagKey !== props.fixedFlagKey)
+  const keyTakenError = props.section.flags.has(flagKey) && flagKey !== props.fixedFlagKey
     ? "A flag with this key already exists." : null;
 
   const validationErrors = useMemo(() => {
@@ -93,11 +99,11 @@ export function FlagEditor(props: FlagEditorProps) {
   }, [draft, flagKey, keyTakenError, props.section]);
 
   const changeSummary = useMemo(
-    () => summarizeChanges(props.initialFlag, draft, props.mode),
-    [props.initialFlag, draft, props.mode],
+    () => summarizeChanges(props.initialFlag, draft),
+    [props.initialFlag, draft],
   );
 
-  const hasChanges = props.mode === "create" || changeSummary.length > 0 || flagKey !== props.fixedFlagKey;
+  const hasChanges = changeSummary.length > 0 || flagKey !== props.fixedFlagKey;
 
   return (
     <div className="flex flex-col gap-4">
@@ -142,37 +148,10 @@ export function FlagEditor(props: FlagEditorProps) {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">Value type</span>
-            {props.mode === "create" ? (
-              <DesignSelectorDropdown
-                size="sm"
-                value={draft.type}
-                onValueChange={(value) => {
-                  if (value === "boolean" || value === "string" || value === "number" || value === "json") {
-                    // Re-seed variant values so existing drafts don't carry
-                    // values of the previous type into the new one.
-                    setDraft((current) => ({
-                      ...current,
-                      type: value,
-                      variants: current.variants.map((variant, index) => ({
-                        ...variant,
-                        jsonValue: defaultJsonValueFor(value, index),
-                      })),
-                    }));
-                  }
-                }}
-                options={[
-                  { value: "boolean", label: "Boolean" },
-                  { value: "string", label: "String" },
-                  { value: "number", label: "Number" },
-                  { value: "json", label: "JSON" },
-                ]}
-              />
-            ) : (
-              <div className="flex items-center gap-2">
-                <DesignBadge label={draft.type} color="cyan" size="sm" />
-                <span className="text-xs text-muted-foreground">The value type cannot change after creation.</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <DesignBadge label={draft.type} color="cyan" size="sm" />
+              <span className="text-xs text-muted-foreground">The value type cannot change after creation.</span>
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">State</span>
@@ -192,246 +171,18 @@ export function FlagEditor(props: FlagEditorProps) {
         </div>
       </DesignCard>
 
-      <DesignCard
-        title="Variants"
-        subtitle="The typed values this flag can serve"
-        icon={StackIcon}
-        gradient="default"
-      >
-        <div className="flex flex-col gap-3">
-          {draft.variants.map((variant, index) => (
-            <VariantCard
-              key={variant.id}
-              variant={variant}
-              flagType={draft.type}
-              isFallback={variant.id === draft.fallbackVariantId}
-              isOnlyVariant={draft.variants.length === 1}
-              onChange={(updated) => update({
-                variants: draft.variants.map((other, otherIndex) => otherIndex === index ? updated : other),
-              })}
-              onRemove={() => {
-                // Removing a variant that other parts reference would corrupt
-                // the flag; validation also catches it, but blocking here is
-                // clearer.
-                update({ variants: draft.variants.filter((_, otherIndex) => otherIndex !== index) });
-              }}
-              removeDisabledReason={
-                draft.variants.length === 1 ? "A flag needs at least one variant."
-                  : variant.id === draft.fallbackVariantId ? "This variant is the fallback — pick a different fallback first."
-                    : isVariantServed(draft, variant.id) ? "This variant is referenced by a rule or the default — update those first."
-                      : null
-              }
-            />
-          ))}
-          <div>
-            <DesignButton
-              variant="outline"
-              size="sm"
-              onClick={() => update({
-                variants: [...draft.variants, {
-                  id: generateShortId("variant"),
-                  label: `Variant ${draft.variants.length + 1}`,
-                  jsonValue: defaultJsonValueFor(draft.type, draft.variants.length),
-                }],
-              })}
-            >
-              <PlusIcon className="h-3.5 w-3.5 mr-1" />
-              Add variant
-            </DesignButton>
-          </div>
-        </div>
-      </DesignCard>
+      <FlagVariantsCard draft={draft} onChange={update} />
 
-      <DesignCard
-        title="Serving"
-        subtitle="What users receive by default, and when things go wrong"
-        icon={SlidersIcon}
-        gradient="default"
-      >
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Fallback variant</span>
-            <div className="max-w-xs">
-              <DesignSelectorDropdown
-                size="sm"
-                value={draft.fallbackVariantId}
-                onValueChange={(value) => update({ fallbackVariantId: value })}
-                options={draft.variants.map((variant) => ({ value: variant.id, label: variant.label }))}
-              />
-            </div>
-            <span className="text-xs text-muted-foreground">
-              Served when the flag is disabled or killed, the user is held out, or evaluation fails. SDK callers also pass a local fallback for network failures.
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Default rule (no targeting rule matched)</span>
-            <ServeEditor
-              serve={draft.defaultServe}
-              variants={draft.variants}
-              onChange={(serve) => update({ defaultServe: serve })}
-            />
-          </div>
-        </div>
-      </DesignCard>
+      <FlagServingCard draft={draft} onChange={update} />
 
-      <DesignCard
-        title="Targeting rules"
-        subtitle="Evaluated top to bottom; the first matching rule wins"
-        icon={GitBranchIcon}
-        gradient="default"
-      >
-        <div className="flex flex-col gap-3">
-          {draft.rules.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No targeting rules — everyone gets the default rule above. Add a rule to target specific users, teams, or environments.
-            </p>
-          )}
-          {draft.rules.map((rule, index) => (
-            <RuleCard
-              key={rule.id}
-              rule={rule}
-              index={index}
-              ruleCount={draft.rules.length}
-              variants={draft.variants}
-              section={props.section}
-              onChange={(updated) => update({ rules: draft.rules.map((other, otherIndex) => otherIndex === index ? updated : other) })}
-              onRemove={() => update({ rules: draft.rules.filter((_, otherIndex) => otherIndex !== index) })}
-              onMove={(direction) => {
-                const target = index + (direction === "up" ? -1 : 1);
-                if (target < 0 || target >= draft.rules.length) return;
-                const reordered = [...draft.rules];
-                const [moved] = reordered.splice(index, 1);
-                reordered.splice(target, 0, moved);
-                update({ rules: reordered });
-              }}
-            />
-          ))}
-          <div>
-            <DesignButton
-              variant="outline"
-              size="sm"
-              onClick={() => update({
-                rules: [...draft.rules, {
-                  id: generateShortId("rule"),
-                  label: `Rule ${draft.rules.length + 1}`,
-                  enabled: true,
-                  conditions: [{ attribute: "user.email", operator: "ends_with", value: "" }],
-                  serve: { type: "variant", variantId: draft.variants[0]?.id ?? draft.fallbackVariantId },
-                  rolloutBps: BPS_TOTAL,
-                }],
-              })}
-            >
-              <PlusIcon className="h-3.5 w-3.5 mr-1" />
-              Add rule
-            </DesignButton>
-          </div>
-        </div>
-      </DesignCard>
+      <FlagRulesCard draft={draft} onChange={update} section={props.section} />
 
-      <DesignCard
-        title="Prerequisites"
-        subtitle="Only evaluate this flag when other flags serve specific variants"
-        icon={LinkIcon}
-        gradient="default"
-      >
-        <div className="flex flex-col gap-3">
-          {draft.prerequisites.length === 0 && (
-            <p className="text-sm text-muted-foreground">No prerequisites — this flag evaluates independently.</p>
-          )}
-          {draft.prerequisites.map((prerequisite, index) => {
-            const prerequisiteFlag = props.section.flags.get(prerequisite.flagKey);
-            return (
-              <div key={`${prerequisite.flagKey}-${index}`} className="flex flex-wrap items-center gap-2">
-                <DesignSelectorDropdown
-                  size="sm"
-                  className="w-56"
-                  value={prerequisite.flagKey}
-                  placeholder="Select flag"
-                  onValueChange={(value) => {
-                    const targetFlag = props.section.flags.get(value);
-                    update({
-                      prerequisites: draft.prerequisites.map((other, otherIndex) => otherIndex === index ? {
-                        flagKey: value,
-                        requiredVariantId: targetFlag?.variants[0]?.id ?? "",
-                      } : other),
-                    });
-                  }}
-                  options={[...props.section.flags.keys()]
-                    .filter((key) => key !== props.fixedFlagKey)
-                    .map((key) => ({ value: key, label: props.section.flags.get(key)?.displayName ?? key }))}
-                />
-                <span className="text-xs text-muted-foreground">must serve</span>
-                <DesignSelectorDropdown
-                  size="sm"
-                  className="w-44"
-                  value={prerequisite.requiredVariantId}
-                  placeholder="Select variant"
-                  disabled={prerequisiteFlag == null}
-                  onValueChange={(value) => update({
-                    prerequisites: draft.prerequisites.map((other, otherIndex) => otherIndex === index ? { ...other, requiredVariantId: value } : other),
-                  })}
-                  options={(prerequisiteFlag?.variants ?? []).map((variant) => ({ value: variant.id, label: variant.label }))}
-                />
-                <DesignButton
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Remove prerequisite"
-                  onClick={() => update({ prerequisites: draft.prerequisites.filter((_, otherIndex) => otherIndex !== index) })}
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </DesignButton>
-              </div>
-            );
-          })}
-          <div>
-            <DesignButton
-              variant="outline"
-              size="sm"
-              disabled={[...props.section.flags.keys()].filter((key) => key !== props.fixedFlagKey).length === 0}
-              onClick={() => update({ prerequisites: [...draft.prerequisites, { flagKey: "", requiredVariantId: "" }] })}
-            >
-              <PlusIcon className="h-3.5 w-3.5 mr-1" />
-              Add prerequisite
-            </DesignButton>
-          </div>
-        </div>
-      </DesignCard>
+      <FlagPrerequisitesCard draft={draft} onChange={update} section={props.section} ownFlagKey={props.fixedFlagKey} />
 
-      <DesignCard
-        title="Holdout & mutual exclusion"
-        subtitle="Keep a control group out, and keep overlapping tests apart"
-        icon={ShieldCheckIcon}
-        gradient="default"
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1">
-            <PercentField
-              label="Global holdout"
-              bps={draft.holdoutBps}
-              onBpsChange={(bps) => update({ holdoutBps: bps })}
-            />
-            <span className="text-xs text-muted-foreground">
-              This share of traffic always receives the fallback variant and is excluded from all targeting and experiments.
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor={exclusionGroupId} className="text-xs font-medium text-muted-foreground">Mutual exclusion group</label>
-            <DesignInput
-              id={exclusionGroupId}
-              size="sm"
-              placeholder="e.g. checkout-tests"
-              value={draft.mutualExclusionGroup ?? ""}
-              onChange={(event) => update({ mutualExclusionGroup: event.target.value.trim().length > 0 ? event.target.value : null })}
-            />
-            <span className="text-xs text-muted-foreground">
-              Flags and experiments in the same group never target the same user simultaneously.
-            </span>
-          </div>
-        </div>
-      </DesignCard>
+      <FlagSafetyCard draft={draft} onChange={update} />
 
       <div className="flex items-center justify-end gap-2">
-        {!hasChanges && props.mode === "edit" && (
+        {!hasChanges && (
           <span className="text-xs text-muted-foreground">No unpublished changes</span>
         )}
         <DesignButton
@@ -449,10 +200,8 @@ export function FlagEditor(props: FlagEditorProps) {
         onOpenChange={setReviewOpen}
         size="2xl"
         icon={RocketLaunchIcon}
-        title={props.mode === "create" ? "Review new flag" : "Review changes"}
-        description={props.mode === "create"
-          ? "Double-check the configuration before the flag goes live."
-          : "Changes apply to live traffic as soon as they are published."}
+        title="Review changes"
+        description="Changes apply to live traffic as soon as they are published."
         footer={
           <>
             <DesignDialogClose asChild>
@@ -466,7 +215,7 @@ export function FlagEditor(props: FlagEditorProps) {
                 setReviewOpen(false);
               }}
             >
-              {props.mode === "create" ? "Create flag" : "Publish changes"}
+              Publish changes
             </DesignButton>
           </>
         }
@@ -504,20 +253,293 @@ export function FlagEditor(props: FlagEditorProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Advanced section cards
+//
+// Each card edits one aspect of a FlagConfig draft via partial patches. They
+// are shared between the full editor above and the create form's "Customize
+// before creating" disclosure (flag-create-form.tsx), so the create path
+// exposes the exact same controls without duplicating them.
+// ---------------------------------------------------------------------------
+
+export type FlagDraftSectionProps = {
+  draft: FlagConfig,
+  /** Merges a partial update into the draft. */
+  onChange: (patch: Partial<FlagConfig>) => void,
+};
+
+export function FlagVariantsCard(props: FlagDraftSectionProps) {
+  const { draft, onChange } = props;
+  return (
+    <DesignCard
+      title="Variants"
+      subtitle="The typed values this flag can serve"
+      icon={StackIcon}
+      gradient="default"
+    >
+      <div className="flex flex-col gap-3">
+        {draft.variants.map((variant, index) => (
+          <VariantCard
+            key={variant.id}
+            variant={variant}
+            flagType={draft.type}
+            isFallback={variant.id === draft.fallbackVariantId}
+            isOnlyVariant={draft.variants.length === 1}
+            onChange={(updated) => onChange({
+              variants: draft.variants.map((other, otherIndex) => otherIndex === index ? updated : other),
+            })}
+            onRemove={() => {
+              // Removing a variant that other parts reference would corrupt
+              // the flag; validation also catches it, but blocking here is
+              // clearer.
+              onChange({ variants: draft.variants.filter((_, otherIndex) => otherIndex !== index) });
+            }}
+            removeDisabledReason={
+              draft.variants.length === 1 ? "A flag needs at least one variant."
+                : variant.id === draft.fallbackVariantId ? "This variant is the fallback — pick a different fallback first."
+                  : isVariantServed(draft, variant.id) ? "This variant is referenced by a rule or the default — update those first."
+                    : null
+            }
+          />
+        ))}
+        <div>
+          <DesignButton
+            variant="outline"
+            size="sm"
+            onClick={() => onChange({
+              variants: [...draft.variants, {
+                id: generateShortId("variant"),
+                label: `Variant ${draft.variants.length + 1}`,
+                jsonValue: defaultVariantJsonValue(draft.type, draft.variants.length),
+              }],
+            })}
+          >
+            <PlusIcon className="h-3.5 w-3.5 mr-1" />
+            Add variant
+          </DesignButton>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+export function FlagServingCard(props: FlagDraftSectionProps) {
+  const { draft, onChange } = props;
+  return (
+    <DesignCard
+      title="Serving"
+      subtitle="What users receive by default, and when things go wrong"
+      icon={SlidersIcon}
+      gradient="default"
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">Fallback variant</span>
+          <div className="max-w-xs">
+            <DesignSelectorDropdown
+              size="sm"
+              value={draft.fallbackVariantId}
+              onValueChange={(value) => onChange({ fallbackVariantId: value })}
+              options={draft.variants.map((variant) => ({ value: variant.id, label: variant.label }))}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Served when the flag is disabled or killed, the user is held out, or evaluation fails. SDK callers also pass a local fallback for network failures.
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">Default rule (no targeting rule matched)</span>
+          <ServeEditor
+            serve={draft.defaultServe}
+            variants={draft.variants}
+            onChange={(serve) => onChange({ defaultServe: serve })}
+          />
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+export function FlagRulesCard(props: FlagDraftSectionProps & { section: FeatureFlagsSection }) {
+  const { draft, onChange } = props;
+  return (
+    <DesignCard
+      title="Targeting rules"
+      subtitle="Evaluated top to bottom; the first matching rule wins"
+      icon={GitBranchIcon}
+      gradient="default"
+    >
+      <div className="flex flex-col gap-3">
+        {draft.rules.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No targeting rules — everyone gets the default rule above. Add a rule to target specific users, teams, or environments.
+          </p>
+        )}
+        {draft.rules.map((rule, index) => (
+          <RuleCard
+            key={rule.id}
+            rule={rule}
+            index={index}
+            ruleCount={draft.rules.length}
+            variants={draft.variants}
+            section={props.section}
+            onChange={(updated) => onChange({ rules: draft.rules.map((other, otherIndex) => otherIndex === index ? updated : other) })}
+            onRemove={() => onChange({ rules: draft.rules.filter((_, otherIndex) => otherIndex !== index) })}
+            onMove={(direction) => {
+              const target = index + (direction === "up" ? -1 : 1);
+              if (target < 0 || target >= draft.rules.length) return;
+              const reordered = [...draft.rules];
+              const [moved] = reordered.splice(index, 1);
+              reordered.splice(target, 0, moved);
+              onChange({ rules: reordered });
+            }}
+          />
+        ))}
+        <div>
+          <DesignButton
+            variant="outline"
+            size="sm"
+            onClick={() => onChange({
+              rules: [...draft.rules, {
+                id: generateShortId("rule"),
+                label: `Rule ${draft.rules.length + 1}`,
+                enabled: true,
+                conditions: [{ attribute: "user.email", operator: "ends_with", value: "" }],
+                serve: { type: "variant", variantId: draft.variants[0]?.id ?? draft.fallbackVariantId },
+                rolloutBps: BPS_TOTAL,
+              }],
+            })}
+          >
+            <PlusIcon className="h-3.5 w-3.5 mr-1" />
+            Add rule
+          </DesignButton>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+export function FlagPrerequisitesCard(props: FlagDraftSectionProps & {
+  section: FeatureFlagsSection,
+  /** This flag's own public key, excluded from the prerequisite choices. */
+  ownFlagKey: string,
+}) {
+  const { draft, onChange } = props;
+  const candidateKeys = [...props.section.flags.keys()].filter((key) => key !== props.ownFlagKey);
+  return (
+    <DesignCard
+      title="Prerequisites"
+      subtitle="Only evaluate this flag when other flags serve specific variants"
+      icon={LinkIcon}
+      gradient="default"
+    >
+      <div className="flex flex-col gap-3">
+        {draft.prerequisites.length === 0 && (
+          <p className="text-sm text-muted-foreground">No prerequisites — this flag evaluates independently.</p>
+        )}
+        {draft.prerequisites.map((prerequisite, index) => {
+          const prerequisiteFlag = props.section.flags.get(prerequisite.flagKey);
+          return (
+            <div key={`${prerequisite.flagKey}-${index}`} className="flex flex-wrap items-center gap-2">
+              <DesignSelectorDropdown
+                size="sm"
+                className="w-56"
+                value={prerequisite.flagKey}
+                placeholder="Select flag"
+                onValueChange={(value) => {
+                  const targetFlag = props.section.flags.get(value);
+                  onChange({
+                    prerequisites: draft.prerequisites.map((other, otherIndex) => otherIndex === index ? {
+                      flagKey: value,
+                      requiredVariantId: targetFlag?.variants[0]?.id ?? "",
+                    } : other),
+                  });
+                }}
+                options={candidateKeys.map((key) => ({ value: key, label: props.section.flags.get(key)?.displayName ?? key }))}
+              />
+              <span className="text-xs text-muted-foreground">must serve</span>
+              <DesignSelectorDropdown
+                size="sm"
+                className="w-44"
+                value={prerequisite.requiredVariantId}
+                placeholder="Select variant"
+                disabled={prerequisiteFlag == null}
+                onValueChange={(value) => onChange({
+                  prerequisites: draft.prerequisites.map((other, otherIndex) => otherIndex === index ? { ...other, requiredVariantId: value } : other),
+                })}
+                options={(prerequisiteFlag?.variants ?? []).map((variant) => ({ value: variant.id, label: variant.label }))}
+              />
+              <DesignButton
+                variant="ghost"
+                size="icon"
+                aria-label="Remove prerequisite"
+                onClick={() => onChange({ prerequisites: draft.prerequisites.filter((_, otherIndex) => otherIndex !== index) })}
+              >
+                <TrashIcon className="h-4 w-4" />
+              </DesignButton>
+            </div>
+          );
+        })}
+        <div>
+          <DesignButton
+            variant="outline"
+            size="sm"
+            disabled={candidateKeys.length === 0}
+            onClick={() => onChange({ prerequisites: [...draft.prerequisites, { flagKey: "", requiredVariantId: "" }] })}
+          >
+            <PlusIcon className="h-3.5 w-3.5 mr-1" />
+            Add prerequisite
+          </DesignButton>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
+export function FlagSafetyCard(props: FlagDraftSectionProps) {
+  const { draft, onChange } = props;
+  const exclusionGroupId = useId();
+  return (
+    <DesignCard
+      title="Holdout & mutual exclusion"
+      subtitle="Keep a control group out, and keep overlapping tests apart"
+      icon={ShieldCheckIcon}
+      gradient="default"
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1">
+          <PercentField
+            label="Global holdout"
+            bps={draft.holdoutBps}
+            onBpsChange={(bps) => onChange({ holdoutBps: bps })}
+          />
+          <span className="text-xs text-muted-foreground">
+            This share of traffic always receives the fallback variant and is excluded from all targeting and experiments.
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={exclusionGroupId} className="text-xs font-medium text-muted-foreground">Mutual exclusion group</label>
+          <DesignInput
+            id={exclusionGroupId}
+            size="sm"
+            placeholder="e.g. checkout-tests"
+            value={draft.mutualExclusionGroup ?? ""}
+            onChange={(event) => onChange({ mutualExclusionGroup: event.target.value.trim().length > 0 ? event.target.value : null })}
+          />
+          <span className="text-xs text-muted-foreground">
+            Flags and experiments in the same group never target the same user simultaneously.
+          </span>
+        </div>
+      </div>
+    </DesignCard>
+  );
+}
+
 function isVariantServed(flag: FlagConfig, variantId: string): boolean {
   const serves = [flag.defaultServe, ...flag.rules.map((rule) => rule.serve)];
   return serves.some((serve) => serve.type === "variant"
     ? serve.variantId === variantId
     : serve.split.some((entry) => entry.variantId === variantId));
-}
-
-function defaultJsonValueFor(type: FlagValueType, index: number): string {
-  switch (type) {
-    case "boolean": { return index === 0 ? "true" : "false"; }
-    case "string": { return JSON.stringify(""); }
-    case "number": { return "0"; }
-    case "json": { return "{}"; }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1041,96 +1063,101 @@ export function FlagConditionEditor(props: {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground w-10 text-right">{props.isFirst ? "If" : "and"}</span>
-      {customMode ? (
-        <DesignInput
-          size="sm"
-          className="w-44 font-mono"
-          aria-label="Custom attribute"
-          placeholder="custom.plan"
-          value={props.condition.attribute}
-          onChange={(event) => props.onChange({ ...props.condition, attribute: event.target.value })}
-        />
-      ) : (
-        <DesignSelectorDropdown
-          size="sm"
-          className="w-44"
-          value={isCommonAttribute ? props.condition.attribute : ""}
-          placeholder="Attribute"
-          onValueChange={(value) => {
-            if (value === CUSTOM_ATTRIBUTE_OPTION) {
-              setCustomMode(true);
-              props.onChange({ ...props.condition, attribute: "custom." });
-              return;
-            }
-            props.onChange({ ...props.condition, attribute: value });
-          }}
-          options={[
-            ...COMMON_ATTRIBUTES.map((attribute) => ({ value: attribute.value, label: attribute.label })),
-            { value: CUSTOM_ATTRIBUTE_OPTION, label: "Custom attribute…" },
-          ]}
-        />
-      )}
-      <DesignSelectorDropdown
-        size="sm"
-        className="w-44"
-        value={props.condition.operator}
-        onValueChange={setOperator}
-        options={FLAG_OPERATORS.map((operator) => ({
-          value: operator,
-          label: getOperatorMetadataOrThrow(operator).label,
-        }))}
-      />
-      {metadata.arity === "single" && metadata.valueKind === "segment" && (
-        segmentOptions.length > 0 ? (
-          <DesignSelectorDropdown
+    <div className="flex items-start gap-2 rounded-xl bg-foreground/[0.025] p-2 ring-1 ring-black/[0.05] dark:ring-white/[0.05]">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.04] text-[11px] font-medium text-muted-foreground">
+        {props.isFirst ? "If" : "and"}
+      </span>
+      <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-3">
+        {customMode ? (
+          <DesignInput
             size="sm"
-            className="w-44"
-            value={props.condition.value ?? ""}
-            placeholder="Segment"
-            onValueChange={(value) => props.onChange({ ...props.condition, value })}
-            options={segmentOptions}
+            className="min-w-0 w-full font-mono"
+            aria-label="Custom attribute"
+            placeholder="custom.plan"
+            value={props.condition.attribute}
+            onChange={(event) => props.onChange({ ...props.condition, attribute: event.target.value })}
           />
         ) : (
-          <span className="text-xs text-muted-foreground">No segments defined in this project yet.</span>
-        )
-      )}
-      {metadata.arity === "single" && metadata.valueKind !== "segment" && (
-        <DesignInput
+          <DesignSelectorDropdown
+            size="sm"
+            className="min-w-0 w-full"
+            value={isCommonAttribute ? props.condition.attribute : ""}
+            placeholder="Attribute"
+            onValueChange={(value) => {
+              if (value === CUSTOM_ATTRIBUTE_OPTION) {
+                setCustomMode(true);
+                props.onChange({ ...props.condition, attribute: "custom." });
+                return;
+              }
+              props.onChange({ ...props.condition, attribute: value });
+            }}
+            options={[
+              ...COMMON_ATTRIBUTES.map((attribute) => ({ value: attribute.value, label: attribute.label })),
+              { value: CUSTOM_ATTRIBUTE_OPTION, label: "Custom attribute…" },
+            ]}
+          />
+        )}
+        <DesignSelectorDropdown
           size="sm"
-          className="w-52"
-          aria-label="Condition value"
-          type={metadata.valueKind === "datetime" ? "datetime-local" : "text"}
-          inputMode={metadata.valueKind === "number" ? "decimal" : undefined}
-          placeholder={metadata.valueKind === "semver" ? "1.2.3" : metadata.valueKind === "number" ? "42" : "value"}
-          value={metadata.valueKind === "datetime" && props.condition.value != null
-            ? getInputDatetimeLocalString(new Date(props.condition.value))
-            : props.condition.value ?? ""}
-          onChange={(event) => props.onChange({
-            ...props.condition,
-            value: metadata.valueKind === "datetime" && event.target.value.length > 0
-              ? new Date(event.target.value).toISOString()
-              : event.target.value,
-          })}
+          className="min-w-0 w-full"
+          value={props.condition.operator}
+          onValueChange={setOperator}
+          options={FLAG_OPERATORS.map((operator) => ({
+            value: operator,
+            label: getOperatorMetadataOrThrow(operator).label,
+          }))}
         />
-      )}
-      {metadata.arity === "list" && (
-        <DesignInput
-          size="sm"
-          className="w-64"
-          aria-label="Condition values (comma-separated)"
-          placeholder="value-a, value-b, value-c"
-          value={(props.condition.values ?? []).join(", ")}
-          onChange={(event) => props.onChange({
-            ...props.condition,
-            values: event.target.value.split(",").map((value) => value.trim()).filter((value) => value.length > 0),
-          })}
-        />
-      )}
+        {metadata.arity === "single" && metadata.valueKind === "segment" && (
+          segmentOptions.length > 0 ? (
+            <DesignSelectorDropdown
+              size="sm"
+              className="min-w-0 w-full"
+              value={props.condition.value ?? ""}
+              placeholder="Segment"
+              onValueChange={(value) => props.onChange({ ...props.condition, value })}
+              options={segmentOptions}
+            />
+          ) : (
+            <span className="flex min-h-8 items-center text-xs text-muted-foreground">No segments defined yet.</span>
+          )
+        )}
+        {metadata.arity === "single" && metadata.valueKind !== "segment" && (
+          <DesignInput
+            size="sm"
+            className="min-w-0 w-full"
+            aria-label="Condition value"
+            type={metadata.valueKind === "datetime" ? "datetime-local" : "text"}
+            inputMode={metadata.valueKind === "number" ? "decimal" : undefined}
+            placeholder={metadata.valueKind === "semver" ? "1.2.3" : metadata.valueKind === "number" ? "42" : "value"}
+            value={metadata.valueKind === "datetime" && props.condition.value != null
+              ? getInputDatetimeLocalString(new Date(props.condition.value))
+              : props.condition.value ?? ""}
+            onChange={(event) => props.onChange({
+              ...props.condition,
+              value: metadata.valueKind === "datetime" && event.target.value.length > 0
+                ? new Date(event.target.value).toISOString()
+                : event.target.value,
+            })}
+          />
+        )}
+        {metadata.arity === "list" && (
+          <DesignInput
+            size="sm"
+            className="min-w-0 w-full"
+            aria-label="Condition values (comma-separated)"
+            placeholder="value-a, value-b, value-c"
+            value={(props.condition.values ?? []).join(", ")}
+            onChange={(event) => props.onChange({
+              ...props.condition,
+              values: event.target.value.split(",").map((value) => value.trim()).filter((value) => value.length > 0),
+            })}
+          />
+        )}
+      </div>
       <DesignButton
         variant="ghost"
         size="icon"
+        className="shrink-0"
         aria-label="Remove condition"
         disabled={props.removeDisabled}
         onClick={props.onRemove}
@@ -1145,16 +1172,7 @@ export function FlagConditionEditor(props: {
 // Publish review summary
 // ---------------------------------------------------------------------------
 
-function summarizeChanges(before: FlagConfig, after: FlagConfig, mode: "create" | "edit"): string[] {
-  if (mode === "create") {
-    const lines = [
-      `Type: ${after.type} with ${after.variants.length} variant${after.variants.length === 1 ? "" : "s"}.`,
-      `${after.rules.length === 0 ? "No targeting rules" : `${after.rules.length} targeting rule${after.rules.length === 1 ? "" : "s"}`}; default serves ${after.defaultServe.type === "variant" ? "a single variant" : "a percentage split"}.`,
-    ];
-    if (after.holdoutBps > 0) lines.push(`Holdout: ${formatBps(after.holdoutBps)} of traffic excluded.`);
-    if (after.prerequisites.length > 0) lines.push(`${after.prerequisites.length} prerequisite${after.prerequisites.length === 1 ? "" : "s"}.`);
-    return lines;
-  }
+function summarizeChanges(before: FlagConfig, after: FlagConfig): string[] {
   const lines: string[] = [];
   const compare = (label: string, beforeValue: unknown, afterValue: unknown) => {
     if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) lines.push(label);
@@ -1169,30 +1187,4 @@ function summarizeChanges(before: FlagConfig, after: FlagConfig, mode: "create" 
   compare(`Holdout: ${formatBps(before.holdoutBps)} → ${formatBps(after.holdoutBps)}.`, before.holdoutBps, after.holdoutBps);
   compare("Mutual exclusion group changed.", before.mutualExclusionGroup, after.mutualExclusionGroup);
   return lines;
-}
-
-/** Blank flag draft used by the create page. */
-export function createEmptyFlagDraft(nowMillis: number): FlagConfig {
-  const enabledVariantId = generateShortId("variant");
-  const disabledVariantId = generateShortId("variant");
-  return {
-    internalId: generateShortId("flag"),
-    displayName: "",
-    description: "",
-    type: "boolean",
-    enabled: false,
-    killed: false,
-    archived: false,
-    variants: [
-      { id: enabledVariantId, label: "On", jsonValue: "true" },
-      { id: disabledVariantId, label: "Off", jsonValue: "false" },
-    ],
-    fallbackVariantId: disabledVariantId,
-    defaultServe: { type: "variant", variantId: disabledVariantId },
-    rules: [],
-    prerequisites: [],
-    holdoutBps: 0,
-    mutualExclusionGroup: null,
-    createdAtMillis: nowMillis,
-  };
 }

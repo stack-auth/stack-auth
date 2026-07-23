@@ -144,7 +144,6 @@ export default function PageClient({ flagKey }: PageClientProps) {
         // tab, config push). The editor's draft would otherwise silently go
         // stale relative to the saved flag it diffs against.
         key={JSON.stringify(flag)}
-        mode="edit"
         fixedFlagKey={flagKey}
         initialFlag={flag}
         section={section}
