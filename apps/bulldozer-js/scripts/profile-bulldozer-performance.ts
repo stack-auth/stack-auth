@@ -225,10 +225,10 @@ async function main() {
   await db.applyRemainingMigrations();
   let snapshot = (await db.getSnapshot()).snapshot;
   for (let i = 0; i < 8; i++) {
-    snapshot = await snapshot.setOrDeleteRow({ tableId: "prices", rowIdentifier: `asset-${i}`, newRowData: { asset: `asset-${i}`, usd: 100 + i } });
+    snapshot = (await snapshot.setOrDeleteRow({ tableId: "prices", rowIdentifier: `asset-${i}`, newRowData: { asset: `asset-${i}`, usd: 100 + i } })).newSnapshot;
   }
   for (let i = 0; i < rowCount; i++) {
-    snapshot = await snapshot.setOrDeleteRow({ tableId: "events", rowIdentifier: `event-${i}`, newRowData: eventRow(i) });
+    snapshot = (await snapshot.setOrDeleteRow({ tableId: "events", rowIdentifier: `event-${i}`, newRowData: eventRow(i) })).newSnapshot;
   }
 
   resetMetrics();
@@ -236,11 +236,11 @@ async function main() {
   const targetIndex = rowCount - 1;
   for (let iteration = 0; iteration < measuredIterations; iteration++) {
     const start = performance.now();
-    snapshot = await snapshot.setOrDeleteRow({
+    snapshot = (await snapshot.setOrDeleteRow({
       tableId: "events",
       rowIdentifier: `event-${targetIndex}`,
       newRowData: eventRow(targetIndex, rowCount * 10 + iteration),
-    });
+    })).newSnapshot;
     durations.push(performance.now() - start);
   }
 

@@ -259,7 +259,7 @@ export function concatStacktracesIfRejected<T>(promise: Promise<T>): void {
   });
 }
 
-export async function wait(ms: number) {
+export async function wait(ms: number, options?: { unref?: boolean }) {
   if (!Number.isFinite(ms) || ms < 0) {
     throw new HexclaveAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
   }
@@ -267,7 +267,10 @@ export async function wait(ms: number) {
     throw new HexclaveAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
   }
   return await traceSpan({ description: 'wait(...)', attributes: { 'stack.wait.ms': ms } }, async (span) => {
-    return await new Promise<void>(resolve => setTimeout(resolve, ms));
+    return await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, ms);
+      if (options?.unref === true && typeof timeout === "object") timeout.unref();
+    });
   });
 }
 import.meta.vitest?.test("wait", async ({ expect }) => {
@@ -279,6 +282,10 @@ import.meta.vitest?.test("wait", async ({ expect }) => {
 
   // Test with zero
   await expect(wait(0)).resolves.toBeUndefined();
+
+  // Node's unref option must preserve the normal wait behavior while another
+  // referenced handle (the test runner) owns the process lifetime.
+  await expect(wait(0, { unref: true })).resolves.toBeUndefined();
 
   // Test with negative number
   await expect(wait(-10)).rejects.toThrow("wait() requires a non-negative integer");

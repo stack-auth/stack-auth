@@ -93,43 +93,45 @@ export function OnboardingPage(props: OnboardingPageProps) {
       </div>
 
       <div className="onboarding-cascade fixed bottom-6 left-0 right-0 z-50 flex justify-center" style={{ "--cascade-i": 3 } as CSSProperties}>
-        <div className="relative flex items-center gap-[5px]">
+        <div className="relative flex h-5 w-[150px] items-center justify-center">
           {props.onBack != null && (
             <button
               type="button"
               onClick={props.onBack}
               disabled={props.disabled}
               aria-label="Go back to previous step"
-              className="absolute right-full mr-3 inline-flex h-5 w-5 items-center justify-center rounded-full text-foreground/40 transition-colors hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-40"
+              className="absolute left-0 inline-flex h-5 w-5 items-center justify-center rounded-full text-foreground/40 transition-colors hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowLeftIcon className="h-3.5 w-3.5" weight="bold" />
             </button>
           )}
-          {props.steps.map((step, index) => {
-            const isComplete = index < currentIndex;
-            const isCurrent = index === currentIndex;
-            const isClickable = isComplete && !props.disabled && props.onStepClick != null;
+          <span className="flex items-center gap-[5px]">
+            {props.steps.map((step, index) => {
+              const isComplete = index < currentIndex;
+              const isCurrent = index === currentIndex;
+              const isClickable = isComplete && !props.disabled && props.onStepClick != null;
 
-            return (
-              <button
-                key={step.id}
-                type="button"
-                disabled={!isClickable}
-                onClick={() => { if (isClickable) props.onStepClick?.(step.id); }}
-                aria-label={isClickable ? `Go to step: ${step.label}` : step.label}
-                aria-current={isCurrent ? "step" : undefined}
-                className={cn(
-                  "rounded-full transition-colors duration-300 hover:transition-none",
-                  isCurrent
-                    ? "h-[6px] w-5 bg-foreground"
-                    : isComplete
-                      ? "h-[6px] w-[6px] cursor-pointer bg-foreground/40 hover:bg-foreground/60"
-                      : "h-[6px] w-[6px] cursor-default bg-foreground/20",
-                )}
-                title={step.label}
-              />
-            );
-          })}
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  disabled={!isClickable}
+                  onClick={() => { if (isClickable) props.onStepClick?.(step.id); }}
+                  aria-label={isClickable ? `Go to step: ${step.label}` : step.label}
+                  aria-current={isCurrent ? "step" : undefined}
+                  className={cn(
+                    "rounded-full transition-colors duration-300 hover:transition-none",
+                    isCurrent
+                      ? "h-[6px] w-5 bg-foreground"
+                      : isComplete
+                        ? "h-[6px] w-[6px] cursor-pointer bg-foreground/40 hover:bg-foreground/60"
+                        : "h-[6px] w-[6px] cursor-default bg-foreground/20",
+                  )}
+                  title={step.label}
+                />
+              );
+            })}
+          </span>
         </div>
       </div>
     </div>
