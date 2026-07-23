@@ -696,67 +696,9 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
-  // BEGIN 2026-07-23: deployments.services entries gained a required `type` and lost `domains`
-  // (custom domains are now purely operational state in the backend database). Service ids
-  // cannot contain dots, so the path segment positions below are exact.
-  if (isBranchOrHigher) {
-    res = removeProperty(res, p => p.length >= 4 && p[0] === "deployments" && p[1] === "services" && p[3] === "domains");
-    // Only whole-object service entries can be defaulted here; dot-notation
-    // field overrides (e.g. `deployments.services.web.framework`) always edit
-    // an entry that was originally created as a whole object, so this covers
-    // every service that exists.
-    res = mapProperty(res, p => p.length === 3 && p[0] === "deployments" && p[1] === "services", (value) => {
-      if (isObjectLike(value) && !("type" in value)) {
-        return { ...value, type: "vercel" };
-      }
-      return value;
-    });
-  }
-  // END
-
   // return the result
   return res;
 };
-
-import.meta.vitest?.test("migrateConfigOverride migrates legacy deployment service entries", ({ expect }) => {
-  expect(migrateConfigOverride("branch", {
-    deployments: {
-      services: {
-        web: {
-          framework: "nextjs",
-          domains: {
-            "example-com": { hostname: "example.com", isPrimary: true },
-          },
-        },
-      },
-    },
-  })).toEqual({
-    deployments: {
-      services: {
-        web: {
-          type: "vercel",
-          framework: "nextjs",
-        },
-      },
-    },
-  });
-  // Dot-notation variants: whole-entry keys get the type default, nested
-  // domain keys are dropped, and field-level keys pass through untouched.
-  expect(migrateConfigOverride("branch", {
-    "deployments.services.web": { framework: "nextjs" },
-    "deployments.services.web.domains.example-com": { hostname: "example.com" },
-    "deployments.services.api.buildCommand": "pnpm build",
-  })).toEqual({
-    "deployments.services.web": { type: "vercel", framework: "nextjs" },
-    "deployments.services.api.buildCommand": "pnpm build",
-  });
-  // Entries that already have a type are left alone.
-  expect(migrateConfigOverride("branch", {
-    "deployments.services.web": { type: "vercel", framework: "nextjs" },
-  })).toEqual({
-    "deployments.services.web": { type: "vercel", framework: "nextjs" },
-  });
-});
 
 import.meta.vitest?.test("migrateConfigOverride removes legacy sourceOfTruth overrides", ({ expect }) => {
   expect(migrateConfigOverride("project", {

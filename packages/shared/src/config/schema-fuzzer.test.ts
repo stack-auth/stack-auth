@@ -219,12 +219,6 @@ const branchSchemaFuzzerConfig = [{
             key: [undefined] as (string | undefined)[],
           }],
         }],
-        domains: [{  // ensure migration works (domains moved out of the config in 2026-07)
-          "some-domain-id": [{
-            hostname: ["example.com", "www.example.com", ""],
-            isPrimary: [true, false],
-          }],
-        }],
       }],
     }],
   }],
