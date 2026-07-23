@@ -328,7 +328,14 @@ export default workflow("${workflowId}", {
 }, async (event, step) => {
   const user = await step.run("fetch-user", () => hexclaveApp.getUser(event.data.userId));
   if (user == null) return;
-  await step.run("tag-user", () => user.update({ serverMetadata: { taggedByWorkflow: true } }));
+  // A step's result is persisted and replayed as plain JSON, so the memoized
+  // \`user\` above is a methodless data object on the replay where "tag-user"
+  // first runs. To mutate, re-fetch a live SDK handle inside the same step
+  // that performs the mutation.
+  await step.run("tag-user", async () => {
+    const liveUser = await hexclaveApp.getUser(event.data.userId);
+    await liveUser.update({ serverMetadata: { taggedByWorkflow: true } });
+  });
 });
 `);
       await sendCustomEvent(expect, eventName, { userId });
@@ -343,7 +350,10 @@ export default workflow("${workflowId}", {
         accessType: "admin",
       });
       const stepsByKey = new Map<string, any>(detailsResponse.body.steps.map((step: any) => [step.step_key, step]));
-      expect(stepsByKey.get("fetch-user").result).toMatchObject({ id: userId, primary_email: email });
+      // hexclaveApp.getUser() returns an SDK user object, which serializes with
+      // the SDK's camelCase field names (primaryEmail) — not the snake_case
+      // REST wire shape (primary_email).
+      expect(stepsByKey.get("fetch-user").result).toMatchObject({ id: userId, primaryEmail: email });
 
       // The side effect actually happened, with first-party credentials.
       const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, { method: "GET", accessType: "server" });
