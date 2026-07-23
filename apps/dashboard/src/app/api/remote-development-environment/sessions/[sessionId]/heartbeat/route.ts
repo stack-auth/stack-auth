@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPendingRemoteDevelopmentEnvironmentBrowserSecretConfirmationCode, heartbeatRemoteDevelopmentEnvironmentSession } from "@/lib/remote-development-environment/manager";
 import { assertRemoteDevelopmentEnvironmentRequest } from "@/lib/remote-development-environment/security";
 
-export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   const securityResponse = assertRemoteDevelopmentEnvironmentRequest(req);
