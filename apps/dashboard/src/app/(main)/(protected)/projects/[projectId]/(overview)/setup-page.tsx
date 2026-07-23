@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, XIcon } from "@phosphor-icons/react";
+import { getHexclaveApiBaseUrl } from '@hexclave/shared/dist/utils/cloud-hosts';
 import { remindersPrompt } from '@hexclave/shared/dist/ai/unified-prompts/reminders';
 import { use } from "@hexclave/shared/dist/utils/react";
 import { deindent } from '@hexclave/shared/dist/utils/strings';
@@ -65,7 +66,9 @@ function getManualSetupDocsUrl() {
 }
 
 function getSetupApiBaseUrl() {
-  return getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL;
+  // Prefer the hexclave-branded host post-rebrand: the deployment env var may still be set to the
+  // legacy api.stack-auth.com, but the two cloud hosts are equivalent, so show the hexclave brand.
+  return getHexclaveApiBaseUrl(getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') ?? PROD_API_BASE_URL);
 }
 
 function buildCloudSetupPrompt(options: {
@@ -76,6 +79,31 @@ function buildCloudSetupPrompt(options: {
   const { docsBaseUrl, projectId, apiBaseUrl } = options;
   const normalizedDocsBaseUrl = docsBaseUrl.replace(/\/$/, '');
   const reminders = remindersPrompt.replaceAll(PROD_DOCS_BASE_URL, normalizedDocsBaseUrl);
+
+  // The SDK's baked-in default base URL is the production cloud API (api.hexclave.com). Both cloud
+  // brands (api.stack-auth.com / api.hexclave.com) resolve to it, so when this deployment is the
+  // production cloud there's no point telling the agent to set a custom API URL — it's already the
+  // default. Omit it in that case; otherwise surface the hexclave-branded URL (dev/staging cloud
+  // deployments and self-host custom domains).
+  const hexclaveApiBaseUrl = getHexclaveApiBaseUrl(apiBaseUrl);
+  const isDefaultApiBaseUrl = hexclaveApiBaseUrl === PROD_API_BASE_URL;
+
+  const projectValues = isDefaultApiBaseUrl
+    ? deindent`
+      - Hexclave project ID: ${projectId}
+    `
+    : deindent`
+      - Hexclave API URL: ${hexclaveApiBaseUrl}
+      - Hexclave project ID: ${projectId}
+    `;
+
+  const envVarInstructions = isDefaultApiBaseUrl
+    ? deindent`
+      Create the framework-specific public environment variable for the Hexclave project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify a different environment variable name, use the docs' framework-specific name with the value above.
+    `
+    : deindent`
+      Create the framework-specific public environment variables for the Hexclave API URL and project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_API_URL and VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify different environment variable names, use the docs' framework-specific names with the values above.
+    `;
 
   return deindent`
     Install and set up Hexclave in this project by following these instructions:
@@ -88,10 +116,9 @@ function buildCloudSetupPrompt(options: {
 
     Use these Hexclave project values when creating environment variables:
 
-    - Hexclave API URL: ${apiBaseUrl}
-    - Hexclave project ID: ${projectId}
+    ${projectValues}
 
-    Create the framework-specific public environment variables for the Hexclave API URL and project ID. For example, Next.js uses NEXT_PUBLIC_HEXCLAVE_API_URL and NEXT_PUBLIC_HEXCLAVE_PROJECT_ID, while Vite-based frameworks use VITE_HEXCLAVE_API_URL and VITE_HEXCLAVE_PROJECT_ID. If the Hexclave docs for this framework specify different environment variable names, use the docs' framework-specific names with the values above.
+    ${envVarInstructions}
 
     After setup finishes, verify that the Hexclave MCP server is registered in your AI client config — name: \`hexclave\`, transport: \`http\`, URL: \`https://mcp.hexclave.com/mcp\`. If it is not registered, add it manually so future agents have live access to Hexclave docs and APIs.
 
