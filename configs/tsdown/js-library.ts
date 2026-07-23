@@ -60,6 +60,55 @@ const createEsmExports = (value: unknown): PackageJsonValue | undefined => {
     : undefined;
 };
 
+const findPackageRootFromSource = (sourcePath: string): string => {
+  let currentPath = path.dirname(path.resolve(sourcePath));
+  while (true) {
+    if (fs.existsSync(path.join(currentPath, 'package.json'))) {
+      return currentPath;
+    }
+
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) {
+      break;
+    }
+    currentPath = parentPath;
+  }
+
+  throw new Error(`Could not find a package.json for ESM source path ${sourcePath}`);
+};
+
+const findPackageRoot = (bundle: Rolldown.OutputBundle): string => {
+  let fallbackSourcePath: string | undefined;
+
+  for (const output of Object.values(bundle)) {
+    if (output.type !== 'chunk' || !output.isEntry) {
+      continue;
+    }
+
+    if (output.facadeModuleId != null && !output.facadeModuleId.startsWith('\0')) {
+      return findPackageRootFromSource(output.facadeModuleId);
+    }
+
+    fallbackSourcePath = output.moduleIds.find((moduleId) => !moduleId.startsWith('\0'));
+    if (fallbackSourcePath != null) {
+      return findPackageRootFromSource(fallbackSourcePath);
+    }
+  }
+
+  for (const output of Object.values(bundle)) {
+    if (output.type !== 'chunk') {
+      continue;
+    }
+
+    fallbackSourcePath ??= output.moduleIds.find((moduleId) => !moduleId.startsWith('\0'));
+    if (fallbackSourcePath != null) {
+      return findPackageRootFromSource(fallbackSourcePath);
+    }
+  }
+
+  throw new Error('Could not determine the package source path from the ESM output bundle');
+};
+
 // https://github.com/egoist/tsup/issues/953
 const fixImportExtensions = (extension: string = ".js"): Rolldown.Plugin => ({
   name: "fix-import-extensions",
@@ -170,12 +219,14 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
       },
       {
         name: 'stackframe: mark esm output as modules',
-        writeBundle(outputOptions) {
+        writeBundle(outputOptions, bundle) {
           if (outputOptions.dir == null || path.basename(outputOptions.dir) !== 'esm') {
             return;
           }
 
-          const packageJsonPath = path.resolve(outputOptions.dir, '../../package.json');
+          const packageRoot = findPackageRoot(bundle);
+          const esmOutputDir = path.resolve(packageRoot, outputOptions.dir);
+          const packageJsonPath = path.join(packageRoot, 'package.json');
           const packageJson: {
             name?: string;
             exports?: unknown;
@@ -183,8 +234,9 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
 
           // Strict runtimes like tsx parse ESM output as CJS without this marker.
           // Preserve self-referencing exports because this file becomes a nested package scope.
+          fs.mkdirSync(esmOutputDir, { recursive: true });
           fs.writeFileSync(
-            path.join(outputOptions.dir, 'package.json'),
+            path.join(esmOutputDir, 'package.json'),
             `${JSON.stringify({
               name: packageJson.name,
               type: 'module',

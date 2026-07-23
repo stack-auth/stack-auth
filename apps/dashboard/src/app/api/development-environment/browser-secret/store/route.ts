@@ -2,7 +2,6 @@ import { readRemoteDevelopmentEnvironmentJsonBody } from "@/lib/remote-developme
 import { assertRemoteDevelopmentEnvironmentBrowserSecretSetupRequest, storeRemoteDevelopmentEnvironmentBrowserSecret } from "@/lib/remote-development-environment/browser-secret";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 function browserSecretFromBody(value: unknown): string | null {
   if (
