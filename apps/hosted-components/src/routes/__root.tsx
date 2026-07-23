@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import * as Sentry from '@sentry/react';
 import { HexclaveClientApp, HexclaveProvider, HexclaveTheme } from '@hexclave/react';
 import { publishableClientKeyNotNecessarySentinel } from '@hexclave/shared/dist/utils/oauth';
 import { runAsynchronously } from '@hexclave/shared/dist/utils/promises';
@@ -165,6 +166,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
     console.error('Hosted components error:', error, errorInfo);
   }
 
