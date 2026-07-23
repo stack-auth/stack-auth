@@ -16,16 +16,18 @@ describe("createConfigFileJiti", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // The project has no node_modules, so both the canonical root import and the
-  // deprecated `/config` subpath must fall back to the CLI's bundled SDK copy.
+  // The project has no node_modules, so every supported specifier — the
+  // canonical SDK root, the deprecated `<pkg>/config` subpath, and legacy
+  // `@stackframe/*` roots — must fall back to the CLI's bundled SDK copy.
   it.each([
-    ["root package", "@hexclave/js"],
-    ["legacy /config subpath", "@hexclave/js/config"],
-  ])("loads config authoring imports from the %s when the project has no SDK installed", async (_label, importSpecifier) => {
+    ["canonical root package", 'import { defineHexclaveConfig } from "@hexclave/js";', "defineHexclaveConfig"],
+    ["deprecated /config subpath", 'import { defineHexclaveConfig } from "@hexclave/js/config";', "defineHexclaveConfig"],
+    ["legacy @stackframe root", 'import { defineStackConfig } from "@stackframe/stack";', "defineStackConfig"],
+  ])("loads config authoring imports from the %s when the project has no SDK installed", async (_label, importLine, defineFn) => {
     const configPath = path.join(tmpDir, "hexclave.config.ts");
     fs.writeFileSync(
       configPath,
-      `import { defineHexclaveConfig } from "${importSpecifier}";\nexport const config = defineHexclaveConfig({ auth: { allowSignUp: true } });\n`,
+      `${importLine}\nexport const config = ${defineFn}({ auth: { allowSignUp: true } });\n`,
     );
 
     const configModule = await createConfigFileJiti(configPath).import<{ config: { auth: { allowSignUp: boolean } } }>(configPath);
