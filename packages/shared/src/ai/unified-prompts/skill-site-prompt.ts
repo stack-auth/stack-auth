@@ -6,6 +6,7 @@ import { cliHelpPrompt } from "./skill-site-prompt-parts/cli-help";
 import { configDocsPrompt } from "./skill-site-prompt-parts/config-docs";
 import { customComponentsInstructionsPrompt } from "./skill-site-prompt-parts/custom-components-instructions";
 import { dashboardInstructionsPrompt } from "./skill-site-prompt-parts/dashboard-instructions";
+import { deploymentsSkillSection } from "./skill-site-prompt-parts/deployments-skill";
 import { docsIndexPrompt } from "./skill-site-prompt-parts/docs-index";
 import { sdkInterfaceSourcePrompt } from "./skill-site-prompt-parts/sdk-interface-source";
 
@@ -73,3 +74,17 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
 }
 
 export const skillSitePrompt = buildSkillSitePrompt();
+
+// The /deployments variant of the skill: the entire base skill, followed by the
+// Deployments-specific addendum. Served at https://skill.hexclave.com/deployments
+// so an agent pointed at that URL gets the full Hexclave skill plus the deeper
+// Deployments material in one document.
+export function buildDeploymentsSkillSitePrompt(baseSkillPrompt = skillSitePrompt) {
+  return deindent`
+    ${baseSkillPrompt}
+
+    ${deploymentsSkillSection}
+  `;
+}
+
+export const deploymentsSkillSitePrompt = buildDeploymentsSkillSitePrompt();
