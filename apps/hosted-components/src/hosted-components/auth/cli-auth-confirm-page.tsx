@@ -1,9 +1,41 @@
 import { useStackApp, useCliAuthConfirmation } from "@hexclave/react";
-import { KeyRound } from "lucide-react";
+import { Check, CircleAlert, Terminal } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { Button, Typography } from "~/components/ui";
+import { Button, Spinner, Typography } from "~/components/ui";
 
-import { HostedAuthLoading, HostedAuthMessage, HostedAuthShell } from "./supporting/layout";
+import { HostedAuthShell } from "./supporting/layout";
+
+function CliAuthPage(props: {
+  icon: ReactNode,
+  title: string,
+  description: ReactNode,
+  children?: ReactNode,
+  fullPage?: boolean,
+}) {
+  return (
+    <HostedAuthShell fullPage={props.fullPage}>
+      <div className="flex flex-col items-center text-center">
+        {props.icon}
+        <Typography type="h1" className="mt-6 text-xl font-semibold tracking-tight">
+          {props.title}
+        </Typography>
+        <Typography className="mt-2 max-w-[34ch] text-sm leading-6 text-muted-foreground">
+          {props.description}
+        </Typography>
+      </div>
+      {props.children != null && <div className="mt-8 flex flex-col gap-2">{props.children}</div>}
+    </HostedAuthShell>
+  );
+}
+
+function CliAuthIcon(props: { children: ReactNode }) {
+  return (
+    <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-muted/50">
+      {props.children}
+    </div>
+  );
+}
 
 export function HostedCliAuthConfirm(props: {
   fullPage?: boolean,
@@ -13,96 +45,77 @@ export function HostedCliAuthConfirm(props: {
 
   if (cliAuth.status === "success") {
     return (
-      <HostedAuthMessage
-        title="CLI Authorized Successfully"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+      <CliAuthPage
+        icon={<CliAuthIcon><Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden /></CliAuthIcon>}
+        title="Device connected"
+        description="You can close this window and return to your terminal."
         fullPage={props.fullPage}
-      >
-        The CLI application has been authorized successfully. You can close this window and return to the command line.
-      </HostedAuthMessage>
+      />
     );
   }
 
   if (cliAuth.status === "error") {
     return (
-      <HostedAuthMessage
-        title="Authorization Failed"
-        primaryAction={cliAuth.retry}
-        primaryText="Try again"
-        secondaryAction={() => app.redirectToHome()}
-        secondaryText="Cancel"
+      <CliAuthPage
+        icon={<CliAuthIcon><CircleAlert className="h-5 w-5 text-destructive" aria-hidden /></CliAuthIcon>}
+        title="Authorization failed"
+        description="Something went wrong. Try again, or restart the sign-in from your terminal."
         fullPage={props.fullPage}
       >
-        <div className="flex flex-col gap-1 text-center">
-          <Typography className="text-sm text-destructive">
-            Failed to authorize the CLI application:
-          </Typography>
-          <Typography className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded-lg break-all">
-            This authorization request could not be completed. Please try again.
-          </Typography>
-        </div>
-      </HostedAuthMessage>
+        <Button onClick={cliAuth.retry} className="h-10 rounded-lg">
+          Try again
+        </Button>
+        <Button variant="ghost" onClick={() => app.redirectToHome()} className="h-10 rounded-lg text-muted-foreground">
+          Cancel
+        </Button>
+      </CliAuthPage>
     );
   }
 
   if (cliAuth.status === "invalid") {
     return (
-      <HostedAuthMessage
-        title="Invalid Authorization Link"
-        primaryAction={() => app.redirectToHome()}
-        primaryText="Go home"
+      <CliAuthPage
+        icon={<CliAuthIcon><CircleAlert className="h-5 w-5 text-destructive" aria-hidden /></CliAuthIcon>}
+        title="Invalid link"
+        description="This link is missing a login code. Restart the sign-in from your terminal to get a new one."
         fullPage={props.fullPage}
-      >
-        This CLI authorization link is missing a login code. Please return to the command line and start the login process again.
-      </HostedAuthMessage>
+      />
     );
   }
 
   if (cliAuth.status === "authorizing" || cliAuth.status === "redirecting") {
-    return <HostedAuthLoading fullPage={props.fullPage} />;
+    return (
+      <CliAuthPage
+        icon={<CliAuthIcon><Spinner size={20} className="text-muted-foreground" /></CliAuthIcon>}
+        title="Connecting…"
+        description="Finishing the authorization."
+        fullPage={props.fullPage}
+      />
+    );
   }
 
   return (
-    <HostedAuthShell fullPage={props.fullPage}>
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <KeyRound className="h-6 w-6" />
-        </div>
-        <Typography type="h2" className="mb-2 text-xl font-semibold tracking-tight">
-          Authorize CLI Application
-        </Typography>
-        <Typography className="text-sm text-muted-foreground">
-          A command line application is requesting access to your account. Clicking authorize will grant a secure access token to the CLI.
-        </Typography>
-      </div>
-
-      <div className="mt-6 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-left">
-        <Typography className="text-xs font-semibold text-destructive mb-1 uppercase tracking-wider">
-          Security Warning
-        </Typography>
-        <Typography className="text-xs text-muted-foreground leading-relaxed">
-          Make sure you trust the command line application, as it will gain access to your account. If you did not initiate this request, please close this page and ignore it.
-        </Typography>
-      </div>
-
-      <div className="mt-6 flex flex-col gap-2.5">
-        <Button
-          onClick={cliAuth.authorize}
-          disabled={cliAuth.isLoading}
-          className="h-10 rounded-xl font-semibold shadow-sm hover:shadow"
-        >
-          {cliAuth.isLoading ? "Authorizing..." : "Authorize"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => app.redirectToHome()}
-          disabled={cliAuth.isLoading}
-          className="h-10 rounded-xl font-semibold"
-        >
-          Cancel
-        </Button>
-      </div>
-    </HostedAuthShell>
+    <CliAuthPage
+      icon={<CliAuthIcon><Terminal className="h-5 w-5 text-foreground" aria-hidden /></CliAuthIcon>}
+      title="Authorize CLI"
+      description="A command line application wants to sign in to your account."
+      fullPage={props.fullPage}
+    >
+      <Button
+        onClick={cliAuth.authorize}
+        disabled={cliAuth.isLoading}
+        className="h-10 rounded-lg"
+      >
+        {cliAuth.isLoading ? "Authorizing…" : "Authorize"}
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={() => app.redirectToHome()}
+        disabled={cliAuth.isLoading}
+        className="h-10 rounded-lg text-muted-foreground"
+      >
+        Cancel
+      </Button>
+    </CliAuthPage>
   );
 }
