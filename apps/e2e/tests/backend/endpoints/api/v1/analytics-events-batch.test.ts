@@ -6,10 +6,10 @@ import { gzipSync } from "node:zlib";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 import {
-    getItemQuantity,
-    setItemQuantity,
-    waitForItemQuantityToReach,
-    waitForItemQuantityToStabilize,
+  getItemQuantity,
+  setItemQuantity,
+  waitForItemQuantityToReach,
+  waitForItemQuantityToStabilize,
 } from "../../../payment-quota-helpers";
 
 async function uploadEventBatch(options: {
