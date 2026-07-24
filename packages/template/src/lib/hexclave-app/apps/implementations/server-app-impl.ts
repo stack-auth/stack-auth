@@ -38,7 +38,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs } from "./span-context";
 
@@ -1837,9 +1837,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
 
     let settler!: TelemetrySettler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     const buffer = this._getServerTelemetryBuffer(userId);
     buffer.events.push({
       event: {
@@ -1933,9 +1933,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   private _enqueueServerSpanUpdate(userId: string | null, row: SpanUpdateRow): Promise<void> {
     let settler!: TelemetrySettler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     const buffer = this._getServerTelemetryBuffer(userId);
     const previous = buffer.spans.get(row.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
