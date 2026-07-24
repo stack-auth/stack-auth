@@ -2,8 +2,8 @@
 // Every such page is the same document: a content-negotiated endpoint that
 // serves styled HTML to browsers and raw `text/markdown` to agents/curl, with
 // the skill markdown embedded verbatim in a <details> block. Only the title,
-// description, lede, and the skill markdown itself differ per page, so those are
-// the parameters — everything else (styles, setup-prompt section, cards, footer,
+// description, lede, setup prompt, and the skill markdown itself differ per
+// page, so those are the parameters — everything else (styles, cards, footer,
 // copy script) is identical and lives here.
 
 const COMMON_HEADERS = {
@@ -15,7 +15,17 @@ const COMMON_HEADERS = {
   "Access-Control-Allow-Headers": "*",
 } as const;
 
-const SETUP_PROMPT_URL = "https://docs.hexclave.com/guides/getting-started/setup";
+export type SkillPageSetupPrompt = {
+  /** The sentence under the "Set Up with the Prompt" heading (plain text; escaped). */
+  blurb: string,
+  /**
+   * The exact text the copy button puts on the clipboard. For the general skill
+   * this is just the canonical setup docs URL — the agent fetches it and follows
+   * it. Per-app pages have no equivalent docs page, so they carry a one-line
+   * instruction that points the agent at their own skill URL instead.
+   */
+  text: string,
+};
 
 export type SkillPageContent = {
   /** Browser tab <title> (plain text; escaped). */
@@ -31,6 +41,8 @@ export type SkillPageContent = {
    * author-controlled literal content, never user input, so it is not escaped.
    */
   ledeHtml: string,
+  /** The copyable prompt shown in the "Set Up with the Prompt" section. */
+  setupPrompt: SkillPageSetupPrompt,
   /** The skill markdown: served raw to agents and embedded in the HTML page. */
   skillMarkdown: string,
 };
@@ -49,7 +61,8 @@ function renderHtml(content: SkillPageContent): string {
   const headingEscaped = escapeHtml(content.heading);
   const descriptionEscaped = escapeHtml(content.description);
   const skillEscaped = escapeHtml(content.skillMarkdown);
-  const setupPromptUrlEscaped = escapeHtml(SETUP_PROMPT_URL);
+  const setupPromptBlurbEscaped = escapeHtml(content.setupPrompt.blurb);
+  const setupPromptTextEscaped = escapeHtml(content.setupPrompt.text);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -116,6 +129,7 @@ function renderHtml(content: SkillPageContent): string {
   p { margin: 0 0 12px; }
   .install {
     display: flex; align-items: stretch; gap: 0;
+    /* The button must stay on one line next to the (possibly wrapping) prompt. */
     border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
     background: var(--surface);
   }
@@ -124,8 +138,10 @@ function renderHtml(content: SkillPageContent): string {
     padding: 12px 14px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 14px;
-    overflow-x: auto;
-    white-space: nowrap;
+    /* Prompts are full sentences, not one-line commands, so they wrap rather
+       than scroll sideways; long URLs inside them break instead of overflowing. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     font-variant-numeric: tabular-nums;
   }
   .copy-btn {
@@ -192,10 +208,10 @@ function renderHtml(content: SkillPageContent): string {
   <p class="lede">${content.ledeHtml}</p>
 
   <h2>Set Up with the Prompt</h2>
-  <p>Copy the canonical setup prompt into your coding agent. It contains the current Hexclave setup instructions and links back to this skill for follow-up questions.</p>
-  <div class="install" role="group" aria-label="Setup prompt URL">
-    <code id="install-cmd" translate="no">${setupPromptUrlEscaped}</code>
-    <button class="copy-btn" type="button" aria-label="Copy setup prompt URL" data-copy="${setupPromptUrlEscaped}">Copy</button>
+  <p>${setupPromptBlurbEscaped}</p>
+  <div class="install" role="group" aria-label="Setup prompt">
+    <code id="install-cmd" translate="no">${setupPromptTextEscaped}</code>
+    <button class="copy-btn" type="button" aria-label="Copy setup prompt" data-copy="${setupPromptTextEscaped}">Copy</button>
   </div>
 
   <h2>Fetch the Skill Directly</h2>
