@@ -1,6 +1,5 @@
 import { resetBranchConfigOverrideKeys, resetEnvironmentConfigOverrideKeys } from "@/lib/config";
 import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment";
-import { reconcileRemovedDeploymentServices } from "@/lib/deployments/reconcile-removed-services";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -50,9 +49,6 @@ export const POST = createSmartRouteHandler({
       branchId: req.auth.tenancy.branchId,
       keysToReset: req.body.keys,
     });
-    if (req.params.level === "branch") {
-      await reconcileRemovedDeploymentServices(req.auth.tenancy.id);
-    }
 
     return {
       statusCode: 200 as const,

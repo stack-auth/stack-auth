@@ -1,5 +1,4 @@
 import { HEXCLAVE_SERVICE_ID, assertServiceDefinitionsEditable, createServiceDefinitionInConfig, listServiceDefinitions, serviceToApiShape } from "@/lib/deployments";
-import { reconcileRemovedDeploymentServices } from "@/lib/deployments/reconcile-removed-services";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
@@ -26,10 +25,6 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    // Whole-config writes can remove a config-managed service without going
-    // through this app's DELETE route. Retry cleanup whenever the app is
-    // opened so a transient Vercel failure cannot leave a permanent orphan.
-    await reconcileRemovedDeploymentServices(auth.tenancy.id);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const definitions = listServiceDefinitions(auth.tenancy);
     const operationalRows = await prisma.deploymentService.findMany({

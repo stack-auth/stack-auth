@@ -8,6 +8,29 @@
 //   last-deployed build config, custom domains, runs) and is created lazily.
 //   Env vars are NOT stored there: their definitions live in the config, and
 //   secret values only ever pass through at deploy time.
+//
+// KNOWN GAP — orphaned operational rows. Deleting a service through the
+// dashboard's DELETE route tears down its Vercel project and its row. But a
+// service can also disappear via a whole-config write (a GitHub or CLI config
+// push, or a config-override key reset), and those paths deliberately know
+// nothing about Deployments — the config endpoints are app-agnostic
+// infrastructure, and an earlier version of this app hooked cleanup into them
+// directly, which meant a slow or failing Vercel call could break an unrelated
+// config write that had already committed. So today a config-as-code removal
+// leaves the DeploymentService row and its live Vercel project behind. Nothing
+// user-visible breaks (service listings are built from the config definitions,
+// so orphaned rows are simply never read, and re-adding the same service id
+// picks its old row back up), but we are leaking Vercel projects.
+//
+// TODO: sweep these with a cron job — a periodic internal route, registered in
+// apps/backend/vercel.json alongside the existing email-queue-step and
+// external-db-sync entries, that walks DeploymentService rows, drops the ones
+// whose serviceId is absent from their tenancy's rendered config, and deletes
+// the matching Vercel project. Doing it out-of-band is what makes it safe:
+// retries are free, no user-facing request blocks on Vercel, and the sweep
+// isn't racing a config write it might read a stale (replica-lagged) snapshot
+// of — reading "this service is gone" from a stale config and acting on it is
+// how you delete a live project by mistake.
 
 import { getBranchConfigOverrideSource, overrideBranchConfigOverride } from "@/lib/config";
 import { Tenancy } from "@/lib/tenancies";

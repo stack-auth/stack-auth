@@ -196,6 +196,10 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
+    // This is the only path that tears down a service's Vercel project.
+    // Removing a service through a whole-config write instead leaks it; see the
+    // "KNOWN GAP" note in @/lib/deployments for why, and the cron job that
+    // should eventually cover it.
     getServiceDefinitionOrThrow(auth.tenancy, params.service_id);
     await assertServiceDefinitionsEditable(auth.tenancy);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
