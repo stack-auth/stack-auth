@@ -55,6 +55,7 @@ const nextConfig = {
 
   experimental: {
     serverMinification: false,  // needs to be disabled for oidc-provider to work, which relies on the original constructor names
+    turbopackFileSystemCacheForDev: true,
   },
 
   serverExternalPackages: [

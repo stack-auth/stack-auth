@@ -1754,6 +1754,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     return {
       id: crud.id,
       displayName: crud.display_name,
+      isDevelopmentEnvironment: crud.is_development_environment,
       pushedConfigError: crud.pushed_config_error == null ? null : {
         message: crud.pushed_config_error.message,
       },
