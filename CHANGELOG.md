@@ -7,6 +7,7 @@
 ![Analytics table search bar](https://raw.githubusercontent.com/hexclave/hexclave/dev/apps/dashboard/public/assets/changelog-analytics-search.png)
 
 - Analytics tables now have an inline search bar that filters rows instantly, with AI-powered natural-language filters shown as removable chips.
+- Fixed a bug where the devtool indicator would sometimes not show during development.
 
 ## 7/10/26
 
