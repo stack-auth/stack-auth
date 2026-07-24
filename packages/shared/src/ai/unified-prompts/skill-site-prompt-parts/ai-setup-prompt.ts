@@ -1,3 +1,4 @@
+import packageJson from "../../../../package.json";
 import { ALL_APPS, type AppId } from "../../../apps/apps-config";
 import { typedEntries } from "../../../utils/objects";
 import { deindent } from "../../../utils/strings";
@@ -890,12 +891,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           \`\`\`html
           <script type="module">
             // Pin a specific version so a new release cannot unexpectedly break your page.
-            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${packageJson.version}";
 
             globalThis.hexclaveClientApp = new HexclaveClientApp({
-              // Environment variables are NOT read with this approach, so the project ID
-              // (and the publishable client key, if the project has requirePublishableClientKey
-              // enabled) MUST be passed explicitly here.
+              // As you cannot inject environment variables into the browser without a bundler,
+              // the project ID must be passed explicitly here.
               projectId: "your-project-id",
               tokenStore: "cookie",
               urls: {
@@ -911,9 +911,9 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           Important caveats for this approach:
 
-          - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
-          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
-          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
+          - Without a bundler or build step, there is no concept of environment variables in a browser. If there is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor, or inject the environment variables either at build or request time in the server that serves the static file.
+          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since a \`<script>\` tag runs on the client by design. Do not put a secret server key on the page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@${packageJson.version}\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
