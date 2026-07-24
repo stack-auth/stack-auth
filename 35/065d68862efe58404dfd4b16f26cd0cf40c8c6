@@ -1,0 +1,27 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_50c6b5323dd4a8::t_f3160077cb56e7 91,120-122,124-127,366-367,403,412-414,423,425,433-434,439,443,446,450-453,508,565,567
+packages/shared/src/utils/telemetry.tsx
+  s_50c6b5323dd4a8::t_f3160077cb56e7 12-15
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_50c6b5323dd4a8::t_f3160077cb56e7 66,4030-4031,4043,4052,4056,4059,4063,4065
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_50c6b5323dd4a8::t_4db9feb0d36ff8 455,469-470,473,521,525,531-532,747,773-774
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_50c6b5323dd4a8::t_a7e303a6946d1c 120-121,129-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "35065d68862efe58404dfd4b16f26cd0cf40c8c6",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
