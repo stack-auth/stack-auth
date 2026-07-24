@@ -1,0 +1,29 @@
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.ts
+  s_50c6b5323dd4a8::t_95bddf90d8e85d 111,153-158,160,229-230,454-455,491,505-507,516,518,526-527,532,536,539,548-551,606,665,667
+packages/template/src/lib/hexclave-app/apps/implementations/event-tracker.test.ts
+  s_50c6b5323dd4a8::t_95bddf90d8e85d 461,475-476,479,527,531,537-538,902,928-929
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_50c6b5323dd4a8::t_95bddf90d8e85d 66,4031-4032,4044,4053,4057,4060,4064,4066
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_50c6b5323dd4a8::t_c44f992ba27769 41,1781,1860,1864,1867,1870,1879,1917
+packages/shared/src/utils/telemetry.tsx
+  s_50c6b5323dd4a8::t_6a15aecd08c604 12-15
+packages/template/src/lib/hexclave-app/apps/interfaces/client-app.ts
+  s_50c6b5323dd4a8::t_30ac216faa64f0 120-121,129-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "616c4b434f8952f47f1da820f882667c02ee7f21",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
