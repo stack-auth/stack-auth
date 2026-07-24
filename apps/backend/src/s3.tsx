@@ -1,4 +1,5 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
@@ -18,7 +19,7 @@ if (!HAS_S3) {
 }
 
 if (HAS_S3 && !S3_PRIVATE_BUCKET) {
-  console.warn("S3 private bucket is not configured (STACK_S3_PRIVATE_BUCKET). Session recordings will not be available.");
+  console.warn("S3 private bucket is not configured (STACK_S3_PRIVATE_BUCKET). Session recordings and deployment source uploads will not be available.");
 }
 
 const s3Client = HAS_S3 ? new S3Client({
@@ -70,6 +71,68 @@ export async function uploadBytes(options: {
   };
 }
 
+function getS3Target(privateBucket: boolean): { client: S3Client, bucket: string } {
+  if (!s3Client) {
+    throw new HexclaveAssertionError("S3 is not configured");
+  }
+  const bucket = privateBucket ? S3_PRIVATE_BUCKET : S3_BUCKET;
+  if (!bucket) {
+    throw new HexclaveAssertionError(privateBucket ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+  }
+  return { client: s3Client, bucket };
+}
+
+/**
+ * Grants temporary write access to one exact object key without exposing the
+ * backend's S3/R2 credentials. Callers must send the returned content type
+ * because it is part of the signature.
+ */
+export async function createPresignedUploadUrl(options: {
+  key: string,
+  expiresInSeconds: number,
+  contentType: string,
+  private?: boolean,
+}): Promise<string> {
+  const { client, bucket } = getS3Target(options.private === true);
+  return await getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: options.key,
+      ContentType: options.contentType,
+    }),
+    { expiresIn: options.expiresInSeconds },
+  );
+}
+
+export async function headBytes(options: { key: string, private?: boolean }): Promise<{
+  byteLength: number,
+  eTag: string,
+} | null> {
+  const { client, bucket } = getS3Target(options.private === true);
+  try {
+    const response = await client.send(new HeadObjectCommand({
+      Bucket: bucket,
+      Key: options.key,
+    }));
+    if (response.ContentLength == null) {
+      throw new HexclaveAssertionError("S3 headObject response is missing ContentLength");
+    }
+    if (response.ETag == null) {
+      throw new HexclaveAssertionError("S3 headObject response is missing ETag");
+    }
+    return {
+      byteLength: response.ContentLength,
+      eTag: response.ETag,
+    };
+  } catch (error) {
+    if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
   if (body instanceof Uint8Array) return body;
   if (Buffer.isBuffer(body)) return new Uint8Array(body);
@@ -97,27 +160,29 @@ async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
   throw new HexclaveAssertionError("Unexpected S3 body type");
 }
 
-export async function downloadBytes(options: { key: string, private?: boolean }): Promise<Uint8Array> {
-  if (!s3Client) {
-    throw new HexclaveAssertionError("S3 is not configured");
-  }
-
-  const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
-  if (!bucket) {
-    throw new HexclaveAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
-  }
+export async function downloadBytes(options: { key: string, private?: boolean, ifMatch?: string }): Promise<Uint8Array> {
+  const { client, bucket } = getS3Target(options.private === true);
 
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: options.key,
+    IfMatch: options.ifMatch,
   });
 
-  const res = await s3Client.send(command);
+  const res = await client.send(command);
   if (!res.Body) {
     throw new HexclaveAssertionError("S3 getObject returned empty body");
   }
 
   return await readBodyToBytes(res.Body);
+}
+
+export async function deleteBytes(options: { key: string, private?: boolean }): Promise<void> {
+  const { client, bucket } = getS3Target(options.private === true);
+  await client.send(new DeleteObjectCommand({
+    Bucket: bucket,
+    Key: options.key,
+  }));
 }
 
 async function uploadBase64Image({
