@@ -1,5 +1,6 @@
 import { StyledLink } from "@/components/link";
 import { DashboardAccountSettingsPage } from "@/components/dashboard-account-settings/dashboard-account-settings-page";
+import { DashboardCliAuthConfirmPage } from "@/components/dashboard-cli-auth-confirm/dashboard-cli-auth-confirm-page";
 import { StackHandler } from "@hexclave/next";
 
 export default async function Handler(props: {
@@ -10,6 +11,16 @@ export default async function Handler(props: {
 
   if (hexclave.join("/") === "account-settings") {
     return <DashboardAccountSettingsPage />;
+  }
+
+  // Dashboard-only CLI auth UI for app.hexclave.com — does not affect hosted
+  // components or customer SDK handler pages.
+  if (hexclave.join("/") === "cli-auth-confirm") {
+    return (
+      <div data-hexclave-handler-page className="flex min-h-0 flex-1 flex-col bg-white dark:bg-background">
+        <DashboardCliAuthConfirmPage />
+      </div>
+    );
   }
 
   const extraInfo = <>
