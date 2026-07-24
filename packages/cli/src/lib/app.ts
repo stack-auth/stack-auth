@@ -18,7 +18,16 @@ export function getInternalApp(auth: SessionAuth): StackClientApp<true, "interna
 
 export async function getInternalUser(auth: SessionAuth): Promise<CurrentInternalUser> {
   const app = getInternalApp(auth);
-  const user = await app.getUser({ or: "throw" });
+  // Avoid `or: "throw"` here: its internal error message leaked to CLI users
+  // and was reported as a fatal Sentry event instead of a normal auth error.
+  const user = await app.getUser({ includeRestricted: true });
+  if (user == null) {
+    throw new AuthError("Your session is invalid or expired. Run `hexclave login` again.");
+  }
+  if (user.isRestricted) {
+    const onboardingUrl = new URL("/onboarding", auth.dashboardUrl).toString();
+    throw new AuthError(`Finish setting up your account at ${onboardingUrl} before using the CLI.`);
+  }
   return user as CurrentInternalUser;
 }
 
