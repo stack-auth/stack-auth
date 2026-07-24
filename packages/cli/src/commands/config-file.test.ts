@@ -18,7 +18,7 @@ describe("createConfigFileJiti", () => {
 
   // The project has no node_modules, so every supported specifier — the
   // canonical SDK root, the deprecated `<pkg>/config` subpath, and legacy
-  // `@stackframe/*` roots — must fall back to the CLI's bundled SDK copy.
+  // `@stackframe/*` roots — must resolve to the CLI's bundled SDK copy.
   it.each([
     ["canonical root package", 'import { defineHexclaveConfig } from "@hexclave/js";', "defineHexclaveConfig"],
     ["deprecated /config subpath", 'import { defineHexclaveConfig } from "@hexclave/js/config";', "defineHexclaveConfig"],
@@ -30,7 +30,7 @@ describe("createConfigFileJiti", () => {
       `${importLine}\nexport const config = ${defineFn}({ auth: { allowSignUp: true } });\n`,
     );
 
-    const configModule = await createConfigFileJiti(configPath).import<{ config: { auth: { allowSignUp: boolean } } }>(configPath);
+    const configModule = await createConfigFileJiti().import<{ config: { auth: { allowSignUp: boolean } } }>(configPath);
 
     expect(configModule.config).toEqual({ auth: { allowSignUp: true } });
   });

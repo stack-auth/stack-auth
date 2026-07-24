@@ -287,14 +287,11 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
-      // The generated GitHub sync workflow installs the repo's dependencies
-      // before running the CLI, so jiti normally resolves the config's SDK
-      // import (e.g. `@hexclave/js`) from the project's own node_modules.
-      // createConfigFileJiti additionally falls back to the CLI's bundled SDK
-      // copy when the project has no SDK installed (e.g. `config push` run in a
-      // bare checkout), so config loading doesn't hard-fail there.
+      // The config's SDK imports (e.g. `@hexclave/js`) are aliased to the CLI's
+      // own bundled SDK copy, so config loading works even when the project
+      // hasn't installed the SDK (e.g. `config push` run in a bare checkout).
       const { createConfigFileJiti } = await import("../lib/config-jiti.js");
-      const jiti = createConfigFileJiti(filePath);
+      const jiti = createConfigFileJiti();
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = parseConfigOverride(configModule.config);

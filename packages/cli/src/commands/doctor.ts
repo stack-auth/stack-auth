@@ -454,7 +454,7 @@ function configFileCheck(): CheckSpec {
 
       try {
         const { createConfigFileJiti } = await import("../lib/config-jiti.js");
-        const jiti = createConfigFileJiti(foundPath);
+        const jiti = createConfigFileJiti();
         const mod = await jiti.import<{ config?: unknown }>(foundPath);
         const config = mod.config;
         if (config === undefined) {
