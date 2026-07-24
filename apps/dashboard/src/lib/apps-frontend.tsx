@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChartPolarIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -28,6 +28,12 @@ type AppNavigationItem = {
   displayName: string,
   href: string,
   external?: boolean,
+  /**
+   * When true, this nav item is intended only for Hexclave-internal surfaces
+   * (e.g. GTM admin). Call sites that render navigation should filter these out
+   * for non-internal viewers when that gating is wired up.
+   */
+  internalOnly?: boolean,
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (hexclaveAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
 };
@@ -419,6 +425,22 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>Session Replays let you watch real user sessions to understand how people use your app.</p>
         <p>Built on the same analytics pipeline, replays are scoped per user and surfaced inline on the user page.</p>
+      </>
+    ),
+  },
+  gtm: {
+    icon: ChartPolarIcon,
+    href: "gtm",
+    navigationItems: [
+      { displayName: "Overview", href: "." },
+      { displayName: "Admin", href: "admin", internalOnly: true },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>GTM is an internal workspace for curating go-to-market insights, actions, and durable notes.</p>
+        <p>The overview presents the latest signals across the whole business, while the admin page owns all edits.</p>
+        <p>Actions in this initial version are inert records and never perform external side effects.</p>
       </>
     ),
   },
