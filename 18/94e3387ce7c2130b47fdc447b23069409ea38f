@@ -1,0 +1,311 @@
+apps/backend/src/lib/openapi.tsx
+  s_82c8e71825fbf7::t_88bdbad815195e 107-112,129-132,208-209,211,215,262,331,358
+CHANGELOG.md
+  s_82c8e71825fbf7::t_b31f6006ce4498 5-11
+apps/backend/.env.development
+  s_82c8e71825fbf7::t_d6b4110d3d37d8 84-87
+apps/backend/next.config.mjs
+  s_82c8e71825fbf7::t_d407f0cf5479a4 58
+apps/backend/package.json
+  s_82c8e71825fbf7::t_af0ec98c2ead12 3,63-64
+apps/backend/prisma/migrations/20260722000000_add_deployment_services/migration.sql
+  s_82c8e71825fbf7::t_6cb377fde67bda 1-87
+apps/backend/prisma/migrations/20260722000000_add_deployment_services/tests/cascades-on-delete.ts
+  s_82c8e71825fbf7::t_ed63f1c271e681 1-68
+apps/backend/prisma/migrations/20260722000000_add_deployment_services/tests/creates-deployment-tables.ts
+  s_82c8e71825fbf7::t_46968c7190db8c 1-115
+apps/backend/prisma/schema.prisma
+  s_82c8e71825fbf7::t_9d5e078579cf8f 77-78,1561-1680
+apps/backend/src/app/api/latest/deployments/runs/[run_id]/logs/route.tsx
+  s_82c8e71825fbf7::t_ae347d7416a495 1-140
+apps/backend/src/app/api/latest/deployments/runs/[run_id]/route.tsx
+  s_82c8e71825fbf7::t_f77a7bc1a02d46 1-57
+apps/backend/src/app/api/latest/deployments/services/[service_id]/deploy/route.tsx
+  s_82c8e71825fbf7::t_a35c56d9bc06ff 1-234
+apps/backend/src/app/api/latest/deployments/services/[service_id]/domains/[hostname]/route.tsx
+  s_82c8e71825fbf7::t_9db4d94e51a5a4 1-196
+apps/backend/src/app/api/latest/deployments/services/[service_id]/domains/route.tsx
+  s_82c8e71825fbf7::t_fac3bd802abb39 1-106
+apps/backend/src/app/api/latest/deployments/services/[service_id]/route.tsx
+  s_82c8e71825fbf7::t_4180e34572d4ad 1-236
+apps/backend/src/app/api/latest/deployments/services/[service_id]/runs/route.tsx
+  s_82c8e71825fbf7::t_6719a07c1df933 1-86
+apps/backend/src/app/api/latest/deployments/services/route.tsx
+  s_82c8e71825fbf7::t_0f879207596482 1-120
+apps/backend/src/app/api/latest/deployments/uploads/route.tsx
+  s_82c8e71825fbf7::t_0a33ff6ae5a051 1-70
+apps/backend/src/lib/deployments/index.test.tsx
+  s_82c8e71825fbf7::t_b65f8b7f623f8d 1-24
+apps/backend/src/lib/deployments/index.tsx
+  s_82c8e71825fbf7::t_93034a89ef54db 1-1101
+apps/backend/src/lib/deployments/vercel-client.test.tsx
+  s_82c8e71825fbf7::t_720ec376c0ce24 1-71
+apps/backend/src/lib/deployments/vercel-client.tsx
+  s_82c8e71825fbf7::t_cc1c208d304ad7 1-370
+apps/backend/src/lib/emailable.tsx
+  s_82c8e71825fbf7::t_7424981074fec1 24,85-87,100,129,157-170
+apps/backend/src/route-handlers/smart-route-handler.tsx
+  s_82c8e71825fbf7::t_46e360eef618ce 120-125,130-134
+apps/backend/src/s3.tsx
+  s_82c8e71825fbf7::t_96e5a98a5a0a47 1-2,22,74-135,163-164,169,172,180-187
+apps/backend/tsconfig.json
+  s_82c8e71825fbf7::t_753c4e3959946b 46-48
+apps/bulldozer-js/package.json
+  s_82c8e71825fbf7::t_3bba24554da0fc 3
+apps/dashboard/next.config.mjs
+  s_82c8e71825fbf7::t_69d1999d2016ca 95-98
+apps/dashboard/package.json
+  s_82c8e71825fbf7::t_5cabbd671d0f57 3
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/content.tsx
+  s_82c8e71825fbf7::t_988da602649d11 232-236,239,324
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client-parts/project-onboarding-wizard.tsx
+  s_82c8e71825fbf7::t_c4438c29ff54bc 481-504
+apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/playground/page-client.tsx
+  s_82c8e71825fbf7::t_0dfbeffa3b2edf 412,828,1516-1520,2249-2250,2256
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/setup-page.tsx
+  s_82c8e71825fbf7::t_f855726de0cee5 80-101,113,115
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/board-canvas.tsx
+  s_82c8e71825fbf7::t_e53ec1a7562202 1-442
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/board-model.ts
+  s_82c8e71825fbf7::t_618116d8421c88 1-177
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/connections.ts
+  s_82c8e71825fbf7::t_b923f4b38f9acf 1-119
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/page-client.tsx
+  s_82c8e71825fbf7::t_7bf2eb3c9b8fe7 1-33
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/page.tsx
+  s_82c8e71825fbf7::t_88d9071918ed3e 1-11
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/panel-content.tsx
+  s_82c8e71825fbf7::t_b5eac4c71e0530 1-1246
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/service-detail-pane.tsx
+  s_82c8e71825fbf7::t_95c2ef4fc2f4b9 1-135
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/service-node.tsx
+  s_82c8e71825fbf7::t_306b8f4ed0b5d0 1-100
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/deployments/variants.ts
+  s_82c8e71825fbf7::t_31ddc54de3f5d8 1-83
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/project-settings/page-client.tsx
+  s_82c8e71825fbf7::t_01f9fb4ac99ae1 20-21,88,477-493
+apps/dashboard/src/app/api/development-environment/health/route.test.ts
+  s_82c8e71825fbf7::t_9e22fb45b4d114 5,8-14,48,79
+apps/dashboard/src/app/api/development-environment/health/route.ts
+  s_82c8e71825fbf7::t_185e13fdc8f50b 3,27-32
+apps/dashboard/src/app/api/development-environment/project-availability/route.ts
+  s_82c8e71825fbf7::t_c4eac0bbd8d759 3,37-38
+apps/dashboard/src/app/api/development-environment/projects/route.ts
+  s_82c8e71825fbf7::t_560162a4d6c216 3,7-8
+apps/dashboard/src/app/api/remote-development-environment/auth/route.ts
+  s_82c8e71825fbf7::t_fcd89a6de88cbb 1,32-36
+apps/dashboard/src/app/api/remote-development-environment/sessions/[sessionId]/heartbeat/route.ts
+  s_82c8e71825fbf7::t_cb1adf519f0f20 20,23-24,29
+apps/dashboard/src/app/development-environment/browser-secret/page-client.tsx
+  s_82c8e71825fbf7::t_76dd82bd4befb0 4,113-115
+apps/dashboard/src/components/data-table/team-table.tsx
+  s_82c8e71825fbf7::t_701537fbc4e908 15,60,68-74,81,89-94,96,124,128-172,184-192,239-240
+apps/dashboard/src/lib/apps-frontend.tsx
+  s_82c8e71825fbf7::t_f4dedc1fdbc6c0 3,441-457
+apps/dashboard/src/lib/remote-development-environment/config-file-watcher.test.ts
+  s_82c8e71825fbf7::t_c87659df798ae8 1-47
+apps/dashboard/src/lib/remote-development-environment/config-file-watcher.ts
+  s_82c8e71825fbf7::t_40ea13101e74a0 1-18
+apps/dashboard/src/lib/remote-development-environment/env.ts
+  s_82c8e71825fbf7::t_3227ec628d7c94 4,9
+apps/dashboard/src/lib/remote-development-environment/manager.ts
+  s_82c8e71825fbf7::t_b9f3b5016060c3 12,24,63-64,77-78,106,253,257,266,286-288,307,310-311,316,766,842,845-861,1006-1015,1109,1113-1114,1120
+apps/dashboard/src/lib/remote-development-environment/security.test.ts
+  s_82c8e71825fbf7::t_cee901867641f4 11,38,61-72
+apps/dev-launchpad/package.json
+  s_82c8e71825fbf7::t_f341113d858f74 3
+apps/e2e/package.json
+  s_82c8e71825fbf7::t_0b92fe63ab413b 3
+apps/e2e/tests/backend/endpoints/api/v1/deployments/deployments.test.ts
+  s_82c8e71825fbf7::t_6cfa7e659afc01 1-1017
+apps/e2e/tests/backend/endpoints/api/v1/projects.test.ts
+  s_82c8e71825fbf7::t_24b3badb53222a 62
+apps/hosted-components/package.json
+  s_82c8e71825fbf7::t_3abeac9aeb481b 4
+apps/internal-tool/package.json
+  s_82c8e71825fbf7::t_f4de823376f008 4
+apps/mcp/package.json
+  s_82c8e71825fbf7::t_f05fc3bef3060e 3
+apps/mock-oauth-server/package.json
+  s_82c8e71825fbf7::t_528717c048ec28 3
+apps/skills/package.json
+  s_82c8e71825fbf7::t_6b72df5b2da4c2 3
+apps/skills/src/app/deployments/route.ts
+  s_82c8e71825fbf7::t_faf94e89a9e3ad 1-13
+apps/skills/src/app/route.ts
+  s_82c8e71825fbf7::t_48fd093bcc7fa0 2-10
+apps/skills/src/skill-page.ts
+  s_82c8e71825fbf7::t_fe8f31bc73b840 1-295
+configs/tsdown/js-library.ts
+  s_82c8e71825fbf7::t_9006141f674d4a 214-221
+docker/dependencies/docker.compose.yaml
+  s_82c8e71825fbf7::t_09bbb36a3085a6 254-263
+docker/dependencies/vercel-mock/Dockerfile
+  s_82c8e71825fbf7::t_1a2934c9bd3120 1-324
+docs-mintlify/docs.json
+  s_82c8e71825fbf7::t_a309b485cffee3 21,152,172-174,195-198,250-253
+docs-mintlify/guides/getting-started/setup.mdx
+  s_82c8e71825fbf7::t_c1d9cfe9f63a13 9,1172,1175-1176,1192-1194
+docs-mintlify/guides/other/dev-tool.mdx
+  s_82c8e71825fbf7::t_1831035e135662 1-91
+docs-mintlify/llms.txt
+  s_82c8e71825fbf7::t_0e8ea733193e71 16
+docs-mintlify/openapi/admin.json
+  s_82c8e71825fbf7::t_ff10b240f5cb88 490-493,965-968,1633-1636,1753-1756,2734-2736,2823-2826,3003-3006,3110-3112,3714-3717,5454-5456,5466-5468,5575-5578,5920-5923,6158-6161,6520-6523,6743-6745,6751,6823-6825,6832-6834,6841-6843,6862-6864,6890-6893,7177-7180,7576-7579,7597-7600,7639-7642,7677-7680,7688-7691,7773-7776,7784-7787,7795-7798,7859-7862,7870-7873,7892-7895,7962-7965,7983-7986,8025-8028,8063-8066,8074-8077,8159-8162,8170-8173,8181-8184,8245-8248,8256-8259,8315-8318,8355-8358,8376-8379,8418-8421,8456-8459,8467-8470,8552-8555,8563-8566,8574-8577,8638-8641,8649-8652,8909-8912,8951-8954,9016-9019,9096-9099,9191-9194,9319-9322,9395-9398,9587-9590,9608-9611,9650-9653,9688-9691,9699-9702,9784-9787,9795-9798,9806-9809,9864-9867,9902-9905,9913-9916,9954-9957,9975-9978,9990-9993,10006-10009,10017-10020,10028-10031,10106-10109,10127-10130,10169-10172,10207-10210,10218-10221,10303-10306,10314-10317,10325-10328,10407-10410,10428-10431,10470-10473,10508-10511,10519-10522,10604-10607,10615-10618,10626-10629,10727-10730,10738-10741,10779-10782,10800-10803,10815-10818,10826-10829,10845-10848,10856-10859,10867-10870,10946-10949,10967-10970,11009-11012,11047-11050,11058-11061,11143-11146,11154-11157,11165-11168,11259-11262,11280-11283,11322-11325,11360-11363,11371-11374,11456-11459,11467-11470,11478-11481,11603-11606,11614-11617,11655-11658,11676-11679,11691-11694,11702-11705,11721-11724,11732-11735,11743-11746,11822-11825,11843-11846,11885-11888,11923-11926,11934-11937,12019-12022,12030-12033,12041-12044,12096
+docs-mintlify/openapi/client.json
+  s_82c8e71825fbf7::t_ceb5bac5ae82bc 321-324,705-708,1280-1283,1400-1403,2155-2158,2724-2727,4187-4189,4199-4201,4334-4337,4456-4459,4529-4531,4537,4609-4611,4618-4620,4627-4629,4648-4650,4676-4679,4900-4903,5301-5304,5312-5315,5333-5336,5405-5408,5416-5419,5474-5477,5516-5519,5527-5530,5706-5709,5747-5750,5792-5795,5851-5854,5930-5933,6037-6040,6092-6095,6168-6171,6210-6213,6226-6229,6257-6260,6273-6276,6318-6321,6386-6389,6397-6400,6418-6421,6429-6432,6440-6443,6494-6497,6536-6539,6552-6555,6583-6586,6599-6602,6644-6647,6666
+docs-mintlify/openapi/server.json
+  s_82c8e71825fbf7::t_6bc8b1124dcc5b 490-493,965-968,1633-1636,1753-1756,2734-2736,2823-2826,3003-3006,3110-3112,3674-3677,5414-5416,5426-5428,5561-5564,5811-5814,6034-6036,6042,6114-6116,6123-6125,6132-6134,6153-6155,6181-6184,6468-6471,6867-6870,6888-6891,6930-6933,6968-6971,6979-6982,7064-7067,7075-7078,7086-7089,7150-7153,7161-7164,7183-7186,7253-7256,7274-7277,7316-7319,7354-7357,7365-7368,7450-7453,7461-7464,7472-7475,7536-7539,7547-7550,7606-7609,7646-7649,7667-7670,7709-7712,7747-7750,7758-7761,7843-7846,7854-7857,7865-7868,7929-7932,7940-7943,8200-8203,8242-8245,8307-8310,8387-8390,8482-8485,8610-8613,8686-8689,8878-8881,8899-8902,8941-8944,8979-8982,8990-8993,9075-9078,9086-9089,9097-9100,9155-9158,9193-9196,9204-9207,9245-9248,9266-9269,9281-9284,9297-9300,9308-9311,9319-9322,9397-9400,9418-9421,9460-9463,9498-9501,9509-9512,9594-9597,9605-9608,9616-9619,9698-9701,9719-9722,9761-9764,9799-9802,9810-9813,9895-9898,9906-9909,9917-9920,10018-10021,10029-10032,10070-10073,10091-10094,10106-10109,10117-10120,10136-10139,10147-10150,10158-10161,10237-10240,10258-10261,10300-10303,10338-10341,10349-10352,10434-10437,10445-10448,10456-10459,10550-10553,10571-10574,10613-10616,10651-10654,10662-10665,10747-10750,10758-10761,10769-10772,10894-10897,10905-10908,10946-10949,10967-10970,10982-10985,10993-10996,11012-11015,11023-11026,11034-11037,11113-11116,11134-11137,11176-11179,11214-11217,11225-11228,11310-11313,11321-11324,11332-11335,11387
+docs-mintlify/openapi/webhooks.json
+  s_82c8e71825fbf7::t_ab182a5d2a438b 39-42,60-63,102-105,140-143,151-154,235-237,246-248,258-261,366-369,387-390,429-432,467-470,478-481,562-564,573-575,585-588,787-790,899-902,1284
+docs-mintlify/package.json
+  s_82c8e71825fbf7::t_a8d2e7a3d56896 3
+docs-mintlify/sdk/objects/hexclave-app.mdx
+  s_82c8e71825fbf7::t_0bde6c609e8c04 96-99,119
+docs-mintlify/snippets/hexclave-agent-reminders.jsx
+  s_82c8e71825fbf7::t_2f913e524e9585 1
+docs-mintlify/snippets/home-prompt-island.jsx
+  s_82c8e71825fbf7::t_914bdd1027fb46 3
+docs/package.json
+  s_82c8e71825fbf7::t_41012380b27006 3
+examples/cjs-test/package.json
+  s_82c8e71825fbf7::t_6b65c8719f3bb0 3
+examples/convex/package.json
+  s_82c8e71825fbf7::t_95a611b4d96d9d 3
+examples/demo/package.json
+  s_82c8e71825fbf7::t_67cffb60ece796 3
+examples/docs-examples/package.json
+  s_82c8e71825fbf7::t_5d2f7c2fe96b67 3
+examples/e-commerce/package.json
+  s_82c8e71825fbf7::t_9b3c7533e2f9d6 3
+examples/js-example/package.json
+  s_82c8e71825fbf7::t_4a56739d5fd795 3
+examples/lovable-react-18-example/package.json
+  s_82c8e71825fbf7::t_5512b349423697 4
+examples/middleware/package.json
+  s_82c8e71825fbf7::t_5b046c42d62955 3
+examples/react-example/package.json
+  s_82c8e71825fbf7::t_f6ed50e4ab2235 4
+examples/supabase/package.json
+  s_82c8e71825fbf7::t_143284a5e92951 3
+examples/tanstack-start-demo/package.json
+  s_82c8e71825fbf7::t_e9d3fa5061ecbf 3
+package.json
+  s_82c8e71825fbf7::t_13ad553b1f0333 16
+packages/cli/package.json
+  s_82c8e71825fbf7::t_85b64fb32d5f9c 3
+packages/cli/src/commands/config-file.ts
+  s_82c8e71825fbf7::t_54aa188095397f 13,262-269,299-311,313-327
+packages/cli/src/commands/deploy.test.ts
+  s_82c8e71825fbf7::t_b53459722d5f22 1-221
+packages/cli/src/commands/deploy.ts
+  s_82c8e71825fbf7::t_0f589c181896c1 1-407
+packages/cli/src/commands/dev.test.ts
+  s_82c8e71825fbf7::t_c1abe88dc74729 6,106-110,150-180
+packages/cli/src/commands/dev.ts
+  s_82c8e71825fbf7::t_849e9c90d19c27 12,29-30,44,399-401,433-435,437,544,587,589-592
+packages/cli/src/commands/init.ts
+  s_82c8e71825fbf7::t_baf4ccc263bc52 19,227-234,278,294-299
+packages/cli/src/commands/project.ts
+  s_82c8e71825fbf7::t_29b10bb3f12068 6,64-67,97
+packages/cli/src/commands/whoami.ts
+  s_82c8e71825fbf7::t_de55ce94a2aa12 4,13-17
+packages/cli/src/index.ts
+  s_82c8e71825fbf7::t_75a4961db50eec 11,32,56-58
+packages/cli/src/lib/create-project.ts
+  s_82c8e71825fbf7::t_01e0ca1008552c 6,30-35,37-40
+packages/cli/src/lib/dashboard-release.ts
+  s_82c8e71825fbf7::t_2aa5370638a7c2 169,178,190,198,231-234,249
+packages/cli/src/lib/ignore-rules.test.ts
+  s_82c8e71825fbf7::t_85dea1e921fefc 1-84
+packages/cli/src/lib/ignore-rules.ts
+  s_82c8e71825fbf7::t_477cc447461b94 1-133
+packages/cli/src/lib/progress.test.ts
+  s_82c8e71825fbf7::t_d3c3b6aa37c57e 1-73
+packages/cli/src/lib/progress.ts
+  s_82c8e71825fbf7::t_3861ab613ef9c7 1-82
+packages/cli/src/lib/source-packaging.test.ts
+  s_82c8e71825fbf7::t_75465e4d6c9a21 1-129
+packages/cli/src/lib/source-packaging.ts
+  s_82c8e71825fbf7::t_fe6e3c86631fe6 1-153
+packages/dashboard-ui-components/package.json
+  s_82c8e71825fbf7::t_570d4b8cc20012 3
+packages/dashboard-ui-components/src/components/badge.tsx
+  s_82c8e71825fbf7::t_4134d49c717470 32-33,83,107
+packages/js/package.json
+  s_82c8e71825fbf7::t_7c992c58fe46f2 4
+packages/next/package.json
+  s_82c8e71825fbf7::t_78ad7959e05e74 4
+packages/react/package.json
+  s_82c8e71825fbf7::t_a7a1b61b59f6f6 4
+packages/sc/package.json
+  s_82c8e71825fbf7::t_1d90cc27b9cb93 3
+packages/shared-backend/package.json
+  s_82c8e71825fbf7::t_b5807aafedd8aa 3
+packages/shared/package.json
+  s_82c8e71825fbf7::t_9cb83c7c679272 3
+packages/shared/src/ai/unified-prompts/reminders.ts
+  s_82c8e71825fbf7::t_4da2e0d4a63219 16
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/ai-setup-prompt.ts
+  s_82c8e71825fbf7::t_e9afb571d47610 1,894,897-898,914-916
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/deployments-skill.ts
+  s_82c8e71825fbf7::t_f5ef6fec3bd893 1-128
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/docs-json.generated.ts
+  s_82c8e71825fbf7::t_50cbf1139dc77c 164
+packages/shared/src/ai/unified-prompts/skill-site-prompt.ts
+  s_82c8e71825fbf7::t_c18aa2476ae02b 9,77-90
+packages/shared/src/apps/apps-config.ts
+  s_82c8e71825fbf7::t_5d52aa9b66ea36 195-203
+packages/shared/src/config/schema-fuzzer.test.ts
+  s_82c8e71825fbf7::t_2d63804aeb105b 188-224
+packages/shared/src/config/schema.ts
+  s_82c8e71825fbf7::t_6117244f14b055 296-416,451,699-708,743-787,1055-1070
+packages/shared/src/interface/admin-interface.ts
+  s_82c8e71825fbf7::t_eb20335cbcf8ec 39-106,1246-1350
+packages/shared/src/interface/crud/projects.ts
+  s_82c8e71825fbf7::t_7ee0712e41d9cd 130
+packages/shared/src/utils/tar.tsx
+  s_82c8e71825fbf7::t_7f9fd202b1dbbc 1-261
+packages/tanstack-start/package.json
+  s_82c8e71825fbf7::t_ee8af736e6c5bb 4
+packages/template/package-template.json
+  s_82c8e71825fbf7::t_af0286ad2331b0 16
+packages/template/package.json
+  s_82c8e71825fbf7::t_8920f36e57dbaa 5
+packages/template/src/dev-tool/index.test.ts
+  s_82c8e71825fbf7::t_8a45cc44cc234d 1-54
+packages/template/src/dev-tool/index.ts
+  s_82c8e71825fbf7::t_e24414174c2907 24,34-37,108,111-129,137,176
+packages/template/src/lib/hexclave-app/apps/implementations/admin-app-impl.ts
+  s_82c8e71825fbf7::t_422bff9a4eba24 287-320
+packages/template/src/lib/hexclave-app/apps/implementations/client-app-impl.ts
+  s_82c8e71825fbf7::t_971d339fb6e499 1768
+packages/template/src/lib/hexclave-app/index.ts
+  s_82c8e71825fbf7::t_2a71885ee57937 109-114
+packages/template/src/lib/hexclave-app/projects/index.ts
+  s_82c8e71825fbf7::t_79629a05d40599 6,10-11,32,146-201
+packages/ui/package.json
+  s_82c8e71825fbf7::t_e0691dc4029af1 3
+pnpm-lock.yaml
+  s_82c8e71825fbf7::t_39917c901fb714 112-116,197,1545,1548,2794-2797,2802-2804,2818-2820,2826-2828,2834-2836,2842-2848,2854-2856,2862-2864,2870-2872,2882-2884,2910-2912,2930-2932,2942-2944,2946-2952,2966-2968,3014-3017,3022-3025,8495-8496,8503-8504,8511-8512,8559-8560,8591-8592,8595-8596,8603-8604,8784-8785,8788-8789,8792-8793,8795-8796,8799-8800,8808-8809,8812-8813,17953,17961,17974-17981,18026-18037,18117,18119-18125,18136,18138-18141,18157,18159-18164,18185-18201,18203-18207,18227-18238,18250,18252-18255,18271,18273-18278,18304,18306-18310,18354,18356-18360,18470,18472-18478,18498,18500-18504,18507,18509-18520,18537,18545,18547,18612-18616,18619-18620,25887,25889,25900,25902-25903,25914,25916-25917,25995,25997-25998,26042-26047,26062,26344,26348,26352,26354,26358,26360,26363,26365,26368,26373,26375-26379,27693-27696
+sdks/implementations/swift/package.json
+  s_82c8e71825fbf7::t_e9936113963428 3
+sdks/spec/package.json
+  s_82c8e71825fbf7::t_549da66726dfa0 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1894e3387ce7c2130b47fdc447b23069409ea38f",
+  "prompts": {},
+  "sessions": {
+    "s_82c8e71825fbf7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9666-abae-79f3-be64-dbca52b702c6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
