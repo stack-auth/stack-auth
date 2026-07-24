@@ -25,7 +25,7 @@ export async function getInternalUser(auth: SessionAuth): Promise<CurrentInterna
     throw new AuthError("Your session is invalid or expired. Run `hexclave login` again.");
   }
   if (user.isRestricted) {
-    const onboardingUrl = new URL("/onboarding", auth.dashboardUrl).toString();
+    const onboardingUrl = `${auth.dashboardUrl.replace(/\/+$/, "")}/onboarding`;
     throw new AuthError(`Finish setting up your account at ${onboardingUrl} before using the CLI.`);
   }
   return user as CurrentInternalUser;

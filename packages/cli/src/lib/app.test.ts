@@ -47,4 +47,14 @@ describe("getInternalUser", () => {
       "Finish setting up your account at https://app.hexclave.com/onboarding before using the CLI.",
     );
   });
+
+  it("keeps the onboarding auth error friendly when the dashboard URL is malformed", async () => {
+    getUser.mockResolvedValue({ isRestricted: true });
+
+    const result = getInternalUser({ ...auth, dashboardUrl: "not-a-url" });
+    await expect(result).rejects.toBeInstanceOf(AuthError);
+    await expect(result).rejects.toThrow(
+      "Finish setting up your account at not-a-url/onboarding before using the CLI.",
+    );
+  });
 });
