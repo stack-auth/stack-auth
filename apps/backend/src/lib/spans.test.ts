@@ -87,14 +87,19 @@ describe("insertSessionReplaySpans", () => {
 
     expect(client.insert).toHaveBeenCalledTimes(1);
     expect(captured[0].table).toBe("analytics_internal.spans");
+    expect(captured[0].clickhouse_settings).toMatchObject({
+      async_insert: 1,
+      wait_for_async_insert: 1,
+    });
     const rows = captured[0].values;
     expect(rows).toHaveLength(2);
 
     const [replaySpan, segmentSpan] = rows;
 
     expect(replaySpan).toMatchObject({
-      id: "sri-replay1",
-      span_type: "$session-replay",
+      trace_id: "rti-rt1",
+      span_id: "sri-replay1",
+      name: "$session-replay",
       parent_span_ids: ["rti-rt1"],
       project_id: "p1",
       branch_id: "b1",
@@ -106,19 +111,20 @@ describe("insertSessionReplaySpans", () => {
       // ReplacingMergeTree regardless of insert order.
       version: replayLastEventAt.getTime(),
     });
-    expect(replaySpan.span_started_at).toBe(replayStartedAt);
-    expect(replaySpan.span_ended_at).toBe(replayLastEventAt);
+    expect(replaySpan.started_at).toBe(replayStartedAt);
+    expect(replaySpan.ended_at).toBe(replayLastEventAt);
 
     expect(segmentSpan).toMatchObject({
-      id: "srsi-replay1:seg1",
-      span_type: "$session-replay-segment",
+      trace_id: "rti-rt1",
+      span_id: "srsi-replay1:seg1",
+      name: "$session-replay-segment",
       parent_span_ids: ["rti-rt1", "sri-replay1"],
       session_replay_id: "replay1",
       session_replay_segment_id: "seg1",
       version: segmentLastEventAt.getTime(),
     });
-    expect(segmentSpan.span_started_at).toBe(segmentStartedAt);
-    expect(segmentSpan.span_ended_at).toBe(segmentLastEventAt);
+    expect(segmentSpan.started_at).toBe(segmentStartedAt);
+    expect(segmentSpan.ended_at).toBe(segmentLastEventAt);
   });
 
   it("does not call insert when given an empty row list (insertSpans guard)", async () => {
@@ -174,7 +180,8 @@ describe("buildBatchSpanRows", () => {
       }],
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0].id).toBe(`cs-${baseSpan.span_id}`);
+    expect(rows[0].trace_id).toBe("rti-rt1");
+    expect(rows[0].span_id).toBe(`cs-${baseSpan.span_id}`);
     expect(rows[0].parent_span_ids).toEqual([
       "rti-rt1",
       "sri-replay1",
@@ -209,8 +216,9 @@ describe("buildBatchSpanRows", () => {
   it("keeps open intervals open and fills identity columns raw (unprefixed)", () => {
     const rows = buildBatchSpanRows({ ...baseOpts, spans: [baseSpan] });
     expect(rows[0]).toMatchObject({
-      span_type: "checkout-flow",
-      span_ended_at: null,
+      trace_id: "rti-rt1",
+      name: "checkout-flow",
+      ended_at: null,
       project_id: "p1",
       branch_id: "b1",
       user_id: "user1",
@@ -219,7 +227,7 @@ describe("buildBatchSpanRows", () => {
       session_replay_id: "replay1",
       session_replay_segment_id: "seg1",
     });
-    expect(rows[0].span_started_at).toEqual(new Date(baseSpan.started_at_ms));
+    expect(rows[0].started_at).toEqual(new Date(baseSpan.started_at_ms));
   });
 
   it("uses the client updated_at_ms as the version, clamped to [1, now + 5min]", () => {
@@ -241,7 +249,7 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [{ ...baseSpan, data: { label: "truncated \uD83D", count: 3 } }],
     });
-    expect(rows[0].data).toBe(JSON.stringify({ label: "truncated �", count: 3 }));
+    expect(rows[0].attributes).toBe(JSON.stringify({ label: "truncated �", count: 3 }));
   });
 
   it("closes the interval when ended_at_ms is set", () => {
@@ -250,7 +258,7 @@ describe("buildBatchSpanRows", () => {
       ...baseOpts,
       spans: [{ ...baseSpan, ended_at_ms: endedAtMs, updated_at_ms: endedAtMs }],
     });
-    expect(rows[0].span_ended_at).toEqual(new Date(endedAtMs));
+    expect(rows[0].ended_at).toEqual(new Date(endedAtMs));
     expect(rows[0].version).toBe(endedAtMs);
   });
 
@@ -269,10 +277,10 @@ describe("buildBatchSpanRows", () => {
         { ...baseSpan, span_id: "0f000000-0000-4000-8000-000000000002", span_type: "$away" },
       ],
     });
-    expect(rows[0].id).toBe(`pv-${baseSpan.span_id}`);
-    expect(rows[0].span_type).toBe("$page-view");
-    expect(rows[1].id).toBe("sas-0f000000-0000-4000-8000-000000000002");
-    expect(rows[1].span_type).toBe("$away");
+    expect(rows[0].span_id).toBe(`pv-${baseSpan.span_id}`);
+    expect(rows[0].name).toBe("$page-view");
+    expect(rows[1].span_id).toBe("sas-0f000000-0000-4000-8000-000000000002");
+    expect(rows[1].name).toBe("$away");
   });
 
   it("inserts the pv- ancestor between the system ancestry and the custom chain", () => {

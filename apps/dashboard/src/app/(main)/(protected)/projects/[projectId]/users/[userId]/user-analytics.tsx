@@ -138,14 +138,14 @@ function userTelemetrySubquery(startParam: "since" | "prevSince", endParam: "unt
     UNION ALL
     SELECT
       CAST('$page-view', 'LowCardinality(String)') AS event_type,
-      span_started_at AS event_at,
-      CAST(data, 'JSON') AS data,
+      started_at AS event_at,
+      CAST(attributes, 'JSON') AS data,
       session_replay_id
     FROM spans
-    WHERE span_type = '$page-view'
+    WHERE name = '$page-view'
       AND user_id = {userId:String}
-      AND span_started_at >= {${startParam}:DateTime}
-      AND span_started_at < {${endParam}:DateTime}
+      AND started_at >= {${startParam}:DateTime}
+      AND started_at < {${endParam}:DateTime}
   )`;
 }
 

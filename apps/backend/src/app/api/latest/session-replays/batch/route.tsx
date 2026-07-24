@@ -5,12 +5,11 @@ import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay, upsertSessionReplaySegmentBounds } from "@/lib/session-replays";
 import { insertSessionReplaySpans } from "@/lib/spans";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getHexclaveServerApp } from "@/hexclave";
 import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { captureError, HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip as gzipCb, gunzipSync } from "node:zlib";
@@ -51,21 +50,24 @@ function maybeDecodeBinaryBody(value: unknown): unknown {
   }
 }
 
-function extractEventTimesMs(events: unknown[], fallbackMs: number) {
+function extractEventTimesMs(events: unknown[]) {
   let minTs = Infinity;
   let maxTs = -Infinity;
 
-  for (const e of events) {
-    if (typeof e !== "object" || e === null) continue;
-    if (!("timestamp" in e)) continue;
-    const ts = (e as any).timestamp;
-    if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+  for (const [index, event] of events.entries()) {
+    if (typeof event !== "object" || event === null || !("timestamp" in event)) {
+      throw new StatusError(StatusError.BadRequest, `Session replay event at index ${index} is missing a timestamp`);
+    }
+    const ts = event.timestamp;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) {
+      throw new StatusError(StatusError.BadRequest, `Session replay event at index ${index} has an invalid timestamp`);
+    }
     minTs = Math.min(minTs, ts);
     maxTs = Math.max(maxTs, ts);
   }
 
   if (!Number.isFinite(minTs) || !Number.isFinite(maxTs) || minTs > maxTs) {
-    return { firstMs: fallbackMs, lastMs: fallbackMs };
+    throw new StatusError(StatusError.BadRequest, "Session replay batches must contain at least one timestamped event");
   }
   return { firstMs: minTs, lastMs: maxTs };
 }
@@ -135,7 +137,7 @@ export const POST = createSmartRouteHandler({
     const projectId = auth.tenancy.project.id;
     const branchId = auth.tenancy.branchId;
 
-    const { firstMs, lastMs } = extractEventTimesMs(body.events, body.sent_at_ms);
+    const { firstMs, lastMs } = extractEventTimesMs(body.events);
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
@@ -271,30 +273,20 @@ export const POST = createSmartRouteHandler({
       batchLastEventAt: chunk.lastEventAt,
     });
 
-    // Additionally mirror this replay into the spans telemetry surface, written
-    // directly to ClickHouse (the same way events are). Purely additive to the
-    // Postgres/S3 replay storage above — a $session-replay span for the whole
-    // replay and a $session-replay-segment span for this recording segment (per
-    // tab), re-written on every non-deduped batch so their end advances. Runs off
-    // the response path (waitUntil) so a slow/unavailable ClickHouse — whose client
-    // has a 10-minute request timeout — never delays or fails the replay upload.
-    runAsynchronouslyAndWaitUntil(async () => {
-      try {
-        await insertSessionReplaySpans(getClickhouseAdminClient(), {
-          projectId,
-          branchId,
-          replayId,
-          sessionReplaySegmentId: chunk.sessionReplaySegmentId,
-          projectUserId,
-          refreshTokenId,
-          replayStartedAt: replay.startedAt,
-          replayLastEventAt: replay.lastEventAt,
-          segmentStartedAt: segmentBounds.firstEventAt,
-          segmentLastEventAt: segmentBounds.lastEventAt,
-        });
-      } catch (error) {
-        captureError("session-replay-spans-insert", error);
-      }
+    // The replay and segment spans are part of the trace model, not a disposable
+    // mirror. Wait for ClickHouse acceptance before reporting a successful replay
+    // upload so a returned replay id always has its corresponding trace ancestry.
+    await insertSessionReplaySpans(getClickhouseAdminClient(), {
+      projectId,
+      branchId,
+      replayId,
+      sessionReplaySegmentId: chunk.sessionReplaySegmentId,
+      projectUserId,
+      refreshTokenId,
+      replayStartedAt: replay.startedAt,
+      replayLastEventAt: replay.lastEventAt,
+      segmentStartedAt: segmentBounds.firstEventAt,
+      segmentLastEventAt: segmentBounds.lastEventAt,
     });
 
     return {

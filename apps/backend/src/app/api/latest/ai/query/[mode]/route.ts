@@ -3,6 +3,7 @@ import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
+import { getAiTelemetry } from "@/lib/ai/telemetry";
 import { getMcpSkillContextPrompt } from "@/lib/ai/mcp-skill-context";
 import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
@@ -94,6 +95,7 @@ export const POST = createSmartRouteHandler({
         messages: modelMessages,
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
+        experimental_telemetry: getAiTelemetry("hexclave.ai.query.stream"),
       });
       return {
         statusCode: 200,
@@ -111,6 +113,7 @@ export const POST = createSmartRouteHandler({
         tools: toolsArg,
         abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),
+        experimental_telemetry: getAiTelemetry("hexclave.ai.query.generate"),
       }).finally(() => clearTimeout(timeoutId));
 
       const content: ChatContent = result.steps.flatMap((step) => {
