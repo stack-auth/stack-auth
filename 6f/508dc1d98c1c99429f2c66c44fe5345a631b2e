@@ -1,0 +1,21 @@
+.vscode/settings.json
+  s_50c6b5323dd4a8::t_7995ce5e2cbb34 187-188
+configs/tsdown/tsconfig.json
+  s_50c6b5323dd4a8::t_3658781f2dab47 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "6f508dc1d98c1c99429f2c66c44fe5345a631b2e",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
