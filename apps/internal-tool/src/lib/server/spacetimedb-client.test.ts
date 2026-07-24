@@ -63,8 +63,7 @@ describe.each([
 
 describe("SpacetimeDB HTTP base resolution", () => {
   function stubOkFetch() {
-    // callSql parses the body as JSON; "[]" yields an empty result set.
-    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     return fetchMock;
   }
