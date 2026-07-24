@@ -1,0 +1,25 @@
+packages/template/src/integrations/adapter-core.ts
+  s_50c6b5323dd4a8::t_fbedda703e35f9 27-28,43,49-51,56,121
+packages/template/src/integrations/adapters.test.ts
+  s_50c6b5323dd4a8::t_26b65ec4311767 39,41,79,81-82,85,89-94,113-122
+packages/template/src/integrations/orpc.ts
+  s_50c6b5323dd4a8::t_6a7d24ad54f139 66-69
+packages/template/src/integrations/trpc.ts
+  s_50c6b5323dd4a8::t_a52635bedbd1fc 6-7,11-13,75-78,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "a238c735e6ee8cce79e9e77e44a3184f204130e5",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
