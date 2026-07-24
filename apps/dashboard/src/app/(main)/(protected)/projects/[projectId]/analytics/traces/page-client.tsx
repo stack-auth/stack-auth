@@ -122,6 +122,7 @@ SELECT
   r.name,
   r.started_at,
   r.ended_at,
+  r.status_code,
   CAST([], 'Array(String)') AS parent_span_ids,
   u.display_name AS user_display_name,
   u.primary_email AS user_primary_email,
@@ -141,7 +142,7 @@ LIMIT ${ROOT_PAGE_SIZE}
   };
 }
 
-export function getSelectedTraceSpanQuery(traceId: string, serviceName: string | null = null): {
+export function getSelectedTraceSpanQuery(traceId: string): {
   query: string,
   params: Record<string, string | number>,
 } {
@@ -149,14 +150,10 @@ export function getSelectedTraceSpanQuery(traceId: string, serviceName: string |
     query: `
 ${TRACE_SPAN_STRUCTURE_SELECT_SQL}
 WHERE s.trace_id = {traceId:String}
-  ${serviceName == null ? "" : "AND s.service_name = {serviceName:String}"}
 ORDER BY s.started_at ASC
 LIMIT 10000
 `,
-    params: {
-      traceId,
-      ...(serviceName == null ? {} : { serviceName }),
-    },
+    params: { traceId },
   };
 }
 
@@ -176,7 +173,7 @@ LIMIT 1
   };
 }
 
-export function getSelectedTraceEventQuery(traceId: string, hours: number, serviceName: string | null = null): {
+export function getSelectedTraceEventQuery(traceId: string, hours: number): {
   query: string,
   params: Record<string, string | number>,
 } {
@@ -187,15 +184,10 @@ SELECT event_type, event_at, data, user_id, parent_span_ids,
 FROM default.events
 WHERE trace_id = {traceId:String}
   AND event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-  ${serviceName == null ? "" : "AND service_name = {serviceName:String}"}
 ORDER BY event_at ASC
 LIMIT 5000
 `,
-    params: {
-      traceId,
-      hours,
-      ...(serviceName == null ? {} : { serviceName }),
-    },
+    params: { traceId, hours },
   };
 }
 
@@ -437,8 +429,8 @@ export default function PageClient() {
     setTraceLoading(true);
     setTraceError(null);
     try {
-      const spanQuery = getSelectedTraceSpanQuery(traceId, serviceName);
-      const eventQuery = getSelectedTraceEventQuery(traceId, hours, serviceName);
+      const spanQuery = getSelectedTraceSpanQuery(traceId);
+      const eventQuery = getSelectedTraceEventQuery(traceId, hours);
       const [spansResponse, eventsResponse] = await Promise.all([
         adminApp.queryAnalytics({
           query: spanQuery.query,
@@ -466,7 +458,7 @@ export default function PageClient() {
     } finally {
       if (seq === traceRequestSeqRef.current) setTraceLoading(false);
     }
-  }, [adminApp, hours, serviceName]);
+  }, [adminApp, hours]);
 
   const lastAutomaticRootLoadRef = useRef<{
     adminApp: typeof adminApp,

@@ -112,6 +112,10 @@ function defaultCollapsedSpanIds(root: TraceNode): Set<string> {
   return collapsed;
 }
 
+export function shouldShowCollapseControl(mode: "signal" | "all", hasChildren: boolean): boolean {
+  return mode === "all" && hasChildren;
+}
+
 function TimelineGridlines() {
   return (
     <>
@@ -419,7 +423,7 @@ export function TraceWaterfall({
                   onClick={() => onSelectSpan(span)}
                 >
                   <div className="flex items-center gap-1.5 min-w-0" style={{ paddingLeft: `${row.node.depth * 14}px` }}>
-                    {hasChildren ? (
+                    {shouldShowCollapseControl(mode, hasChildren) ? (
                       <button
                         className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
                         title={collapsed ? "Expand" : "Collapse"}

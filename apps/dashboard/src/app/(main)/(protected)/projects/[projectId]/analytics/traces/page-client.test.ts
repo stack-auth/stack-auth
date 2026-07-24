@@ -52,7 +52,7 @@ describe("analytics trace row parsing", () => {
 
     expect(pageSource).toContain("const loadSelectedTrace = useCallback(async (traceId: string)");
     expect(pageSource).toContain("loadSelectedTrace(selectedRootTraceId)");
-    expect(pageSource).toContain("}, [adminApp, hours, serviceName]);");
+    expect(pageSource).toContain("}, [adminApp, hours]);");
     expect(pageSource).not.toContain("}, [adminApp, hours, rootSpans, serviceName]);");
   });
 
@@ -72,6 +72,7 @@ describe("analytics trace row parsing", () => {
   it("loads only real parent spans into the trace list", () => {
     const { query } = getRecentTraceRootsQuery(null);
     expect(query).toContain("FROM default.trace_roots AS r");
+    expect(query).toContain("r.status_code");
     expect(query).not.toContain("FROM default.spans");
     expect(query).not.toContain("UNION ALL");
     expect(query).not.toContain("FROM default.refresh_tokens");
@@ -161,30 +162,19 @@ describe("analytics trace row parsing", () => {
     expect(detailQuery.params).toEqual({ traceId: "trace-123", spanId: "span-456" });
   });
 
-  it("scopes a selected trace to the chosen service while preserving the all-services view", () => {
-    const browserSpans = getSelectedTraceSpanQuery(
-      "0123456789abcdef0123456789abcdef",
-      "stack-dashboard-browser",
-    );
-    const browserEvents = getSelectedTraceEventQuery(
-      "0123456789abcdef0123456789abcdef",
-      24,
-      "stack-dashboard-browser",
-    );
-    expect(browserSpans.query).toContain("s.service_name = {serviceName:String}");
-    expect(browserEvents.query).toContain("service_name = {serviceName:String}");
-    expect(browserSpans.params).toMatchObject({
+  it("loads the complete distributed trace after filtering the inbox by service", () => {
+    const spans = getSelectedTraceSpanQuery("0123456789abcdef0123456789abcdef");
+    const events = getSelectedTraceEventQuery("0123456789abcdef0123456789abcdef", 24);
+
+    expect(spans.query).not.toContain("{serviceName:String}");
+    expect(events.query).not.toContain("{serviceName:String}");
+    expect(spans.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
-      serviceName: "stack-dashboard-browser",
     });
-    expect(browserEvents.params).toMatchObject({
+    expect(events.params).toEqual({
       traceId: "0123456789abcdef0123456789abcdef",
       hours: 24,
-      serviceName: "stack-dashboard-browser",
     });
-
-    expect(getSelectedTraceSpanQuery("cs-native-span").query).not.toContain("{serviceName:String}");
-    expect(getSelectedTraceEventQuery("cs-native-span", 1).query).not.toContain("{serviceName:String}");
   });
 
   it("loads a native trace from its selected parent", () => {
