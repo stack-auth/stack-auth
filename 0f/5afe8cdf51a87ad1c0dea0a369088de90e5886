@@ -1,0 +1,19 @@
+packages/template/src/lib/hexclave-app/apps/implementations/server-app-impl.ts
+  s_50c6b5323dd4a8::t_63e529abd3153b 41,1840,1842,1936,1938
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "0f5afe8cdf51a87ad1c0dea0a369088de90e5886",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
