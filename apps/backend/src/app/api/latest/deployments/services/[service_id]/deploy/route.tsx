@@ -1,16 +1,31 @@
-import { DeploymentServiceDefinition, HEXCLAVE_SERVICE_ID, SECRET_KEY_REGEX, createServiceDefinitionInConfig, envRecordFromRequestBody, listServiceDefinitions, resolveEnvVars, startDeployment, updateServiceDefinitionInConfig } from "@/lib/deployments";
+import { DeploymentServiceDefinition, HEXCLAVE_SERVICE_ID, MAX_UPLOAD_BYTES, SECRET_KEY_REGEX, createServiceDefinitionInConfig, envRecordFromRequestBody, listServiceDefinitions, resolveEnvVars, startDeployment, updateServiceDefinitionInConfig } from "@/lib/deployments";
 import { getVercelDeploymentsConfigOrNull } from "@/lib/deployments/vercel-client";
 import { getBranchConfigOverrideSource } from "@/lib/config";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { deleteBytes, downloadBytes, headBytes } from "@/s3";
 import { DEPLOYMENT_ENV_VAR_KEY_REGEX, deploymentEnvVarSchema } from "@hexclave/shared/dist/config/schema";
 import { adaptSchema, serverOrHigherAuthTypeSchema, userSpecifiedIdSchema, yupNumber, yupObject, yupRecord, yupString } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { StatusError, captureError } from "@hexclave/shared/dist/utils/errors";
+
+// Source fan-out is intentionally synchronous for the MVP; make the expected
+// Vercel Function budget explicit instead of inheriting a shorter default.
+export const maxDuration = 300;
+
+async function deleteDeploymentSourceObject(objectKey: string): Promise<void> {
+  try {
+    await deleteBytes({ key: objectKey, private: true });
+  } catch (error) {
+    // The R2 lifecycle rule is the final safety net for cleanup failures. The
+    // deployment result must not be hidden by a failed best-effort delete.
+    captureError("deployments-delete-source-object", error);
+  }
+}
 
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Deploy service",
-    description: "Starts a deployment of a service from a previously uploaded source tarball. The build config and env in the request (or, when omitted, the stored service definition) are authoritative for this deploy: connections are resolved server-side and secret env vars are filled from the request's secrets, then pushed to the deployment target as encrypted env vars. On GitHub-managed configs the request's build config and env still govern the BUILD, but are not persisted (the repo stays the source of truth). Returns the run id immediately (fire-and-forget); poll the run endpoint for status.",
+    description: "Starts a deployment of a service from a previously uploaded source tarball. The build config and env in the request (or, when omitted, the stored service definition) are authoritative for this deploy: connections are resolved server-side and secret env vars are filled from the request's secrets, then pushed to the deployment target as encrypted env vars. On GitHub-managed configs the request's build config and env still govern the BUILD, but are not persisted (the repo stays the source of truth). The request returns a run id after the source files have been uploaded and Vercel has accepted the deployment; the remote build continues after that, so poll the run endpoint for its final status.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -130,8 +145,23 @@ export const POST = createSmartRouteHandler({
     if (upload == null || upload.expiresAt < new Date()) {
       throw new StatusError(404, "Upload not found or expired. Create a new upload and try again.");
     }
-    if (upload.data == null) {
+    const objectMetadata = await headBytes({ key: upload.objectKey, private: true });
+    if (objectMetadata == null) {
       throw new StatusError(400, "The upload slot was created but no tarball was uploaded to it.");
+    }
+    if (objectMetadata.byteLength === 0) {
+      await prisma.deploymentSourceUpload.deleteMany({
+        where: { tenancyId: auth.tenancy.id, id: body.upload_id },
+      });
+      await deleteDeploymentSourceObject(upload.objectKey);
+      throw new StatusError(400, "The uploaded tarball is empty.");
+    }
+    if (objectMetadata.byteLength > MAX_UPLOAD_BYTES) {
+      await prisma.deploymentSourceUpload.deleteMany({
+        where: { tenancyId: auth.tenancy.id, id: body.upload_id },
+      });
+      await deleteDeploymentSourceObject(upload.objectKey);
+      throw new StatusError(StatusError.PayloadTooLarge, `The uploaded tarball is too large (max ${MAX_UPLOAD_BYTES} bytes).`);
     }
     // deleteMany (not delete) so a concurrent duplicate request loses the race
     // with a clean 4xx instead of an unhandled P2025 500.
@@ -145,41 +175,57 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(409, "This upload was already consumed by another deploy request.");
     }
 
-    if (source.type !== "pushed-from-github") {
-      if (existingDefinition == null) {
-        await createServiceDefinitionInConfig(auth.tenancy, params.service_id, {
-          framework: definition.framework,
-          installCommand: definition.installCommand,
-          buildCommand: definition.buildCommand,
-          outputDirectory: definition.outputDirectory,
-          rootDirectory: definition.rootDirectory,
-          env: definition.env,
-        });
-      } else {
-        // One combined write: the null build fields delete their config keys,
-        // and the env (when provided) replaces the whole set.
-        await updateServiceDefinitionInConfig(auth.tenancy, params.service_id, buildConfig, requestEnv);
+    try {
+      // Bind the download to the exact object version inspected above. A
+      // presigned PUT URL remains usable until expiry, so If-Match prevents an
+      // overwrite racing between our size check and download.
+      const tarballGzipped = await downloadBytes({
+        key: upload.objectKey,
+        private: true,
+        ifMatch: objectMetadata.eTag,
+      });
+      if (source.type !== "pushed-from-github") {
+        if (existingDefinition == null) {
+          await createServiceDefinitionInConfig(auth.tenancy, params.service_id, {
+            framework: definition.framework,
+            installCommand: definition.installCommand,
+            buildCommand: definition.buildCommand,
+            outputDirectory: definition.outputDirectory,
+            rootDirectory: definition.rootDirectory,
+            env: definition.env,
+          });
+        } else {
+          // One combined write: the null build fields delete their config keys,
+          // and the env (when provided) replaces the whole set.
+          await updateServiceDefinitionInConfig(auth.tenancy, params.service_id, buildConfig, requestEnv);
+        }
       }
+
+      // Intentionally synchronous for the MVP so provisioning and source-upload
+      // failures reach the CLI. Do not replace this with waitUntil: function
+      // termination would lose the deployment. Move this phase to a durable
+      // worker before increasing the source/file limits substantially.
+      const { runId } = await startDeployment({
+        tenancy: auth.tenancy,
+        prisma,
+        serviceId: params.service_id,
+        definition,
+        resolvedEnvVars,
+        target: body.target ?? "production",
+        tarballGzipped,
+        // Informational only: which access type triggered the run ("server" =
+        // secret-server-key i.e. CLI/CI, "admin" = a logged-in session).
+        triggeredBy: auth.type,
+      });
+
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { run_id: runId },
+      };
+    } finally {
+      await deleteDeploymentSourceObject(upload.objectKey);
     }
-
-    const { runId } = await startDeployment({
-      tenancy: auth.tenancy,
-      prisma,
-      serviceId: params.service_id,
-      definition,
-      resolvedEnvVars,
-      target: body.target ?? "production",
-      tarballGzipped: upload.data,
-      // Informational only: which access type triggered the run ("server" =
-      // secret-server-key i.e. CLI/CI, "admin" = a logged-in session).
-      triggeredBy: auth.type,
-    });
-
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: { run_id: runId },
-    };
   },
 });
 

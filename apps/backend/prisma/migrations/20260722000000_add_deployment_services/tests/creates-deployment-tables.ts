@@ -61,8 +61,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     VALUES (${ctx.tenancyId}::uuid, ${runId}::uuid, NOW(), ${serviceId}::uuid, 'QUEUED', 'production', 'cli')
   `;
   await sql`
-    INSERT INTO "DeploymentSourceUpload" ("tenancyId", "id", "updatedAt", "data", "expiresAt")
-    VALUES (${ctx.tenancyId}::uuid, ${uploadId}::uuid, NOW(), NULL, NOW() + INTERVAL '15 minutes')
+    INSERT INTO "DeploymentSourceUpload" ("tenancyId", "id", "updatedAt", "objectKey", "expiresAt")
+    VALUES (${ctx.tenancyId}::uuid, ${uploadId}::uuid, NOW(), ${`deployment-source-uploads/${ctx.tenancyId}/${uploadId}.tar.gz`}, NOW() + INTERVAL '15 minutes')
   `;
 
   // The default run status is QUEUED, and invalid enum values are rejected.

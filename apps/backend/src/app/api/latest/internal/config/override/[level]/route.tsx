@@ -13,6 +13,7 @@ import {
   validateEnvironmentConfigOverride,
 } from "@/lib/config";
 import { assertConfigOverrideWriteAllowed } from "@/lib/development-environment";
+import { reconcileRemovedDeploymentServices } from "@/lib/deployments/reconcile-removed-services";
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -295,6 +296,9 @@ export const PUT = createSmartRouteHandler({
     if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {
       await enqueueExternalDbSync(req.auth.tenancy.id);
     }
+    if (req.params.level === "branch") {
+      await reconcileRemovedDeploymentServices(req.auth.tenancy.id);
+    }
 
     return {
       statusCode: 200 as const,
@@ -344,6 +348,9 @@ export const PATCH = createSmartRouteHandler({
 
     if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {
       await enqueueExternalDbSync(req.auth.tenancy.id);
+    }
+    if (req.params.level === "branch") {
+      await reconcileRemovedDeploymentServices(req.auth.tenancy.id);
     }
 
     return {

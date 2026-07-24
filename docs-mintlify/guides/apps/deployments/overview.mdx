@@ -75,7 +75,7 @@ In CI, authenticate with an API key instead of `hexclave login`: set `HEXCLAVE_P
     DATABASE_URL: ${{ secrets.DATABASE_URL }}
 ```
 
-Note that `hexclave deploy` is fire-and-forget: the job succeeds once the build is queued, even if the build later fails. Check the run's status in the dashboard, or poll it via the API with the printed run id.
+`hexclave deploy` waits while the source is uploaded and Vercel accepts the deployment, but it does not wait for the remote build to finish. The command can therefore succeed even if that build later fails. Check the run's status in the dashboard, or poll it via the API with the printed run id.
 
 ## Custom domains
 

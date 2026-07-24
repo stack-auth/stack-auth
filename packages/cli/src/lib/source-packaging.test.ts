@@ -77,6 +77,39 @@ describe("packageSourceDirectory", () => {
     expect(packagedPaths(root)).toEqual(["local-only.txt", "sub/.gitignore", "sub/kept.txt"]);
   });
 
+  it("inherits ignore files above a monorepo service root", () => {
+    const root = makeTempDir();
+    write(root, ".gitignore", "*.log\npackages/api/generated/\n");
+    write(root, ".vercelignore", "packages/api/private.txt\n");
+    write(root, "packages/api/index.ts", "");
+    write(root, "packages/api/error.log", "");
+    write(root, "packages/api/generated/client.ts", "");
+    write(root, "packages/api/private.txt", "");
+
+    const packaged = packageSourceDirectory(path.join(root, "packages/api"), root);
+    const entries = parseTar(gunzipSync(packaged.tarballGzipped), { maxEntries: 100, maxTotalBytes: 1024 * 1024 });
+    expect(entries.map((entry) => entry.path)).toEqual(["index.ts"]);
+  });
+
+  it("allows a nested ignore file to override an inherited file rule", () => {
+    const root = makeTempDir();
+    write(root, ".gitignore", "*.log\n");
+    write(root, "packages/api/.gitignore", "!keep.log\n");
+    write(root, "packages/api/drop.log", "");
+    write(root, "packages/api/keep.log", "");
+
+    const packaged = packageSourceDirectory(path.join(root, "packages/api"), root);
+    const entries = parseTar(gunzipSync(packaged.tarballGzipped), { maxEntries: 100, maxTotalBytes: 1024 * 1024 });
+    expect(entries.map((entry) => entry.path)).toEqual([".gitignore", "keep.log"]);
+  });
+
+  it("rejects a source directory outside the ignore/config root", () => {
+    const configRoot = makeTempDir();
+    const sourceRoot = makeTempDir();
+    write(sourceRoot, "index.ts", "");
+    expect(() => packageSourceDirectory(sourceRoot, configRoot)).toThrow("must be inside the config directory");
+  });
+
   it("skips symlinks", () => {
     const root = makeTempDir();
     write(root, "real.txt", "hi");

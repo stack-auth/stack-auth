@@ -53,8 +53,8 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   const serviceId = randomUUID();
   await seedServiceWithChildren(sql, ctx.tenancyId, serviceId, "cascade-a");
   await sql`
-    INSERT INTO "DeploymentSourceUpload" ("tenancyId", "id", "updatedAt", "data", "expiresAt")
-    VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), '\\x00'::bytea, NOW() + INTERVAL '15 minutes')
+    INSERT INTO "DeploymentSourceUpload" ("tenancyId", "id", "updatedAt", "objectKey", "expiresAt")
+    VALUES (${ctx.tenancyId}::uuid, ${randomUUID()}::uuid, NOW(), ${`deployment-source-uploads/${ctx.tenancyId}/${randomUUID()}.tar.gz`}, NOW() + INTERVAL '15 minutes')
   `;
   expect(await countChildren(sql, ctx.tenancyId)).toEqual({ services: 1, domains: 1, runs: 1, uploads: 1 });
 

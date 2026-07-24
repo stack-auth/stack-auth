@@ -195,13 +195,20 @@ export async function getOrCreateOperationalService(prisma: PrismaClientTransact
 /**
  * The Vercel project name for a service: `hxc-<hexclaveProjectId>-<serviceId>`,
  * sanitized to Vercel's project name rules (lowercase alphanumeric + hyphens,
- * max 100 chars). Only used at provisioning time — afterwards the persisted
- * Vercel project id is authoritative, so truncation collisions surface as a
- * name-conflict error on creation rather than silent cross-linking.
+ * max 100 chars). The hash is computed from the unsanitized identifiers and
+ * retained when the readable prefix is truncated, so two long or
+ * punctuation-heavy identifiers cannot collapse to the same Vercel name.
+ * Only used at provisioning time — afterwards the persisted Vercel project id
+ * is authoritative.
  */
 export function vercelProjectNameForService(hexclaveProjectId: string, serviceId: string): string {
   const sanitized = `hxc-${hexclaveProjectId}-${serviceId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
-  return sanitized.slice(0, 100).replace(/-+$/, "");
+  const identityHash = createHash("sha256")
+    .update(JSON.stringify([hexclaveProjectId, serviceId]))
+    .digest("hex")
+    .slice(0, 12);
+  const readablePrefix = sanitized.slice(0, 100 - identityHash.length - 1).replace(/-+$/, "");
+  return `${readablePrefix}-${identityHash}`;
 }
 
 // Vercel only accepts known framework slugs; everything else must be omitted
@@ -648,19 +655,20 @@ export async function startDeployment(options: {
       where: { tenancyId_id: { tenancyId: tenancy.id, id: service.id } },
       data: { vercelProjectId },
     });
-    // Team projects come with Vercel's deployment protection (an SSO auth
-    // wall) enabled by default, which would make the customer's site
-    // unreachable to the public. Failure to disable it must not fail the
-    // deploy — it's diagnosable (the site shows Vercel's auth page) and can
-    // be fixed by re-deploying.
-    try {
-      await client.disableDeploymentProtection(vercelProjectId);
-    } catch (e) {
-      if (e instanceof VercelApiError) {
-        captureError("deployments-disable-deployment-protection", e);
-      } else {
-        throw e;
-      }
+  }
+
+  // Team projects can inherit Vercel's deployment protection (an SSO auth
+  // wall), which would make the customer's site unreachable to the public.
+  // Run this on every deploy rather than only during provisioning: a transient
+  // failure on the first deploy must be retried, and a later team-policy change
+  // must not permanently re-protect the project.
+  try {
+    await client.disableDeploymentProtection(vercelProjectId);
+  } catch (e) {
+    if (e instanceof VercelApiError) {
+      captureError("deployments-disable-deployment-protection", e);
+    } else {
+      throw e;
     }
   }
 

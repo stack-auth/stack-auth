@@ -17,22 +17,28 @@ const IGNORE_FILE_NAMES = [".gitignore", ".vercelignore"];
 const ALWAYS_EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git"]);
 
 type IgnoreScope = {
-  // Path of the directory the rules are anchored at, relative to the package
-  // root ("" for the root itself), POSIX separators.
-  base: string,
+  // Absolute path of the directory containing the ignore file. Keeping this
+  // absolute lets a service rooted in a monorepo subdirectory still inherit
+  // ignore files from the config/repository root.
+  baseDirectory: string,
   rules: IgnoreRule[],
 };
 
-function relativeToScope(scope: IgnoreScope, relativePath: string): string {
-  return scope.base === "" ? relativePath : relativePath.slice(scope.base.length + 1);
+function relativeToScope(scope: IgnoreScope, absolutePath: string): string | undefined {
+  const relativePath = path.relative(scope.baseDirectory, absolutePath);
+  if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    return undefined;
+  }
+  return relativePath.split(path.sep).join("/");
 }
 
-function isIgnored(scopes: IgnoreScope[], relativePath: string, isDirectory: boolean): boolean {
+function isIgnored(scopes: IgnoreScope[], absolutePath: string, isDirectory: boolean): boolean {
   // Deeper ignore files take precedence, mirroring git: evaluate scopes
   // outermost-first and let later (deeper) matches override earlier ones.
   let ignored = false;
   for (const scope of scopes) {
-    const scopedPath = relativeToScope(scope, relativePath);
+    const scopedPath = relativeToScope(scope, absolutePath);
+    if (scopedPath === undefined) continue;
     for (const rule of scope.rules) {
       if (rule.dirOnly && !isDirectory) continue;
       if (rule.regex.test(scopedPath)) {
@@ -49,23 +55,40 @@ export type PackagedSource = {
   totalBytes: number,
 };
 
-export function packageSourceDirectory(rootDirectory: string): PackagedSource {
-  const rootStat = fs.statSync(rootDirectory, { throwIfNoEntry: false });
+function readIgnoreScopes(directory: string): IgnoreScope[] {
+  const scopes: IgnoreScope[] = [];
+  for (const ignoreFileName of IGNORE_FILE_NAMES) {
+    const ignoreFilePath = path.join(directory, ignoreFileName);
+    if (fs.existsSync(ignoreFilePath) && fs.statSync(ignoreFilePath).isFile()) {
+      scopes.push({ baseDirectory: directory, rules: parseIgnoreFile(fs.readFileSync(ignoreFilePath, "utf-8")) });
+    }
+  }
+  return scopes;
+}
+
+/**
+ * Packages `rootDirectory`. `ignoreRootDirectory` is the outermost directory
+ * whose ignore files apply; deploy passes the config directory so a service in
+ * a monorepo subdirectory inherits the repository-level .gitignore and
+ * .vercelignore rules.
+ */
+export function packageSourceDirectory(rootDirectory: string, ignoreRootDirectory: string = rootDirectory): PackagedSource {
+  const absoluteRootDirectory = path.resolve(rootDirectory);
+  const absoluteIgnoreRootDirectory = path.resolve(ignoreRootDirectory);
+  const rootStat = fs.statSync(absoluteRootDirectory, { throwIfNoEntry: false });
   if (rootStat == null || !rootStat.isDirectory()) {
-    throw new CliError(`Source directory not found: ${rootDirectory}`);
+    throw new CliError(`Source directory not found: ${absoluteRootDirectory}`);
+  }
+  const relativeRootFromIgnoreRoot = path.relative(absoluteIgnoreRootDirectory, absoluteRootDirectory);
+  if (relativeRootFromIgnoreRoot === ".." || relativeRootFromIgnoreRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRootFromIgnoreRoot)) {
+    throw new CliError(`Source directory ${absoluteRootDirectory} must be inside the config directory ${absoluteIgnoreRootDirectory}.`);
   }
 
   const entries: TarEntry[] = [];
   let totalBytes = 0;
 
   const walk = (absoluteDir: string, relativeDir: string, parentScopes: IgnoreScope[]) => {
-    const scopes = [...parentScopes];
-    for (const ignoreFileName of IGNORE_FILE_NAMES) {
-      const ignoreFilePath = path.join(absoluteDir, ignoreFileName);
-      if (fs.existsSync(ignoreFilePath) && fs.statSync(ignoreFilePath).isFile()) {
-        scopes.push({ base: relativeDir, rules: parseIgnoreFile(fs.readFileSync(ignoreFilePath, "utf-8")) });
-      }
-    }
+    const scopes = [...parentScopes, ...readIgnoreScopes(absoluteDir)];
 
     const dirents = fs.readdirSync(absoluteDir, { withFileTypes: true })
       .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
@@ -79,10 +102,10 @@ export function packageSourceDirectory(rootDirectory: string): PackagedSource {
       }
       if (dirent.isDirectory()) {
         if (ALWAYS_EXCLUDED_DIR_NAMES.has(dirent.name)) continue;
-        if (isIgnored(scopes, relativePath, true)) continue;
+        if (isIgnored(scopes, absolutePath, true)) continue;
         walk(absolutePath, relativePath, scopes);
       } else if (dirent.isFile()) {
-        if (isIgnored(scopes, relativePath, false)) continue;
+        if (isIgnored(scopes, absolutePath, false)) continue;
         const data = fs.readFileSync(absolutePath);
         totalBytes += data.length;
         entries.push({ path: relativePath, data });
@@ -91,10 +114,22 @@ export function packageSourceDirectory(rootDirectory: string): PackagedSource {
     }
   };
 
-  walk(rootDirectory, "", []);
+  const ancestorScopes: IgnoreScope[] = [];
+  const relativeSegments = relativeRootFromIgnoreRoot === "" ? [] : relativeRootFromIgnoreRoot.split(path.sep);
+  let currentDirectory = absoluteIgnoreRootDirectory;
+  for (const segment of relativeSegments) {
+    ancestorScopes.push(...readIgnoreScopes(currentDirectory));
+    const childDirectory = path.join(currentDirectory, segment);
+    // Git cannot re-include a directory once a parent ignore file prunes it.
+    if (isIgnored(ancestorScopes, childDirectory, true)) {
+      throw new CliError(`No files to deploy in ${absoluteRootDirectory} (the source directory is ignored by a parent .gitignore or .vercelignore).`);
+    }
+    currentDirectory = childDirectory;
+  }
+  walk(absoluteRootDirectory, "", ancestorScopes);
 
   if (entries.length === 0) {
-    throw new CliError(`No files to deploy in ${rootDirectory} (everything is ignored or the directory is empty).`);
+    throw new CliError(`No files to deploy in ${absoluteRootDirectory} (everything is ignored or the directory is empty).`);
   }
 
   let tarball;

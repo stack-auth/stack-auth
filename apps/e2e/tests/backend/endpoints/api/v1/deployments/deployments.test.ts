@@ -1,4 +1,5 @@
 import { createTar } from "@hexclave/shared/dist/utils/tar";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
@@ -22,12 +23,21 @@ async function createUpload(files?: Record<string, string>): Promise<{ uploadId:
     accessType: "admin",
   });
   if (uploadResponse.status !== 201) throw new Error(`Failed to create upload: ${JSON.stringify(uploadResponse.body)}`);
-  const putResponse = await niceBackendFetch((uploadResponse.body as any).upload_path.replace("/api/latest/", "/api/v1/"), {
+  const uploadUrl = (uploadResponse.body as any).upload_url;
+  const contentType = (uploadResponse.body as any).content_type;
+  if (typeof uploadUrl !== "string" || typeof contentType !== "string") {
+    throw new Error(`Upload response is missing the presigned URL or content type: ${JSON.stringify(uploadResponse.body)}`);
+  }
+  const source = makeSourceTarball(files);
+  const putResponse = await fetch(uploadUrl, {
     method: "PUT",
-    accessType: "admin",
-    rawBody: makeSourceTarball(files),
+    headers: {
+      "content-type": contentType,
+      "content-length": source.length.toString(),
+    },
+    body: new Uint8Array(source).slice().buffer,
   });
-  if (putResponse.status !== 200) throw new Error(`Failed to upload tarball: ${JSON.stringify(putResponse.body)}`);
+  if (!putResponse.ok) throw new Error(`Failed to upload tarball: ${putResponse.status} ${await putResponse.text()}`);
   return { uploadId: (uploadResponse.body as any).id };
 }
 
@@ -49,10 +59,16 @@ async function pollRunToReady(runId: string): Promise<void> {
   if ((secondPoll.body as any).status !== "ready") throw new Error(`Run did not become ready: ${JSON.stringify(secondPoll.body)}`);
 }
 
-async function fetchMockEnvValues(serviceId: string): Promise<Record<string, string>> {
+function mockProjectName(serviceId: string): string {
   const projectKeys = backendContext.value.projectKeys;
   if (projectKeys === "no-project") throw new Error("No project in context");
-  const projectName = `hxc-${projectKeys.projectId}-${serviceId}`;
+  const readable = `hxc-${projectKeys.projectId}-${serviceId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+  const hash = createHash("sha256").update(JSON.stringify([projectKeys.projectId, serviceId])).digest("hex").slice(0, 12);
+  return `${readable.slice(0, 87).replace(/-+$/, "")}-${hash}`;
+}
+
+async function fetchMockEnvValues(serviceId: string): Promise<Record<string, string>> {
+  const projectName = mockProjectName(serviceId);
   const response = await fetch(`${VERCEL_MOCK_URL}/__mock/projects/${encodeURIComponent(projectName)}/env-values`, {
     headers: { authorization: "Bearer mock_hexclave_vercel_key" },
   });
@@ -324,6 +340,55 @@ describe("read-only enforcement for pushed config sources", () => {
     });
     expect(addDomainResponse.status).toBe(201);
   });
+
+  it("deletes the operational row and Vercel project when a config push removes a service", async ({ expect }) => {
+    await Project.createAndSwitch();
+    const pushedSource = {
+      type: "pushed-from-github" as const,
+      owner: "acme",
+      repo: "monorepo",
+      branch: "main",
+      commit_hash: "0000000000000000000000000000000000000000",
+      config_file_path: "hexclave.config.ts",
+    };
+    await Project.pushConfig({
+      deployments: {
+        services: {
+          orphan: { type: "vercel" },
+        },
+      },
+    }, pushedSource);
+    const { uploadId } = await createUpload();
+    const firstDeploy = await niceBackendFetch("/api/v1/deployments/services/orphan/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: uploadId },
+    });
+    expect(firstDeploy.status).toBe(200);
+
+    await Project.pushConfig({ deployments: { services: {} } }, pushedSource);
+    const removedProjectResponse = await fetch(`${VERCEL_MOCK_URL}/v9/projects/${encodeURIComponent(mockProjectName("orphan"))}?teamId=team_mock_hexclave`, {
+      headers: { authorization: "Bearer mock_hexclave_vercel_key" },
+    });
+    expect(removedProjectResponse.status).toBe(404);
+
+    // Re-adding the same service must provision a fresh project rather than
+    // retaining an operational row that points at the deleted target.
+    await Project.pushConfig({
+      deployments: {
+        services: {
+          orphan: { type: "vercel" },
+        },
+      },
+    }, pushedSource);
+    const { uploadId: secondUploadId } = await createUpload();
+    const secondDeploy = await niceBackendFetch("/api/v1/deployments/services/orphan/deploy", {
+      method: "POST",
+      accessType: "admin",
+      body: { upload_id: secondUploadId },
+    });
+    expect(secondDeploy.status).toBe(200);
+  });
 });
 
 describe("deploys against the vercel-mock", () => {
@@ -369,6 +434,8 @@ describe("deploys against the vercel-mock", () => {
 
     // The mock advances one state per poll: queued -> building -> ready.
     const firstPoll = await niceBackendFetch(`/api/v1/deployments/runs/${runId}`, { accessType: "admin" });
+    expect((firstPoll.body as any).url).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
+    (firstPoll.body as any).url = "<deployment URL>";
     expect(firstPoll).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 200,
@@ -381,7 +448,7 @@ describe("deploys against the vercel-mock", () => {
           "status": "building",
           "target": "production",
           "triggered_by": "server",
-          "url": "https://hxc-<stripped UUID>-api.vercel-mock.localhost",
+          "url": "<deployment URL>",
         },
         "headers": Headers { <some fields may have been hidden> },
       }
@@ -650,7 +717,7 @@ describe("deploys against the vercel-mock", () => {
       },
     });
     expect(frontDeploy.status).toBe(200);
-    expect((await fetchMockEnvValues("front")).API_URL).toBe(`https://hxc-${projectKeys.projectId}-api.vercel-mock.localhost`);
+    expect((await fetchMockEnvValues("front")).API_URL).toBe(`https://${mockProjectName("api")}.vercel-mock.localhost`);
   });
 
   it("applies request build config and env to builds on GitHub-managed configs without persisting them", async ({ expect }) => {
@@ -767,7 +834,7 @@ describe("deploys against the vercel-mock", () => {
     expect((secondPoll.body as any).error).toMatchInlineSnapshot(`"Build failed with exit code 1"`);
   });
 
-  it("rejects invalid uploads and enforces single use", async ({ expect }) => {
+  it("rejects invalid uploads and consumes each upload slot once", async ({ expect }) => {
     await Project.createAndSwitch();
     await niceBackendFetch("/api/v1/deployments/services", {
       method: "POST",
@@ -783,24 +850,20 @@ describe("deploys against the vercel-mock", () => {
     });
     expect(missingUploadResponse.status).toBe(404);
 
-    // Upload slot can only be filled once.
-    const uploadResponse = await niceBackendFetch("/api/v1/deployments/uploads", { method: "POST", accessType: "admin" });
-    const uploadPath = (uploadResponse.body as any).upload_path.replace("/api/latest/", "/api/v1/");
-    const firstPut = await niceBackendFetch(uploadPath, { method: "PUT", accessType: "admin", rawBody: makeSourceTarball() });
-    expect(firstPut.status).toBe(200);
-    const secondPut = await niceBackendFetch(uploadPath, { method: "PUT", accessType: "admin", rawBody: makeSourceTarball() });
-    expect(secondPut).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": "This upload slot has already been used. Create a new upload slot and try again.",
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+    const { uploadId } = await createUpload();
 
     // A non-gzip upload is rejected at deploy time with a clean 400.
     const badUploadResponse = await niceBackendFetch("/api/v1/deployments/uploads", { method: "POST", accessType: "admin" });
-    const badUploadPath = (badUploadResponse.body as any).upload_path.replace("/api/latest/", "/api/v1/");
-    await niceBackendFetch(badUploadPath, { method: "PUT", accessType: "admin", rawBody: new TextEncoder().encode("definitely not a gzip stream") });
+    const badBytes = new TextEncoder().encode("definitely not a gzip stream");
+    const badPutResponse = await fetch((badUploadResponse.body as any).upload_url, {
+      method: "PUT",
+      headers: {
+        "content-type": (badUploadResponse.body as any).content_type,
+        "content-length": badBytes.length.toString(),
+      },
+      body: new Uint8Array(badBytes).slice().buffer,
+    });
+    expect(badPutResponse.ok).toBe(true);
     const badDeployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
@@ -818,13 +881,13 @@ describe("deploys against the vercel-mock", () => {
     const deployResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: (uploadResponse.body as any).id },
+      body: { upload_id: uploadId },
     });
     expect(deployResponse.status).toBe(200);
     const replayResponse = await niceBackendFetch("/api/v1/deployments/services/api/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: (uploadResponse.body as any).id },
+      body: { upload_id: uploadId },
     });
     expect(replayResponse.status).toBe(404);
   });
@@ -893,16 +956,11 @@ describe("domains", () => {
 
     // Deploy so the service gets provisioned; the stored domain is synced
     // to the target and Vercel's verification state takes over.
-    const uploadResponse = await niceBackendFetch("/api/v1/deployments/uploads", { method: "POST", accessType: "admin" });
-    await niceBackendFetch((uploadResponse.body as any).upload_path.replace("/api/latest/", "/api/v1/"), {
-      method: "PUT",
-      accessType: "admin",
-      rawBody: makeSourceTarball(),
-    });
+    const { uploadId } = await createUpload();
     await niceBackendFetch("/api/v1/deployments/services/web/deploy", {
       method: "POST",
       accessType: "admin",
-      body: { upload_id: (uploadResponse.body as any).id },
+      body: { upload_id: uploadId },
     });
 
     const postDeployDetails = await niceBackendFetch("/api/v1/deployments/services/web/domains/app.example.com", { accessType: "admin" });

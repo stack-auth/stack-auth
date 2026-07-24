@@ -56,7 +56,7 @@ CREATE TABLE "DeploymentSourceUpload" (
     "id" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "data" BYTEA,
+    "objectKey" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "DeploymentSourceUpload_pkey" PRIMARY KEY ("tenancyId","id")
@@ -85,4 +85,3 @@ ALTER TABLE "DeploymentRun" ADD CONSTRAINT "DeploymentRun_tenancyId_deploymentSe
 
 -- AddForeignKey
 ALTER TABLE "DeploymentSourceUpload" ADD CONSTRAINT "DeploymentSourceUpload_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

@@ -234,7 +234,6 @@ async function buildAuthHeadersFactory(auth: ProjectAuth): Promise<() => Promise
 async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<Record<string, string>>, apiPath: string, init: {
   method: string,
   jsonBody?: unknown,
-  rawBody?: Uint8Array,
 }): Promise<any> {
   const url = `${auth.apiUrl.replace(/\/$/, "")}/api/latest${apiPath}`;
   const response = await fetch(url, {
@@ -242,14 +241,8 @@ async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<R
     headers: {
       ...await getAuthHeaders(),
       ...(init.jsonBody !== undefined ? { "content-type": "application/json" } : {}),
-      ...(init.rawBody !== undefined ? { "content-type": "application/octet-stream" } : {}),
     },
-    body: init.rawBody !== undefined
-      // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
-      // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
-      // bytes of a shared buffer.
-      ? new Uint8Array(init.rawBody).slice().buffer
-      : (init.jsonBody !== undefined ? JSON.stringify(init.jsonBody) : undefined),
+    body: init.jsonBody !== undefined ? JSON.stringify(init.jsonBody) : undefined,
   });
   const text = await response.text();
   if (!response.ok) {
@@ -270,10 +263,38 @@ async function deployApiFetch(auth: ProjectAuth, getAuthHeaders: () => Promise<R
   }
 }
 
+async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8Array): Promise<void> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(uploadUrl);
+  } catch {
+    throw new CliError("The Hexclave API returned an invalid object-storage upload URL.");
+  }
+  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+    throw new CliError("The Hexclave API returned an upload URL with an unsupported protocol.");
+  }
+  const response = await fetch(parsedUrl, {
+    method: "PUT",
+    headers: {
+      // This header is signed into the R2/S3 URL and must match exactly.
+      "content-type": contentType,
+      "content-length": bytes.length.toString(),
+    },
+    // Copy into a plain ArrayBuffer: TS's BodyInit doesn't accept
+    // Uint8Array<ArrayBufferLike>, and slicing also drops any surrounding
+    // bytes of a shared buffer.
+    body: new Uint8Array(bytes).slice().buffer,
+  });
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new CliError(`Source upload failed (${response.status} from object storage): ${responseBody.slice(0, 1000)}`);
+  }
+}
+
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy <service>")
-    .description("Deploy a service defined under `deployments.services` in your hexclave.config.ts. Uploads the service's source directory; the build runs remotely. Fire-and-forget: prints the run id and exits once the deploy is queued.")
+    .description("Deploy a service defined under `deployments.services` in your hexclave.config.ts. Uploads the service's source directory, waits for Vercel to accept the deployment, then prints the run id without waiting for the remote build to finish.")
     .option("--config <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
     .option("--secret <KEY=VALUE>", "Value for a secret env var of this deploy (repeatable). KEY is the secret key named by a `type: \"secret\"` env var in the config; the value is pushed to the deployment target and never persisted by Hexclave.", (value: string, previous: string[]) => [...previous, value], [] as string[])
@@ -286,6 +307,7 @@ export function registerDeployCommand(program: Command) {
       const configPath = resolveDeployConfigPath(opts.config, process.cwd());
       let definition: ServiceDefinition | undefined;
       let rootDirectory: string;
+      let ignoreRootDirectory: string;
       if (configPath != null) {
         // Config-as-code mode: the config file's definition (build config and
         // env vars) governs this deploy and is upserted into the service
@@ -308,7 +330,8 @@ export function registerDeployCommand(program: Command) {
         // The source directory is the service's rootDirectory, resolved
         // relative to the config file (not the cwd) so deploys behave the same
         // from anywhere in the repo.
-        rootDirectory = path.resolve(path.dirname(configPath), definition.rootDirectory ?? ".");
+        ignoreRootDirectory = path.dirname(configPath);
+        rootDirectory = path.resolve(ignoreRootDirectory, definition.rootDirectory ?? ".");
       } else {
         // Dashboard mode: no config file, so the service's definition as
         // stored on the backend governs the deploy (the service must already
@@ -324,25 +347,23 @@ export function registerDeployCommand(program: Command) {
           }
         }
         assertSecretsMatchEnv(remoteEnv, secrets);
+        ignoreRootDirectory = process.cwd();
         rootDirectory = path.resolve(process.cwd(), remoteRootDirectory);
         console.error(`No config file found — using the service configuration stored in Hexclave (root directory: ${remoteRootDirectory}).`);
       }
       console.error(`Packaging ${rootDirectory}...`);
-      const packaged = packageSourceDirectory(rootDirectory);
+      const packaged = packageSourceDirectory(rootDirectory, ignoreRootDirectory);
       console.error(`Packaged ${packaged.fileCount} files (${(packaged.tarballGzipped.length / 1024).toFixed(1)} KiB compressed).`);
 
       const upload = await deployApiFetch(auth, authHeaders, "/deployments/uploads", { method: "POST" });
-      if (typeof upload?.id !== "string" || typeof upload?.upload_path !== "string") {
+      if (typeof upload?.id !== "string" || typeof upload?.upload_url !== "string" || typeof upload?.content_type !== "string") {
         throw new CliError("Unexpected response from the Hexclave API when creating the upload.");
       }
       if (typeof upload.max_bytes === "number" && packaged.tarballGzipped.length > upload.max_bytes) {
         throw new CliError(`The packaged source is too large (${packaged.tarballGzipped.length} bytes, max ${upload.max_bytes}). Check your .gitignore/.vercelignore — build outputs and large assets shouldn't be uploaded.`);
       }
       console.error(`Uploading source...`);
-      await deployApiFetch(auth, authHeaders, upload.upload_path.replace(/^\/api\/latest/, ""), {
-        method: "PUT",
-        rawBody: packaged.tarballGzipped,
-      });
+      await uploadSource(upload.upload_url, upload.content_type, packaged.tarballGzipped);
 
       console.error(`Starting deployment of ${JSON.stringify(service)}...`);
       // Without a config file, build_config and env are omitted entirely: the
@@ -371,9 +392,9 @@ export function registerDeployCommand(program: Command) {
         throw new CliError("Unexpected response from the Hexclave API when starting the deployment.");
       }
 
-      // Fire-and-forget by design: the build continues remotely. Exit 0 once
-      // queued — CI does NOT fail on a failed build (a waiting/streaming flag
-      // is planned post-MVP).
+      // Source preparation is synchronous, but the remote build continues
+      // after this returns. CI therefore does NOT fail on a later build
+      // failure (a waiting/streaming flag is planned post-MVP).
       console.log(JSON.stringify({ runId: deployResponse.run_id }, null, 2));
     });
 }

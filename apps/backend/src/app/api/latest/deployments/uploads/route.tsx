@@ -1,13 +1,15 @@
 import { MAX_UPLOAD_BYTES, UPLOAD_EXPIRY_MS } from "@/lib/deployments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { createPresignedUploadUrl } from "@/s3";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
-import { urlString } from "@hexclave/shared/dist/utils/urls";
+
+const DEPLOYMENT_SOURCE_CONTENT_TYPE = "application/gzip";
 
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Create deployment source upload",
-    description: "Creates a short-lived upload slot for a deployment source tarball. PUT the gzipped tarball (application/octet-stream) to the returned upload path, then reference the upload id in the deploy request.",
+    description: "Creates a short-lived upload slot for a deployment source tarball. PUT the gzipped tarball directly to the returned private object-storage URL with the required content type, then reference the upload id in the deploy request.",
     tags: ["Deployments"],
     hidden: true,
   },
@@ -23,22 +25,33 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       id: yupString().defined(),
-      upload_path: yupString().defined(),
+      upload_url: yupString().defined(),
+      content_type: yupString().oneOf([DEPLOYMENT_SOURCE_CONTENT_TYPE]).defined(),
       expires_at_millis: yupNumber().defined(),
       max_bytes: yupNumber().defined(),
     }).defined(),
   }),
   handler: async ({ auth }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    // Opportunistic cleanup: uploads are single-use and short-lived, so any
-    // expired leftovers (crashed CLI, abandoned deploys) get dropped here
-    // instead of needing a background job.
+    // Opportunistically drop expired references. Their objects are covered by
+    // the deployment-source-uploads/ lifecycle rule because an abandoned CLI
+    // never makes another authenticated request we could use for cleanup.
     await prisma.deploymentSourceUpload.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     });
+    const uploadId = crypto.randomUUID();
+    const objectKey = `deployment-source-uploads/${auth.tenancy.id}/${uploadId}.tar.gz`;
+    const uploadUrl = await createPresignedUploadUrl({
+      key: objectKey,
+      expiresInSeconds: Math.ceil(UPLOAD_EXPIRY_MS / 1000),
+      contentType: DEPLOYMENT_SOURCE_CONTENT_TYPE,
+      private: true,
+    });
     const upload = await prisma.deploymentSourceUpload.create({
       data: {
+        id: uploadId,
         tenancyId: auth.tenancy.id,
+        objectKey,
         expiresAt: new Date(Date.now() + UPLOAD_EXPIRY_MS),
       },
     });
@@ -47,7 +60,8 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         id: upload.id,
-        upload_path: urlString`/api/latest/deployments/uploads/${upload.id}`,
+        upload_url: uploadUrl,
+        content_type: DEPLOYMENT_SOURCE_CONTENT_TYPE,
         expires_at_millis: upload.expiresAt.getTime(),
         max_bytes: MAX_UPLOAD_BYTES,
       },

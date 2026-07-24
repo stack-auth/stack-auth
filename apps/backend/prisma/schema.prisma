@@ -1629,10 +1629,11 @@ model DeploymentRun {
   @@index([tenancyId, deploymentServiceId, createdAt(sort: Desc)])
 }
 
-// Short-lived tarball uploads for `hexclave deploy`: the CLI requests an
-// upload slot, PUTs the tarball, then references it in the deploy request.
-// Rows are deleted on consumption; expired leftovers are cleaned up
-// opportunistically whenever a new upload slot is created.
+// Short-lived private-object references for `hexclave deploy`: the CLI
+// requests a presigned S3/R2 PUT URL, uploads directly to object storage, then
+// references this row in the deploy request. Rows and successfully-consumed
+// objects are deleted after use; a bucket lifecycle rule cleans up abandoned
+// objects whose clients never finish the deploy flow.
 model DeploymentSourceUpload {
   tenancyId String @db.Uuid
 
@@ -1641,8 +1642,7 @@ model DeploymentSourceUpload {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Null until the CLI actually PUTs the tarball.
-  data      Bytes?
+  objectKey String
   expiresAt DateTime
 
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
