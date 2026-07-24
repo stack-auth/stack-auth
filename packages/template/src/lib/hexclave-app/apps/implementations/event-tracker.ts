@@ -87,25 +87,8 @@ type Settler = {
   reject: (error: unknown) => void,
 };
 
-// Subscribing an internal no-op handler means an ignored rejection never counts
-// as "unhandled" (the runtime only reports rejected promises with zero
-// subscribers), while callers who do await still observe it through their own
-// handler. This is what makes fire-and-forget usage safe.
-function preCaught<T>(promise: Promise<T>): Promise<T> {
-  promise.catch(() => {});
-  return promise;
-}
-
 export function rejectedPreCaught(message: string): Promise<never> {
-  console.error(`Hexclave analytics: ${message}`);
-  return preCaught(Promise.reject(new Error(message)));
-}
-
-let warnedTelemetryUnavailable = false;
-export function warnTelemetryUnavailableOnce(): void {
-  if (warnedTelemetryUnavailable) return;
-  warnedTelemetryUnavailable = true;
-  console.warn("Hexclave analytics: trackEvent/startSpan called where analytics is unavailable (non-browser environment, no persistent token store, or analytics disabled); telemetry is dropped");
+  return Promise.reject(new Error(`Hexclave analytics: ${message}`));
 }
 
 export function getCustomTelemetryNameError(kind: "event" | "span", name: unknown): string | null {
@@ -134,12 +117,14 @@ export function getCustomTelemetryDataError(data: unknown): string | null {
 }
 
 export function resolveEndedAtMs(startedAtMs: number, endedAtMs: number | undefined): number {
-  const rawEndedAtMs = endedAtMs ?? Date.now();
-  if (!Number.isFinite(rawEndedAtMs)) {
-    console.error("Hexclave analytics: endedAtMs must be a finite epoch-milliseconds value; using the current time instead");
-    return Math.max(startedAtMs, Date.now());
+  const resolvedEndedAtMs = endedAtMs ?? Date.now();
+  if (!Number.isInteger(resolvedEndedAtMs) || resolvedEndedAtMs < 0) {
+    throw new Error("Hexclave analytics: endedAtMs must be a non-negative integer epoch-milliseconds value");
   }
-  return Math.max(startedAtMs, Math.round(rawEndedAtMs));
+  if (resolvedEndedAtMs < startedAtMs) {
+    throw new Error("Hexclave analytics: endedAtMs must be greater than or equal to startedAtMs");
+  }
+  return resolvedEndedAtMs;
 }
 
 /**
@@ -183,31 +168,6 @@ export function resolveParentIds(opts: {
     return { ids: merged.slice(-CUSTOM_TELEMETRY_MAX_PARENT_CHAIN) };
   }
   return { ids: merged };
-}
-
-/**
- * A Span that records nothing. Returned wherever analytics cannot run (SSR,
- * analytics disabled, tracker torn down) so isomorphic user code never needs to
- * branch: every method succeeds immediately.
- */
-export function createInertSpan(spanType: string): Span {
-  let ended = false;
-  const span: Span = {
-    spanId: generateUuid(),
-    spanType,
-    get isEnded() {
-      return ended;
-    },
-    setData: () => Promise.resolve(),
-    end: () => {
-      ended = true;
-      return Promise.resolve();
-    },
-    trackEvent: () => Promise.resolve(),
-    startSpan: (childType: string) => createInertSpan(childType),
-    ref: () => ({ spanId: span.spanId, parentSpanIds: [] }),
-  };
-  return span;
 }
 
 function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
@@ -403,8 +363,8 @@ export class EventTracker {
     this._unclassifiedClicks.clear();
   }
 
-  // Rejects every pending custom-event/span promise (pre-caught, so silent for
-  // fire-and-forget callers), drops buffered span rows, and inert-ifies all live
+  // Rejects every pending custom-event/span promise, drops buffered span rows,
+  // and inert-ifies all live
   // span handles. Called on sign-out (paired with the segment-id rotation): a
   // span started under user A must never be re-written under user B's session.
   private _settleAllPending(reason: string) {
@@ -440,8 +400,7 @@ export class EventTracker {
   /**
    * Buffers a custom analytics event. The returned promise resolves when the
    * batch carrying the event is acknowledged and rejects on definitive send
-   * failure; it is pre-caught, so ignoring it is safe. Never throws — invalid
-   * input yields a rejected promise plus a console error.
+   * failure. Invalid input and disabled telemetry reject explicitly.
    */
   trackCustomEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {
     const nameError = getCustomTelemetryNameError("event", eventType);
@@ -450,7 +409,9 @@ export class EventTracker {
     if (dataError) return rejectedPreCaught(dataError);
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
-    if (this._disabled) return Promise.resolve();
+    if (this._disabled) {
+      return Promise.reject(new Error("Hexclave analytics: telemetry is disabled"));
+    }
 
     const event: TrackedEvent = {
       event_type: eventType,
@@ -459,9 +420,9 @@ export class EventTracker {
       ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
     };
     let settler!: Settler;
-    const promise = preCaught(new Promise<void>((resolve, reject) => {
+    const promise = new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    }));
+    });
     this._eventSettlers.set(event, settler);
     this._pushEvent(event);
     return promise;
@@ -469,30 +430,28 @@ export class EventTracker {
 
   /**
    * Starts a custom span: the open interval is written on the next flush and
-   * re-written (versioned upsert) on setData/end. Never throws — invalid input
-   * yields an inert span plus a console error, so caller code always proceeds.
+   * re-written (versioned upsert) on setData/end. Invalid input and disabled
+   * telemetry throw instead of returning an inert handle.
    */
   startSpan(spanType: string, options?: StartSpanOptions): Span {
     const nameError = getCustomTelemetryNameError("span", spanType);
     if (nameError) {
-      console.error(`Hexclave analytics: ${nameError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${nameError}`);
     }
     const dataError = getCustomTelemetryDataError(options?.data);
     if (dataError) {
-      console.error(`Hexclave analytics: ${dataError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${dataError}`);
     }
     if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
-      console.error(`Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value`);
-      return createInertSpan(spanType);
+      throw new Error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
     }
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
     if ("error" in resolved) {
-      console.error(`Hexclave analytics: ${resolved.error}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
-    if (this._disabled) return createInertSpan(spanType);
+    if (this._disabled) {
+      throw new Error("Hexclave analytics: telemetry is disabled");
+    }
 
     const spanId = generateUuid();
     // The custom ancestor chain is frozen at creation: parents are identity, not
@@ -546,12 +505,10 @@ export class EventTracker {
       },
       end: (endOptions?: { endedAtMs?: number }) => {
         if (endPromise) return endPromise;
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         ended = true;
         this._globalSpans.delete(span);
         this._liveSpanControls.delete(control);
-        // Clamp so a caller-supplied end can never invert the interval — the
-        // server rejects ended < started, and one bad item would 400 the batch.
-        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },
@@ -605,9 +562,9 @@ export class EventTracker {
 
   private _enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
     let settler!: Settler;
-    const promise = preCaught(new Promise<void>((resolve, reject) => {
+    const promise = new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    }));
+    });
     const previous = this._spanUpdates.get(row.span_id);
     if (previous) {
       this._approxBytes -= JSON.stringify(previous.row).length;
@@ -971,8 +928,6 @@ export class EventTracker {
         );
 
         if (res.status === "error") {
-          // All rejections are pre-caught at promise creation, so failures are
-          // silent for fire-and-forget callers and observable for awaiting ones.
           for (const settler of settlers) settler.reject(res.error);
           if (isAnalyticsNotEnabledError(res.error)) {
             this._disable();

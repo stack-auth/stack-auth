@@ -63,7 +63,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _HexclaveAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, warnTelemetryUnavailableOnce, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { EventTracker, getCustomTelemetryDataError, getCustomTelemetryNameError, rejectedPreCaught, resolveParentIds, type Span, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import { subscribeSessionRefresh } from "./session-refresh-subscription";
@@ -4027,8 +4027,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   // Custom telemetry (see the StackClientApp interface for user-facing docs).
   // The tracker only exists in browser-like environments with analytics enabled
-  // and a persistent token store; everywhere else these are validated no-ops so
-  // isomorphic code never needs to branch (and misuse still surfaces loudly).
+  // and a persistent token store. Calls outside that environment fail visibly
+  // instead of returning handles that silently discard telemetry.
 
   trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void> {
     if (this._eventTracker) {
@@ -4040,8 +4040,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (dataError) return rejectedPreCaught(dataError);
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
-    warnTelemetryUnavailableOnce();
-    return Promise.resolve();
+    return Promise.reject(new Error("Hexclave analytics: telemetry is unavailable in this environment"));
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {
@@ -4050,25 +4049,20 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     }
     const nameError = getCustomTelemetryNameError("span", spanType);
     if (nameError) {
-      console.error(`Hexclave analytics: ${nameError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${nameError}`);
     }
     const dataError = getCustomTelemetryDataError(options?.data);
     if (dataError) {
-      console.error(`Hexclave analytics: ${dataError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${dataError}`);
     }
     if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
-      console.error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
-      return createInertSpan(spanType);
+      throw new Error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
     }
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
     if ("error" in resolved) {
-      console.error(`Hexclave analytics: ${resolved.error}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
-    warnTelemetryUnavailableOnce();
-    return createInertSpan(spanType);
+    throw new Error("Hexclave analytics: telemetry is unavailable in this environment");
   }
 
   setGlobalSpan(span: Span): void {
