@@ -1,6 +1,7 @@
 "use client";
 
 import { storeRemoteDevelopmentEnvironmentBrowserSecret } from "@/app/remote-development-environment-browser-secret-client";
+import { Logo } from "@/components/logo";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
@@ -109,6 +110,9 @@ export function BrowserSecretConfirmationPageClient() {
   return (
     <div className="relative z-10 min-h-screen bg-background text-foreground flex items-center justify-center px-4">
       <div className="w-full max-w-lg rounded-2xl border border-black/[0.10] dark:border-white/[0.10] bg-white dark:bg-background p-6 shadow-sm">
+        <div className="mb-4">
+          <Logo noLink alt="Hexclave" width={40} height={40} />
+        </div>
         <div className="mb-3 inline-flex rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
           Browser authorization
         </div>

@@ -115,19 +115,33 @@ async function insertProjectUsers(client: Client, context: ProjectUsageContext, 
   return nonAnonymousUsers.rows.map((row) => row.projectUserId);
 }
 
+// Marks the EmailOutbox rows this test seeds so we can distinguish them from
+// incidental transactional emails the platform sends to the billing team's
+// projects (see waitForPlanUsageValues for why that matters).
+const SEEDED_EMAIL_SUBJECT = "Plan usage test email";
+
 async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSendingAt: Date | null): Promise<void> {
   const renderedAt = new Date();
+  // These are synthetic rows we insert purely to be counted by plan usage; they must never be touched
+  // by the real email-queue worker. We mark them "isPaused" because that is the single flag every worker
+  // stage checks (render, queue, and send all require isPaused = FALSE). This matters for the not-yet-sent
+  // row (the one with a null startedSendingAt): it is fully rendered, so the send step would otherwise
+  // claim any non-paused row whose startedSendingAt IS NULL and stamp it to ~now -- which lands inside the
+  // active subscription window and inflates the metered email count nondeterministically (only when the
+  // worker runs before the test's assertions, e.g. on slower CI shards). "isQueued" alone does not prevent
+  // this: the send step claims the row regardless of "isQueued" once it is rendered and not started sending.
+  // Pausing is safe for the count because plan usage windows purely on startedSendingAt, never on isPaused.
   await client.query(
     `
       INSERT INTO "EmailOutbox"
         ("tenancyId", "id", "createdAt", "updatedAt", "tsxSource", "isHighPriority", "to", "extraRenderVariables",
          "shouldSkipDeliverabilityCheck", "createdWith", "renderedByWorkerId", "startedRenderingAt",
          "finishedRenderingAt", "renderedHtml", "renderedSubject", "renderedIsTransactional",
-         "scheduledAt", "isQueued", "startedSendingAt", "finishedSendingAt", "canHaveDeliveryInfo")
+         "scheduledAt", "isQueued", "isPaused", "startedSendingAt", "finishedSendingAt", "canHaveDeliveryInfo")
       VALUES
         ($1::uuid, gen_random_uuid(), $4, $4, '', false, $2::jsonb, '{}'::jsonb,
          true, 'PROGRAMMATIC_CALL', $3::uuid, $4, $4, '<p>usage test</p>',
-         'Plan usage test email', true, $4, true, $5, $5, $6)
+         $7, true, $4, false, true, $5, $5, $6)
     `,
     [
       tenancyId,
@@ -136,7 +150,23 @@ async function insertEmailOutboxRow(client: Client, tenancyId: string, startedSe
       renderedAt,
       startedSendingAt,
       startedSendingAt == null ? null : false,
+      SEEDED_EMAIL_SUBJECT,
     ],
+  );
+}
+
+// Removes any EmailOutbox rows in the given tenancies that this test did not seed.
+// The platform sends incidental transactional emails to a billing team's projects
+// around purchase/setup time; because those land at ~now they fall inside the
+// active subscription window and inflate the metered email count. We can't clear
+// them once up front the way we do the rest of the seeded usage, because they are
+// written asynchronously and can arrive after that clear (observed only on slower
+// CI shards — locally they settle before seeding). Deleting the non-seeded rows
+// keeps the test measuring exactly the usage it controls.
+async function deleteIncidentalEmailRows(client: Client, tenancyIds: readonly string[]): Promise<void> {
+  await client.query(
+    `DELETE FROM "EmailOutbox" WHERE "tenancyId" = ANY($1::uuid[]) AND "renderedSubject" IS DISTINCT FROM $2`,
+    [tenancyIds, SEEDED_EMAIL_SUBJECT],
   );
 }
 
@@ -197,22 +227,41 @@ function getUsedUsageValue(usage: PlanUsageResponse, itemId: string): number {
   return row.used ?? throwErr(`Expected usage row ${itemId} to have a used value`);
 }
 
-function getCalendarMonthBounds(now: Date): { start: Date, end: Date } {
-  return {
-    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
-    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)),
-  };
+// Plan usage windows metered items (emails, session replays) by the billing team's active
+// subscription period, not the calendar month: getPlanUsagePeriod derives the window from the
+// subscription's currentPeriodStart/End (via bulldozer-js) and only falls back to the calendar month
+// when there is no active paid subscription. So for a paid plan we must anchor both the seeded rows
+// and the period assertions to the actual subscription period, read here from the source-of-truth
+// Subscription row.
+async function getActiveTeamSubscriptionPeriod(client: Client, ownerTeamId: string): Promise<{ start: Date, end: Date }> {
+  const result = await client.query<{ currentPeriodStart: Date, currentPeriodEnd: Date }>(
+    `
+      SELECT "currentPeriodStart", "currentPeriodEnd"
+      FROM "Subscription"
+      WHERE "customerId" = $1 AND "customerType" = 'TEAM' AND "productId" = 'team' AND "status" = 'active'
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `,
+    [ownerTeamId],
+  );
+  const row = result.rows[0] ?? throwErr(`Could not find an active team subscription for billing team ${ownerTeamId}`);
+  return { start: row.currentPeriodStart, end: row.currentPeriodEnd };
 }
 
-async function waitForPlanUsageValues(expected: {
-  authUsers: number,
-  emails: number,
-  sessionReplays: number,
-  analyticsEvents: number,
-}): Promise<PlanUsageResponse> {
+async function waitForPlanUsageValues(
+  client: Client,
+  billingTenancyIds: readonly string[],
+  expected: {
+    authUsers: number,
+    emails: number,
+    sessionReplays: number,
+    analyticsEvents: number,
+  },
+): Promise<PlanUsageResponse> {
   const startedAt = performance.now();
   let latestUsage: PlanUsageResponse | undefined;
   while (performance.now() - startedAt < 15_000) {
+    await deleteIncidentalEmailRows(client, billingTenancyIds);
     latestUsage = await getPlanUsage();
     if (
       getUsedUsageValue(latestUsage, ITEM_IDS.authUsers) === expected.authUsers
@@ -279,25 +328,23 @@ describe("internal plan usage", () => {
 
     backendContext.set({ projectKeys: primaryProjectKeys, userAuth: null });
 
-    const { start, end } = getCalendarMonthBounds(new Date());
-    const outsideBefore = new Date(start.getTime() - 2 * 24 * 60 * 60 * 1000);
-    const insidePrimary = new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000);
-    const insideSecondaryA = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const insideSecondaryB = new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000);
-    const outsideAfter = new Date(end.getTime() + 2 * 24 * 60 * 60 * 1000);
-
-    await withInternalDatabase(async (client) => {
+    const { period, billingTenancyIds } = await withInternalDatabase(async (client) => {
       const primary = await getProjectUsageContext(client, primaryProject.projectId);
       const secondary = await getProjectUsageContext(client, secondaryProject.projectId);
       const unrelated = await getProjectUsageContext(client, unrelatedProject.projectId);
       await clearSeededUsageRows(client, [primary, secondary, unrelated]);
-      // TODO(bulldozer-js): we used to normalize the billing team's emitted
-      // subscription-map period by editing the SQL BulldozerStorageEngine table
-      // directly. That table was dropped when the SQL bulldozer engine was
-      // retired, and plan usage now derives the period from bulldozer-js (LMDB)
-      // via getSubscriptionMapForCustomer, so the SQL edit no longer had any
-      // effect. If the period assertions below become flaky, re-introduce
-      // normalization by driving bulldozer-js instead of Postgres.
+
+      // Anchor the seeded rows to the actual subscription period. Metered usage is windowed by the
+      // billing cycle [start, end), so "inside" rows must sit within it and "outside" rows just beyond
+      // its edges. (Previously these were anchored to the calendar month, which stopped matching the
+      // window once plan usage started deriving the period from the subscription via bulldozer-js.)
+      const { start, end } = await getActiveTeamSubscriptionPeriod(client, ownerTeamId);
+      const dayMs = 24 * 60 * 60 * 1000;
+      const outsideBefore = new Date(start.getTime() - 2 * dayMs);
+      const insidePrimary = new Date(start.getTime() + 2 * dayMs);
+      const insideSecondaryA = new Date(start.getTime() + 3 * dayMs);
+      const insideSecondaryB = new Date(start.getTime() + 4 * dayMs);
+      const outsideAfter = new Date(end.getTime() + 2 * dayMs);
 
       const primaryUserIds = await insertProjectUsers(client, primary, {
         nonAnonymousCount: 2,
@@ -330,19 +377,24 @@ describe("internal plan usage", () => {
       await insertSessionReplayRow(client, secondary, firstSecondaryUserId, insideSecondaryB);
       await insertSessionReplayRow(client, secondary, firstSecondaryUserId, outsideAfter);
       await insertSessionReplayRow(client, unrelated, firstUnrelatedUserId, insidePrimary);
+
+      return {
+        period: { start, end },
+        billingTenancyIds: [primary.tenancyId, secondary.tenancyId],
+      };
     });
 
-    const usage = await waitForPlanUsageValues({
+    const usage = await withInternalDatabase((client) => waitForPlanUsageValues(client, billingTenancyIds, {
       authUsers: 3,
       emails: 3,
       sessionReplays: 3,
       analyticsEvents: 0,
-    });
+    }));
 
     expect(usage.owner_team_id).toBe(ownerTeamId);
     expect(usage.plan_id).toBe("team");
-    expect(usage.period_start_millis).toBe(start.getTime());
-    expect(usage.period_end_millis).toBe(end.getTime());
+    expect(usage.period_start_millis).toBe(period.start.getTime());
+    expect(usage.period_end_millis).toBe(period.end.getTime());
     expect(getUsedUsageValue(usage, ITEM_IDS.authUsers)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.emailsPerMonth)).toBe(3);
     expect(getUsedUsageValue(usage, ITEM_IDS.sessionReplays)).toBe(3);
