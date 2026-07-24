@@ -1781,10 +1781,10 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     // under the client session ($refresh-token/$session-replay/$session-replay-segment).
     if (options?.request) {
       const { request, ...rest } = options;
-      return preCaught((async () => {
+      return (async () => {
         const context = await this._resolveServerRequestContext(request, options.userId ?? null);
         await runWithServerRequestContext(context, () => this._trackServerEvent(eventType, data, rest, context.userId));
-      })());
+      })();
     }
     return this._trackServerEvent(eventType, data, options, options?.userId ?? null);
   }
@@ -1816,21 +1816,17 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
    * server span: the caller's user + refresh token from the session (server-trusted)
    * and the client-propagated replay/segment/custom-parent ids from the
    * `x-hexclave-span-context` header (untrusted labels — dropped if they name a
-   * different project). Best-effort: an unauthenticated or unparseable request just
-   * yields an empty context so the span still records.
+   * different project). A valid unauthenticated request resolves to an empty
+   * session; request parsing and session-resolution failures propagate.
    */
   private async _resolveServerRequestContext(request: RequestLike, explicitUserId: string | null): Promise<ServerRequestSpanContext> {
     let userId: string | null = null;
     let refreshTokenId: string | null = null;
-    try {
-      const session = await this._getSession(request);
-      const tokens = await session.fetchNewTokens();
-      if (tokens?.refreshToken != null) {
-        refreshTokenId = tokens.accessToken.payload.refresh_token_id;
-        userId = tokens.accessToken.payload.sub;
-      }
-    } catch {
-      // Best-effort; no session context.
+    const session = await this._getSession(request);
+    const tokens = await session.fetchNewTokens();
+    if (tokens?.refreshToken != null) {
+      refreshTokenId = tokens.accessToken.payload.refresh_token_id;
+      userId = tokens.accessToken.payload.sub;
     }
     const decoded = decodeSpanContextHeader(readSpanContextHeader(request.headers));
     const sameProject = decoded !== null && decoded.projectId === this.projectId ? decoded : null;
