@@ -38,7 +38,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { getCustomTelemetryDataError, getCustomTelemetryNameError, preCaught, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, withSpanImpl, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs, runWithSpanFrame } from "./span-context";
 import { buildFetchInitWithSpanContext, decodeSpanContextHeader, encodeSpanContextHeader, readSpanContextHeader, SPAN_CONTEXT_HEADER } from "./span-propagation";
@@ -1936,9 +1936,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
 
     let settler!: TelemetrySettler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     const buffer = this._getServerTelemetryBuffer(batchContext);
     buffer.events.push({
       event: {
@@ -2064,9 +2064,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
 
   private _enqueueServerSpanUpdate(context: ServerRequestSpanContext, row: SpanUpdateRow): Promise<void> {
     let settler!: TelemetrySettler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     const buffer = this._getServerTelemetryBuffer(context);
     const previous = buffer.spans.get(row.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
