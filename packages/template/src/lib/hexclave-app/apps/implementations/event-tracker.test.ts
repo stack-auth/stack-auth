@@ -462,9 +462,8 @@ describe("EventTracker", () => {
     }
   });
 
-  it("rejects (pre-caught, never throws) on invalid names, data, and parent ids", async () => {
+  it("rejects invalid events and throws for invalid spans", async () => {
     vi.useFakeTimers();
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const tracker = new EventTracker({
       projectId: "internal",
       sendBatch: async () => Result.ok(new Response()),
@@ -477,23 +476,16 @@ describe("EventTracker", () => {
       await expect(tracker.trackCustomEvent("1-starts-with-digit")).rejects.toThrow(/must start with a letter/);
       await expect(tracker.trackCustomEvent("x".repeat(65))).rejects.toThrow(/at most 64 characters/);
       await expect(tracker.trackCustomEvent("ok", [1, 2] as any)).rejects.toThrow(/plain JSON-serializable object/);
-      await expect(tracker.trackCustomEvent("ok", { big: "x".repeat(17_000) })).rejects.toThrow(/at most 16000 bytes/);
-      await expect(tracker.trackCustomEvent("ok", { big: "é".repeat(8_000) })).rejects.toThrow(/at most 16000 bytes/);
+      await expect(tracker.trackCustomEvent("ok", { big: "x".repeat(64_001) })).rejects.toThrow(/at most 64000 bytes/);
+      await expect(tracker.trackCustomEvent("ok", { big: "é".repeat(32_001) })).rejects.toThrow(/at most 64000 bytes/);
       await expect(tracker.trackCustomEvent("ok", {}, { parentIds: ["not-a-uuid"] })).rejects.toThrow(/parent ids must be span uuids/);
-      // Ignoring the rejected promise entirely must not blow up the test run
-      // (the internal catch keeps it from ever being an unhandled rejection).
-      tracker.trackCustomEvent("$ignored").catch(() => {});
-      expect(errorSpy).toHaveBeenCalled();
 
-      // Invalid startSpan input yields an inert span rather than a throw.
-      const inert = tracker.startSpan("$reserved");
-      await expect(inert.end()).resolves.toBeUndefined();
+      expect(() => tracker.startSpan("$reserved")).toThrow(/reserved for system telemetry/);
 
       // Nothing invalid was buffered.
       await advancePastFlush();
     } finally {
       tracker.stop();
-      errorSpy.mockRestore();
     }
   });
 
@@ -537,33 +529,20 @@ describe("EventTracker", () => {
     }
   });
 
-  it("falls back to a finite timestamp when a span is ended with an invalid endedAtMs", async () => {
+  it("rejects an invalid endedAtMs instead of fabricating a timestamp", () => {
     vi.useFakeTimers();
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
-      sendBatch: async (body) => {
-        sentBodies.push(body);
-        return Result.ok(new Response());
-      },
+      sendBatch: async () => Result.ok(new Response()),
     });
 
     try {
       tracker.start();
       const span = tracker.startSpan("checkout-flow");
-      const endPromise = span.end({ endedAtMs: Number.NaN });
-      await advancePastFlush();
-      await expect(endPromise).resolves.toBeUndefined();
-
-      const payload = JSON.parse(sentBodies[0] ?? "{}") as { spans?: { span_type: string, ended_at_ms: number | null }[] };
-      const customSpans = getCustomSpans(payload);
-      expect(customSpans).toHaveLength(1);
-      expect(customSpans[0].ended_at_ms).toBeTypeOf("number");
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("endedAtMs must be a finite"));
+      expect(() => span.end({ endedAtMs: Number.NaN })).toThrow(/non-negative integer/);
+      expect(span.isEnded).toBe(false);
     } finally {
       tracker.stop();
-      errorSpy.mockRestore();
     }
   });
 
@@ -932,7 +911,7 @@ describe("EventTracker", () => {
     }
   });
 
-  it("silently disables when client interface returns ANALYTICS_NOT_ENABLED as an error", async () => {
+  it("rejects explicit telemetry after ANALYTICS_NOT_ENABLED", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Click me</button>";
 
@@ -958,6 +937,8 @@ describe("EventTracker", () => {
       document.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await advancePastFlush();
       expect(sentBodies).toHaveLength(1);
+      await expect(tracker.trackCustomEvent("checkout")).rejects.toThrow(/telemetry is disabled/);
+      expect(() => tracker.startSpan("checkout")).toThrow(/telemetry is disabled/);
     } finally {
       tracker.stop();
       warnSpy.mockRestore();
