@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/docs",
-  "version": "1.0.62",
+  "version": "1.0.63",
   "private": true,
   "description": "Vercel redirect-only project for docs.stack-auth.com → docs.hexclave.com"
 }
