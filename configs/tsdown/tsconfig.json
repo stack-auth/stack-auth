@@ -1,0 +1,21 @@
+{
+  // These files are typechecked as part of each package that imports them from
+  // its tsdown.config.ts, so this tsconfig exists only so IDEs assign them a
+  // real project (with node types) instead of a bare inferred one — without
+  // it, editors report "Cannot find name 'fs'"-style errors when the files
+  // are opened directly.
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "noErrorTruncation": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}
