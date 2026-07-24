@@ -1,0 +1,125 @@
+apps/backend/.env
+  s_50c6b5323dd4a8::t_e7c1637d14fa61 3
+apps/backend/.env.development
+  s_50c6b5323dd4a8::t_f7795e8fec246a 2
+apps/backend/scripts/clickhouse-migrations.ts
+  s_50c6b5323dd4a8::t_33d808fef1009d 37,43-45,50-51,70-72,97,126-144,287-289,291-308,312-316,319-323,325-346,359-434,458-503,507,513-517,519-540,553-567,569-579,582-625,1039,1050-1058,1197
+apps/backend/src/app/api/latest/ai/query/[mode]/route.ts
+  s_50c6b5323dd4a8::t_5aa9d3e1f91d12 6,98,116
+apps/backend/src/app/api/latest/analytics/events/batch/route.tsx
+  s_50c6b5323dd4a8::t_e70d03f7fa25ab 12,116,342-343,347-362,372,386-390,392-406,408-409
+apps/backend/src/app/api/latest/analytics/otlp/v1/traces/route.ts
+  s_50c6b5323dd4a8::t_3b6bda2482c5e6 1-107
+apps/backend/src/app/api/latest/internal/metrics/route.test.ts
+  s_50c6b5323dd4a8::t_fe1b009eb397e5 74-78
+apps/backend/src/app/api/latest/internal/metrics/route.tsx
+  s_50c6b5323dd4a8::t_60ad59dd972c71 276-299,301,646,649-652,654,662,664-679,681,1154-1156,1160-1161,1172-1176,1196-1200,1255-1258,1777-1780,1831-1832
+apps/backend/src/app/api/latest/internal/platform-analytics/route.tsx
+  s_50c6b5323dd4a8::t_6b3d8d2fdf81e5 280,284,286,417
+apps/backend/src/app/api/latest/session-replays/batch/route.tsx
+  s_50c6b5323dd4a8::t_c207a0b099b629 12,53,57-64,70,140,276-289
+apps/backend/src/cross-tier-tracing.test.ts
+  s_50c6b5323dd4a8::t_03ceaac4314405 1-51
+apps/backend/src/instrumentation-node.ts
+  s_50c6b5323dd4a8::t_7e996243d614d2 1-55
+apps/backend/src/instrumentation.ts
+  s_50c6b5323dd4a8::t_91ad63bcf1fe8c 5,9-17,28-31
+apps/backend/src/lib/ai/prompts.ts
+  s_50c6b5323dd4a8::t_865cccca63b5bc 984,1015,1039
+apps/backend/src/lib/ai/qa-reviewer.ts
+  s_50c6b5323dd4a8::t_9e27cfec8ca650 8,121
+apps/backend/src/lib/ai/telemetry.test.ts
+  s_50c6b5323dd4a8::t_b9bd5f1851900f 1-11
+apps/backend/src/lib/ai/telemetry.ts
+  s_50c6b5323dd4a8::t_b9c56b1daa2a90 1-16
+apps/backend/src/lib/analytics-span-exporter.test.ts
+  s_50c6b5323dd4a8::t_e8ea85a5c4c701 1-48
+apps/backend/src/lib/analytics-span-exporter.ts
+  s_50c6b5323dd4a8::t_d7d7e73835f39f 1-100
+apps/backend/src/lib/analytics-spans.ts
+  s_50c6b5323dd4a8::t_2e5c17b577831f 1-101
+apps/backend/src/lib/branch-constants.ts
+  s_50c6b5323dd4a8::t_130292d09dac67 1
+apps/backend/src/lib/otel-sampling.test.ts
+  s_50c6b5323dd4a8::t_55edd7d3f63a39 1-47
+apps/backend/src/lib/otel-sampling.ts
+  s_50c6b5323dd4a8::t_401079971cee19 1-14
+apps/backend/src/lib/otlp.test.ts
+  s_50c6b5323dd4a8::t_42570da586b5d0 1-193
+apps/backend/src/lib/otlp.ts
+  s_50c6b5323dd4a8::t_9a49e35de33ac5 1-399
+apps/backend/src/lib/seed-dummy-data.ts
+  s_50c6b5323dd4a8::t_eb92dce9abdba3 1954,1956-1960,1962,1983-1986,2000-2001
+apps/backend/src/lib/spans.test.ts
+  s_50c6b5323dd4a8::t_23124dca8d3e05 90-93,100-102,114-115,118-120,126-127,183-184,219-221,230,252,261,280-283
+apps/backend/src/lib/spans.tsx
+  s_50c6b5323dd4a8::t_78add652e4ac6c 101,106-110,112,151,253-258,260-266,283,305-306,317-320,328-331
+apps/backend/src/lib/tenancies.tsx
+  s_50c6b5323dd4a8::t_8a638fc7ac3ff0 7,20
+apps/backend/src/proxy.tsx
+  s_50c6b5323dd4a8::t_0af30aebc27ce3 40,43-44
+apps/dashboard/.env
+  s_50c6b5323dd4a8::t_ab0a29dd9015e4 7-8
+apps/dashboard/.env.development
+  s_50c6b5323dd4a8::t_fee1157f9944bf 9-10
+apps/dashboard/instrumentation-client.ts
+  s_50c6b5323dd4a8::t_b31a5c44544b29 10,12-13,17-19,39-50,52-68,72-83
+apps/dashboard/package.json
+  s_50c6b5323dd4a8::t_cbe71c2476bd43 37,69
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx
+  s_50c6b5323dd4a8::t_a133a65310f521 1610,1633
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/funnel-graph/page-client.tsx
+  s_50c6b5323dd4a8::t_ad2ccf143a5a01 34-35,37,40-41,52-53,56-57
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/session-replays/page-client.tsx
+  s_50c6b5323dd4a8::t_ee63da5584a48c 1341,1344
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/[userId]/user-analytics.tsx
+  s_50c6b5323dd4a8::t_c1ba6db4e9f070 141-142,145,147-148
+apps/dashboard/src/instrumentation.ts
+  s_50c6b5323dd4a8::t_abc40776a2a15e 5-10,14-60,82-85
+apps/dashboard/src/lib/cross-tier-tracing.test.ts
+  s_50c6b5323dd4a8::t_a222b8be334262 1-76
+apps/dashboard/src/lib/cross-tier-tracing.ts
+  s_50c6b5323dd4a8::t_1413a25da74c05 1-46
+apps/dashboard/src/lib/dashboard-trace-export.test.ts
+  s_50c6b5323dd4a8::t_d5f14a1ca66a40 1-68
+apps/dashboard/src/lib/dashboard-trace-export.ts
+  s_50c6b5323dd4a8::t_ef77fcd8c8745b 1-73
+apps/dashboard/src/lib/env.tsx
+  s_50c6b5323dd4a8::t_b0d81ee18932ee 54,103
+apps/dashboard/src/lib/hexclave-app-internals.ts
+  s_50c6b5323dd4a8::t_d10ad144ac2939 132
+apps/dashboard/src/lib/sentry-browser-trace-export.test.ts
+  s_50c6b5323dd4a8::t_e9ec0e483591a8 1-190
+apps/dashboard/src/lib/sentry-browser-trace-export.ts
+  s_50c6b5323dd4a8::t_42953621bd3d31 1-229
+apps/e2e/tests/backend/endpoints/api/v1/analytics-events-batch.test.ts
+  s_50c6b5323dd4a8::t_29d2c26bf1865a 958-959,1318,1322,1324-1325,1331-1332,1339,1408,1414,1421,1423-1434,1520-1529,1531-1532,1534-1535,1537,1564,1568,1578,1580,1584,1608,1612,1627,1634,1640,1702,1709
+apps/e2e/tests/backend/endpoints/api/v1/analytics-otlp-traces.test.ts
+  s_50c6b5323dd4a8::t_97d8a388edb987 1-266
+apps/e2e/tests/backend/endpoints/api/v1/session-replays.test.ts
+  s_50c6b5323dd4a8::t_8c830c7798a217 291-300,302,306-307,310,317,612,635-639
+packages/shared/src/interface/admin-interface.ts
+  s_50c6b5323dd4a8::t_acf84daa0948b8 9,397
+packages/shared/src/interface/admin-metrics.test.ts
+  s_50c6b5323dd4a8::t_871915d30f6b14 1-37
+packages/shared/src/interface/admin-metrics.ts
+  s_50c6b5323dd4a8::t_8c7b85930f9133 113-115,126-129,132-134,235,239,248,251-252
+pnpm-lock.yaml
+  s_50c6b5323dd4a8::t_535cb505fa3b79 425-427,521-523,28490-28497
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "cd7ba012d248a24354384f4d89f0ec91036441b6",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
