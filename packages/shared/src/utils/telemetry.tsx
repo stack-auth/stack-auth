@@ -34,13 +34,6 @@ export const SYSTEM_EVENT_TYPES = [
 ] as const;
 export type SystemEventType = typeof SYSTEM_EVENT_TYPES[number];
 
-// The two original system event types predate the per-item data size cap, so
-// deployed trackers may send data the cap would reject; their data stays
-// permissive on ingest. Every LATER system event type gets the same object/size
-// validation as custom events — there is no deployed-tracker back-compat to
-// preserve for them, and unbounded system data would be a regression.
-export const PERMISSIVE_DATA_SYSTEM_EVENT_TYPES = ["$page-view", "$click"] as const;
-
 // System (`$`-prefixed) SPAN types the browser SDK is allowed to WRITE through
 // the analytics batch route (versioned upserts, same pipeline as custom spans).
 // `$page-view` is the canonical page-view write path (interval + hierarchy
