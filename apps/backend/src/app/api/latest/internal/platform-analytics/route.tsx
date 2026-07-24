@@ -277,13 +277,13 @@ export const GET = createSmartRouteHandler({
         `, windowParams),
         // Page views + unique visitors per day (`$page-view` is a span).
         chQuery<{ day: string, pv: string | number, visitors: string | number }>(`
-          SELECT toDate(span_started_at) AS day,
+          SELECT toDate(started_at) AS day,
             count() AS pv,
             uniqExact(assumeNotNull(user_id)) AS visitors
           FROM analytics_internal.spans FINAL
-          WHERE span_type = '$page-view'
+          WHERE name = '$page-view'
             AND ${customerEventScope}
-            AND span_started_at >= {since:DateTime} AND span_started_at < {until:DateTime}
+            AND started_at >= {since:DateTime} AND started_at < {until:DateTime}
           GROUP BY day ORDER BY day ASC
         `, windowParams),
         // Signups per day (users table).
@@ -414,7 +414,7 @@ export const GET = createSmartRouteHandler({
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.teams FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.connected_accounts FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
         chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.email_outboxes FINAL WHERE ${customerUserScope} GROUP BY project_id`, baseParams),
-        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.spans FINAL WHERE span_type = '$page-view' AND branch_id = {branchId:String} AND ${customerEventScope} GROUP BY project_id`, baseParams),
+        chQuery<CountRow>(`SELECT project_id AS projectId, count() AS c FROM analytics_internal.spans FINAL WHERE name = '$page-view' AND branch_id = {branchId:String} AND ${customerEventScope} GROUP BY project_id`, baseParams),
       ]);
       ch = {
         dauSeries, pvSeries, signupSeries, mauProjects, userCounts, country, deadClicks, split,

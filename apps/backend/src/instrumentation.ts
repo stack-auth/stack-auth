@@ -1,41 +1,20 @@
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { PrismaInstrumentation } from "@prisma/instrumentation";
 import * as Sentry from "@sentry/nextjs";
 import { getEnvVariable, getNextRuntime, getNodeEnvironment } from "@hexclave/shared/dist/utils/env";
 import { sentryBaseConfig } from "@hexclave/shared/dist/utils/sentry";
 import { nicify } from "@hexclave/shared/dist/utils/strings";
-import { registerOTel } from '@vercel/otel';
-import { initPerfStats } from "./lib/dev-perf-stats";
+import { registerOTel } from "@vercel/otel";
 import "./polyfills";
 
-// this is a hack for making prisma instrumentation work
-// somehow prisma instrumentation accesses global and it makes edge instrumentation complain
-globalThis.global = globalThis;
-
 export async function register() {
-  registerOTel({
-    serviceName: 'stack-backend',
-    instrumentations: [
-      new PrismaInstrumentation(),
-      ...getNextRuntime() === "nodejs" ? getNodeAutoInstrumentations({
-        '@opentelemetry/instrumentation-http': {
-          enabled: false,
-        },
-      }) : [],
-    ],
-    ...getNodeEnvironment() === "development" && getNextRuntime() === "nodejs" ? {
-      traceExporter: new OTLPTraceExporter({
-        url: `http://localhost:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")}31/v1/traces`,
-      }),
-    } : {},
-  });
-
-  if (getNextRuntime() === "nodejs") {
-    (globalThis as any).process.title = `stack-backend:${getEnvVariable("NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX", "81")} (node/nextjs)`;
-
-    // Initialize performance stats collection in development
-    initPerfStats();
+  // Next statically eliminates the opposite branch for each runtime. Keeping
+  // the import directly behind NEXT_RUNTIME is what prevents Node-only Prisma,
+  // ClickHouse, and networking modules from entering the Edge bundle.
+  // eslint-disable-next-line no-restricted-syntax -- getNextRuntime() is opaque to Next's compile-time runtime elimination.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { registerNodeInstrumentation } = await import("./instrumentation-node");
+    await registerNodeInstrumentation();
+  } else {
+    registerOTel({ serviceName: "stack-backend" });
   }
 
   if (getNextRuntime() === "nodejs" || getNextRuntime() === "edge") {
@@ -45,6 +24,10 @@ export async function register() {
       dsn: getEnvVariable("NEXT_PUBLIC_SENTRY_DSN", ""),
 
       enabled: getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
+
+      // @vercel/otel owns the provider. Allowing Sentry to install another one
+      // breaks the shared active context and fragments distributed traces.
+      skipOpenTelemetrySetup: true,
 
       // Add exception metadata to the event
       beforeSend(event, hint) {

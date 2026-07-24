@@ -37,9 +37,11 @@ const corsAllowedRequestHeaders = [
   'x-stack-allow-restricted-user',
   'x-stack-allow-anonymous-user',
 
-  // Sentry
+  // Distributed tracing
   'baggage',
   'sentry-trace',
+  'traceparent',
+  'tracestate',
 
   // Vercel
   'x-vercel-protection-bypass',

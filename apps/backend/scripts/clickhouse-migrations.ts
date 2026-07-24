@@ -34,18 +34,21 @@ export async function runClickhouseMigrations() {
     client.command({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL }),
     client.command({ query: CLICKMAP_EVENTS_TABLE_SQL }),
     client.command({ query: SPANS_TABLE_BASE_SQL }),
+    client.command({ query: SPAN_LINKS_TABLE_SQL }),
     client.command({ query: SPAN_WRITES_TABLE_SQL }),
   ]);
 
   await client.command({ query: CLICKMAP_EVENTS_ADD_DEAD_COLUMN_SQL });
 
-  // Alter events table (must come before views that reference new columns)
-  await client.command({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
-  await client.command({ query: EVENTS_ADD_SPAN_COLUMNS_SQL });
+  // Existing development databases may predate columns now declared in the
+  // base schema. Keep one idempotent upgrade step before dependent views.
+  await client.command({ query: EVENTS_SCHEMA_UPGRADE_SQL });
 
   // Clickmap materialized view depends on the events table existing; create after the ALTER above
   // so the view sees the replay columns. IF NOT EXISTS makes this idempotent across reboots.
   await client.command({ query: CLICKMAP_EVENTS_MV_SQL });
+  await client.command({ query: TRACE_ROOTS_MV_SQL });
+  await client.command({ query: TRACE_SERVICES_MV_SQL });
   await client.command({ query: SPAN_WRITES_MV_SQL });
 
   // Create all views in parallel
@@ -64,6 +67,9 @@ export async function runClickhouseMigrations() {
     client.command({ query: REFRESH_TOKENS_VIEW_SQL }),
     client.command({ query: CONNECTED_ACCOUNTS_VIEW_SQL }),
     client.command({ query: SPANS_VIEW_SQL }),
+    client.command({ query: SPAN_LINKS_VIEW_SQL }),
+    client.command({ query: TRACE_ROOTS_VIEW_SQL }),
+    client.command({ query: TRACE_SERVICES_VIEW_SQL }),
   ]);
 
   // Data migrations (mutations)
@@ -88,7 +94,7 @@ export async function runClickhouseMigrations() {
     "events", "users", "contact_channels", "teams", "team_member_profiles",
     "team_permissions", "team_invitations", "email_outboxes",
     "project_permissions", "notification_preferences", "refresh_tokens", "connected_accounts",
-    "spans",
+    "spans", "span_links", "trace_roots", "trace_services",
   ];
   await Promise.all(tables.map(table =>
     client.command({
@@ -117,7 +123,25 @@ CREATE TABLE IF NOT EXISTS analytics_internal.events (
     branch_id        String,
     user_id          Nullable(String),
     team_id          Nullable(String),
-    created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+    refresh_token_id Nullable(String),
+    session_replay_id Nullable(String),
+    session_replay_segment_id Nullable(String),
+    created_at DateTime64(3, 'UTC') DEFAULT now64(3),
+    parent_span_ids  Array(String) DEFAULT [],
+    trace_id         Nullable(String),
+    source           LowCardinality(String) DEFAULT 'hexclave',
+    service_namespace LowCardinality(Nullable(String)),
+    service_name     LowCardinality(Nullable(String)),
+    service_version  Nullable(String),
+    service_instance_id Nullable(String),
+    deployment_environment_name LowCardinality(Nullable(String)),
+    resource_attributes String DEFAULT '{}',
+    resource_schema_url Nullable(String),
+    scope_name       LowCardinality(Nullable(String)),
+    scope_version    Nullable(String),
+    scope_attributes String DEFAULT '{}',
+    scope_schema_url Nullable(String),
+    dropped_attributes UInt32 DEFAULT 0
 )
 ENGINE MergeTree
 PARTITION BY toYYYYMM(event_at)
@@ -251,13 +275,6 @@ ENGINE ReplacingMergeTree(updated_at)
 ORDER BY (tenancy_id, mapping_name);
 `;
 
-const EVENTS_ADD_REPLAY_COLUMNS_SQL = `
-ALTER TABLE analytics_internal.events
-  ADD COLUMN IF NOT EXISTS refresh_token_id Nullable(String) AFTER team_id,
-  ADD COLUMN IF NOT EXISTS session_replay_id Nullable(String) AFTER refresh_token_id,
-  ADD COLUMN IF NOT EXISTS session_replay_segment_id Nullable(String) AFTER session_replay_id;
-`;
-
 // Backfill refresh_token_id from data.refresh_token_id for existing $token-refresh rows
 const BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL = `
 ALTER TABLE analytics_internal.events
@@ -267,32 +284,66 @@ WHERE event_type = '$token-refresh'
   AND data.refresh_token_id::Nullable(String) IS NOT NULL;
 `;
 
-// Span-graph column on events (additive, backwards compatible — default.events is
-// SELECT * so it surfaces automatically). parent_span_ids holds the deduped, root-first
-// list of ancestor span ids as PREFIXED ids (e.g. [rti-<rt>, sri-<replay>, srsi-<segment>]),
-// NOT raw uuids. The per-tab id is already carried in the legacy `session_replay_segment_id`
-// column, so no separate tab-id column is added.
-const EVENTS_ADD_SPAN_COLUMNS_SQL = `
+// Upgrades databases created by earlier revisions of this unshipped feature.
+// Clean databases get the exact same shape directly from EVENTS_TABLE_BASE_SQL.
+const EVENTS_SCHEMA_UPGRADE_SQL = `
 ALTER TABLE analytics_internal.events
-  ADD COLUMN IF NOT EXISTS parent_span_ids Array(String) DEFAULT [];
+  ADD COLUMN IF NOT EXISTS refresh_token_id Nullable(String) AFTER team_id,
+  ADD COLUMN IF NOT EXISTS session_replay_id Nullable(String) AFTER refresh_token_id,
+  ADD COLUMN IF NOT EXISTS session_replay_segment_id Nullable(String) AFTER session_replay_id,
+  ADD COLUMN IF NOT EXISTS parent_span_ids Array(String) DEFAULT [] AFTER session_replay_segment_id,
+  ADD COLUMN IF NOT EXISTS trace_id Nullable(String),
+  ADD COLUMN IF NOT EXISTS source LowCardinality(String) DEFAULT 'hexclave',
+  ADD COLUMN IF NOT EXISTS service_namespace LowCardinality(Nullable(String)),
+  ADD COLUMN IF NOT EXISTS service_name LowCardinality(Nullable(String)),
+  ADD COLUMN IF NOT EXISTS service_version Nullable(String),
+  ADD COLUMN IF NOT EXISTS service_instance_id Nullable(String),
+  ADD COLUMN IF NOT EXISTS deployment_environment_name LowCardinality(Nullable(String)),
+  ADD COLUMN IF NOT EXISTS resource_attributes String DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS resource_schema_url Nullable(String),
+  ADD COLUMN IF NOT EXISTS scope_name LowCardinality(Nullable(String)),
+  ADD COLUMN IF NOT EXISTS scope_version Nullable(String),
+  ADD COLUMN IF NOT EXISTS scope_attributes String DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS scope_schema_url Nullable(String),
+  ADD COLUMN IF NOT EXISTS dropped_attributes UInt32 DEFAULT 0;
 `;
 
 // Spans: telemetry siblings of events, written DIRECTLY to ClickHouse (never through
-// ext-db-sync). Interval facts whose end advances over time, so ReplacingMergeTree(version)
-// keeps the highest-version row per id (writers re-insert the full row with a bumped
-// version + latest span_ended_at). `default.spans` reads FINAL, which collapses versions
-// correctly even in the rare case a long-lived span straddles two monthly partitions.
-// Scalar identity columns stay raw (String/UUID-as-String); prefixes live only on `id`
-// and `parent_span_ids`. Session-replay/segment spans are written from the replay batch route;
-// $refresh-token spans are derived in the view from the synced refresh_tokens dimension.
+// ext-db-sync). The physical names follow the OpenTelemetry data model where it is
+// useful (`trace_id`, `name`, `kind`, status, resource, and scope), while
+// `parent_span_ids` deliberately remains Hexclave's root-first ancestor path.
+// OTLP rows preserve the protocol's native span id, whose uniqueness is scoped
+// by trace_id. Native rows retain Hexclave's globally unique typed ids.
 const SPANS_TABLE_BASE_SQL = `
 CREATE TABLE IF NOT EXISTS analytics_internal.spans (
-    id                        String,
-    span_type                 LowCardinality(String),
-    span_started_at           DateTime64(3, 'UTC'),
-    span_ended_at             Nullable(DateTime64(3, 'UTC')),
+    trace_id                  String,
+    span_id                   String,
+    name                      LowCardinality(String),
+    started_at                DateTime64(3, 'UTC'),
+    ended_at                  Nullable(DateTime64(3, 'UTC')),
     parent_span_ids           Array(String) DEFAULT [],
-    data                      String DEFAULT '{}',
+    kind                      LowCardinality(String) DEFAULT 'internal',
+    status_code               LowCardinality(String) DEFAULT 'unset',
+    status_message            Nullable(String),
+    trace_state               Nullable(String),
+    trace_flags               UInt32 DEFAULT 0,
+    service_namespace         LowCardinality(Nullable(String)),
+    service_name              LowCardinality(Nullable(String)),
+    service_version           Nullable(String),
+    service_instance_id       Nullable(String),
+    deployment_environment_name LowCardinality(Nullable(String)),
+    resource_attributes       String DEFAULT '{}',
+    resource_schema_url       Nullable(String),
+    scope_name                LowCardinality(Nullable(String)),
+    scope_version             Nullable(String),
+    scope_attributes          String DEFAULT '{}',
+    scope_schema_url          Nullable(String),
+    attributes                String DEFAULT '{}',
+    dropped_resource_attributes UInt32 DEFAULT 0,
+    dropped_scope_attributes  UInt32 DEFAULT 0,
+    dropped_attributes        UInt32 DEFAULT 0,
+    dropped_events            UInt32 DEFAULT 0,
+    dropped_links             UInt32 DEFAULT 0,
     project_id                String,
     branch_id                 String,
     user_id                   Nullable(String),
@@ -305,7 +356,82 @@ CREATE TABLE IF NOT EXISTS analytics_internal.spans (
 )
 ENGINE ReplacingMergeTree(version)
 PARTITION BY toYYYYMM(created_at)
-ORDER BY (project_id, branch_id, id);
+ORDER BY (project_id, branch_id, trace_id, span_id);
+`;
+
+// Root spans are a tiny, time-ordered read model for the trace inbox. The main
+// spans table is ordered by trace/span identity for point lookup and contains every
+// auto-instrumented child, so asking it for recent roots requires FINAL-merging
+// tens of millions of rows before applying the time/parent filters. POPULATE
+// performs the one-time historical fill; subsequent inserts are incremental.
+const TRACE_ROOTS_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.trace_roots
+ENGINE ReplacingMergeTree(version)
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (project_id, branch_id, started_at, span_id)
+POPULATE
+AS
+SELECT
+  trace_id,
+  span_id,
+  name,
+  started_at,
+  ended_at,
+  kind,
+  status_code,
+  service_namespace,
+  service_name,
+  service_version,
+  deployment_environment_name,
+  project_id,
+  branch_id,
+  user_id,
+  refresh_token_id,
+  session_replay_id,
+  session_replay_segment_id,
+  created_at,
+  version
+FROM analytics_internal.spans
+WHERE empty(parent_span_ids);
+`;
+
+// One row per service participating in a trace. Filtering only by the root
+// span's service would hide distributed traces rooted in another service, so
+// this intentionally indexes every participating service.
+const TRACE_SERVICES_MV_SQL = `
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics_internal.trace_services
+ENGINE ReplacingMergeTree(version)
+ORDER BY (project_id, branch_id, service_namespace, service_name, trace_id)
+POPULATE
+AS
+SELECT
+  project_id,
+  branch_id,
+  trace_id,
+  coalesce(service_namespace, '') AS service_namespace,
+  coalesce(service_name, '') AS service_name,
+  version
+FROM analytics_internal.spans
+WHERE service_name IS NOT NULL;
+`;
+
+const SPAN_LINKS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.span_links (
+    project_id                  String,
+    branch_id                   String,
+    trace_id                    String,
+    owner_span_id               String,
+    linked_trace_id             String,
+    linked_span_id              String,
+    linked_trace_state          Nullable(String),
+    linked_trace_flags          UInt32 DEFAULT 0,
+    attributes                  String DEFAULT '{}',
+    dropped_attributes          UInt32 DEFAULT 0,
+    created_at                  DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE MergeTree
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, trace_id, owner_span_id, linked_trace_id, linked_span_id);
 `;
 
 // Immutable billing ledger for custom-span writes. The source spans table is a
@@ -329,25 +455,89 @@ TO analytics_internal.span_writes
 AS
 SELECT project_id, created_at
 FROM analytics_internal.spans
-WHERE NOT startsWith(span_type, '$');
+WHERE NOT startsWith(name, '$');
+`;
+
+// Refresh tokens are synced dimensions rather than telemetry writes. Define
+// their span projection once, then reuse it in both public read models so trace
+// detail and root pagination cannot drift.
+const REFRESH_TOKEN_SPAN_SELECT_SQL = `
+SELECT
+  concat('rti-', toString(id)) AS trace_id,
+  concat('rti-', toString(id)) AS span_id,
+  CAST('$refresh-token', 'LowCardinality(String)') AS name,
+  created_at AS started_at,
+  expires_at AS ended_at,
+  CAST([], 'Array(String)') AS parent_span_ids,
+  CAST('internal', 'LowCardinality(String)') AS kind,
+  CAST('unset', 'LowCardinality(String)') AS status_code,
+  CAST(NULL, 'Nullable(String)') AS status_message,
+  CAST(NULL, 'Nullable(String)') AS trace_state,
+  toUInt32(0) AS trace_flags,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS service_namespace,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS service_name,
+  CAST(NULL, 'Nullable(String)') AS service_version,
+  CAST(NULL, 'Nullable(String)') AS service_instance_id,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS deployment_environment_name,
+  CAST('{}', 'String') AS resource_attributes,
+  CAST(NULL, 'Nullable(String)') AS resource_schema_url,
+  CAST(NULL, 'LowCardinality(Nullable(String))') AS scope_name,
+  CAST(NULL, 'Nullable(String)') AS scope_version,
+  CAST('{}', 'String') AS scope_attributes,
+  CAST(NULL, 'Nullable(String)') AS scope_schema_url,
+  CAST('{}', 'String') AS attributes,
+  toUInt32(0) AS dropped_resource_attributes,
+  toUInt32(0) AS dropped_scope_attributes,
+  toUInt32(0) AS dropped_attributes,
+  toUInt32(0) AS dropped_events,
+  toUInt32(0) AS dropped_links,
+  project_id,
+  branch_id,
+  CAST(toString(user_id), 'Nullable(String)') AS user_id,
+  CAST(NULL, 'Nullable(String)') AS team_id,
+  CAST(toString(id), 'Nullable(String)') AS refresh_token_id,
+  CAST(NULL, 'Nullable(String)') AS session_replay_id,
+  CAST(NULL, 'Nullable(String)') AS session_replay_segment_id,
+  sync_created_at AS created_at
+FROM analytics_internal.refresh_tokens FINAL
+WHERE sync_is_deleted = 0
 `;
 
 // Customer-facing spans surface. UNION ALL of: (1) the physical spans table
-// ($session-replay + $session-replay-segment + any future custom spans), and (2) the
-// $refresh-token spans derived from the already-synced refresh_tokens dimension (no
-// separate write). Every branch casts to one identical column set. SECURITY DEFINER +
-// the default.spans row policy give the same per-project isolation as default.events.
+// and (2) the canonical refresh-token span projection above.
 const SPANS_VIEW_SQL = `
 CREATE OR REPLACE VIEW default.spans
 SQL SECURITY DEFINER
 AS
 SELECT
-  id,
-  span_type,
-  span_started_at,
-  span_ended_at,
+  trace_id,
+  span_id,
+  name,
+  started_at,
+  ended_at,
   parent_span_ids,
-  data,
+  kind,
+  status_code,
+  status_message,
+  trace_state,
+  trace_flags,
+  service_namespace,
+  service_name,
+  service_version,
+  service_instance_id,
+  deployment_environment_name,
+  resource_attributes,
+  resource_schema_url,
+  scope_name,
+  scope_version,
+  scope_attributes,
+  scope_schema_url,
+  attributes,
+  dropped_resource_attributes,
+  dropped_scope_attributes,
+  dropped_attributes,
+  dropped_events,
+  dropped_links,
   project_id,
   branch_id,
   user_id,
@@ -360,23 +550,79 @@ FROM analytics_internal.spans FINAL
 
 UNION ALL
 
+${REFRESH_TOKEN_SPAN_SELECT_SQL};
+`;
+
+const SPAN_LINKS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.span_links
+SQL SECURITY DEFINER
+AS
+SELECT *
+FROM analytics_internal.span_links;
+`;
+
+const TRACE_ROOTS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.trace_roots
+SQL SECURITY DEFINER
+AS
 SELECT
-  concat('rti-', toString(id)) AS id,
-  CAST('$refresh-token', 'LowCardinality(String)') AS span_type,
-  created_at AS span_started_at,
-  expires_at AS span_ended_at,
-  CAST([], 'Array(String)') AS parent_span_ids,
-  CAST('{}', 'String') AS data,
+  trace_id,
+  span_id,
+  name,
+  started_at,
+  ended_at,
+  kind,
+  status_code,
+  service_namespace,
+  service_name,
+  service_version,
+  deployment_environment_name,
   project_id,
   branch_id,
-  CAST(toString(user_id), 'Nullable(String)') AS user_id,
-  CAST(NULL, 'Nullable(String)') AS team_id,
-  CAST(toString(id), 'Nullable(String)') AS refresh_token_id,
-  CAST(NULL, 'Nullable(String)') AS session_replay_id,
-  CAST(NULL, 'Nullable(String)') AS session_replay_segment_id,
-  sync_created_at AS created_at
-FROM analytics_internal.refresh_tokens FINAL
-WHERE sync_is_deleted = 0;
+  user_id,
+  refresh_token_id,
+  session_replay_id,
+  session_replay_segment_id,
+  created_at
+FROM analytics_internal.trace_roots FINAL
+
+UNION ALL
+
+SELECT
+  trace_id,
+  span_id,
+  name,
+  started_at,
+  ended_at,
+  kind,
+  status_code,
+  service_namespace,
+  service_name,
+  service_version,
+  deployment_environment_name,
+  project_id,
+  branch_id,
+  user_id,
+  refresh_token_id,
+  session_replay_id,
+  session_replay_segment_id,
+  created_at
+FROM (
+  ${REFRESH_TOKEN_SPAN_SELECT_SQL}
+);
+`;
+
+const TRACE_SERVICES_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.trace_services
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  trace_id,
+  nullIf(service_namespace, '') AS service_namespace,
+  service_name
+FROM analytics_internal.trace_services FINAL;
 `;
 
 const CONTACT_CHANNELS_TABLE_BASE_SQL = `
@@ -790,7 +1036,7 @@ WHERE sync_is_deleted = 0;
 // hardcoded schema in the prompt.
 const COLUMN_COMMENT_STATEMENTS: string[] = [
   // ── events ──
-  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger; other values are customer-defined custom events. Page views are NOT events — query default.spans WHERE span_type = \$page-view'`,
+  `ALTER TABLE default.events COMMENT COLUMN event_type 'Event type identifier. Known system types: \$click, \$form-submit, \$window-resize, \$copy, \$cut, \$paste, \$context-menu, \$print, \$fullscreen-exit, \$token-refresh, \$sign-up-rule-trigger; other values are customer-defined custom events. Page views are NOT events — query default.spans WHERE name = \$page-view'`,
   `ALTER TABLE default.events COMMENT COLUMN event_at 'When the event occurred (UTC)'`,
   `ALTER TABLE default.events COMMENT COLUMN data 'Event payload as JSON. MUST use toString(data) before JSONExtract* functions. Payload varies by event_type: \$click → {is_anonymous, selector, url, viewport_width, viewport_height, x, y, ...}; \$token-refresh → {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}'`,
   `ALTER TABLE default.events COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,
@@ -801,7 +1047,15 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
   `ALTER TABLE default.events COMMENT COLUMN refresh_token_id 'Denormalized from data.refresh_token_id for \$token-refresh events. NULL for other event types'`,
   `ALTER TABLE default.events COMMENT COLUMN session_replay_id 'Session replay identifier for linking to replay recordings'`,
   `ALTER TABLE default.events COMMENT COLUMN session_replay_segment_id 'Segment within a session replay recording'`,
-  `ALTER TABLE default.events COMMENT COLUMN parent_span_ids 'Deduped root-first ancestor span ids, each prefixed by kind: rti- (\$refresh-token), sri- (\$session-replay), srsi- (\$session-replay-segment), pv- (the \$page-view span the event happened on), cs- (customer-defined custom spans). Match rows in default.spans by id'`,
+  `ALTER TABLE default.events COMMENT COLUMN parent_span_ids 'Deduped root-first ancestor span ids. Native Hexclave ids retain their rti-/sri-/srsi-/pv-/cs- kind prefix; OpenTelemetry ids preserve the incoming 16-hex span id and are scoped by trace_id. Match rows in default.spans by trace_id and span_id'`,
+
+  // ── spans ──
+  `ALTER TABLE default.spans COMMENT COLUMN trace_id 'Identity shared by every span in one trace. Native traces use their typed root span id; OpenTelemetry traces preserve the incoming lowercase trace id'`,
+  `ALTER TABLE default.spans COMMENT COLUMN span_id 'OpenTelemetry rows preserve the incoming 16-hex SpanId, scoped by trace_id. Native rows use their globally unique typed rti-/sri-/srsi-/pv-/cs- identity'`,
+  `ALTER TABLE default.spans COMMENT COLUMN name 'Operation name. Maps directly to OpenTelemetry Span.name and to the Hexclave SDK span_type wire field'`,
+  `ALTER TABLE default.spans COMMENT COLUMN parent_span_ids 'Deduped root-first ancestor span ids. The final entry is the immediate parent when it is known; earlier entries preserve causality when intermediate spans are absent from a query'`,
+  `ALTER TABLE default.spans COMMENT COLUMN attributes 'Span-local attributes encoded as JSON'`,
+  `ALTER TABLE default.spans COMMENT COLUMN resource_attributes 'Unpromoted OpenTelemetry resource attributes encoded as JSON. Common service and deployment identity fields have dedicated columns'`,
 
   // ── users ──
   `ALTER TABLE default.users COMMENT COLUMN project_id 'Project identifier. Auto-filtered by row-level security — do not use in WHERE clauses'`,
@@ -940,6 +1194,7 @@ const COLUMN_COMMENT_STATEMENTS: string[] = [
 
 const COLUMN_COMMENT_TABLES = [
   "events",
+  "spans",
   "users",
   "contact_channels",
   "teams",

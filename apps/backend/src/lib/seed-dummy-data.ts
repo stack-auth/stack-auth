@@ -1951,13 +1951,15 @@ async function seedBulkSignupsAndActivity(options: {
         // distinct ReplacingMergeTree row.
         const spanId = deterministicUuid(`seed-pv:${tenancy.project.id}:${userId}:${visitDaysAgo}:${v}:${p}`);
         clickPageViewSpanId ??= spanId;
+        const prefixedSpanId = toSpanId(SPAN_ID_PREFIXES.pageView, spanId);
         pageViewSpanRows.push({
-          id: toSpanId(SPAN_ID_PREFIXES.pageView, spanId),
-          span_type: '$page-view',
-          span_started_at: formatClickhouseTimestamp(pvTime),
-          span_ended_at: formatClickhouseTimestamp(pvTime),
+          trace_id: prefixedSpanId,
+          span_id: prefixedSpanId,
+          name: '$page-view',
+          started_at: formatClickhouseTimestamp(pvTime),
+          ended_at: formatClickhouseTimestamp(pvTime),
           parent_span_ids: [],
-          data: JSON.stringify({
+          attributes: JSON.stringify({
             path: BULK_PAGE_PATHS[Math.floor(rand() * BULK_PAGE_PATHS.length)],
             referrer: p === 0 ? pickBulkReferrer(rand) : '',
             is_anonymous: false,
@@ -1978,6 +1980,10 @@ async function seedBulkSignupsAndActivity(options: {
         const clickOffset = Math.floor(rand() * 1800) * 1000;
         // Clamp to `now` so the offset can't push the event into the future.
         const clickTime = new Date(Math.min(visitTime.getTime() + clickOffset, now.getTime()));
+        const pageViewParentId = toSpanId(
+          SPAN_ID_PREFIXES.pageView,
+          clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
+        );
         clickhouseRows.push({
           event_type: '$click',
           event_at: formatClickhouseTimestamp(clickTime),
@@ -1991,10 +1997,8 @@ async function seedBulkSignupsAndActivity(options: {
           team_id: null,
           // Raw seed inserts bypass the API's page_view_span_id-to-parent
           // composition, so write the same canonical pv- ancestry directly.
-          parent_span_ids: [toSpanId(
-            SPAN_ID_PREFIXES.pageView,
-            clickPageViewSpanId ?? throwErr("A seeded visit must generate a page view before its click"),
-          )],
+          parent_span_ids: [pageViewParentId],
+          trace_id: pageViewParentId,
         });
       }
     }

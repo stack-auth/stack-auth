@@ -2,7 +2,6 @@ import { getClickhouseAdminClient, stripLoneSurrogates } from "@/lib/clickhouse"
 import { arePlanLimitsEnforced, getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { buildBatchSpanRows, buildEventSpanFields, insertSpans, toSpanId, SPAN_ID_PREFIXES } from "@/lib/spans";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { getHexclaveServerApp } from "@/hexclave";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -10,7 +9,7 @@ import { KnownErrors } from "@hexclave/shared";
 import { ITEM_IDS } from "@hexclave/shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { captureError, StatusError } from "@hexclave/shared/dist/utils/errors";
-import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, PAGE_VIEW_SPAN_TYPE, PERMISSIVE_DATA_SYSTEM_EVENT_TYPES, SYSTEM_EVENT_TYPES } from "@hexclave/shared/dist/utils/telemetry";
+import { CLIENT_SYSTEM_SPAN_TYPES, CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE, PAGE_VIEW_SPAN_TYPE, SYSTEM_EVENT_TYPES } from "@hexclave/shared/dist/utils/telemetry";
 import { Buffer } from "node:buffer";
 import * as zlib from "node:zlib";
 
@@ -114,10 +113,7 @@ export const POST = createSmartRouteHandler({
         }).defined().test(
           "custom-event-data",
           `Event data must be a JSON object of at most ${CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES} serialized bytes`,
-          // The two original system event types predate the cap and deployed
-          // trackers may exceed it, so they stay permissive; every later system
-          // type validates like a custom one (see PERMISSIVE_DATA_SYSTEM_EVENT_TYPES).
-          (event) => (PERMISSIVE_DATA_SYSTEM_EVENT_TYPES as readonly string[]).includes(event.event_type) || isPlainObjectWithinLimit(event.data),
+          (event) => isPlainObjectWithinLimit(event.data),
         ),
       ).optional().max(MAX_EVENTS),
       spans: yupArray(
@@ -343,23 +339,27 @@ export const POST = createSmartRouteHandler({
           refreshTokenId,
         });
 
-        const rows = events.map((event) => ({
-          event_type: event.event_type,
-          event_at: new Date(event.event_at_ms),
-          data: stripLoneSurrogates(event.data),
-          project_id: projectId,
-          branch_id: branchId,
-          user_id: userId,
-          team_id: null,
-          refresh_token_id: refreshTokenId,
-          session_replay_id: sessionReplayId,
-          session_replay_segment_id: sessionReplaySegmentId,
-          parent_span_ids: [
+        const rows = events.map((event) => {
+          const parentSpanIds = [
             ...eventSpanFields.parent_span_ids,
             ...event.page_view_span_id != null ? [toSpanId(SPAN_ID_PREFIXES.pageView, event.page_view_span_id)] : [],
             ...(event.parent_span_ids ?? []).map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
-          ],
-        }));
+          ];
+          return {
+            event_type: event.event_type,
+            event_at: new Date(event.event_at_ms),
+            data: stripLoneSurrogates(event.data),
+            project_id: projectId,
+            branch_id: branchId,
+            user_id: userId,
+            team_id: null,
+            refresh_token_id: refreshTokenId,
+            session_replay_id: sessionReplayId,
+            session_replay_segment_id: sessionReplaySegmentId,
+            parent_span_ids: parentSpanIds,
+            trace_id: parentSpanIds[0] ?? null,
+          };
+        });
 
         if (rows.length > 0) {
           await clickhouseClient.insert({
@@ -369,6 +369,7 @@ export const POST = createSmartRouteHandler({
             clickhouse_settings: {
               date_time_input_format: "best_effort",
               async_insert: 1,
+              wait_for_async_insert: 1,
             },
           });
         }
@@ -382,37 +383,30 @@ export const POST = createSmartRouteHandler({
       }
     })();
 
-    // Custom spans are versioned upserts into analytics_internal.spans. Written
-    // off the response path (same pattern as the replay batch route) so a slow or
-    // unavailable ClickHouse never delays the upload; the events insert above
-    // stays on-path because the response reports what was accepted.
-    //
-    // Billing is accept-then-refund: quota was already decreased above. On insert
-    // failure we refund so a dropped background write does not permanently burn
-    // spans quota. The refund itself is best-effort and captureError'd if it
-    // fails — we can't fail the (already-sent) response. E2E can't trigger the
-    // insert-failure path without breaking ClickHouse; observability covers it.
+    // Do not acknowledge spans until ClickHouse has accepted the insert. An
+    // in-memory background handoff is not durable: the process can exit after
+    // returning 200 and before the write starts. The ClickHouse insert uses
+    // wait_for_async_insert, so completing this await is the durability boundary
+    // represented by accepted_spans in the response.
     if (spans.length > 0) {
-      runAsynchronouslyAndWaitUntil(async () => {
-        try {
-          const spanRows = buildBatchSpanRows({
-            spans,
-            projectId,
-            branchId,
-            userId,
-            refreshTokenId,
-            sessionReplayId,
-            sessionReplaySegmentId,
-            serverNowMs: Date.now(),
-          });
-          await insertSpans(clickhouseClient, spanRows);
-        } catch (error) {
-          captureError("analytics-custom-spans-insert", error);
-          if (spansBillingTeamIdForRefund != null) {
-            await refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-custom-spans-refund");
-          }
+      try {
+        const spanRows = buildBatchSpanRows({
+          spans,
+          projectId,
+          branchId,
+          userId,
+          refreshTokenId,
+          sessionReplayId,
+          sessionReplaySegmentId,
+          serverNowMs: Date.now(),
+        });
+        await insertSpans(clickhouseClient, spanRows);
+      } catch (error) {
+        if (spansBillingTeamIdForRefund != null) {
+          await refundItem(ITEM_IDS.analyticsSpans, billableSpanCount, "analytics-custom-spans-refund");
         }
-      });
+        throw error;
+      }
     }
 
     return {

@@ -288,38 +288,33 @@ it("emits $session-replay and $session-replay-segment spans queryable via the sp
   expect(uploadRes.status).toBe(200);
   const replayId = uploadRes.body?.session_replay_id as string;
 
-  let queryRes;
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await wait(500);
-    queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        query: "SELECT span_type, id, parent_span_ids, session_replay_id, session_replay_segment_id FROM spans WHERE session_replay_id = {replayId:String} ORDER BY span_type",
-        params: { replayId },
-      },
-    });
-    if (queryRes.status === 200 && queryRes.body?.result?.length === 2) {
-      break;
-    }
-  }
+  // A successful replay upload now guarantees that its trace spans have crossed
+  // the ClickHouse acceptance boundary; no background-task polling is required.
+  const queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: "SELECT name, span_id, parent_span_ids, session_replay_id, session_replay_segment_id FROM spans WHERE session_replay_id = {replayId:String} ORDER BY name",
+      params: { replayId },
+    },
+  });
 
-  expect(queryRes?.status).toBe(200);
+  expect(queryRes.status).toBe(200);
   const rows = (queryRes?.body as any).result;
   expect(rows).toHaveLength(2);
 
-  const replaySpan = rows.find((r: any) => r.span_type === "$session-replay");
-  const segmentSpan = rows.find((r: any) => r.span_type === "$session-replay-segment");
+  const replaySpan = rows.find((r: any) => r.name === "$session-replay");
+  const segmentSpan = rows.find((r: any) => r.name === "$session-replay-segment");
 
   // Replay-level span: id is prefixed, parented to the refresh-token span, no segment.
-  expect(replaySpan.id).toBe(`sri-${replayId}`);
+  expect(replaySpan.span_id).toBe(`sri-${replayId}`);
   expect(replaySpan.parent_span_ids).toHaveLength(1);
   expect(replaySpan.parent_span_ids[0]).toMatch(/^rti-/);
   expect(replaySpan.session_replay_segment_id).toBeNull();
 
   // Segment span (per tab): ancestor list is root-first [refresh-token, replay];
   // its identity combines the replay id with the recording's per-tab segment id.
-  expect(segmentSpan.id).toBe(`srsi-${replayId}:${sessionReplaySegmentId}`);
+  expect(segmentSpan.span_id).toBe(`srsi-${replayId}:${sessionReplaySegmentId}`);
   expect(segmentSpan.parent_span_ids).toHaveLength(2);
   expect(segmentSpan.parent_span_ids[0]).toMatch(/^rti-/);
   expect(segmentSpan.parent_span_ids[1]).toBe(`sri-${replayId}`);
@@ -614,7 +609,7 @@ it("rejects invalid session_replay_segment_id", async ({ expect }) => {
   `);
 });
 
-it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expect }) => {
+it("rejects events without timestamps instead of fabricating replay bounds", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
@@ -637,17 +632,14 @@ it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expe
 
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 200,
-      "body": {
-        "batch_id": "<stripped UUID>",
-        "deduped": false,
-        "s3_key": "session-replays/<stripped UUID>/main/<stripped UUID>/<stripped UUID>.json.gz",
-        "session_replay_id": "<stripped UUID>",
+      "status": 400,
+      "body": "Session replay event at index 0 is missing a timestamp",
+      "headers": Headers {
+        "x-stack-known-error": "BAD_REQUEST",
+        <some fields may have been hidden>,
       },
-      "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  expect(typeof res.body?.session_replay_id).toBe("string");
 });
 
 it("rejects non-integer started_at_ms", async ({ expect }) => {

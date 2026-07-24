@@ -110,42 +110,28 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_page_views: MetricsDataPointsSchema,
   daily_clicks: MetricsDataPointsSchema,
   daily_visitors: MetricsDataPointsSchema,
-  hourly_page_views: yupArray(MetricsDataPointSchema).optional().default([]),
-  hourly_active_users: yupArray(MetricsDataPointSchema).optional().default([]),
-  hourly_visitors: yupArray(MetricsDataPointSchema).optional().default([]),
-  // Token-refresh-derived anonymous-visitor fallback. Populated only when the
-  // analytics app isn't installed (no `$page-view` events) — counts DISTINCT
-  // anonymous users per day from the events table. See
-  // `loadAnonymousVisitorsFromTokenRefresh` in the backend metrics route.
-  //
-  // Optional for one release cycle so older clients/servers don't hard-fail
-  // validation during a staged rollout. Tighten to `.defined()` after.
-  daily_anonymous_visitors_fallback: yupArray(MetricsDataPointSchema).optional().default([]),
+  hourly_page_views: yupArray(MetricsDataPointSchema).defined(),
+  hourly_active_users: yupArray(MetricsDataPointSchema).defined(),
+  hourly_visitors: yupArray(MetricsDataPointSchema).defined(),
   daily_revenue: yupArray(MetricsDailyRevenuePointSchema).defined(),
   total_revenue_cents: yupNumber().integer().defined(),
   total_replays: yupNumber().integer().defined(),
   recent_replays: yupNumber().integer().defined(),
   visitors: yupNumber().integer().defined(),
-  anonymous_visitors_fallback: yupNumber().integer().optional().default(0),
   avg_session_seconds: yupNumber().defined(),
   online_live: yupNumber().integer().defined(),
   revenue_per_visitor: yupNumber().defined(),
   top_referrers: yupArray(MetricsTopReferrerSchema).defined(),
   top_region: MetricsTopRegionSchema.nullable().defined(),
-  top_regions: yupArray(MetricsTopCountrySchema).optional().default([]),
-  // Weighted across the window: sum(bounced)/sum(sessions) * 100. .optional()
-  // for one release cycle so older servers (that don't return it yet) don't
-  // hard-fail validation; default to 0 so consumers can read unconditionally.
-  bounce_rate: yupNumber().optional().default(0),
-  daily_bounce_rate: yupArray(MetricsDataPointSchema).optional().default([]),
-  daily_avg_session_seconds: yupArray(MetricsDataPointSchema).optional().default([]),
+  top_regions: yupArray(MetricsTopCountrySchema).defined(),
+  bounce_rate: yupNumber().defined(),
+  daily_bounce_rate: yupArray(MetricsDataPointSchema).defined(),
+  daily_avg_session_seconds: yupArray(MetricsDataPointSchema).defined(),
   // User-Agent-derived breakdowns for the analytics overview. Computed from the
   // `data.user_agent` blob on `$page-view` events, captured client-side.
-  // Optional + default-[] for one release cycle so older clients / servers
-  // without UA capture don't fail validation.
-  top_browsers: yupArray(MetricsNamedCountSchema).optional().default([]),
-  top_operating_systems: yupArray(MetricsNamedCountSchema).optional().default([]),
-  top_devices: yupArray(MetricsNamedCountSchema).optional().default([]),
+  top_browsers: yupArray(MetricsNamedCountSchema).defined(),
+  top_operating_systems: yupArray(MetricsNamedCountSchema).defined(),
+  top_devices: yupArray(MetricsNamedCountSchema).defined(),
   conversion_rate: yupNumber().optional(),
   deltas: yupMixed().optional(),
 }).defined();
@@ -246,13 +232,11 @@ export const AnalyticsClickmapResponseBodySchema = yupObject({
 // Recent "currently live" users keyed by ISO country code. Populated by
 // joining a bounded ClickHouse selection from the live `$token-refresh` window
 // with the corresponding Prisma profile rows, so the overview globe can render
-// real avatars of real users from each country. Optional for one release cycle
-// so clients talking to older servers don't fail validation on the returned
-// body.
+// real avatars of real users from each country.
 export const MetricsActiveUsersByCountrySchema = yupRecord(
   yupString().defined(),
   yupArray(MetricsRecentUserSchema).defined(),
-).optional().default({});
+).defined();
 
 export const MetricsResponseBodySchema = yupObject({
   total_users: yupNumber().integer().defined(),
@@ -261,14 +245,11 @@ export const MetricsResponseBodySchema = yupObject({
   // from the same `$token-refresh` window that powers `active_users_by_country`,
   // so it works for every project regardless of whether the analytics app
   // (page-view-based `analytics_overview.online_live`) is installed.
-  //
-  // Optional for one release cycle so older servers don't fail schema
-  // validation on the returned body. Tighten to `.defined()` after.
-  live_users: yupNumber().integer().optional().default(0),
+  live_users: yupNumber().integer().defined(),
   daily_users: MetricsDataPointsSchema,
   daily_active_users: MetricsDataPointsSchema,
-  hourly_users: yupArray(MetricsDataPointSchema).optional().default([]),
-  hourly_active_users: yupArray(MetricsDataPointSchema).optional().default([]),
+  hourly_users: yupArray(MetricsDataPointSchema).defined(),
+  hourly_active_users: yupArray(MetricsDataPointSchema).defined(),
   users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
   active_users_by_country: MetricsActiveUsersByCountrySchema,
   // recently_registered/active are CRUD User objects passed through from the
