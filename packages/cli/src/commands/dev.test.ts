@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordLocalDashboardProcess } from "../lib/dev-env-state.js";
-import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, processExists, shouldRestartDashboard } from "./dev.js";
+import { configErrorLogPrefix, devDashboardCommandFromEnv, isHeartbeatResponse, isVersionNewer, killLocalDashboard, logConfigSyncEvents, processExists, shouldRestartDashboard } from "./dev.js";
 
 describe("isVersionNewer", () => {
   it("compares core versions numerically", () => {
@@ -105,6 +105,11 @@ describe("isHeartbeatResponse", () => {
       config_sync_events: [
         {
           config_file_path: "/app/hexclave.config.ts",
+          status: "syncing",
+          created_at_millis: 1_717_999_999_999,
+        },
+        {
+          config_file_path: "/app/hexclave.config.ts",
           status: "success",
           created_at_millis: 1_718_000_000_000,
         },
@@ -139,6 +144,37 @@ describe("isHeartbeatResponse", () => {
         },
       ],
     })).toBe(false);
+  });
+});
+
+describe("logConfigSyncEvents", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reports detection before confirming a successful sync", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    logConfigSyncEvents({
+      ok: true,
+      config_sync_events: [
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "syncing",
+          created_at_millis: 1_718_000_000_000,
+        },
+        {
+          config_file_path: "/app/hexclave.config.ts",
+          status: "success",
+          created_at_millis: 1_718_000_000_001,
+        },
+      ],
+    });
+
+    expect(warn.mock.calls).toEqual([
+      ["[Hexclave] Detected change to config file at /app/hexclave.config.ts. Syncing..."],
+      ["[Hexclave] Updated config sync successful!"],
+    ]);
   });
 });
 

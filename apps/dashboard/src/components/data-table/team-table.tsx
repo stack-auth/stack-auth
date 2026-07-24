@@ -12,7 +12,7 @@ import {
   type DataGridExportField,
   type DataGridExportScope,
 } from "@hexclave/dashboard-ui-components";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useDebounce } from "use-debounce";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
@@ -57,6 +57,7 @@ function DeleteDialog(props: {
   team: ServerTeam,
   open: boolean,
   onOpenChange: (open: boolean) => void,
+  onDeleted?: () => void | Promise<void>,
 }) {
   return <ActionDialog
     open={props.open}
@@ -64,14 +65,20 @@ function DeleteDialog(props: {
     title="Delete Team"
     danger
     cancelButton
-    okButton={{ label: "Delete Team", onClick: async () => { await props.team.delete(); } }}
+    okButton={{ label: "Delete Team", onClick: async () => {
+      await props.team.delete();
+      // Refresh the table so the deleted team doesn't linger as a stale row.
+      // Clicking such a row would navigate to the team detail page, whose
+      // `useTeam` returns null and triggers a full-page `notFound()`.
+      await props.onDeleted?.();
+    } }}
     confirmText="I understand that this action cannot be undone and all the team members will be also removed from the team."
   >
     {`Are you sure you want to delete the team "${props.team.displayName}" with ID ${props.team.id}?`}
   </ActionDialog>;
 }
 
-function TeamActions({ team }: { team: ServerTeam }) {
+function TeamActions({ team, onTeamMutated }: { team: ServerTeam, onTeamMutated: () => void | Promise<void> }) {
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -79,9 +86,14 @@ function TeamActions({ team }: { team: ServerTeam }) {
   const adminApp = useAdminApp();
 
   return (
-    <>
+    <div
+      className="flex justify-end"
+      data-no-row-click
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
       <EditDialog team={team} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
-      <DeleteDialog team={team} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <DeleteDialog team={team} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} onDeleted={onTeamMutated} />
       <CreateCheckoutDialog
         open={isCreateCheckoutModalOpen}
         onOpenChange={setIsCreateCheckoutModalOpen}
@@ -109,53 +121,55 @@ function TeamActions({ team }: { team: ServerTeam }) {
           }
         ]}
       />
-    </>
+    </div>
   );
 }
 
-const columns: DataGridColumnDef<ServerTeam>[] = [
-  {
-    id: "id",
-    header: "ID",
-    accessor: "id",
-    width: 120,
-    type: "string",
-    sortable: false,
-    renderCell: ({ value }) => (
-      <span className="truncate font-mono text-xs text-muted-foreground">{String(value)}</span>
-    ),
-  },
-  {
-    id: "displayName",
-    header: "Display Name",
-    accessor: "displayName",
-    width: 200,
-    flex: 1,
-    type: "string",
-    sortable: false,
-    renderCell: ({ value }) => (
-      <span className="truncate">{String(value ?? "")}</span>
-    ),
-  },
-  {
-    id: "createdAt",
-    header: "Created At",
-    accessor: "createdAt",
-    width: 140,
-    type: "dateTime",
-  },
-  {
-    id: "actions",
-    header: "",
-    width: 50,
-    minWidth: 50,
-    maxWidth: 50,
-    sortable: false,
-    hideable: false,
-    resizable: false,
-    renderCell: ({ row }) => <TeamActions team={row} />,
-  },
-];
+function createTeamColumns(onTeamMutated: () => void | Promise<void>): DataGridColumnDef<ServerTeam>[] {
+  return [
+    {
+      id: "id",
+      header: "ID",
+      accessor: "id",
+      width: 120,
+      type: "string",
+      sortable: false,
+      renderCell: ({ value }) => (
+        <span className="truncate font-mono text-xs text-muted-foreground">{String(value)}</span>
+      ),
+    },
+    {
+      id: "displayName",
+      header: "Display Name",
+      accessor: "displayName",
+      width: 200,
+      flex: 1,
+      type: "string",
+      sortable: false,
+      renderCell: ({ value }) => (
+        <span className="truncate">{String(value ?? "")}</span>
+      ),
+    },
+    {
+      id: "createdAt",
+      header: "Created At",
+      accessor: "createdAt",
+      width: 140,
+      type: "dateTime",
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      renderCell: ({ row }) => <TeamActions team={row} onTeamMutated={onTeamMutated} />,
+    },
+  ];
+}
 
 const TEAM_EXPORT_FIELDS: DataGridExportField<ServerTeam>[] = [
   { key: "id", label: "Team ID", enabled: true, getValue: (team) => team.id },
@@ -166,6 +180,15 @@ const TEAM_EXPORT_FIELDS: DataGridExportField<ServerTeam>[] = [
 export function TeamTable() {
   const router = useRouter();
   const hexclaveAdminApp = useAdminApp();
+
+  // The action-cell column closures need the grid's `reload`, but `gridData`
+  // is created below them, so route the call through a ref.
+  const reloadRef = useRef<() => void>(() => {});
+  const handleTeamMutated = useCallback(() => {
+    reloadRef.current();
+  }, []);
+
+  const columns = useMemo(() => createTeamColumns(handleTeamMutated), [handleTeamMutated]);
 
   const [gridState, setGridState] = useDataGridUrlState(columns, {
     paramPrefix: "teams",
@@ -212,6 +235,8 @@ export function TeamTable() {
     pagination: gridState.pagination,
     paginationMode: "infinite",
   });
+
+  reloadRef.current = gridData.reload;
 
   const fetchExportRows = useCallback(async (options: {
     scope: DataGridExportScope,
