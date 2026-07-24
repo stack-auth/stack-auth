@@ -126,6 +126,12 @@ function isSchemaNumberDescription(value: yup.SchemaFieldDescription): value is 
   return value.type === 'number';
 }
 
+function assertResolvedSchemaDescription(value: yup.SchemaFieldDescription): asserts value is yup.SchemaDescription {
+  if (!("nullable" in value)) {
+    throw new HexclaveAssertionError('OpenAPI generator cannot process unresolved schema descriptions', { actual: value });
+  }
+}
+
 function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescription, audience: 'client' | 'server' | 'admin') {
   const schemaAuth = requestDescribe.fields.auth;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- yup types are wrong and claim that fields always exist
@@ -200,11 +206,13 @@ function parseRouteHandler(options: {
 }
 
 function getOpenApiType(field: yup.SchemaFieldDescription, type: string): string | [string, "null"] {
+  assertResolvedSchemaDescription(field);
   // OpenAPI 3.1 uses JSON Schema type arrays instead of the removed OpenAPI 3.0 `nullable` keyword.
   return isFieldNullable(field) ? [type, "null"] : type;
 }
 
 function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string | [string, "null"], items?: any, properties?: any, required?: any, default?: any } | undefined {
+  assertResolvedSchemaDescription(field);
   const meta = "meta" in field ? field.meta : {};
   if (meta?.openapiField?.hidden) {
     return undefined;

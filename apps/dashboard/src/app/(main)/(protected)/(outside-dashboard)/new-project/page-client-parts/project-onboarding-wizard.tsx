@@ -478,6 +478,30 @@ export function ProjectOnboardingWizard(props: {
     );
   }
 
+  if (props.status === "completed" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
+    // Re-linking an already-onboarded project (initiated from the project
+    // settings page). The project's onboarding status must stay "completed",
+    // so both back and continue simply return to the settings page instead of
+    // saving onboarding progress. Full page load so the config source and
+    // config caches are refetched after the link.
+    const returnToProjectSettings = () => {
+      window.location.href = `/projects/${encodeURIComponent(props.project.id)}/project-settings`;
+    };
+    return (
+      <LinkExistingOnboarding
+        project={props.project}
+        steps={[{ id: "config_choice", label: "Config" }]}
+        disabled={saving}
+        currentStep="config_choice"
+        onStepClick={() => {}}
+        onBack={returnToProjectSettings}
+        onContinueAfterLink={async () => {
+          returnToProjectSettings();
+        }}
+      />
+    );
+  }
+
   if (props.status === "config_choice" && props.mode === "link-existing" && !isDevelopmentEnvironment) {
     return (
       <LinkExistingOnboarding
