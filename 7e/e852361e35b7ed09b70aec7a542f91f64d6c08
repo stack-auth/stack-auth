@@ -1,0 +1,21 @@
+package.json
+  s_50c6b5323dd4a8::t_6d92d6ea9eec98 60
+scripts/reseed-bulldozer.sh
+  s_50c6b5323dd4a8::t_a22cd2d204f429 85-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "7ee852361e35b7ed09b70aec7a542f91f64d6c08",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
