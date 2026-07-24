@@ -51,13 +51,25 @@ export const deploymentsSkillSection = deindent`
 
   Note also that the config file usually sits inside \`rootDirectory\`, which means it is uploaded with your source and compiled by the remote build like any other file. If the deployed app doesn't depend on the Hexclave SDK, add \`hexclave.config.ts\` to \`.vercelignore\`: the CLI reads the config from disk before packaging, so the build itself never needs it, and excluding it keeps an SDK import in the config from breaking a build that is otherwise unrelated to Hexclave.
 
+  ## Agent workflow (do this — do not drive the dashboard UI)
+
+  AI agents must deploy and manage Deployments through the CLI and \`hexclave.config.ts\`, not by clicking around \`app.hexclave.com\` in a browser. The dashboard is a human fallback only.
+
+  Preferred sequence:
+
+  1. **Read this skill** (\`https://skill.hexclave.com/deployments\` or the Deployments addendum you already have) and ensure \`deployments-alpha\` is enabled in config as above.
+  2. **Authenticate for cloud deploys** (pick the first that works):
+     - If \`HEXCLAVE_SECRET_SERVER_KEY\` (or \`STACK_SECRET_SERVER_KEY\`) **and** \`HEXCLAVE_PROJECT_ID\` (or \`STACK_PROJECT_ID\`) are already in the environment, use them. No login step.
+     - Else if \`npx @hexclave/cli@latest whoami\` succeeds, you already have a CLI login session — proceed.
+     - Else ask the user to run \`npx @hexclave/cli@latest login\` (or run it for them). That command opens a **one-time browser login page for the human**. Do **not** use the browser yourself to open the Deployments dashboard, click Deploy, or configure the service in the UI. After login returns successfully, continue immediately with the CLI.
+  3. **Write/update \`hexclave.config.ts\`**, then deploy with \`npx @hexclave/cli@latest deploy <service> ...\` (see below). Pass every \`type: "secret"\` env via \`--secret\`.
+  4. **Poll status/logs with \`hexclave exec\`** (snippets below). Do not tell the user to "watch the dashboard" as the primary path.
+
+  \`deploy\` auth: \`HEXCLAVE_SECRET_SERVER_KEY\` if set, otherwise the \`hexclave login\` session. \`exec --cloud-project-id\` needs the login session (not the secret server key alone).
+
   ## Domains
 
-  Every Vercel service gets a Vercel domain autoprovisioned. If you want to attach a custom domain, there are two ways to do so.
-
-  **Option 1 — the dashboard.** Visit \`https://app.hexclave.com/projects/<project-id>/deployments\`, click the service of choice, go to the Domains tab, add your domain, and then create the returned DNS records at your DNS provider.
-
-  **Option 2 — the CLI.** Here is an example of adding \`app.example.com\` to the service \`api\` and receiving the DNS records that then need to be set with your DNS provider:
+  Every Vercel service gets a Vercel domain autoprovisioned. Prefer the CLI to attach a custom domain:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
@@ -65,6 +77,8 @@ export const deploymentsSkillSection = deindent`
      await p.addDeploymentServiceDomain('api', 'app.example.com'); \\
      return p.getDeploymentServiceDomain('api', 'app.example.com');"
   \`\`\`
+
+  Humans can also add domains in the dashboard at \`https://app.hexclave.com/projects/<project-id>/deployments\` (service → Domains). Agents should not do that in a browser.
 
   ## Deploying
 
@@ -76,7 +90,7 @@ export const deploymentsSkillSection = deindent`
   npx @hexclave/cli@latest deploy web --secret db_connection="$DATABASE_URL"
   \`\`\`
 
-  The CLI packages the service's root directory (respecting \`.gitignore\` and \`.vercelignore\`, and always excluding \`node_modules\` and \`.git\`), uploads it, and starts a remote build. Without a config file, the configuration stored in Hexclave governs the deploy, with the root directory resolved against the current directory. It always deploys to production, never prompts, and exits as soon as the build is queued, printing the run id. Follow the build in the dashboard's Deployments tab.
+  The CLI packages the service's root directory (respecting \`.gitignore\` and \`.vercelignore\`, and always excluding \`node_modules\` and \`.git\`), uploads it, and starts a remote build. Without a config file, the configuration stored in Hexclave governs the deploy, with the root directory resolved against the current directory. It always deploys to production, never prompts, and exits as soon as the build is queued, printing the run id. Check that run with \`exec\` (next section), not by opening the dashboard.
 
   Every secret defined in the service's \`env\` must be passed via \`--secret\` on every deploy — a missing (or misspelled) one fails the deploy before anything is uploaded.
 
@@ -118,11 +132,13 @@ export const deploymentsSkillSection = deindent`
 
   ## Deleting a service
 
-  If you want to delete a deployed service, you can do so through the dashboard, or through the CLI like so:
+  Prefer the CLI:
 
   \`\`\`sh title="Terminal"
   npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
     "const p = await hexclaveServerApp.getProject(); \\
      await p.deleteDeploymentService('api');"
   \`\`\`
+
+  Humans can also delete a service in the dashboard; agents should not.
 `;
