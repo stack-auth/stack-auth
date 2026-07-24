@@ -9,7 +9,10 @@ const tracer = trace.getTracer('stack-tracer');
 // the SDK and analytics batch route so local validation cannot drift from the
 // server's batch-level rejection rules.
 export const CUSTOM_TELEMETRY_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,63}$/;
-export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 16_000;
+// The released browser tracker flushes at roughly 64 KB per batch. Using that
+// same ceiling for every event/span preserves its generated payloads while
+// giving current custom telemetry one bounded validation contract.
+export const CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES = 64_000;
 export const CUSTOM_TELEMETRY_MAX_PARENT_CHAIN = 10;
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {

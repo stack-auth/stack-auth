@@ -38,7 +38,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _HexclaveClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
-import { createInertSpan, getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
+import { getCustomTelemetryDataError, getCustomTelemetryNameError, registerTelemetryBackgroundTask, rejectedPreCaught, resolveEndedAtMs, resolveParentIds, type Span, type SpanRef, type SpanUpdateRow, type StartSpanOptions, type TrackOptions } from "./event-tracker";
 import { generateUuid } from "./session-replay";
 import { getAmbientSpanRefs } from "./span-context";
 
@@ -1778,8 +1778,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   override startSpan(spanType: string, options?: StartSpanOptions & { userId?: string }): Span {
     if (this._eventTracker) {
       if (options?.userId !== undefined) {
-        console.error("Hexclave analytics: userId is only supported for server-key telemetry; in the browser, spans are attributed to the signed-in user");
-        return createInertSpan(spanType);
+        throw new Error("Hexclave analytics: userId is only supported for server-key telemetry; in the browser, spans are attributed to the signed-in user");
       }
       return this._eventTracker.startSpan(spanType, options);
     }
@@ -1841,7 +1840,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const promise = new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     });
-    promise.catch(() => {});
     const buffer = this._getServerTelemetryBuffer(userId);
     buffer.events.push({
       event: {
@@ -1859,21 +1857,17 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
   private _startServerSpan(spanType: string, options: StartSpanOptions | undefined, userId: string | null): Span {
     const nameError = getCustomTelemetryNameError("span", spanType);
     if (nameError) {
-      console.error(`Hexclave analytics: ${nameError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${nameError}`);
     }
     const dataError = getCustomTelemetryDataError(options?.data);
     if (dataError) {
-      console.error(`Hexclave analytics: ${dataError}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${dataError}`);
     }
     if (options?.startedAtMs !== undefined && (!Number.isInteger(options.startedAtMs) || options.startedAtMs < 0)) {
-      console.error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
-      return createInertSpan(spanType);
+      throw new Error("Hexclave analytics: startedAtMs must be a non-negative integer epoch-milliseconds value");
     }
     if (userId !== null && !SERVER_TELEMETRY_UUID_RE.test(userId)) {
-      console.error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: invalid userId ${JSON.stringify(userId)}: must be a user uuid`);
     }
     const resolved = resolveParentIds({
       explicit: options?.parentIds,
@@ -1882,8 +1876,7 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       exclude: options?.excludeParentIds,
     });
     if ("error" in resolved) {
-      console.error(`Hexclave analytics: ${resolved.error}`);
-      return createInertSpan(spanType);
+      throw new Error(`Hexclave analytics: ${resolved.error}`);
     }
 
     const spanId = generateUuid();
@@ -1921,9 +1914,9 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       end: (endOptions?: { endedAtMs?: number }) => {
         if (endPromise) return endPromise;
+        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         ended = true;
         this._serverGlobalSpans.delete(span);
-        const endedAtMs = resolveEndedAtMs(startedAtMs, endOptions?.endedAtMs);
         endPromise = enqueue(endedAtMs);
         return endPromise;
       },
@@ -1943,7 +1936,6 @@ export class _HexclaveServerAppImplIncomplete<HasTokenStore extends boolean, Pro
     const promise = new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
     });
-    promise.catch(() => {});
     const buffer = this._getServerTelemetryBuffer(userId);
     const previous = buffer.spans.get(row.span_id);
     // Latest row per span id wins within a batch; superseded rows' settlers ride
