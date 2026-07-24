@@ -126,6 +126,7 @@ const docsJson = {
                 "pages": [
                   "guides/apps/analytics/overview",
                   "guides/apps/analytics/custom-events-and-spans",
+                  "guides/apps/analytics/opentelemetry",
                   "guides/apps/analytics/cross-tier-tracing",
                   "guides/apps/analytics/framework-adapters"
                 ]

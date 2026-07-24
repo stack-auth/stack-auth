@@ -1,0 +1,190 @@
+---
+title: "OpenTelemetry"
+description: "Send OTLP traces from OpenTelemetry-compatible libraries to Hexclave Analytics"
+---
+
+Hexclave accepts OpenTelemetry traces over OTLP/HTTP JSON. This lets you keep the instrumentation you already use for HTTP, your ORM, queues, and AI calls while viewing the resulting trace tree in **Analytics -> Traces** and querying it through Hexclave's native `spans` table.
+
+## Endpoint
+
+Send an OTLP `ExportTraceServiceRequest` as JSON to:
+
+```text
+https://api.hexclave.com/api/v1/analytics/otlp/v1/traces
+```
+
+Use these headers:
+
+```text
+Content-Type: application/json
+x-hexclave-access-type: server
+x-hexclave-project-id: <your-project-id>
+x-hexclave-secret-server-key: <your-secret-server-key>
+```
+
+<Warning>
+The secret server key must stay in a trusted server environment. Never configure this exporter in browser code or expose its headers through a public environment variable.
+</Warning>
+
+The endpoint currently accepts the standard OTLP JSON encoding. Configure the exporter for `http/json`; the default OTLP protobuf encoding is not accepted by this endpoint.
+
+## Next.js with automatic instrumentation
+
+[`@vercel/otel`](https://www.npmjs.com/package/@vercel/otel) provides an OTLP JSON exporter and composes with ordinary OpenTelemetry instrumentations. For example, this setup automatically captures supported Node.js operations and Prisma spans:
+
+```ts title="instrumentation.ts"
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { PrismaInstrumentation } from "@prisma/instrumentation";
+import { OTLPHttpJsonTraceExporter, registerOTel } from "@vercel/otel";
+
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
+export function register() {
+  const apiUrl = process.env.HEXCLAVE_API_URL ?? "https://api.hexclave.com";
+  registerOTel({
+    serviceName: "checkout-api",
+    instrumentations: [
+      ...getNodeAutoInstrumentations(),
+      new PrismaInstrumentation(),
+    ],
+    traceExporter: new OTLPHttpJsonTraceExporter({
+      url: new URL("/api/v1/analytics/otlp/v1/traces", apiUrl).toString(),
+      headers: {
+        "x-hexclave-access-type": "server",
+        "x-hexclave-project-id": getRequiredEnv("HEXCLAVE_PROJECT_ID"),
+        "x-hexclave-secret-server-key": getRequiredEnv("HEXCLAVE_SECRET_SERVER_KEY"),
+      },
+    }),
+  });
+}
+```
+
+Install the instrumentation packages used by your application and keep their versions compatible with your OpenTelemetry SDK. Prisma instrumentation emits spans only for supported Prisma client and engine versions.
+
+## Continue traces across browser and server boundaries
+
+OTLP export and trace propagation are separate concerns. The exporter above sends completed server spans to Hexclave. To make a frontend request and its backend work share a trace, the caller must also attach the standard W3C `traceparent` header and the receiving OpenTelemetry provider must extract it.
+
+<Info>
+Never put the Hexclave secret server key in the browser. Browser instrumentation can propagate trace identity to your backend, but it should export browser spans only through a browser-safe provider or a trusted collector. If the browser and backend export to different tracing systems, their trace and parent ids still correlate, but each system displays only the spans it receives.
+</Info>
+
+### Browser fetches
+
+Configure your browser tracing provider to propagate only to API origins you trust. For example, Sentry's browser provider can emit a W3C parent for matching requests:
+
+```ts title="instrumentation-client.ts"
+import * as Sentry from "@sentry/nextjs";
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 1,
+  propagateTraceparent: true,
+  tracePropagationTargets: [
+    /^https:\/\/api\.example\.com(?:\/|$)/,
+  ],
+});
+```
+
+Use exact origins or anchored URL patterns. Broad substring matches can send trace headers to unintended hosts. For a cross-origin API, its CORS response must allow `traceparent` and `tracestate` in `Access-Control-Allow-Headers`.
+
+If browser requests do not contain `traceparent`, check that the browser tracing provider is enabled, has a valid local configuration, created an active sampled span, and matched the destination URL. Disabling a provider in development commonly disables propagation with it. If you need local propagation without uploading local telemetry, keep the tracing integration active with a local-only or no-op transport.
+
+### Server-side fetches
+
+Browser configuration does not cover fetches made during server rendering or in route handlers. With `@vercel/otel`, configure those destinations separately:
+
+```ts title="instrumentation.ts"
+registerOTel({
+  serviceName: "web-app",
+  instrumentationConfig: {
+    fetch: {
+      propagateContextUrls: [
+        /^https:\/\/api\.example\.com(?:\/|$)/,
+      ],
+    },
+  },
+  // ...your exporter and instrumentations
+});
+```
+
+The receiving backend's OpenTelemetry HTTP instrumentation extracts the W3C context and creates its request span beneath the caller automatically. You do not need to copy trace ids into span attributes.
+
+## Sampling without breaking cross-tier traces
+
+High-frequency background jobs and database instrumentation can fill bounded exporter queues before request spans are sent, especially in development. Use a parent-based sampler so an incoming sampled browser or service trace is retained while unrelated root traces are sampled at a lower rate:
+
+```ts title="instrumentation.ts"
+import { ParentBasedSampler, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
+
+registerOTel({
+  serviceName: "checkout-api",
+  traceSampler: new ParentBasedSampler({
+    root: new TraceIdRatioBasedSampler(0.01),
+  }),
+  // ...your exporter and instrumentations
+});
+```
+
+This preserves the upstream sampled or unsampled decision. The `0.01` rate applies only when there is no parent, so choose it based on the volume and debugging needs of each environment.
+
+## AI SDK traces
+
+Vercel AI SDK uses the active OpenTelemetry provider when telemetry is enabled on a generation call:
+
+```ts
+import { generateText } from "ai";
+
+const result = await generateText({
+  model,
+  prompt,
+  experimental_telemetry: {
+    isEnabled: true,
+    functionId: "support-answer",
+    recordInputs: false,
+    recordOutputs: false,
+  },
+});
+```
+
+`functionId` gives the operation a stable name for filtering. Keep `recordInputs` and `recordOutputs` disabled unless you have deliberately reviewed the prompts, responses, retention, and access controls for sensitive data.
+
+The same option is available on streaming generation APIs such as `streamText`.
+
+## How OTLP maps to Hexclave spans
+
+The adapter maps OTel identity, naming, timing, status, service, resource, and instrumentation scope into typed span columns. `span_id` is Hexclave's globally unique typed identity, `trace_id` groups every participating span, and `parent_span_ids` preserves the complete root-first ancestor path when those ancestors are available. Arbitrary span, resource, and scope attributes remain in their corresponding JSON attribute columns. Span events are queryable through `events`; span links are queryable through `span_links`.
+
+Useful query fields include:
+
+```sql
+SELECT
+  trace_id,
+  span_id,
+  parent_span_ids,
+  name,
+  service_name,
+  scope_name,
+  kind,
+  status_code,
+  dateDiff('millisecond', started_at, ended_at) AS duration_ms,
+  attributes
+FROM spans
+WHERE service_name = 'checkout-api'
+ORDER BY started_at DESC
+LIMIT 100
+```
+
+## Operational guidance
+
+- Configure sampling in your application before export; Hexclave stores the spans it receives.
+- Give each deployable service a stable `service.name`.
+- Avoid recording SQL parameters, auth tokens, prompts, model responses, or request bodies unless your data policy explicitly permits them.
+- Batch spans in production rather than exporting each span synchronously.
+- Treat a `200` response with `{}` as a successful OTLP export.
+
+W3C OpenTelemetry propagation and Hexclave's native cross-tier context can coexist. `traceparent` continues OpenTelemetry trace identity; `x-hexclave-span-context` attaches native Hexclave spans to session replay, user attribution, and ambient custom spans. For the native flow, see [Custom Events & Spans](/guides/apps/analytics/custom-events-and-spans) and [Cross-Tier Tracing](/guides/apps/analytics/cross-tier-tracing).

@@ -5,6 +5,10 @@ description: "Backend spans automatically link to the client session that caused
 
 When your frontend calls your backend, Hexclave can automatically parent the backend's telemetry under the caller's client session — the same `$refresh-token` -> `$session-replay` -> `$session-replay-segment` tree your client-side [events and spans](/guides/apps/analytics/custom-events-and-spans) attach to. One trace then spans both tiers: the button click, the API call, the database work behind it.
 
+<Info>
+This page covers Hexclave's native `x-hexclave-span-context` propagation, which carries session replay, user attribution, and ambient custom-span context. Standard OpenTelemetry uses `traceparent` and `tracestate` instead. You can run both on the same request; see the [OpenTelemetry guide](/guides/apps/analytics/opentelemetry#continue-traces-across-browser-and-server-boundaries) for W3C propagation and sampling.
+</Info>
+
 ## How It Works
 
 Two halves, both automatic once set up:

@@ -1,10 +1,13 @@
 "use client";
 
-import { Button, Input, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } from "@/components/ui";
+import { DesignAlert, DesignButton, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@hexclave/shared/dist/utils/promises";
+import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 import { ArrowClockwiseIcon, ChartLineIcon, SpinnerGapIcon, StackIcon, TreeStructureIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { StickyPageHeader } from "../../sticky-page-header";
@@ -20,67 +23,181 @@ import {
 import { SpanTreeList } from "./span-tree";
 import {
   buildTraces,
-  isSystemSpanType,
-  rerootTrace,
-  subtreeMatches,
   type EventInput,
   type SpanInput,
   type Trace,
 } from "./trace-utils";
-import { TraceWaterfall, type TraceBreadcrumb } from "./waterfall";
+import { TraceWaterfall } from "./waterfall";
 
-const SPAN_SELECT_SQL = `
+const TRACE_SPAN_STRUCTURE_SELECT_SQL = `
 SELECT
-  s.id,
-  s.span_type,
-  s.span_started_at,
-  s.span_ended_at,
+  s.trace_id,
+  s.span_id,
+  s.name,
+  s.started_at,
+  s.ended_at,
   s.parent_span_ids,
-  s.data,
-  s.user_id,
-  s.refresh_token_id,
-  s.session_replay_id,
-  s.session_replay_segment_id,
+  s.status_code
+FROM default.spans AS s
+`;
+
+const ROOT_PAGE_SIZE = 200;
+const SEARCH_DEBOUNCE_MS = 300;
+const ALL_SERVICES_SELECT_VALUE = "all";
+const SERVICE_SELECT_VALUE_PREFIX = "service:";
+
+export function serviceNameToSelectValue(serviceName: string | null): string {
+  return serviceName == null
+    ? ALL_SERVICES_SELECT_VALUE
+    : `${SERVICE_SELECT_VALUE_PREFIX}${serviceName}`;
+}
+
+export function selectValueToServiceName(value: string): string | null {
+  if (value === ALL_SERVICES_SELECT_VALUE) {
+    return null;
+  }
+  if (!value.startsWith(SERVICE_SELECT_VALUE_PREFIX)) {
+    throw new Error(`Unexpected trace service select value: ${value}`);
+  }
+  return value.slice(SERVICE_SELECT_VALUE_PREFIX.length);
+}
+
+export function serviceNameToLabel(serviceName: string): string {
+  return serviceName === "" ? "Hexclave" : serviceName;
+}
+
+const TRACE_SERVICES_QUERY = `
+SELECT service_name
+FROM default.trace_services
+GROUP BY service_name
+ORDER BY service_name ASC
+LIMIT 500
+`;
+
+export type TraceRootCursor = {
+  startMs: number,
+  id: string,
+};
+
+export function getRecentTraceRootsQuery(
+  cursor: TraceRootCursor | null,
+  serviceName: string | null = null,
+  search = "",
+): {
+  query: string,
+  params: Record<string, string | number>,
+} {
+  const serviceCondition = serviceName == null ? "" : `
+    AND r.trace_id IN (
+      SELECT trace_id
+      FROM default.trace_services
+      WHERE service_name = {serviceName:String}
+    )`;
+  const searchCondition = search === "" ? "" : `
+    AND (
+      positionCaseInsensitiveUTF8(r.name, {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(r.trace_id, {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(r.span_id, {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.service_namespace, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.service_name, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.service_version, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.deployment_environment_name, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.user_id, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.refresh_token_id, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.session_replay_id, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(r.session_replay_segment_id, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(u.display_name, ''), {search:String}) > 0
+      OR positionCaseInsensitiveUTF8(ifNull(u.primary_email, ''), {search:String}) > 0
+    )`;
+  const cursorCondition = cursor == null ? "" : `
+    AND (
+      r.started_at < fromUnixTimestamp64Milli({cursorStartMs:Int64})
+      OR (r.started_at = fromUnixTimestamp64Milli({cursorStartMs:Int64}) AND r.span_id < {cursorId:String})
+    )`;
+  return {
+    query: `
+SELECT
+  r.trace_id,
+  r.span_id,
+  r.name,
+  r.started_at,
+  r.ended_at,
+  CAST([], 'Array(String)') AS parent_span_ids,
   u.display_name AS user_display_name,
   u.primary_email AS user_primary_email,
-  u.profile_image_url AS user_profile_image_url
-FROM default.spans AS s
-LEFT ANY JOIN default.users AS u
-  ON s.project_id = u.project_id
-  AND s.branch_id = u.branch_id
-  AND s.user_id = toString(u.id)
-`;
+  u.profile_image_url AS user_profile_image_url,
+  'span' AS root_source
+FROM default.trace_roots AS r
+LEFT JOIN default.users AS u ON toString(u.id) = r.user_id
+WHERE r.started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR${serviceCondition}${searchCondition}${cursorCondition}
+ORDER BY r.started_at DESC, r.span_id DESC
+LIMIT ${ROOT_PAGE_SIZE}
+`,
+    params: {
+      ...(cursor == null ? {} : { cursorStartMs: cursor.startMs, cursorId: cursor.id }),
+      ...(serviceName == null ? {} : { serviceName }),
+      ...(search === "" ? {} : { search }),
+    },
+  };
+}
 
-const RECENT_SPANS_QUERY = `
-${SPAN_SELECT_SQL}
-WHERE s.span_started_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-ORDER BY s.span_started_at DESC
-LIMIT 3000
-`;
+export function getSelectedTraceSpanQuery(traceId: string, serviceName: string | null = null): {
+  query: string,
+  params: Record<string, string | number>,
+} {
+  return {
+    query: `
+${TRACE_SPAN_STRUCTURE_SELECT_SQL}
+WHERE s.trace_id = {traceId:String}
+  ${serviceName == null ? "" : "AND s.service_name = {serviceName:String}"}
+ORDER BY s.started_at ASC
+LIMIT 10000
+`,
+    params: {
+      traceId,
+      ...(serviceName == null ? {} : { serviceName }),
+    },
+  };
+}
 
-const ACTIVE_REFRESH_TOKEN_ROOTS_QUERY = `
-${SPAN_SELECT_SQL}
-WHERE s.span_type = '$refresh-token'
-  AND (s.span_ended_at IS NULL OR s.span_ended_at >= now64(3) - INTERVAL {hours:UInt32} HOUR)
-ORDER BY s.span_started_at DESC
-LIMIT 3000
-`;
+export function getSpanDetailQuery(traceId: string, spanId: string): {
+  query: string,
+  params: Record<string, string>,
+} {
+  return {
+    query: `
+SELECT *
+FROM default.spans
+WHERE trace_id = {traceId:String}
+  AND span_id = {spanId:String}
+LIMIT 1
+`,
+    params: { traceId, spanId },
+  };
+}
 
-const SPANS_BY_ID_QUERY = `
-${SPAN_SELECT_SQL}
-WHERE s.id IN ({spanIds:Array(String)})
-`;
-
-// Events are not browsable on this page, but they still render as markers
-// inside their parent span's waterfall row, so we fetch them for correlation.
-const EVENTS_QUERY = `
+export function getSelectedTraceEventQuery(traceId: string, hours: number, serviceName: string | null = null): {
+  query: string,
+  params: Record<string, string | number>,
+} {
+  return {
+    query: `
 SELECT event_type, event_at, data, user_id, parent_span_ids,
        refresh_token_id, session_replay_id, session_replay_segment_id
 FROM default.events
-WHERE event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
-ORDER BY event_at DESC
-LIMIT 3000
-`;
+WHERE trace_id = {traceId:String}
+  AND event_at >= now64(3) - INTERVAL {hours:UInt32} HOUR
+  ${serviceName == null ? "" : "AND service_name = {serviceName:String}"}
+ORDER BY event_at ASC
+LIMIT 5000
+`,
+    params: {
+      traceId,
+      hours,
+      ...(serviceName == null ? {} : { serviceName }),
+    },
+  };
+}
 
 const TIME_RANGES = [
   { label: "1h", hours: 1 },
@@ -101,23 +218,28 @@ function tryParseJson(value: unknown): unknown {
 }
 
 function parseSpanRow(row: Record<string, unknown>): SpanInput | null {
-  const id = row.id;
-  const spanType = row.span_type;
-  const startedAt = row.span_started_at;
-  if (typeof id !== "string" || typeof spanType !== "string" || !isDateValue(startedAt)) return null;
-  const endedAt = row.span_ended_at;
+  const traceId = row.trace_id;
+  const id = row.span_id;
+  const spanType = row.name;
+  const startedAt = row.started_at;
+  if (typeof traceId !== "string" || typeof id !== "string" || typeof spanType !== "string" || !isDateValue(startedAt)) return null;
+  const endedAt = row.ended_at;
   const parentSpanIds = Array.isArray(row.parent_span_ids)
     ? row.parent_span_ids.filter((value): value is string => typeof value === "string")
     : [];
   return {
+    traceId,
     id,
     spanType,
     startMs: parseClickHouseDate(startedAt).getTime(),
     endMs: isDateValue(endedAt) ? parseClickHouseDate(endedAt).getTime() : null,
     parentSpanIds,
-    // The spans data column is a JSON string; parse it so the detail dialog
-    // pretty-prints instead of showing an escaped blob.
-    raw: { ...row, data: tryParseJson(row.data) },
+    raw: {
+      ...row,
+      attributes: tryParseJson(row.attributes),
+      resource_attributes: tryParseJson(row.resource_attributes),
+      scope_attributes: tryParseJson(row.scope_attributes),
+    },
   };
 }
 
@@ -139,17 +261,6 @@ export function parseEventRow(row: Record<string, unknown>): EventInput | null {
   };
 }
 
-export function collectRefreshTokenParentIds(rows: Record<string, unknown>[]): string[] {
-  const ids = new Set<string>();
-  for (const row of rows) {
-    if (!Array.isArray(row.parent_span_ids)) continue;
-    for (const parentId of row.parent_span_ids) {
-      if (typeof parentId === "string" && parentId.startsWith("rti-")) ids.add(parentId);
-    }
-  }
-  return [...ids];
-}
-
 export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[] {
   const spansById = new Map<string, SpanInput>();
   for (const row of rows) {
@@ -157,31 +268,6 @@ export function parseUniqueSpanRows(rows: Record<string, unknown>[]): SpanInput[
     if (span != null && !spansById.has(span.id)) spansById.set(span.id, span);
   }
   return [...spansById.values()];
-}
-
-function Segmented<T extends string | number>({ value, onChange, options }: {
-  value: T,
-  onChange: (value: T) => void,
-  options: readonly { label: string, value: T }[],
-}) {
-  return (
-    <div className="flex items-center rounded-lg bg-foreground/[0.04] p-0.5">
-      {options.map((option) => (
-        <button
-          key={String(option.value)}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:transition-none",
-            value === option.value
-              ? "bg-white text-foreground shadow-sm ring-1 ring-black/[0.04] dark:bg-zinc-950 dark:ring-white/[0.06]"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function EmptyState({ title, children }: { title: string, children?: React.ReactNode }) {
@@ -211,207 +297,368 @@ export default function PageClient() {
   const adminApp = useAdminApp();
 
   const [hours, setHours] = useState<number>(24);
-  const [scope, setScope] = useState<"custom" | "all">("all");
+  const [serviceName, setServiceName] = useState<string | null>(null);
+  const [serviceNames, setServiceNames] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search.trim(), SEARCH_DEBOUNCE_MS);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<RowData | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const [spans, setSpans] = useState<SpanInput[]>([]);
-  const [events, setEvents] = useState<EventInput[]>([]);
+  const [rootSpans, setRootSpans] = useState<SpanInput[]>([]);
+  const [selectedSpans, setSelectedSpans] = useState<SpanInput[]>([]);
+  const [selectedEvents, setSelectedEvents] = useState<EventInput[]>([]);
   // "Now" reference for the waterfall/list: fixed at load time so intervals
   // reaching into the future (e.g. $refresh-token expiry) render as ongoing.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [rootLoading, setRootLoading] = useState(true);
+  const [rootLoadingMore, setRootLoadingMore] = useState(false);
+  const [rootError, setRootError] = useState<string | null>(null);
+  const [rootLoadMoreError, setRootLoadMoreError] = useState<string | null>(null);
+  const [rootCursor, setRootCursor] = useState<TraceRootCursor | null>(null);
+  const [hasMoreRoots, setHasMoreRoots] = useState(false);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
+  const [traceResultWasCapped, setTraceResultWasCapped] = useState(false);
 
-  const requestSeqRef = useRef(0);
+  const rootRequestSeqRef = useRef(0);
+  const rootLoadMoreInFlightRef = useRef(false);
+  const traceRequestSeqRef = useRef(0);
+  const detailRequestSeqRef = useRef(0);
+  const traceServicesRequestRef = useRef<{
+    adminApp: typeof adminApp,
+    promise: Promise<string[]>,
+  } | null>(null);
 
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeqRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const [spansResponse, eventsResponse, refreshTokenRootsResponse] = await Promise.all([
-        adminApp.queryAnalytics({
-          query: RECENT_SPANS_QUERY,
-          params: { hours },
-          include_all_branches: false,
-          timeout_ms: 30000,
-        }),
-        adminApp.queryAnalytics({
-          query: EVENTS_QUERY,
-          params: { hours },
-          include_all_branches: false,
-          timeout_ms: 30000,
-        }),
-        // Reserve a separate result budget for long-lived system roots. They
-        // remain useful standalone traces in All scope even when no visible
-        // descendant references them, and must not compete with recent spans.
-        adminApp.queryAnalytics({
-          query: ACTIVE_REFRESH_TOKEN_ROOTS_QUERY,
-          params: { hours },
-          include_all_branches: false,
-          timeout_ms: 30000,
-        }),
-      ]);
-      // A refresh-token span can start days before the selected window. Fetch
-      // the exact roots referenced by the visible rows separately so the 3,000
-      // recent-span cap cannot evict them and orphan their event markers.
-      const refreshTokenParentIds = collectRefreshTokenParentIds([
-        ...spansResponse.result,
-        ...eventsResponse.result,
-      ]);
-      const parentSpansResponse = refreshTokenParentIds.length === 0
-        ? null
-        : await adminApp.queryAnalytics({
-          query: SPANS_BY_ID_QUERY,
-          params: { spanIds: refreshTokenParentIds },
+  const loadTraceServices = useCallback(() => {
+    const currentRequest = traceServicesRequestRef.current;
+    if (currentRequest?.adminApp === adminApp) return currentRequest.promise;
+
+    const promise = (async () => {
+      try {
+        const response = await adminApp.queryAnalytics({
+          query: TRACE_SERVICES_QUERY,
+          params: {},
           include_all_branches: false,
           timeout_ms: 30000,
         });
-      if (seq !== requestSeqRef.current) return;
-      setSpans(parseUniqueSpanRows([
-        ...spansResponse.result,
-        ...refreshTokenRootsResponse.result,
-        ...(parentSpansResponse?.result ?? []),
-      ]));
-      setEvents(eventsResponse.result.map(parseEventRow).filter((event): event is EventInput => event != null));
+        return response.result.flatMap((row) => (
+          typeof row.service_name === "string" ? [row.service_name] : []
+        ));
+      } catch (error) {
+        if (traceServicesRequestRef.current?.adminApp === adminApp) {
+          traceServicesRequestRef.current = null;
+        }
+        throw error;
+      }
+    })();
+    traceServicesRequestRef.current = { adminApp, promise };
+    return promise;
+  }, [adminApp]);
+
+  const loadRoots = useCallback(async () => {
+    const seq = ++rootRequestSeqRef.current;
+    setRootLoading(true);
+    setRootError(null);
+    setRootLoadMoreError(null);
+    try {
+      const rootQuery = getRecentTraceRootsQuery(null, serviceName, debouncedSearch);
+      const [recentRootsResponse, nextServiceNames] = await Promise.all([
+        adminApp.queryAnalytics({
+          query: rootQuery.query,
+          params: { ...rootQuery.params, hours },
+          include_all_branches: false,
+          timeout_ms: 30000,
+        }),
+        loadTraceServices(),
+      ]);
+      const recentRootRows = recentRootsResponse.result;
+      if (seq !== rootRequestSeqRef.current) return;
+      const nextRoots = parseUniqueSpanRows(recentRootRows);
+      setServiceNames(nextServiceNames);
+      setRootSpans(nextRoots);
+      const spanRootRows = recentRootRows.filter((row) => row.root_source === "span");
+      const lastSpanRoot = nextRoots.filter((span) => span.raw.root_source === "span").at(-1);
+      setRootCursor(lastSpanRoot == null ? null : { startMs: lastSpanRoot.startMs, id: lastSpanRoot.id });
+      setHasMoreRoots(spanRootRows.length === ROOT_PAGE_SIZE);
+      setSelectedRootId((currentRootId) => (
+        currentRootId != null && nextRoots.some((span) => span.id === currentRootId)
+          ? currentRootId
+          : (nextRoots[0]?.id ?? null)
+      ));
       setNowMs(Date.now());
     } catch (e) {
-      if (seq !== requestSeqRef.current) return;
-      setError(e instanceof Error ? e.message : String(e));
+      if (seq !== rootRequestSeqRef.current) return;
+      setRootError(e instanceof Error ? e.message : String(e));
     } finally {
-      if (seq === requestSeqRef.current) setLoading(false);
+      if (seq === rootRequestSeqRef.current) setRootLoading(false);
     }
-  }, [adminApp, hours]);
+  }, [adminApp, debouncedSearch, hours, loadTraceServices, serviceName]);
 
-  const lastAutomaticLoadRef = useRef<{ adminApp: typeof adminApp, hours: number } | null>(null);
+  const loadMoreRoots = useCallback(async () => {
+    if (!hasMoreRoots || rootCursor == null || rootLoadMoreInFlightRef.current) return;
+    rootLoadMoreInFlightRef.current = true;
+    const seq = rootRequestSeqRef.current;
+    setRootLoadingMore(true);
+    setRootLoadMoreError(null);
+    try {
+      const rootQuery = getRecentTraceRootsQuery(rootCursor, serviceName, debouncedSearch);
+      const response = await adminApp.queryAnalytics({
+        query: rootQuery.query,
+        params: { ...rootQuery.params, hours },
+        include_all_branches: false,
+        timeout_ms: 30000,
+      });
+      const nextPageRows = response.result;
+      if (seq !== rootRequestSeqRef.current) return;
+      const nextPage = parseUniqueSpanRows(nextPageRows);
+      setRootSpans((currentRoots) => parseUniqueSpanRows([
+        ...currentRoots.map((span) => span.raw),
+        ...nextPageRows,
+      ]).sort((a, b) => b.startMs - a.startMs || stringCompare(b.id, a.id)));
+      const lastRoot = nextPage.at(-1);
+      setRootCursor(lastRoot == null ? null : { startMs: lastRoot.startMs, id: lastRoot.id });
+      setHasMoreRoots(response.result.length === ROOT_PAGE_SIZE);
+    } catch (error) {
+      if (seq !== rootRequestSeqRef.current) return;
+      setRootLoadMoreError(error instanceof Error ? error.message : String(error));
+    } finally {
+      rootLoadMoreInFlightRef.current = false;
+      if (seq === rootRequestSeqRef.current) setRootLoadingMore(false);
+    }
+  }, [adminApp, debouncedSearch, hasMoreRoots, hours, rootCursor, serviceName]);
+
+  const requestMoreRoots = useCallback(() => {
+    runAsynchronouslyWithAlert(loadMoreRoots);
+  }, [loadMoreRoots]);
+
+  const loadSelectedTrace = useCallback(async (traceId: string) => {
+    const seq = ++traceRequestSeqRef.current;
+    setTraceLoading(true);
+    setTraceError(null);
+    try {
+      const spanQuery = getSelectedTraceSpanQuery(traceId, serviceName);
+      const eventQuery = getSelectedTraceEventQuery(traceId, hours, serviceName);
+      const [spansResponse, eventsResponse] = await Promise.all([
+        adminApp.queryAnalytics({
+          query: spanQuery.query,
+          params: spanQuery.params,
+          include_all_branches: false,
+          timeout_ms: 30000,
+        }),
+        adminApp.queryAnalytics({
+          query: eventQuery.query,
+          params: eventQuery.params,
+          include_all_branches: false,
+          timeout_ms: 30000,
+        }),
+      ]);
+      if (seq !== traceRequestSeqRef.current) return;
+      setSelectedSpans(parseUniqueSpanRows(spansResponse.result));
+      setSelectedEvents(eventsResponse.result
+        .map(parseEventRow)
+        .filter((event): event is EventInput => event != null));
+      setTraceResultWasCapped(spansResponse.result.length >= 10000);
+      setNowMs(Date.now());
+    } catch (e) {
+      if (seq !== traceRequestSeqRef.current) return;
+      setTraceError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (seq === traceRequestSeqRef.current) setTraceLoading(false);
+    }
+  }, [adminApp, hours, serviceName]);
+
+  const lastAutomaticRootLoadRef = useRef<{
+    adminApp: typeof adminApp,
+    hours: number,
+    serviceName: string | null,
+    search: string,
+  } | null>(null);
   useEffect(() => {
-    const lastLoad = lastAutomaticLoadRef.current;
-    if (lastLoad?.adminApp === adminApp && lastLoad.hours === hours) return;
-    lastAutomaticLoadRef.current = { adminApp, hours };
-    runAsynchronouslyWithAlert(loadData);
-  }, [adminApp, hours, loadData]);
+    const lastLoad = lastAutomaticRootLoadRef.current;
+    if (
+      lastLoad?.adminApp === adminApp
+      && lastLoad.hours === hours
+      && lastLoad.serviceName === serviceName
+      && lastLoad.search === debouncedSearch
+    ) return;
+    lastAutomaticRootLoadRef.current = { adminApp, hours, serviceName, search: debouncedSearch };
+    runAsynchronouslyWithAlert(loadRoots);
+  }, [adminApp, debouncedSearch, hours, loadRoots, serviceName]);
 
-  const scopedSpans = useMemo(
-    () => (scope === "custom" ? spans.filter((span) => !isSystemSpanType(span.spanType)) : spans),
-    [spans, scope],
-  );
-  const scopedEvents = useMemo(
-    () => (scope === "custom" ? events.filter((event) => !event.eventType.startsWith("$")) : events),
-    [events, scope],
-  );
+  const selectedRootTraceId = useMemo(() => (
+    selectedRootId == null
+      ? null
+      : (rootSpans.find((span) => span.id === selectedRootId)?.traceId ?? null)
+  ), [rootSpans, selectedRootId]);
 
-  const { traces } = useMemo(() => buildTraces(scopedSpans, scopedEvents), [scopedSpans, scopedEvents]);
+  useEffect(() => {
+    if (selectedRootId == null || selectedRootTraceId == null) {
+      setSelectedSpans([]);
+      setSelectedEvents([]);
+      return;
+    }
+    runAsynchronouslyWithAlert(loadSelectedTrace(selectedRootTraceId));
+  }, [loadSelectedTrace, selectedRootId, selectedRootTraceId]);
+
+  const { traces: rootTraces } = useMemo(() => buildTraces(rootSpans, []), [rootSpans]);
 
   const searchNeedle = search.trim().toLowerCase();
-  const filteredTraces = useMemo(() => {
-    if (searchNeedle === "") return traces;
-    return traces.filter((trace) => subtreeMatches(trace.root, searchNeedle));
-  }, [traces, searchNeedle]);
 
-  const selectedTrace = useMemo<Trace | null>(
-    () => filteredTraces.find((trace) => trace.root.span.id === selectedRootId)
-      ?? (filteredTraces.length > 0 ? filteredTraces[0] : null),
-    [filteredTraces, selectedRootId],
-  );
+  const selectedTrace = useMemo<Trace | null>(() => {
+    if (selectedRootId == null) return null;
+    const { traces } = buildTraces(selectedSpans, selectedEvents);
+    return traces.find((trace) => trace.root.span.id === selectedRootId) ?? null;
+  }, [selectedEvents, selectedRootId, selectedSpans]);
 
-  // Focus mode: view any span inside the selected trace as its own trace,
-  // re-scaled to the subtree. A stale/foreign id falls back to the full trace.
-  const [focusedSpanId, setFocusedSpanId] = useState<string | null>(null);
-  const displayedTrace = useMemo<{ trace: Trace, breadcrumb: TraceBreadcrumb[] } | null>(() => {
-    if (selectedTrace == null) return null;
-    if (focusedSpanId != null && focusedSpanId !== selectedTrace.root.span.id) {
-      const rerooted = rerootTrace(selectedTrace, focusedSpanId);
-      if (rerooted != null) {
-        return {
-          trace: rerooted.trace,
-          breadcrumb: rerooted.path.slice(0, -1).map((node) => ({ spanId: node.span.id, spanType: node.span.spanType })),
-        };
-      }
-    }
-    return { trace: selectedTrace, breadcrumb: [] };
-  }, [selectedTrace, focusedSpanId]);
-
-  const openDetail = useCallback((raw: Record<string, unknown>) => {
+  const openEventDetail = useCallback((raw: Record<string, unknown>) => {
+    detailRequestSeqRef.current += 1;
+    setDetailLoading(false);
     setDetailRow(raw);
   }, []);
 
+  const openSpanDetail = useCallback(async (span: SpanInput) => {
+    const seq = ++detailRequestSeqRef.current;
+    setDetailRow(span.raw);
+    setDetailLoading(true);
+    try {
+      const detailQuery = getSpanDetailQuery(span.traceId, span.id);
+      const response = await adminApp.queryAnalytics({
+        query: detailQuery.query,
+        params: detailQuery.params,
+        include_all_branches: false,
+        timeout_ms: 30000,
+      });
+      if (seq !== detailRequestSeqRef.current) return;
+      const detailResult = response.result.at(0);
+      if (detailResult == null) {
+        throw new Error(`Span ${JSON.stringify(span.id)} no longer exists in trace ${JSON.stringify(span.traceId)}`);
+      }
+      const parsedDetail = parseSpanRow(detailResult);
+      if (parsedDetail == null) {
+        throw new Error(`Span detail query returned an invalid row for ${JSON.stringify(span.id)}`);
+      }
+      setDetailRow(parsedDetail.raw);
+    } finally {
+      if (seq === detailRequestSeqRef.current) setDetailLoading(false);
+    }
+  }, [adminApp]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      loadRoots(),
+      selectedRootId == null || selectedRootTraceId == null
+        ? Promise.resolve()
+        : loadSelectedTrace(selectedRootTraceId),
+    ]);
+  }, [loadRoots, loadSelectedTrace, selectedRootId, selectedRootTraceId]);
+
+  const headerActions = (
+    <TooltipProvider>
+      <div className="flex items-center gap-2">
+        <DesignSelectorDropdown
+          value={serviceNameToSelectValue(serviceName)}
+          onValueChange={(value) => setServiceName(selectValueToServiceName(value))}
+          options={[
+            { value: ALL_SERVICES_SELECT_VALUE, label: "All services" },
+            ...serviceNames.map((name) => ({
+              value: serviceNameToSelectValue(name),
+              label: serviceNameToLabel(name),
+            })),
+          ]}
+          size="sm"
+          disabled={rootLoading}
+        />
+        <div className="flex items-center gap-1 whitespace-nowrap text-xs">
+          <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={rootTraces.length} label={`${rootTraces.length.toLocaleString()} parent ${rootTraces.length === 1 ? "trace" : "traces"}`} />
+          <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={selectedTrace?.spanCount ?? 0} label={`${(selectedTrace?.spanCount ?? 0).toLocaleString()} spans in the selected trace`} />
+          <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={selectedTrace?.eventCount ?? 0} label={`${(selectedTrace?.eventCount ?? 0).toLocaleString()} events in the selected trace`} />
+        </div>
+        <span className="h-5 w-px shrink-0 bg-border/60" aria-hidden />
+        <DesignPillToggle
+          selected={String(hours)}
+          onSelect={(id) => {
+            const range = TIME_RANGES.find((candidate) => String(candidate.hours) === id);
+            if (range == null) throw new Error(`Unknown trace time range: ${id}`);
+            setHours(range.hours);
+          }}
+          options={TIME_RANGES.map((range) => ({ label: range.label, id: String(range.hours) }))}
+          size="sm"
+          glassmorphic={false}
+        />
+        <DesignButton
+          className="shrink-0 gap-1.5"
+          variant="secondary"
+          size="sm"
+          loading={rootLoading || traceLoading}
+          onClick={refresh}
+        >
+          <ArrowClockwiseIcon className="h-4 w-4" />
+          Refresh
+        </DesignButton>
+      </div>
+    </TooltipProvider>
+  );
+
   return (
     <AppEnabledGuard appId="analytics">
-      <PageLayout fillWidth>
-        {/* StickyPageHeader's sentinel uses -mb-[17px]; compensate so this dense page keeps matching top/side gutters. */}
-        <div
-          className="flex flex-col pt-[17px] [--header-sticky-top:4.25rem] dark:[--header-sticky-top:5.75rem]"
-        >
-          <StickyPageHeader
-            title="Traces"
-            sticky
-            layoutGroupId="traces-sticky-header"
-            actions={
-              <TooltipProvider>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Segmented
-                    value={scope}
-                    onChange={(value) => setScope(value)}
-                    options={[{ label: "All", value: "all" as const }, { label: "Custom", value: "custom" as const }]}
-                  />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Filter by span or event type…"
-                    className="h-8 w-56 text-xs"
-                  />
-                  <div className="flex items-center gap-1 whitespace-nowrap text-xs">
-                    <HeaderCountStat icon={<TreeStructureIcon className="h-3.5 w-3.5" />} value={filteredTraces.length} label={`${filteredTraces.length.toLocaleString()} ${filteredTraces.length === 1 ? "trace" : "traces"}`} />
-                    <HeaderCountStat icon={<StackIcon className="h-3.5 w-3.5" />} value={scopedSpans.length} label={`${scopedSpans.length.toLocaleString()} ${scopedSpans.length === 1 ? "span" : "spans"}`} />
-                    <HeaderCountStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={scopedEvents.length} label={`${scopedEvents.length.toLocaleString()} ${scopedEvents.length === 1 ? "event" : "events"}`} />
-                  </div>
-                  <Segmented value={hours} onChange={setHours} options={TIME_RANGES.map((range) => ({ label: range.label, value: range.hours }))} />
-                  <Button
-                    className="h-8 gap-1.5 px-3 text-xs"
-                    variant="secondary"
-                    disabled={loading}
-                    onClick={() => runAsynchronouslyWithAlert(loadData)}
-                  >
-                    <ArrowClockwiseIcon className="h-4 w-4" />
-                    Refresh
-                  </Button>
-                </div>
-              </TooltipProvider>
-            }
+      <PageLayout fillWidth scrollMain spacing="compact">
+        <StickyPageHeader
+          title="Traces"
+          actions={headerActions}
+          sticky
+          layoutGroupId="traces-sticky-header"
+          scrollContainer="main"
+        />
+
+        <div className="empty:hidden">
+          <AnalyticsEventLimitBanner />
+        </div>
+
+        {traceResultWasCapped && !traceLoading && traceError == null && (
+          <DesignAlert
+            variant="warning"
+            title="Selected trace is unusually large"
+            description="Showing the first 10,000 spans nested under this parent trace."
           />
+        )}
 
-          <div className="mt-2 empty:hidden">
-            <AnalyticsEventLimitBanner />
-          </div>
-
-          <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start">
-            {/* Trace list: on desktop it scrolls with the waterfall until it
-                reaches the page's sticky top edge, then scrolls internally if
-                taller than the viewport. On narrow screens it stacks above
-                the waterfall with a capped height. */}
+        <div className="grid min-w-0 flex-1 gap-[var(--page-content-gap)] lg:grid-cols-[20rem_minmax(0,1fr)]">
+          {/* This panel is constrained by main's actual scrollport, not the
+              browser viewport. It therefore remains flush with the page's
+              bottom gutter regardless of shell or sticky-header height. */}
+          {/* Size containment prevents the virtual canvas from determining the
+              desktop grid row; the waterfall is the page-length authority. */}
+          <aside className="min-h-0 lg:[contain:size]" aria-label="Trace list">
             <div
               className={cn(
                 CARD_CLASSES,
-                "flex w-full flex-col overflow-hidden max-h-[45dvh]",
-                "lg:sticky lg:top-[var(--header-sticky-top)] lg:w-80 lg:shrink-0",
-                "lg:max-h-[calc(100dvh-var(--header-sticky-top)-0.75rem)]",
+                "flex h-full max-h-[45dvh] w-full flex-col overflow-hidden",
+                "lg:sticky lg:top-3 lg:max-h-[calc(100cqh-0.75rem)]",
               )}
             >
-              <div className="px-4 py-3 border-b border-border/50 shrink-0">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Traces</span>
+              <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-3 py-2">
+                <DesignInput
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter…"
+                  size="sm"
+                  className="min-w-0 flex-1"
+                />
+                {!rootLoading && rootError == null && (
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{rootTraces.length.toLocaleString()}</span>
+                )}
               </div>
-              <div className="min-h-0 overflow-y-auto">
-                {loading && (
+              <div className="min-h-0 flex-1">
+                {rootLoading && (
                   <div className="flex items-center justify-center py-16">
                     <SpinnerGapIcon className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
                 )}
-                {!loading && error != null && (
-                  <ErrorDisplay error={error} onRetry={loadData} />
+                {!rootLoading && rootError != null && (
+                  <ErrorDisplay error={rootError} onRetry={loadRoots} />
                 )}
-                {!loading && error == null && filteredTraces.length === 0 && (
+                {!rootLoading && rootError == null && rootTraces.length === 0 && (
                   <EmptyState title={search.trim() !== "" ? "No traces match the filter." : "No spans in this time range."}>
                     {search.trim() === "" && (
                       <pre className="text-left font-mono text-[11px] text-muted-foreground bg-muted/30 rounded-lg p-3 overflow-auto max-w-full">
@@ -420,59 +667,72 @@ export default function PageClient() {
                     )}
                   </EmptyState>
                 )}
-                {!loading && error == null && filteredTraces.length > 0 && (
+                {!rootLoading && rootError == null && rootTraces.length > 0 && (
                   <SpanTreeList
-                    traces={filteredTraces}
+                    traces={rootTraces}
                     nowMs={nowMs}
-                    needle={searchNeedle}
-                    activeSpanId={displayedTrace?.trace.root.span.id ?? null}
-                    onSelectSpan={(rootId, spanId) => {
-                      setSelectedRootId(rootId);
-                      setFocusedSpanId(spanId === rootId ? null : spanId);
-                    }}
+                    activeSpanId={selectedRootId}
+                    onSelectSpan={(rootId) => setSelectedRootId(rootId)}
+                    hasMore={hasMoreRoots}
+                    loadingMore={rootLoadingMore}
+                    loadMoreError={rootLoadMoreError}
+                    onLoadMore={requestMoreRoots}
                   />
                 )}
               </div>
             </div>
+          </aside>
 
-            {/* Waterfall: grows with its rows so the page scrolls; deep rows
-                slide up behind the floating header pill, like the overview. */}
-            <div className={cn(CARD_CLASSES, "flex-1 min-w-0 flex flex-col min-h-[420px] overflow-hidden")}>
-              {loading && (
-                <div className="flex flex-1 items-center justify-center py-24">
-                  <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {!loading && error == null && displayedTrace == null && (
-                <div className="flex flex-1 items-center justify-center">
-                  <EmptyState title="Select a trace to see its waterfall." />
-                </div>
-              )}
-              {!loading && error == null && displayedTrace != null && (
-                <TraceWaterfall
-                  trace={displayedTrace.trace}
-                  nowMs={nowMs}
-                  breadcrumb={displayedTrace.breadcrumb}
-                  onFocusSpan={(spanId) => setFocusedSpanId(spanId)}
-                  onSelectSpan={(span) => openDetail(span.raw)}
-                  onSelectEvent={(event) => openDetail(event.raw)}
+          {/* Waterfall rows participate in main's page-level scroll. */}
+          <section
+            aria-label="Selected trace waterfall"
+            className={cn(CARD_CLASSES, "flex min-h-[420px] min-w-0 self-start flex-col overflow-hidden")}
+          >
+            {traceLoading && (
+              <div className="flex flex-1 items-center justify-center py-24">
+                <SpinnerGapIcon className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {!traceLoading && traceError == null && selectedTrace == null && (
+              <div className="flex flex-1 items-center justify-center">
+                <EmptyState title="Select a trace to see its waterfall." />
+              </div>
+            )}
+            {!traceLoading && traceError == null && selectedTrace != null && (
+              <TraceWaterfall
+                trace={selectedTrace}
+                nowMs={nowMs}
+                needle={searchNeedle}
+                onSelectSpan={(span) => runAsynchronouslyWithAlert(openSpanDetail(span))}
+                onSelectEvent={(event) => openEventDetail(event.raw)}
+              />
+            )}
+            {!traceLoading && traceError != null && (
+              <div className="flex flex-1 items-center justify-center py-24">
+                <ErrorDisplay
+                  error={traceError}
+                  onRetry={() => (
+                    selectedRootId == null || selectedRootTraceId == null
+                      ? Promise.resolve()
+                      : loadSelectedTrace(selectedRootTraceId)
+                  )}
                 />
-              )}
-              {!loading && error != null && (
-                <div className="flex flex-1 items-center justify-center py-24">
-                  <ErrorDisplay error={error} onRetry={loadData} />
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </section>
         </div>
 
         <RowDetailDialog
           row={detailRow}
           columns={detailRow != null ? Object.keys(detailRow) : []}
           open={detailRow != null}
+          loading={detailLoading}
           onOpenChange={(open) => {
-            if (!open) setDetailRow(null);
+            if (!open) {
+              detailRequestSeqRef.current += 1;
+              setDetailLoading(false);
+              setDetailRow(null);
+            }
           }}
         />
       </PageLayout>

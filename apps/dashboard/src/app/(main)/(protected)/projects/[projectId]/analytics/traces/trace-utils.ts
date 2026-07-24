@@ -5,6 +5,7 @@
 import { stringCompare } from "@hexclave/shared/dist/utils/strings";
 
 export type SpanInput = {
+  traceId: string,
   id: string,
   spanType: string,
   startMs: number,
@@ -39,6 +40,71 @@ export type Trace = {
 export type WaterfallRow =
   | { kind: "span", node: TraceNode }
   | { kind: "event", event: EventInput, depth: number };
+
+export function spanHasError(span: SpanInput): boolean {
+  return span.raw.status_code === "error";
+}
+
+export function traceErrorCount(trace: Trace): number {
+  let count = 0;
+  const stack = [trace.root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node == null) break;
+    if (spanHasError(node.span)) count += 1;
+    stack.push(...node.children);
+  }
+  return count;
+}
+
+/**
+ * Select the spans that explain a trace without flooding the first view with
+ * instrumentation detail. Errors, native custom spans, event owners, and the
+ * trace root are always retained. The slowest operations add performance
+ * context, then their ancestor paths are restored so causality is still
+ * readable. The full trace remains available through the UI's All mode.
+ */
+export function traceSignalSpanIds(trace: Trace, slowSpanLimit = 20, needle = ""): Set<string> {
+  const selected = new Set<string>([trace.root.span.id]);
+  const candidates: TraceNode[] = [];
+
+  const visit = (node: TraceNode, ancestors: TraceNode[]) => {
+    const matchesSearch = needle !== "" && (
+      node.span.spanType.toLowerCase().includes(needle)
+      || node.events.some((event) => event.eventType.toLowerCase().includes(needle))
+    );
+    const alwaysKeep = spanHasError(node.span)
+      || node.span.id.startsWith("cs-")
+      || node.events.length > 0
+      || matchesSearch;
+    if (alwaysKeep) {
+      selected.add(node.span.id);
+      for (const ancestor of ancestors) selected.add(ancestor.span.id);
+    }
+    if (node.span.id !== trace.root.span.id) {
+      candidates.push(node);
+    }
+    for (const child of node.children) visit(child, [...ancestors, node]);
+  };
+  visit(trace.root, []);
+
+  candidates.sort((left, right) => {
+    const leftDuration = left.span.endMs == null ? Infinity : left.span.endMs - left.span.startMs;
+    const rightDuration = right.span.endMs == null ? Infinity : right.span.endMs - right.span.startMs;
+    return rightDuration - leftDuration || left.span.startMs - right.span.startMs;
+  });
+  const candidateIds = new Set(candidates.slice(0, slowSpanLimit).map((node) => node.span.id));
+
+  const restoreSelectedPaths = (node: TraceNode, ancestors: TraceNode[]) => {
+    if (candidateIds.has(node.span.id)) {
+      selected.add(node.span.id);
+      for (const ancestor of ancestors) selected.add(ancestor.span.id);
+    }
+    for (const child of node.children) restoreSelectedPaths(child, [...ancestors, node]);
+  };
+  restoreSelectedPaths(trace.root, []);
+  return selected;
+}
 
 export function isSystemSpanType(spanType: string): boolean {
   return spanType.startsWith("$");
@@ -229,36 +295,6 @@ function computeTraceAggregates(root: TraceNode): Omit<Trace, "root"> {
     endMs: hasOpenSpan ? null : maxEndMs,
     latestMs,
   };
-}
-
-/** Path from the trace root to the span (both inclusive), or null if absent. */
-export function traceNodePath(root: TraceNode, spanId: string): TraceNode[] | null {
-  if (root.span.id === spanId) return [root];
-  for (const child of root.children) {
-    const childPath = traceNodePath(child, spanId);
-    if (childPath != null) return [root, ...childPath];
-  }
-  return null;
-}
-
-/**
- * View a span inside a trace as its own trace: the subtree is re-based to
- * depth 0 and the aggregates (duration, counts, open state) are recomputed
- * over the subtree only, so the waterfall re-scales to the focused span.
- * Returns the ancestor path alongside for breadcrumb rendering.
- */
-export function rerootTrace(trace: Trace, spanId: string): { trace: Trace, path: TraceNode[] } | null {
-  const path = traceNodePath(trace.root, spanId);
-  if (path == null) return null;
-  const target = path[path.length - 1];
-  const rebase = (node: TraceNode, depth: number): TraceNode => ({
-    span: node.span,
-    depth,
-    events: node.events,
-    children: node.children.map((child) => rebase(child, depth + 1)),
-  });
-  const root = rebase(target, 0);
-  return { trace: { root, ...computeTraceAggregates(root) }, path };
 }
 
 /**

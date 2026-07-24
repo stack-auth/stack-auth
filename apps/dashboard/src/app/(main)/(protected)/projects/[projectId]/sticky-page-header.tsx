@@ -35,7 +35,7 @@ function findScrollContainer(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function useStickyHeaderCompacted(enabled: boolean) {
+function useStickyHeaderCompacted(enabled: boolean, scrollContainer: "shell" | "main") {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [compacted, setCompacted] = useState(false);
 
@@ -48,15 +48,24 @@ function useStickyHeaderCompacted(enabled: boolean) {
     const sentinel = sentinelRef.current;
     if (sentinel == null) return;
 
-    const scrollContainer = findScrollContainer(sentinel);
+    // Main-scrolling pages can initially fit and become scrollable only after
+    // their async content arrives. Bind to <main> explicitly so compaction
+    // keeps the same threshold before and after that height change.
+    const observerRoot = scrollContainer === "main" ? sentinel.closest("main") : findScrollContainer(sentinel);
+    const rootTop = observerRoot?.getBoundingClientRect().top ?? 0;
+    const rootScrollTop = observerRoot?.scrollTop ?? window.scrollY;
+    const sentinelStartOffset = sentinel.getBoundingClientRect().top - rootTop + rootScrollTop;
+    // Keep the 24px compaction threshold independent from each page's top
+    // padding. A fixed negative root margin made compact pages start collapsed.
+    const rootMarginTop = STICKY_HEADER_COMPACT_SCROLL_TOP - sentinelStartOffset;
 
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[0];
       const nextCompacted = !entry.isIntersecting;
       setCompacted((current) => current === nextCompacted ? current : nextCompacted);
     }, {
-      root: scrollContainer,
-      rootMargin: `-${STICKY_HEADER_COMPACT_SCROLL_TOP}px 0px 0px 0px`,
+      root: observerRoot,
+      rootMargin: `${rootMarginTop}px 0px 0px 0px`,
       threshold: 0,
     });
 
@@ -65,7 +74,7 @@ function useStickyHeaderCompacted(enabled: boolean) {
     return () => {
       observer.disconnect();
     };
-  }, [enabled]);
+  }, [enabled, scrollContainer]);
 
   return { compacted, sentinelRef };
 }
@@ -135,14 +144,14 @@ function StickyHeaderChrome({
         transition={layoutTransition}
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] duration-[520ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
+          "pointer-events-none absolute inset-0 z-0 rounded-2xl border border-black/[0.06] bg-white/90 shadow-[0_2px_12px_rgba(0,0,0,0.04)] backdrop-blur-xl will-change-transform transition-[background-color,border-color,box-shadow,opacity] [transition-duration:520ms] [transition-timing-function:cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none dark:border-0 dark:bg-transparent dark:shadow-none dark:backdrop-blur-none",
           layoutCompacted && "rounded-xl border-black/[0.08] bg-white/[0.78] shadow-[0_14px_34px_rgba(15,23,42,0.14)] ring-1 ring-white/[0.55] dark:border-white/[0.08] dark:bg-background/[0.72] dark:shadow-[0_14px_34px_rgba(0,0,0,0.26)] dark:ring-white/[0.08] dark:backdrop-blur-xl",
         )}
       />
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity duration-[520ms] motion-reduce:transition-none dark:via-white/20",
+          "pointer-events-none absolute inset-x-5 top-0 z-10 h-px bg-gradient-to-r from-transparent via-white/70 to-transparent opacity-0 transition-opacity [transition-duration:520ms] motion-reduce:transition-none dark:via-white/20",
           layoutCompacted && "opacity-100",
         )}
       />
@@ -159,7 +168,7 @@ function StickyHeaderChrome({
               // The min-width keeps the title readable when the actions are
               // wide — the actions container shrinks (scrolling or wrapping
               // internally) instead of crushing the title to zero width.
-              "min-w-0 sm:min-w-[8rem] transition-[opacity,transform,filter] duration-[150ms] ease-out motion-reduce:transition-none sm:flex-1",
+              "min-w-0 sm:min-w-[8rem] transition-[opacity,transform,filter] [transition-duration:150ms] ease-out motion-reduce:transition-none sm:flex-1",
               compacted && "pointer-events-none opacity-0 blur-[1px]",
             )}
           >
@@ -181,7 +190,7 @@ function StickyHeaderChrome({
           transition={layoutTransition}
           className={cn(
             "relative z-10 min-w-0 max-w-full overflow-x-auto will-change-transform [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "transition-opacity duration-[520ms] motion-reduce:transition-none",
+            "transition-opacity [transition-duration:520ms] motion-reduce:transition-none",
             layoutCompacted && "opacity-95",
           )}
         >
@@ -192,7 +201,7 @@ function StickyHeaderChrome({
   );
 }
 
-export function StickyPageHeader({ title, description, actions, sticky, layoutGroupId, headerRef }: {
+export function StickyPageHeader({ title, description, actions, sticky, layoutGroupId, headerRef, scrollContainer = "shell" }: {
   title: string,
   description?: ReactNode,
   actions: ReactNode,
@@ -201,8 +210,10 @@ export function StickyPageHeader({ title, description, actions, sticky, layoutGr
   layoutGroupId: string,
   /** Attached to the sticky wrapper, e.g. to measure the header's live height. */
   headerRef?: Ref<HTMLDivElement>,
+  /** Main-scrolling pages start below the dashboard shell header. */
+  scrollContainer?: "shell" | "main",
 }) {
-  const { compacted, sentinelRef } = useStickyHeaderCompacted(sticky);
+  const { compacted, sentinelRef } = useStickyHeaderCompacted(sticky, scrollContainer);
   const renderTitle = useRenderWhileClosing(!compacted, STICKY_HEADER_TITLE_EXIT_MS);
   const shouldReduceMotion = useReducedMotion();
   const delayedCompacted = useDelayedTrue(compacted, shouldReduceMotion ? 0 : STICKY_HEADER_TITLE_EXIT_MS);
@@ -212,14 +223,20 @@ export function StickyPageHeader({ title, description, actions, sticky, layoutGr
   return (
     <>
       {sticky && (
-        <div key="sentinel" ref={sentinelRef} aria-hidden className="-mb-[17px] h-px w-px" />
+        <div
+          key="sentinel"
+          ref={sentinelRef}
+          aria-hidden
+          className="mb-[calc(0px-var(--page-content-gap,1rem)-1px)] h-px w-px"
+        />
       )}
       <div
         key="header"
         ref={headerRef}
         className={cn(
           "relative z-30 w-full pointer-events-none",
-          sticky && "sticky top-[4.25rem] mb-2 dark:top-[5.75rem]",
+          sticky && "sticky mb-[var(--page-header-extra-gap,0.5rem)]",
+          sticky && (scrollContainer === "main" ? "top-3" : "top-[4.25rem] dark:top-[5.75rem]"),
         )}
       >
         <LayoutGroup id={layoutGroupId}>

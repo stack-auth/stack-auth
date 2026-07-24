@@ -12,6 +12,7 @@ import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { cn } from "@/lib/utils";
 import {
   ArrowClockwiseIcon,
+  SpinnerGapIcon,
   WarningCircleIcon
 } from "@phosphor-icons/react";
 import { Alert, AlertDescription, Button } from "@/components/ui";
@@ -149,11 +150,13 @@ export function RowDetailDialog({
   row,
   columns,
   open,
+  loading = false,
   onOpenChange,
 }: {
   row: RowData | null,
   columns: string[],
   open: boolean,
+  loading?: boolean,
   onOpenChange: (open: boolean) => void,
 }) {
   if (!row) return null;
@@ -166,6 +169,12 @@ export function RowDetailDialog({
         </DialogHeader>
         <DialogBody>
           <div className="space-y-4">
+            {loading && (
+              <div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                <SpinnerGapIcon className="h-3.5 w-3.5 animate-spin" />
+                Loading complete row…
+              </div>
+            )}
             {columns.map((column) => (
               <div key={column} className="space-y-1">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

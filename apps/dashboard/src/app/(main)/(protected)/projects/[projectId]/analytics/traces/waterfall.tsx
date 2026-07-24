@@ -1,14 +1,18 @@
 "use client";
 
-import { Badge, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
+import { DesignBadge, DesignButton, DesignPillToggle } from "@/components/design-components";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretRightIcon, ChartLineIcon, ClockIcon, CornersOutIcon, KeyboardIcon, StackIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, CaretRightIcon, ChartLineIcon, ClockIcon, KeyboardIcon, StackIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatDuration,
   getTraceScaleEnd,
   isSystemSpanType,
   panViewWindow,
+  spanHasError,
+  traceErrorCount,
+  traceSignalSpanIds,
   zoomViewWindow,
   type EventInput,
   type SpanInput,
@@ -42,8 +46,7 @@ export function spanColorClass(spanType: string): string {
 const NAME_COLUMN = "minmax(200px, 260px)";
 const DURATION_COLUMN = "76px";
 const FULL_VIEW: ViewWindow = { start: 0, end: 1 };
-
-export type TraceBreadcrumb = { spanId: string, spanType: string };
+const INITIAL_ROW_COUNT = 250;
 
 type DragSelection = {
   anchor: number,
@@ -80,6 +83,33 @@ function flattenVisibleTrace(trace: Trace, collapsedSpanIds: Set<string>): Water
   };
   walk(trace.root);
   return rows;
+}
+
+function flattenSignalTrace(trace: Trace, needle: string): WaterfallRow[] {
+  const signalIds = traceSignalSpanIds(trace, 20, needle);
+  const rows: WaterfallRow[] = [];
+  const walk = (node: TraceNode, visibleDepth: number) => {
+    if (!signalIds.has(node.span.id)) return;
+    rows.push({ kind: "span", node: { ...node, depth: visibleDepth } });
+    for (const event of node.events) {
+      rows.push({ kind: "event", event, depth: visibleDepth + 1 });
+    }
+    for (const child of node.children) walk(child, visibleDepth + 1);
+  };
+  walk(trace.root, 0);
+  return rows;
+}
+
+function defaultCollapsedSpanIds(root: TraceNode): Set<string> {
+  const collapsed = new Set<string>();
+  const walk = (node: TraceNode) => {
+    if (node.depth >= 1 && (node.children.length > 0 || node.events.length > 0)) {
+      collapsed.add(node.span.id);
+    }
+    for (const child of node.children) walk(child);
+  };
+  walk(root);
+  return collapsed;
 }
 
 function TimelineGridlines() {
@@ -121,22 +151,28 @@ function TraceHeaderStat({ icon, value, label }: { icon: React.ReactNode, value:
 export function TraceWaterfall({
   trace,
   nowMs,
-  breadcrumb,
-  onFocusSpan,
+  needle,
   onSelectSpan,
   onSelectEvent,
 }: {
   trace: Trace,
   /** "Current time" reference (when the data was loaded): the timeline never scales past it. */
   nowMs: number,
-  /** Ancestors of the current view root (trace root first); empty when unfocused. */
-  breadcrumb: TraceBreadcrumb[],
-  onFocusSpan: (spanId: string) => void,
+  /** Lowercase search text; matching routine spans are promoted into Signal mode. */
+  needle: string,
   onSelectSpan: (span: SpanInput) => void,
   onSelectEvent: (event: EventInput) => void,
 }) {
-  const [collapsedSpanIds, setCollapsedSpanIds] = useState<Set<string>>(() => new Set());
-  const rows = useMemo(() => flattenVisibleTrace(trace, collapsedSpanIds), [trace, collapsedSpanIds]);
+  const [mode, setMode] = useState<"signal" | "all">("signal");
+  const [collapsedSpanIds, setCollapsedSpanIds] = useState<Set<string>>(() => defaultCollapsedSpanIds(trace.root));
+  const signalRows = useMemo(() => flattenSignalTrace(trace, needle), [trace, needle]);
+  const allRows = useMemo(() => flattenVisibleTrace(trace, collapsedSpanIds), [trace, collapsedSpanIds]);
+  const rows = mode === "signal" ? signalRows : allRows;
+  const signalSpanCount = signalRows.filter((row) => row.kind === "span").length;
+  const hiddenSignalSpanCount = trace.spanCount - signalSpanCount;
+  const errorCount = useMemo(() => traceErrorCount(trace), [trace]);
+  const [visibleRowCount, setVisibleRowCount] = useState(INITIAL_ROW_COUNT);
+  const visibleRows = rows.slice(0, visibleRowCount);
 
   const [view, setView] = useState<ViewWindow>(FULL_VIEW);
   const [dragSelection, setDragSelection] = useState<DragSelection | null>(null);
@@ -146,8 +182,12 @@ export function TraceWaterfall({
   const rootSpanId = trace.root.span.id;
   useEffect(() => {
     setView(FULL_VIEW);
-    setCollapsedSpanIds(new Set());
-  }, [rootSpanId]);
+    setMode("signal");
+    setCollapsedSpanIds(defaultCollapsedSpanIds(trace.root));
+    setVisibleRowCount(INITIAL_ROW_COUNT);
+  }, [rootSpanId, trace.root]);
+
+  useEffect(() => setVisibleRowCount(INITIAL_ROW_COUNT), [mode, collapsedSpanIds]);
 
   // The scale is clamped to "now": a $refresh-token's expiry a year out must
   // not compress everything that actually happened into a sliver. Future
@@ -260,46 +300,57 @@ export function TraceWaterfall({
       <div ref={containerRef} className="flex flex-col flex-1">
         <div>
           {/* Trace header */}
-          <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border/50 min-w-0">
-            {breadcrumb.map((crumb) => (
-              <span key={crumb.spanId} className="flex items-center gap-1.5 min-w-0 shrink">
-                <button
-                  className="font-mono text-xs text-muted-foreground hover:text-foreground truncate transition-colors hover:transition-none"
-                  onClick={() => onFocusSpan(crumb.spanId)}
-                  title={`Focus ${crumb.spanType}`}
-                >
-                  {crumb.spanType}
-                </button>
-                <CaretRightIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-              </span>
-            ))}
-            <span className="font-mono text-sm font-semibold truncate">{trace.root.span.spanType}</span>
-            {trace.endMs == null ? (
-              <Badge variant="secondary" className="text-[10px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400">open</Badge>
-            ) : trace.endMs > nowMs ? (
-              <span className="font-mono text-xs text-muted-foreground" title={`Ends ${new Date(trace.endMs).toLocaleString()}`}>
-                {formatDuration(nowMs - trace.startMs)} →
-              </span>
-            ) : (
-              <span className="font-mono text-xs text-muted-foreground">{formatDuration(trace.endMs - trace.startMs)}</span>
-            )}
-            <div className="ml-auto flex shrink-0 items-center gap-1 text-xs">
-              <TraceHeaderStat icon={<StackIcon className="h-3.5 w-3.5" />} value={trace.spanCount} label={`${trace.spanCount} ${trace.spanCount === 1 ? "span" : "spans"}`} />
-              <TraceHeaderStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={trace.eventCount} label={`${trace.eventCount} ${trace.eventCount === 1 ? "event" : "events"}`} />
-              <TraceHeaderStat icon={<ClockIcon className="h-3.5 w-3.5" />} value={new Date(trace.startMs).toLocaleTimeString()} label={`Started ${new Date(trace.startMs).toLocaleString()}`} />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center rounded p-1 text-muted-foreground">
-                    <KeyboardIcon className="h-3.5 w-3.5" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent className="font-mono leading-relaxed">
-                  <div>Drag timeline: zoom to range</div>
-                  <div>Cmd/Ctrl + scroll: zoom</div>
-                  <div>Horizontal scroll: pan</div>
-                  <div>Option/Alt + caret: collapse subtree</div>
-                </TooltipContent>
-              </Tooltip>
+          <div className="border-b border-border/50 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-mono text-sm font-semibold">{trace.root.span.spanType}</span>
+              {trace.endMs == null ? (
+                <DesignBadge label="Open" color="green" size="sm" />
+              ) : trace.endMs > nowMs ? (
+                <span className="font-mono text-xs text-muted-foreground" title={`Ends ${new Date(trace.endMs).toLocaleString()}`}>
+                  {formatDuration(nowMs - trace.startMs)} →
+                </span>
+              ) : (
+                <span className="font-mono text-xs text-muted-foreground">{formatDuration(trace.endMs - trace.startMs)}</span>
+              )}
+              {errorCount > 0 && (
+                <DesignBadge label={`${errorCount} ${errorCount === 1 ? "error" : "errors"}`} color="red" size="sm" icon={WarningCircleIcon} />
+              )}
+              <div className="ml-auto flex shrink-0 items-center gap-1 text-xs">
+                <TraceHeaderStat icon={<StackIcon className="h-3.5 w-3.5" />} value={trace.spanCount.toLocaleString()} label={`${trace.spanCount.toLocaleString()} ${trace.spanCount === 1 ? "span" : "spans"}`} />
+                <TraceHeaderStat icon={<ChartLineIcon className="h-3.5 w-3.5" />} value={trace.eventCount} label={`${trace.eventCount} ${trace.eventCount === 1 ? "event" : "events"}`} />
+                <TraceHeaderStat icon={<ClockIcon className="h-3.5 w-3.5" />} value={new Date(trace.startMs).toLocaleTimeString()} label={`Started ${new Date(trace.startMs).toLocaleString()}`} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center rounded p-1 text-muted-foreground">
+                      <KeyboardIcon className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="font-mono leading-relaxed">
+                    <div>Drag timeline: zoom to range</div>
+                    <div>Cmd/Ctrl + scroll: zoom</div>
+                    <div>Horizontal scroll: pan</div>
+                    <div>Option/Alt + caret: collapse subtree</div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <DesignPillToggle
+                options={[
+                  { id: "signal", label: `Signal (${signalSpanCount})` },
+                  { id: "all", label: `All spans (${trace.spanCount.toLocaleString()})` },
+                ]}
+                selected={mode}
+                onSelect={(id) => setMode(id === "signal" ? "signal" : "all")}
+                size="sm"
+                gradient="cyan"
+                glassmorphic={false}
+              />
+              {mode === "signal" && hiddenSignalSpanCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {hiddenSignalSpanCount.toLocaleString()} routine {hiddenSignalSpanCount === 1 ? "span" : "spans"} collapsed
+                </span>
+              )}
             </div>
           </div>
 
@@ -344,14 +395,13 @@ export function TraceWaterfall({
 
         {/* Rows */}
         <div>
-          {rows.map((row, index) => {
+          {visibleRows.map((row, index) => {
             if (row.kind === "span") {
               const { span } = row.node;
               const hasChildren = row.node.children.length > 0 || row.node.events.length > 0;
               const collapsed = collapsedSpanIds.has(span.id);
               const open = span.endMs == null;
               const runsIntoFuture = !open && (span.endMs ?? 0) > nowMs;
-              const isViewRoot = row.node.depth === 0;
               const barEndMs = open || runsIntoFuture ? Math.min(nowMs, scaleEnd + viewSpanMs) : (span.endMs ?? scaleEnd);
               const rawLeftPct = toPct(span.startMs);
               const rawRightPct = toPct(barEndMs);
@@ -360,6 +410,7 @@ export function TraceWaterfall({
               const rightPct = Math.min(rawRightPct, 100);
               const widthPct = Math.max(rightPct - leftPct, 0.4);
               const fades = open || runsIntoFuture;
+              const hasError = spanHasError(span);
               return (
                 <div
                   key={`span-${span.id}-${index}`}
@@ -383,22 +434,11 @@ export function TraceWaterfall({
                     ) : (
                       <span className="w-4 shrink-0" />
                     )}
-                    <span className={cn("h-2 w-2 rounded-[3px] shrink-0", spanColorClass(span.spanType))} />
+                    <span className={cn("h-2 w-2 shrink-0 rounded-[3px]", hasError ? "bg-red-500" : spanColorClass(span.spanType))} />
                     <span className={cn("font-mono text-[11px] truncate", isSystemSpanType(span.spanType) ? "text-muted-foreground" : "font-medium")}>
                       {span.spanType}
                     </span>
-                    {!isViewRoot && (
-                      <button
-                        className="opacity-0 group-hover:opacity-100 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.08] transition-opacity"
-                        title="Focus this span"
-                        onClick={(e) => {
-                        e.stopPropagation();
-                        onFocusSpan(span.id);
-                        }}
-                      >
-                        <CornersOutIcon className="h-3 w-3" />
-                      </button>
-                    )}
+                    {hasError && <WarningCircleIcon className="h-3.5 w-3.5 shrink-0 text-red-500" weight="fill" />}
                   </div>
                   <div className="relative h-4 cursor-ew-resize" onPointerDown={startTimelineDrag} onClick={(e) => e.stopPropagation()}>
                     <TimelineGridlines />
@@ -407,7 +447,7 @@ export function TraceWaterfall({
                       <span
                         className={cn(
                         "absolute inset-y-0.5 rounded-sm",
-                        spanColorClass(span.spanType),
+                        hasError ? "bg-red-500" : spanColorClass(span.spanType),
                         fades && "[mask-image:linear-gradient(to_right,black_60%,transparent_100%)]",
                       )}
                         style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: "3px" }}
@@ -455,6 +495,19 @@ export function TraceWaterfall({
               );
             }
           })}
+          {visibleRowCount < rows.length && (
+            <div className="border-t border-border/30 p-2">
+              <DesignButton
+                variant="plain"
+                size="sm"
+                className="w-full gap-1.5 text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+                onClick={() => setVisibleRowCount((count) => Math.min(count + INITIAL_ROW_COUNT, rows.length))}
+              >
+                <ArrowDownIcon className="h-3.5 w-3.5" />
+                Show {Math.min(INITIAL_ROW_COUNT, rows.length - visibleRowCount)} more rows
+              </DesignButton>
+            </div>
+          )}
         </div>
       </div>
     </TooltipProvider>

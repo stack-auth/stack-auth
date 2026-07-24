@@ -34,12 +34,14 @@ Adapters marked `required: true` reject unauthenticated calls before your handle
 Targets tRPC v11. The factory takes your `t` instance from `initTRPC` — the adapter never imports `@trpc/server`:
 
 ```ts server/trpc.ts
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import { createHexclaveTRPC, type HexclaveTRPCContext } from "@hexclave/js/trpc";
 import { hexclaveServerApp } from "./hexclave";
 
 const t = initTRPC.context<HexclaveTRPCContext>().create();
-const hexclave = createHexclaveTRPC(t, hexclaveServerApp);
+const hexclave = createHexclaveTRPC(t, hexclaveServerApp, {
+  unauthorized: () => new TRPCError({ code: "UNAUTHORIZED" }),
+});
 
 export const createContext = hexclave.createContext; // pass to your tRPC adapter
 export const router = t.router;
@@ -57,12 +59,12 @@ export const appRouter = router({
 });
 ```
 
-Middleware options: `required` (reject unauthenticated calls), `telemetry`, `unauthorized` (error factory), and `getRequest` (custom request extraction if you don't use `createContext`). Without a custom `unauthorized`, rejections throw an error shaped exactly like a `TRPCError` with code `UNAUTHORIZED`, which tRPC's error handling accepts as-is.
+Middleware options: `required` (reject unauthenticated calls), `telemetry`, `unauthorized` (error factory), and `getRequest` (custom request extraction if you don't use `createContext`). Protected middleware requires an `unauthorized` factory built from your own tRPC import; the adapter does not structurally imitate `TRPCError`.
 
 User resolution is memoized per request — `createContext` itself does no auth work; the middleware resolves the user once per request, for every procedure it wraps, so `ctx.user` is ready in your handler.
 
 <Note>
-Wire up `createContext` (or pass `getRequest`). Without it the middleware has no request to authenticate against, so every call quietly resolves `ctx.user` as `null` — and `required: true` rejects everything.
+Wire up `createContext` (or pass `getRequest`). Without a request, adapter setup fails loudly instead of treating a wiring mistake as an unauthenticated call.
 </Note>
 
 ## oRPC
@@ -87,7 +89,7 @@ const handler = new RPCHandler(router);
 export const handle = hexclave.wrapFetchHandler(handler, { prefix: "/rpc" });
 ```
 
-Procedures receive `context.user` and `context.hexclave`, and run inside an `orpc.procedure` span. `wrapFetchHandler` is not optional decoration: oRPC middlewares never see the raw `Request`, so without the wrapper every call quietly resolves as unauthenticated.
+Procedures receive `context.user` and `context.hexclave`, and run inside an `orpc.procedure` span. `wrapFetchHandler` is not optional decoration: oRPC middlewares never see the raw `Request`, so middleware without the wrapper throws a wiring error.
 
 <Warning>
 `required: true` needs your `unauthorized` factory. oRPC's `ORPCError` is constructor-branded, so the adapter deliberately does not fake one — build the error from your own `@orpc/server` import. Creating a required middleware without a factory throws immediately at setup time, not per request.
@@ -150,7 +152,7 @@ The wrapped handler receives `{ ctx, args, user }` as a single object. Options: 
 
 | | Resolves `user` | Rejects unauthenticated | Request-linked span |
 |---|---|---|---|
-| tRPC | `middleware()` | `middleware({ required: true })` | `middleware()` + `createContext` |
+| tRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `createContext` |
 | oRPC | `middleware()` | `middleware({ required: true })` + `unauthorized` factory | `middleware()` + `wrapFetchHandler` |
 | Elysia | `resolveUser` | `requireUser` guard | `handler(fn)` |
 | Convex | `hexclaveConvexFunction` | `{ required: true }` | user-attributed only (no request over WebSockets) |
