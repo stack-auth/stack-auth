@@ -1035,7 +1035,7 @@ GROUP BY date ORDER BY date DESC LIMIT 100
 
 Page views by path (page views are spans, not events):
 \`\`\`sql
-SELECT JSONExtractString(data, 'path') as path, count() as views
+SELECT JSONExtractString(attributes, 'path') as path, count() as views
 FROM spans WHERE name = '$page-view' AND started_at >= now() - INTERVAL 7 DAY
 GROUP BY path ORDER BY views DESC LIMIT 20
 \`\`\`

@@ -213,14 +213,14 @@ function attributesToObject(value: unknown, path: string, depth = 0): Record<str
   if (attributes.length > MAX_ATTRIBUTES_PER_ENTITY) {
     throw new OtlpValidationError(`${path} contains more than ${MAX_ATTRIBUTES_PER_ENTITY} attributes`);
   }
-  const result: Record<string, unknown> = {};
+  const entries = new Map<string, unknown>();
   for (let index = 0; index < attributes.length; index += 1) {
     const attribute = getRecord(attributes[index], `${path}[${index}]`);
     const key = requiredString(attribute.key, `${path}[${index}].key`, 1024);
-    if (Object.hasOwn(result, key)) throw new OtlpValidationError(`${path} contains duplicate key ${JSON.stringify(key)}`);
-    result[key] = decodeAnyValue(attribute.value, `${path}[${index}].value`, depth + 1);
+    if (entries.has(key)) throw new OtlpValidationError(`${path} contains duplicate key ${JSON.stringify(key)}`);
+    entries.set(key, decodeAnyValue(attribute.value, `${path}[${index}].value`, depth + 1));
   }
-  return result;
+  return Object.fromEntries(entries);
 }
 
 function normalizeEvents(value: unknown, path: string): NormalizedOtlpSpanEvent[] {

@@ -47,6 +47,8 @@ export function normalizeReadableSpans(spans: ReadableSpan[]): NormalizedOtlpSpa
             traceId: spanContext.traceId,
             spanId: spanContext.spanId,
             parentSpanId: span.parentSpanId,
+            traceState: spanContext.traceState?.serialize(),
+            flags: spanContext.traceFlags,
             name: span.name,
             // The API SpanKind enum is INTERNAL=0..CONSUMER=4, while OTLP's
             // wire enum reserves 0 for UNSPECIFIED and shifts those values by 1.
@@ -64,6 +66,8 @@ export function normalizeReadableSpans(spans: ReadableSpan[]): NormalizedOtlpSpa
             links: span.links.map((link) => ({
               traceId: link.context.traceId,
               spanId: link.context.spanId,
+              traceState: link.context.traceState?.serialize(),
+              flags: link.context.traceFlags,
               attributes: toOtlpAttributes(link.attributes ?? {}),
               droppedAttributesCount: link.droppedAttributesCount,
             })),

@@ -4117,7 +4117,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (dataError) return rejectedPreCaught(dataError);
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: [] });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
-    return Promise.reject(new Error("Hexclave analytics: telemetry is unavailable in this environment"));
+    return rejectedPreCaught("telemetry is unavailable in this environment");
   }
 
   startSpan(spanType: string, options?: StartSpanOptions): Span {

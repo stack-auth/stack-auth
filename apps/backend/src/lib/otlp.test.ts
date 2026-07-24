@@ -190,4 +190,38 @@ describe("normalizeOtlpJsonTraceRequest", () => {
       },
     ]);
   });
+
+  it("treats prototype-named attributes as ordinary own properties", () => {
+    const request: unknown = {
+      resourceSpans: [{
+        resource: {
+          attributes: [{
+            key: "__proto__",
+            value: {
+              kvlistValue: {
+                values: [{
+                  key: "service.name",
+                  value: { stringValue: "spoofed-service" },
+                }],
+              },
+            },
+          }],
+        },
+        scopeSpans: [{
+          spans: [{
+            traceId: "11111111111111111111111111111111",
+            spanId: "2222222222222222",
+            name: "prototype-attribute-test",
+            startTimeUnixNano: "1753228800123456789",
+            endTimeUnixNano: "1753228800456789123",
+          }],
+        }],
+      }],
+    };
+
+    const [row] = normalizeOtlpJsonTraceRequest(request);
+
+    expect(row.service_name).toBeNull();
+    expect(row.resource_attributes).toBe('{"__proto__":{"service.name":"spoofed-service"}}');
+  });
 });
