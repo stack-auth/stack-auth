@@ -120,6 +120,10 @@ function isSchemaNumberDescription(value: yup.SchemaFieldDescription): value is 
   return value.type === 'number';
 }
 
+function isConcreteSchemaDescription(value: yup.SchemaFieldDescription): value is yup.SchemaDescription {
+  return "nullable" in value;
+}
+
 function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescription, audience: 'client' | 'server' | 'admin') {
   const schemaAuth = requestDescribe.fields.auth;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- yup types are wrong and claim that fields always exist
@@ -193,12 +197,16 @@ function parseRouteHandler(options: {
   return result;
 }
 
-function getOpenApiType(field: yup.SchemaFieldDescription, type: string): string | [string, "null"] {
+function getOpenApiType(field: yup.SchemaDescription, type: string): string | [string, "null"] {
   // OpenAPI 3.1 uses JSON Schema type arrays instead of the removed OpenAPI 3.0 `nullable` keyword.
   return field.nullable ? [type, "null"] : type;
 }
 
 function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string | [string, "null"], items?: any, properties?: any, required?: any, default?: any } | undefined {
+  if (!isConcreteSchemaDescription(field)) {
+    throw new HexclaveAssertionError('OpenAPI fields must resolve to concrete Yup schema descriptions', { actual: field });
+  }
+
   const meta = "meta" in field ? field.meta : {};
   if (meta?.openapiField?.hidden) {
     return undefined;
@@ -217,8 +225,11 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
   switch (field.type) {
     case 'string': {
       const oneOf = (field as any).oneOf as unknown[] | undefined;
+      const explicitEnumValues = oneOf?.filter((value) => value !== null);
       // `enum` is an additional constraint, so it must permit null whenever the type does.
-      const enumValues = oneOf && field.nullable && !oneOf.includes(null) ? [...oneOf, null] : oneOf;
+      const enumValues = explicitEnumValues && explicitEnumValues.length > 0
+        ? [...explicitEnumValues, ...field.nullable ? [null] : []]
+        : undefined;
       return {
         type: getOpenApiType(field, 'string'),
         ...enumValues && enumValues.length > 0 ? { enum: enumValues } : {},
