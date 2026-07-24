@@ -82,8 +82,15 @@ cleanup() {
 trap cleanup EXIT
 
 if port_is_open; then
-  echo "Cannot re-seed bulldozer-js: port $BULLDOZER_PORT is already in use." >&2
-  echo "Stop the existing bulldozer-js process and run restart-deps again." >&2
+  # The usual culprit is the bulldozer-js instance of a still-running `pnpm dev`
+  # (its tsx-watch child survives many ad-hoc cleanup paths), so identify the
+  # holder for the user instead of making them hunt it down themselves.
+  echo "Cannot re-seed bulldozer-js: port $BULLDOZER_PORT is already in use by:" >&2
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$BULLDOZER_PORT" -sTCP:LISTEN >&2 || echo "  (could not determine the process holding the port)" >&2
+  fi
+  echo "This is usually a running dev server (bulldozer-js is started by 'pnpm dev')." >&2
+  echo "Stop it (Ctrl-C the dev server, or 'pnpm kms' to kill all dev server ports) and run restart-deps again." >&2
   exit 1
 fi
 
