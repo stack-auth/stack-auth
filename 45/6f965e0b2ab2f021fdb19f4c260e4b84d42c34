@@ -1,0 +1,21 @@
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_50c6b5323dd4a8::t_4a10e11e55b2f1 40
+docs-mintlify/guides/apps/analytics/opentelemetry.mdx
+  s_50c6b5323dd4a8::t_c2dae5c9accefe 35,46,66-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "456f965e0b2ab2f021fdb19f4c260e4b84d42c34",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
