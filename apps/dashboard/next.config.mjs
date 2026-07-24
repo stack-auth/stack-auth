@@ -73,6 +73,19 @@ const nextConfig = {
 
   cacheComponents: true,
 
+  // Dashboard auth is client-session based: useUser() intentionally bails out of
+  // SSR (NoSuspenseBoundaryError / BAILOUT_TO_CLIENT_SIDE_RENDERING). That pattern
+  // is incompatible with Instant Navigations' default per-page validation, which
+  // treats the CSR bailout as a failed `instant` check. Keep Instant Insights
+  // opt-in (`export const instant = true` on ready segments) until those routes
+  // are restructured to stream/cache a real shell instead of CSR-bailing.
+  // https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config/instant#configuring-validation-defaults
+  experimental: {
+    instantInsights: {
+      validationLevel: "manual-warning",
+    },
+  },
+
   // we're open-source, so we can provide source maps — but skip them for
   // RDE standalone builds where they just take up space for no reason
   productionBrowserSourceMaps: process.env.NEXT_CONFIG_OUTPUT !== "standalone",

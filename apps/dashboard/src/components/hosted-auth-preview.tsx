@@ -133,7 +133,7 @@ function HostedPreviewTabsList({ className, children, ...props }: HTMLAttributes
       {indicatorStyle != null && (
         <div
           aria-hidden
-          className="pointer-events-none absolute rounded-md border border-black/[0.08] bg-white/80 shadow-sm transition-[left,top,width,height] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] dark:border-white/[0.10] dark:bg-zinc-800/80 dark:ring-1 dark:ring-white/[0.06]"
+          className="pointer-events-none absolute rounded-md border border-black/[0.08] bg-white/80 shadow-sm transition-[left,top,width,height] duration-300 [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] dark:border-white/[0.10] dark:bg-zinc-800/80 dark:ring-1 dark:ring-white/[0.06]"
           style={indicatorStyle}
         />
       )}
