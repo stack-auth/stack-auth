@@ -911,7 +911,7 @@ describe("EventTracker", () => {
     }
   });
 
-  it("rejects explicit telemetry after ANALYTICS_NOT_ENABLED", async () => {
+  it("stops autocapture but rejects explicit telemetry after ANALYTICS_NOT_ENABLED", async () => {
     vi.useFakeTimers();
     document.body.innerHTML = "<button>Click me</button>";
 
@@ -1282,7 +1282,7 @@ describe("EventTracker $page-view span + autocapture", () => {
 
   it("drops an oversized autocapture item without poisoning the shared batch", async () => {
     vi.useFakeTimers();
-    const fieldName = `field-${"x".repeat(17_000)}`;
+    const fieldName = `field-${"x".repeat(65_000)}`;
     document.body.innerHTML = `<form id="oversized"><input name="${fieldName}" /></form>`;
     const sentBodies: string[] = [];
     const tracker = makeTracker(sentBodies);

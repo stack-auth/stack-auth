@@ -76,8 +76,8 @@ export type StartSpanOptions = {
  * ended — e.g. the tab closed — stays visible as an open interval by design.
  *
  * Returned promises resolve when the batch containing the update is acknowledged
- * and reject on definitive send failure; they are pre-caught internally, so
- * ignoring them never causes unhandled-rejection noise. No method throws.
+ * and reject on definitive send failure. Methods validate their arguments and
+ * may throw before creating an update.
  */
 export type Span = {
   readonly spanId: string,
@@ -293,6 +293,7 @@ export async function withSpanImpl<T>(
     }
   });
 }
+
 function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
   if (value == null || typeof value !== "object") {
     return false;
