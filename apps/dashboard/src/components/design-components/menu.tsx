@@ -46,6 +46,7 @@ type DesignMenuBaseProps = {
   withIcons?: boolean,
   align?: DesignMenuAlign,
   contentClassName?: string,
+  triggerClassName?: string,
 };
 
 type DesignMenuActionsProps = DesignMenuBaseProps & {
@@ -84,14 +85,14 @@ export function DesignMenu(props: DesignMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {trigger === "button" ? (
-          <DesignButton variant="outline" size="sm" className="h-8 px-3 rounded-lg">
+          <DesignButton variant="outline" size="sm" className={cn("h-8 px-3 rounded-lg", props.triggerClassName)}>
             {triggerLabel}
           </DesignButton>
         ) : (
           <DesignButton
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
+            className={cn("h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]", props.triggerClassName)}
             aria-label={triggerLabel}
           >
             {triggerIcon}

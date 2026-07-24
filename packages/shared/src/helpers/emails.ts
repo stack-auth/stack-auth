@@ -1,4 +1,5 @@
 import { deindent } from "../utils/strings";
+import { usageEmailTemplateSource } from "./usage-email-template";
 
 export const defaultNewTemplateSource = deindent`
   import { type } from "arktype"
@@ -200,6 +201,7 @@ const EMAIL_TEMPLATE_TEAM_INVITATION_ID = "e84de395-2076-4831-9c19-8e9a96a868e4"
 const EMAIL_TEMPLATE_SIGN_IN_INVITATION_ID = "066dd73c-36da-4fd0-b6d6-ebf87683f8bc";
 const EMAIL_TEMPLATE_PAYMENT_RECEIPT_ID = "70372aee-0441-4d80-974c-2e858e40123a";
 const EMAIL_TEMPLATE_PAYMENT_FAILED_ID = "f64b1afe-27ec-4a28-a277-7178f3261f9a";
+const EMAIL_TEMPLATE_USAGE_EMAIL_ID = "28a45509-eb75-440d-b657-0a8640c775df";
 
 export const DEFAULT_EMAIL_TEMPLATES = {
   [EMAIL_TEMPLATE_EMAIL_VERIFICATION_ID]: {
@@ -236,6 +238,11 @@ export const DEFAULT_EMAIL_TEMPLATES = {
     "displayName": "Payment Failed",
     "tsxSource": "import { type } from \"arktype\";\nimport { Button, Section, Hr } from \"@react-email/components\";\nimport { Subject, NotificationCategory, Props } from \"@stackframe/emails\";\n\nexport const variablesSchema = type({\n  productName: \"string\",\n  amount: \"string\",\n  invoiceUrl: \"string?\",\n  failureReason: \"string?\"\n});\n\nexport function EmailTemplate({ user, project, variables }: Props<typeof variablesSchema.infer>) {\n  return (\n    <>\n      <Subject value={\"Payment failed for \" + project.displayName} />\n      <NotificationCategory value=\"Transactional\" />\n      <div className=\"bg-white text-[#242424] font-sans text-base font-normal tracking-[0.15008px] leading-[1.5] m-0 py-8 w-full min-h-full\">\n        <Section className=\"bg-white\">\n          <h3 className=\"text-black font-sans font-bold text-[20px] text-center py-4 px-6 m-0\">\n            We couldn't process your payment\n          </h3>\n          <p className=\"text-[#474849] font-sans font-normal text-[14px] text-center pt-2 px-6 pb-4 m-0\">\n            Hi{user.displayName ? (\", \" + user.displayName) : \"\"}! Your payment for {variables.productName} ({variables.amount}) did not go through.\n          </p>\n          {variables.failureReason ? (\n            <p className=\"text-[#8a8b8b] font-sans text-[12px] text-center px-6 pb-2 m-0\">\n              Reason: {variables.failureReason}\n            </p>\n          ) : null}\n          {variables.invoiceUrl ? (\n            <div className=\"text-center py-3 px-6\">\n              <Button\n                href={variables.invoiceUrl}\n                target=\"_blank\"\n                className=\"text-black font-sans font-bold text-[14px] inline-block bg-[#f0f0f0] rounded-[4px] py-3 px-5 no-underline border-0\"\n              >\n                View invoice\n              </Button>\n            </div>\n          ) : null}\n          <div className=\"py-4 px-6\">\n            <Hr />\n          </div>\n          <p className=\"text-[#474849] font-sans font-normal text-[12px] text-center pt-1 px-6 pb-6 m-0\">\n            Please update your payment details to avoid service interruption.\n          </p>\n        </Section>\n      </div>\n    </>\n  );\n}\n\nEmailTemplate.PreviewVariables = {\n  productName: \"Pro Plan\",\n  amount: \"$29.00\",\n  invoiceUrl: \"https://example.com/billing\",\n  failureReason: \"Your card was declined\"\n} satisfies typeof variablesSchema.infer;\n",
     "themeId": undefined,
+  },
+  [EMAIL_TEMPLATE_USAGE_EMAIL_ID]: {
+    "displayName": "Usage Email",
+    "tsxSource": usageEmailTemplateSource,
+    "themeId": undefined,
   }
 };
 
@@ -247,4 +254,5 @@ export const DEFAULT_TEMPLATE_IDS = {
   sign_in_invitation: EMAIL_TEMPLATE_SIGN_IN_INVITATION_ID,
   payment_receipt: EMAIL_TEMPLATE_PAYMENT_RECEIPT_ID,
   payment_failed: EMAIL_TEMPLATE_PAYMENT_FAILED_ID,
+  usage_email: EMAIL_TEMPLATE_USAGE_EMAIL_ID,
 } as const;

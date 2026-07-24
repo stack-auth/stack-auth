@@ -4,7 +4,7 @@ import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_EMAIL_THEMES, DEFAULT_TEMPLATE_IDS } from '@hexclave/shared/dist/helpers/emails';
 import { UsersCrud } from '@hexclave/shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@hexclave/shared/dist/utils/env';
-import { HexclaveAssertionError } from '@hexclave/shared/dist/utils/errors';
+import { HexclaveAssertionError, throwErr } from '@hexclave/shared/dist/utils/errors';
 import { Json } from '@hexclave/shared/dist/utils/json';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
@@ -22,6 +22,32 @@ export type EmailOutboxRecipient =
   | { type: "user-primary-email", userId: string }
   | { type: "user-custom-emails", userId: string, emails: string[] }
   | { type: "custom-emails", emails: string[] };
+
+export type SendEmailToManyResult = {
+  createdCount: number,
+  alreadyEnqueuedCount: number,
+};
+
+function addIdempotencyToEmailOutboxRows<T extends object>(rows: T[], emailOutboxIds: undefined): { data: T[] };
+function addIdempotencyToEmailOutboxRows<T extends object>(rows: T[], emailOutboxIds: string[]): { data: Array<T & { id: string }>, skipDuplicates: true };
+function addIdempotencyToEmailOutboxRows<T extends object>(rows: T[], emailOutboxIds: string[] | undefined) {
+  if (emailOutboxIds === undefined) {
+    return { data: rows };
+  }
+  if (emailOutboxIds.length !== rows.length) {
+    throw new HexclaveAssertionError("sendEmailToMany requires exactly one emailOutboxId per recipient.");
+  }
+  if (new Set(emailOutboxIds).size !== emailOutboxIds.length) {
+    throw new HexclaveAssertionError("sendEmailToMany requires unique emailOutboxIds.");
+  }
+  return {
+    data: rows.map((row, index) => ({
+      ...row,
+      id: emailOutboxIds[index] ?? throwErr(new HexclaveAssertionError("Missing validated emailOutboxId for recipient.")),
+    })),
+    skipDuplicates: true,
+  };
+}
 
 function getDefaultEmailTemplate(tenancy: Tenancy, type: keyof typeof DEFAULT_TEMPLATE_IDS) {
   const templateList = new Map(Object.entries(tenancy.config.emails.templates));
@@ -49,30 +75,38 @@ export async function sendEmailToMany(options: {
   createdWith: { type: "draft", draftId: string } | { type: "programmatic-call", templateId: string | null },
   overrideSubject?: string,
   overrideNotificationCategoryId?: string,
-}) {
-  await globalPrismaClient.emailOutbox.createMany({
-    data: options.recipients.map(recipient => ({
-      tenancyId: options.tenancy.id,
-      tsxSource: options.tsxSource,
-      themeId: options.themeId,
-      isHighPriority: options.isHighPriority,
-      createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-      emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
-      emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
-      to: serializeRecipient(recipient)!,
-      extraRenderVariables: options.extraVariables,
-      scheduledAt: options.scheduledAt,
-      shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
-      overrideSubject: options.overrideSubject,
-      overrideNotificationCategoryId: options.overrideNotificationCategoryId,
-    })),
-  });
+  /** Stable IDs make retries idempotent. When provided, there must be exactly one ID per recipient. */
+  emailOutboxIds?: string[],
+}): Promise<SendEmailToManyResult> {
+  const rows = options.recipients.map((recipient) => ({
+    tenancyId: options.tenancy.id,
+    tsxSource: options.tsxSource,
+    themeId: options.themeId,
+    isHighPriority: options.isHighPriority,
+    createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+    emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
+    emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
+    to: serializeRecipient(recipient)!,
+    extraRenderVariables: options.extraVariables,
+    scheduledAt: options.scheduledAt,
+    shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
+    overrideSubject: options.overrideSubject,
+    overrideNotificationCategoryId: options.overrideNotificationCategoryId,
+  }));
+  const createResult = options.emailOutboxIds === undefined
+    ? await globalPrismaClient.emailOutbox.createMany({ data: rows })
+    : await globalPrismaClient.emailOutbox.createMany(addIdempotencyToEmailOutboxRows(rows, options.emailOutboxIds));
 
   if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
     // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
     // who didn't set up the cron job correctly, and also just in case something happens to the cron job.
     runAsynchronouslyAndWaitUntil(runEmailQueueStep());
   }
+
+  return {
+    createdCount: createResult.count,
+    alreadyEnqueuedCount: options.emailOutboxIds === undefined ? 0 : options.recipients.length - createResult.count,
+  };
 }
 
 export async function sendEmailFromDefaultTemplate(options: {
@@ -236,4 +270,34 @@ import.meta.vitest?.test('normalizeEmail(...)', async ({ expect }) => {
 
   expect(() => normalizeEmail('test@multiple@domains.com')).toThrow();
   expect(() => normalizeEmail('invalid.email')).toThrow();
+});
+
+import.meta.vitest?.describe('sendEmailToMany idempotency rows', () => {
+  const { expect, test } = import.meta.vitest!;
+  test('uses stable IDs and skipDuplicates when IDs are provided', () => {
+    expect(addIdempotencyToEmailOutboxRows(
+      [{ recipient: 'one' }, { recipient: 'two' }],
+      ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002'],
+    )).toEqual({
+      data: [
+        { recipient: 'one', id: '00000000-0000-4000-8000-000000000001' },
+        { recipient: 'two', id: '00000000-0000-4000-8000-000000000002' },
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  test('preserves existing non-idempotent inserts when IDs are omitted', () => {
+    expect(addIdempotencyToEmailOutboxRows([{ recipient: 'one' }], undefined)).toEqual({
+      data: [{ recipient: 'one' }],
+    });
+  });
+
+  test('rejects mismatched or duplicated IDs before insertion', () => {
+    expect(() => addIdempotencyToEmailOutboxRows([{ recipient: 'one' }], [])).toThrow(/exactly one emailOutboxId/);
+    expect(() => addIdempotencyToEmailOutboxRows(
+      [{ recipient: 'one' }, { recipient: 'two' }],
+      ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'],
+    )).toThrow(/unique emailOutboxIds/);
+  });
 });

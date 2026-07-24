@@ -73,6 +73,8 @@ model Tenancy {
   conversations       Conversation[]
   conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
+  automationRuleExecutionStates AutomationRuleExecutionState[]
+  automationRuleScheduleStates AutomationRuleScheduleState[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1159,6 +1161,68 @@ model UserNotificationPreference {
   @@unique([tenancyId, projectUserId, notificationCategoryId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
   @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
+}
+
+model AutomationRuleExecutionState {
+  tenancyId String @db.Uuid
+
+  ruleId     String
+  sourceType String
+  actionType String
+
+  subjectType String
+  subjectId   String
+
+  signalKey           String
+  lastTriggeredAt     DateTime
+  lastActionAt        DateTime?
+  // A null action time with a retry time is a deferred claim; without one it is actively in flight.
+  nextRetryAt         DateTime?
+  // Reserved before enqueue so an ambiguous retry addresses the same EmailOutbox row.
+  emailOutboxId       String   @db.Uuid
+  lastSourceSnapshot  Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, ruleId, subjectType, subjectId, signalKey])
+  @@index([tenancyId, ruleId, lastTriggeredAt], name: "AutomationRuleExecutionState_tenancy_rule_triggered_idx")
+  @@index([tenancyId, ruleId, nextRetryAt], name: "AutomationRuleExecutionState_tenancy_rule_retry_idx")
+}
+
+model AutomationRuleScheduleState {
+  tenancyId String @db.Uuid
+  ruleId    String
+
+  // Start time of the last fully completed evaluation cycle. Cadence is start-to-start.
+  lastCompletedEvaluationStartedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, ruleId])
+}
+
+model AutomationSchedulerState {
+  key String @id
+
+  completedTenancyCursor String? @db.Uuid
+  activeTenancyId         String? @db.Uuid
+  completedRuleCursor     String?
+  activeRuleId            String?
+  activeRuleEvaluationStartedAt DateTime?
+  // Continuation cursor passed to the next source-adapter page.
+  nextSubjectCursor       String? @db.Uuid
+
+  leaseOwner     String?   @db.Uuid
+  leaseExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Conversation {
