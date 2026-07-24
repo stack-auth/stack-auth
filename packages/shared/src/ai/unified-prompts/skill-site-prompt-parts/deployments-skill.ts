@@ -47,6 +47,10 @@ export const deploymentsSkillSection = deindent`
 
   Here, \`web\` is the name of your service. \`type\` refers to the type of service you want to set up; for now, as mentioned earlier, only \`vercel\` is supported. \`rootDirectory\` is the directory in which the install and build commands are run, and where the code for your service is found. \`installCommand\` is the command run to install your application's dependencies, and \`buildCommand\` is what is run to build the necessary packages and files. \`framework\` is the framework used by your service; from it and \`outputDirectory\`, the run command is inferred.
 
+  The \`HexclaveConfig\` annotation requires the SDK package it is imported from to be a dependency of the project. If it isn't, either install it or drop the annotation (the config is plain TypeScript — the CLI does not type-check it).
+
+  Note also that the config file usually sits inside \`rootDirectory\`, which means it is uploaded with your source and compiled by the remote build like any other file. If the deployed app doesn't depend on the Hexclave SDK, add \`hexclave.config.ts\` to \`.vercelignore\`: the CLI reads the config from disk before packaging, so the build itself never needs it, and excluding it keeps an SDK import in the config from breaking a build that is otherwise unrelated to Hexclave.
+
   ## Domains
 
   Every Vercel service gets a Vercel domain autoprovisioned. If you want to attach a custom domain, there are two ways to do so.
@@ -63,6 +67,8 @@ export const deploymentsSkillSection = deindent`
   \`\`\`
 
   ## Deploying
+
+  Before deploying, run the service's \`installCommand\` and \`buildCommand\` locally and confirm they succeed. The remote build runs the same commands, but \`deploy\` exits before the build finishes, so a broken build does not fail the command — it surfaces only when you check the run afterwards.
 
   From the directory containing your config file:
 
@@ -86,6 +92,29 @@ export const deploymentsSkillSection = deindent`
       HEXCLAVE_SECRET_SERVER_KEY: \${{ secrets.HEXCLAVE_SECRET_SERVER_KEY }}
       DATABASE_URL: \${{ secrets.DATABASE_URL }}
   \`\`\`
+
+  ## Checking status and debugging failures
+
+  Because \`deploy\` returns as soon as the build is queued, a successful exit does not mean the deploy succeeded. Check the service to find out:
+
+  \`\`\`sh title="Terminal"
+  npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
+    "const p = await hexclaveServerApp.getProject(); \\
+     const svc = (await p.listDeploymentServices()).find(s => s.id === 'web'); \\
+     return { status: svc.status, url: svc.url, run: svc.latest_run };"
+  \`\`\`
+
+  A service's \`status\` is one of \`not_deployed\`, \`queued\`, \`building\`, \`deployed\`, \`failed\`, or \`canceled\`; a run's is \`queued\`, \`building\`, \`ready\`, \`error\`, or \`canceled\`. Poll until the run leaves \`queued\`/\`building\`.
+
+  A failed run's \`error\` field is only a one-line summary (for example \`Command "npm run build" exited with 1\`). Do not try to guess the cause from it, and do not reproduce the build locally to find out — fetch the actual build output by run id:
+
+  \`\`\`sh title="Terminal"
+  npx @hexclave/cli@latest exec --cloud-project-id <project-id> \\
+    "const p = await hexclaveServerApp.getProject(); \\
+     return p.getDeploymentRunLogs('<run-id>');"
+  \`\`\`
+
+  \`deploy\` prints the run id it started. If you don't have one, \`listDeploymentRuns('web', { limit: 5 })\` returns the most recent runs, newest first — call it through \`exec\` like the snippets above.
 
   ## Deleting a service
 
