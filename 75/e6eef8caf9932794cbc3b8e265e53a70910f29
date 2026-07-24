@@ -1,0 +1,51 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/shared.tsx
+  s_50c6b5323dd4a8::t_2449b1804619a0 15,153,159,172-177
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/tables/page-client.tsx
+  s_50c6b5323dd4a8::t_d733b0c797504a 46,257-259
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/page-client.test.ts
+  s_50c6b5323dd4a8::t_f3229d0bb6d2b3 1-3,5-15,18-58,72-193,198-202,204
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/page-client.tsx
+  s_50c6b5323dd4a8::t_34fa3ae08070f7 3-4,7,10,30,32,34-38,40,44-47,49-53,55-74,77-184,188-200,221-226,231,237-242,300-301,303,306,308-310,314-363,365-366,368-369,373-442,444-445,450-451,456-461,464-465,467,469-493,496-502,504,508-512,514-516,520-602,605-612,614-616,618-632,636-637,640-650,652-653,658-659,661,670,672,674-679,684-718,720-722,729,731-735
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/span-tree.tsx
+  s_50c6b5323dd4a8::t_f8f171cdea2773 3-4,6-9,11,15,67,70,75-76,78-81,84-105,108-110,115-117,124-127,131,133-137,139-155,158-197
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/trace-utils.test.ts
+  s_50c6b5323dd4a8::t_d0a6ed34c1b995 2,6,53-65,221-286
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/trace-utils.ts
+  s_50c6b5323dd4a8::t_84b608ad37e17f 8,44-108
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/waterfall.tsx
+  s_50c6b5323dd4a8::t_87e4d19df27b7c 3-4,6,13-15,49,88-114,154,161-162,166-175,185-190,303-353,398,413,437,441,450,498-510
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/page-layout.tsx
+  s_50c6b5323dd4a8::t_6ca762769de103 13-14,24-30,32,77
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx
+  s_50c6b5323dd4a8::t_24c0b487bd277e 721-723,793,809,817
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sticky-page-header.tsx
+  s_50c6b5323dd4a8::t_c884d07b735ff1 38,51-60,67-68,77,147,154,171,193,204,213-214,216,226-231,238-239
+docs-mintlify/docs.json
+  s_50c6b5323dd4a8::t_12aae951ed0f83 121
+docs-mintlify/guides/apps/analytics/cross-tier-tracing.mdx
+  s_50c6b5323dd4a8::t_5fe74085f4d4a4 8-11
+docs-mintlify/guides/apps/analytics/custom-events-and-spans.mdx
+  s_50c6b5323dd4a8::t_9d73a08fb86491 40,83,181,185,191,193-194,196-197,213,216,221-222
+docs-mintlify/guides/apps/analytics/framework-adapters.mdx
+  s_50c6b5323dd4a8::t_0ccb90e7055198 37,42-44,62,67,92,155
+docs-mintlify/guides/apps/analytics/opentelemetry.mdx
+  s_50c6b5323dd4a8::t_569e090e705bbc 1-190
+packages/shared/src/ai/unified-prompts/skill-site-prompt-parts/docs-json.generated.ts
+  s_50c6b5323dd4a8::t_01dae84fc99f4c 129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "75e6eef8caf9932794cbc3b8e265e53a70910f29",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
