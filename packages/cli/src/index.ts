@@ -53,9 +53,11 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
+    // Report the failure before flushing telemetry; the flush can consume its
+    // full timeout, and users should not stare at a silent CLI after it failed.
+    console.error(err);
     captureError("stack-cli-fatal", err);
     await Sentry.flush(2000);
-    console.error(err);
     process.exit(1);
   }
 }
