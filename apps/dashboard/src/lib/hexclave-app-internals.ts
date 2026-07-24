@@ -114,34 +114,6 @@ function getMetricsQueryString(includeAnonymous: boolean, filters?: AnalyticsOve
   return params.toString();
 }
 
-function applyMetricsResponseDefaults(body: MetricsResponse): MetricsResponse {
-  // Keep this in sync with HexclaveAdminInterface.getMetrics(). These defaults
-  // preserve one-release-cycle tolerance for dashboards talking to older servers.
-  const rawBody: Partial<MetricsResponse> = body;
-  const rawAnalytics: Partial<MetricsResponse["analytics_overview"]> = body.analytics_overview;
-  return {
-    ...body,
-    live_users: rawBody.live_users ?? 0,
-    hourly_users: rawBody.hourly_users ?? [],
-    hourly_active_users: rawBody.hourly_active_users ?? [],
-    analytics_overview: {
-      ...body.analytics_overview,
-      hourly_page_views: rawAnalytics.hourly_page_views ?? [],
-      hourly_active_users: rawAnalytics.hourly_active_users ?? [],
-      hourly_visitors: rawAnalytics.hourly_visitors ?? [],
-      daily_anonymous_visitors_fallback: rawAnalytics.daily_anonymous_visitors_fallback ?? [],
-      anonymous_visitors_fallback: rawAnalytics.anonymous_visitors_fallback ?? 0,
-      top_regions: rawAnalytics.top_regions ?? [],
-      bounce_rate: rawAnalytics.bounce_rate ?? 0,
-      daily_bounce_rate: rawAnalytics.daily_bounce_rate ?? [],
-      daily_avg_session_seconds: rawAnalytics.daily_avg_session_seconds ?? [],
-      top_browsers: rawAnalytics.top_browsers ?? [],
-      top_operating_systems: rawAnalytics.top_operating_systems ?? [],
-      top_devices: rawAnalytics.top_devices ?? [],
-    },
-  };
-}
-
 async function fetchJsonOrThrow(adminApp: object, path: string): Promise<unknown> {
   const response = await getInternalsHookOrThrow(adminApp, "sendRequest")(path, { method: "GET" }, "admin");
   if (!response.ok) {
@@ -157,7 +129,7 @@ export async function fetchMetricsOrThrow(
 ): Promise<MetricsResponse> {
   const queryString = getMetricsQueryString(includeAnonymous, filters);
   const path = `/internal/metrics${queryString ? `?${queryString}` : ""}`;
-  return applyMetricsResponseDefaults(await MetricsResponseBodySchema.validate(await fetchJsonOrThrow(adminApp, path)));
+  return await MetricsResponseBodySchema.validate(await fetchJsonOrThrow(adminApp, path));
 }
 
 export async function fetchMetricsUserCountsOrThrow(adminApp: object): Promise<MetricsUserCounts> {

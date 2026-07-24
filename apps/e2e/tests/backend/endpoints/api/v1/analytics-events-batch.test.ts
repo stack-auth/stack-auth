@@ -955,8 +955,8 @@ function makeCustomSpan(overrides?: Record<string, unknown>) {
   };
 }
 
-// Retry query because both the events insert (async_insert) and the spans
-// insert (written off the response path via waitUntil) land with a delay.
+// Retry query because event inserts use ClickHouse async_insert. Span-specific
+// durability is asserted without polling in the spans-only regression below.
 async function queryAnalyticsUntil(
   body: { query: string, params?: Record<string, string> },
   isDone: (res: { status: number, body: any }) => boolean,
@@ -1317,28 +1317,28 @@ it("accepts a $page-view span (pv- id) with nested system autocapture and custom
   expect(res.body).toEqual({ inserted: 1, accepted_spans: 3 });
 
   const spanQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_type, parent_span_ids FROM spans WHERE session_replay_segment_id = {segId:String} ORDER BY id",
+    query: "SELECT span_id, name, parent_span_ids FROM spans WHERE session_replay_segment_id = {segId:String} ORDER BY span_id",
     params: { segId: sessionReplaySegmentId },
   }, (r) => r.body?.result?.length === 3);
   expect(spanQueryRes?.status).toBe(200);
-  const spanRows = (spanQueryRes?.body as any).result as { id: string, span_type: string, parent_span_ids: string[] }[];
+  const spanRows = (spanQueryRes?.body as any).result as { span_id: string, name: string, parent_span_ids: string[] }[];
 
-  const pageViewRow = spanRows.find((row) => row.id === `pv-${pageViewSpanId}`);
-  expect(pageViewRow?.span_type).toBe("$page-view");
+  const pageViewRow = spanRows.find((row) => row.span_id === `pv-${pageViewSpanId}`);
+  expect(pageViewRow?.name).toBe("$page-view");
   // The page-view span itself parents only under the system ancestry
   // (refresh-token here — no active replay).
   expect(pageViewRow?.parent_span_ids).toHaveLength(1);
   expect(pageViewRow?.parent_span_ids[0]).toMatch(/^rti-/);
 
-  const awayRow = spanRows.find((row) => row.id === `sas-${awaySpanId}`);
-  expect(awayRow?.span_type).toBe("$away");
+  const awayRow = spanRows.find((row) => row.span_id === `sas-${awaySpanId}`);
+  expect(awayRow?.name).toBe("$away");
   expect(awayRow?.parent_span_ids).toEqual([
     pageViewRow!.parent_span_ids[0],
     `pv-${pageViewSpanId}`,
   ]);
 
   // Custom span: system ancestry, then the page, then the custom chain.
-  const customRow = spanRows.find((row) => row.id === `cs-${customSpanId}`);
+  const customRow = spanRows.find((row) => row.span_id === `cs-${customSpanId}`);
   expect(customRow?.parent_span_ids).toEqual([
     pageViewRow!.parent_span_ids[0],
     `pv-${pageViewSpanId}`,
@@ -1407,24 +1407,33 @@ it("rejects invalid page_view_span_id values on events and spans", async ({ expe
   expect(badSpan.body?.error).toContain("Invalid page_view_span_id");
 });
 
-it("applies the data size cap to NEW system event types (only $page-view/$click stay permissive)", async ({ expect }) => {
+it("applies one bounded object-data contract to legacy and current event types", async ({ expect }) => {
   await setupAnalyticsProject();
   await Auth.Otp.signIn();
 
-  // A new system type with oversized data is rejected like a custom event…
   const oversizedNew = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    events: [{ event_type: "$form-submit", event_at_ms: Date.now(), data: { pad: "x".repeat(16_001) } }],
+    events: [{ event_type: "$form-submit", event_at_ms: Date.now(), data: { pad: "x".repeat(64_001) } }],
   });
   expect(oversizedNew.status).toBe(400);
   expect(oversizedNew.body?.error).toContain("Event data must be a JSON object");
 
-  // …while the two legacy types stay permissive for deployed-tracker back-compat.
   const oversizedLegacy = await uploadTelemetryBatch({
     session_replay_segment_id: randomUUID(),
-    events: [{ event_type: "$click", event_at_ms: Date.now(), data: { pad: "x".repeat(16_001) } }],
+    events: [{ event_type: "$click", event_at_ms: Date.now(), data: { pad: "x".repeat(64_001) } }],
   });
-  expect(oversizedLegacy.status).toBe(200);
+  expect(oversizedLegacy.status).toBe(400);
+  expect(oversizedLegacy.body?.error).toContain("Event data must be a JSON object");
+
+  const releasedTrackerShape = await uploadTelemetryBatch({
+    session_replay_segment_id: randomUUID(),
+    events: [{
+      event_type: "$click",
+      event_at_ms: Date.now(),
+      data: { path: "/checkout", selector: "button[data-testid=\"submit\"]", x: 12, y: 24 },
+    }],
+  });
+  expect(releasedTrackerShape.status).toBe(200);
 });
 
 it("rejects spans that end before they start", async ({ expect }) => {
@@ -1510,18 +1519,24 @@ it("accepts a spans-only batch and lands it on the spans surface", async ({ expe
     }
   `);
 
-  const queryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_type, span_ended_at, parent_span_ids, user_id, session_replay_segment_id FROM spans WHERE id = {id:String}",
-    params: { id: `cs-${spanId}` },
-  }, (r) => r.body?.result?.length === 1);
+  // A successful response is the durability boundary for spans: this query must
+  // succeed immediately, without waiting for an in-memory background task.
+  const queryRes = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: "SELECT span_id, name, ended_at, parent_span_ids, user_id, session_replay_segment_id FROM spans WHERE span_id = {id:String}",
+      params: { id: `cs-${spanId}` },
+    },
+  });
 
-  expect(queryRes?.status).toBe(200);
-  const rows = (queryRes?.body as any).result;
+  expect(queryRes.status).toBe(200);
+  const rows = (queryRes.body as any).result;
   expect(rows).toHaveLength(1);
-  expect(rows[0].id).toBe(`cs-${spanId}`);
-  expect(rows[0].span_type).toBe("checkout-flow");
+  expect(rows[0].span_id).toBe(`cs-${spanId}`);
+  expect(rows[0].name).toBe("checkout-flow");
   // The span is still open.
-  expect(rows[0].span_ended_at).toBeNull();
+  expect(rows[0].ended_at).toBeNull();
   // No active session replay, so the only system ancestor is the refresh-token span.
   expect(rows[0].parent_span_ids).toHaveLength(1);
   expect(rows[0].parent_span_ids[0]).toMatch(/^rti-/);
@@ -1548,11 +1563,11 @@ it("collapses open→closed span re-writes to the ended row", async ({ expect })
   expect(openRes.status).toBe(200);
 
   const openQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${spanId}` },
   }, (r) => r.body?.result?.length === 1);
   expect(openQueryRes?.status).toBe(200);
-  expect((openQueryRes?.body as any).result[0].span_ended_at).toBeNull();
+  expect((openQueryRes?.body as any).result[0].ended_at).toBeNull();
 
   const closedRes = await uploadTelemetryBatch({
     session_replay_segment_id: sessionReplaySegmentId,
@@ -1562,13 +1577,13 @@ it("collapses open→closed span re-writes to the ended row", async ({ expect })
 
   // The view reads FINAL, so the two versions collapse to the ended row.
   const closedQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${spanId}` },
-  }, (r) => r.body?.result?.length === 1 && r.body.result[0].span_ended_at != null);
+  }, (r) => r.body?.result?.length === 1 && r.body.result[0].ended_at != null);
   expect(closedQueryRes?.status).toBe(200);
   const rows = (closedQueryRes?.body as any).result;
   expect(rows).toHaveLength(1);
-  expect(rows[0].span_ended_at).not.toBeNull();
+  expect(rows[0].ended_at).not.toBeNull();
 });
 
 it("keeps the ended row when an open re-write arrives with an older version (out-of-order)", async ({ expect }) => {
@@ -1592,11 +1607,11 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   expect(closedRes.status).toBe(200);
 
   const closedQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${spanId}` },
   }, (r) => r.body?.result?.length === 1);
   expect(closedQueryRes?.status).toBe(200);
-  expect((closedQueryRes?.body as any).result[0].span_ended_at).not.toBeNull();
+  expect((closedQueryRes?.body as any).result[0].ended_at).not.toBeNull();
 
   // …then a stale OPEN row with the EARLIER version arrives. The sentinel span
   // rides in the same batch (same ClickHouse insert), so once it is visible the
@@ -1611,20 +1626,20 @@ it("keeps the ended row when an open re-write arrives with an older version (out
   expect(staleOpenRes.status).toBe(200);
 
   const sentinelQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${sentinelSpanId}` },
   }, (r) => r.body?.result?.length === 1);
   expect(sentinelQueryRes?.status).toBe(200);
 
   // The ended row still wins: version (updated_at_ms) decides, not insert order.
   const finalQueryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_ended_at FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id, ended_at FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${spanId}` },
   }, (r) => r.body?.result?.length === 1);
   expect(finalQueryRes?.status).toBe(200);
   const rows = (finalQueryRes?.body as any).result;
   expect(rows).toHaveLength(1);
-  expect(rows[0].span_ended_at).not.toBeNull();
+  expect(rows[0].ended_at).not.toBeNull();
 });
 
 it("accepts server-key batches with explicit user_id and no system ancestry", async ({ expect }) => {
@@ -1686,14 +1701,14 @@ it("accepts server-key spans without refresh-token ancestry", async ({ expect })
   expect(res.body.accepted_spans).toBe(1);
 
   const queryRes = await queryAnalyticsUntil({
-    query: "SELECT id, span_type, parent_span_ids, user_id FROM spans WHERE id = {id:String}",
+    query: "SELECT span_id, name, parent_span_ids, user_id FROM spans WHERE span_id = {id:String}",
     params: { id: `cs-${spanId}` },
   }, (r) => r.body?.result?.length === 1);
 
   expect(queryRes?.status).toBe(200);
   const rows = (queryRes?.body as any).result;
   expect(rows).toHaveLength(1);
-  expect(rows[0].span_type).toBe("checkout-flow");
+  expect(rows[0].name).toBe("checkout-flow");
   expect(rows[0].user_id).toBe(userId);
   // No refresh token on server auth → no rti- (or any system) ancestor.
   expect(rows[0].parent_span_ids).toEqual([]);

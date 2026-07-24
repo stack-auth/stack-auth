@@ -71,6 +71,10 @@ describe("internal metrics helpers", () => {
 
     expect(sql).toContain("event_type IN ('$click', '$page-view')");
     expect(sql).toContain("FROM analytics_internal.spans FINAL");
-    expect(sql).toContain("WHERE span_type = '$page-view'");
+    expect(sql).toContain("PREWHERE project_id = {projectId:String}");
+    expect(sql).toContain("AND branch_id = {branchId:String}");
+    expect(sql).toContain("AND name = '$page-view'");
+    expect(sql).toContain("AND started_at >= {since:DateTime}");
+    expect(sql).toContain("AND started_at < {untilExclusive:DateTime}");
   });
 });

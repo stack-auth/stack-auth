@@ -5,6 +5,7 @@ import { generateText, Output, stepCountIs } from "ai";
 import { z } from "zod";
 import { getConnection } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
+import { getAiTelemetry } from "./telemetry";
 import { getVerifiedQaContext } from "./verified-qa";
 
 const QA_SYSTEM_PROMPT = `You are a QA reviewer for Hexclave's AI documentation assistant.
@@ -117,6 +118,7 @@ export async function reviewMcpCall(entry: {
       stopWhen: stepCountIs(10),
       output: Output.object({ schema: qaReviewSchema }),
       messages: [{ role: "user", content: userMessage }],
+      experimental_telemetry: getAiTelemetry("hexclave.ai.qa-review"),
     });
 
     const conversation = result.steps.map((step, i) => {

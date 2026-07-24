@@ -36,11 +36,9 @@ describe("adapter-core", () => {
     expect(getUser).toHaveBeenCalledTimes(1);
   });
 
-  it("createRequestContext with no usable request yields null user without an auth call", async () => {
+  it("createRequestContext rejects missing adapter wiring", () => {
     const { app, getUser } = makeApp();
-    const context = createRequestContext(app, undefined);
-    expect(context.request).toBeNull();
-    await expect(context.getUser()).resolves.toBeNull();
+    expect(() => createRequestContext(app, undefined)).toThrow(/could not find a request-like object/);
     expect(getUser).not.toHaveBeenCalled();
   });
 });
@@ -78,13 +76,20 @@ describe("tRPC adapter", () => {
     expect(next).toHaveBeenCalledWith({ ctx: expect.objectContaining({ db: { name: "main" } }) });
   });
 
-  it("required: true rejects unauthenticated calls with a TRPCError-shaped UNAUTHORIZED", async () => {
+  it("required: true requires and throws the caller's real tRPC error", async () => {
     const { app } = makeApp({ user: null });
-    const hexclave = createHexclaveTRPC(t, app);
+    const unauthorized = () => Object.assign(new Error("UNAUTHORIZED"), { fromFactory: true });
+    const hexclave = createHexclaveTRPC(t, app, { unauthorized });
     const ctx = hexclave.createContext({ req: makeRequest() }) as Record<string, unknown>;
     const { next, result } = callMiddleware(hexclave.middleware({ required: true }), ctx);
-    await expect(result).rejects.toMatchObject({ name: "TRPCError", code: "UNAUTHORIZED" });
+    await expect(result).rejects.toMatchObject({ fromFactory: true });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it("required: true without an unauthorized factory fails at middleware creation", () => {
+    const { app } = makeApp();
+    const hexclave = createHexclaveTRPC(t, app);
+    expect(() => hexclave.middleware({ required: true })).toThrow(/unauthorized/);
   });
 
   it("telemetry: false skips the span but still resolves the user", async () => {
@@ -103,6 +108,16 @@ describe("oRPC adapter", () => {
     const { app } = makeApp();
     const hexclave = createHexclaveORPC(app);
     expect(() => hexclave.middleware({ required: true })).toThrow(/unauthorized/);
+  });
+
+  it("middleware rejects missing wrapFetchHandler wiring", async () => {
+    const { app } = makeApp();
+    const middleware = createHexclaveORPC(app).middleware();
+    await expect(middleware({
+      context: {},
+      path: ["x"],
+      next: vi.fn(),
+    })).rejects.toThrow(/wrapFetchHandler/);
   });
 
   it("wrapFetchHandler injects the per-request context; middleware resolves the user in a span", async () => {

@@ -1398,10 +1398,7 @@ function MetricsContent({
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const dailyRev = analytics.daily_revenue;
     const dailyPageViews = analytics.daily_page_views;
-    // When the analytics app isn't installed there are no `$page-view` rows,
-    // so fall back to token-refresh-derived anonymous visitors so the card has
-    // something meaningful to render instead of a flat zero line.
-    const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
+    const dailyVis = analyticsEnabled ? analytics.daily_visitors : [];
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
     const pageViewMap = new Map(dailyPageViews.map(d => [d.date, d.activity]));
@@ -1424,7 +1421,7 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [analytics.daily_revenue, analytics.daily_page_views, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_page_views, analytics.daily_visitors, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const hourlyComposedData = useMemo<ComposedDataPoint[]>(() => {
     const activeUserMap = new Map(analytics.hourly_active_users.map((point) => [point.date, point.activity]));
     const visitorMap = new Map(analytics.hourly_visitors.map((point) => [point.date, point.activity]));

@@ -117,9 +117,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * Tracks a custom analytics event. Buffered and sent in batches. The
      * returned promise resolves when the batch carrying the event is
      * acknowledged (up to one flush interval later — call `flush()` to send
-     * immediately) and is safe to ignore. Never throws; invalid input yields a
-     * rejected (pre-caught) promise. No-ops outside the browser or when
-     * analytics is disabled.
+     * immediately). Invalid input and unavailable analytics reject instead of
+     * silently dropping the event.
      */
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
 
@@ -127,8 +126,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * Starts a custom span (a time interval). The span is written immediately
      * as an open interval and re-written when data changes or it ends — a span
      * that is never ended (e.g. the tab closed) stays visible as an open
-     * interval. Never throws; returns an inert no-op span outside the browser,
-     * when analytics is disabled, or on invalid input.
+     * interval. Invalid input and unavailable analytics throw synchronously
+     * instead of returning a span that silently discards updates.
      */
     startSpan(spanType: string, options?: StartSpanOptions): Span,
 

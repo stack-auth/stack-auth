@@ -101,17 +101,18 @@ export function buildEventSpanFields(opts: {
 /**
  * One row of `analytics_internal.spans`. `created_at` is omitted (the table
  * defaults it to now64(3) = ingested-at). `version` decides which row the
- * ReplacingMergeTree keeps per id (highest wins) and MUST come from one of the
+ * ReplacingMergeTree keeps per span_id (highest wins) and MUST come from one of the
  * named version builders in this file (e.g. `monotoneEndSpanVersion`) — see the
  * builder docs for why the scheme is per-span-type and must never be inlined.
  */
 export type SpanInsertRow = {
-  id: PrefixedSpanId,
-  span_type: string,
-  span_started_at: Date,
-  span_ended_at: Date | null,
+  trace_id: string,
+  span_id: PrefixedSpanId,
+  name: string,
+  started_at: Date,
+  ended_at: Date | null,
   parent_span_ids: PrefixedSpanId[],
-  data: string,
+  attributes: string,
   project_id: string,
   branch_id: string,
   user_id: string | null,
@@ -150,6 +151,7 @@ export async function insertSpans(client: ClickHouseClient, rows: SpanInsertRow[
     clickhouse_settings: {
       date_time_input_format: "best_effort",
       async_insert: 1,
+      wait_for_async_insert: 1,
     },
   });
 }
@@ -251,17 +253,20 @@ export function buildBatchSpanRows(opts: {
     if (span.page_view_span_id != null && span.page_view_span_id === span.span_id) {
       throw new HexclaveAssertionError("A span must not name itself as its page_view_span_id");
     }
+    const spanId = toSpanId(idPrefix, span.span_id);
+    const parentSpanIds = [
+      ...systemAncestry,
+      ...span.page_view_span_id != null ? [toSpanId(SPAN_ID_PREFIXES.pageView, span.page_view_span_id)] : [],
+      ...span.parent_span_ids.map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
+    ];
     return {
-      id: toSpanId(idPrefix, span.span_id),
-      span_type: span.span_type,
-      span_started_at: new Date(span.started_at_ms),
-      span_ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
-      parent_span_ids: [
-        ...systemAncestry,
-        ...span.page_view_span_id != null ? [toSpanId(SPAN_ID_PREFIXES.pageView, span.page_view_span_id)] : [],
-        ...span.parent_span_ids.map((id) => toSpanId(SPAN_ID_PREFIXES.custom, id)),
-      ],
-      data: JSON.stringify(stripLoneSurrogates(span.data)),
+      trace_id: parentSpanIds[0] ?? spanId,
+      span_id: spanId,
+      name: span.span_type,
+      started_at: new Date(span.started_at_ms),
+      ended_at: span.ended_at_ms == null ? null : new Date(span.ended_at_ms),
+      parent_span_ids: parentSpanIds,
+      attributes: JSON.stringify(stripLoneSurrogates(span.data)),
       project_id: opts.projectId,
       branch_id: opts.branchId,
       user_id: opts.userId,
@@ -278,7 +283,7 @@ export function buildBatchSpanRows(opts: {
  * Emits the two spans that describe a session replay from the replay batch route:
  * the replay-level `$session-replay` span and the per-tab `$session-replay-segment`
  * span. Re-written on every batch with the latest bounds so their `span_ended_at`
- * advances as recording continues. Each span's `version` is its own `span_ended_at`
+ * advances as recording continues. Each span's `version` is its own `ended_at`
  * (epoch ms), so the ReplacingMergeTree keeps the row with the latest end — the end
  * never regresses even if batches insert out of order or a re-write raced on a
  * partial view of the chunks (which self-heals on the next batch). The segment span
@@ -300,7 +305,8 @@ export async function insertSessionReplaySpans(
   },
 ): Promise<void> {
   const base = {
-    data: "{}",
+    trace_id: toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId),
+    attributes: "{}",
     project_id: opts.projectId,
     branch_id: opts.branchId,
     user_id: opts.projectUserId,
@@ -311,10 +317,10 @@ export async function insertSessionReplaySpans(
 
   const replaySpan: SpanInsertRow = {
     ...base,
-    id: toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
-    span_type: SPAN_TYPES.sessionReplay,
-    span_started_at: opts.replayStartedAt,
-    span_ended_at: opts.replayLastEventAt,
+    span_id: toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),
+    name: SPAN_TYPES.sessionReplay,
+    started_at: opts.replayStartedAt,
+    ended_at: opts.replayLastEventAt,
     parent_span_ids: [toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId)],
     session_replay_segment_id: null,
     version: monotoneEndSpanVersion(opts.replayLastEventAt),
@@ -322,10 +328,10 @@ export async function insertSessionReplaySpans(
 
   const segmentSpan: SpanInsertRow = {
     ...base,
-    id: toSessionReplaySegmentSpanId(opts.replayId, opts.sessionReplaySegmentId),
-    span_type: SPAN_TYPES.sessionReplaySegment,
-    span_started_at: opts.segmentStartedAt,
-    span_ended_at: opts.segmentLastEventAt,
+    span_id: toSessionReplaySegmentSpanId(opts.replayId, opts.sessionReplaySegmentId),
+    name: SPAN_TYPES.sessionReplaySegment,
+    started_at: opts.segmentStartedAt,
+    ended_at: opts.segmentLastEventAt,
     parent_span_ids: [
       toSpanId(SPAN_ID_PREFIXES.refreshToken, opts.refreshTokenId),
       toSpanId(SPAN_ID_PREFIXES.sessionReplay, opts.replayId),

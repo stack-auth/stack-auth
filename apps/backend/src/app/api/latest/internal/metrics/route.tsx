@@ -1,7 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
 import { getClickhouseAdminClientForMetrics } from "@/lib/clickhouse";
-import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
@@ -274,49 +273,32 @@ async function loadLiveUsersCount(
   includeAnonymous: boolean = false,
 ): Promise<number> {
   const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
-
-  try {
-    const clickhouseClient = getClickhouseAdminClientForMetrics();
-    const res = await clickhouseClient.query({
-      query: `
-        SELECT uniqExact(user_id) AS live_users
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND user_id IS NOT NULL
-          AND event_at >= {since:DateTime}
-          AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        includeAnonymous: includeAnonymous ? 1 : 0,
-        since: formatClickhouseDateTimeParam(since),
-      },
-      format: "JSONEachRow",
-    });
-    const rows: { live_users: number | string }[] = await res.json();
-    return Number(rows[0]?.live_users ?? 0);
-  } catch (error) {
-    // Best-effort: a missing ClickHouse table or CH outage must not break the
-    // main metrics call. Sentry-log ClickHouseError vs. everything else so a
-    // noisy CH outage doesn't drown out real bugs.
-    const captureId = error instanceof ClickHouseError
-      ? "internal-metrics-load-live-users-count-clickhouse-error"
-      : "internal-metrics-load-live-users-count-unexpected-error";
-    captureError(captureId, new HexclaveAssertionError(
-      "Failed to load live users count for internal metrics.",
-      {
-        cause: error,
-        tenancyId: tenancy.id,
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        windowMs: ACTIVE_USERS_BY_COUNTRY_WINDOW_MS,
-      },
-    ));
-    return 0;
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+  const res = await clickhouseClient.query({
+    query: `
+      SELECT uniqExact(user_id) AS live_users
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      includeAnonymous: includeAnonymous ? 1 : 0,
+      since: formatClickhouseDateTimeParam(since),
+    },
+    format: "JSONEachRow",
+  });
+  const rows: { live_users: number | string }[] = await res.json();
+  const liveUsers = Number(rows[0]?.live_users ?? 0);
+  if (!Number.isSafeInteger(liveUsers) || liveUsers < 0) {
+    throw new HexclaveAssertionError("ClickHouse returned an invalid live-user count.", { rows });
   }
+  return liveUsers;
 }
 
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
@@ -661,30 +643,15 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
-async function loadAnonymousVisitorsFromTokenRefresh(
-  tenancy: Tenancy,
-  now: Date,
-): Promise<{ dailyVisitors: DataPoints, visitors: number }> {
+async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
-  const clickhouseClient = getClickhouseAdminClientForMetrics();
 
-  // GROUPING SETS keeps the exact old normalized-UUID semantics, but collapses
-  // the result to 31 daily rows plus one total row. The previous `GROUP BY day,
-  // user_id` returned every distinct (day, user) pair to Node and rebuilt those
-  // sets in JS, so response size and V8 memory grew with tenant activity.
-  const query = `
-    SELECT
-      if(GROUPING(event_day) = 1, '', toString(event_day)) AS day,
-      uniqExact(normalized_user_uuid) AS visitors
-    FROM (
-      SELECT
-        event_day,
-        normalized_user_id,
-        toUUIDOrNull(normalized_user_id) AS normalized_user_uuid
+  const clickhouseClient = getClickhouseAdminClientForMetrics();
+  const result = await clickhouseClient.query({
+    query: `
+      SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
       FROM (
-        SELECT
-          toDate(event_at) AS event_day,
-          lower(trim(assumeNotNull(user_id))) AS normalized_user_id
+        SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
@@ -692,122 +659,26 @@ async function loadAnonymousVisitorsFromTokenRefresh(
           AND user_id IS NOT NULL
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
-          AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 1
+          AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
       )
-    )
-    WHERE normalized_user_uuid IS NOT NULL
-      AND match(normalized_user_id, {uuidRe:String})
-    GROUP BY GROUPING SETS ((event_day), ())
-    ORDER BY GROUPING(event_day) ASC, day ASC
-  `;
-
-  try {
-    const result = await clickhouseClient.query({
-      query,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        since: formatClickhouseDateTimeParam(since),
-        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-        uuidRe: MAU_UUID_V4_REGEX,
-      },
-      format: "JSONEachRow",
-    });
-    const rows: { day: string, visitors: string | number }[] = await result.json();
-    const totalRow = rows.at(-1);
-    if (totalRow == null || totalRow.day !== "") {
-      throw new HexclaveAssertionError("Anonymous visitor query did not return the expected total row.", { rows });
-    }
-
-    const visitorsByDay = new Map<string, number>();
-    for (const row of rows.slice(0, -1)) {
-      const visitors = Number(row.visitors);
-      if (!Number.isFinite(visitors) || visitors < 0) {
-        throw new HexclaveAssertionError("Invalid anonymous visitor count returned by ClickHouse.", { row });
-      }
-      visitorsByDay.set(row.day.split('T')[0], visitors);
-    }
-
-    const dailyVisitors: DataPoints = [];
-    for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
-      const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
-      dailyVisitors.push({ date, activity: visitorsByDay.get(date) ?? 0 });
-    }
-
-    return { dailyVisitors, visitors: Number(totalRow.visitors) };
-  } catch (error) {
-    // Swallow all failures so callers can `await` this without guarding — the
-    // fallback is best-effort and must never take down the main metrics call.
-    // Separate Sentry IDs for ClickHouseError vs. everything else so noisy CH
-    // outages don't drown out real bugs.
-    const captureId = error instanceof ClickHouseError
-      ? "internal-metrics-load-anonymous-visitors-fallback-clickhouse-error"
-      : "internal-metrics-load-anonymous-visitors-fallback-unexpected-error";
-    captureError(captureId, new HexclaveAssertionError(
-      "Failed to load anonymous visitors fallback for internal metrics.",
-      {
-        cause: error,
-        tenancyId: tenancy.id,
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        windowDays: METRICS_WINDOW_DAYS,
-        query,
-      },
-    ));
-    return { dailyVisitors: [], visitors: 0 };
+      WHERE match(normalized_user_id, {uuidRe:String})
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      includeAnonymous: includeAnonymous ? 1 : 0,
+      uuidRe: MAU_UUID_V4_REGEX,
+    },
+    format: "JSONEachRow",
+  });
+  const rows: { mau: string | number }[] = await result.json();
+  const mau = Number(rows[0]?.mau ?? 0);
+  if (!Number.isSafeInteger(mau) || mau < 0) {
+    throw new HexclaveAssertionError("ClickHouse returned an invalid monthly-active-user count.", { rows });
   }
-}
-
-async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
-  const { since, untilExclusive } = getMetricsWindowBounds(now);
-
-  const clickhouseClient = getClickhouseAdminClientForMetrics();
-  try {
-    const result = await clickhouseClient.query({
-      query: `
-        SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
-        FROM (
-          SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
-          FROM analytics_internal.events
-          WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {untilExclusive:DateTime}
-            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
-        )
-        WHERE match(normalized_user_id, {uuidRe:String})
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        since: formatClickhouseDateTimeParam(since),
-        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-        includeAnonymous: includeAnonymous ? 1 : 0,
-        uuidRe: MAU_UUID_V4_REGEX,
-      },
-      format: "JSONEachRow",
-    });
-    const rows: { mau: string | number }[] = await result.json();
-    return Number(rows[0]?.mau ?? 0);
-  } catch (error) {
-    // Only swallow real ClickHouse errors (e.g. project hasn't enabled
-    // analytics yet, transient query failure). Anything else is a programming
-    // bug and should propagate to the smart route handler.
-    if (!(error instanceof ClickHouseError)) {
-      throw error;
-    }
-    captureError("internal-metrics-load-monthly-active-users-failed", new HexclaveAssertionError(
-      "Failed to load monthly active users for internal metrics.",
-      {
-        cause: error,
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-      },
-    ));
-    return 0;
-  }
+  return mau;
 }
 
 
@@ -1280,11 +1151,14 @@ export function buildAnalyticsOverviewUserAgentFilterFragmentsForTest(filters: A
 
 // Page views are spans. Shape them like event rows ONLY inside metrics SQL —
 // never project them into default.events (that caused dual event+span UI rows).
+// These PREWHERE fields are immutable for a span ID, so filtering them before
+// FINAL preserves replacement semantics while avoiding JSON reads for the much
+// larger population of operational spans.
 const PAGE_VIEWS_FROM_SPANS_SQL = `
   SELECT
     CAST('$page-view', 'LowCardinality(String)') AS event_type,
-    span_started_at AS event_at,
-    CAST(data, 'JSON') AS data,
+    started_at AS event_at,
+    CAST(attributes, 'JSON') AS data,
     project_id,
     branch_id,
     user_id,
@@ -1295,7 +1169,11 @@ const PAGE_VIEWS_FROM_SPANS_SQL = `
     created_at,
     parent_span_ids
   FROM analytics_internal.spans FINAL
-  WHERE span_type = '$page-view'
+  PREWHERE project_id = {projectId:String}
+    AND branch_id = {branchId:String}
+    AND name = '$page-view'
+    AND started_at >= {since:DateTime}
+    AND started_at < {untilExclusive:DateTime}
 `;
 
 // Older SDKs wrote page views as events. Keep those rows throughout the
@@ -1315,7 +1193,11 @@ const PAGE_VIEWS_AND_CLICKS_SQL = `
     created_at,
     parent_span_ids
   FROM analytics_internal.events
-  WHERE event_type IN ('$click', '$page-view')
+  PREWHERE project_id = {projectId:String}
+    AND branch_id = {branchId:String}
+    AND event_type IN ('$click', '$page-view')
+    AND event_at >= {since:DateTime}
+    AND event_at < {untilExclusive:DateTime}
   UNION ALL
   ${PAGE_VIEWS_FROM_SPANS_SQL}
 `;
@@ -1348,19 +1230,6 @@ async function loadAnalyticsOverview(
 
   const clickhouseClient = getClickhouseAdminClientForMetrics();
 
-  // Session replay aggregates come from Postgres and have nothing to do with
-  // ClickHouse availability. Run them in parallel with the ClickHouse queries
-  // but keep them outside the ClickHouse-only try/catch so a postgres failure
-  // never gets misattributed to "analytics not enabled".
-  const replayPromise = loadSessionReplayAggregates(tenancy, since);
-
-  // Token-refresh-based anon visitor fallback. Always computed so the frontend
-  // can swap it in when the analytics app isn't installed (no `$page-view`
-  // events). The helper swallows all failures and Sentry-logs them, so this
-  // promise is guaranteed to resolve — no unhandled rejection if the main
-  // analytics query fails before we get to the await below.
-  const anonymousVisitorsPromise = loadAnonymousVisitorsFromTokenRefresh(tenancy, now);
-
   let clickhouseAggregates: {
     dailyPageViews: DataPoints,
     dailyClicks: DataPoints,
@@ -1383,10 +1252,10 @@ async function loadAnalyticsOverview(
   } | null = null;
 
   // Explicit installed-check instead of inferring "analytics not enabled" from
-  // a failed ClickHouse query: when the app isn't installed we skip ClickHouse
-  // entirely and return the token-refresh fallback payload; when it IS
-  // installed, every ClickHouse error propagates to the caller so the
-  // dashboard renders its error state instead of plausible-looking zeros.
+  // a failed ClickHouse query: when the app isn't installed the analytics
+  // series are explicitly empty; when it IS installed, every ClickHouse error
+  // propagates so the dashboard renders its error state instead of
+  // plausible-looking zeros.
   const analyticsInstalled = tenancy.config.apps.installed["analytics"]?.enabled ?? false;
 
   if (analyticsInstalled) try {
@@ -1902,17 +1771,13 @@ async function loadAnalyticsOverview(
         branchId: tenancy.branchId,
       },
     ));
-    // Rethrowing skips the `await replayPromise` below, so observe it here to
-    // keep a concurrent Postgres failure from becoming an unhandled rejection.
-    // (anonymousVisitorsPromise swallows its own failures and never rejects.)
-    replayPromise.catch(() => {});
     throw error;
   }
 
-  // Postgres-backed session replay query has its own error surface — let it
-  // propagate naturally so we don't conflate it with "clickhouse missing".
-  const replayResult = await replayPromise;
-  const anonymousVisitorsResult = await anonymousVisitorsPromise;
+  // Postgres-backed session replay query has its own error surface. Start it
+  // only after the ClickHouse work has settled so neither failure can become
+  // an unhandled background rejection.
+  const replayResult = await loadSessionReplayAggregates(tenancy, since);
 
   // daily_revenue is intentionally not populated here — it is owned by
   // payments_overview (real invoice data) and stitched into analytics_overview
@@ -1926,13 +1791,11 @@ async function loadAnalyticsOverview(
       hourly_page_views: [] as DataPoints,
       hourly_active_users: [] as DataPoints,
       hourly_visitors: [] as DataPoints,
-      daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
       visitors: 0,
-      anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
       avg_session_seconds: replayResult.avgSessionSeconds,
       bounce_rate: 0,
       daily_bounce_rate: [] as DataPoints,
@@ -1948,13 +1811,6 @@ async function loadAnalyticsOverview(
     };
   }
 
-  // When the analytics app isn't installed, `clickhouseAggregates.visitors` is
-  // 0 even though the fallback can surface a number. Prefer the larger of the
-  // two so `revenue_per_visitor` divides by something meaningful in both
-  // cases — page-view visitors when the app is wired up, anon token-refresh
-  // visitors otherwise.
-  const effectiveVisitors = Math.max(clickhouseAggregates.visitors, anonymousVisitorsResult.visitors);
-
   return {
     daily_page_views: clickhouseAggregates.dailyPageViews,
     daily_clicks: clickhouseAggregates.dailyClicks,
@@ -1962,20 +1818,18 @@ async function loadAnalyticsOverview(
     hourly_page_views: clickhouseAggregates.hourlyPageViews,
     hourly_active_users: clickhouseAggregates.hourlyActiveUsers,
     hourly_visitors: clickhouseAggregates.hourlyVisitors,
-    daily_anonymous_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
     daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
     total_revenue_cents: replayResult.totalRevenueCents,
     total_replays: replayResult.total,
     recent_replays: replayResult.recent,
     visitors: clickhouseAggregates.visitors,
-    anonymous_visitors_fallback: anonymousVisitorsResult.visitors,
     avg_session_seconds: clickhouseAggregates.avgSessionSeconds,
     bounce_rate: clickhouseAggregates.bounceRate,
     daily_bounce_rate: clickhouseAggregates.dailyBounceRate,
     daily_avg_session_seconds: clickhouseAggregates.dailyAvgSession,
     online_live: clickhouseAggregates.onlineLive,
-    revenue_per_visitor: effectiveVisitors > 0
-      ? Number(((replayResult.totalRevenueCents / 100) / effectiveVisitors).toFixed(2))
+    revenue_per_visitor: clickhouseAggregates.visitors > 0
+      ? Number(((replayResult.totalRevenueCents / 100) / clickhouseAggregates.visitors).toFixed(2))
       : 0,
     top_referrers: clickhouseAggregates.topReferrers,
     top_region: clickhouseAggregates.topRegion,
