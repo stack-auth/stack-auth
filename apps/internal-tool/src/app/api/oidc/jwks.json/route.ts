@@ -5,7 +5,7 @@ import { publicJwks } from "@/lib/server/spacetimedb-token";
 // the discovery document's `jwks_uri`.
 export async function GET(): Promise<Response> {
   try {
-    return Response.json(publicJwks(), {
+    return Response.json(await publicJwks(), {
       headers: { "Cache-Control": "public, max-age=3600" },
     });
   } catch (err) {

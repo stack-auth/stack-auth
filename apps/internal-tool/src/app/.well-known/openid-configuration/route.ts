@@ -1,5 +1,5 @@
 import { handleApiError } from "@/lib/server/route-utils";
-import { spacetimeTokenIssuer } from "@/lib/server/spacetimedb-token";
+import { internalToolBaseUrl } from "@/lib/server/spacetimedb-token";
 
 // OIDC discovery document for the internal tool's own SpacetimeDB token
 // issuer. SpacetimeDB validates a JWT by fetching
@@ -7,7 +7,7 @@ import { spacetimeTokenIssuer } from "@/lib/server/spacetimedb-token";
 // `issuer` field must byte-for-byte equal the JWT's `iss` claim.
 export async function GET(): Promise<Response> {
   try {
-    const issuer = spacetimeTokenIssuer();
+    const issuer = internalToolBaseUrl();
     return Response.json(
       {
         issuer,

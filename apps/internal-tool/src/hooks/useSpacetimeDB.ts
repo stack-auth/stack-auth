@@ -2,6 +2,7 @@ import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { useEffect, useState, useRef } from "react";
 import { createPendingCallRegistry } from "../lib/pending-call-registry";
+import { spacetimeDbName } from "../lib/spacetimedb-constants";
 import { DbConnection, type ErrorContext, type EventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow, QaEntriesRow } from "../types";
 
@@ -29,8 +30,7 @@ function getConfig() {
   if (process.env.NODE_ENV !== "development" && !host.startsWith("wss://")) {
     throw new Error("NEXT_PUBLIC_SPACETIMEDB_HOST must use wss:// in production");
   }
-  const dbName = requireEnv(process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME, "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
-  cachedConfig = { host, dbName };
+  cachedConfig = { host, dbName: spacetimeDbName() };
   return cachedConfig;
 }
 

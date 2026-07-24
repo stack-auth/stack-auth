@@ -13,6 +13,7 @@
 // bearer with no trusted-issuer claims, i.e. the "authenticated but
 // unauthorized stranger" fixture.
 
+import { derivePrivateJwkFromSeed, SPACETIMEDB_SIGNING_KEY_DERIVATION_PURPOSE } from "./derive-private-jwk-from-seed";
 import * as jose from "jose";
 
 export type MintedIdentity = {
@@ -20,13 +21,12 @@ export type MintedIdentity = {
   identity: string,
 };
 
-// Matches apps/internal-tool/.env.development / apps/backend/.env.development
-// (dev-only key, not a real secret).
-const DEV_SIGNING_JWK = '{"kty":"EC","x":"UP1DI7fDTcHnwNnK9YWHQ42e_xG0OJVrNFV1LTn5Ois","y":"ovxYo-7g0YxkIidCKNEhbE9-h3tJyu5GD0_5ef0xzyQ","crv":"P-256","d":"HcjJ5KOLEPjr1FBWHDBhBoXRJ3nhNKR1oG9HhsRehow","kid":"spacetimedb-dev-1","alg":"ES256"}';
+const DEV_SIGNING_SEED = "this-spacetimedb-signing-seed-is-for-local-development-only";
 
 function tokenIssuer(): string {
   const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
-  return (process.env.STACK_SPACETIMEDB_TOKEN_ISSUER ?? `http://localhost:${prefix}41`).replace(/\/+$/, "");
+  return (process.env.HEXCLAVE_INTERNAL_TOOL_BASE_URL
+    ?? `http://localhost:${prefix}41`).replace(/\/+$/, "");
 }
 
 /**
@@ -34,12 +34,13 @@ function tokenIssuer(): string {
  * endpoint does. Each call gets a fresh random subject (a distinct "user").
  */
 export async function signMemberToken(subject?: string): Promise<string> {
-  const jwk = JSON.parse(process.env.STACK_SPACETIMEDB_SIGNING_KEY_JWK ?? DEV_SIGNING_JWK) as jose.JWK & { kid?: string };
+  const seed = process.env.STACK_SPACETIMEDB_SIGNING_SEED ?? DEV_SIGNING_SEED;
+  const jwk = derivePrivateJwkFromSeed(SPACETIMEDB_SIGNING_KEY_DERIVATION_PURPOSE, seed);
   const key = await jose.importJWK(jwk, "ES256");
   return await new jose.SignJWT({})
     .setProtectedHeader({ alg: "ES256", kid: jwk.kid })
     .setIssuer(tokenIssuer())
-    .setAudience(process.env.STACK_SPACETIMEDB_EXPECTED_AUDIENCE ?? "spacetimedb")
+    .setAudience("spacetimedb")
     .setSubject(subject ?? `e2e-user-${crypto.randomUUID()}`)
     .setIssuedAt()
     .setExpirationTime("10m")

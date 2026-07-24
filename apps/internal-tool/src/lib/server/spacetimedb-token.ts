@@ -2,7 +2,10 @@ import "server-only";
 
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError } from "@hexclave/shared/dist/utils/errors";
+import { getPublicJwkSet, type PublicJwk } from "@hexclave/shared/dist/utils/jwt";
 import * as jose from "jose";
+import { derivePrivateJwkFromSeed, SPACETIMEDB_SIGNING_KEY_DERIVATION_PURPOSE } from "../derive-private-jwk-from-seed";
+import { SPACETIMEDB_TOKEN_AUDIENCE } from "../spacetimedb-constants";
 
 // The internal tool is its own OIDC issuer for SpacetimeDB: it serves
 // /.well-known/openid-configuration + a JWKS under its own origin, and mints
@@ -11,72 +14,46 @@ import * as jose from "jose";
 // tokens can't be validated by SpacetimeDB directly; this shim can be deleted
 // if that ever ships — see the module's ALLOWED_ISSUERS.)
 
-// The frontend reconnects with a fresh token every 8 minutes, so this TTL is
-// deliberately much longer than one refresh cycle: browsers throttle timers in
-// backgrounded tabs, and if the session row expired server-side before the
-// (delayed) refresh landed, the module's my_visible_* views would return
-// empty and delete every row out from under still-connected subscribers. The
-// wide margin tolerates several missed cycles; the token still expires well
-// within the day, and authorization is project membership (not per-token
-// grants), so the longer lifetime doesn't widen what a holder can do.
 const USER_TOKEN_TTL = "30m";
 
-export function spacetimeTokenIssuer(): string {
-  const issuer = getEnvVariable("HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER", "").trim().replace(/\/+$/, "");
-  if (issuer === "") {
-    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER is not configured for the internal tool.");
+/** This deployment's public base URL (no trailing slash). Used as JWT `iss` and OIDC discovery origin. */
+export function internalToolBaseUrl(): string {
+  const baseUrl = getEnvVariable("HEXCLAVE_INTERNAL_TOOL_BASE_URL", "").trim().replace(/\/+$/, "");
+  if (baseUrl === "") {
+    throw new HexclaveAssertionError("HEXCLAVE_INTERNAL_TOOL_BASE_URL is not configured for the internal tool.");
   }
-  return issuer;
+  return baseUrl;
 }
 
-export function spacetimeTokenAudience(): string {
-  return getEnvVariable("HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE", "spacetimedb");
-}
-
-function privateJwk(): jose.JWK & { kid?: string, alg?: string } {
-  const raw = getEnvVariable("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK", "");
-  if (raw.trim() === "") {
-    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK is not configured for the internal tool.");
+function privateJwk() {
+  const seed = getEnvVariable("HEXCLAVE_SPACETIMEDB_SIGNING_SEED", "").trim();
+  if (seed === "" || seed === "REPLACE_ME") {
+    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_SIGNING_SEED is not configured for the internal tool. Generate one with: openssl rand -base64 32");
   }
-  return JSON.parse(raw) as jose.JWK;
+  return derivePrivateJwkFromSeed(SPACETIMEDB_SIGNING_KEY_DERIVATION_PURPOSE, seed);
 }
 
 export async function signSpacetimeToken(options: { subject: string, expiresIn?: string, name?: string }): Promise<string> {
   const jwk = privateJwk();
   const key = await jose.importJWK(jwk, "ES256");
-  // `name` is a server-attested display label for reducer attribution: the
-  // module stamps it into humanReviewedBy/createdBy/lastEditedBy instead of
-  // trusting a client-supplied reducer arg (which any member could forge). It
-  // is only included after the caller's Stack Auth session has been verified.
   const claims: jose.JWTPayload = {};
   if (options.name != null && options.name !== "") {
     claims.name = options.name;
   }
   return await new jose.SignJWT(claims)
     .setProtectedHeader({ alg: "ES256", kid: jwk.kid })
-    .setIssuer(spacetimeTokenIssuer())
-    .setAudience(spacetimeTokenAudience())
+    .setIssuer(internalToolBaseUrl())
+    .setAudience(SPACETIMEDB_TOKEN_AUDIENCE)
     .setSubject(options.subject)
     .setIssuedAt()
     .setExpirationTime(options.expiresIn ?? USER_TOKEN_TTL)
     .sign(key);
 }
 
-/** The public half of the signing key, served by the JWKS route. */
-export function publicJwks(): { keys: jose.JWK[] } {
-  const jwk = privateJwk();
-  if (jwk.kty !== "EC" || jwk.crv !== "P-256" || jwk.x == null || jwk.y == null) {
-    throw new HexclaveAssertionError("HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK must be an EC P-256 JWK (kty, crv, x, y).");
-  }
-  const publicJwk: jose.JWK = { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y };
-  if (jwk.kid != null) publicJwk.kid = jwk.kid;
-  if (jwk.alg != null) publicJwk.alg = jwk.alg;
-  return { keys: [publicJwk] };
+export async function publicJwks(): Promise<{ keys: PublicJwk[] }> {
+  return await getPublicJwkSet([privateJwk()]);
 }
 
-// Service identity used for this app's own server-side writes (telemetry
-// ingested from the backend, retry-review, ...). Reserved `__*__` shape
-// distinguishes it from real users in session rows.
 const SERVICE_TOKEN_SUBJECT = "__spacetimedb_service__";
 const SERVICE_TOKEN_TTL_MILLIS = 60 * 60 * 1000;
 const SERVICE_TOKEN_REFRESH_MARGIN_MILLIS = 5 * 60 * 1000;

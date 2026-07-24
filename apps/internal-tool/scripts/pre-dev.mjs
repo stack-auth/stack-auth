@@ -12,41 +12,29 @@
 // through the spacetimedb-issuer-proxy sidecar in docker/dependencies).
 
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { exportJWK, generateKeyPair } from "jose";
-
-// Provision a unique, per-developer ES256 signing key for SpacetimeDB tokens
-// into the gitignored .env.local, so no private key material ships in git and
-// no key is shared across environments. Runs once: if a real key is already
-// present we leave it untouched (regenerating would invalidate live tokens and
-// force SpacetimeDB to re-fetch the JWKS). .env.local overrides the REPLACE_ME
-// placeholder in .env.development, and Next loads it before the dev server
-// mints its first token.
 const ENV_LOCAL = resolve(".env.local");
-const SIGNING_KEY_VAR = "HEXCLAVE_SPACETIMEDB_SIGNING_KEY_JWK";
+const SIGNING_SEED_VAR = "HEXCLAVE_SPACETIMEDB_SIGNING_SEED";
 
-async function ensureSigningKey() {
+function ensureSigningSeed() {
   const existing = existsSync(ENV_LOCAL) ? readFileSync(ENV_LOCAL, "utf8") : "";
-  const line = existing.split(/\r?\n/).filter((l) => l.startsWith(`${SIGNING_KEY_VAR}=`)).at(-1);
-  const value = line ? line.slice(SIGNING_KEY_VAR.length + 1).trim() : "";
+  const line = existing.split(/\r?\n/).filter((l) => l.startsWith(`${SIGNING_SEED_VAR}=`)).at(-1);
+  const value = line ? line.slice(SIGNING_SEED_VAR.length + 1).trim() : "";
   if (value !== "" && value !== "REPLACE_ME") return;
 
-  const { privateKey } = await generateKeyPair("ES256", { extractable: true });
-  const jwk = await exportJWK(privateKey);
-  jwk.kid = `spacetimedb-dev-${Date.now()}`;
-  jwk.alg = "ES256";
-
+  const seed = randomBytes(32).toString("base64url");
   const prefix = existing === "" || existing.endsWith("\n") ? "" : "\n";
   appendFileSync(
     ENV_LOCAL,
-    `${prefix}# Auto-generated per-developer ES256 SpacetimeDB signing key (gitignored; do not commit or reuse in prod).\n${SIGNING_KEY_VAR}=${JSON.stringify(jwk)}\n`,
+    `${prefix}# Auto-generated per-developer SpacetimeDB signing seed (gitignored; do not commit or reuse in prod).\n${SIGNING_SEED_VAR}=${seed}\n`,
     "utf8",
   );
-  console.log(`[internal-tool] Generated a local SpacetimeDB signing key in .env.local`);
+  console.log(`[internal-tool] Generated a local SpacetimeDB signing seed in .env.local`);
 }
 
-await ensureSigningKey();
+ensureSigningSeed();
 
 const which = spawnSync(process.platform === "win32" ? "where" : "which", ["spacetime"], {
   stdio: "ignore",

@@ -12,12 +12,8 @@ vi.mock("server-only", () => ({}));
 const UPSTREAM_BODY = "panic in reducer update_mcp_qa_review: no such row in mcp_call_log";
 
 function stubDefaultEnv() {
-  vi.stubEnv("HEXCLAVE_SPACETIMEDB_URL", "http://spacetimedb.example.com");
-  vi.stubEnv("HEXCLAVE_SPACETIMEDB_DB_NAME", "test-db");
-  // getEnvVariable also reads the legacy STACK_-prefixed twins; stub them to
-  // empty (= unset) so a stray var in the runner's environment can't interfere.
-  vi.stubEnv("STACK_SPACETIMEDB_URL", "");
-  vi.stubEnv("STACK_SPACETIMEDB_DB_NAME", "");
+  // The HTTP base is derived from the single public WS host (scheme-swapped).
+  vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_HOST", "wss://spacetimedb.example.com");
 }
 
 function stubUpstreamResponse(status: number, body: string) {
@@ -62,6 +58,53 @@ describe.each([
     expect((err as StatusError).statusCode).toBe(502);
     expect((err as StatusError).isClientError()).toBe(false);
     expect((err as Error).message).toContain(UPSTREAM_BODY);
+  });
+});
+
+describe("SpacetimeDB HTTP base resolution", () => {
+  function stubOkFetch() {
+    // callSql parses the body as JSON; "[]" yields an empty result set.
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("derives the https base from the wss host", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_HOST", "wss://spacetime.example.com");
+    const fetchMock = stubOkFetch();
+
+    await callSql("token", "SELECT 1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0]).startsWith("https://spacetime.example.com/")).toBe(true);
+  });
+
+  it("uses NEXT_PUBLIC_SPACETIMEDB_DB_NAME in the request path", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_HOST", "wss://spacetime.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_DB_NAME", "hexclave-ai-analytics-dev");
+    const fetchMock = stubOkFetch();
+
+    await callSql("token", "SELECT 1");
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/v1/database/hexclave-ai-analytics-dev/sql");
+  });
+
+  it("falls back to hexclave-ai-analytics when the db name is unset", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_HOST", "wss://spacetime.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_DB_NAME", "");
+    const fetchMock = stubOkFetch();
+
+    await callSql("token", "SELECT 1");
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/v1/database/hexclave-ai-analytics/sql");
+  });
+
+  it("throws when the host is not configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SPACETIMEDB_HOST", "");
+    stubOkFetch();
+
+    const err = await rejectionOf(callSql("token", "SELECT 1"));
+    expect(err).toBeInstanceOf(HexclaveAssertionError);
   });
 });
 

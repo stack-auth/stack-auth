@@ -1,31 +1,32 @@
 import "server-only";
 
-import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
+import { spacetimeDbName } from "../spacetimedb-constants";
 
 const SPACETIMEDB_FETCH_TIMEOUT_MS = 10_000;
+const WS_TO_HTTP_SCHEME = new Map([
+  ["wss://", "https://"],
+  ["ws://", "http://"],
+]);
 
-function requiredEnv(name: string): string {
-  const value = getEnvVariable(name, "");
-  if (value.trim() === "") {
-    throw new HexclaveAssertionError(`${name} is not configured for the internal tool.`);
+function wsHostToHttpBase(host: string): string {
+  for (const [wsScheme, httpScheme] of WS_TO_HTTP_SCHEME) {
+    if (host.startsWith(wsScheme)) return httpScheme + host.slice(wsScheme.length);
   }
-  return value;
+  return host;
 }
 
 function httpBase(): string {
-  return requiredEnv("HEXCLAVE_SPACETIMEDB_URL");
+  const host = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST;
+  if (host == null || host.trim() === "" || host === "REPLACE_ME") {
+    throw new HexclaveAssertionError("NEXT_PUBLIC_SPACETIMEDB_HOST is not configured for the internal tool.");
+  }
+  return wsHostToHttpBase(host);
 }
 
-// All calls authenticate with a token minted by the internal tool (a signed-in
-// reviewer's token, or the service token for backend-ingested telemetry).
-// SpacetimeDB validates it via OIDC discovery against the tool's issuer; the
-// module authorizes on issuer + audience only — any valid member token grants
-// full read/write.
 export async function callReducerStrict(accessToken: string, reducer: string, args: unknown[]): Promise<void> {
   const base = httpBase();
-  const dbName = requiredEnv("HEXCLAVE_SPACETIMEDB_DB_NAME");
-  const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/call/${encodeURIComponent(reducer)}`, {
+  const res = await fetch(`${base}/v1/database/${encodeURIComponent(spacetimeDbName())}/call/${encodeURIComponent(reducer)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -56,8 +57,7 @@ export function opt<T>(value: T | null | undefined): { some: T } | { none: [] } 
 
 export async function callSql(accessToken: string, sql: string): Promise<Record<string, unknown>[]> {
   const base = httpBase();
-  const dbName = requiredEnv("HEXCLAVE_SPACETIMEDB_DB_NAME");
-  const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/sql`, {
+  const res = await fetch(`${base}/v1/database/${encodeURIComponent(spacetimeDbName())}/sql`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${accessToken}` },
     body: sql,

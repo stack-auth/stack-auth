@@ -6,7 +6,14 @@
 import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
-const dbName = process.env.HEXCLAVE_SPACETIMEDB_DB_NAME ?? "hexclave-ai-analytics";
+
+const DEFAULT_DB_NAME = "hexclave-ai-analytics";
+function resolveDbName() {
+  const value = (process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME ?? "").trim();
+  if (value === "" || value === "REPLACE_ME") return DEFAULT_DB_NAME;
+  return value;
+}
+const dbName = resolveDbName();
 
 /** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
@@ -39,8 +46,8 @@ if (!args) {
   process.exit(1);
 }
 
-if (target === "prod" && !process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS && !process.env.HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER) {
-  console.error("Error: HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER (or HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS) must be set for prod publish — the deployed internal tool's public URL, which serves the OIDC discovery document SpacetimeDB validates tokens against.");
+if (target === "prod" && !process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS && !process.env.HEXCLAVE_INTERNAL_TOOL_BASE_URL) {
+  console.error("Error: HEXCLAVE_INTERNAL_TOOL_BASE_URL must be set for prod publish");
   process.exit(1);
 }
 const LOCAL_PUBLISH_TIMEOUT_MS = 60_000;

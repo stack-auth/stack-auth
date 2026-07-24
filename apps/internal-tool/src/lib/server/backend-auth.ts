@@ -2,7 +2,7 @@ import "server-only";
 
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import * as jose from "jose";
-import { envOrDevDefault } from "../env";
+import { envOrDevDefault, hexclaveApiUrl } from "../env";
 
 // Authenticates the Hexclave backend to this app's /api/backend/* ingest
 // routes with a short-lived JWT assertion — no shared secret. The backend
@@ -16,12 +16,7 @@ export const BACKEND_ASSERTION_SUBJECT = "__internal_tool_backend__";
 export const BACKEND_ASSERTION_TOKEN_USE = "internal-tool-backend";
 
 function apiUrl(): string {
-  const prefix = process.env.NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX ?? "81";
-  return envOrDevDefault(
-    process.env.NEXT_PUBLIC_HEXCLAVE_API_URL,
-    `http://localhost:${prefix}02`,
-    "NEXT_PUBLIC_HEXCLAVE_API_URL",
-  ).replace(/\/+$/, "");
+  return hexclaveApiUrl().replace(/\/+$/, "");
 }
 
 function projectId(): string {

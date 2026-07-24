@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-// Cross-platform auth-config injection/restoration for SpacetimeDB publish.
-// Injects the allowed token issuers and expected audience (both non-secret)
-// into the module source before `spacetime publish`, and restores the
-// placeholders afterwards.
-//
-// The issuer is the INTERNAL TOOL itself: it serves the OIDC discovery
-// document + JWKS and mints SpacetimeDB tokens after verifying the caller's
-// Stack Auth session (see src/lib/server/spacetimedb-token.ts).
-//
-// - HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS: comma-separated issuer URLs. Defaults
-//   to HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER, then the local dev internal tool.
-// - HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE: JWT audience. Defaults to
-//   "spacetimedb".
-
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -27,21 +13,19 @@ function defaultDevIssuer() {
 }
 
 function allowedIssuers() {
-  const raw = process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS || process.env.HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER;
+  const raw = process.env.HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS || process.env.HEXCLAVE_INTERNAL_TOOL_BASE_URL;
   if (!raw) return [defaultDevIssuer()];
   const issuers = raw.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter((s) => s !== "");
   if (issuers.length === 0) {
     console.error(
-      "HEXCLAVE_SPACETIMEDB_ALLOWED_ISSUERS (or HEXCLAVE_SPACETIMEDB_TOKEN_ISSUER) is set but contains no issuer URLs after parsing. Refusing to publish a module with an empty trusted-issuer list, as it would reject every token."
+      "HEXCLAVE_INTERNAL_TOOL_BASE_URL is set but contains no issuer URLs after parsing. Refusing to publish a module with an empty trusted-issuer list, as it would reject every token."
     );
     process.exit(1);
   }
   return issuers;
 }
 
-function expectedAudience() {
-  return process.env.HEXCLAVE_SPACETIMEDB_EXPECTED_AUDIENCE || "spacetimedb";
-}
+const EXPECTED_AUDIENCE = "spacetimedb";
 
 const action = process.argv[2];
 
@@ -61,7 +45,7 @@ if (action === "inject") {
     TARGET,
     content
       .replaceAll(ISSUERS_PLACEHOLDER, issuersLiteral)
-      .replaceAll(AUDIENCE_PLACEHOLDER, JSON.stringify(expectedAudience())),
+      .replaceAll(AUDIENCE_PLACEHOLDER, JSON.stringify(EXPECTED_AUDIENCE)),
     "utf8",
   );
 } else if (action === "restore") {
