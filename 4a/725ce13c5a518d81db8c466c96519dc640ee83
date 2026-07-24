@@ -1,0 +1,27 @@
+apps/backend/src/lib/ai/prompts.ts
+  s_50c6b5323dd4a8::t_c3e3d00c3cdd42 1038
+apps/backend/src/lib/analytics-span-exporter.test.ts
+  s_50c6b5323dd4a8::t_ab2626576b2808 1,20-37,53-61
+apps/backend/src/lib/analytics-span-exporter.ts
+  s_50c6b5323dd4a8::t_55c5fd5dedaa83 50-51,69-70
+apps/backend/src/lib/otlp.test.ts
+  s_50c6b5323dd4a8::t_e1ae333f04d73b 193-226
+apps/backend/src/lib/otlp.ts
+  s_50c6b5323dd4a8::t_dc18847a0daf62 216,220-221,223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "4a725ce13c5a518d81db8c466c96519dc640ee83",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
