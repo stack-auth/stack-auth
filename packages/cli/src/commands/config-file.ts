@@ -10,6 +10,7 @@ import { getAdminProject } from "../lib/app.js";
 import { isProjectAuthWithRefreshToken, isProjectAuthWithSecretServerKey, resolveAuth, resolveProjectId, type ProjectAuthWithSecretServerKey } from "../lib/auth.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
 import { CliError } from "../lib/errors.js";
+import { startProgress, withProgress } from "../lib/progress.js";
 
 const SHOW_ONBOARDING_STACK_CONFIG_VALUE = "show-onboarding";
 
@@ -258,13 +259,14 @@ export function registerConfigCommand(program: Command) {
       }
       assertConfigPullTarget(filePath, opts);
 
-      const project = await getAdminProject(auth);
-
-      const configOverride = await project.getConfigOverride("branch");
-      if (!isValidConfig(configOverride)) {
-        throw new CliError("Pulled branch config is not a valid local config object.");
-      }
-      await replaceConfigObject(filePath, configOverride);
+      await withProgress("Pulling config", async () => {
+        const project = await getAdminProject(auth);
+        const configOverride = await project.getConfigOverride("branch");
+        if (!isValidConfig(configOverride)) {
+          throw new CliError("Pulled branch config is not a valid local config object.");
+        }
+        await replaceConfigObject(filePath, configOverride);
+      });
       console.log(`Config written to ${filePath}`);
     });
 
@@ -287,19 +289,6 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
-      // The generated GitHub sync workflow installs the repo's dependencies
-      // before running the CLI, so jiti resolves the config's SDK import (e.g.
-      // `@hexclave/js`) from the project's own node_modules.
-      const { createJiti } = await import("jiti");
-      const jiti = createJiti(import.meta.url);
-      const configModule: { config?: unknown } = await jiti.import(filePath);
-
-      const config = parseConfigOverride(configModule.config);
-      if (config == null) {
-        const exampleImport = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
-        throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
-      }
-
       const source = buildConfigPushSource(opts.configFile, {
         source: opts.source,
         sourceRepo: opts.sourceRepo,
@@ -307,16 +296,35 @@ export function registerConfigCommand(program: Command) {
         sourceWorkflowPath: opts.sourceWorkflowPath,
       });
 
-      if (isProjectAuthWithSecretServerKey(auth)) {
-        await pushConfigWithSecretServerKey(auth, config, source);
-      } else {
-        if (!isProjectAuthWithRefreshToken(auth)) {
-          throw new CliError("`hexclave config push` requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
+      const progress = startProgress("Loading config");
+      try {
+        // The generated GitHub sync workflow installs the repo's dependencies
+        // before running the CLI, so jiti resolves the config's SDK import (e.g.
+        // `@hexclave/js`) from the project's own node_modules.
+        const { createJiti } = await import("jiti");
+        const jiti = createJiti(import.meta.url);
+        const configModule: { config?: unknown } = await jiti.import(filePath);
+
+        const config = parseConfigOverride(configModule.config);
+        if (config == null) {
+          const exampleImport = detectImportPackageFromDir(path.dirname(filePath)) ?? "@hexclave/js";
+          throw new CliError(`Config file must export a plain \`config\` object or "show-onboarding". Example: import type { HexclaveConfig } from "${exampleImport}"; export const config: HexclaveConfig = { ... };`);
         }
-        const project = await getAdminProject(auth);
-        await project.pushConfig(config, {
-          source: sourceToSdkSource(source),
-        });
+
+        progress.update("Pushing config");
+        if (isProjectAuthWithSecretServerKey(auth)) {
+          await pushConfigWithSecretServerKey(auth, config, source);
+        } else {
+          if (!isProjectAuthWithRefreshToken(auth)) {
+            throw new CliError("`hexclave config push` requires either STACK_SECRET_SERVER_KEY or `hexclave login`.");
+          }
+          const project = await getAdminProject(auth);
+          await project.pushConfig(config, {
+            source: sourceToSdkSource(source),
+          });
+        }
+      } finally {
+        progress.stop();
       }
 
       console.log("Config pushed successfully.");
