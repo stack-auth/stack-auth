@@ -211,6 +211,14 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
             return null;
           }
 
+          // Relative JSON imports (eg. a package importing its own package.json) must be
+          // inlined instead of externalized: the dist layout doesn't mirror src (ESM output
+          // even lives one directory deeper, in dist/esm), so a relative path that is correct
+          // in src points at a non-existent file once emitted.
+          if (source.startsWith('.') && source.endsWith('.json')) {
+            return null;
+          }
+
           return {
             id: source,
             external: true,
