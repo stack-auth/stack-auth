@@ -30,6 +30,12 @@ export const GET = createSmartRouteHandler({
       items: yupArray(yupObject({
         id: projectIdSchema.defined(),
         display_name: projectDisplayNameSchema.defined(),
+        completed_at_millis: yupNumber().defined(),
+        details: yupObject({
+          domain: yupString().nullable().defined(),
+          phone: yupString().defined(),
+          notes: yupString().defined(),
+        }).defined(),
       }).defined()).defined(),
     }).defined(),
   }),

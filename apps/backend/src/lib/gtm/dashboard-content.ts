@@ -77,6 +77,10 @@ export async function listGtmOnboardedProjects(options: {
       projectId: { not: INTERNAL_PROJECT_ID },
     },
     select: {
+      completedAt: true,
+      domain: true,
+      phone: true,
+      notes: true,
       project: {
         select: {
           id: true,
@@ -89,9 +93,15 @@ export async function listGtmOnboardedProjects(options: {
       { projectId: "asc" },
     ],
   });
-  return onboardings.map(({ project }) => ({
+  return onboardings.map(({ completedAt, domain, phone, notes, project }) => ({
     id: project.id,
     display_name: project.displayName,
+    completed_at_millis: completedAt.getTime(),
+    details: {
+      domain,
+      phone,
+      notes,
+    },
   }));
 }
 

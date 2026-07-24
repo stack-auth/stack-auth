@@ -147,6 +147,12 @@ describe("internal GTM dashboard content", () => {
       items: [{
         id: onboardedProject.projectId,
         display_name: "Acme GTM",
+        completed_at_millis: expect.any(Number),
+        details: {
+          domain: "acme.example.com",
+          phone: "+1 415 555 0100",
+          notes: "Ready for GTM.",
+        },
       }],
     });
     expect(listed.body.items).not.toContainEqual(expect.objectContaining({ id: notOnboardedProject.projectId }));

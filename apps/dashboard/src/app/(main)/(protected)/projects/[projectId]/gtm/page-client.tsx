@@ -6,6 +6,7 @@ import { DesignBadge } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Switch } from "@/components/ui/switch";
 import { GtmDataProvider } from "@/lib/gtm/gtm-data";
+import { isGtmDemoMode } from "@/lib/gtm/gtm-mode";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { GtmOverview } from "./components/overview";
@@ -16,7 +17,7 @@ export default function PageClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const demo = searchParams.get("demo") !== "false";
+  const demo = isGtmDemoMode(searchParams.get("demo"));
   const setDemo = (value: boolean) => {
     const next = new URLSearchParams(searchParams);
     if (value) {
@@ -46,21 +47,15 @@ export default function PageClient() {
   );
   return (
     <AppEnabledGuard appId="gtm">
-      {demo ? (
-        <GtmDataProvider demo>
+      <GtmDataProvider demo={demo}>
+        {projectId === "internal" ? (
           <GtmOverview toolbar={toolbar()} />
-        </GtmDataProvider>
-      ) : projectId === "internal" ? (
-        <GtmDataProvider demo={false}>
-          <GtmOverview toolbar={toolbar()} />
-        </GtmDataProvider>
-      ) : (
-        <GtmDataProvider demo={false}>
+        ) : (
           <GtmOnboardingGate>
             {(settingsAction) => <GtmOverview toolbar={toolbar(settingsAction)} />}
           </GtmOnboardingGate>
-        </GtmDataProvider>
-      )}
+        )}
+      </GtmDataProvider>
     </AppEnabledGuard>
   );
 }

@@ -6,6 +6,7 @@ import { useProjectId } from "../../use-admin-app";
 import {
   DesignAlert,
   DesignButton,
+  DesignCard,
   DesignDialog,
   DesignInput,
   DesignSelectorDropdown as BaseDesignSelectorDropdown,
@@ -44,7 +45,7 @@ import {
   type GtmInsight,
   type GtmNote,
 } from "@/lib/gtm/gtm-types";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { NotePencilIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useStackApp, useUser } from "@hexclave/next";
 import { captureError } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
@@ -598,7 +599,42 @@ function AdminEditorDialog(props: {
   );
 }
 
-function AdminOverview(props: { targetProjectId: string, targetProjectName: string, onTargetProjectChange: (projectId: string) => void, projects: { id: string, displayName: string }[] }) {
+const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function SubmittedProjectDetails(props: { project: GtmOnboardedProject }) {
+  return (
+    <DesignCard
+      title="Submitted project details"
+      subtitle={`Received ${submittedAtFormatter.format(props.project.completedAtMillis)}`}
+      icon={NotePencilIcon}
+      gradient="default"
+    >
+      <dl className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(16rem,2fr)]">
+        <div className="min-w-0">
+          <dt className="text-xs font-medium text-muted-foreground">Website</dt>
+          <dd className="mt-1 break-words text-sm font-medium">
+            {props.project.details.domain ?? "Not provided"}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium text-muted-foreground">Phone</dt>
+          <dd className="mt-1 break-words text-sm font-medium">{props.project.details.phone}</dd>
+        </div>
+        <div className="min-w-0 md:col-span-2 lg:col-span-1">
+          <dt className="text-xs font-medium text-muted-foreground">Notes</dt>
+          <dd className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">
+            {props.project.details.notes.length > 0 ? props.project.details.notes : "No notes submitted"}
+          </dd>
+        </div>
+      </dl>
+    </DesignCard>
+  );
+}
+
+function AdminOverview(props: { targetProject: GtmOnboardedProject, onTargetProjectChange: (projectId: string) => void, projects: GtmOnboardedProject[] }) {
   const app = useStackApp();
   const { data, refresh } = useGtmData();
   const { setNeedConfirm } = useRouterConfirm();
@@ -655,27 +691,30 @@ function AdminOverview(props: { targetProjectId: string, targetProjectName: stri
     };
   });
   const toolbar = (
-    <div className="flex flex-col gap-3 rounded-xl border border-foreground/[0.1] bg-foreground/[0.025] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-semibold">Editing {props.targetProjectName}’s live overview</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{counts}</p>
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 rounded-xl border border-foreground/[0.1] bg-foreground/[0.025] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">Editing {props.targetProject.displayName}’s live overview</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{counts}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <DesignSelectorDropdown
+            value={props.targetProject.id}
+            onValueChange={props.onTargetProjectChange}
+            options={props.projects.map((project) => ({ value: project.id, label: project.displayName }))}
+          />
+          <GtmActionMenu
+            trigger="icon"
+            triggerLabel="Add GTM record"
+            triggerIcon={<PlusIcon className="h-4 w-4" />}
+            align="end"
+            label="Choose a domain"
+            withIcons
+            items={addItems}
+          />
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <DesignSelectorDropdown
-          value={props.targetProjectId}
-          onValueChange={props.onTargetProjectChange}
-          options={props.projects.map((project) => ({ value: project.id, label: project.displayName }))}
-        />
-        <GtmActionMenu
-          trigger="icon"
-          triggerLabel="Add GTM record"
-          triggerIcon={<PlusIcon className="h-4 w-4" />}
-          align="end"
-          label="Choose a domain"
-          withIcons
-          items={addItems}
-        />
-      </div>
+      <SubmittedProjectDetails project={props.targetProject} />
     </div>
   );
 
@@ -683,12 +722,12 @@ function AdminOverview(props: { targetProjectId: string, targetProjectName: stri
     <GtmAdminControlsProvider value={controls}>
       <GtmOverview
         toolbar={toolbar}
-        project={{ id: props.targetProjectId, displayName: props.targetProjectName }}
+        project={{ id: props.targetProject.id, displayName: props.targetProject.displayName }}
       />
       {target != null && (
         <AdminEditorDialog
           app={app}
-          targetProjectId={props.targetProjectId}
+          targetProjectId={props.targetProject.id}
           target={target}
           onClose={closeEditor}
           onSaved={finishMutation}
@@ -777,8 +816,7 @@ function LoadedInternalGtmAdminPage(props: { projects: [GtmOnboardedProject, ...
   return (
     <GtmDataProvider key={targetProject.id} demo={false} projectId={targetProject.id}>
       <AdminOverview
-        targetProjectId={targetProject.id}
-        targetProjectName={targetProject.displayName}
+        targetProject={targetProject}
         onTargetProjectChange={setTargetProjectId}
         projects={[targetProject, ...props.projects.filter((project) => project.id !== targetProject.id)]}
       />

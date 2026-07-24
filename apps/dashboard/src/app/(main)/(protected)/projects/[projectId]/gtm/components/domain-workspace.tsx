@@ -273,7 +273,7 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
               <section className="py-9">
                 <h4 className="mb-5 font-serif text-3xl">Notes</h4>
                 {selectedNotes.length === 0
-                  ? <p className="border-y py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} notes yet.</p>
+                  ? <p className="py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} notes yet.</p>
                   : (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {selectedNotes.map((note) => (
@@ -303,7 +303,7 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
               <section className="py-9">
                 <h4 className="mb-5 font-serif text-3xl">Archive</h4>
                 {archived.length === 0
-                  ? <p className="border-y py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} actions archived yet.</p>
+                  ? <p className="py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} actions archived yet.</p>
                   : (
                     <div className="border-y">
                       {archived.map((item) => (

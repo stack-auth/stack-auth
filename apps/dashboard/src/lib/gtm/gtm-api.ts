@@ -47,9 +47,21 @@ const onboardingSchema = z.discriminatedUnion("completed", [
     details: onboardingDetailsSchema,
   }),
 ]);
+const onboardingStatusSchema = z.discriminatedUnion("completed", [
+  z.object({
+    completed: z.literal(false),
+    completed_at_millis: z.null(),
+  }),
+  z.object({
+    completed: z.literal(true),
+    completed_at_millis: z.number(),
+  }),
+]);
 const onboardedProjectSchema = z.object({
   id: z.string(),
   display_name: z.string(),
+  completed_at_millis: z.number(),
+  details: onboardingDetailsSchema,
 });
 
 export type GtmInsightDraft = Omit<GtmInsight, "id" | "createdAtMillis" | "updatedAtMillis" | "lastSeenAtMillis">;
@@ -66,11 +78,15 @@ export class GtmApiError extends Error {
 }
 
 export type GtmOnboardingStatus = z.infer<typeof onboardingSchema>;
+export type GtmOnboardingCompletionStatus = z.infer<typeof onboardingStatusSchema>;
 export type GtmCompletedOnboardingStatus = Extract<GtmOnboardingStatus, { completed: true }>;
+export type GtmCompletedOnboardingCompletionStatus = Extract<GtmOnboardingCompletionStatus, { completed: true }>;
 export type GtmOnboardingDetails = z.infer<typeof onboardingDetailsSchema>;
 export type GtmOnboardedProject = {
   id: string,
   displayName: string,
+  completedAtMillis: number,
+  details: GtmOnboardingDetails,
 };
 
 async function requestJson(app: object, path: string, init: RequestInit = {}, access: "user" | "admin" = "user"): Promise<unknown> {
@@ -130,8 +146,25 @@ export async function getGtmOnboarding(app: object): Promise<GtmOnboardingStatus
   return onboardingSchema.parse(await requestJson(app, "/onboarding/details", {}, "admin"));
 }
 
+export async function getGtmOnboardingCompletionStatus(app: object): Promise<GtmOnboardingCompletionStatus> {
+  return onboardingStatusSchema.parse(await requestJson(app, "/onboarding"));
+}
+
 export async function completeGtmOnboarding(app: object, input: { domain: string, phone: string, notes: string }): Promise<GtmCompletedOnboardingStatus> {
   const onboarding = onboardingSchema.parse(await requestJson(app, "/onboarding/details", { method: "POST", body: JSON.stringify(input) }, "admin"));
+  if (!onboarding.completed) {
+    throw new Error("Completing GTM onboarding returned an incomplete onboarding state.");
+  }
+  return onboarding;
+}
+
+/**
+ * The initial intake only needs confirmation that the project is onboarded. Keep
+ * that success path independent from the editable detail fields, which are read
+ * separately when an owner opens GTM settings.
+ */
+export async function completeGtmOnboardingIntake(app: object, input: { domain: string, phone: string, notes: string }): Promise<GtmCompletedOnboardingCompletionStatus> {
+  const onboarding = onboardingStatusSchema.parse(await requestJson(app, "/onboarding/details", { method: "POST", body: JSON.stringify(input) }, "admin"));
   if (!onboarding.completed) {
     throw new Error("Completing GTM onboarding returned an incomplete onboarding state.");
   }
@@ -145,6 +178,8 @@ export async function listGtmOnboardedProjects(app: object): Promise<GtmOnboarde
   return response.items.map((project) => ({
     id: project.id,
     displayName: project.display_name,
+    completedAtMillis: project.completed_at_millis,
+    details: project.details,
   }));
 }
 

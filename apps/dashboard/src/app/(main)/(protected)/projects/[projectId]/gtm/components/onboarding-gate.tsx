@@ -2,17 +2,20 @@
 
 import { DesignAlert, DesignButton, DesignDialog, DesignInput } from "@/components/design-components";
 import { Textarea } from "@/components/ui";
+import { useAdminApp } from "../../use-admin-app";
 import {
   completeGtmOnboarding,
+  completeGtmOnboardingIntake,
   getGtmOnboarding,
+  getGtmOnboardingCompletionStatus,
   GtmApiError,
+  type GtmCompletedOnboardingCompletionStatus,
   type GtmCompletedOnboardingStatus,
   type GtmOnboardingDetails,
 } from "@/lib/gtm/gtm-api";
 import { useGtmData } from "@/lib/gtm/gtm-data";
 import { validateGtmOnboardingInput } from "@/lib/gtm/gtm-onboarding";
 import { ArrowRightIcon, CheckCircleIcon, GearIcon, GlobeHemisphereWestIcon, PhoneIcon, TrendUpIcon } from "@phosphor-icons/react";
-import { useStackApp } from "@hexclave/next";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -22,10 +25,10 @@ type GateState =
   | { status: "loading" }
   | { status: "error" }
   | { status: "needs-intake" }
-  | { status: "complete", onboarding: GtmCompletedOnboardingStatus };
+  | { status: "complete", onboarding: GtmCompletedOnboardingStatus | null };
 type IntakeStep = "story" | "details";
 type OnboardingDialogProps =
-  | { mode: "onboarding", onDone: (onboarding: GtmCompletedOnboardingStatus) => void }
+  | { mode: "onboarding", onDone: () => void }
   | {
     mode: "edit",
     details: GtmOnboardingDetails,
@@ -75,7 +78,7 @@ function editableDomain(domain: string | null): string {
 }
 
 function OnboardingDialog(props: OnboardingDialogProps) {
-  const app = useStackApp();
+  const app = useAdminApp();
   const prefersReducedMotion = useReducedMotion();
   const isEditing = props.mode === "edit";
   const [step, setStep] = useState<IntakeStep>(isEditing ? "details" : "story");
@@ -84,7 +87,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
   const [phone, setPhone] = useState(() => props.mode === "edit" ? props.details.phone : "");
   const [notes, setNotes] = useState(() => props.mode === "edit" ? props.details.notes : "");
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState<GtmCompletedOnboardingStatus | null>(null);
+  const [submitted, setSubmitted] = useState<GtmCompletedOnboardingCompletionStatus | null>(null);
 
   const story = storyCards[storyIndex] ?? storyCards[0];
   const StoryIcon = story.icon;
@@ -97,11 +100,11 @@ function OnboardingDialog(props: OnboardingDialogProps) {
       return;
     }
     try {
-      const onboarding = await completeGtmOnboarding(app, { domain, phone, notes });
       if (props.mode === "edit") {
+        const onboarding = await completeGtmOnboarding(app, { domain, phone, notes });
         props.onDone(onboarding);
       } else {
-        setSubmitted(onboarding);
+        setSubmitted(await completeGtmOnboardingIntake(app, { domain, phone, notes }));
       }
     } catch (submissionError) {
       setError(userFacingError(submissionError));
@@ -129,14 +132,14 @@ function OnboardingDialog(props: OnboardingDialogProps) {
       headerClassName="sr-only"
       hideTopCloseButton={!isEditing}
       noBodyPadding
-      className="max-w-[32rem] border-white/10 bg-[#141417] shadow-none dark:bg-[#141417]"
-      bodyClassName="overflow-y-auto overscroll-contain"
+      className="h-[min(100dvh-2rem,36rem)] max-w-[32rem] border-white/10 bg-[#141417] shadow-none dark:bg-[#141417]"
+      bodyClassName="flex-1 overflow-y-auto overscroll-contain"
       contentProps={isEditing ? undefined : {
         onEscapeKeyDown: (event) => event.preventDefault(),
         onPointerDownOutside: (event) => event.preventDefault(),
       }}
     >
-      <div className="relative min-h-[28rem] overflow-hidden bg-[#141417] text-white">
+      <div className="relative min-h-full bg-[#141417] text-white">
         <AnimatePresence initial={false} mode="wait">
           {submitted != null ? (
             <motion.div
@@ -145,7 +148,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
               animate={{ opacity: 1, scale: 1 }}
               exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
               transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="flex min-h-[28rem] flex-col justify-between p-6"
+              className="flex min-h-full flex-col justify-between p-6"
               style={{ background: "radial-gradient(110% 85% at 10% 0%, #0f766e 0%, transparent 55%), radial-gradient(120% 100% at 100% 100%, #4338ca 0%, transparent 64%), #131824" }}
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/25">
@@ -158,7 +161,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
                   Our team will review the details you shared, then contact you to align on the first opportunities worth pursuing.
                 </p>
               </div>
-              <DesignButton variant="secondary" size="lg" onClick={() => props.onDone(submitted)} className="w-full bg-white text-slate-950 hover:bg-white/90">
+              <DesignButton variant="secondary" size="lg" onClick={props.onDone} className="w-full bg-white text-slate-950 hover:bg-white/90">
                 Open GTM
                 <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
               </DesignButton>
@@ -170,7 +173,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={prefersReducedMotion ? undefined : { opacity: 0, x: -22, scale: 0.985 }}
               transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
-              className="flex min-h-[28rem] flex-col p-6"
+              className="flex min-h-full flex-col p-6"
               style={{ background: story.wash }}
             >
               <div>
@@ -223,7 +226,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
               exit={prefersReducedMotion ? undefined : { opacity: 0, x: -22 }}
               transition={{ duration: prefersReducedMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
               onSubmit={(event) => event.preventDefault()}
-              className="flex min-h-[28rem] flex-col bg-[#17171b] p-6"
+              className="flex min-h-full flex-col bg-[#17171b] p-6"
             >
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
@@ -302,22 +305,38 @@ function OnboardingDialog(props: OnboardingDialogProps) {
 }
 
 export function GtmOnboardingGate(props: { children: (settingsAction: ReactNode) => ReactNode }) {
-  const app = useStackApp();
+  const app = useAdminApp();
   const { data } = useGtmData();
   const [state, setState] = useState<GateState>({ status: "loading" });
   const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState(false);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const onboarding = await getGtmOnboarding(app);
-      setState(onboarding.completed
-        ? { status: "complete", onboarding }
+      const completionStatus = await getGtmOnboardingCompletionStatus(app);
+      setState(completionStatus.completed
+        ? { status: "complete", onboarding: null }
         : { status: "needs-intake" });
     } catch {
       setState({ status: "error" });
     }
   }, [app]);
+
+  const openEditing = async () => {
+    setEditError(false);
+    try {
+      const onboarding = await getGtmOnboarding(app);
+      if (!onboarding.completed) {
+        setState({ status: "needs-intake" });
+        return;
+      }
+      setState({ status: "complete", onboarding });
+      setEditing(true);
+    } catch {
+      setEditError(true);
+    }
+  };
 
   useEffect(() => {
     runAsynchronously(load());
@@ -330,7 +349,7 @@ export function GtmOnboardingGate(props: { children: (settingsAction: ReactNode)
       size="icon"
       aria-label="Edit GTM details"
       title="Edit GTM details"
-      onClick={() => setEditing(true)}
+      onClick={openEditing}
     >
       <GearIcon className="h-4 w-4" />
     </DesignButton>
@@ -342,10 +361,10 @@ export function GtmOnboardingGate(props: { children: (settingsAction: ReactNode)
       {overviewIsLoaded && state.status === "needs-intake" && (
         <OnboardingDialog
           mode="onboarding"
-          onDone={(onboarding) => setState({ status: "complete", onboarding })}
+          onDone={() => setState({ status: "complete", onboarding: null })}
         />
       )}
-      {state.status === "complete" && editing && (
+      {state.status === "complete" && state.onboarding != null && editing && (
         <OnboardingDialog
           mode="edit"
           details={state.onboarding.details}
@@ -360,6 +379,11 @@ export function GtmOnboardingGate(props: { children: (settingsAction: ReactNode)
         <DesignDialog open onOpenChange={() => undefined} title="GTM setup couldn’t be loaded" hideTopCloseButton>
           <DesignAlert variant="error" title="Your project intake is unavailable" description="Try again to share your project details with the GTM team." />
           <div className="mt-4 flex justify-end"><DesignButton onClick={load}>Try again</DesignButton></div>
+        </DesignDialog>
+      )}
+      {editError && (
+        <DesignDialog open onOpenChange={(open) => setEditError(open)} title="GTM details couldn’t be loaded">
+          <DesignAlert variant="error" title="Your project details are unavailable" description="Close this message and try opening the settings again." />
         </DesignDialog>
       )}
     </>
