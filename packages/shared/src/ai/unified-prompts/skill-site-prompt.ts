@@ -14,7 +14,7 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
   return deindent`
     # Hexclave
 
-    This is the full LLM-optimized documentation & skill site for Hexclave. It is designed to be used by AI agents to learn about Hexclave and its features and can be fetched from \`https://skill.hexclave.com/full\`. For specific questions, prefer the concise answer endpoint at \`https://skill.hexclave.com/ask\` or the equivalent \`ask_hexclave\` MCP tool.
+    This is the full LLM-optimized documentation & skill site for Hexclave. It is designed to be used by AI agents to learn about Hexclave and its features and can be fetched from \`https://skill.hexclave.com/full\`. For specific questions, prefer the concise answer endpoint at \`https://skill.hexclave.com/ask\`.
 
     ${remindersPrompt}
 
@@ -27,7 +27,7 @@ export function buildSkillSitePrompt(docsIndexPromptValue = docsIndexPrompt) {
 
     ${docsIndexPromptValue}
 
-    The MCP server lives at https://mcp.hexclave.com. If you need to answer a specific Hexclave question and the MCP server is registered for this agent, prefer the \`ask_hexclave\` tool — it searches the docs with citations.
+    The MCP server lives at https://mcp.hexclave.com. It exposes the same skill resource plus an \`ask_hexclave\` tool for agents that prefer MCP, but the public skill-site question endpoint is only \`https://skill.hexclave.com/ask\`.
 
     ## Using the Hexclave CLI
 

@@ -1,7 +1,7 @@
 {
   "name": "@hexclave/hosted-components",
   "private": true,
-  "version": "1.0.54",
+  "version": "1.0.57",
   "type": "module",
   "scripts": {
     "dev": "vite dev --port ${NEXT_PUBLIC_HEXCLAVE_PORT_PREFIX:-81}09",
@@ -28,6 +28,7 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.3",
+    "@sentry/react": "^10.45.0",
     "@stripe/react-stripe-js": "^3.8.1",
     "@stripe/stripe-js": "^7.7.0",
     "@tanstack/react-table": "^8.21.3",

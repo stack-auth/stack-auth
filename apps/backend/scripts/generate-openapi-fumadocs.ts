@@ -11,17 +11,10 @@ import path from 'path';
 
 
 async function main() {
-  console.log("Started Fumadocs OpenAPI schema generator");
+  console.log("Started Mintlify OpenAPI schema generator");
 
-  // Create openapi directory in Fumadocs project
-  const fumaDocsOpenApiDir = path.resolve("../../docs/openapi");
   const mintlifyOpenApiDir = path.resolve("../../docs-mintlify/openapi");
 
-  // Ensure the openapi directory exists
-  if (!fs.existsSync(fumaDocsOpenApiDir)) {
-    console.log('Creating OpenAPI directory...');
-    fs.mkdirSync(fumaDocsOpenApiDir, { recursive: true });
-  }
   if (!fs.existsSync(mintlifyOpenApiDir)) {
     console.log('Creating Mintlify OpenAPI directory...');
     fs.mkdirSync(mintlifyOpenApiDir, { recursive: true });
@@ -68,11 +61,6 @@ async function main() {
     console.log(`Generated ${Object.keys(openApiSchemaObject.paths || {}).length} endpoints for ${audience} audience`);
 
     const audienceJson = JSON.stringify(openApiSchemaObject, null, 2);
-    // Write JSON files for Fumadocs (they prefer JSON over YAML)
-    writeFileSyncIfChanged(
-      path.join(fumaDocsOpenApiDir, `${audience}.json`),
-      audienceJson
-    );
     writeFileSyncIfChanged(
       path.join(mintlifyOpenApiDir, `${audience}.json`),
       audienceJson
@@ -86,19 +74,15 @@ async function main() {
 
   const webhooksJson = JSON.stringify(webhookOpenAPISchema, null, 2);
   writeFileSyncIfChanged(
-    path.join(fumaDocsOpenApiDir, 'webhooks.json'),
-    webhooksJson
-  );
-  writeFileSyncIfChanged(
     path.join(mintlifyOpenApiDir, 'webhooks.json'),
     webhooksJson
   );
 
-  console.log("Successfully updated Fumadocs OpenAPI schemas with proper audience filtering");
+  console.log("Successfully updated Mintlify OpenAPI schemas with proper audience filtering");
 }
 
 // eslint-disable-next-line no-restricted-syntax
 main().catch((...args) => {
-  console.error(`ERROR! Could not update Fumadocs OpenAPI schema`, ...args);
+  console.error(`ERROR! Could not update Mintlify OpenAPI schema`, ...args);
   process.exit(1);
 });

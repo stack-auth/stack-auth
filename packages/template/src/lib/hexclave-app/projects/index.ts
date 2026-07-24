@@ -29,6 +29,7 @@ export type PushConfigOptions = {
 export type Project = {
   readonly id: string,
   readonly displayName: string,
+  readonly isDevelopmentEnvironment: boolean,
   readonly pushedConfigError: { message: string } | null,
   readonly configWarnings: { message: string }[],
   readonly config: ProjectConfig,
