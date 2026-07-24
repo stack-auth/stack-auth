@@ -111,7 +111,7 @@ export function BrowserSecretConfirmationPageClient() {
     <div className="relative z-10 min-h-screen bg-background text-foreground flex items-center justify-center px-4">
       <div className="w-full max-w-lg rounded-2xl border border-black/[0.10] dark:border-white/[0.10] bg-white dark:bg-background p-6 shadow-sm">
         <div className="mb-4">
-          <Logo noLink alt="Hexclave" width={40} height={40} />
+          <Logo full noLink alt="Hexclave" height={40} className="h-10 w-auto" />
         </div>
         <div className="mb-3 inline-flex rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
           Browser authorization

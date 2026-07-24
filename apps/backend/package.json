@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/backend",
-  "version": "1.0.57",
+  "version": "1.0.62",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "type": "module",
@@ -60,7 +60,8 @@
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.21",
     "spacetimedb": "^2.1.0",
-    "@aws-sdk/client-s3": "^3.855.0",
+    "@aws-sdk/client-s3": "^3.1089.0",
+    "@aws-sdk/s3-request-presigner": "^3.1089.0",
     "@clickhouse/client": "^1.14.0",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@openrouter/ai-sdk-provider": "2.2.3",
