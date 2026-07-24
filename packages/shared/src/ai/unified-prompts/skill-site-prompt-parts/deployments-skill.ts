@@ -11,7 +11,7 @@ export const deploymentsSkillSection = deindent`
 
   For this iteration of the Deployments app, only the \`vercel\` service type is available. It can be used to set up serverless deployments.
 
-  To use Hexclave Deployments, you must do a few things. First, the Deployments app must be enabled, by adding \`deployments\` under \`apps.installed\`. Second, you must edit your \`hexclave.config.ts\` file to add the relevant configuration, as specified below.
+  To use Hexclave Deployments, you must do a few things. First, the Deployments app must be enabled, by adding \`deployments-alpha\` under \`apps.installed\`. Second, you must edit your \`hexclave.config.ts\` file to add the relevant configuration, as specified below. Both keys are \`deployments-alpha\`, not \`deployments\` — the app is in alpha and its id says so. Because of the hyphen, quote it.
 
   ## Config
 
@@ -22,10 +22,10 @@ export const deploymentsSkillSection = deindent`
     apps: {
       installed: {
         authentication: { enabled: true },
-        deployments: { enabled: true },
+        "deployments-alpha": { enabled: true },
       },
     },
-    deployments: {
+    "deployments-alpha": {
       services: {
         web: {
           type: "vercel",

@@ -47,9 +47,15 @@ export function parseSecretOptions(secretOptions: string[]): Map<string, string>
   return secrets;
 }
 
+// The top-level config section the Deployments app owns. The `-alpha` suffix is
+// part of the public key while the app is in alpha, and it must match the app id
+// in the backend's config schema — a mismatch here silently reads an empty
+// section rather than failing, so it is defined once and reused below.
+const DEPLOYMENTS_CONFIG_SECTION = "deployments-alpha";
+
 // The config-side shape of one env var. Mirrors the schema of
-// `deployments.services.<name>.env.<KEY>` and is sent to the deploy endpoint
-// verbatim.
+// `deployments-alpha.services.<name>.env.<KEY>` and is sent to the deploy
+// endpoint verbatim.
 export type ServiceEnvVarConfig =
   | { value: string }
   | { type: "secret", key: string }
@@ -66,33 +72,34 @@ export type ServiceDefinition = {
 
 /**
  * Extracts one service's definition from a loaded config module. The config
- * file holds it under `deployments.services.<name>` — the exact shape that
+ * file holds it under `deployments-alpha.services.<name>` — the exact shape that
  * `hexclave config push` pushes as branch config. Exported for unit tests.
  */
 export function extractServiceDefinition(config: unknown, serviceName: string): ServiceDefinition {
   if (config == null || typeof config !== "object") {
     throw new CliError("Config file must export a plain `config` object.");
   }
-  const services = (config as { deployments?: { services?: unknown } }).deployments?.services;
+  const section = (config as Record<string, unknown>)[DEPLOYMENTS_CONFIG_SECTION];
+  const services = section != null && typeof section === "object" ? (section as { services?: unknown }).services : undefined;
   if (services == null || typeof services !== "object") {
-    throw new CliError("The config file has no `deployments.services` section. Add one, e.g.:\n  export const config = {\n    deployments: {\n      services: {\n        " + serviceName + ": { type: \"vercel\", rootDirectory: \"./\", framework: \"nextjs\" },\n      },\n    },\n  };");
+    throw new CliError(`The config file has no \`${DEPLOYMENTS_CONFIG_SECTION}.services\` section. Add one, e.g.:\n  export const config = {\n    "${DEPLOYMENTS_CONFIG_SECTION}": {\n      services: {\n        ${serviceName}: { type: "vercel", rootDirectory: "./", framework: "nextjs" },\n      },\n    },\n  };`);
   }
   const service = (services as Record<string, unknown>)[serviceName];
   if (service == null || typeof service !== "object") {
     const available = Object.keys(services);
-    throw new CliError(`No service named ${JSON.stringify(serviceName)} in the config file's \`deployments.services\`.${available.length > 0 ? ` Available services: ${available.join(", ")}` : ""}`);
+    throw new CliError(`No service named ${JSON.stringify(serviceName)} in the config file's \`${DEPLOYMENTS_CONFIG_SECTION}.services\`.${available.length > 0 ? ` Available services: ${available.join(", ")}` : ""}`);
   }
   const record = service as Record<string, unknown>;
   if (record.type !== "vercel") {
     throw new CliError(record.type === undefined
-      ? `\`deployments.services.${serviceName}\` has no \`type\`. Add \`type: "vercel"\`.`
-      : `\`deployments.services.${serviceName}.type\` must be "vercel" (got ${JSON.stringify(record.type)}).`);
+      ? `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}\` has no \`type\`. Add \`type: "vercel"\`.`
+      : `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.type\` must be "vercel" (got ${JSON.stringify(record.type)}).`);
   }
   const readString = (key: string): string | undefined => {
     const value = record[key];
     if (value === undefined) return undefined;
     if (typeof value !== "string") {
-      throw new CliError(`\`deployments.services.${serviceName}.${key}\` must be a string.`);
+      throw new CliError(`\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.${key}\` must be a string.`);
     }
     return value;
   };
@@ -109,11 +116,11 @@ export function extractServiceDefinition(config: unknown, serviceName: string): 
 function extractServiceEnv(env: unknown, serviceName: string): Record<string, ServiceEnvVarConfig> {
   if (env === undefined) return {};
   if (env == null || typeof env !== "object" || Array.isArray(env)) {
-    throw new CliError(`\`deployments.services.${serviceName}.env\` must be a record of env var entries, e.g. { MY_VAR: { value: "some-value" } }.`);
+    throw new CliError(`\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.env\` must be a record of env var entries, e.g. { MY_VAR: { value: "some-value" } }.`);
   }
   const result: Record<string, ServiceEnvVarConfig> = {};
   for (const [envVarKey, entryValue] of Object.entries(env as Record<string, unknown>)) {
-    const path = `\`deployments.services.${serviceName}.env.${envVarKey}\``;
+    const path = `\`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceName}.env.${envVarKey}\``;
     if (!ENV_VAR_KEY_REGEX.test(envVarKey)) {
       throw new CliError(`${path} has an invalid key. Env var keys must start with a letter or underscore and contain only letters, digits, and underscores.`);
     }
@@ -294,7 +301,7 @@ async function uploadSource(uploadUrl: string, contentType: string, bytes: Uint8
 export function registerDeployCommand(program: Command) {
   program
     .command("deploy <service>")
-    .description("Deploy a service defined under `deployments.services` in your hexclave.config.ts. Uploads the service's source directory, waits for Vercel to accept the deployment, then prints the run id without waiting for the remote build to finish.")
+    .description("Deploy a service defined under `deployments-alpha.services` in your hexclave.config.ts. Uploads the service's source directory, waits for Vercel to accept the deployment, then prints the run id without waiting for the remote build to finish.")
     .option("--config <path>", "Path to the config file (default: auto-discover hexclave.config.ts in the current directory)")
     .option("--cloud-project-id <id>", "Hexclave project ID to deploy to (defaults to the HEXCLAVE_PROJECT_ID env var)")
     .option("--secret <KEY=VALUE>", "Value for a secret env var of this deploy (repeatable). KEY is the secret key named by a `type: \"secret\"` env var in the config; the value is pushed to the deployment target and never persisted by Hexclave.", (value: string, previous: string[]) => [...previous, value], [] as string[])
@@ -321,7 +328,7 @@ export function registerDeployCommand(program: Command) {
           throw new CliError(`Failed to load config file ${configPath}: ${errorMessage(err)}`);
         }
         if (configModule.config == null) {
-          throw new CliError(`Config file ${configPath} must export a \`config\` object (e.g. \`export const config = { deployments: { services: { ... } } }\`).`);
+          throw new CliError(`Config file ${configPath} must export a \`config\` object (e.g. \`export const config = { "deployments-alpha": { services: { ... } } }\`).`);
         }
         definition = extractServiceDefinition(configModule.config, service);
         // Fail on missing/misspelled secrets BEFORE packaging and uploading.

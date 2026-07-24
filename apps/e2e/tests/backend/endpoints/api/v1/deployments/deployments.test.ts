@@ -268,7 +268,7 @@ describe("read-only enforcement for pushed config sources", () => {
   it("blocks definition edits (including env vars) but allows domains when the config is pushed from GitHub", async ({ expect }) => {
     await Project.createAndSwitch();
     await Project.pushConfig({
-      deployments: {
+      "deployments-alpha": {
         services: {
           api: {
             type: "vercel",
@@ -305,7 +305,7 @@ describe("read-only enforcement for pushed config sources", () => {
     expect(createResponse).toMatchInlineSnapshot(`
       NiceResponse {
         "status": 400,
-        "body": "This project's configuration is managed by GitHub, so deployment services can't be edited here. Edit the \`deployments.services\` section of your hexclave.config.ts instead.",
+        "body": "This project's configuration is managed by GitHub, so deployment services can't be edited here. Edit the \`deployments-alpha.services\` section of your hexclave.config.ts instead.",
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -356,7 +356,7 @@ describe("read-only enforcement for pushed config sources", () => {
       config_file_path: "hexclave.config.ts",
     };
     await Project.pushConfig({
-      deployments: {
+      "deployments-alpha": {
         services: {
           orphan: { type: "vercel" },
         },
@@ -375,7 +375,7 @@ describe("read-only enforcement for pushed config sources", () => {
     });
     expect(provisionedProjectResponse.status).toBe(200);
 
-    await Project.pushConfig({ deployments: { services: {} } }, pushedSource);
+    await Project.pushConfig({ "deployments-alpha": { services: {} } }, pushedSource);
 
     // The service is gone from the API, because listings are built from the
     // config definitions and never from the leftover operational row.
@@ -394,7 +394,7 @@ describe("read-only enforcement for pushed config sources", () => {
     // Re-adding the same service id picks the surviving operational row back
     // up and redeploys onto the same project instead of provisioning a new one.
     await Project.pushConfig({
-      deployments: {
+      "deployments-alpha": {
         services: {
           orphan: { type: "vercel" },
         },
@@ -732,7 +732,7 @@ describe("deploys against the vercel-mock", () => {
   it("applies request build config and env to builds on GitHub-managed configs without persisting them", async ({ expect }) => {
     await Project.createAndSwitch();
     await Project.pushConfig({
-      deployments: {
+      "deployments-alpha": {
         services: {
           api: {
             type: "vercel",

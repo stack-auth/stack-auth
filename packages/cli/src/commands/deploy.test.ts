@@ -42,7 +42,7 @@ describe("parseSecretOptions", () => {
 
 describe("extractServiceDefinition", () => {
   const config = {
-    deployments: {
+    "deployments-alpha": {
       services: {
         api: {
           type: "vercel",
@@ -92,61 +92,61 @@ describe("extractServiceDefinition", () => {
     expect(() => extractServiceDefinition(config, "web")).toThrow("Available services: api, minimal");
   });
 
-  it("rejects configs without a deployments.services section", () => {
-    expect(() => extractServiceDefinition({}, "api")).toThrow("deployments.services");
+  it("rejects configs without a deployments-alpha.services section", () => {
+    expect(() => extractServiceDefinition({}, "api")).toThrow("deployments-alpha.services");
   });
 
   it("rejects services without a type", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { framework: "nextjs" } } },
+      "deployments-alpha": { services: { api: { framework: "nextjs" } } },
     }, "api")).toThrow('Add `type: "vercel"`');
   });
 
   it("rejects services with an unknown type", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "netlify" } } },
+      "deployments-alpha": { services: { api: { type: "netlify" } } },
     }, "api")).toThrow('must be "vercel"');
   });
 
   it("rejects non-string build fields", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", buildCommand: 42 } } },
+      "deployments-alpha": { services: { api: { type: "vercel", buildCommand: 42 } } },
     }, "api")).toThrow("must be a string");
   });
 
   it("rejects invalid env var keys", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { "1BAD": { value: "x" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { "1BAD": { value: "x" } } } } },
     }, "api")).toThrow("invalid key");
   });
 
   it("rejects secret env vars with an inline value", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "secret", key: "a", value: "leaked" } } } } },
     }, "api")).toThrow("must not have a `value`");
   });
 
   it("rejects secret env vars without a key", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { A: { type: "secret" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "secret" } } } } },
     }, "api")).toThrow("must have a `key`");
   });
 
   it("rejects plain env vars with a secret key", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { A: { value: "x", key: "a" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { value: "x", key: "a" } } } } },
     }, "api")).toThrow("must not have a `key`");
   });
 
   it("rejects the legacy {service.output} interpolation syntax in connections", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "connection", value: "{hexclave.projectId}" } } } } },
     }, "api")).toThrow("service output");
   });
 
   it("rejects unknown env var types", () => {
     expect(() => extractServiceDefinition({
-      deployments: { services: { api: { type: "vercel", env: { A: { type: "literal", value: "x" } } } } },
+      "deployments-alpha": { services: { api: { type: "vercel", env: { A: { type: "literal", value: "x" } } } } },
     }, "api")).toThrow("unknown `type`");
   });
 });

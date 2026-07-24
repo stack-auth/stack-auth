@@ -2,7 +2,7 @@
 // config) + operational state (Prisma) + the Vercel write-through.
 //
 // Terminology, because it's easy to mix up:
-// - "service id" is the user-facing key under `deployments.services` in the
+// - "service id" is the user-facing key under `deployments-alpha.services` in the
 //   config (e.g. "api"). It's what the CLI and all API routes use.
 // - The DeploymentService Prisma row is purely operational (Vercel project id,
 //   last-deployed build config, custom domains, runs) and is created lazily.
@@ -46,7 +46,16 @@ import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { VercelDeploymentsClient, VercelApiError, VercelDeploymentFile, getVercelDeploymentsClientOrThrow, getVercelDeploymentsConfigOrNull, sanitizeVercelError } from "./vercel-client";
 
-export type DeploymentServiceDefinition = CompleteConfig["deployments"]["services"][string];
+/**
+ * The app id doubles as the top-level config section key, and it carries the
+ * `-alpha` suffix while the app is in alpha — so `deployments-alpha.services.<id>`
+ * is what users write in hexclave.config.ts. Kept as one constant because every
+ * config write below builds a dot-path from it, and a drifted literal would
+ * write to a section the schema doesn't know about.
+ */
+export const DEPLOYMENTS_CONFIG_SECTION = "deployments-alpha";
+
+export type DeploymentServiceDefinition = CompleteConfig[typeof DEPLOYMENTS_CONFIG_SECTION]["services"][string];
 export type DeploymentEnvVarConfig = DeploymentServiceDefinition["env"][string];
 
 /**
@@ -79,7 +88,7 @@ export const SECRET_KEY_REGEX = DEPLOYMENT_SECRET_KEY_REGEX;
 export const HEXCLAVE_SERVICE_ID = "hexclave";
 
 export function listServiceDefinitions(tenancy: Tenancy): Map<string, DeploymentServiceDefinition> {
-  return new Map(Object.entries(tenancy.config.deployments.services));
+  return new Map(Object.entries(tenancy.config[DEPLOYMENTS_CONFIG_SECTION].services));
 }
 
 export function getServiceDefinitionOrThrow(tenancy: Tenancy, serviceId: string): DeploymentServiceDefinition {
@@ -91,7 +100,7 @@ export function getServiceDefinitionOrThrow(tenancy: Tenancy, serviceId: string)
 }
 
 function describeConfigSourceHint(serviceId: string): string {
-  return `Add a \`deployments.services.${serviceId}\` entry to the project configuration (in the dashboard, or in your hexclave.config.ts if the project's config is pushed from a config file or GitHub).`;
+  return `Add a \`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}\` entry to the project configuration (in the dashboard, or in your hexclave.config.ts if the project's config is pushed from a config file or GitHub).`;
 }
 
 /**
@@ -106,7 +115,7 @@ export async function assertServiceDefinitionsEditable(tenancy: Tenancy): Promis
   });
   if (source.type !== "unlinked") {
     const sourceDescription = source.type === "pushed-from-github" ? "GitHub" : "a config file pushed via the CLI";
-    throw new StatusError(400, `This project's configuration is managed by ${sourceDescription}, so deployment services can't be edited here. Edit the \`deployments.services\` section of your hexclave.config.ts instead.`);
+    throw new StatusError(400, `This project's configuration is managed by ${sourceDescription}, so deployment services can't be edited here. Edit the \`${DEPLOYMENTS_CONFIG_SECTION}.services\` section of your hexclave.config.ts instead.`);
   }
 }
 
@@ -129,9 +138,9 @@ export async function updateServiceDefinitionInConfig(tenancy: Tenancy, serviceI
   const configOverrideOverride = {
     ...Object.fromEntries(
       Object.entries(filterUndefined(definition))
-        .map(([key, value]) => [`deployments.services.${serviceId}.${key}`, value]),
+        .map(([key, value]) => [`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}.${key}`, value]),
     ),
-    ...(env !== undefined ? { [`deployments.services.${serviceId}.env`]: envRecordForConfigWrite(env) } : {}),
+    ...(env !== undefined ? { [`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}.env`]: envRecordForConfigWrite(env) } : {}),
   };
   if (Object.keys(configOverrideOverride).length === 0) return;
   await overrideBranchConfigOverride({
@@ -153,7 +162,7 @@ export async function createServiceDefinitionInConfig(tenancy: Tenancy, serviceI
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
     branchConfigOverrideOverride: {
-      [`deployments.services.${serviceId}`]: {
+      [`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}`]: {
         // Only Vercel-backed services can be created today; the config schema
         // requires the type so every entry states what it is.
         type: "vercel",
@@ -180,7 +189,7 @@ export async function deleteServiceDefinitionFromConfig(tenancy: Tenancy, servic
     projectId: tenancy.project.id,
     branchId: tenancy.branchId,
     branchConfigOverrideOverride: {
-      [`deployments.services.${serviceId}`]: null,
+      [`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}`]: null,
     },
   });
 }

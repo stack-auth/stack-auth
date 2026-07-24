@@ -11,11 +11,11 @@ import { BoardCanvas } from "./board-canvas";
 // any given time, and narrowing would make the null check below
 // "always true/false" and rot the moment the stage changes.
 const STAGE_LABELS: Record<"alpha" | "beta" | "stable", string | null> = { alpha: "Alpha", beta: "Beta", stable: null };
-const stageLabel = STAGE_LABELS[ALL_APPS.deployments.stage];
+const stageLabel = STAGE_LABELS[ALL_APPS["deployments-alpha"].stage];
 
 export default function PageClient() {
   return (
-    <AppEnabledGuard appId="deployments">
+    <AppEnabledGuard appId="deployments-alpha">
       <PageLayout
         fillWidth
         title="Deployments"

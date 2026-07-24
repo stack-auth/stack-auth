@@ -185,7 +185,7 @@ const branchSchemaFuzzerConfig = [{
   onboarding: [{
     requireEmailVerification: [true, false],
   }],
-  deployments: [{
+  "deployments-alpha": [{
     services: [{
       "some-service-id": [{
         type: ["vercel"] as const,

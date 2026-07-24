@@ -448,7 +448,7 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
-  deployments: branchDeploymentsSchema,
+  "deployments-alpha": branchDeploymentsSchema,
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -696,6 +696,16 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-07-24: the deployments app is now `deployments-alpha`, both as its
+  // `apps.installed` key and as its top-level config section, so the alpha stage is
+  // visible in every hexclave.config.ts that opts into it. Both renames are needed:
+  // an installed entry without the config section (or vice versa) is a valid state.
+  if (isBranchOrHigher) {
+    res = renameProperty(res, "deployments", "deployments-alpha");
+    res = renameProperty(res, "apps.installed.deployments", "deployments-alpha");
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -728,6 +738,51 @@ import.meta.vitest?.test("migrateConfigOverride removes legacy branch-level dbSy
 
   expect(migrateConfigOverride("branch", { dbSync })).toEqual({});
   expect(migrateConfigOverride("environment", { dbSync })).toEqual({ dbSync });
+});
+
+import.meta.vitest?.test("migrateConfigOverride renames the deployments app to deployments-alpha", ({ expect }) => {
+  const services = { web: { type: "vercel", rootDirectory: "./" } };
+
+  // Fully nested overrides.
+  expect(migrateConfigOverride("branch", {
+    deployments: { services },
+    apps: { installed: { deployments: { enabled: true } } },
+  })).toEqual({
+    "deployments-alpha": { services },
+    apps: { installed: { "deployments-alpha": { enabled: true } } },
+  });
+
+  // Dot-notation overrides, which is how the dashboard and the Deployments app
+  // itself write single keys. The flat key form is preserved — only the renamed
+  // segment changes — so the override keeps overriding exactly one leaf rather
+  // than being widened into a whole subtree.
+  expect(migrateConfigOverride("branch", {
+    "deployments.services.web.buildCommand": "pnpm build",
+    "apps.installed.deployments.enabled": true,
+  })).toEqual({
+    "deployments-alpha.services.web.buildCommand": "pnpm build",
+    "apps.installed.deployments-alpha.enabled": true,
+  });
+
+  // A service literally named "deployments" sits below the renamed section and
+  // must survive untouched — only the top-level section and the installed-apps
+  // entry are renamed.
+  expect(migrateConfigOverride("branch", {
+    deployments: { services: { deployments: { type: "vercel" } } },
+  })).toEqual({
+    "deployments-alpha": { services: { deployments: { type: "vercel" } } },
+  });
+
+  // Already-migrated configs are left alone (the migration must be idempotent,
+  // since it re-runs on every read).
+  expect(migrateConfigOverride("branch", {
+    "deployments-alpha": { services },
+  })).toEqual({
+    "deployments-alpha": { services },
+  });
+
+  // Project level is not branch-or-higher, so nothing is renamed there.
+  expect(migrateConfigOverride("project", { deployments: { services } })).toEqual({ deployments: { services } });
 });
 
 function removeProperty(obj: Record<string, any>, pathCond: (path: (string | symbol)[]) => boolean): any {
@@ -997,7 +1052,7 @@ const organizationConfigDefaults = {
     }),
   },
 
-  deployments: {
+  "deployments-alpha": {
     services: (key: string) => ({
       type: undefined,
       framework: undefined,

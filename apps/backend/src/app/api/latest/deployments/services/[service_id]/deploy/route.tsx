@@ -1,4 +1,4 @@
-import { DeploymentServiceDefinition, HEXCLAVE_SERVICE_ID, MAX_UPLOAD_BYTES, SECRET_KEY_REGEX, createServiceDefinitionInConfig, envRecordFromRequestBody, listServiceDefinitions, resolveEnvVars, startDeployment, updateServiceDefinitionInConfig } from "@/lib/deployments";
+import { DEPLOYMENTS_CONFIG_SECTION, DeploymentServiceDefinition, HEXCLAVE_SERVICE_ID, MAX_UPLOAD_BYTES, SECRET_KEY_REGEX, createServiceDefinitionInConfig, envRecordFromRequestBody, listServiceDefinitions, resolveEnvVars, startDeployment, updateServiceDefinitionInConfig } from "@/lib/deployments";
 import { getVercelDeploymentsConfigOrNull } from "@/lib/deployments/vercel-client";
 import { getBranchConfigOverrideSource } from "@/lib/config";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -51,7 +51,7 @@ export const POST = createSmartRouteHandler({
         output_directory: yupString().nullable().optional(),
         root_directory: yupString().nullable().optional(),
       }).optional(),
-      // Same shape as `deployments.services.<id>.env` in the config — the CLI
+      // Same shape as `deployments-alpha.services.<id>.env` in the config — the CLI
       // sends its config file's env section verbatim (config-as-code).
       env: yupRecord(
         yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "Invalid env var key"),
@@ -230,5 +230,5 @@ export const POST = createSmartRouteHandler({
 });
 
 function throwServiceNotInGithubConfig(serviceId: string): never {
-  throw new StatusError(400, `This project's configuration is managed by GitHub, and no deployment service with id ${JSON.stringify(serviceId)} is defined in it. Add a \`deployments.services.${serviceId}\` entry to your hexclave.config.ts and push it first.`);
+  throw new StatusError(400, `This project's configuration is managed by GitHub, and no deployment service with id ${JSON.stringify(serviceId)} is defined in it. Add a \`${DEPLOYMENTS_CONFIG_SECTION}.services.${serviceId}\` entry to your hexclave.config.ts and push it first.`);
 }

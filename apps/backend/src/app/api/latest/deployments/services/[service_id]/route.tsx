@@ -78,7 +78,7 @@ export const PATCH = createSmartRouteHandler({
       build_command: yupString().nullable().optional(),
       output_directory: yupString().nullable().optional(),
       root_directory: yupString().nullable().optional(),
-      // Same shape as `deployments.services.<id>.env` in the config.
+      // Same shape as `deployments-alpha.services.<id>.env` in the config.
       env: yupRecord(
         yupString().matches(DEPLOYMENT_ENV_VAR_KEY_REGEX, "Invalid env var key"),
         deploymentEnvVarSchema.defined(),

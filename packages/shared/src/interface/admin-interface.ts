@@ -61,7 +61,7 @@ export type AdminDeploymentEnvVarJson = {
 };
 
 // The config-side shape of one env var, mirroring
-// `deployments.services.<id>.env.<KEY>` in hexclave.config.ts: no type means a
+// `deployments-alpha.services.<id>.env.<KEY>` in hexclave.config.ts: no type means a
 // plain value, "secret" requires `key`, "connection" requires a
 // "serviceId.outputKey" `value`.
 export type AdminDeploymentEnvVarOptions =

@@ -437,8 +437,10 @@ export const ALL_APPS_FRONTEND = {
       </>
     ),
   },
-  deployments: {
+  "deployments-alpha": {
     icon: GraphIcon,
+    // The route stays /projects/<id>/deployments — only the app id carries the
+    // `-alpha` suffix, so existing links and bookmarks keep working.
     href: "deployments",
     navigationItems: [
       { displayName: "Services", href: "." },
