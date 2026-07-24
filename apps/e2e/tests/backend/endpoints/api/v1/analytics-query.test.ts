@@ -242,6 +242,22 @@ it("validates required query field", async ({ expect }) => {
   `);
 });
 
+it("returns ALIAS_REQUIRED (code 206) as a safe user-facing query error", async ({ expect }) => {
+  // Missing JOIN subquery aliases is a user/AI SQL mistake. 206 is classified
+  // SAFE so the raw ClickHouse message is returned (and we do not Sentry-capture).
+  const response = await runQuery({
+    query: "SELECT * FROM (SELECT 1 AS a) CROSS JOIN (SELECT 2 AS b) LIMIT 1",
+  });
+
+  expect(response.status).toBe(400);
+  expect(response.body?.code).toBe("ANALYTICS_QUERY_ERROR");
+  const errorText = String(response.body?.error ?? "");
+  expect(errorText).toMatch(/alias/i);
+  // SAFE codes return the raw CH message, not the redacted unknown-code wrapper.
+  expect(errorText).not.toContain("not known");
+  expect(errorText).not.toBe("Error during execution of this query.");
+});
+
 it("handles invalid SQL query", async ({ expect }) => {
   const response = await runQuery({ query: "INVALID SQL QUERY" });
 
