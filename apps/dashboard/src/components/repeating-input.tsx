@@ -234,19 +234,20 @@ export function RepeatingInput({
           <div className="border-t border-black/[0.06] dark:border-white/[0.06] p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
             <div className="flex gap-2">
-              <DesignInput
-                type="number"
-                min={1}
-                size="sm"
-                className="w-20"
-                value={effectiveSelection === 'custom' ? intervalCount : 1}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (val > 0) {
-                    applyCustom(val, effectiveUnit);
-                  }
-                }}
-              />
+              <div className="w-20 shrink-0">
+                <DesignInput
+                  type="number"
+                  min={1}
+                  size="sm"
+                  value={effectiveSelection === 'custom' ? intervalCount : 1}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (val > 0) {
+                      applyCustom(val, effectiveUnit);
+                    }
+                  }}
+                />
+              </div>
               <DesignSelectorDropdown
                 value={effectiveUnit}
                 onValueChange={(v) => {

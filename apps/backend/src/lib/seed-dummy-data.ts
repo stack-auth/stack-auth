@@ -743,7 +743,6 @@ export function buildDummyPaymentsSetup(): PaymentsSetup {
       customerType: 'team',
       serverOnly: false,
       stackable: false,
-      freeTrial: twoWeekInterval as any,
       prices: {
         monthly: {
           USD: '39',

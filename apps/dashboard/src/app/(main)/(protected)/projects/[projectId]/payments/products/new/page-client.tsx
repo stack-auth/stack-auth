@@ -26,7 +26,7 @@ import {
 } from "@/components/ui";
 import { useUpdateConfig } from "@/components/config-update";
 import { cn } from "@/lib/utils";
-import { ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@hexclave/shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@hexclave/shared/dist/schema-fields";
 import { typedEntries } from "@hexclave/shared/dist/utils/objects";
@@ -70,13 +70,6 @@ const CUSTOMER_TYPE_OPTIONS = [
     color: 'amber',
   },
 ] as const;
-
-const FREE_TRIAL_UNIT_OPTIONS = [
-  { value: 'day', label: 'days' },
-  { value: 'week', label: 'weeks' },
-  { value: 'month', label: 'months' },
-  { value: 'year', label: 'years' },
-];
 
 const COLOR_CLASSES = {
   blue: {
@@ -311,7 +304,6 @@ export default function PageClient() {
   const [isInlineProduct, setIsInlineProduct] = useState(false);
   const [prices, setPrices] = useState<Record<string, Price>>(duplicatePrices);
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(duplicateData?.includedItems ?? {});
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(duplicateData?.freeTrial);
 
   // Dialog states
   const [showProductLineDialog, setShowProductLineDialog] = useState(false);
@@ -390,7 +382,6 @@ export default function PageClient() {
     prices,
     includedItems,
     serverOnly,
-    freeTrial,
   };
 
   const handleSelectCustomerType = (type: 'user' | 'team' | 'custom') => {
@@ -492,7 +483,6 @@ export default function PageClient() {
         prices,
         includedItems,
         serverOnly,
-        freeTrial,
       };
 
       const success = await updateConfig({
@@ -985,48 +975,6 @@ ${Object.entries(prices).map(([id, price]) => {
                     </div>
                   </>
                 )}
-
-                {/* Free Trial */}
-                <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Offer a free trial period?</span>
-                <div className="py-2 flex items-center border-b border-border/20">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      id="free-trial"
-                      checked={!!freeTrial}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setFreeTrial([7, 'day']);
-                        } else {
-                          setFreeTrial(undefined);
-                        }
-                      }}
-                    />
-                    <ClockIcon className="h-4 w-4 text-foreground/50" />
-                    <span className="text-sm font-medium">Free trial</span>
-                  </label>
-                  {freeTrial && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <DesignInput
-                        type="number"
-                        min={1}
-                        value={freeTrial[0]}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 1;
-                          setFreeTrial([val, freeTrial[1]]);
-                        }}
-                        size="sm"
-                        className="w-16"
-                      />
-                      <DesignSelectorDropdown
-                        value={freeTrial[1]}
-                        onValueChange={(value) => setFreeTrial([freeTrial[0], value as 'day' | 'week' | 'month' | 'year'])}
-                        options={FREE_TRIAL_UNIT_OPTIONS}
-                        size="sm"
-                        className="w-28 shrink-0"
-                      />
-                    </div>
-                  )}
-                </div>
 
                 {/* Product Line */}
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>

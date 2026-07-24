@@ -69,7 +69,6 @@ export function ProductDialog({
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
   const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices || {});
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(editingProduct?.includedItems || {});
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(editingProduct?.freeTrial || undefined);
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
@@ -175,7 +174,6 @@ export function ProductDialog({
       prices,
       includedItems,
       serverOnly,
-      freeTrial,
     };
 
     await onSave(productId, product);

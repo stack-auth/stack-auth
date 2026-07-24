@@ -1,12 +1,12 @@
 import { CustomerType } from "@/generated/prisma/client";
-import { customerOwnsProduct, ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct } from "@/lib/payments";
+import { customerOwnsProduct, ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, inlineProductSchemaWithLegacyProductLevelFreeTrial, normalizeInlineProductLegacyProductLevelFreeTrial } from "@/lib/payments";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getHexclaveStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared/dist/known-errors";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, urlSchema, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 import { getEnvVariable } from "@hexclave/shared/dist/utils/env";
 import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
@@ -43,7 +43,7 @@ export const POST = createSmartRouteHandler({
           exampleValue: "prod_premium_monthly"
         }
       }),
-      product_inline: inlineProductSchema.optional().meta({
+      product_inline: inlineProductSchemaWithLegacyProductLevelFreeTrial.optional().meta({
         openapiField: {
           description: "Inline product definition. Either this or product_id should be given."
         }
@@ -83,7 +83,8 @@ export const POST = createSmartRouteHandler({
       });
     }
 
-    const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, req.body.product_inline);
+    const productInline = normalizeInlineProductLegacyProductLevelFreeTrial(req.body.product_inline);
+    const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, productInline);
     const customerType = productConfig.customerType;
     if (req.body.customer_type !== customerType) {
       throw new KnownErrors.ProductCustomerTypeDoesNotMatch(req.body.product_id, req.body.customer_id, customerType, req.body.customer_type);

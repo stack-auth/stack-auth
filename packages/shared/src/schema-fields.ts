@@ -698,7 +698,6 @@ export const productSchema = yupObject({
     ),
   ).optional().meta({ openapiField: { description: 'The products that this product is an add-on to. If this is set, the customer must already have one of the products in the record to be able to purchase this product.', exampleValue: { "product-id": true } } }),
   customerType: customerTypeSchema.defined(),
-  freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
   prices: pricesSchema.defined(),
@@ -710,6 +709,31 @@ export const productSchema = yupObject({
       expires: yupString().oneOf(['never', 'when-purchase-expires', 'when-repeated']).optional(),
     }),
   ),
+});
+
+import.meta.vitest?.test("productSchema rejects product-level freeTrial and keeps price-level freeTrial", async ({ expect }) => {
+  const product = {
+    displayName: "Pro",
+    customerType: "user",
+    serverOnly: false,
+    stackable: false,
+    prices: {
+      monthly: {
+        USD: "10",
+        freeTrial: [14, "day"],
+      },
+    },
+    includedItems: {},
+  };
+
+  await expect(yupValidate(productSchema, product, { context: { noUnknownPathPrefixes: [""] } })).resolves.toMatchObject({
+    prices: {
+      monthly: {
+        freeTrial: [14, "day"],
+      },
+    },
+  });
+  await expect(yupValidate(productSchema, { ...product, freeTrial: [14, "day"] }, { context: { noUnknownPathPrefixes: [""] } })).rejects.toThrow("Object contains unknown properties: freeTrial");
 });
 
 const productMetadataExample = { featureFlag: true, source: 'marketing-campaign' } as const;
@@ -727,7 +751,6 @@ export const productSchemaWithMetadata = productSchema.concat(yupObject({
 export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
-  free_trial: dayIntervalSchema.optional(),
   server_only: yupBoolean().default(true),
   stackable: yupBoolean().default(false),
   prices: yupRecord(
@@ -749,6 +772,31 @@ export const inlineProductSchema = yupObject({
   client_metadata: productClientMetadataSchema.optional(),
   client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
   server_metadata: productServerMetadataSchema.optional(),
+});
+
+import.meta.vitest?.test("inlineProductSchema rejects product-level free_trial and keeps price-level free_trial", async ({ expect }) => {
+  const inlineProduct = {
+    display_name: "Pro",
+    customer_type: "user",
+    server_only: true,
+    stackable: false,
+    prices: {
+      monthly: {
+        USD: "10",
+        free_trial: [14, "day"],
+      },
+    },
+    included_items: {},
+  };
+
+  await expect(yupValidate(inlineProductSchema, inlineProduct, { context: { noUnknownPathPrefixes: [""] } })).resolves.toMatchObject({
+    prices: {
+      monthly: {
+        free_trial: [14, "day"],
+      },
+    },
+  });
+  await expect(yupValidate(inlineProductSchema, { ...inlineProduct, free_trial: [14, "day"] }, { context: { noUnknownPathPrefixes: [""] } })).rejects.toThrow("Object contains unknown properties: free_trial");
 });
 
 // Users

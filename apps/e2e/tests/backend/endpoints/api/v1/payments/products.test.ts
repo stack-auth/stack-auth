@@ -900,6 +900,72 @@ it("should grant inline product without needing configuration", async ({ expect 
   `);
 });
 
+it("should migrate legacy inline product-level free_trial when directly granting a product", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  const { userId } = await Auth.fastSignUp();
+
+  const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_inline: {
+        display_name: "Legacy Inline Trial Grant",
+        customer_type: "user",
+        free_trial: [7, "day"],
+        server_only: true,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+          annual: {
+            USD: "10000",
+            interval: [1, "year"],
+            free_trial: [14, "day"],
+          },
+        },
+        included_items: {},
+      },
+    },
+  });
+  expect(grantResponse.status).toBe(200);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "server",
+  });
+  expect(listResponse.status).toBe(200);
+  expect(listResponse.body.items).toHaveLength(1);
+  const product = listResponse.body.items[0].product;
+  expect(product).not.toHaveProperty("free_trial");
+  expect(product.prices).toMatchInlineSnapshot(`
+    {
+      "annual": {
+        "USD": "10000",
+        "free_trial": [
+          14,
+          "day",
+        ],
+        "interval": [
+          1,
+          "year",
+        ],
+      },
+      "monthly": {
+        "USD": "1000",
+        "free_trial": [
+          7,
+          "day",
+        ],
+        "interval": [
+          1,
+          "month",
+        ],
+      },
+    }
+  `);
+});
+
 it("should allow canceling an inline product subscription via subscription_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
