@@ -1,0 +1,25 @@
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/page-client.test.ts
+  s_50c6b5323dd4a8::t_b89814af873d65 55,75,165-171,174
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/page-client.tsx
+  s_50c6b5323dd4a8::t_7b56046aa14952 125,145,156,176,190,432-433,461
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/waterfall.test.ts
+  s_50c6b5323dd4a8::t_d2e3222730b2fd 1-10
+apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/traces/waterfall.tsx
+  s_50c6b5323dd4a8::t_376744ea9407ad 115-118,426
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "b2595e30200b58226e1d9524a895a78b8ed07852",
+  "prompts": {},
+  "sessions": {
+    "s_50c6b5323dd4a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f918c-2a02-7480-b428-a077e699f59f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mantrakp04 <mantrakp@gmail.com>"
+    }
+  }
+}
