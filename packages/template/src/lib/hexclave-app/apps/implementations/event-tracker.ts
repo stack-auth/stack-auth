@@ -2,7 +2,7 @@ import { isBrowserLike } from "@hexclave/shared/dist/utils/env";
 import { CLICKMAP_ROOT_ID, DEV_TOOL_ROOT_ID } from "@hexclave/shared/dist/utils/dev-tool";
 import { cssEscapeIdent } from "@hexclave/shared/dist/utils/dom";
 import { buildElementsChain, ELEMENTS_CHAIN_MAX_DEPTH } from "@hexclave/shared/dist/utils/elements-chain";
-import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { ignoreUnhandledRejection, runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { Result } from "@hexclave/shared/dist/utils/results";
 import { CUSTOM_TELEMETRY_MAX_ITEM_DATA_BYTES, CUSTOM_TELEMETRY_MAX_PARENT_CHAIN, CUSTOM_TELEMETRY_NAME_RE } from "@hexclave/shared/dist/utils/telemetry";
 import { generateUuid, isAdBlockerNetworkError, isAnalyticsNotEnabledError } from "./session-replay";
@@ -87,8 +87,15 @@ type Settler = {
   reject: (error: unknown) => void,
 };
 
+// Keep fire-and-forget telemetry from becoming an unhandled rejection while
+// returning the original promise so callers that await it still observe failure.
+export function preCaught<T>(promise: Promise<T>): Promise<T> {
+  ignoreUnhandledRejection(promise);
+  return promise;
+}
+
 export function rejectedPreCaught(message: string): Promise<never> {
-  return Promise.reject(new Error(`Hexclave analytics: ${message}`));
+  return preCaught(Promise.reject(new Error(`Hexclave analytics: ${message}`)));
 }
 
 export function getCustomTelemetryNameError(kind: "event" | "span", name: unknown): string | null {
@@ -410,7 +417,7 @@ export class EventTracker {
     const resolved = resolveParentIds({ explicit: options?.parentIds, ambient: this._ambientParentRefs() });
     if ("error" in resolved) return rejectedPreCaught(resolved.error);
     if (this._disabled) {
-      return Promise.reject(new Error("Hexclave analytics: telemetry is disabled"));
+      return rejectedPreCaught("telemetry is disabled");
     }
 
     const event: TrackedEvent = {
@@ -420,9 +427,9 @@ export class EventTracker {
       ...resolved.ids.length > 0 ? { parent_span_ids: resolved.ids } : {},
     };
     let settler!: Settler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     this._eventSettlers.set(event, settler);
     this._pushEvent(event);
     return promise;
@@ -562,9 +569,9 @@ export class EventTracker {
 
   private _enqueueSpanUpdate(row: SpanUpdateRow): Promise<void> {
     let settler!: Settler;
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = preCaught(new Promise<void>((resolve, reject) => {
       settler = { resolve, reject };
-    });
+    }));
     const previous = this._spanUpdates.get(row.span_id);
     if (previous) {
       this._approxBytes -= JSON.stringify(previous.row).length;

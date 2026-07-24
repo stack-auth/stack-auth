@@ -118,7 +118,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      * returned promise resolves when the batch carrying the event is
      * acknowledged (up to one flush interval later — call `flush()` to send
      * immediately). Invalid input and unavailable analytics reject instead of
-     * silently dropping the event.
+     * silently dropping the event; fire-and-forget use is safe because the SDK
+     * observes rejected promises internally.
      */
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackOptions): Promise<void>,
 
