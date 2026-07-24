@@ -36,7 +36,10 @@
                           "null"
                         ],
                         "example": "johndoe@example.com",
-                        "description": "Primary email"
+                        "description": "Primary email",
+                        "enum": [
+                          null
+                        ]
                       },
                       "primary_email_verified": {
                         "type": "boolean",
@@ -54,7 +57,10 @@
                           "null"
                         ],
                         "example": "John Doe",
-                        "description": "Human-readable user display name. This is not a unique identifier."
+                        "description": "Human-readable user display name. This is not a unique identifier.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "selected_team": {
                         "type": [
@@ -93,7 +99,10 @@
                               "null"
                             ],
                             "example": "https://example.com/image.jpg",
-                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                            "enum": [
+                              null
+                            ]
                           },
                           "client_metadata": {
                             "type": [
@@ -128,7 +137,10 @@
                           "null"
                         ],
                         "example": "team-id",
-                        "description": "ID of the team currently selected by the user"
+                        "description": "ID of the team currently selected by the user",
+                        "enum": [
+                          null
+                        ]
                       },
                       "profile_image_url": {
                         "type": [
@@ -136,7 +148,10 @@
                           "null"
                         ],
                         "example": "https://example.com/image.jpg",
-                        "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                        "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "signed_up_at_millis": {
                         "type": "number",
@@ -217,6 +232,9 @@
                           "string",
                           "null"
                         ],
+                        "enum": [
+                          null
+                        ],
                         "example": null,
                         "description": "Public reason shown to the user explaining why they are restricted. Optional."
                       },
@@ -224,6 +242,9 @@
                         "type": [
                           "string",
                           "null"
+                        ],
+                        "enum": [
+                          null
                         ],
                         "example": null,
                         "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
@@ -234,7 +255,10 @@
                           "null"
                         ],
                         "example": "US",
-                        "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
+                        "description": "Best-effort ISO country code captured at sign-up time from request geo headers.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "risk_scores": {
                         "type": "object",
@@ -339,7 +363,10 @@
                           "null"
                         ],
                         "example": "johndoe@example.com",
-                        "description": "Primary email"
+                        "description": "Primary email",
+                        "enum": [
+                          null
+                        ]
                       },
                       "primary_email_verified": {
                         "type": "boolean",
@@ -357,7 +384,10 @@
                           "null"
                         ],
                         "example": "John Doe",
-                        "description": "Human-readable user display name. This is not a unique identifier."
+                        "description": "Human-readable user display name. This is not a unique identifier.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "selected_team": {
                         "type": [
@@ -396,7 +426,10 @@
                               "null"
                             ],
                             "example": "https://example.com/image.jpg",
-                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                            "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                            "enum": [
+                              null
+                            ]
                           },
                           "client_metadata": {
                             "type": [
@@ -431,7 +464,10 @@
                           "null"
                         ],
                         "example": "team-id",
-                        "description": "ID of the team currently selected by the user"
+                        "description": "ID of the team currently selected by the user",
+                        "enum": [
+                          null
+                        ]
                       },
                       "profile_image_url": {
                         "type": [
@@ -439,7 +475,10 @@
                           "null"
                         ],
                         "example": "https://example.com/image.jpg",
-                        "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                        "description": "URL of the profile image for user. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "signed_up_at_millis": {
                         "type": "number",
@@ -520,6 +559,9 @@
                           "string",
                           "null"
                         ],
+                        "enum": [
+                          null
+                        ],
                         "example": null,
                         "description": "Public reason shown to the user explaining why they are restricted. Optional."
                       },
@@ -527,6 +569,9 @@
                         "type": [
                           "string",
                           "null"
+                        ],
+                        "enum": [
+                          null
                         ],
                         "example": null,
                         "description": "Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above."
@@ -537,7 +582,10 @@
                           "null"
                         ],
                         "example": "US",
-                        "description": "Best-effort ISO country code captured at sign-up time from request geo headers."
+                        "description": "Best-effort ISO country code captured at sign-up time from request geo headers.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "risk_scores": {
                         "type": "object",
@@ -736,7 +784,10 @@
                           "null"
                         ],
                         "example": "https://example.com/image.jpg",
-                        "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                        "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "client_metadata": {
                         "type": [
@@ -845,7 +896,10 @@
                           "null"
                         ],
                         "example": "https://example.com/image.jpg",
-                        "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in."
+                        "description": "URL of the profile image for team. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.",
+                        "enum": [
+                          null
+                        ]
                       },
                       "client_metadata": {
                         "type": [

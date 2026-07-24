@@ -229,9 +229,14 @@ function PageClientInner() {
     if (selectedProject == null || selectedProjectStatus !== "completed") {
       return;
     }
+    // Already-onboarded projects can re-enter the link-existing flow from the
+    // project settings page, so don't bounce them back to the project.
+    if (mode === "link-existing") {
+      return;
+    }
 
     router.replace(`/projects/${encodeURIComponent(selectedProject.id)}`);
-  }, [router, selectedProject, selectedProjectStatus]);
+  }, [mode, router, selectedProject, selectedProjectStatus]);
 
   const saveSelectedProjectOnboardingProgress = async (project: AdminOwnedProject, update: OnboardingProgressUpdate) => {
     const projectInternals = getStackAppInternals(project.app);
@@ -316,7 +321,7 @@ function PageClientInner() {
     );
   }
 
-  if (selectedProject != null && selectedProjectStatus === "completed") {
+  if (selectedProject != null && selectedProjectStatus === "completed" && mode !== "link-existing") {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
         <Spinner size={24} />

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { Link } from "@/components/link";
-import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, CursorClickIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, GraphIcon, KeyIcon, MailboxIcon, MonitorPlayIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TerminalWindowIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@hexclave/next";
 import type { AppId } from "@hexclave/shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@hexclave/shared/dist/utils/urls";
@@ -435,6 +435,23 @@ export const ALL_APPS_FRONTEND = {
       <>
         <p>CLI Auth shows real-time insight into how CLI authentication is used in your project.</p>
         <p>Monitor recent login attempts, see which users have active CLI refresh tokens, and track session health at a glance.</p>
+      </>
+    ),
+  },
+  "deployments-alpha": {
+    icon: GraphIcon,
+    // The route stays /projects/<id>/deployments — only the app id carries the
+    // `-alpha` suffix, so existing links and bookmarks keep working.
+    href: "deployments",
+    navigationItems: [
+      { displayName: "Services", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Deployments gives your project a visual canvas for the services that run your app.</p>
+        <p>Drag static sites, containers, and your Hexclave backend around a grid, then wire outputs from one service straight into another service&apos;s environment variables.</p>
+        <p>Every project keeps exactly one Hexclave service at its center, so credentials like the secret server key are one reference away.</p>
       </>
     ),
   },

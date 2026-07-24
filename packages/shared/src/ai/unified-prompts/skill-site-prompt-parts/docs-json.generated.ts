@@ -161,6 +161,7 @@ const docsJson = {
             "pages": [
               "guides/other/self-host",
               "guides/other/known-errors",
+              "guides/other/dev-tool",
               "migration",
               {
                 "group": "Tutorials",
