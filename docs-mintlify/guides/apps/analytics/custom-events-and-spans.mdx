@@ -37,7 +37,7 @@ import { hexclaveClientApp } from "./hexclave";
 hexclaveClientApp.trackEvent("item-added", { sku: "T-100", quantity: 2 });
 ```
 
-Events are buffered and sent in batches (every 10 seconds in the browser, or sooner when the buffer fills). The returned promise resolves when the batch carrying the event is acknowledged — which can be up to one flush interval later — and rejects on invalid input, unavailable analytics, or send failure. Call `hexclaveClientApp.flush()` to send everything immediately instead of awaiting individual calls.
+Events are buffered and sent in batches (every 10 seconds in the browser, or sooner when the buffer fills). The returned promise resolves when the batch carrying the event is acknowledged — which can be up to one flush interval later — and rejects on invalid input, unavailable analytics, or send failure. The SDK observes that rejection internally, so fire-and-forget calls do not produce unhandled-rejection noise; callers that await the same promise still receive the error. Call `hexclaveClientApp.flush()` to send everything immediately instead of awaiting individual calls.
 
 Events work even for signed-out visitors: batches are attributed to an anonymous user until they sign in.
 
