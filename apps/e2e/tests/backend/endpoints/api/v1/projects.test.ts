@@ -59,6 +59,7 @@ it("gets current project (internal)", async ({ expect }) => {
         "config_warnings": [],
         "display_name": "Hexclave Dashboard",
         "id": "internal",
+        "is_development_environment": false,
         "pushed_config_error": null,
       },
       "headers": Headers { <some fields may have been hidden> },

@@ -104,6 +104,12 @@ function isSchemaMixedDescription(value: yup.SchemaFieldDescription): value is y
   return value.type === 'mixed';
 }
 
+function isFieldNullable(field: yup.SchemaFieldDescription): boolean {
+  // `SchemaFieldDescription` is a union, and its ref/lazy members don't carry a `nullable` flag.
+  // Narrow with an `in` check before reading it; ref/lazy descriptions are treated as non-nullable here.
+  return "nullable" in field && field.nullable;
+}
+
 function isSchemaArrayDescription(value: yup.SchemaFieldDescription): value is yup.SchemaInnerTypeDescription & { type: 'array', innerType: yup.SchemaInnerTypeDescription } {
   return value.type === 'array';
 }
@@ -118,6 +124,12 @@ function isSchemaStringDescription(value: yup.SchemaFieldDescription): value is 
 
 function isSchemaNumberDescription(value: yup.SchemaFieldDescription): value is yup.SchemaDescription & { type: 'number' } {
   return value.type === 'number';
+}
+
+function assertResolvedSchemaDescription(value: yup.SchemaFieldDescription): asserts value is yup.SchemaDescription {
+  if (!("nullable" in value)) {
+    throw new HexclaveAssertionError('OpenAPI generator cannot process unresolved schema descriptions', { actual: value });
+  }
 }
 
 function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescription, audience: 'client' | 'server' | 'admin') {
@@ -194,11 +206,13 @@ function parseRouteHandler(options: {
 }
 
 function getOpenApiType(field: yup.SchemaFieldDescription, type: string): string | [string, "null"] {
+  assertResolvedSchemaDescription(field);
   // OpenAPI 3.1 uses JSON Schema type arrays instead of the removed OpenAPI 3.0 `nullable` keyword.
-  return field.nullable ? [type, "null"] : type;
+  return isFieldNullable(field) ? [type, "null"] : type;
 }
 
 function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capitalize<CrudlOperation>): { type: string | [string, "null"], items?: any, properties?: any, required?: any, default?: any } | undefined {
+  assertResolvedSchemaDescription(field);
   const meta = "meta" in field ? field.meta : {};
   if (meta?.openapiField?.hidden) {
     return undefined;
@@ -218,7 +232,7 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
     case 'string': {
       const oneOf = (field as any).oneOf as unknown[] | undefined;
       // `enum` is an additional constraint, so it must permit null whenever the type does.
-      const enumValues = oneOf && field.nullable && !oneOf.includes(null) ? [...oneOf, null] : oneOf;
+      const enumValues = oneOf && isFieldNullable(field) && !oneOf.includes(null) ? [...oneOf, null] : oneOf;
       return {
         type: getOpenApiType(field, 'string'),
         ...enumValues && enumValues.length > 0 ? { enum: enumValues } : {},
@@ -242,7 +256,7 @@ function getFieldSchema(field: yup.SchemaFieldDescription, crudOperation?: Capit
         properties: typedFromEntries(typedEntries((field as any).fields)
           .map(([key, field]) => [key, getFieldSchema(field, crudOperation)])),
         required: typedEntries((field as any).fields)
-          .filter(([_, field]) => !(field as any).optional && !(field as any).nullable && getFieldSchema(field as any, crudOperation))
+          .filter(([_, field]) => !(field as any).optional && !isFieldNullable(field as any) && getFieldSchema(field as any, crudOperation))
           .map(([key]) => key),
         ...openapiFieldExtra
       };
@@ -311,7 +325,7 @@ function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperati
       schema,
       description: meta?.openapiField?.description,
       example: meta?.openapiField?.exampleValue,
-      required: !(field as any).optional && !(field as any).nullable && !!schema,
+      required: !(field as any).optional && !isFieldNullable(field) && !!schema,
     };
   }).filter((x) => x.schema !== undefined);
 }
@@ -338,7 +352,7 @@ function toRequired(description: yup.SchemaFieldDescription, crudOperation?: Cap
   let res: string[] = [];
   if (isSchemaObjectDescription(description)) {
     res = Object.entries(description.fields)
-      .filter(([_, field]) => !(field as any).optional && !(field as any).nullable && getFieldSchema(field, crudOperation))
+      .filter(([_, field]) => !(field as any).optional && !isFieldNullable(field) && getFieldSchema(field, crudOperation))
       .map(([key]) => key);
   } else if (isSchemaArrayDescription(description)) {
     res = [];
