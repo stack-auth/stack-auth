@@ -24,8 +24,8 @@ export type AdapterUser = ServerUser;
 /**
  * Accepts anything with request-like headers (a fetch `Request`, a Node
  * `IncomingMessage`, `{ headers: Record<string, string | null> }`) and returns
- * it as a RequestLike, or null when there is nothing usable — adapters treat
- * that as an unauthenticated, unlinked call rather than an error.
+ * it as a RequestLike. A missing request is adapter misconfiguration, not an
+ * unauthenticated caller: valid unauthenticated requests still have headers.
  */
 export function normalizeRequestLike(input: unknown): RequestLike | null {
   if (typeof input !== "object" || input === null) return null;
@@ -40,19 +40,20 @@ export function normalizeRequestLike(input: unknown): RequestLike | null {
  * done until something actually asks for the user).
  */
 export type HexclaveRequestContext = {
-  request: RequestLike | null,
+  request: RequestLike,
   getUser: () => Promise<AdapterUser | null>,
 };
 
 export function createRequestContext(app: AdapterServerApp, requestInput: unknown): HexclaveRequestContext {
   const request = normalizeRequestLike(requestInput);
+  if (request === null) {
+    throw new Error("Hexclave adapter could not find a request-like object with headers. Configure the adapter's request extractor.");
+  }
   let userPromise: Promise<AdapterUser | null> | null = null;
   return {
     request,
     getUser: () => {
-      userPromise ??= request === null
-        ? Promise.resolve(null)
-        : (app.getUser as (options: { tokenStore: RequestLike, or: "return-null" }) => Promise<AdapterUser | null>)({ tokenStore: request, or: "return-null" });
+      userPromise ??= (app.getUser as (options: { tokenStore: RequestLike, or: "return-null" }) => Promise<AdapterUser | null>)({ tokenStore: request, or: "return-null" });
       return userPromise;
     },
   };
@@ -117,6 +118,6 @@ export async function runRequestSpan<T>(
 ): Promise<T> {
   return await runAdapterSpan(app, {
     ...info,
-    link: context.request !== null ? { request: context.request } : undefined,
+    link: { request: context.request },
   }, fn);
 }

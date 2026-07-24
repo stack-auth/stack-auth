@@ -63,7 +63,10 @@ export function createHexclaveORPC(app: AdapterServerApp, options?: {
         throw new Error("Hexclave oRPC adapter: `required: true` needs an `unauthorized` error factory (e.g. () => new ORPCError(\"UNAUTHORIZED\")) — oRPC errors cannot be constructed without your orpc import.");
       }
       return async ({ context, path, next }: ORPCMiddlewareOpts) => {
-        const hexclave = context.hexclave ?? createRequestContext(app, null);
+        if (context.hexclave === undefined) {
+          throw new Error("Hexclave oRPC adapter middleware needs `wrapFetchHandler()` or a Hexclave request context.");
+        }
+        const hexclave = context.hexclave;
         const run = async (spanActive: boolean) => {
           const user = await hexclave.getUser();
           if (middlewareOptions?.required && user === null) {

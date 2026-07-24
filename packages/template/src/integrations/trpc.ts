@@ -3,13 +3,14 @@ import { AdapterServerApp, AdapterTelemetryOptions, AdapterUser, createRequestCo
 /**
  * Hexclave adapter for tRPC (v11). Zero runtime dependency on `@trpc/server`:
  * the factory is handed the consumer's `t` instance (from `initTRPC`) and only
- * calls `t.middleware`; the `required` rejection is shaped like a `TRPCError`
- * with code `UNAUTHORIZED` (tRPC's error normalization accepts Error objects
- * named "TRPCError"), overridable via `unauthorized`.
+ * calls `t.middleware`. Because `TRPCError` is constructor-branded, protected
+ * procedures require an error factory created from the consumer's tRPC import.
  *
  * ```ts
  * const t = initTRPC.context<HexclaveTRPCContext>().create();
- * const hexclave = createHexclaveTRPC(t, stackServerApp);
+ * const hexclave = createHexclaveTRPC(t, stackServerApp, {
+ *   unauthorized: () => new TRPCError({ code: "UNAUTHORIZED" }),
+ * });
  *
  * export const createContext = hexclave.createContext; // pass to your adapter
  * export const publicProcedure = t.procedure.use(hexclave.middleware());
@@ -50,15 +51,6 @@ export type HexclaveTRPCMiddlewareOptions = {
   unauthorized?: () => Error,
 };
 
-function defaultUnauthorized(): Error {
-  // Structurally a TRPCError with code UNAUTHORIZED — accepted by tRPC's error
-  // normalization without importing @trpc/server.
-  const error = new Error("You must be signed in to call this procedure. (Hexclave: no valid session on the request.)");
-  error.name = "TRPCError";
-  (error as Error & { code: string }).code = "UNAUTHORIZED";
-  return error;
-}
-
 export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: AdapterServerApp, options?: {
   /** Override how the request is pulled out of the adapter's context options. */
   getRequest?: (contextOptions: Record<string, unknown>) => unknown,
@@ -80,6 +72,10 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
 
     /** A `t.middleware(...)` wrapping the procedure in a request-linked span + resolving `ctx.user`. */
     middleware: (middlewareOptions?: HexclaveTRPCMiddlewareOptions): ReturnType<T["middleware"]> => {
+      const unauthorized = middlewareOptions?.unauthorized ?? options?.unauthorized;
+      if (middlewareOptions?.required && unauthorized === undefined) {
+        throw new Error("Hexclave tRPC adapter: `required: true` needs an `unauthorized` error factory (e.g. () => new TRPCError({ code: \"UNAUTHORIZED\" })).");
+      }
       return t.middleware(async ({ ctx, path, type, next }: TRPCMiddlewareOpts) => {
         const hexclave = ctx.hexclave
           ?? createRequestContext(app, middlewareOptions?.getRequest?.(ctx) ?? null);
@@ -90,7 +86,7 @@ export function createHexclaveTRPC<T extends TRPCInstanceLike>(t: T, app: Adapte
         }, async () => {
           const user = await hexclave.getUser();
           if (middlewareOptions?.required && user === null) {
-            throw (middlewareOptions.unauthorized ?? options?.unauthorized ?? defaultUnauthorized)();
+            throw unauthorized!();
           }
           return await next({ ctx: { ...ctx, hexclave, user } });
         });
