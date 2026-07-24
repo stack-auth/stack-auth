@@ -185,13 +185,6 @@ export type AdminProject = {
   getDeploymentRunLogs(this: AdminProject, runId: string, options?: { signal?: AbortSignal }): Promise<string>,
 
   /**
-   * Opens a live tail of the service's runtime logs (chunked plain text, held
-   * open for a few minutes). Read the returned Response's body incrementally;
-   * awaiting `text()` would block until the tail ends.
-   */
-  fetchDeploymentRuntimeLogs(this: AdminProject, serviceId: string, options?: { signal?: AbortSignal }): Promise<Response>,
-
-  /**
    * Adds a custom domain to a deployment service.
    */
   addDeploymentServiceDomain(this: AdminProject, serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void>,

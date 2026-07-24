@@ -310,24 +310,6 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, deployment.events);
   }
 
-  // Runtime log tail (NDJSON): emits a few deterministic lines, then ends.
-  // The real endpoint holds the connection for minutes; ending immediately is
-  // fine for tests (the backend just proxies until upstream closes).
-  if ((match = path.match(/^\/v1\/projects\/([^/]+)\/deployments\/([^/]+)\/runtime-logs$/)) != null && req.method === "GET") {
-    const project = findProject(decodeURIComponent(match[1]));
-    const deployment = deploymentsById.get(decodeURIComponent(match[2]));
-    if (project == null || deployment == null) return sendError(res, 404, "not_found", "Deployment not found");
-    res.writeHead(200, { "content-type": "application/x-ndjson" });
-    const envDump = [...project.envVars.values()].map((envVar) => `${envVar.key}=${envVar.value}`).join(" ");
-    res.write(JSON.stringify({ timestampInMs: 1700000010000, level: "info", message: "GET / 200 in 12ms" }) + "\n");
-    res.write(JSON.stringify({ timestampInMs: 1700000011000, level: "warning", message: "Slow request: GET /api/data 200 in 1204ms" }) + "\n");
-    if (envDump !== "") {
-      // Lets tests assert that runtime-log redaction works too.
-      res.write(JSON.stringify({ timestampInMs: 1700000012000, level: "info", message: `Runtime environment: ${envDump}` }) + "\n");
-    }
-    return res.end();
-  }
-
   return sendError(res, 404, "not_found", `Mock has no handler for ${req.method} ${path}`);
 });
 

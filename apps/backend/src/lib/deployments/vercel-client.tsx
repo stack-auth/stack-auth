@@ -330,34 +330,6 @@ export class VercelDeploymentsClient {
   }
 
   /**
-   * Opens Vercel's runtime log stream for a deployment (NDJSON, live tail —
-   * Vercel holds the connection for up to ~5 minutes and only emits lines for
-   * traffic that happens while it's open; there is no historical read-back on
-   * this endpoint). Returns the raw upstream Response for the caller to pipe.
-   */
-  async fetchRuntimeLogsStream(projectId: string, deploymentId: string): Promise<Response> {
-    const url = new URL(urlString`/v1/projects/${projectId}/deployments/${deploymentId}/runtime-logs`, this.config.baseUrl);
-    url.searchParams.set("teamId", this.config.teamId);
-    url.searchParams.set("format", "json");
-    const response = await fetch(url.toString(), {
-      headers: { "authorization": `Bearer ${this.config.token}` },
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      let json: any = undefined;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        // Non-JSON error body; fall through to the generic message.
-      }
-      const code = typeof json?.error?.code === "string" ? json.error.code : "unknown";
-      const message = typeof json?.error?.message === "string" ? json.error.message : `HTTP ${response.status}`;
-      throw new VercelApiError(response.status, code, message, "GET runtime-logs");
-    }
-    return response;
-  }
-
-  /**
    * Turns off Vercel's deployment protection (SSO auth wall) for a project.
    * New projects on a team have it enabled by default, which would make every
    * customer deployment unreachable to the public.

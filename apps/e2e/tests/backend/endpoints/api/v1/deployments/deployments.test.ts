@@ -488,16 +488,6 @@ describe("deploys against the vercel-mock", () => {
     expect(logsText).toContain("HEXCLAVE_SECRET_SERVER_KEY=<redacted>");
     expect(logsText).not.toContain(projectKeys.secretServerKey);
     expect(logsText).toContain("DB_PASSWORD=postgres://user:hunter2@db.example.com/app");
-
-    // Runtime logs live-tail: the mock emits a few request lines plus an env
-    // dump, which must be redacted the same way as build logs.
-    const runtimeLogsResponse = await niceBackendFetch("/api/v1/deployments/services/api/runtime-logs", { accessType: "admin" });
-    expect(runtimeLogsResponse.status).toBe(200);
-    const runtimeLogsText = typeof runtimeLogsResponse.body === "string" ? runtimeLogsResponse.body : JSON.stringify(runtimeLogsResponse.body);
-    expect(runtimeLogsText).toContain("[info] GET / 200 in 12ms");
-    expect(runtimeLogsText).toContain("[warning] Slow request: GET /api/data 200 in 1204ms");
-    expect(runtimeLogsText).toContain("HEXCLAVE_SECRET_SERVER_KEY=<redacted>");
-    expect(runtimeLogsText).not.toContain(projectKeys.secretServerKey);
   });
 
   it("rejects deploys with missing, unknown, or dangling env references without consuming the upload", async ({ expect }) => {
@@ -795,23 +785,6 @@ describe("deploys against the vercel-mock", () => {
     const serviceResponse = await niceBackendFetch("/api/v1/deployments/services/web", { accessType: "admin" });
     expect((serviceResponse.body as any).build_command).toBe(null);
     expect((serviceResponse.body as any).framework).toBe("nextjs");
-  });
-
-  it("rejects runtime logs for services without a successful deployment", async ({ expect }) => {
-    await Project.createAndSwitch();
-    await niceBackendFetch("/api/v1/deployments/services", {
-      method: "POST",
-      accessType: "admin",
-      body: { id: "quiet" },
-    });
-    const response = await niceBackendFetch("/api/v1/deployments/services/quiet/runtime-logs", { accessType: "admin" });
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": "This service has not been deployed yet, so there are no runtime logs.",
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
   });
 
   it("marks a failing build as errored", async ({ expect }) => {

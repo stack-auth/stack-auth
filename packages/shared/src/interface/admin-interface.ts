@@ -1346,17 +1346,6 @@ export class HexclaveAdminInterface extends HexclaveServerInterface {
     return await response.text();
   }
 
-  async fetchDeploymentRuntimeLogs(serviceId: string, options?: { signal?: AbortSignal }): Promise<Response> {
-    // Returns the raw Response: the endpoint live-tails runtime logs as
-    // chunked plain text for several minutes, so callers must read the body
-    // incrementally (response.body.getReader()) rather than awaiting text().
-    return await this.sendAdminRequest(
-      urlString`/deployments/services/${serviceId}/runtime-logs`,
-      { method: "GET", signal: options?.signal },
-      null,
-    );
-  }
-
   async addDeploymentServiceDomain(serviceId: string, hostname: string, options?: { isPrimary?: boolean }): Promise<void> {
     await this.sendAdminRequest(
       urlString`/deployments/services/${serviceId}/domains`,

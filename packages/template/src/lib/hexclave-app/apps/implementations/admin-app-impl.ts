@@ -307,9 +307,6 @@ export class _HexclaveAdminAppImplIncomplete<HasTokenStore extends boolean, Proj
       async getDeploymentRunLogs(runId, options) {
         return await app._interface.getDeploymentRunLogs(runId, options);
       },
-      async fetchDeploymentRuntimeLogs(serviceId, options) {
-        return await app._interface.fetchDeploymentRuntimeLogs(serviceId, options);
-      },
       async addDeploymentServiceDomain(serviceId, hostname, options) {
         await app._interface.addDeploymentServiceDomain(serviceId, hostname, options);
         await app._refreshProjectConfig();

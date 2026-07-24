@@ -10,7 +10,6 @@ import {
   DeploymentDetailContent,
   DeploymentsContent,
   DomainsContent,
-  LogsContent,
   OverviewContent,
   SettingsContent,
   VariablesContent,
@@ -30,13 +29,12 @@ type ServiceDetailPaneProps = {
   refresh: () => Promise<void>,
 };
 
-type PanelTabId = "overview" | "variables" | "deployments" | "logs" | "domains" | "settings";
+type PanelTabId = "overview" | "variables" | "deployments" | "domains" | "settings";
 
 const TABS: { id: PanelTabId, label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "variables", label: "Variables" },
   { id: "deployments", label: "Deployments" },
-  { id: "logs", label: "Logs" },
   { id: "domains", label: "Domains" },
   { id: "settings", label: "Settings" },
 ];
@@ -73,7 +71,6 @@ export function ServiceDetailPane(props: ServiceDetailPaneProps) {
       case "overview": { return <OverviewContent service={service} project={project} isHexclave={isHexclave} />; }
       case "variables": { return <VariablesContent service={service} services={services} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} />; }
       case "deployments": { return <DeploymentsContent service={service} project={project} isHexclave={isHexclave} onOpenRun={setOpenRun} />; }
-      case "logs": { return <LogsContent service={service} project={project} isHexclave={isHexclave} />; }
       case "domains": { return <DomainsContent service={service} project={project} isHexclave={isHexclave} refresh={refresh} />; }
       case "settings": { return <SettingsContent service={service} project={project} isHexclave={isHexclave} readOnly={readOnly} refresh={refresh} onRequestDelete={() => setDeleteOpen(true)} />; }
     }

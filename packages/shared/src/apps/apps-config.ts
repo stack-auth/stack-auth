@@ -196,7 +196,7 @@ export const ALL_APPS = {
     displayName: "Deployments",
     subtitle: "Configure and connect the services that run your app",
     tags: ["developers", "operations"],
-    stage: "beta",
+    stage: "alpha",
   },
 } as const satisfies Record<string, App>;
 

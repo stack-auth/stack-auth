@@ -530,7 +530,7 @@ async function resolveServiceOutput(prisma: PrismaClientTransaction, tenancy: Te
 }
 
 /**
- * Everything we can re-derive as secret for a service's log streams: every
+ * Everything we can re-derive as secret for a service's build logs: every
  * secret API key of the project. This covers the `hexclave.secretServerKey`
  * connection output — the one secret Hexclave itself injects into builds.
  * Values supplied via `--secret` are deliberately never persisted, so they
