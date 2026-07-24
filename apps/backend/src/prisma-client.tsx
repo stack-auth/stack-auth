@@ -255,6 +255,21 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
   });
 }
 
+// Same list as @prisma/extension-read-replicas: operations it routes to the replica.
+// These never write to the primary, so they don't need a replication wait.
+const readOperations = [
+  "findFirst",
+  "findFirstOrThrow",
+  "findMany",
+  "findUnique",
+  "findUniqueOrThrow",
+  "groupBy",
+  "aggregate",
+  "count",
+  "findRaw",
+  "aggregateRaw",
+];
+
 /**
  * Extends a Prisma client to wait for replication after all operations.
  * This ensures read-after-write consistency when using a read replica.
@@ -319,8 +334,13 @@ function extendWithReplicationWait<T extends PrismaClient>(primary: T, replicaCl
       async $allOperations(params: { args: any, query: (args: any) => Promise<any>, operation: string, model?: string, __internalParams?: unknown }) {
         const { args, query, operation, model } = params;
 
-        // note that we intentionally trigger this after EVERY operation, including reads, as this is on the primary — reads aren't sent here in the first place
+        // Query extension callbacks run in the order they were applied, so this hook runs OUTSIDE the read-replicas
+        // extension and receives every operation, including reads that the read-replicas extension then routes to a
+        // replica. Reads never write to the primary, so they never need a replication wait.
         // (do note that $allOperations does not trigger for the transaction commit itself, so we do that separately above)
+        if (readOperations.includes(operation)) {
+          return await query(args);
+        }
 
         // __internalParams is an undocumented property, so let's validate that it fits our schema with yup first
         const internalParamsSchema = yupObject({
