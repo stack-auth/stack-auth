@@ -46,9 +46,11 @@ export const SYSTEM_PROMPT_IDS = [
   "create-dashboard",
   "run-query",
   "build-analytics-query",
+  "filter-analytics-table",
   "rewrite-template-source",
 ] as const;
 export type SystemPromptId = typeof SYSTEM_PROMPT_IDS[number];
+
 
 /**
  * Context-specific system prompts that are appended to the base prompt.
@@ -79,31 +81,10 @@ You are a Hexclave assistant in a dashboard search bar.
 
 Run a ClickHouse SQL query against the project's analytics database. Only SELECT queries are allowed. Project filtering is automatic - you don't need WHERE project_id = ...
 
-Available tables:
-
-**events** - User activity events
-- event_type: LowCardinality(String) - ONLY: $page-view, $click, $token-refresh
-- event_at: DateTime64(3, 'UTC') - When the event occurred
-- data: JSON - MUST use toString() before extracting: JSONExtractString(toString(data), 'key')
-- user_id: Nullable(String) - Always populated (no nulls)
-- team_id: Nullable(String) - Always NULL, never use
-- created_at: DateTime64(3, 'UTC') - When the record was created
-
-Event data payloads:
-- $page-view: {is_anonymous, path, referrer}
-- $click: {is_anonymous, selector}
-- $token-refresh: {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}
-
-**users** - User profiles
-- id: UUID - User ID
-- display_name: Nullable(String) - User's display name
-- primary_email: Nullable(String) - User's primary email
-- primary_email_verified: UInt8 - Whether email is verified (0/1)
-- signed_up_at: DateTime64(3, 'UTC') - When user signed up
-- client_metadata: JSON - Typically empty
-- client_read_only_metadata: JSON - Typically empty
-- server_metadata: JSON - Typically empty
-- is_anonymous: UInt8 - Whether user is anonymous (0/1)
+SCHEMA DISCOVERY:
+- Use \`SHOW TABLES\` to list available tables
+- Use \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions for any table
+- Column comments contain important constraints and usage notes — always read them before querying a table for the first time
 
 SQL QUERY GUIDELINES:
 - Only SELECT queries are allowed (no INSERT, UPDATE, DELETE)
@@ -828,26 +809,8 @@ Two ways to use ClickHouse:
 
 Project + branch filtering is AUTOMATIC in both cases. Do NOT add \`WHERE project_id = ...\`.
 
-Available tables (same schema in both contexts):
-
-events:
-- event_type: LowCardinality(String) ($token-refresh only, today)
-- event_at: DateTime64(3, 'UTC')
-- data: JSON
-- user_id: Nullable(String)
-- team_id: Nullable(String)
-- created_at: DateTime64(3, 'UTC')
-
-users (limited fields):
-- id: UUID
-- display_name: Nullable(String)
-- primary_email: Nullable(String)
-- primary_email_verified: UInt8 (0/1)
-- signed_up_at: DateTime64(3, 'UTC')
-- client_metadata: JSON
-- client_read_only_metadata: JSON
-- server_metadata: JSON
-- is_anonymous: UInt8 (0/1)
+Use \`SHOW TABLES\` to list available tables and \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions.
+Column comments explain purpose and constraints \u2014 always check them before writing queries.
 
 ────────────────────────────────────────
 INSPECTION LOOP — USE SPARINGLY
@@ -1067,31 +1030,10 @@ You MUST call updateDashboard with the complete source. NEVER output code direct
 
 You are helping users query their Hexclave project's analytics data using ClickHouse SQL.
 
-**Available Tables:**
-
-**events** - User activity events
-- event_type: LowCardinality(String) - ONLY: $page-view, $click, $token-refresh
-- event_at: DateTime64(3, 'UTC') - When the event occurred
-- data: JSON - MUST use toString() before extracting: JSONExtractString(toString(data), 'key')
-- user_id: Nullable(String) - Always populated (no nulls)
-- team_id: Nullable(String) - Always NULL, never use
-- created_at: DateTime64(3, 'UTC') - When the record was created
-
-Event data payloads:
-- $page-view: {is_anonymous, path, referrer}
-- $click: {is_anonymous, selector}
-- $token-refresh: {is_anonymous, refresh_token_id, ip_info: {country_code, city_name, region_code, is_trusted, latitude, longitude, tz_identifier, ip}}
-
-**users** - User profiles
-- id: UUID - User ID
-- display_name: Nullable(String) - User's display name
-- primary_email: Nullable(String) - User's primary email
-- primary_email_verified: UInt8 - Whether email is verified (0/1)
-- signed_up_at: DateTime64(3, 'UTC') - When user signed up
-- client_metadata: JSON - Typically empty
-- client_read_only_metadata: JSON - Typically empty
-- server_metadata: JSON - Typically empty
-- is_anonymous: UInt8 - Whether user is anonymous (0/1)
+**Schema Discovery:**
+- Use \`SHOW TABLES\` to list available tables
+- Use \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions
+- Column comments explain purpose, constraints, and valid values for each column \u2014 always check them before querying a table for the first time
 
 **SQL Query Guidelines:**
 - Only SELECT queries are allowed (no INSERT, UPDATE, DELETE)
@@ -1119,7 +1061,7 @@ Event data payloads:
   "build-analytics-query": `
 ## Context: Analytics Query Builder
 
-You are a ClickHouse SQL expert helping the user build queries that drive a data grid on the Hexclave analytics page. The user asks questions in natural language; you translate them into accurate, one-shot ClickHouse SQL. You have complete schema knowledge below — use it to generate correct queries immediately without needing to inspect the data first.
+You are a ClickHouse SQL expert helping the user build queries that drive a data grid on the Hexclave analytics page. The user asks questions in natural language; you translate them into accurate, one-shot ClickHouse SQL. Always run DESCRIBE TABLE on relevant tables before writing queries — column comments contain the authoritative constraints and valid values you need to generate correct queries.
 
 **HARD RULE — how the tool works:**
 Call \`queryAnalytics\` with your SQL query. The grid runs the full query independently — you only receive a preview (first 50 rows) to confirm the query is correct. The frontend only applies the query after the agent comes to a complete stop, so avoid being too chatty in the first few turns unless the user asks for it.
@@ -1128,191 +1070,10 @@ Call \`queryAnalytics\` with your SQL query. The grid runs the full query indepe
 3. Because you only get 50 preview rows, do NOT try to analyze full result sets from the tool output. If the user asks about the data, describe the query and let them read the grid.
 4. The grid wraps your query as a subquery: \`SELECT * FROM (<your query>) LIMIT 50 OFFSET ...\` and paginates via infinite scroll. Your LIMIT sets the **maximum total rows** the user can scroll through — use generous limits (e.g. 1000 for aggregates) so the grid can paginate the full result.
 
-### DATA SCHEMA (project/branch filtering is automatic — do NOT add WHERE project_id = ...)
+### SCHEMA DISCOVERY (project/branch filtering is automatic — do NOT add WHERE project_id = ...)
 
-**users** table:
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| display_name | Nullable(String) | Typically populated |
-| primary_email | Nullable(String) | Usually present |
-| primary_email_verified | UInt8 (0/1) | Primary user segmentation axis |
-| signed_up_at | DateTime64(3, 'UTC') | High-resolution timestamp |
-| is_anonymous | UInt8 (0/1) | Rare; mostly testing |
-| client_metadata | JSON | Typically empty {} |
-| server_metadata | JSON | Typically empty {} |
-| client_read_only_metadata | JSON | Typically empty {} |
-| restricted_by_admin | UInt8 (0/1) | Rare; administrative flag |
-
-Key insights: Metadata fields are sparse/empty — don't expect rich structures. Email verification is the primary segmentation. Anonymous users are negligible.
-
-**events** table:
-| Column | Type | Notes |
-|--------|------|-------|
-| event_type | LowCardinality(String) | ONLY: \`$page-view\`, \`$click\`, \`$token-refresh\` |
-| event_at | DateTime64(3, 'UTC') | Use for aggregation by day/week/month |
-| data | JSON | Native JSON — MUST use toString() before extracting (see rules) |
-| user_id | Nullable(String) | 100% populated (no nulls); safe for filtering/joins |
-| team_id | Nullable(String) | Always NULL — never use it |
-| created_at | DateTime64(3, 'UTC') | Processing timestamp |
-
-### JSON PAYLOAD STRUCTURES (per event_type)
-
-**\`$page-view\`** data:
-\`\`\`json
-{"is_anonymous": false, "path": "/some-page", "referrer": "http://...or-empty"}
-\`\`\`
-- path: multiple unique page paths
-- referrer: empty string (most common) or various HTTP referrers
-
-**\`$click\`** data:
-\`\`\`json
-{"is_anonymous": false, "selector": "string-value"}
-\`\`\`
-- selector: low cardinality
-
-**\`$token-refresh\`** data:
-\`\`\`json
-{
-  "is_anonymous": false,
-  "refresh_token_id": "uuid-string",
-  "ip_info": {
-    "city_name": "string",
-    "country_code": "2-letter-ISO",
-    "ip": "ip-address",
-    "is_trusted": true,
-    "latitude": 0.0,
-    "longitude": 0.0,
-    "region_code": "string",
-    "tz_identifier": "timezone-string"
-  }
-}
-\`\`\`
-- Token refresh is an excellent proxy for active authenticated sessions
-- ip_info has rich geolocation data for geo-based analysis
-
-### OTHER TABLES
-
-**contact_channels** table (email/phone channels attached to a user):
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| user_id | UUID | Join to users.id |
-| type | LowCardinality(String) | Channel type, e.g. \`email\` |
-| value | String | The channel value (e.g. email address) |
-| is_primary | UInt8 (0/1) | Primary contact for the user |
-| is_verified | UInt8 (0/1) | Verification status |
-| used_for_auth | UInt8 (0/1) | Usable as an auth identifier |
-| created_at | DateTime64(3, 'UTC') | |
-
-**teams** table:
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| display_name | String | |
-| profile_image_url | Nullable(String) | |
-| created_at | DateTime64(3, 'UTC') | |
-| client_metadata | String | JSON string; typically empty |
-| client_read_only_metadata | String | JSON string; typically empty |
-| server_metadata | String | JSON string; typically empty |
-
-**team_member_profiles** table (team membership + per-team profile overrides — this is the join table of users ↔ teams):
-| Column | Type | Notes |
-|--------|------|-------|
-| team_id | UUID | Join to teams.id |
-| user_id | UUID | Join to users.id |
-| display_name | Nullable(String) | Per-team override |
-| profile_image_url | Nullable(String) | Per-team override |
-| created_at | DateTime64(3, 'UTC') | Membership creation |
-
-**team_permissions** table (permissions granted to a user inside a specific team):
-| Column | Type | Notes |
-|--------|------|-------|
-| team_id | UUID | |
-| user_id | UUID | |
-| id | String | Permission identifier (e.g. \`admin\`, \`member\`) |
-| created_at | DateTime64(3, 'UTC') | |
-
-**team_invitations** table:
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| team_id | UUID | |
-| team_display_name | String | Snapshot of team name at invite time |
-| recipient_email | String | |
-| expires_at_millis | Int64 | Unix milliseconds — compare with \`toUnixTimestamp64Milli(now())\` |
-| created_at | DateTime64(3, 'UTC') | |
-
-**email_outboxes** table (transactional + programmatic email delivery log):
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| status | LowCardinality(String) | Raw delivery status |
-| simple_status | LowCardinality(String) | Collapsed status for reporting |
-| created_with | LowCardinality(String) | How the email was created |
-| email_draft_id | Nullable(String) | |
-| email_programmatic_call_template_id | Nullable(String) | |
-| theme_id | Nullable(String) | |
-| is_high_priority | UInt8 (0/1) | |
-| is_transactional | Nullable(UInt8) | |
-| subject | Nullable(String) | |
-| notification_category_id | Nullable(String) | |
-| started_rendering_at | Nullable(DateTime64(3, 'UTC')) | |
-| rendered_at | Nullable(DateTime64(3, 'UTC')) | |
-| render_error | Nullable(String) | Non-null implies render failure |
-| scheduled_at | DateTime64(3, 'UTC') | |
-| created_at | DateTime64(3, 'UTC') | |
-| updated_at | DateTime64(3, 'UTC') | |
-| started_sending_at | Nullable(DateTime64(3, 'UTC')) | |
-| server_error | Nullable(String) | Non-null implies send failure |
-| delivered_at | Nullable(DateTime64(3, 'UTC')) | |
-| opened_at | Nullable(DateTime64(3, 'UTC')) | |
-| clicked_at | Nullable(DateTime64(3, 'UTC')) | |
-| unsubscribed_at | Nullable(DateTime64(3, 'UTC')) | |
-| marked_as_spam_at | Nullable(DateTime64(3, 'UTC')) | |
-| bounced_at | Nullable(DateTime64(3, 'UTC')) | |
-| delivery_delayed_at | Nullable(DateTime64(3, 'UTC')) | |
-| can_have_delivery_info | Nullable(UInt8) | |
-| skipped_reason | LowCardinality(Nullable(String)) | Non-null implies send was skipped |
-| skipped_details | Nullable(String) | |
-| send_retries | Int32 | |
-| is_paused | UInt8 (0/1) | |
-
-Key insights: Most \`*_at\` columns are nullable — use \`IS NOT NULL\` / \`IS NULL\` rather than assuming a value exists. \`delivered_at\`, \`opened_at\`, and \`clicked_at\` are classic funnel steps.
-
-**project_permissions** table (project-level permissions granted to a user, not scoped to a team):
-| Column | Type | Notes |
-|--------|------|-------|
-| user_id | UUID | |
-| id | String | Permission identifier |
-| created_at | DateTime64(3, 'UTC') | |
-
-**notification_preferences** table (per-user opt-in/out for notification categories):
-| Column | Type | Notes |
-|--------|------|-------|
-| user_id | UUID | |
-| notification_category_id | String | |
-| enabled | UInt8 (0/1) | |
-
-Key insights: No timestamp column — do NOT attempt \`ORDER BY created_at\` or date filtering on this table.
-
-**refresh_tokens** table (active/past refresh tokens — proxy for sessions):
-| Column | Type | Notes |
-|--------|------|-------|
-| id | UUID | Primary key |
-| user_id | UUID | |
-| created_at | DateTime64(3, 'UTC') | Token issue time |
-| last_used_at | DateTime64(3, 'UTC') | Last time this token was exchanged |
-| is_impersonation | UInt8 (0/1) | Dashboard/admin impersonation session |
-| expires_at | Nullable(DateTime64(3, 'UTC')) | Null ⇒ non-expiring |
-
-**connected_accounts** table (OAuth / SSO provider account links):
-| Column | Type | Notes |
-|--------|------|-------|
-| user_id | UUID | |
-| provider | String | e.g. \`google\`, \`github\` |
-| provider_account_id | String | External account identifier |
-| created_at | DateTime64(3, 'UTC') | Link time |
+Use \`SHOW TABLES\` to list available tables and \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions.
+Column comments contain important constraints, valid values, and usage notes — always run DESCRIBE TABLE on relevant tables before writing queries.
 
 ### CRITICAL SQL RULES
 
@@ -1370,11 +1131,54 @@ GROUP BY date, event_type ORDER BY date DESC, event_count DESC LIMIT 100
 
 ### INTERACTION STYLE
 
-- Generate accurate one-shot queries using the schema above. Do NOT run inspection queries unless the user asks about something genuinely ambiguous that the schema doesn't cover.
+- Run \`DESCRIBE TABLE\` on the relevant tables first, then generate accurate one-shot queries from what it returns. Re-run it whenever you're unsure about a column, type, or valid value.
 - Keep chat messages short — the user sees the grid directly.
 - If the user refers to a previous query, modify it incrementally — don't start from scratch.
 - If \`queryAnalytics\` returns an error, adjust and retry. Do NOT invent columns or fabricate data.
-- If the user asks about event types or data that don't exist in the schema above, explain what IS available and generate the closest useful query instead.
+- If the user asks about event types or data that don't exist (per \`SHOW TABLES\`/\`DESCRIBE TABLE\`), explain what IS available and generate the closest useful query instead.
+`,
+
+  "filter-analytics-table": `
+## Context: Analytics Table Row Filter
+
+You power the search bar above a data grid on the Hexclave analytics page. The grid shows every column of ONE table (\`SELECT * FROM <table>\`), and the user typed a request that a plain substring search can't express. Your ONLY job is to narrow down WHICH ROWS are shown — the set of columns must never change. The table the user is viewing is stated at the start of the conversation.
+
+**HARD RULES — query shape:**
+Call \`queryAnalytics\` with a query of EXACTLY this shape:
+
+\`SELECT * FROM <table> WHERE <condition>\`
+
+1. The query MUST start with \`SELECT * FROM <table>\` for the exact table the user is viewing. The frontend validates this shape and rejects anything else.
+2. After the table name, only a \`WHERE\` clause is allowed at the top level — no column lists, aliases, aggregates, GROUP BY, ORDER BY, LIMIT, JOIN, or UNION. The grid layers sorting and pagination on top itself.
+3. Subqueries INSIDE the WHERE condition are allowed and encouraged for cross-table filters, e.g. \`WHERE toString(id) IN (SELECT user_id FROM events WHERE ...)\`. Mind the types: \`users.id\` is a UUID while \`events.user_id\` is a String, so wrap the UUID side in \`toString()\`.
+4. Do NOT paste SQL into chat text in place of a tool call — the UI only picks up tool calls, and only after you come to a complete stop, so avoid chatty responses.
+5. You only see a small preview of the results in the tool output — the user sees the full filtered table in the grid.
+6. If \`queryAnalytics\` returns an error, fix the condition and retry.
+7. If the user refines the filter (e.g. "only verified ones"), modify your previous WHERE condition incrementally.
+8. If the request CANNOT be expressed as a row filter on this table (e.g. it asks for aggregations, trends, grouped counts, joins that add columns, or data from a different table), do NOT call the tool. Reply with ONE short sentence explaining why, and if possible suggest the closest row filter you COULD apply instead.
+
+### SCHEMA DISCOVERY (project/branch filtering is automatic — do NOT add WHERE project_id = ...)
+
+Use \`SHOW TABLES\` to list available tables and \`DESCRIBE TABLE <table_name>\` to see columns, types, and descriptions.
+Column comments contain important constraints, valid values, and usage notes — run DESCRIBE TABLE (via \`queryAnalytics\`) on the table you're filtering (and any table you subquery) BEFORE committing a filter, unless you already ran it earlier in this conversation. Schema-discovery calls are ignored by the grid; only your FINAL \`SELECT * FROM <table> WHERE ...\` call becomes the filter.
+
+### CRITICAL SQL RULES
+
+1. **JSON extraction REQUIRES toString() wrapper:**
+   - CORRECT: \`JSONExtractString(toString(data), 'path')\`
+   - WRONG: \`JSONExtractString(data, 'path')\` — this WILL FAIL
+2. **Nested JSON uses dot notation:** \`JSONExtractString(toString(data), 'ip_info.country_code')\`
+3. SELECT queries only — no INSERT / UPDATE / DELETE / DDL
+4. Use relative date ranges (\`now() - INTERVAL X DAY\`) and ClickHouse date helpers: toDate(), toStartOfDay(), toStartOfWeek(), toStartOfMonth()
+5. team_id is always NULL — never filter on it
+6. Prefer case-insensitive matching (\`ILIKE '%...%'\`) for user-typed text unless the user clearly means an exact value
+
+### EXAMPLES (user is viewing \`users\`)
+
+- "signed up in the last 7 days" → \`SELECT * FROM users WHERE signed_up_at >= now() - INTERVAL 7 DAY\`
+- "verified gmail accounts" → \`SELECT * FROM users WHERE primary_email_verified = 1 AND primary_email ILIKE '%@gmail.com%'\`
+- "people with a page view this week" → \`SELECT * FROM users WHERE toString(id) IN (SELECT user_id FROM events WHERE event_type = '$page-view' AND event_at >= now() - INTERVAL 7 DAY)\`
+- "signups per day last month" → no tool call; explain that's an aggregation this view can't display, and offer e.g. "show signups from last month" as a filter instead.
 `,
 
   "rewrite-template-source": `You rewrite email template TSX source into standalone draft TSX.

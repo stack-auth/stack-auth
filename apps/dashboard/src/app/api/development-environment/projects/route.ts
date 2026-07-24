@@ -1,10 +1,11 @@
 import { getPublicEnvVar } from "@/lib/env";
 import { assertRemoteDevelopmentEnvironmentBrowserRequest } from "@/lib/remote-development-environment/security";
-import { NextRequest, NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
+  await connection();
+
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   if (!isRemoteDevelopmentEnvironment) {
     return NextResponse.json({ error: "This endpoint is only available in remote development environments." }, { status: 404 });

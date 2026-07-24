@@ -30,7 +30,7 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
   const MAX_ROWS_FOR_AI = 50;
 
   return tool({
-    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause.`,
+    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause. Use SHOW TABLES to discover available tables and DESCRIBE TABLE <table_name> to see columns with types and descriptions.`,
     inputSchema: z.object({
       query: z
         .string()

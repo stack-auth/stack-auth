@@ -700,6 +700,9 @@ export function declarePiledriverDatabase(lowLevelDb: LowLevelDatabase, options:
     combineSeqs(...seqs) {
       return lowLevelDb.combineSeqs(...seqs);
     },
+    async close() {
+      await lowLevelDb.close();
+    },
     waitUntilAvailable(seq) {
       return traceSpan("bulldozer-js.piledriver.waitUntilAvailable", async () => await lowLevelDb.waitUntilAvailable(seq));
     },

@@ -1,14 +1,14 @@
 import "server-only";
 
-import { StackServerApp } from "@hexclave/next";
-import { hexclaveClientApp } from "./hexclave";
+import { HexclaveServerApp } from "@hexclave/next";
+import { getHexclaveClientApp } from "./hexclave";
 
-let hexclaveServerApp: StackServerApp<true, string> | undefined;
+let hexclaveServerApp: HexclaveServerApp<true, string> | undefined;
 
-export function getHexclaveServerApp(): StackServerApp<true, string> {
+export function getHexclaveServerApp(): HexclaveServerApp<true, string> {
   if (hexclaveServerApp == null) {
-    hexclaveServerApp = new StackServerApp({
-      inheritsFrom: hexclaveClientApp,
+    hexclaveServerApp = new HexclaveServerApp({
+      inheritsFrom: getHexclaveClientApp(),
     });
   }
   return hexclaveServerApp;

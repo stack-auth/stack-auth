@@ -4,22 +4,12 @@ import { StyledLink } from "@/components/link";
 import { DesignCard } from "@/components/design-components/card";
 import { Typography } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
-import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
+import { getApiBaseUrl } from "../get-api-base-url";
 import { CheckCircleIcon, SpinnerGapIcon, XCircleIcon } from "@phosphor-icons/react";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-
-type Props = {
-  redirectStatus?: string,
-  paymentIntentId?: string,
-  clientSecret?: string,
-  stripeAccountId?: string,
-  purchaseFullCode?: string,
-  bypass?: string,
-  free?: string,
-};
 
 type ViewState =
   | { kind: "loading" }
@@ -27,18 +17,22 @@ type ViewState =
   | { kind: "error", message: string };
 
 const stripePublicKey = getPublicEnvVar("NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY") ?? "";
-const apiUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
-const baseUrl = new URL("/api/v1", apiUrl).toString();
 
-export default function ReturnClient({ clientSecret, stripeAccountId, purchaseFullCode, bypass, free }: Props) {
+export default function ReturnClient() {
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("return_url");
+  const clientSecret = searchParams.get("payment_intent_client_secret") ?? undefined;
+  const stripeAccountId = searchParams.get("stripe_account_id") ?? undefined;
+  const purchaseFullCode = searchParams.get("purchase_full_code") ?? undefined;
+  const bypass = searchParams.get("bypass") ?? undefined;
+  const free = searchParams.get("free") ?? undefined;
 
   const checkAndReturnUser = useCallback(async () => {
     if (!returnUrl || !purchaseFullCode) {
       return;
     }
+    const baseUrl = getApiBaseUrl();
     const url = new URL(`${baseUrl}/payments/purchases/validate-code`);
     url.searchParams.set("full_code", purchaseFullCode);
     url.searchParams.set("return_url", returnUrl);

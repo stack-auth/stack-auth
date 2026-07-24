@@ -71,11 +71,17 @@ const nextConfig = {
 
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
 
+  cacheComponents: true,
+
   // we're open-source, so we can provide source maps — but skip them for
   // RDE standalone builds where they just take up space for no reason
   productionBrowserSourceMaps: process.env.NEXT_CONFIG_OUTPUT !== "standalone",
 
   poweredByHeader: false,
+
+  experimental: {
+    turbopackFileSystemCacheForDev: true,
+  },
 
   typescript: {
     ignoreBuildErrors: process.env.STACK_NEXT_CONFIG_DISABLE_TYPESCRIPT === "true",

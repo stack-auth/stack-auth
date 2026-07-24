@@ -1,8 +1,6 @@
 import { getPublicEnvVar } from "@/lib/env";
 import { isLocalhost } from "@hexclave/shared/dist/utils/urls";
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+import { connection, NextRequest, NextResponse } from "next/server";
 
 // The dev tool overlay runs inside the customer's own app, which lives on a
 // different localhost origin than the development-environment dashboard on
@@ -36,6 +34,8 @@ function requestOriginIsAllowed(req: NextRequest): boolean {
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  await connection();
+
   const isRemoteDevelopmentEnvironment = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_REMOTE_DEVELOPMENT_ENVIRONMENT") === "true";
   if (!isRemoteDevelopmentEnvironment) {
     return NextResponse.json({ error: "This endpoint is only available in development environments." }, { status: 404 });

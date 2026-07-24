@@ -25,6 +25,8 @@ type ConfigSyncEventBase = {
 };
 
 type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "syncing",
+} | {
   status: "success",
 } | {
   status: "error",
@@ -38,7 +40,7 @@ type HeartbeatResponse = {
   config_sync_events?: ConfigSyncEvent[],
 };
 
-const HEARTBEAT_INTERVAL_MS = 5_000;
+const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
@@ -568,7 +570,7 @@ function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
   ) {
     return false;
   }
-  if (value.status === "success") {
+  if (value.status === "syncing" || value.status === "success") {
     return true;
   }
   return (
@@ -611,10 +613,12 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
 }
 
-function logConfigSyncEvents(response: HeartbeatResponse): void {
+export function logConfigSyncEvents(response: HeartbeatResponse): void {
   for (const event of response.config_sync_events ?? []) {
-    if (event.status === "success") {
-      logDev(`Config synced to development environment project: ${event.config_file_path}`);
+    if (event.status === "syncing") {
+      logDev(`Detected change to config file at ${event.config_file_path}. Syncing...`);
+    } else if (event.status === "success") {
+      logDev("Updated config sync successful!");
     } else {
       logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
     }

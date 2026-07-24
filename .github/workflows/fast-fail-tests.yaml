@@ -111,20 +111,32 @@ jobs:
           }
           JSON
 
+      - name: Check whether the AI selector is available
+        id: ai-selector
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::warning::OPENAI_API_KEY is unavailable; skipping the fast-fail subset and falling back to the full test suites."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Codex CLI
+        id: install-codex
+        if: ${{ steps.ai-selector.outputs.available == 'true' }}
+        continue-on-error: true
         run: npm install -g @openai/codex@0.142.5
 
       - name: Ask Codex which tests to run
         id: codex
+        if: ${{ steps.ai-selector.outputs.available == 'true' && steps.install-codex.outcome == 'success' }}
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "${OPENAI_API_KEY:-}" ]; then
-            echo "::error::OPENAI_API_KEY is not set. Add it as a repository Actions secret (Settings -> Secrets and variables -> Actions)."
-            exit 1
-          fi
 
           # This Codex version does not pick up OPENAI_API_KEY automatically for
           # `codex exec`; it must be logged in explicitly first, otherwise every
@@ -144,6 +156,11 @@ jobs:
 
           echo "Codex raw output:"
           cat codex-out.json
+
+      - name: Report AI selector fallback
+        if: ${{ always() && (steps.ai-selector.outputs.available != 'true' || steps.install-codex.outcome != 'success' || steps.codex.outcome != 'success') }}
+        run: |
+          echo "::warning::The AI selector was unavailable. No fast-fail subset will run; the full test suites remain authoritative."
 
       - name: Parse selected test files
         id: select
@@ -212,7 +229,6 @@ jobs:
           cp apps/backend/.env.development apps/backend/.env.test.local
           cp apps/dashboard/.env.development apps/dashboard/.env.test.local
           cp apps/e2e/.env.development apps/e2e/.env.test.local
-          cp docs/.env.development docs/.env.test.local
           cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
           cp examples/demo/.env.development examples/demo/.env.test.local
           cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
