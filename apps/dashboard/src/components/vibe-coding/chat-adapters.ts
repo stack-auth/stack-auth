@@ -51,98 +51,6 @@ export type DashboardChip =
   | DashboardActionContext
   | DashboardErrorContext;
 
-export type DashboardPatchEdit = {
-  oldText: string,
-  newText: string,
-  occurrenceIndex?: number,
-};
-
-export type DashboardPatchFailure = {
-  index: number,
-  reason: "not-found" | "ambiguous",
-  oldTextPreview: string,
-};
-
-export type DashboardPatchResult = {
-  updatedSource: string,
-  applied: number,
-  failures: DashboardPatchFailure[],
-};
-
-export type DashboardPatchSnapshot = {
-  toolCallId: string,
-  edits: DashboardPatchEdit[],
-  resultSource: string,
-};
-
-export function applyDashboardPatches(source: string, edits: DashboardPatchEdit[]): DashboardPatchResult {
-  let draft = source;
-  let applied = 0;
-  const failures: DashboardPatchFailure[] = [];
-
-  edits.forEach((edit, index) => {
-    const preview = edit.oldText.slice(0, 80).replace(/\s+/g, " ");
-
-    const matches: number[] = [];
-    let from = 0;
-    while (from <= draft.length) {
-      const at = draft.indexOf(edit.oldText, from);
-      if (at === -1) break;
-      matches.push(at);
-      from = at + Math.max(edit.oldText.length, 1);
-    }
-
-    if (matches.length === 0) {
-      failures.push({ index, reason: "not-found", oldTextPreview: preview });
-      return;
-    }
-
-    let chosenIndex: number;
-    if (edit.occurrenceIndex != null) {
-      if (
-        !Number.isInteger(edit.occurrenceIndex)
-        || edit.occurrenceIndex < 0
-        || edit.occurrenceIndex >= matches.length
-      ) {
-        failures.push({ index, reason: "not-found", oldTextPreview: preview });
-        return;
-      }
-      chosenIndex = matches[edit.occurrenceIndex];
-    } else if (matches.length > 1) {
-      failures.push({ index, reason: "ambiguous", oldTextPreview: preview });
-      return;
-    } else {
-      chosenIndex = matches[0];
-    }
-
-    draft = draft.slice(0, chosenIndex) + edit.newText + draft.slice(chosenIndex + edit.oldText.length);
-    applied += 1;
-  });
-
-  if (failures.length > 0) {
-    return { updatedSource: source, applied: 0, failures };
-  }
-  return { updatedSource: draft, applied, failures };
-}
-
-function parsePatchEdits(args: unknown): DashboardPatchEdit[] | null {
-  if (typeof args !== "object" || args === null) return null;
-  const editsRaw = (args as { edits?: unknown }).edits;
-  if (!Array.isArray(editsRaw)) return null;
-  const edits: DashboardPatchEdit[] = [];
-  for (const e of editsRaw) {
-    if (typeof e !== "object" || e === null) return null;
-    const { oldText, newText, occurrenceIndex } = e as { oldText?: unknown, newText?: unknown, occurrenceIndex?: unknown };
-    if (typeof oldText !== "string" || typeof newText !== "string") return null;
-    edits.push({
-      oldText,
-      newText,
-      occurrenceIndex: typeof occurrenceIndex === "number" ? occurrenceIndex : undefined,
-    });
-  }
-  return edits;
-}
-
 /** Maps thread messages to the backend wire format; merges `attachments` into `content`. */
 function formatThreadMessagesForBackend(
   messages: readonly { role: string, content: readonly { type: string }[], attachments?: readonly { content?: readonly unknown[] }[] }[],
@@ -366,8 +274,8 @@ export async function* streamDashboardCode(
   // project to scope them to. Without projectId, they would fall back to the
   // internal project — wrong target.
   const tools = options?.projectId
-    ? ["update-dashboard", "patch-dashboard", "sql-query", "read-config"]
-    : ["update-dashboard", "patch-dashboard"];
+    ? ["update-dashboard", "sql-query", "read-config"]
+    : ["update-dashboard"];
 
   const chunkStream = await sendAiStreamRequest(
     backendBaseUrl,
@@ -412,8 +320,8 @@ export async function generateDashboardCode(
     options?.enabledAppIds,
   );
   const tools = options?.projectId
-    ? ["update-dashboard", "patch-dashboard", "sql-query", "read-config"]
-    : ["update-dashboard", "patch-dashboard"];
+    ? ["update-dashboard", "sql-query", "read-config"]
+    : ["update-dashboard"];
   const rawContent = await sendAiRequest(
     backendBaseUrl,
     currentUser,
@@ -515,7 +423,6 @@ export function createDashboardChatAdapter(
   projectId?: string,
   onRunStart?: () => void,
   onRunEnd?: () => void,
-  onPatchApplied?: (updatedSource: string, failures: DashboardPatchFailure[], snapshots: DashboardPatchSnapshot[]) => void,
   getPendingChips?: () => DashboardChip[],
   consumePendingChips?: () => void,
 ): ChatModelAdapter {
@@ -579,39 +486,17 @@ export function createDashboardChatAdapter(
           yield { content };
         }
 
-        let runningSource = currentTsxSource;
         let lastFullReplacement: ToolCallContent | null = null;
-        const aggregatedFailures: DashboardPatchFailure[] = [];
-        const snapshots: DashboardPatchSnapshot[] = [];
-        let anyPatchApplied = false;
 
         for (const item of latestContent) {
           if (!isToolCall(item)) continue;
-          if (item.toolName === "updateDashboard") {
-            if (typeof item.args?.content === "string") {
-              runningSource = item.args.content;
-              lastFullReplacement = item;
-            }
-          } else if (item.toolName === "patchDashboard") {
-            const edits = parsePatchEdits(item.args);
-            if (!edits) continue;
-            const result = applyDashboardPatches(runningSource, edits);
-            for (const f of result.failures) {
-              aggregatedFailures.push(f);
-            }
-            if (result.failures.length === 0 && result.applied > 0) {
-              runningSource = result.updatedSource;
-              anyPatchApplied = true;
-              snapshots.push({ toolCallId: item.toolCallId, edits, resultSource: runningSource });
-            }
+          if (item.toolName === "updateDashboard" && typeof item.args?.content === "string") {
+            lastFullReplacement = item;
           }
         }
 
         if (lastFullReplacement) {
           onToolCall(lastFullReplacement);
-        }
-        if (anyPatchApplied || aggregatedFailures.length > 0) {
-          onPatchApplied?.(runningSource, aggregatedFailures, snapshots);
         }
       } catch (error) {
         if (abortSignal.aborted) {

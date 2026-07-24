@@ -14,8 +14,7 @@ import {
   DashboardToolUI,
   type AssistantComposerApi,
 } from "@/components/vibe-coding";
-import { ToolCallContent, type DashboardChip, type DashboardPatchFailure, type DashboardPatchSnapshot } from "@/components/vibe-coding/chat-adapters";
-import { registerPatchSnapshot } from "@/components/vibe-coding/dashboard-tool-components";
+import { ToolCallContent, type DashboardChip } from "@/components/vibe-coding/chat-adapters";
 import type { AppId } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/components/config-update";
 import { useDashboardUser } from "@/lib/dashboard-user";
@@ -288,33 +287,6 @@ function DashboardDetailContent({
     }
   }, []);
 
-  const handlePatchApplied = useCallback((updatedSource: string, failures: DashboardPatchFailure[], snapshots: DashboardPatchSnapshot[]) => {
-    setPendingCode(updatedSource);
-    setCurrentTsxSource(updatedSource);
-    if (codePhaseTimerRef.current) clearTimeout(codePhaseTimerRef.current);
-    setCodePhase("typing");
-    codePhaseTimerRef.current = setTimeout(() => {
-      setCodePhase("loading");
-      codePhaseTimerRef.current = setTimeout(() => {
-        setCodePhase("done");
-      }, 1000);
-    }, 3000);
-    for (const snap of snapshots) {
-      registerPatchSnapshot(snap.toolCallId, snap.resultSource);
-    }
-    if (failures.length > 0) {
-      const summary = failures.slice(0, 3).map((f) =>
-        `#${f.index + 1} ${f.reason} ("${f.oldTextPreview}${f.oldTextPreview.length >= 80 ? "…" : ""}")`,
-      ).join("; ");
-      const remainder = failures.length > 3 ? ` (+${failures.length - 3} more)` : "";
-      toast({
-        variant: "destructive",
-        title: `${failures.length} ${failures.length === 1 ? "edit" : "edits"} didn't apply`,
-        description: `${summary}${remainder}. Ask the AI to retry with more context.`,
-      });
-    }
-  }, [toast]);
-
   const handleRunStart = useCallback(() => {
     setIsGenerating(true);
     setPendingCode(null);
@@ -512,7 +484,7 @@ function DashboardDetailContent({
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId, handleRunStart, handleRunEnd, handlePatchApplied, getPendingChips, consumePendingChips)}
+                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId, handleRunStart, handleRunEnd, getPendingChips, consumePendingChips)}
                   composerTopContent={
                     pendingChips.length > 0
                       ? <ChipBar chips={pendingChips} onRemove={removePendingChip} />

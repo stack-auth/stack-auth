@@ -589,90 +589,23 @@ EDITING BEHAVIOR (when existing code is provided)
 - If the user asks to add something, add it without removing existing content.
 - If the user asks to change styling, colors, or layout, make those changes while preserving functionality.
 
-CHOOSING THE RIGHT TOOL — patchDashboard vs. updateDashboard
-You have TWO write tools. Pick the right one. Wrong choice wastes tokens and time —
-or worse, breaks the layout.
-
-The decision is NOT just about size. It's about whether the change is LOCAL to one
-element's own attributes, or whether it ripples through surrounding layout / sibling
-positioning / shared state.
-
-- patchDashboard — for changes that are LOCAL to one element and don't affect siblings.
-  Use it for:
-    * Rename a label or heading
-    * Change a color, className, or style on one element
-    * Swap an icon
-    * Tweak one prop value (e.g. limit: 100 → 500)
-    * Adjust one chart's config (axis label, color, format)
-    * Fix a single bug in one function or hook body
-    * Add or remove ONE self-contained leaf component (a badge, an icon)
-
-  How it works: \`{ edits: [{ oldText, newText, occurrenceIndex? }, ...] }\` — each edit
-  is a literal find-and-replace on the CURRENT source.
-    * \`oldText\` MUST appear verbatim in the current source — copy it character-for-character
-      including whitespace and line breaks. No paraphrasing, no normalization.
-    * Include enough surrounding context in \`oldText\` to make the match UNIQUE. If the same
-      snippet appears more than once, either expand \`oldText\` to disambiguate OR set
-      \`occurrenceIndex\` (0-indexed) to pick the Nth match.
-    * \`newText\` is the replacement. Use \`""\` to delete.
-    * Batch related edits in ONE call (up to 20). Edits apply in order; later edits see the
-      result of earlier ones.
-    * If a single \`oldText\` block can hold all your changes, prefer one large edit over
-      many small ones — fewer matching failures.
-
-- updateDashboard — for changes that affect LAYOUT, ORDERING, or REGIONS, even if the
-  user pointed at a single component. Re-emit the full source.
-  Use it for:
-    * REORDERING components — moving a card up/down, swapping two charts, changing the
-      sequence of rows. The grid's child order matters; sibling indices shift.
-    * RESIZING — making a card wider/taller, changing grid-cols-2 to grid-cols-3,
-      adjusting a chart's height, changing col-span/row-span. Affects siblings'
-      positioning in the same grid.
-    * MOVING a component to a different parent or section.
-    * Adding a NEW row or column to a grid (sibling positions change).
-    * Layout overhauls (flex → grid, single column → two-column).
-    * Replacing the data model or switching the entire theme.
-    * Initial creation of a brand-new dashboard.
-
-  The rule of thumb: ask "would this change break or shift any neighboring component?"
-  If yes → updateDashboard. If the change is purely cosmetic on the targeted element
-  itself → patchDashboard.
-
-  Why: patchDashboard is a literal text replacement. It can't reason about JSX siblings,
-  grid templates, or array order. A "move this card up" patch that just swaps two JSX
-  blocks usually breaks because the surrounding structure (commas, fragment boundaries,
-  conditional renders) doesn't survive a naive swap.
-
-  Do NOT use updateDashboard for purely cosmetic edits. Rewriting 3000 tokens to change
-  one className is wrong; emit a patchDashboard with one edit instead.
-
 WIDGET CONTEXT FROM THE USER
 When the user prefixes their message with a block like:
     [Widget: User Signups]
     Path: div.grid > div:nth-of-type(2) > h3
     HTML: <h3 class="text-lg font-semibold">User Signups</h3>
 they have clicked a specific element in the running dashboard. The HTML is a verbatim
-slice of the rendered DOM and almost always contains text that also appears in the JSX
-source — use it as your \`oldText\` anchor when patching. The Path describes the
-element's position in the render tree, useful for disambiguation when the HTML alone
-repeats.
-
-A widget pointer narrows the TARGET, but it does NOT decide the tool. Apply the same
-rule above: if the user wants to restyle/rename the targeted widget → patchDashboard.
-If the user wants to reorder, resize, move, or restructure the layout around the widget
-→ updateDashboard. "Make this card bigger" affects the grid → updateDashboard, even
-though the user only pointed at one card.
+slice of the rendered DOM, and the Path describes the element's position in the render
+tree. Use both to identify the exact source element the user wants changed. Preserve
+the rest of the dashboard and emit the complete updated source via updateDashboard.
 
 ACTION INTENTS FROM THE USER
 The user may include a block like:
     [Action: Add a new component to the dashboard]
 This is a structural intent — the user wants something NEW added. Adding a component
-shifts sibling positions in the layout grid and is exactly the case that updateDashboard
-handles (per the rule above: structural change → full rewrite). Do NOT try to express
-"add a card" as a patchDashboard with a JSX fragment insertion — JSX commas, parent
-containers, and grid template-cols may all need adjustment together. Re-emit the full
-source via updateDashboard with the new component placed sensibly in the existing
-layout, preserving everything else.
+may require adjusting its parent container and surrounding layout. Re-emit the full
+source via updateDashboard with the new component placed sensibly, preserving
+everything else.
 
 The user's typed text describes WHAT to add ("a metric card for active users",
 "a chart of weekly signups"). Combine the action intent with the typed text to decide
@@ -685,11 +618,9 @@ The user may include a block like:
     Stack: <stack trace>
     Component stack: <react component stack>
 The dashboard threw at runtime. Localize the bug from the stack and component stack,
-identify the smallest possible fix in the source, and apply it. If the fix is a
-one-line change (a typo, a wrong prop name, a missing null check), use patchDashboard.
-If the fix requires restructuring (a hook ordering bug, a malformed JSX tree), use
-updateDashboard. Either way, preserve the rest of the dashboard. Don't strip out
-features the user didn't ask to remove just because they're near the crash site.
+identify the smallest possible fix in the source, and emit the complete corrected source
+via updateDashboard. Preserve the rest of the dashboard. Don't strip out features the
+user didn't ask to remove just because they're near the crash site.
 
 ────────────────────────────────────────
 CORE DATA FETCHING RULES (STACK)
@@ -1128,7 +1059,7 @@ FIRST and re-run the list.
 
 All five pass → emit the tool call. Any fail → fix, re-check, emit.
 
-You MUST call patchDashboard or updateDashboard per the tool-choice rules above (local edit → patchDashboard; structural/layout change → updateDashboard, with full source). NEVER output code directly in the chat.
+You MUST call updateDashboard with the complete source. NEVER output code directly in the chat.
 `,
 
   "run-query": `

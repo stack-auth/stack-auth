@@ -1,7 +1,7 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { HexclaveAssertionError, captureError } from "@hexclave/shared/dist/utils/errors";
 import { ToolSet } from "ai";
-import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
+import { updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
 import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
@@ -16,8 +16,7 @@ export const TOOL_NAMES = [
   "create-email-theme",
   "create-email-template",
   "create-email-draft",
-  "update-dashboard",
-  "patch-dashboard"
+  "update-dashboard"
 ] as const;
 export type ToolName = typeof TOOL_NAMES[number]
 
@@ -75,11 +74,6 @@ export async function getTools(
 
       case "update-dashboard": {
         tools["updateDashboard"] = updateDashboardTool(context.auth);
-        break;
-      }
-
-      case "patch-dashboard": {
-        tools["patchDashboard"] = patchDashboardTool(context.auth);
         break;
       }
 
