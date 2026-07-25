@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "path";
 import { DEFAULT_API_URL, DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
 import { forwardSignals } from "../lib/child-process.js";
 import { resolveConfigFilePathOption } from "../lib/config-file-path.js";
-import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifest, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
+import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardManifestCached, resolveDashboardRuntime, type DashboardManifest } from "../lib/dashboard-release.js";
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
@@ -399,10 +399,13 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   if (!skipReleaseLookup) {
     logDev("Checking for Hexclave dashboard updates...");
   }
-  const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
+  const [manifest, dashboardReachable] = await Promise.all([
+    skipReleaseLookup ? null : fetchDashboardManifestCached(),
+    isDashboardReachable(url, options.secret),
+  ]);
   const latestVersion = manifest?.version;
 
-  if (await isDashboardReachable(url, options.secret)) {
+  if (dashboardReachable) {
     const runningDashboard = readDevEnvState().localDashboardsByPort?.[String(options.port)];
     const runningVersion = runningDashboard?.version;
     if (devDashboardCommand != null && runningVersion != null) {

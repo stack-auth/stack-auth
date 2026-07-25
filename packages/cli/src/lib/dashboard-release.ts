@@ -4,7 +4,7 @@ import { dirname, join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import extractZip from "extract-zip";
-import { devEnvStatePath } from "./dev-env-state.js";
+import { devEnvStatePath, readDevEnvState, writeDevEnvState } from "./dev-env-state.js";
 import { CliError, errorMessage } from "./errors.js";
 
 // The RDE dashboard ships as a zipped standalone build attached to a GitHub
@@ -32,6 +32,9 @@ const LOG_PREFIX = "[Hexclave] ";
 const SAFE_VERSION_REGEX = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
 // Don't hang forever on a slow host; a timeout falls through to the offline cache.
 const MANIFEST_FETCH_TIMEOUT_MS = 10_000;
+// A fresh release may take up to this long to be adopted on restart, in exchange
+// for avoiding a network round-trip on warm `hexclave dev` invocations.
+export const DASHBOARD_MANIFEST_CACHE_TTL_MS = 5 * 60_000;
 const DASHBOARD_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 
 // Require https for the download (loopback http allowed for local mirrors/tests);
@@ -158,6 +161,41 @@ export async function fetchDashboardManifest(env: NodeJS.ProcessEnv = process.en
     logDashboard(`Could not fetch dashboard manifest from ${url}: ${errorMessage(error)}`);
     return null;
   }
+}
+
+export async function fetchDashboardManifestCached(env: NodeJS.ProcessEnv = process.env): Promise<DashboardManifest | null> {
+  const url = dashboardManifestUrl(env);
+  try {
+    const entry = readDevEnvState().dashboardManifestsByUrl?.[url];
+    const ageMillis = entry == null ? undefined : Date.now() - entry.fetchedAtMillis;
+    if (entry != null && ageMillis != null && ageMillis >= 0 && ageMillis < DASHBOARD_MANIFEST_CACHE_TTL_MS) {
+      const manifest = parseDashboardManifest(entry.manifest);
+      if (manifest != null) {
+        return manifest;
+      }
+    }
+  } catch {
+    // The manifest cache is optional; malformed or inaccessible state must not
+    // prevent the normal network fetch or dashboard startup.
+  }
+
+  const manifest = await fetchDashboardManifest(env);
+  if (manifest != null) {
+    try {
+      const state = readDevEnvState();
+      writeDevEnvState({
+        ...state,
+        dashboardManifestsByUrl: {
+          ...state.dashboardManifestsByUrl,
+          [url]: { manifest, fetchedAtMillis: Date.now() },
+        },
+      });
+    } catch {
+      // The manifest cache is best-effort; state write failures must not affect
+      // dashboard startup or turn a successful network fetch into an error.
+    }
+  }
+  return manifest;
 }
 
 async function sha256File(path: string): Promise<string> {

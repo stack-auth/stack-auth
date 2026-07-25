@@ -20,11 +20,21 @@ export type PendingBrowserSecretConfirmationCode = {
   updatedAtMillis: number,
 };
 
+export type DashboardManifestCacheEntry = {
+  manifest: {
+    version: string,
+    sha256: string,
+    url: string,
+  },
+  fetchedAtMillis: number,
+};
+
 export type DevEnvState = {
   version: 1,
   anonymousRefreshToken?: string,
   localDashboardsByPort?: Partial<Record<string, LocalDashboardState>>,
   pendingBrowserSecretConfirmationCodesByPort?: Partial<Record<string, PendingBrowserSecretConfirmationCode>>,
+  dashboardManifestsByUrl?: Partial<Record<string, DashboardManifestCacheEntry>>,
   anonymousApiBaseUrl?: string,
   projectsByConfigPath: Partial<Record<string, {
     projectId: string,
@@ -77,6 +87,31 @@ function sanitizeLocalDashboardsByPort(value: unknown): Partial<Record<string, L
   return sanitized;
 }
 
+function isDashboardManifestCacheEntry(value: unknown): value is DashboardManifestCacheEntry {
+  if (value == null || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.manifest == null || typeof candidate.manifest !== "object") return false;
+  const manifest = candidate.manifest as Record<string, unknown>;
+  return (
+    typeof manifest.version === "string" &&
+    typeof manifest.sha256 === "string" &&
+    typeof manifest.url === "string" &&
+    typeof candidate.fetchedAtMillis === "number" &&
+    Number.isFinite(candidate.fetchedAtMillis)
+  );
+}
+
+function sanitizeDashboardManifestsByUrl(value: unknown): Partial<Record<string, DashboardManifestCacheEntry>> | undefined {
+  if (value == null || typeof value !== "object") return undefined;
+  const sanitized: Record<string, DashboardManifestCacheEntry> = {};
+  for (const [url, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (isDashboardManifestCacheEntry(entry)) {
+      sanitized[url] = entry;
+    }
+  }
+  return sanitized;
+}
+
 export function readDevEnvState(): DevEnvState {
   const path = devEnvStatePath();
   if (!existsSync(path)) {
@@ -95,6 +130,7 @@ export function readDevEnvState(): DevEnvState {
     anonymousApiBaseUrl: typeof parsed.anonymousApiBaseUrl === "string" ? parsed.anonymousApiBaseUrl : undefined,
     localDashboardsByPort: sanitizeLocalDashboardsByPort(parsed.localDashboardsByPort),
     pendingBrowserSecretConfirmationCodesByPort: parsed.pendingBrowserSecretConfirmationCodesByPort,
+    dashboardManifestsByUrl: sanitizeDashboardManifestsByUrl(parsed.dashboardManifestsByUrl),
     projectsByConfigPath: parsed.projectsByConfigPath ?? {},
   };
 }

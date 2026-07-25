@@ -1,14 +1,42 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DASHBOARD_DIR_OVERRIDE_ENV_VAR,
+  DASHBOARD_MANIFEST_CACHE_TTL_MS,
   DASHBOARD_MANIFEST_URL_ENV_VAR,
   dashboardDirOverride,
   dashboardManifestUrl,
+  fetchDashboardManifestCached,
   parseDashboardManifest,
   pickLatestVersion,
 } from "./dashboard-release.js";
+import { readDevEnvState, writeDevEnvState } from "./dev-env-state.js";
 
 const VALID_SHA = "a".repeat(64);
+const MANIFEST_URL = "https://mirror.example/manifest.json";
+const VALID_MANIFEST = {
+  version: "1.2.3",
+  sha256: VALID_SHA,
+  url: "https://example.com/dashboard-1.2.3.zip",
+};
+
+let tempDir: string | undefined;
+
+function useTempStateFile() {
+  tempDir = mkdtempSync(join(tmpdir(), "hexclave-dashboard-release-"));
+  process.env.STACK_DEV_ENVS_PATH = join(tempDir, "dev-envs.json");
+}
+
+afterEach(() => {
+  delete process.env.STACK_DEV_ENVS_PATH;
+  vi.restoreAllMocks();
+  if (tempDir != null) {
+    rmSync(tempDir, { recursive: true, force: true });
+    tempDir = undefined;
+  }
+});
 
 describe("parseDashboardManifest", () => {
   it("accepts a well-formed manifest and lowercases the digest", () => {
@@ -89,6 +117,122 @@ describe("dashboardManifestUrl", () => {
   it("falls back to the default for a blank override", () => {
     expect(dashboardManifestUrl({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: "   " }))
       .toBe("https://github.com/hexclave/hexclave/releases/download/dashboard-latest/manifest.json");
+  });
+});
+
+describe("fetchDashboardManifestCached", () => {
+  it("returns a fresh cached entry without making a network request", async () => {
+    useTempStateFile();
+    writeDevEnvState({
+      version: 1,
+      dashboardManifestsByUrl: {
+        [MANIFEST_URL]: {
+          manifest: VALID_MANIFEST,
+          fetchedAtMillis: Date.now(),
+        },
+      },
+      projectsByConfigPath: {},
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchDashboardManifestCached({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: MANIFEST_URL }))
+      .resolves.toEqual(VALID_MANIFEST);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fetches and persists a missing manifest cache entry", async () => {
+    useTempStateFile();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(VALID_MANIFEST), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchDashboardManifestCached({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: MANIFEST_URL }))
+      .resolves.toEqual(VALID_MANIFEST);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readDevEnvState().dashboardManifestsByUrl?.[MANIFEST_URL]?.manifest).toEqual(VALID_MANIFEST);
+    expect(readDevEnvState().dashboardManifestsByUrl?.[MANIFEST_URL]?.fetchedAtMillis).toBeTypeOf("number");
+  });
+
+  it("fetches and replaces an expired cache entry", async () => {
+    useTempStateFile();
+    writeDevEnvState({
+      version: 1,
+      dashboardManifestsByUrl: {
+        [MANIFEST_URL]: {
+          manifest: { ...VALID_MANIFEST, version: "1.2.2" },
+          fetchedAtMillis: Date.now() - DASHBOARD_MANIFEST_CACHE_TTL_MS - 1,
+        },
+      },
+      projectsByConfigPath: {},
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(VALID_MANIFEST), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchDashboardManifestCached({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: MANIFEST_URL }))
+      .resolves.toEqual(VALID_MANIFEST);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readDevEnvState().dashboardManifestsByUrl?.[MANIFEST_URL]?.manifest).toEqual(VALID_MANIFEST);
+  });
+
+  it("keys cache entries by manifest URL", async () => {
+    useTempStateFile();
+    const otherManifestUrl = "https://other.example/manifest.json";
+    writeDevEnvState({
+      version: 1,
+      dashboardManifestsByUrl: {
+        [MANIFEST_URL]: {
+          manifest: VALID_MANIFEST,
+          fetchedAtMillis: Date.now(),
+        },
+      },
+      projectsByConfigPath: {},
+    });
+    const otherManifest = { ...VALID_MANIFEST, version: "1.2.4" };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(otherManifest), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchDashboardManifestCached({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: otherManifestUrl }))
+      .resolves.toEqual(otherManifest);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readDevEnvState().dashboardManifestsByUrl?.[otherManifestUrl]?.manifest).toEqual(otherManifest);
+  });
+
+  it("ignores malformed persisted entries and replaces them after a successful fetch", async () => {
+    useTempStateFile();
+    const statePath = process.env.STACK_DEV_ENVS_PATH;
+    if (statePath == null) {
+      throw new Error("STACK_DEV_ENVS_PATH should be set by useTempStateFile().");
+    }
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      dashboardManifestsByUrl: {
+        [MANIFEST_URL]: {
+          manifest: { ...VALID_MANIFEST, sha256: "not-a-digest" },
+          fetchedAtMillis: Date.now(),
+        },
+      },
+      projectsByConfigPath: {},
+    }), { mode: 0o600 });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(VALID_MANIFEST), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchDashboardManifestCached({ [DASHBOARD_MANIFEST_URL_ENV_VAR]: MANIFEST_URL }))
+      .resolves.toEqual(VALID_MANIFEST);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(readFileSync(statePath, "utf-8")).dashboardManifestsByUrl[MANIFEST_URL].manifest)
+      .toEqual(VALID_MANIFEST);
   });
 });
 
