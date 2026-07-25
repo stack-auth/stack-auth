@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
-import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, INTERNAL_PROJECT_OWNER_TEAM_ID, InternalProjectKeys, Project, Team, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 const BASE_PATH = "/api/latest/internal/gtm";
 
@@ -21,7 +21,11 @@ function requireUpdatedAt(body: unknown): number {
 
 async function signInAsInternalAdmin(): Promise<void> {
   backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
-  await Auth.fastSignUp();
+  const { userId } = await Auth.fastSignUp();
+  // Signing up on the internal project is not enough: its publishable key is public, so the GTM
+  // endpoints gate on membership of the team that OWNS the internal project. Join that team so the
+  // user is a real platform admin rather than just an internal-project account.
+  await Team.addMember(INTERNAL_PROJECT_OWNER_TEAM_ID, userId);
 }
 
 describe("internal GTM dashboard content", () => {

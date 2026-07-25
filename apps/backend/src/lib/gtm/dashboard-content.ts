@@ -41,11 +41,13 @@ export async function requireGtmReadProject(options: {
     // Reading a project's own GTM data needs proof that the caller owns the project, and there are two
     // distinct ways to hold that proof. The project dashboard reads through the owned-project admin app,
     // which is constructed with `tokenStore === null` and therefore never sends an access token — for it,
-    // possession of the admin key IS the authorization and `auth.user` is structurally always null. The
-    // internal GTM pages instead read through the dashboard's own user session, which is a client request
-    // carrying a real user. Requiring a user unconditionally locked out the former; requiring admin
-    // unconditionally would lock out the latter, so accept either.
-    if (options.authType !== "admin" && options.user == null) throw new KnownErrors.UserAuthenticationRequired();
+    // possession of the admin key IS the authorization and `auth.user` is structurally always null.
+    if (options.authType === "admin") return options.authProjectId;
+    // Everything else arrives as a client/server request. That path is only used by the internal GTM
+    // pages, which read through the dashboard's own user session, so it gets the same platform-admin gate
+    // as the cross-project path below. Accepting any signed-in user here would have let a customer
+    // project's publishable key read that project's curated GTM content, which is staff-only material.
+    await ensureInternalGtmAdmin(options.authProjectId, options.user);
     return options.authProjectId;
   }
   await ensureInternalGtmAdmin(options.authProjectId, options.user);

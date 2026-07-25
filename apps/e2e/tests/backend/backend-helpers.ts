@@ -88,6 +88,16 @@ export async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
   return await backendContext.with({ projectKeys: InternalProjectKeys, userAuth: null }, fn);
 }
 
+/**
+ * Team that owns the internal project, mirroring `internalTeamId` in `apps/backend/prisma/seed.ts`.
+ *
+ * Platform-wide endpoints authorize on membership of this team (see `isPlatformAdmin` on the backend),
+ * not on merely holding an internal-project session — the internal publishable key is public, so any
+ * signed-in internal user would otherwise qualify. Tests that need a platform admin must therefore join
+ * the seeded team rather than just signing up.
+ */
+export const INTERNAL_PROJECT_OWNER_TEAM_ID = "a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c";
+
 export const InternalProjectClientKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
