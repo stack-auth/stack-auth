@@ -9,6 +9,7 @@ import { DASHBOARD_SERVER_RELATIVE_PATH, dashboardDirOverride, fetchDashboardMan
 import { devEnvStatePath, ensureLocalDashboardSecret, readDevEnvState, recordLocalDashboardProcess } from "../lib/dev-env-state.js";
 import { CliError, errorMessage } from "../lib/errors.js";
 import { DASHBOARD_PORT_ENV_VAR, dashboardPort, dashboardRequest, dashboardUrl, createRemoteDevelopmentEnvironmentSession, type DashboardSessionResponse } from "../lib/local-dashboard.js";
+import { startProgress } from "../lib/progress.js";
 
 type ChildCommand = {
   command: string,
@@ -25,6 +26,8 @@ type ConfigSyncEventBase = {
 };
 
 type ConfigSyncEvent = ConfigSyncEventBase & ({
+  status: "syncing",
+} | {
   status: "success",
 } | {
   status: "error",
@@ -38,7 +41,7 @@ type HeartbeatResponse = {
   config_sync_events?: ConfigSyncEvent[],
 };
 
-const HEARTBEAT_INTERVAL_MS = 5_000;
+const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_STOP_POLL_MS = 100;
 const DASHBOARD_RESTART_MIN_UPTIME_MS = 5_000;
 const DASHBOARD_START_TIMEOUT_MS = 60_000;
@@ -66,10 +69,6 @@ const REQUIRED_DASHBOARD_RUNTIME_ENV_VARS = new Set([
   "NEXT_PUBLIC_STACK_IS_PREVIEW",
   DASHBOARD_PORT_ENV_VAR,
 ]);
-
-type ProgressLogger = {
-  stop: (finalMessage?: string) => void,
-};
 
 type DashboardSessionState = {
   session: DashboardSessionResponse,
@@ -146,37 +145,6 @@ function maybeOpenOnboardingPage(session: DashboardSessionResponse, port: number
   } else {
     logDev(`Onboarding is still pending for project ${session.project_id}. Open this URL manually: ${url}`);
   }
-}
-
-function startProgressLog(message: string): ProgressLogger {
-  if (!process.stderr.isTTY) {
-    logDev(`${message}...`);
-    return {
-      stop() {
-        logDev(`${message}... done!`);
-      },
-    };
-  }
-
-  let dotCount = 0;
-  let stopped = false;
-  const render = () => {
-    process.stderr.write(`\r\x1b[2K${LOG_PREFIX}${message}${".".repeat(dotCount)}`);
-    dotCount = (dotCount + 1) % 4;
-  };
-  render();
-  const timer = setInterval(render, 400);
-  timer.unref();
-
-  return {
-    stop() {
-      if (stopped) return;
-      stopped = true;
-      clearInterval(timer);
-      process.stderr.write("\r\x1b[2K");
-      logDev(`${message}... done!`);
-    },
-  };
 }
 
 function dashboardRuntimeRoot(port: number): string {
@@ -428,6 +396,9 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
   // or falls back to cache.
   const dashboardOverride = dashboardDirOverride();
   const skipReleaseLookup = devDashboardCommand != null || dashboardOverride != null;
+  if (!skipReleaseLookup) {
+    logDev("Checking for Hexclave dashboard updates...");
+  }
   const manifest: DashboardManifest | null = skipReleaseLookup ? null : await fetchDashboardManifest();
   const latestVersion = manifest?.version;
 
@@ -459,9 +430,9 @@ async function startDashboardIfNeeded(options: { apiBaseUrl: string, secret: str
 
   // Download (or reuse a cached copy of) the dashboard build to launch. Not
   // needed when a custom dev dashboard command runs the dashboard itself.
-  const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest }) : null;
+  const release = devDashboardCommand == null ? await resolveDashboardRuntime({ manifest, onProgress: (message) => logDev(`${message}...`) }) : null;
 
-  const progress = startProgressLog(`Hexclave dashboard not found on port ${options.port}. Starting now`);
+  const progress = startProgress(`Hexclave dashboard not found on port ${options.port}. Starting now`, { prefix: LOG_PREFIX });
   const dashboardEnv = {
     ...process.env,
     NODE_ENV: devDashboardCommand == null ? "production" : "development",
@@ -568,7 +539,7 @@ function isConfigSyncEvent(value: unknown): value is ConfigSyncEvent {
   ) {
     return false;
   }
-  if (value.status === "success") {
+  if (value.status === "syncing" || value.status === "success") {
     return true;
   }
   return (
@@ -611,10 +582,12 @@ function logBrowserSecretConfirmationCode(response: HeartbeatResponse): void {
     : `Dashboard browser confirmation code: ${response.browser_secret_confirmation_code} (expires in ${expiresInSeconds}s)`);
 }
 
-function logConfigSyncEvents(response: HeartbeatResponse): void {
+export function logConfigSyncEvents(response: HeartbeatResponse): void {
   for (const event of response.config_sync_events ?? []) {
-    if (event.status === "success") {
-      logDev(`Config synced to development environment project: ${event.config_file_path}`);
+    if (event.status === "syncing") {
+      logDev(`Detected change to config file at ${event.config_file_path}. Syncing...`);
+    } else if (event.status === "success") {
+      logDev("Updated config sync successful!");
     } else {
       logDevConfigError(`Config sync failed for ${event.config_file_path}: ${event.error_message}`);
     }

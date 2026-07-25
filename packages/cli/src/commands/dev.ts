@@ -14,10 +14,10 @@ type HeartbeatResponse = {
   browser_secret_confirmation_code?: string,
   browser_secret_confirmation_code_expires_at_millis?: number,
   config_sync_events?: Array<{
-    config_file_path: string,
-    created_at_millis: number,
-    status: "success" | "error",
-    error_message?: string,
+      config_file_path: string,
+      created_at_millis: number,
+      status: "syncing" | "success" | "error",
+      error_message?: string,
   }>,
 };
 
@@ -57,10 +57,22 @@ export function processExists(pid: number): boolean {
 }
 function isConfigSyncEvent(value: unknown): boolean {
   if (value == null || typeof value !== "object" || Array.isArray(value) || !("config_file_path" in value) || typeof value.config_file_path !== "string" || !("status" in value) || !("created_at_millis" in value) || typeof value.created_at_millis !== "number") return false;
-  return value.status === "success" || (value.status === "error" && "error_message" in value && typeof value.error_message === "string");
+  return value.status === "syncing" || value.status === "success" || (value.status === "error" && "error_message" in value && typeof value.error_message === "string");
 }
 export function isHeartbeatResponse(value: unknown): value is HeartbeatResponse {
   return value != null && typeof value === "object" && !Array.isArray(value) && "ok" in value && value.ok === true && (!("browser_secret_confirmation_code" in value) || typeof value.browser_secret_confirmation_code === "string") && (!("browser_secret_confirmation_code_expires_at_millis" in value) || typeof value.browser_secret_confirmation_code_expires_at_millis === "number") && (!("config_sync_events" in value) || (Array.isArray(value.config_sync_events) && value.config_sync_events.every(isConfigSyncEvent)));
+}
+
+export function logConfigSyncEvents(response: HeartbeatResponse): void {
+  for (const event of response.config_sync_events ?? []) {
+    if (event.status === "syncing") {
+      console.warn(`[Hexclave] Detected change to config file at ${event.config_file_path}. Syncing...`);
+    } else if (event.status === "success") {
+      console.warn("[Hexclave] Updated config sync successful!");
+    } else {
+      console.warn(`${configErrorLogPrefix()}Config sync failed for ${event.config_file_path}: ${event.error_message}`);
+    }
+  }
 }
 export async function killLocalDashboard(url: string, port: number): Promise<void> {
   const { readDevEnvState } = await import("../lib/dev-env-state.js");

@@ -1,6 +1,6 @@
 {
   "name": "@hexclave/convex-example",
-  "version": "1.0.52",
+  "version": "1.0.65",
   "repository": "https://github.com/hexclave/hexclave",
   "private": true,
   "scripts": {

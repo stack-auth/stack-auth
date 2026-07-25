@@ -49,8 +49,8 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-    await captureFatalError("stack-cli-fatal", err);
     console.error(err);
+    await captureFatalError("stack-cli-fatal", err);
     process.exit(1);
   }
 }

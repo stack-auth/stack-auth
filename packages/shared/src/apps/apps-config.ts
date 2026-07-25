@@ -191,7 +191,15 @@ export const ALL_APPS = {
     subtitle: "Monitor CLI authentication sessions and active tokens",
     tags: ["auth", "developers"],
     stage: "alpha",
-    parentAppId: "authentication",
+  },
+  // The app id carries the `-alpha` suffix deliberately: it is the key users
+  // write in `apps.installed` and under the top-level config, so the stage is
+  // visible in every hexclave.config.ts. The display name stays "Deployments".
+  "deployments-alpha": {
+    displayName: "Deployments",
+    subtitle: "Configure and connect the services that run your app",
+    tags: ["developers", "operations"],
+    stage: "alpha",
   },
 } as const satisfies Record<string, App>;
 

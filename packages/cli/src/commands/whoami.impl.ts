@@ -1,12 +1,16 @@
 import { Command } from "commander";
 import { getInternalUser } from "../lib/app.js";
 import { resolveSessionAuth } from "../lib/auth.js";
+import { withProgress } from "../lib/progress.js";
 
 export async function run(program: Command) {
   const flags = program.opts();
   const auth = resolveSessionAuth();
-  const user = await getInternalUser(auth);
-  const teams = await user.listTeams();
+  const { user, teams } = await withProgress("Loading account", async () => {
+    const user = await getInternalUser(auth);
+    const teams = await user.listTeams();
+    return { user, teams };
+  });
 
   const result = {
     id: user.id,

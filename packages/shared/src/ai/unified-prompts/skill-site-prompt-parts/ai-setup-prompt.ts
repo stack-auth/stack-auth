@@ -1,3 +1,4 @@
+import packageJson from "../../../../package.json";
 import { ALL_APPS, type AppId } from "../../../apps/apps-config";
 import { typedEntries } from "../../../utils/objects";
 import { deindent } from "../../../utils/strings";
@@ -411,12 +412,12 @@ function getRestBackendSetupPrompt(kind: "python" | "rest-api") {
             If this project already has a \`hexclave.config.ts\` file for another frontend or backend, reuse that same file so the whole project shares one Hexclave config. Otherwise, create a new \`hexclave.config.ts\` file in your workspace:
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "@hexclave/js/config";
+            import type { HexclaveConfig } from "@hexclave/js";
 
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`@hexclave/js/config\` path (never from \`@hexclave/js\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`@hexclave/js\` package.
 
             Run your backend through the Hexclave CLI so it starts the local dashboard and injects the Hexclave environment variables:
 
@@ -519,7 +520,7 @@ export const aiAgentConfigPreparationPrompt = deindent`
 
   For any other agent, register the same HTTP MCP server using its standard MCP config file.
 
-  After installation, use the \`ask_hexclave\` MCP tool for Hexclave questions when available. If the MCP server is not available, fetch the latest docs from \`https://docs.hexclave.com\`.
+  After installation, the MCP server's \`ask_hexclave\` tool can answer Hexclave questions from agents that support MCP. For public URL-based questions, use only \`https://skill.hexclave.com/ask?question=<...>&context=<...>\` (\`question\` is the exact question you're looking to answer, \`context\` the higher-level task you're trying to accomplish). If you need broad baseline context instead of a specific answer, fetch the full skill documentation from \`https://skill.hexclave.com/full\`. If none of these are available, fetch the latest docs from \`https://docs.hexclave.com\`.
 
   ### Update AGENTS.md
 
@@ -890,12 +891,11 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
           \`\`\`html
           <script type="module">
             // Pin a specific version so a new release cannot unexpectedly break your page.
-            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@1.0.51";
+            import { HexclaveClientApp } from "https://esm.sh/@hexclave/js@${packageJson.version}";
 
             globalThis.hexclaveClientApp = new HexclaveClientApp({
-              // Environment variables are NOT read with this approach, so the project ID
-              // (and the publishable client key, if the project has requirePublishableClientKey
-              // enabled) MUST be passed explicitly here.
+              // As you cannot inject environment variables into the browser without a bundler,
+              // the project ID must be passed explicitly here.
               projectId: "your-project-id",
               tokenStore: "cookie",
               urls: {
@@ -911,9 +911,9 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
 
           Important caveats for this approach:
 
-          - **Environment variables do not work.** There is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, so you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor.
-          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since everything in a \`<script>\` tag is publicly visible. Do not put a secret server key on the page.
-          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@1.0.51\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
+          - Without a bundler or build step, there is no concept of environment variables in a browser. If there is no build step to inject \`HEXCLAVE_PROJECT_ID\` and related variables, you must hard-code \`projectId\` (and \`publishableClientKey\` if \`requirePublishableClientKey\` is enabled) directly in the constructor, or inject the environment variables either at build or request time in the server that serves the static file.
+          - Only ever construct a \`HexclaveClientApp\` here, never a \`HexclaveServerApp\`, since a \`<script>\` tag runs on the client by design. Do not put a secret server key on the page.
+          - As shown above, pin a specific version (e.g. \`https://esm.sh/@hexclave/js@${packageJson.version}\`) rather than the unpinned \`https://esm.sh/@hexclave/js\`, so that a new SDK release cannot unexpectedly break your page.
         ` : ""}
 
         ${isMaybeBackend ? deindent`
@@ -975,13 +975,13 @@ export function getSdkSetupPrompt(mainType: "ai-prompt" | "nextjs" | "react" | "
             First, create a \`hexclave.config.ts\` configuration file in the root directory of the workspace (or anywhere else):
 
             \`\`\`ts hexclave.config.ts
-            import type { HexclaveConfig } from "${packageName}/config";
+            import type { HexclaveConfig } from "${packageName}";
 
             // default: show-onboarding, which shows the onboarding flow for this project when Hexclave starts
             export const config: HexclaveConfig = "show-onboarding";
             \`\`\`
 
-            The \`/config\` entrypoint is lightweight and free of framework runtime code, so it can be safely loaded by tooling such as the local dashboard. If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\` imported from the same \`${packageName}/config\` path (never from \`${packageName}\` directly, which would pull in the whole SDK and fail to load).
+            If you later switch to a config object and want type-checking, wrap it with \`defineHexclaveConfig\`, imported from the same \`${packageName}\` package.
 
             ${isAiPrompt ? deindent`
               If you already know which apps you want to enable and how to configure them, you can also set the \`config\` object to the desired configuration directly. Refer to the per-app setup instructions for more information. However, in most cases, you would probably want to let the user onboard manually through the show-onboarding flow.

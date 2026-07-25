@@ -23,6 +23,7 @@ import {
   authFooterClassName,
   authFooterLinkClassName,
 } from "./supporting/layout";
+import { HostedNoAuthMethods } from "./supporting/no-auth-methods";
 import { OAuthButtonGroup } from "./supporting/oauth-button";
 import { PasskeyButton } from "./supporting/passkey-button";
 import type { AuthProject, AuthType } from "./supporting/types";
@@ -92,6 +93,11 @@ function HostedAuthPageInner(props: {
   const projectFromHook = app.useProject();
   const project: AuthProject = props.mockProject ?? projectFromHook;
 
+  // Lifted so the typed email survives switching between the "Email" (magic link) and
+  // "Email & Password" (credential) tabs — the tab content is unmounted when inactive,
+  // so keeping the email here (instead of inside each form) both persists and shares it.
+  const [email, setEmail] = useState("");
+
   if (props.automaticRedirect && user != null && props.mockProject == null) {
     return (
       <Suspense fallback={<HostedAuthLoading fullPage={props.fullPage} />}>
@@ -133,6 +139,23 @@ function HostedAuthPageInner(props: {
   const hasEmailMethods = project.config.credentialEnabled || project.config.magicLinkEnabled;
   const enableSeparator = hasEmailMethods && (hasOAuthProviders || hasPasskey);
 
+  // Note that we check passkeys regardless of `props.type` here (unlike `hasPasskey`); a project with only
+  // passkeys enabled can't sign up with them, but it is configured correctly, so the sign-up page should
+  // keep pointing at the sign-in page instead of claiming that the project is misconfigured.
+  const hasAnyAuthMethod = hasOAuthProviders
+    || project.config.passkeyEnabled === true
+    || hasEmailMethods;
+
+  if (!hasAnyAuthMethod) {
+    return (
+      <HostedNoAuthMethods
+        fullPage={props.fullPage}
+        projectId={app.projectId}
+        projectDisplayName={project.displayName}
+      />
+    );
+  }
+
   return (
     <HostedAuthShell fullPage={props.fullPage} paddedFullPage={false}>
       <HostedAuthHeading title={props.type === "sign-in" ? "Sign in" : "Create account"}>
@@ -165,18 +188,22 @@ function HostedAuthPageInner(props: {
             <TabsTrigger value="password" className={authTabsTriggerClassName}>Email & Password</TabsTrigger>
           </TabsList>
           <TabsContent value="magic-link" className="focus-visible:outline-none focus-visible:ring-0">
-            <MagicLinkSignIn />
+            <MagicLinkSignIn email={email} onEmailChange={setEmail} />
           </TabsContent>
           <TabsContent value="password" className="focus-visible:outline-none focus-visible:ring-0">
-            {props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />}
+            {props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} email={email} onEmailChange={setEmail} /> : <CredentialSignIn email={email} onEmailChange={setEmail} />}
           </TabsContent>
         </Tabs>
       ) : project.config.credentialEnabled ? (
-        props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} /> : <CredentialSignIn />
+        props.type === "sign-up" ? <CredentialSignUp noPasswordRepeat={props.noPasswordRepeat} email={email} onEmailChange={setEmail} /> : <CredentialSignIn email={email} onEmailChange={setEmail} />
       ) : project.config.magicLinkEnabled ? (
-        <MagicLinkSignIn />
+        <MagicLinkSignIn email={email} onEmailChange={setEmail} />
       ) : !(hasOAuthProviders || hasPasskey) ? (
-        <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
+        // Only reachable on the sign-up page of a passkey-only project: the project is configured
+        // correctly, there is just no way to create an account with a passkey alone.
+        <p className="py-2 text-center text-sm text-muted-foreground">
+          New accounts can't be created with the sign-in methods enabled for this app. Sign in instead.
+        </p>
       ) : null}
 
       <div className={authFooterClassName}>
