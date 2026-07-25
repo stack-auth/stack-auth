@@ -250,6 +250,10 @@ Errors:
   UserWithEmailAlreadyExists
     code: "user_email_already_exists"
     message: "A user with this email address already exists."
+
+  ContactChannelAlreadyUsedForAuthBySomeoneElse
+    code: "contact_channel_already_used_for_auth_by_someone_else"
+    message: "This email is already used for authentication by another account."
     
   PasswordRequirementsNotMet
     code: "password_requirements_not_met"

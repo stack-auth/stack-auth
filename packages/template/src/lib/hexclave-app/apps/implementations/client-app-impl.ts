@@ -3611,7 +3611,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["ContactChannelAlreadyUsedForAuthBySomeoneElse"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new HexclaveAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }

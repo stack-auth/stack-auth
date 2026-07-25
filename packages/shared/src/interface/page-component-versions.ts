@@ -124,7 +124,7 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
 
   const credentialResultType = isSignIn
     ? "Promise<Result<undefined, KnownErrors[\"EmailPasswordMismatch\"] | KnownErrors[\"InvalidTotpCode\"]>>"
-    : "Promise<Result<undefined, KnownErrors[\"UserWithEmailAlreadyExists\"] | KnownErrors[\"PasswordRequirementsNotMet\"] | KnownErrors[\"BotChallengeFailed\"]>>";
+    : "Promise<Result<undefined, KnownErrors[\"UserWithEmailAlreadyExists\"] | KnownErrors[\"ContactChannelAlreadyUsedForAuthBySomeoneElse\"] | KnownErrors[\"PasswordRequirementsNotMet\"] | KnownErrors[\"BotChallengeFailed\"]>>";
 
   return createCustomPagePrompt({
     key: type,
