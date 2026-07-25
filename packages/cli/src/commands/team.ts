@@ -117,23 +117,26 @@ export function registerTeamCommand(program: Command) {
 
   const members = team
     .command("members")
-    .description("List members of a team")
-    .option("--team-id <id>", "Team ID");
+    .description("Manage team members");
 
-  members.action(async (options: TeamOptions) => {
-    const user = await getUser();
-    const selectedTeam = await getTeam(user, options);
-    const teamUsers = await withTeamPermissionError("list team members", () => selectedTeam.listUsers());
-    const result = teamUsers.map((member) => ({
-      id: member.id,
-      displayName: member.teamProfile.displayName,
-    }));
-    if (isJson(program)) {
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      console.log(formatTeamMembers(result));
-    }
-  });
+  members
+    .command("list")
+    .description("List members of a team")
+    .option("--team-id <id>", "Team ID")
+    .action(async (options: TeamOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      const teamUsers = await withTeamPermissionError("list team members", () => selectedTeam.listUsers());
+      const result = teamUsers.map((member) => ({
+        id: member.id,
+        displayName: member.teamProfile.displayName,
+      }));
+      if (isJson(program)) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(formatTeamMembers(result));
+      }
+    });
 
   members
     .command("remove")
@@ -181,26 +184,29 @@ export function registerTeamCommand(program: Command) {
 
   const invitations = team
     .command("invitations")
-    .description("Manage team invitations")
-    .option("--team-id <id>", "Team ID");
+    .description("Manage team invitations");
 
-  invitations.action(async (options: TeamOptions) => {
-    const user = await getUser();
-    const selectedTeam = await getTeam(user, options);
-    const sentInvitations = await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations());
-    const result = sentInvitations.map((invitation) => ({
-      id: invitation.id,
-      email: invitation.recipientEmail,
-      expiresAt: invitation.expiresAt.toISOString(),
-    }));
-    if (isJson(program)) {
-      console.log(JSON.stringify(result, null, 2));
-    } else if (result.length === 0) {
-      console.log("No invitations found.");
-    } else {
-      console.log(result.map((invitation) => `${invitation.id}\t${invitation.email ?? "(unknown)"}\t${invitation.expiresAt}`).join("\n"));
-    }
-  });
+  invitations
+    .command("list")
+    .description("List invitations sent by a team")
+    .option("--team-id <id>", "Team ID")
+    .action(async (options: TeamOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      const sentInvitations = await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations());
+      const result = sentInvitations.map((invitation) => ({
+        id: invitation.id,
+        email: invitation.recipientEmail,
+        expiresAt: invitation.expiresAt.toISOString(),
+      }));
+      if (isJson(program)) {
+        console.log(JSON.stringify(result, null, 2));
+      } else if (result.length === 0) {
+        console.log("No invitations found.");
+      } else {
+        console.log(result.map((invitation) => `${invitation.id}\t${invitation.email ?? "(unknown)"}\t${invitation.expiresAt}`).join("\n"));
+      }
+    });
 
   invitations
     .command("revoke")
