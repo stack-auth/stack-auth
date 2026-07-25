@@ -23,6 +23,7 @@ import {
   authFooterClassName,
   authFooterLinkClassName,
 } from "./supporting/layout";
+import { HostedNoAuthMethods } from "./supporting/no-auth-methods";
 import { OAuthButtonGroup } from "./supporting/oauth-button";
 import { PasskeyButton } from "./supporting/passkey-button";
 import type { AuthProject, AuthType } from "./supporting/types";
@@ -138,6 +139,23 @@ function HostedAuthPageInner(props: {
   const hasEmailMethods = project.config.credentialEnabled || project.config.magicLinkEnabled;
   const enableSeparator = hasEmailMethods && (hasOAuthProviders || hasPasskey);
 
+  // Note that we check passkeys regardless of `props.type` here (unlike `hasPasskey`); a project with only
+  // passkeys enabled can't sign up with them, but it is configured correctly, so the sign-up page should
+  // keep pointing at the sign-in page instead of claiming that the project is misconfigured.
+  const hasAnyAuthMethod = hasOAuthProviders
+    || project.config.passkeyEnabled === true
+    || hasEmailMethods;
+
+  if (!hasAnyAuthMethod) {
+    return (
+      <HostedNoAuthMethods
+        fullPage={props.fullPage}
+        projectId={app.projectId}
+        projectDisplayName={project.displayName}
+      />
+    );
+  }
+
   return (
     <HostedAuthShell fullPage={props.fullPage} paddedFullPage={false}>
       <HostedAuthHeading title={props.type === "sign-in" ? "Sign in" : "Create account"}>
@@ -181,7 +199,11 @@ function HostedAuthPageInner(props: {
       ) : project.config.magicLinkEnabled ? (
         <MagicLinkSignIn email={email} onEmailChange={setEmail} />
       ) : !(hasOAuthProviders || hasPasskey) ? (
-        <p className="py-4 text-center text-sm text-destructive">No authentication method enabled.</p>
+        // Only reachable on the sign-up page of a passkey-only project: the project is configured
+        // correctly, there is just no way to create an account with a passkey alone.
+        <p className="py-2 text-center text-sm text-muted-foreground">
+          New accounts can't be created with the sign-in methods enabled for this app. Sign in instead.
+        </p>
       ) : null}
 
       <div className={authFooterClassName}>
