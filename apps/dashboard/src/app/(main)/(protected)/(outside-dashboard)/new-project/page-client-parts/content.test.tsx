@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 const mockPush = vi.hoisted(() => vi.fn());
 const mockReplace = vi.hoisted(() => vi.fn());
 const mockOwnedProjects = vi.hoisted(() => ({ current: [] as Array<{ id: string }> }));
+const mockCreateProject = vi.hoisted(() => vi.fn(async () => ({ id: "created-project-id" })));
 
 vi.mock("@/components/design-components/button", () => ({
   DesignButton: ({ children, type, loading: _loading, variant: _variant, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean, variant?: string }) => (
@@ -70,7 +71,7 @@ vi.mock("@/lib/dashboard-user", () => ({
     selectedTeam: null,
     useTeams: () => [{ id: "team-id", displayName: "Team" }],
     useOwnedProjects: () => mockOwnedProjects.current,
-    createProject: vi.fn(),
+    createProject: mockCreateProject,
     createTeam: vi.fn(),
     setSelectedTeam: vi.fn(),
   }),
@@ -97,11 +98,21 @@ afterEach(() => {
   mockPush.mockClear();
   mockReplace.mockClear();
   mockOwnedProjects.current = [];
+  mockCreateProject.mockReset();
+  mockCreateProject.mockResolvedValue({ id: "created-project-id" });
 });
 
 // The page renders both the create-project and the create-team dialog, in that order.
 function dismissCreateProjectDialog() {
   fireEvent.click(screen.getAllByText("dismiss dialog")[0]);
+}
+
+function throwMissingInput(): never {
+  throw new Error("The project name input was not rendered.");
+}
+
+function throwMissingForm(): never {
+  throw new Error("The project creation form was not rendered.");
 }
 
 describe("new project page", () => {
@@ -116,6 +127,20 @@ describe("new project page", () => {
     expect(screen.getByText("Create a new project")).not.toBeNull();
     expect(mockPush).not.toHaveBeenCalled();
     expect(screen.queryByText("Cancel")).toBeNull();
+  });
+
+  it("ignores dismissals while a project is being created", () => {
+    mockOwnedProjects.current = [{ id: "project-id" }];
+    mockCreateProject.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<PageClient />);
+
+    fireEvent.change(container.querySelector("#project-name") ?? throwMissingInput(), { target: { value: "My Project" } });
+    fireEvent.submit(container.querySelector("form") ?? throwMissingForm());
+
+    dismissCreateProjectDialog();
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.getByText("Create a new project")).not.toBeNull();
   });
 
   it("returns users with projects to the projects page when they dismiss the dialog", () => {

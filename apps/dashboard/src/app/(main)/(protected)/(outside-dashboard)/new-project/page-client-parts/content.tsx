@@ -348,7 +348,8 @@ function PageClientInner() {
         <Dialog
           open
           onOpenChange={(open) => {
-            if (open || !canLeaveProjectCreation) {
+            // Navigating away mid-creation would hide the result (or error) of the request.
+            if (open || creatingProjectRef.current || !canLeaveProjectCreation) {
               return;
             }
             router.push("/projects");
