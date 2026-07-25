@@ -1,5 +1,5 @@
 import { it } from "../../../../../../helpers";
-import { Auth, ContactChannels, Project, Team, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, Team, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should set the refresh token for a CLI auth attempt and return success when polling", async ({ expect }) => {
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
@@ -76,7 +76,7 @@ it("should set the refresh token for a CLI auth attempt and return success when 
   `);
 });
 
-it("should reject a restricted user's refresh token", async ({ expect }) => {
+it("should allow a restricted user's refresh token so clients can choose their own onboarding policy", async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
       credential_enabled: true,
@@ -87,14 +87,12 @@ it("should reject a restricted user's refresh token", async ({ expect }) => {
   });
 
   const restrictedUser = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
-  const restrictedUserAuth = backendContext.value.userAuth;
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
     accessType: "server",
     body: {},
   });
 
-  backendContext.set({ userAuth: null });
   const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
     method: "POST",
     accessType: "server",
@@ -106,34 +104,6 @@ it("should reject a restricted user's refresh token", async ({ expect }) => {
   });
 
   expect(completeResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 403,
-      "body": {
-        "code": "RESTRICTED_USER_NOT_ALLOWED",
-        "details": { "restricted_reason": { "type": "email_not_verified" } },
-        "error": "The user in the access token is in restricted state. Reason: email_not_verified. Please pass the X-Stack-Allow-Restricted-User header if this is intended.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "RESTRICTED_USER_NOT_ALLOWED",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-
-  backendContext.set({ userAuth: restrictedUserAuth });
-  await ContactChannels.verify();
-
-  backendContext.set({ userAuth: null });
-  const completedResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      login_code: createResponse.body.login_code,
-      mode: "complete",
-      refresh_token: restrictedUser.signUpResponse.body.refresh_token,
-    },
-  });
-  expect(completedResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": { "success": true },
