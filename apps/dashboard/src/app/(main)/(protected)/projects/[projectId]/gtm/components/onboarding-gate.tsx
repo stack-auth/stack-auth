@@ -16,6 +16,7 @@ import {
 import { useGtmData } from "@/lib/gtm/gtm-data";
 import { validateGtmOnboardingInput } from "@/lib/gtm/gtm-onboarding";
 import { ArrowRightIcon, CheckCircleIcon, GearIcon, GlobeHemisphereWestIcon, PhoneIcon, TrendUpIcon } from "@phosphor-icons/react";
+import { throwErr } from "@hexclave/shared/dist/utils/errors";
 import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -161,7 +162,17 @@ function OnboardingDialog(props: OnboardingDialogProps) {
                   Our team will review the details you shared, then contact you to align on the first opportunities worth pursuing.
                 </p>
               </div>
-              <DesignButton variant="secondary" size="lg" onClick={props.onDone} className="w-full bg-white text-slate-950 hover:bg-white/90">
+              {/* `submitted` is only ever set on the intake path, so this screen is unreachable in edit mode
+                  (editing resolves through onDone(onboarding) straight after saving). The union can't express
+                  that, so narrow explicitly rather than passing the ambiguous handler to onClick. */}
+              <DesignButton
+                variant="secondary"
+                size="lg"
+                onClick={() => props.mode === "edit"
+                  ? throwErr("The GTM intake success screen was rendered in edit mode, which should be impossible because `submitted` is only set on the intake path.")
+                  : props.onDone()}
+                className="w-full bg-white text-slate-950 hover:bg-white/90"
+              >
                 Open GTM
                 <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
               </DesignButton>

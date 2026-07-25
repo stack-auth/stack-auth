@@ -10,7 +10,7 @@ export const GET = createSmartRouteHandler({
   request: yupObject({ auth: authSchema, method: yupString().oneOf(["GET"]).defined() }),
   response: responseSchema,
   handler: async ({ auth }) => {
-    const projectId = await requireGtmReadProject({ authProjectId: auth.project.id, user: auth.user });
+    const projectId = await requireGtmReadProject({ authType: auth.type, authProjectId: auth.project.id, user: auth.user });
     return { statusCode: 200, bodyType: "json", body: await getGtmOnboardingStatus(projectId) };
   },
 });

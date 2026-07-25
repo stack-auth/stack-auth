@@ -43,12 +43,22 @@ async function ensureInternalGtmAdmin(authProjectId: string, user: GtmAdminUser 
 }
 
 export async function requireGtmReadProject(options: {
+  authType: "client" | "server" | "admin",
   authProjectId: string,
   user: GtmAdminUser | null | undefined,
   targetProjectId?: string,
 }): Promise<string> {
-  if (options.user == null) throw new KnownErrors.UserAuthenticationRequired();
-  if (options.targetProjectId == null || options.targetProjectId === options.authProjectId) return options.authProjectId;
+  if (options.targetProjectId == null || options.targetProjectId === options.authProjectId) {
+    // Reading a project's own GTM data needs proof that the caller owns the project, and there are two
+    // distinct ways to hold that proof. The project dashboard reads through the owned-project admin app,
+    // which is constructed with `tokenStore === null` and therefore never sends an access token — for it,
+    // possession of the admin key IS the authorization and `auth.user` is structurally always null. The
+    // internal GTM pages instead read through the dashboard's own user session, which is a client request
+    // carrying a real user. Requiring a user unconditionally locked out the former; requiring admin
+    // unconditionally would lock out the latter, so accept either.
+    if (options.authType !== "admin" && options.user == null) throw new KnownErrors.UserAuthenticationRequired();
+    return options.authProjectId;
+  }
   await ensureInternalGtmAdmin(options.authProjectId, options.user);
   const target = await globalPrismaClient.project.findUnique({ where: { id: options.targetProjectId }, select: { id: true } });
   if (target == null) throw new StatusError(404, "GTM project not found.");

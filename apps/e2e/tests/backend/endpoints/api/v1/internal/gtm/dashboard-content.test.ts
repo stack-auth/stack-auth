@@ -126,6 +126,33 @@ describe("internal GTM dashboard content", () => {
     });
   });
 
+  it("reads a project's own onboarding status with an admin key and no user", async ({ expect }) => {
+    // This is exactly how the project dashboard reads the gate: its owned-project app is constructed with
+    // `tokenStore === null`, so it can never send an access token and `auth.user` is structurally null.
+    // Requiring a user here used to 401 every project dashboard with USER_AUTHENTICATION_REQUIRED.
+    await Project.createAndSwitch({ display_name: "Admin key onboarding read" });
+
+    const beforeIntake = await niceBackendFetch(`${BASE_PATH}/onboarding`, { accessType: "admin" });
+    expect(beforeIntake.status).toBe(200);
+    expect(beforeIntake.body).toMatchObject({ completed: false, completed_at_millis: null });
+
+    // A client key alone stays rejected — it is public, so possession of it must not grant GTM reads.
+    const clientWithoutUser = await niceBackendFetch(`${BASE_PATH}/onboarding`, { accessType: "client" });
+    expect(clientWithoutUser.status).toBe(401);
+
+    const completed = await niceBackendFetch(`${BASE_PATH}/onboarding/details`, {
+      accessType: "admin",
+      method: "POST",
+      body: { domain: "https://admin-key.example.com", phone: "+1 415 555 0199", notes: "Read back via admin key." },
+    });
+    expect(completed.status).toBe(200);
+
+    const afterIntake = await niceBackendFetch(`${BASE_PATH}/onboarding`, { accessType: "admin" });
+    expect(afterIntake.status).toBe(200);
+    expect(afterIntake.body).toMatchObject({ completed: true });
+    expect(afterIntake.body).not.toHaveProperty("details");
+  });
+
   it("lists only customer projects that completed GTM onboarding", async ({ expect }) => {
     const notOnboardedProject = await Project.createAndSwitch({ display_name: "Not onboarded" });
     const onboardedProject = await Project.createAndSwitch({ display_name: "Acme GTM" });

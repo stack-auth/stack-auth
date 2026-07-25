@@ -147,7 +147,11 @@ export async function getGtmOnboarding(app: object): Promise<GtmOnboardingStatus
 }
 
 export async function getGtmOnboardingCompletionStatus(app: object): Promise<GtmOnboardingCompletionStatus> {
-  return onboardingStatusSchema.parse(await requestJson(app, "/onboarding"));
+  // The project dashboard reads through the owned-project admin app, which has `tokenStore === null` and
+  // so never sends an access token — `auth.user` is always null there, whatever the request type. The
+  // admin key is the only authorization it can present, so the request has to go out as an admin request
+  // (the endpoint accepts admin-without-user precisely for this caller).
+  return onboardingStatusSchema.parse(await requestJson(app, "/onboarding", {}, "admin"));
 }
 
 export async function completeGtmOnboarding(app: object, input: { domain: string, phone: string, notes: string }): Promise<GtmCompletedOnboardingStatus> {

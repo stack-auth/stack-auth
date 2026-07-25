@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { completeGtmOnboardingIntake, getGtmOnboardingCompletionStatus, listGtmOnboardedProjects } from "./gtm-api";
 
 describe("getGtmOnboardingCompletionStatus", () => {
-  it("loads the minimal onboarding status with client access", async () => {
+  it("loads the minimal onboarding status with dashboard admin access", async () => {
     const sendRequest = vi.fn(async () => new Response(JSON.stringify({
       completed: false,
       completed_at_millis: null,
@@ -25,7 +25,7 @@ describe("getGtmOnboardingCompletionStatus", () => {
           "content-type": "application/json",
         },
       },
-      "client",
+      "admin",
     );
   });
 });
