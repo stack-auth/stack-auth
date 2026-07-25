@@ -59,7 +59,7 @@ model Project {
 // Manually curated records for the internal GTM dashboard. These are inert
 // dashboard content; they do not run an agent or perform external actions.
 model GtmInsight {
-  id String @id @default(uuid()) @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   projectId String
   branchId  String
@@ -86,7 +86,7 @@ model GtmInsight {
 }
 
 model GtmAction {
-  id String @id @default(uuid()) @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   projectId String
   branchId  String
@@ -113,7 +113,7 @@ model GtmAction {
 }
 
 model GtmNote {
-  id String @id @default(uuid()) @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   projectId String
   branchId  String
@@ -137,7 +137,7 @@ model GtmNote {
 // separate from editorial notes because it contains contact information that
 // the GTM team uses to start the engagement.
 model GtmOnboarding {
-  id String @id @default(uuid()) @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   projectId String
   branchId  String
