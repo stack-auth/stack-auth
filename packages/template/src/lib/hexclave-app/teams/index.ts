@@ -74,6 +74,7 @@ export type Team = {
   clientReadOnlyMetadata: any,
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
+  removeUser(userId: string): Promise<void>,
   useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
   listInvitations(): Promise<SentTeamInvitation[]>,
   useInvitations(): SentTeamInvitation[], // THIS_LINE_PLATFORM react-like

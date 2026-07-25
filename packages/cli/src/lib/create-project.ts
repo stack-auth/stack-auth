@@ -1,14 +1,14 @@
 import { input } from "@inquirer/prompts";
 import type { CurrentInternalUser } from "@hexclave/js";
-import { DEFAULT_DASHBOARD_URL } from "./auth.js";
 import { CliError } from "./errors.js";
 import { isNonInteractiveEnv } from "./interactive.js";
 import { withProgress } from "./progress.js";
+import { resolveTeam } from "./resolve-team.js";
 
 type CreateProjectOptions = {
   displayName?: string,
+  teamId?: string,
   defaultDisplayName?: string,
-  dashboardUrl?: string,
 };
 
 export async function createProjectInteractively(
@@ -27,16 +27,15 @@ export async function createProjectInteractively(
     })).trim();
   }
 
-  return await withProgress("Creating project", async () => {
-    const teams = await user.listTeams();
-    if (teams.length === 0) {
-      const dashboardUrl = opts.dashboardUrl ?? DEFAULT_DASHBOARD_URL;
-      throw new CliError(`No teams found on your account. Create a team at ${dashboardUrl} first.`);
-    }
-
-    return await user.createProject({
-      displayName,
-      teamId: teams[0].id,
-    });
+  const teams = await user.listTeams();
+  const team = await resolveTeam(teams, {
+    teamId: opts.teamId,
+    createIfNone: true,
+    createTeam: async (teamDisplayName) => await user.createTeam({ displayName: teamDisplayName }),
   });
+
+  return await withProgress("Creating project", async () => await user.createProject({
+    displayName,
+    teamId: team.id,
+  }));
 }

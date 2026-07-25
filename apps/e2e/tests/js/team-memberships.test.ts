@@ -1,0 +1,74 @@
+import { KnownErrors } from "@hexclave/shared";
+import { it } from "../helpers";
+import { createApp } from "./js-helpers";
+
+it("allows a client team member with permission to remove another member", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-owner@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "membership-owner@test.com",
+    password: "password",
+  });
+  const owner = await clientApp.getUser({ or: "throw" });
+  const team = await owner.createTeam({ displayName: "Membership Team" });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-member@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  const member = await clientApp.getUser({ or: "throw" });
+  const serverTeam = await serverApp.getTeam(team.id);
+  if (!serverTeam) throw new Error("Team not found on server");
+  await serverTeam.addUser(member.id);
+
+  await clientApp.signInWithCredential({
+    email: "membership-owner@test.com",
+    password: "password",
+  });
+  const ownerAgain = await clientApp.getUser({ or: "throw" });
+  const clientTeam = await ownerAgain.getTeam(team.id);
+  if (!clientTeam) throw new Error("Team not found for client user");
+
+  await clientTeam.removeUser(member.id);
+
+  const remainingMembers = await serverTeam.listUsers();
+  expect(remainingMembers.some((teamMember) => teamMember.id === member.id)).toBe(false);
+});
+
+it("rejects client team member removal without the remove-members permission", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-owner-no-permission@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "membership-owner-no-permission@test.com",
+    password: "password",
+  });
+  const owner = await clientApp.getUser({ or: "throw" });
+  const team = await owner.createTeam({ displayName: "Permission Team" });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-member-no-permission@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  const member = await clientApp.getUser({ or: "throw" });
+  const serverTeam = await serverApp.getTeam(team.id);
+  if (!serverTeam) throw new Error("Team not found on server");
+  await serverTeam.addUser(member.id);
+
+  const memberTeam = await member.getTeam(team.id);
+  if (!memberTeam) throw new Error("Team not found for client member");
+  await expect(memberTeam.removeUser(owner.id)).rejects.toSatisfy((error: unknown) => (
+    KnownErrors.TeamPermissionRequired.isInstance(error)
+  ));
+});

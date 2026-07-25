@@ -17,6 +17,7 @@ import { registerDevCommand } from "./commands/dev.js";
 import { registerFixCommand } from "./commands/fix.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerWhoamiCommand } from "./commands/whoami.js";
+import { registerTeamCommand } from "./commands/team.js";
 
 const program = new Command();
 
@@ -35,6 +36,7 @@ registerInitCommand(program);
 registerProjectCommand(program);
 registerDevCommand(program);
 registerWhoamiCommand(program);
+registerTeamCommand(program);
 registerFixCommand(program);
 registerDoctorCommand(program);
 

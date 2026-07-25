@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { getInternalUser } from "../lib/app.js";
-import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
+import { resolveSessionAuth } from "../lib/auth.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { CliError } from "../lib/errors.js";
 import { withProgress } from "../lib/progress.js";
@@ -84,22 +84,21 @@ export function registerProjectCommand(program: Command) {
     .description("Create a new cloud project")
     .option("--cloud", "Confirm that this creates a cloud project")
     .option("--display-name <name>", "Project display name")
+    .option("--team-id <id>", "Team that owns the project")
     .action(async (opts) => {
       if (!opts.cloud) {
         throw new CliError("hexclave project create currently only creates cloud projects. Pass --cloud to confirm.");
       }
-      const [{ getInternalUser }, { resolveLoginConfig, resolveSessionAuth }, { createProjectInteractively }] = await Promise.all([
+      const [{ getInternalUser }, { resolveSessionAuth }, { createProjectInteractively }] = await Promise.all([
         import("../lib/app.js"),
         import("../lib/auth.js"),
         import("../lib/create-project.js"),
       ]);
       const auth = resolveSessionAuth();
       const user = await withProgress("Loading account", async () => await getInternalUser(auth));
-      const { dashboardUrl } = resolveLoginConfig();
-
       const newProject = await createProjectInteractively(user, {
         displayName: opts.displayName,
-        dashboardUrl,
+        teamId: opts.teamId,
       });
 
       if (program.opts().json) {

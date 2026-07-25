@@ -1826,6 +1826,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
         const result = Result.orThrow(await app._teamMemberProfilesCache.getOrWait([session, crud.id], "write-only"));
         return result.map((crud) => app._clientTeamUserFromCrud(crud));
       },
+      async removeUser(userId: string) {
+        await app._interface.removeUserFromTeam(crud.id, userId, session);
+        await app._teamMemberProfilesCache.refresh([session, crud.id]);
+      },
       // IF_PLATFORM react-like
       useUsers() {
         const result = useAsyncCache(app._teamMemberProfilesCache, [session, crud.id] as const, "team.useUsers()");
@@ -2317,7 +2321,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       },
       async leaveTeam(team: Team) {
         await app._interface.leaveTeam(team.id, session);
-        // TODO: refresh cache
+        await app._currentUserTeamsCache.refresh([session]);
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
