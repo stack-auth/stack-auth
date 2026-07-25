@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { Prisma } from "@/generated/prisma/client";
 import { Tenancy } from "@/lib/tenancies";
 import { getApiUrlForRequest } from "@/lib/request-api-url";
@@ -281,6 +282,10 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
       if (browserUser.restricted_reason === null) {
         throw new HexclaveAssertionError("Restricted user is missing a restricted reason");
       }
+      logAccessDeniedInBackground(tenancy, "restricted_user", {
+        userId: browserUser.id,
+        restrictedReason: browserUser.restricted_reason.type,
+      });
       throw new KnownErrors.RestrictedUserNotAllowed(browserUser.restricted_reason);
     }
 

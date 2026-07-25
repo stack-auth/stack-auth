@@ -83,6 +83,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   method: yupObject({
     email: emailSchema.defined(),
   }),
+  accessDeniedReason: "failed_otp",
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),

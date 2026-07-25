@@ -192,6 +192,12 @@ export const ALL_APPS = {
     tags: ["auth", "developers"],
     stage: "alpha",
   },
+  "compliance": {
+    displayName: "Compliance Center",
+    subtitle: "Review access denials and compliance activity",
+    tags: ["security", "operations"],
+    stage: "alpha",
+  },
   // The app id carries the `-alpha` suffix deliberately: it is the key users
   // write in `apps.installed` and under the top-level config, so the stage is
   // visible in every hexclave.config.ts. The display name stays "Deployments".

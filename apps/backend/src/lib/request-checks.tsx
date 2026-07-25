@@ -1,4 +1,5 @@
 import { StandardOAuthProviderType } from "@/generated/prisma/client";
+import { logAccessDeniedInBackground } from "@/lib/access-denied";
 import { KnownErrors } from "@hexclave/shared";
 import { StatusError } from "@hexclave/shared/dist/utils/errors";
 import { ProviderType, standardProviders } from "@hexclave/shared/dist/utils/oauth";
@@ -109,6 +110,11 @@ export async function ensureUserTeamPermissionExists(
     if (options.errorType === 'not-exist') {
       throw new KnownErrors.TeamPermissionNotFound(options.teamId, options.userId, options.permissionId);
     } else {
+      logAccessDeniedInBackground(options.tenancy, "permission_denied", {
+        userId: options.userId,
+        permissionId: options.permissionId,
+        teamId: options.teamId,
+      });
       throw new KnownErrors.TeamPermissionRequired(options.teamId, options.userId, options.permissionId);
     }
   }
@@ -141,6 +147,10 @@ export async function ensureProjectPermissionExists(
     if (options.errorType === 'not-exist') {
       throw new KnownErrors.PermissionNotFound(options.permissionId);
     } else {
+      logAccessDeniedInBackground(options.tenancy, "permission_denied", {
+        userId: options.userId,
+        permissionId: options.permissionId,
+      });
       throw new KnownErrors.ProjectPermissionRequired(options.userId, options.permissionId);
     }
   }
