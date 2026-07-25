@@ -153,6 +153,152 @@ describe("internal GTM dashboard content", () => {
     expect(afterIntake.body).not.toHaveProperty("details");
   });
 
+  it("stores, replaces, and clears a curated suggestion timeline", async ({ expect }) => {
+    await signInAsInternalAdmin();
+
+    const created = await niceBackendFetch(`${BASE_PATH}/insights`, {
+      accessType: "client",
+      method: "POST",
+      body: {
+        domain: "product",
+        title: "Curated timeline signal",
+        body: "The timeline for this one is written by hand.",
+        impact_score: 10,
+        times_seen: 1,
+      },
+    });
+    expect(created.status).toBe(201);
+    // A suggestion nobody has curated reads back as null, which the dashboard renders as an empty timeline.
+    expect(created.body.timeline_entries).toBe(null);
+
+    const insightId = requireId(created.body);
+    const withTimeline = await niceBackendFetch(`${BASE_PATH}/insights/${insightId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: {
+        expected_updated_at_millis: requireUpdatedAt(created.body),
+        domain: "product",
+        title: "Curated timeline signal",
+        body: "The timeline for this one is written by hand.",
+        impact_score: 10,
+        times_seen: 1,
+        timeline_entries: [
+          { label: "  Kickoff  ", title: "  We met the team  ", body: "  Discussed the launch.  ", date_millis: 1_700_000_000_000 },
+          { label: "Now", title: "Waiting on data", body: "", date_millis: 1_700_100_000_000 },
+        ],
+      },
+    });
+    expect(withTimeline.status).toBe(200);
+    // Whitespace is trimmed on the way in so the rendered timeline never shows padded text.
+    expect(withTimeline.body.timeline_entries).toEqual([
+      { label: "Kickoff", title: "We met the team", body: "Discussed the launch.", date_millis: 1_700_000_000_000 },
+      { label: "Now", title: "Waiting on data", body: "", date_millis: 1_700_100_000_000 },
+    ]);
+
+    const listed = await niceBackendFetch(`${BASE_PATH}/insights`, { accessType: "client" });
+    expect(listed.status).toBe(200);
+    const listedInsight = listed.body.items.find((item: { id: string }) => item.id === insightId);
+    expect(listedInsight.timeline_entries).toHaveLength(2);
+
+    // An empty array is a real curated state ("show nothing"), distinct from null, and must survive a round trip.
+    const emptied = await niceBackendFetch(`${BASE_PATH}/insights/${insightId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: {
+        expected_updated_at_millis: requireUpdatedAt(withTimeline.body),
+        domain: "product",
+        title: "Curated timeline signal",
+        body: "The timeline for this one is written by hand.",
+        impact_score: 10,
+        times_seen: 1,
+        timeline_entries: [],
+      },
+    });
+    expect(emptied.status).toBe(200);
+    expect(emptied.body.timeline_entries).toEqual([]);
+
+    // Explicit null clears the timeline back to "nothing written yet".
+    const cleared = await niceBackendFetch(`${BASE_PATH}/insights/${insightId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: {
+        expected_updated_at_millis: requireUpdatedAt(emptied.body),
+        domain: "product",
+        title: "Curated timeline signal",
+        body: "The timeline for this one is written by hand.",
+        impact_score: 10,
+        times_seen: 1,
+        timeline_entries: null,
+      },
+    });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.timeline_entries).toBe(null);
+
+    const blankLabel = await niceBackendFetch(`${BASE_PATH}/insights/${insightId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: {
+        expected_updated_at_millis: requireUpdatedAt(cleared.body),
+        domain: "product",
+        title: "Curated timeline signal",
+        body: "The timeline for this one is written by hand.",
+        impact_score: 10,
+        times_seen: 1,
+        timeline_entries: [{ label: "   ", title: "Missing its label", body: "", date_millis: 1_700_000_000_000 }],
+      },
+    });
+    expect(blankLabel.status).toBe(400);
+  });
+
+  it("stores a curated timeline on an action too", async ({ expect }) => {
+    await signInAsInternalAdmin();
+    const expiresAt = new Date("2030-06-01T00:00:00.000Z").getTime();
+
+    const created = await niceBackendFetch(`${BASE_PATH}/actions`, {
+      accessType: "client",
+      method: "POST",
+      body: {
+        domain: "outreach",
+        type: "broadcast_email",
+        status: "proposed",
+        title: "Curated action",
+        summary: "Planning record only.",
+        verdict: null,
+        retrospective_text: null,
+        expires_at_millis: expiresAt,
+        executed_at_millis: null,
+        timeline_entries: [
+          { label: "Drafted", title: "We wrote the plan", body: "Ready for review.", date_millis: 1_700_000_000_000 },
+        ],
+      },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.timeline_entries).toEqual([
+      { label: "Drafted", title: "We wrote the plan", body: "Ready for review.", date_millis: 1_700_000_000_000 },
+    ]);
+
+    const actionId = requireId(created.body);
+    const cleared = await niceBackendFetch(`${BASE_PATH}/actions/${actionId}`, {
+      accessType: "client",
+      method: "PATCH",
+      body: {
+        expected_updated_at_millis: requireUpdatedAt(created.body),
+        domain: "outreach",
+        type: "broadcast_email",
+        status: "proposed",
+        title: "Curated action",
+        summary: "Planning record only.",
+        verdict: null,
+        retrospective_text: null,
+        expires_at_millis: expiresAt,
+        executed_at_millis: null,
+        timeline_entries: null,
+      },
+    });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.timeline_entries).toBe(null);
+  });
+
   it("lists only customer projects that completed GTM onboarding", async ({ expect }) => {
     const notOnboardedProject = await Project.createAndSwitch({ display_name: "Not onboarded" });
     const onboardedProject = await Project.createAndSwitch({ display_name: "Acme GTM" });
@@ -195,9 +341,6 @@ describe("internal GTM dashboard content", () => {
       method: "POST",
       body: {
         domain: "users",
-        kind: "retention",
-        status: "new",
-        confidence: "high",
         title: "Retention is improving",
         body: "Activated developers return more frequently.",
         impact_score: 82,
@@ -207,9 +350,6 @@ describe("internal GTM dashboard content", () => {
     expect(insight.status).toBe(201);
     expect(insight.body).toMatchObject({
       domain: "users",
-      kind: "retention",
-      status: "new",
-      confidence: "high",
       impact_score: 82,
       times_seen: 3,
     });
@@ -265,9 +405,6 @@ describe("internal GTM dashboard content", () => {
       body: {
         expected_updated_at_millis: insightUpdatedAt,
         domain: "content",
-        kind: "retention",
-        status: "surfaced",
-        confidence: "high",
         title: "Retention is improving",
         body: "Activated developers return more frequently after setup.",
         impact_score: 88,
@@ -284,9 +421,6 @@ describe("internal GTM dashboard content", () => {
       body: {
         expected_updated_at_millis: insightUpdatedAt,
         domain: "users",
-        kind: "retention",
-        status: "dismissed",
-        confidence: "low",
         title: "Stale overwrite",
         body: "This edit should not win.",
         impact_score: 1,
@@ -373,9 +507,6 @@ describe("internal GTM dashboard content", () => {
       method: "POST",
       body: {
         domain: "users",
-        kind: "made_up",
-        status: "new",
-        confidence: "medium",
         title: "",
         body: "Invalid",
         impact_score: 101,

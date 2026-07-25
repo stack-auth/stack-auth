@@ -12,7 +12,6 @@ export function BriefingHeader(props: { projectName: string }) {
   if (data.status === "error") summary = "Today’s briefing is unavailable because its underlying signals could not be loaded.";
   if (data.status === "loaded") {
     const leadingInsight = data.value.insights
-      .filter((insight) => insight.status !== "dismissed" && insight.kind !== "measurement")
       .sort((left, right) => right.impactScore - left.impactScore || right.createdAtMillis - left.createdAtMillis)
       .at(0);
     const leadingAction = data.value.actions

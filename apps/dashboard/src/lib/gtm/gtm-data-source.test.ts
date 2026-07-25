@@ -14,7 +14,7 @@ describe("resolveGtmDataset", () => {
   });
 
   it("returns deterministic fixtures without making a real API request in demo mode", async () => {
-    await expect(resolveGtmDataset({}, true)).resolves.toEqual(getGtmDemoDataset());
+    await expect(resolveGtmDataset({}, true, { kind: "own-project" })).resolves.toEqual(getGtmDemoDataset());
     expect(mockLoadGtmDataset).not.toHaveBeenCalled();
   });
 
@@ -22,7 +22,15 @@ describe("resolveGtmDataset", () => {
     const stored = { insights: [], actions: [], notes: [], radar: null };
     mockLoadGtmDataset.mockResolvedValue(stored);
 
-    await expect(resolveGtmDataset({}, false)).resolves.toBe(stored);
-    expect(mockLoadGtmDataset).toHaveBeenCalledOnce();
+    await expect(resolveGtmDataset({}, false, { kind: "own-project" })).resolves.toBe(stored);
+    expect(mockLoadGtmDataset).toHaveBeenCalledWith({}, { kind: "own-project" });
+  });
+
+  it("passes a managed project through to the API layer", async () => {
+    const stored = { insights: [], actions: [], notes: [], radar: null };
+    mockLoadGtmDataset.mockResolvedValue(stored);
+
+    await expect(resolveGtmDataset({}, false, { kind: "managed-project", projectId: "project-1" })).resolves.toBe(stored);
+    expect(mockLoadGtmDataset).toHaveBeenCalledWith({}, { kind: "managed-project", projectId: "project-1" });
   });
 });

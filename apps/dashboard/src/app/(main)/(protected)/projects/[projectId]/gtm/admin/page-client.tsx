@@ -33,12 +33,7 @@ import { GtmDataProvider, useGtmData } from "@/lib/gtm/gtm-data";
 import {
   GTM_ACTION_STATUSES,
   GTM_ACTION_TYPES,
-  GTM_CONFIDENCES,
   GTM_DOMAINS,
-  GTM_INSIGHT_KINDS,
-  GTM_INSIGHT_STATUSES,
-  GTM_NOTE_CATEGORIES,
-  GTM_NOTE_SOURCES,
   GTM_VERDICTS,
   type GtmAction,
   type GtmDomainId,
@@ -183,22 +178,17 @@ function InsightEditor(props: EditorProps & { value: GtmInsight | null }) {
   const [draft, setDraft] = useState<GtmInsightDraft>(() => props.value == null
     ? {
       domain: requireNewDomain(props.newDomain, "suggestion"),
-      kind: "data_gap",
-      status: "new",
-      confidence: "medium",
       title: "",
       body: "",
       impactScore: 0,
       timesSeen: 1,
+      timeline: null,
     }
     : props.value);
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const dirty = props.value == null || JSON.stringify(draft) !== JSON.stringify({
     domain: props.value.domain,
-    kind: props.value.kind,
-    status: props.value.status,
-    confidence: props.value.confidence,
     title: props.value.title,
     body: props.value.body,
     impactScore: props.value.impactScore,
@@ -240,28 +230,6 @@ function InsightEditor(props: EditorProps & { value: GtmInsight | null }) {
         title={props.value == null ? "New suggestion" : props.value.title}
         onDelete={props.value == null ? undefined : () => setDeleteOpen(true)}
       />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <DesignSelectorDropdown
-          value={draft.domain}
-          onValueChange={(domain) => setDraft({ ...draft, domain })}
-          options={selectorOptions(GTM_DOMAINS)}
-        />
-        <DesignSelectorDropdown
-          value={draft.kind}
-          onValueChange={(kind) => setDraft({ ...draft, kind })}
-          options={selectorOptions(GTM_INSIGHT_KINDS)}
-        />
-        <DesignSelectorDropdown
-          value={draft.status}
-          onValueChange={(status) => setDraft({ ...draft, status })}
-          options={selectorOptions(GTM_INSIGHT_STATUSES)}
-        />
-        <DesignSelectorDropdown
-          value={draft.confidence}
-          onValueChange={(confidence) => setDraft({ ...draft, confidence })}
-          options={selectorOptions(GTM_CONFIDENCES)}
-        />
-      </div>
       <DesignInput
         value={draft.title}
         maxLength={200}
@@ -275,23 +243,6 @@ function InsightEditor(props: EditorProps & { value: GtmInsight | null }) {
         className="min-h-32"
         placeholder="What did we learn?"
       />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DesignInput
-          type="number"
-          min={0}
-          max={100}
-          value={draft.impactScore}
-          onChange={(event) => setDraft({ ...draft, impactScore: Number(event.target.value) })}
-          aria-label="Impact score"
-        />
-        <DesignInput
-          type="number"
-          min={1}
-          value={draft.timesSeen}
-          onChange={(event) => setDraft({ ...draft, timesSeen: Number(event.target.value) })}
-          aria-label="Times seen"
-        />
-      </div>
       {error != null && <DesignAlert variant="error" title="Could not save suggestion" description={error} />}
       <DesignButton onClick={save}>Save suggestion</DesignButton>
       {props.value != null && (
@@ -319,6 +270,7 @@ function ActionEditor(props: EditorProps & { value: GtmAction | null }) {
       retrospective: null,
       expiresAtMillis: new Date().getTime() + 14 * 24 * 60 * 60 * 1000,
       executedAtMillis: null,
+      timeline: null,
     }
     : props.value);
   const [error, setError] = useState<string | null>(null);
@@ -512,23 +464,6 @@ function NoteEditor(props: EditorProps & { value: GtmNote | null }) {
         placeholder="Note title"
         aria-label="Note title"
       />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <DesignSelectorDropdown
-          value={draft.domain}
-          onValueChange={(domain) => setDraft({ ...draft, domain })}
-          options={selectorOptions(GTM_DOMAINS)}
-        />
-        <DesignSelectorDropdown
-          value={draft.category}
-          onValueChange={(category) => setDraft({ ...draft, category })}
-          options={selectorOptions(GTM_NOTE_CATEGORIES)}
-        />
-        <DesignSelectorDropdown
-          value={draft.source}
-          onValueChange={(source) => setDraft({ ...draft, source })}
-          options={selectorOptions(GTM_NOTE_SOURCES)}
-        />
-      </div>
       <Textarea
         value={draft.body}
         maxLength={500}
@@ -797,6 +732,9 @@ function InternalGtmAdminPage() {
 }
 
 function LoadedInternalGtmAdminPage(props: { projects: [GtmOnboardedProject, ...GtmOnboardedProject[]] }) {
+  // Reading another project's records is a platform-admin action, so it goes through the dashboard's own
+  // internal-project session rather than that project's admin app (which this page doesn't hold).
+  const app = useStackApp();
   const firstProject = props.projects[0];
   const [targetProjectId, setTargetProjectId] = useState(firstProject.id);
   const restoredProjectFromUrl = useRef(false);
@@ -814,7 +752,7 @@ function LoadedInternalGtmAdminPage(props: { projects: [GtmOnboardedProject, ...
   }, [firstProject.id, props.projects, targetProjectId]);
   const targetProject = props.projects.find((project) => project.id === targetProjectId) ?? firstProject;
   return (
-    <GtmDataProvider key={targetProject.id} demo={false} projectId={targetProject.id}>
+    <GtmDataProvider key={targetProject.id} demo={false} app={app} target={{ kind: "managed-project", projectId: targetProject.id }}>
       <AdminOverview
         targetProject={targetProject}
         onTargetProjectChange={setTargetProjectId}

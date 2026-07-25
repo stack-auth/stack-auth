@@ -98,6 +98,19 @@ export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl
   return isChildUrl(url, fullUrl);
 }
 
+/**
+ * The pathname a plain (non-external, non-`matchPath`) nav item matches `fullUrl` on, or `null` when it does
+ * not match. The pathname doubles as the specificity of the match: a longer one is a deeper prefix.
+ */
+function matchedItemPathname(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL): string | null {
+  if (item.external || isExternalHref(item.href) || item.matchPath) return null;
+  const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
+  if (!isChildUrl(url, fullUrl)) return null;
+  // A `.` href resolves with a trailing slash and a named one without, so normalize before the lengths are
+  // compared — otherwise the slash alone would make an item look one character more specific than it is.
+  return url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+}
+
 export function testItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL) {
   if (item.external || isExternalHref(item.href)) {
     return false;
@@ -105,8 +118,18 @@ export function testItemPath(projectId: string, appFrontend: NavigableAppFronten
 
   if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
 
-  const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
-  return isChildUrl(url, fullUrl);
+  const matched = matchedItemPathname(projectId, appFrontend, item, fullUrl);
+  if (matched == null) return false;
+
+  // Nav items can nest: GTM's Admin lives at `gtm/admin`, underneath the Overview item's own `gtm`. A prefix
+  // match alone lights up both, so the most specific matching item wins — an item that only matches because
+  // it is an ancestor of the sibling the user actually navigated to is not the current page. Siblings with a
+  // custom `matchPath` are left out of the comparison, since they answer yes/no without a path to rank.
+  return !appFrontend.navigationItems.some((sibling) => {
+    if (sibling === item) return false;
+    const siblingMatch = matchedItemPathname(projectId, appFrontend, sibling, fullUrl);
+    return siblingMatch != null && siblingMatch.length > matched.length;
+  });
 }
 
 export const ALL_APPS_FRONTEND = {

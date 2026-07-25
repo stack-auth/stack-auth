@@ -21,6 +21,13 @@ import { runAsynchronously } from "@hexclave/shared/dist/utils/promises";
 import { urlString } from "@hexclave/shared/dist/utils/urls";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { GtmStoryCard, StoryReveal, storyCanvasVariants, type GtmStoryChapter } from "./story-card";
+
+/** White pill CTA, matching the story card's primary action. */
+const storyPrimaryButtonClass = "rounded-full bg-white px-5 text-slate-950 transition-colors duration-150 hover:bg-white/90 hover:transition-none";
+
+/** Glass field styling so inputs stay legible on top of the saturated canvas. */
+const storyFieldClass = "!border-white/25 !bg-black/20 !text-white !ring-white/10 placeholder:!text-white/60 focus-visible:!ring-white/70 dark:!border-white/25 dark:!bg-black/20 dark:!text-white dark:!ring-white/10 dark:placeholder:!text-white/60 dark:focus-visible:!ring-white/70";
 
 type GateState =
   | { status: "loading" }
@@ -37,37 +44,62 @@ type OnboardingDialogProps =
     onCancel: () => void,
   };
 
-type StoryCard = {
+type StoryCard = GtmStoryChapter & {
   title: string,
   body: string,
   icon: typeof GlobeHemisphereWestIcon,
-  accent: string,
-  wash: string,
 };
 
 const storyCards: readonly StoryCard[] = [
   {
-    title: "Start with the signal",
-    body: "We study how your site is being found, what visitors do next, and where a promising path starts to leak.",
+    key: "always-on",
+    eyebrow: "Always on",
+    caption: "Your growth teammate never clocks out",
+    title: "Your AI growth teammate never clocks out.",
+    body: "It continuously studies how your site is found, what visitors do next, and where promising paths start to leak.",
     icon: GlobeHemisphereWestIcon,
     accent: "#67e8f9",
-    wash: "radial-gradient(120% 90% at 15% 0%, #0e7490 0%, transparent 56%), radial-gradient(120% 120% at 95% 100%, #312e81 0%, transparent 62%), #101827",
+    wash: "radial-gradient(120% 100% at 12% 2%, #22d3ee 0%, transparent 55%), radial-gradient(110% 120% at 94% 20%, #4f46e5 0%, transparent 58%), radial-gradient(130% 110% at 45% 105%, #0f766e 0%, transparent 62%), #1b2a63",
   },
   {
-    title: "Turn it into a plan",
-    body: "Your dashboard becomes a focused set of opportunities, from content and conversion work to the experiments worth considering next.",
+    key: "next-move",
+    eyebrow: "Signal, not noise",
+    caption: "It keeps finding the next move",
+    title: "While you focus, it keeps finding the next move.",
+    body: "Your dashboard turns those signals into focused opportunities—from content and conversion work to the experiments worth considering next.",
     icon: TrendUpIcon,
     accent: "#fcd34d",
-    wash: "radial-gradient(120% 90% at 10% 0%, #b45309 0%, transparent 55%), radial-gradient(130% 110% at 100% 25%, #7c2d12 0%, transparent 60%), #2a1720",
+    wash: "radial-gradient(110% 95% at 10% 0%, #fbbf24 0%, transparent 52%), radial-gradient(120% 110% at 95% 22%, #ea580c 0%, transparent 58%), radial-gradient(130% 120% at 30% 108%, #059669 0%, transparent 60%), #7c2d12",
   },
   {
-    title: "Work with people who care",
+    key: "your-team",
+    eyebrow: "With your team",
+    caption: "You stay in control",
+    title: "You stay in control.",
     body: "This is not an unattended feed. Our growth team reviews the context, helps set priorities, and stays in touch as your project moves.",
     icon: PhoneIcon,
     accent: "#a7f3d0",
-    wash: "radial-gradient(120% 90% at 15% 0%, #047857 0%, transparent 55%), radial-gradient(130% 110% at 100% 20%, #1d4ed8 0%, transparent 65%), #10271f",
+    wash: "radial-gradient(115% 95% at 16% 0%, #34d399 0%, transparent 52%), radial-gradient(120% 110% at 96% 24%, #2563eb 0%, transparent 58%), radial-gradient(130% 120% at 40% 108%, #4c1d95 0%, transparent 60%), #064e3b",
   },
 ];
+
+const detailsChapter = (isEditing: boolean): GtmStoryChapter => ({
+  key: "details",
+  eyebrow: isEditing ? "Project intake" : "A quick handoff",
+  // Never repeat the canvas headline here — the caption is a second line of
+  // information, not an echo of the slide.
+  caption: isEditing ? "Contact and context for the GTM team" : "Where you are and how to reach you",
+  accent: "#93c5fd",
+  wash: "radial-gradient(110% 95% at 14% 0%, #3b82f6 0%, transparent 50%), radial-gradient(120% 110% at 96% 26%, #4338ca 0%, transparent 58%), radial-gradient(130% 120% at 42% 108%, #0891b2 0%, transparent 60%), #1e3a8a",
+});
+
+const successChapter: GtmStoryChapter = {
+  key: "ready",
+  eyebrow: "Ready",
+  caption: "Your growth teammate is live",
+  accent: "#6ee7b7",
+  wash: "radial-gradient(110% 95% at 14% 0%, #14b8a6 0%, transparent 52%), radial-gradient(120% 110% at 96% 26%, #4338ca 0%, transparent 58%), radial-gradient(130% 120% at 45% 108%, #0f766e 0%, transparent 60%), #0f766e",
+};
 
 function userFacingError(error: unknown): string {
   if (error instanceof GtmApiError) return error.message;
@@ -90,8 +122,26 @@ function OnboardingDialog(props: OnboardingDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<GtmCompletedOnboardingCompletionStatus | null>(null);
 
-  const story = storyCards[storyIndex] ?? storyCards[0];
+  const story = storyCards[storyIndex] ?? throwErr(`The GTM story index ${storyIndex} is outside the ${storyCards.length} story cards; moveStory clamps it, so this means an unclamped setter was added.`);
   const StoryIcon = story.icon;
+
+  // The rail doubles as the step model: story cards, then the intake, then the
+  // terminal success card. Editing skips straight to the intake, and a
+  // single-chapter rail renders as a plain (non-interactive) indicator.
+  const chapters: readonly GtmStoryChapter[] = isEditing
+    ? [detailsChapter(true)]
+    : [...storyCards, detailsChapter(false)];
+  const detailsIndex = isEditing ? 0 : storyCards.length;
+  const activeIndex = submitted != null
+    ? chapters.length - 1
+    : step === "details" ? detailsIndex : storyIndex;
+  // Only the story cards are freely reachable from the rail: jumping into the
+  // intake would skip the explanation, and the success card is terminal.
+  const selectChapter = !isEditing && submitted == null && step === "story"
+    ? (index: number) => {
+      if (index < storyCards.length) setStoryIndex(index);
+    }
+    : undefined;
 
   const submit = async () => {
     setError(null);
@@ -131,130 +181,146 @@ function OnboardingDialog(props: OnboardingDialogProps) {
       size="md"
       title={isEditing ? "Edit GTM details" : "Set up GTM"}
       headerClassName="sr-only"
-      hideTopCloseButton={!isEditing}
+      hideTopCloseButton
       noBodyPadding
-      className="h-[min(100dvh-2rem,36rem)] max-w-[32rem] border-white/10 bg-[#141417] shadow-none dark:bg-[#141417]"
-      bodyClassName="flex-1 overflow-y-auto overscroll-contain"
+      // The card *is* the dialog surface here, so the shell is stripped back to a
+      // transparent, unbordered container and the story card supplies the radius,
+      // background and shadow.
+      className="max-h-[min(100dvh-2rem,44rem)] max-w-[32rem] overflow-visible border-0 bg-transparent p-0 ring-0 shadow-[0_40px_90px_-25px_rgba(0,0,0,0.75)] dark:bg-transparent dark:ring-0"
+      bodyClassName="overflow-y-auto overscroll-contain rounded-2xl"
       contentProps={isEditing ? undefined : {
         onEscapeKeyDown: (event) => event.preventDefault(),
         onPointerDownOutside: (event) => event.preventDefault(),
       }}
     >
-      <div className="relative min-h-full bg-[#141417] text-white">
+      <GtmStoryCard
+        chapters={chapters}
+        activeIndex={activeIndex}
+        activeChapter={submitted != null ? successChapter : undefined}
+        fitContent={step === "details"}
+        onSelect={selectChapter}
+        onClose={isEditing ? close : undefined}
+      >
+        {/* `wait`, not `popLayout`: slides differ in height (the intake form is far
+            taller than a story card), and popping one out of flow snaps its
+            internal `mt-auto` layout before it has finished fading. The wash and
+            caption bar keep animating underneath, so the short handover still
+            reads as one continuous card rather than a cut. */}
         <AnimatePresence initial={false} mode="wait">
           {submitted != null ? (
             <motion.div
               key="submitted"
-              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="flex min-h-full flex-col justify-between p-6"
-              style={{ background: "radial-gradient(110% 85% at 10% 0%, #0f766e 0%, transparent 55%), radial-gradient(120% 100% at 100% 100%, #4338ca 0%, transparent 64%), #131824" }}
+              variants={storyCanvasVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit="exit"
+              className="flex min-h-full flex-1 flex-col"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/25">
-                <CheckCircleIcon className="h-6 w-6 text-emerald-200" weight="fill" />
+              <StoryReveal>
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
+                  <CheckCircleIcon className="h-6 w-6 text-emerald-100" weight="fill" />
+                </div>
+              </StoryReveal>
+              <div className="mt-auto pt-8">
+                <StoryReveal>
+                  <h2 className="max-w-sm text-balance text-[34px] font-bold leading-[1.08] tracking-[-0.02em]">
+                    Your always-on growth teammate is ready.
+                  </h2>
+                </StoryReveal>
+                <StoryReveal>
+                  <p className="mt-4 max-w-sm text-[15px] leading-[1.6] text-white/85">
+                    Our team will review the details you shared, then contact you to align on the first opportunities worth pursuing.
+                  </p>
+                </StoryReveal>
               </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100/80">You are set up</p>
-                <h2 className="mt-3 max-w-sm text-balance text-3xl font-semibold leading-tight tracking-tight">We’ll be in touch to Growmaxx your project.</h2>
-                <p className="mt-4 max-w-sm text-sm leading-6 text-white/78">
-                  Our team will review the details you shared, then contact you to align on the first opportunities worth pursuing.
-                </p>
-              </div>
-              {/* `submitted` is only ever set on the intake path, so this screen is unreachable in edit mode
-                  (editing resolves through onDone(onboarding) straight after saving). The union can't express
-                  that, so narrow explicitly rather than passing the ambiguous handler to onClick. */}
-              <DesignButton
-                variant="secondary"
-                size="lg"
-                onClick={() => props.mode === "edit"
-                  ? throwErr("The GTM intake success screen was rendered in edit mode, which should be impossible because `submitted` is only set on the intake path.")
-                  : props.onDone()}
-                className="w-full bg-white text-slate-950 hover:bg-white/90"
-              >
-                Open GTM
-                <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
-              </DesignButton>
+              <StoryReveal className="mt-8 flex justify-end">
+                {/* `submitted` is only ever set on the intake path, so this screen is unreachable in edit mode
+                    (editing resolves through onDone(onboarding) straight after saving). The union can't express
+                    that, so narrow explicitly rather than passing the ambiguous handler to onClick. */}
+                <DesignButton
+                  variant="secondary"
+                  onClick={() => props.mode === "edit"
+                    ? throwErr("The GTM intake success screen was rendered in edit mode, which should be impossible because `submitted` is only set on the intake path.")
+                    : props.onDone()}
+                  className={storyPrimaryButtonClass}
+                >
+                  Open GTM
+                  <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
+                </DesignButton>
+              </StoryReveal>
             </motion.div>
           ) : step === "story" ? (
             <motion.div
-              key={`story-${storyIndex}`}
-              initial={prefersReducedMotion ? false : { opacity: 0, x: 22, scale: 0.985 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={prefersReducedMotion ? undefined : { opacity: 0, x: -22, scale: 0.985 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
-              className="flex min-h-full flex-col p-6"
-              style={{ background: story.wash }}
+              key={`story-${story.key}`}
+              variants={storyCanvasVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit="exit"
+              className="flex min-h-full flex-1 flex-col"
             >
-              <div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">GTM, with your team</span>
-                  <div className="flex gap-1" aria-label={`Step ${storyIndex + 1} of ${storyCards.length}`}>
-                    {storyCards.map((card, index) => (
-                      <button
-                        key={card.title}
-                        type="button"
-                        aria-label={`Read: ${card.title}`}
-                        aria-current={index === storyIndex ? "step" : undefined}
-                        onClick={() => setStoryIndex(index)}
-                        className={`h-1 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${index === storyIndex ? "w-6 bg-white" : "w-2 bg-white/35"}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12 ring-1 ring-white/25">
+              <StoryReveal>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-sm">
                   <StoryIcon className="h-6 w-6" style={{ color: story.accent }} weight="bold" />
                 </div>
+              </StoryReveal>
+              <div className="mt-auto pt-8">
+                <StoryReveal>
+                  <p className="text-[11px] font-semibold uppercase leading-none tracking-[0.16em] text-white/75">How GTM works</p>
+                </StoryReveal>
+                <StoryReveal>
+                  <h2 className="mt-3.5 max-w-sm text-balance text-[34px] font-bold leading-[1.08] tracking-[-0.02em]">{story.title}</h2>
+                </StoryReveal>
+                <StoryReveal>
+                  <p className="mt-4 max-w-sm text-[15px] leading-[1.6] text-white/85">{story.body}</p>
+                </StoryReveal>
               </div>
-              <div className="mt-10">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: story.accent }}>How GTM works</p>
-                <h2 className="mt-3 max-w-sm text-balance text-3xl font-semibold leading-tight tracking-tight">{story.title}</h2>
-                <p className="mt-4 max-w-sm text-sm leading-6 text-white/80">{story.body}</p>
-              </div>
-              <div className="mt-auto flex items-center justify-between gap-3 pt-8">
-                <DesignButton variant="plain" onClick={() => moveStory(-1)} disabled={storyIndex === 0} className="text-white hover:bg-white/10 hover:text-white">
+              <StoryReveal className="mt-8 flex items-center justify-between gap-3">
+                <DesignButton
+                  variant="plain"
+                  onClick={() => moveStory(-1)}
+                  disabled={storyIndex === 0}
+                  className="text-white transition-colors duration-150 hover:bg-white/10 hover:text-white hover:transition-none"
+                >
                   Back
                 </DesignButton>
                 {storyIndex === storyCards.length - 1 ? (
-                  <DesignButton variant="secondary" onClick={() => setStep("details")} className="bg-white text-slate-950 hover:bg-white/90">
+                  <DesignButton variant="secondary" onClick={() => setStep("details")} className={storyPrimaryButtonClass}>
                     Add project details
                     <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
                   </DesignButton>
                 ) : (
-                  <DesignButton variant="secondary" onClick={() => moveStory(1)} className="bg-white text-slate-950 hover:bg-white/90">
+                  <DesignButton variant="secondary" onClick={() => moveStory(1)} className={storyPrimaryButtonClass}>
                     Next
                     <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />
                   </DesignButton>
                 )}
-              </div>
+              </StoryReveal>
             </motion.div>
           ) : (
             <motion.form
               key="details"
-              initial={prefersReducedMotion ? false : { opacity: 0, x: 22 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={prefersReducedMotion ? undefined : { opacity: 0, x: -22 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+              variants={storyCanvasVariants}
+              initial={prefersReducedMotion ? false : "hidden"}
+              animate="visible"
+              exit="exit"
               onSubmit={(event) => event.preventDefault()}
-              className="flex min-h-full flex-col bg-[#17171b] p-6"
+              className="flex min-h-full flex-1 flex-col"
             >
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
-                  {isEditing ? "Project intake" : "A quick handoff"}
-                </p>
-                <h2 className="mt-3 max-w-sm text-balance text-3xl font-semibold leading-tight tracking-tight">
-                  {isEditing ? "Update your project details." : "Give us the context to get started."}
+              <StoryReveal>
+                <h2 className="max-w-sm text-balance text-[26px] font-bold leading-[1.12] tracking-[-0.02em]">
+                  {isEditing ? "Update your project details." : "Give your growth teammate the context to get started."}
                 </h2>
-                <p className="mt-3 max-w-sm text-sm leading-6 text-white/70">
+              </StoryReveal>
+              <StoryReveal>
+                <p className="mt-3 max-w-sm text-[14px] leading-[1.55] text-white/80">
                   {isEditing
                     ? "Keep the contact information and project context shared with our GTM team up to date."
-                    : "We use this only to prepare the first conversation about your project."}
+                    : "We use this only to prepare the first conversation and the signals it should start watching."}
                 </p>
-              </div>
-              <div className="mt-6 space-y-4">
+              </StoryReveal>
+              <StoryReveal className="mt-6 space-y-4">
                 <label className="block space-y-2" htmlFor="gtm-onboarding-domain">
-                  <span className="text-sm font-medium text-white">Website domain <span className="font-normal text-white/60">Optional</span></span>
+                  <span className="text-sm font-medium text-white">Website domain <span className="font-normal text-white/65">Optional</span></span>
                   <DesignInput
                     id="gtm-onboarding-domain"
                     value={domain}
@@ -262,7 +328,7 @@ function OnboardingDialog(props: OnboardingDialogProps) {
                     placeholder="https://yourdomain.com"
                     autoComplete="url"
                     inputMode="url"
-                    className="!border-white/20 !bg-white/10 !text-white !ring-white/10 placeholder:!text-white/65 focus-visible:!ring-white/70 dark:!border-white/20 dark:!bg-white/10 dark:!text-white dark:!ring-white/10 dark:placeholder:!text-white/65 dark:focus-visible:!ring-white/70"
+                    className={storyFieldClass}
                   />
                 </label>
                 <label className="block space-y-2" htmlFor="gtm-onboarding-phone">
@@ -275,42 +341,42 @@ function OnboardingDialog(props: OnboardingDialogProps) {
                     placeholder="+1 415 555 0100"
                     autoComplete="tel"
                     required
-                    className="!border-white/20 !bg-white/10 !text-white !ring-white/10 placeholder:!text-white/65 focus-visible:!ring-white/70 dark:!border-white/20 dark:!bg-white/10 dark:!text-white dark:!ring-white/10 dark:placeholder:!text-white/65 dark:focus-visible:!ring-white/70"
+                    className={storyFieldClass}
                   />
                 </label>
                 <label className="block space-y-2" htmlFor="gtm-onboarding-notes">
-                  <span className="text-sm font-medium text-white">Anything we should know? <span className="font-normal text-white/60">Optional</span></span>
+                  <span className="text-sm font-medium text-white">Anything we should know? <span className="font-normal text-white/65">Optional</span></span>
                   <Textarea
                     id="gtm-onboarding-notes"
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     placeholder="Goals, current channels, important launches, or where you want help."
                     maxLength={2000}
-                    className="min-h-20 !border-white/20 !bg-white/10 !text-white !ring-white/10 placeholder:!text-white/65 focus-visible:!ring-white/70 dark:!border-white/20 dark:!bg-white/10 dark:!text-white dark:!ring-white/10 dark:placeholder:!text-white/65 dark:focus-visible:!ring-white/70"
+                    className={`min-h-20 ${storyFieldClass}`}
                   />
                 </label>
-              </div>
-              <div className="mt-6">
+              </StoryReveal>
+              <StoryReveal className="mt-auto pt-6">
                 {error != null && <DesignAlert variant="error" title="We need one more detail" description={error} />}
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <DesignButton
                     variant="plain"
                     type="button"
                     onClick={isEditing ? close : () => setStep("story")}
-                    className="text-white hover:bg-white/10 hover:text-white"
+                    className="text-white transition-colors duration-150 hover:bg-white/10 hover:text-white hover:transition-none"
                   >
                     {isEditing ? "Cancel" : "Back"}
                   </DesignButton>
-                  <DesignButton type="submit" onClick={submit} className="bg-white text-slate-950 hover:bg-white/90">
+                  <DesignButton type="submit" onClick={submit} className={storyPrimaryButtonClass}>
                     {isEditing ? "Save changes" : "Send details"}
                     {!isEditing && <ArrowRightIcon className="ml-2 h-4 w-4" weight="bold" />}
                   </DesignButton>
                 </div>
-              </div>
+              </StoryReveal>
             </motion.form>
           )}
         </AnimatePresence>
-      </div>
+      </GtmStoryCard>
     </DesignDialog>
   );
 }

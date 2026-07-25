@@ -1,7 +1,7 @@
 "use client";
 
 import { AppEnabledGuard } from "../app-enabled-guard";
-import { useProjectId } from "../use-admin-app";
+import { useAdminApp, useProjectId } from "../use-admin-app";
 import { DesignBadge } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +14,10 @@ import { GtmOnboardingGate } from "./components/onboarding-gate";
 
 export default function PageClient() {
   const projectId = useProjectId();
+  // A project's live GTM workspace has to be read through that project's own admin app. `useStackApp()` here
+  // would return the dashboard's app, which is authenticated against the `internal` project, so every read
+  // would come back with the internal project's records instead of this project's.
+  const app = useAdminApp();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,7 +51,7 @@ export default function PageClient() {
   );
   return (
     <AppEnabledGuard appId="gtm">
-      <GtmDataProvider demo={demo}>
+      <GtmDataProvider demo={demo} app={app} target={{ kind: "own-project" }}>
         {projectId === "internal" ? (
           <GtmOverview toolbar={toolbar()} />
         ) : (

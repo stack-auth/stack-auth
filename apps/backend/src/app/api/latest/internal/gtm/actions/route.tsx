@@ -1,4 +1,4 @@
-import { createGtmAction, GTM_ACTION_STATUSES, GTM_ACTION_TYPES, GTM_DOMAINS, GTM_VERDICTS, listGtmActions, requireGtmReadProject, requireGtmWriteProject } from "@/lib/gtm/dashboard-content";
+import { createGtmAction, GTM_ACTION_STATUSES, GTM_ACTION_TYPES, GTM_DOMAINS, GTM_VERDICTS, gtmTimelineEntriesSchema, listGtmActions, requireGtmReadProject, requireGtmWriteProject } from "@/lib/gtm/dashboard-content";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -13,6 +13,7 @@ const actionBody = {
   retrospective_text: yupString().max(5000).nullable().optional(),
   expires_at_millis: yupNumber().defined(),
   executed_at_millis: yupNumber().nullable().optional(),
+  timeline_entries: gtmTimelineEntriesSchema,
 };
 const responseSchema = yupObject({ statusCode: yupNumber().defined(), bodyType: yupString().oneOf(["json"]).defined(), body: yupMixed().defined() });
 

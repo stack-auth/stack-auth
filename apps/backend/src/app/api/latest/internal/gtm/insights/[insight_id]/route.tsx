@@ -1,4 +1,4 @@
-import { deleteGtmInsight, GTM_CONFIDENCES, GTM_DOMAINS, GTM_INSIGHT_KINDS, GTM_INSIGHT_STATUSES, requireGtmWriteProject, updateGtmInsight } from "@/lib/gtm/dashboard-content";
+import { deleteGtmInsight, GTM_DOMAINS, gtmTimelineEntriesSchema, requireGtmWriteProject, updateGtmInsight } from "@/lib/gtm/dashboard-content";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
@@ -12,13 +12,11 @@ export const PATCH = createSmartRouteHandler({
   request: yupObject({ ...base, body: yupObject({
     target_project_id: yupString().default("internal"), expected_updated_at_millis: yupNumber().defined(),
     domain: yupString().oneOf(GTM_DOMAINS).defined(),
-    kind: yupString().oneOf(GTM_INSIGHT_KINDS).defined(),
-    status: yupString().oneOf(GTM_INSIGHT_STATUSES).defined(),
-    confidence: yupString().oneOf(GTM_CONFIDENCES).defined(),
     title: yupString().min(1).max(200).defined(),
     body: yupString().min(1).max(5000).defined(),
     impact_score: yupNumber().integer().min(0).max(100).defined(),
     times_seen: yupNumber().integer().min(1).defined(),
+    timeline_entries: gtmTimelineEntriesSchema,
   }).defined(), method: yupString().oneOf(["PATCH"]).defined() }),
   response: yupObject({ statusCode: yupNumber().oneOf([200]).defined(), bodyType: yupString().oneOf(["json"]).defined(), body: yupMixed().defined() }),
   handler: async ({ auth, params, body }) => {

@@ -78,7 +78,7 @@ function DomainTimeline(props: {
             )}
           >
             <div className="flex items-center justify-between gap-3 font-mono text-[8px] uppercase tracking-[0.16em] text-muted-foreground">
-              <span>{item.type === "insight" ? item.value.confidence : "Action"}</span>
+              <span>{item.type === "insight" ? "Growth signal" : "Action"}</span>
               <time>{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(item.value.createdAtMillis)}</time>
             </div>
             <h5 className="mt-5 line-clamp-3 text-base font-semibold leading-6 tracking-tight text-foreground">{item.value.title}</h5>
@@ -91,11 +91,11 @@ function DomainTimeline(props: {
                   Open timeline
                   <ArrowRightIcon className="h-3.5 w-3.5" />
                 </span>
-              ) : (
+              ) : item.type === "action" ? (
                 <span className="font-mono text-[8px] uppercase tracking-[0.16em] text-muted-foreground">
-                  {item.type === "insight" ? item.value.status : item.value.status.replaceAll("_", " ")}
+                  {item.value.status.replaceAll("_", " ")}
                 </span>
-              )}
+              ) : null}
             </div>
           </article>
         );
@@ -140,9 +140,7 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
     <GtmLoadableSection data={data}>
       {(dataset) => {
         const suggestions: Suggestion[] = [
-          ...dataset.insights
-            .filter((item) => item.status !== "dismissed" && item.kind !== "measurement")
-            .map((value): Suggestion => ({ type: "insight", value })),
+          ...dataset.insights.map((value): Suggestion => ({ type: "insight", value })),
           ...dataset.actions
             .filter((item) => ["proposed", "approved", "executing"].includes(item.status))
             .map((value): Suggestion => ({ type: "action", value })),
@@ -155,20 +153,10 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
           )
           .sort((left, right) => right.value.createdAtMillis - left.value.createdAtMillis);
         const selectedNotes = dataset.notes.filter((note) => classifyNote(note) === selected);
-        const archived: Suggestion[] = [
-          ...dataset.insights
-            .filter((insight) =>
-              (["dismissed", "measured", "archived"].includes(insight.status) || insight.kind === "measurement")
-              && classifyInsight(insight) === selected
-            )
-            .map((value): Suggestion => ({ type: "insight", value })),
-          ...dataset.actions
-            .filter((action) =>
-              !["proposed", "approved", "executing"].includes(action.status)
-              && classifyAction(action) === selected
-            )
-            .map((value): Suggestion => ({ type: "action", value })),
-        ];
+        const archived = dataset.actions.filter((action) =>
+          !["proposed", "approved", "executing"].includes(action.status)
+          && classifyAction(action) === selected
+        );
         const counts = new Map<GtmDomainId, number>(
           GTM_DOMAIN_PRESENTATIONS.map((domain) => [
             domain.id,
@@ -308,39 +296,31 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
                     <div className="border-y">
                       {archived.map((item) => (
                         <article
-                          key={`${item.type}-${item.value.id}`}
+                          key={item.id}
                           className="grid gap-3 border-b py-5 last:border-0 sm:grid-cols-[7rem_1fr_auto]"
                         >
                           <time className="text-xs text-muted-foreground">
                             {new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
-                              .format(item.type === "action"
-                                ? item.value.executedAtMillis ?? item.value.createdAtMillis
-                                : item.value.lastSeenAtMillis)}
+                              .format(item.executedAtMillis ?? item.createdAtMillis)}
                           </time>
                           <div>
-                            <h5 className="text-sm font-semibold">{item.value.title}</h5>
+                            <h5 className="text-sm font-semibold">{item.title}</h5>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {item.type === "action"
-                                ? item.value.retrospective ?? item.value.summary
-                                : item.value.body}
+                              {item.retrospective ?? item.summary}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
                             <DesignBadge
                               size="sm"
-                              color={item.type === "action" && item.value.verdict === "worked" ? "green" : "orange"}
-                              label={(item.type === "action"
-                                ? item.value.verdict ?? item.value.status
-                                : item.value.status).replaceAll("_", " ")}
+                              color={item.verdict === "worked" ? "green" : "orange"}
+                              label={(item.verdict ?? item.status).replaceAll("_", " ")}
                             />
                             {admin != null && (
                               <DesignButton
                                 variant="plain"
                                 size="icon"
-                                aria-label={`Edit ${item.value.title}`}
-                                onClick={() => item.type === "action"
-                                  ? admin.editAction(item.value)
-                                  : admin.editInsight(item.value)}
+                                aria-label={`Edit ${item.title}`}
+                                onClick={() => admin.editAction(item)}
                               >
                                 <PencilSimpleIcon className="h-4 w-4" />
                               </DesignButton>

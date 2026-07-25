@@ -22,6 +22,23 @@ describe("buildGtmDemoDataset", () => {
     ]));
   });
 
+  it("gives every suggestion a written timeline, since nothing generates one", () => {
+    // The dashboard renders a suggestion's timeline entries verbatim and shows an empty state when there are
+    // none, so a fixture that forgets its entries silently makes demo mode look broken.
+    const dataset = buildGtmDemoDataset(1_800_000_000_000);
+    const timelines = [
+      ...dataset.insights.map((insight) => insight.timeline),
+      ...dataset.actions.map((action) => action.timeline),
+    ];
+
+    expect(timelines.every((timeline) => timeline != null && timeline.length > 0)).toBe(true);
+    expect(timelines.flat().every((entry) => entry != null
+      && entry.label.length > 0
+      && entry.title.length > 0
+      && entry.body.length > 0
+      && Number.isFinite(entry.dateMillis))).toBe(true);
+  });
+
   it("uses stable IDs and derives domains from the fixture records", () => {
     const dataset = buildGtmDemoDataset(1_800_000_000_000);
     const ids = [

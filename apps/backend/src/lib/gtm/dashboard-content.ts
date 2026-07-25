@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import type {
   GtmAction as PrismaGtmAction,
   GtmInsight as PrismaGtmInsight,
@@ -9,21 +10,9 @@ import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { KnownErrors } from "@hexclave/shared";
 import type { UsersCrud } from "@hexclave/shared/dist/interface/crud/users";
-import { StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError, throwErr } from "@hexclave/shared/dist/utils/errors";
+import { yupArray, yupNumber, yupObject, yupString } from "@hexclave/shared/dist/schema-fields";
 
-export const GTM_INSIGHT_KINDS = [
-  "funnel_dropoff",
-  "segment_lift",
-  "retention",
-  "send_time",
-  "checkout_abandonment",
-  "friction_hotspot",
-  "qualitative_theme",
-  "data_gap",
-  "measurement",
-] as const;
-export const GTM_INSIGHT_STATUSES = ["new", "surfaced", "acknowledged", "dismissed", "measured", "archived"] as const;
-export const GTM_CONFIDENCES = ["high", "medium", "low"] as const;
 export const GTM_ACTION_TYPES = ["checkout_recovery_email", "broadcast_email", "config_change"] as const;
 export const GTM_ACTION_STATUSES = ["proposed", "approved", "executing", "executed", "failed", "rejected", "expired"] as const;
 export const GTM_VERDICTS = ["worked", "didnt_work", "inconclusive", "never_measured", "rejected_by_you", "expired"] as const;
@@ -178,15 +167,103 @@ export async function completeGtmOnboarding(projectId: string, input: { domain?:
   return serializeOnboarding(onboarding);
 }
 
+export const GTM_TIMELINE_MAX_ENTRIES = 40;
+export const GTM_TIMELINE_LABEL_MAX_LENGTH = 40;
+export const GTM_TIMELINE_TITLE_MAX_LENGTH = 200;
+export const GTM_TIMELINE_BODY_MAX_LENGTH = 2000;
+
+export type GtmTimelineEntryInput = {
+  label: string,
+  title: string,
+  body: string,
+  date_millis: number,
+};
+
+/**
+ * Request-body schema for a curated timeline, shared by every route that can write one so the four call sites
+ * cannot drift apart. Optional and nullable are both meaningful and distinct here: omitted leaves the stored
+ * timeline untouched, `null` clears it back to "nothing written yet".
+ */
+export const gtmTimelineEntriesSchema = yupArray(yupObject({
+  label: yupString().trim().min(1).max(GTM_TIMELINE_LABEL_MAX_LENGTH).defined(),
+  title: yupString().trim().min(1).max(GTM_TIMELINE_TITLE_MAX_LENGTH).defined(),
+  body: yupString().trim().max(GTM_TIMELINE_BODY_MAX_LENGTH).default(""),
+  date_millis: yupNumber().defined(),
+}).defined()).max(GTM_TIMELINE_MAX_ENTRIES).nullable().optional();
+
+/**
+ * Reads a curated timeline back out of its JSON column.
+ *
+ * The column is `Json?`, so Prisma types it as `JsonValue` and the database only guarantees "NULL or a JSON
+ * array" (the CHECK constraint). Everything past that is validated here rather than trusted, because a row
+ * could have been written by an older or a hand-run query. Anything that does not match the expected entry
+ * shape is a bug we want to see rather than paper over, so it throws instead of being dropped silently.
+ */
+function deserializeTimeline(value: PrismaGtmInsight["timelineEntries"]): GtmTimelineEntryInput[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value)) throw new HexclaveAssertionError(`A GTM timeline column held ${typeof value} instead of an array or NULL.`);
+  return value.map((entry, index) => {
+    if (typeof entry !== "object" || entry == null || Array.isArray(entry)) {
+      throw new HexclaveAssertionError(`GTM timeline entry ${index} is not an object.`);
+    }
+    const record: Record<string, unknown> = entry;
+    const { label, title, body, date_millis: dateMillis } = record;
+    if (typeof label !== "string" || typeof title !== "string" || typeof body !== "string" || typeof dateMillis !== "number") {
+      throw new HexclaveAssertionError(`GTM timeline entry ${index} has fields of unexpected types.`);
+    }
+    return { label, title, body, date_millis: dateMillis };
+  });
+}
+
+/**
+ * Normalizes a curated timeline on the way in.
+ *
+ * `undefined` means the caller did not mention the timeline at all and whatever is stored must be left alone;
+ * `null` means "clear the timeline back to nothing written yet". Those are genuinely different
+ * intents, so they map to different Prisma values (field omitted vs. `Prisma.DbNull`) and must not be
+ * collapsed. Length limits are enforced here as well as in the route schema, since this is the single point
+ * every write path goes through.
+ */
+function normalizeTimelineForWrite(entries: GtmTimelineEntryInput[] | null | undefined): GtmTimelineEntryInput[] | null | undefined {
+  if (entries === undefined) return undefined;
+  if (entries === null) return null;
+  if (entries.length > GTM_TIMELINE_MAX_ENTRIES) {
+    throw new StatusError(400, `A GTM timeline cannot have more than ${GTM_TIMELINE_MAX_ENTRIES} entries.`);
+  }
+  return entries.map((entry, index) => {
+    const label = entry.label.trim();
+    const title = entry.title.trim();
+    const body = entry.body.trim();
+    if (label.length === 0 || title.length === 0) {
+      throw new StatusError(400, `GTM timeline entry ${index + 1} needs both a label and a title.`);
+    }
+    if (label.length > GTM_TIMELINE_LABEL_MAX_LENGTH || title.length > GTM_TIMELINE_TITLE_MAX_LENGTH || body.length > GTM_TIMELINE_BODY_MAX_LENGTH) {
+      throw new StatusError(400, `GTM timeline entry ${index + 1} is too long.`);
+    }
+    if (!Number.isFinite(entry.date_millis)) {
+      throw new StatusError(400, `GTM timeline entry ${index + 1} has an invalid date.`);
+    }
+    return { label, title, body, date_millis: entry.date_millis };
+  });
+}
+
+/**
+ * Translates the normalized value into the `data` fragment Prisma expects. `Prisma.DbNull` (not JS `null`)
+ * is what writes a SQL NULL into a `Json?` column; plain `null` would be rejected by Prisma's types.
+ */
+function timelineWriteData(entries: GtmTimelineEntryInput[] | null | undefined) {
+  const normalized = normalizeTimelineForWrite(entries);
+  if (normalized === undefined) return {};
+  return { timelineEntries: normalized === null ? Prisma.DbNull : normalized };
+}
+
 function serializeInsight(row: PrismaGtmInsight) {
   return {
+    timeline_entries: deserializeTimeline(row.timelineEntries),
     id: row.id,
     created_at_millis: row.createdAt.getTime(),
     updated_at_millis: row.updatedAt.getTime(),
     domain: row.domain,
-    kind: row.kind,
-    status: row.status,
-    confidence: row.confidence,
     title: row.title,
     body: row.body,
     impact_score: row.impactScore,
@@ -197,6 +274,7 @@ function serializeInsight(row: PrismaGtmInsight) {
 
 function serializeAction(row: PrismaGtmAction) {
   return {
+    timeline_entries: deserializeTimeline(row.timelineEntries),
     id: row.id,
     created_at_millis: row.createdAt.getTime(),
     updated_at_millis: row.updatedAt.getTime(),
@@ -264,26 +342,22 @@ export async function listGtmInsights(projectId: string, cursor: string | undefi
 
 export async function createGtmInsight(projectId: string, input: {
   domain: string,
-  kind: string,
-  status: string,
-  confidence: string,
   title: string,
   body: string,
   impact_score: number,
   times_seen?: number,
+  timeline_entries?: GtmTimelineEntryInput[] | null,
 }) {
   const row = await globalPrismaClient.gtmInsight.create({
     data: {
       projectId,
       branchId: DEFAULT_BRANCH_ID,
       domain: input.domain,
-      kind: input.kind,
-      status: input.status,
-      confidence: input.confidence,
       title: input.title,
       body: input.body,
       impactScore: input.impact_score,
       timesSeen: input.times_seen ?? 1,
+      ...timelineWriteData(input.timeline_entries),
     },
   });
   return serializeInsight(row);
@@ -292,13 +366,11 @@ export async function createGtmInsight(projectId: string, input: {
 export async function updateGtmInsight(projectId: string, id: string, input: {
   expected_updated_at_millis: number,
   domain: string,
-  kind: string,
-  status: string,
-  confidence: string,
   title: string,
   body: string,
   impact_score: number,
   times_seen: number,
+  timeline_entries?: GtmTimelineEntryInput[] | null,
 }) {
   const result = await globalPrismaClient.gtmInsight.updateMany({
     where: {
@@ -309,14 +381,12 @@ export async function updateGtmInsight(projectId: string, id: string, input: {
     },
     data: {
       domain: input.domain,
-      kind: input.kind,
-      status: input.status,
-      confidence: input.confidence,
       title: input.title,
       body: input.body,
       impactScore: input.impact_score,
       timesSeen: input.times_seen,
       lastSeenAt: new Date(),
+      ...timelineWriteData(input.timeline_entries),
       updatedAt: nextUpdatedAt(input.expected_updated_at_millis),
     },
   });
@@ -358,6 +428,7 @@ export async function createGtmAction(projectId: string, input: {
   retrospective_text?: string | null,
   expires_at_millis: number,
   executed_at_millis?: number | null,
+  timeline_entries?: GtmTimelineEntryInput[] | null,
 }) {
   const row = await globalPrismaClient.gtmAction.create({
     data: {
@@ -372,6 +443,7 @@ export async function createGtmAction(projectId: string, input: {
       retrospectiveText: input.retrospective_text ?? null,
       expiresAt: dateFromMillis(input.expires_at_millis, "expires_at_millis"),
       executedAt: nullableDateFromMillis(input.executed_at_millis, "executed_at_millis") ?? null,
+      ...timelineWriteData(input.timeline_entries),
     },
   });
   return serializeAction(row);
@@ -388,6 +460,7 @@ export async function updateGtmAction(projectId: string, id: string, input: {
   retrospective_text: string | null,
   expires_at_millis: number,
   executed_at_millis: number | null,
+  timeline_entries?: GtmTimelineEntryInput[] | null,
 }) {
   const result = await globalPrismaClient.gtmAction.updateMany({
     where: { id, projectId, branchId: DEFAULT_BRANCH_ID, updatedAt: dateFromMillis(input.expected_updated_at_millis, "expected_updated_at_millis") },
@@ -401,6 +474,7 @@ export async function updateGtmAction(projectId: string, id: string, input: {
       retrospectiveText: input.retrospective_text,
       expiresAt: dateFromMillis(input.expires_at_millis, "expires_at_millis"),
       executedAt: nullableDateFromMillis(input.executed_at_millis, "executed_at_millis") ?? null,
+      ...timelineWriteData(input.timeline_entries),
       updatedAt: nextUpdatedAt(input.expected_updated_at_millis),
     },
   });

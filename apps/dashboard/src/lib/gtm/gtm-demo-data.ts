@@ -3,6 +3,15 @@ import type { GtmDataset } from "./gtm-types";
 const DAY = 24 * 60 * 60 * 1000;
 export const GTM_DEMO_NOW_MILLIS = new Date("2026-07-24T12:00:00.000Z").getTime();
 
+/**
+ * Deterministic fixtures for GTM demo mode. Nothing here is fetched — the whole dataset is built from
+ * `nowMillis` so the demo reads the same on every load.
+ *
+ * The timelines are written out by hand, entry by entry, exactly as a real one would be. The dashboard has
+ * no way to derive a timeline from a record's other fields (that was tried and removed — it put sentences
+ * nobody wrote in front of customers), so a demo record without written entries would show the empty state
+ * and the demo would look broken rather than realistic.
+ */
 export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
   return {
     insights: [
@@ -11,140 +20,262 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         createdAtMillis: nowMillis - 14 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "users",
-        kind: "segment_lift",
-        status: "surfaced",
-        confidence: "high",
         title: "Demo-land users are 1.9x more likely to become multi-day active",
         body: "Users from Demo-land become multi-day active at 56.3% versus a 29% baseline (n=96). The result survived false-discovery correction and replicated across both analysis windows.",
         impactScore: 82,
         timesSeen: 2,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "One region stood apart from the rest",
+            body: "A weekly scan flagged Demo-land signups reaching multi-day activity well above everyone else.",
+            dateMillis: nowMillis - 14 * DAY,
+          },
+          {
+            label: "Replicated",
+            title: "The gap held in a second window",
+            body: "Re-running the comparison over the following fortnight reproduced the difference at n=96, after correcting for the number of segments tested.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+          {
+            label: "Where it stands",
+            title: "With your growth team",
+            body: "We are looking at whether paid spend should be weighted toward this region before the next campaign.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000102",
         createdAtMillis: nowMillis - 14 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "revenue",
-        kind: "funnel_dropoff",
-        status: "surfaced",
-        confidence: "medium",
         title: "62% of pricing-page visitors never reach checkout",
         body: "Of 240 users who viewed the pricing page, only 91 reached checkout. This step loses more users than any other part of the purchase funnel.",
         impactScore: 74,
         timesSeen: 2,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "The pricing step lost the most people",
+            body: "Walking the purchase funnel step by step put the largest single drop between the pricing page and checkout.",
+            dateMillis: nowMillis - 14 * DAY,
+          },
+          {
+            label: "Checked",
+            title: "Not a seasonal blip",
+            body: "The previous month lost a similar share at the same step, so this is how the page normally performs.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000103",
         createdAtMillis: nowMillis - 7 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "ads",
-        kind: "segment_lift",
-        status: "surfaced",
-        confidence: "medium",
         title: "Retargeting brings the highest-quality trial traffic",
         body: "Retargeting visitors reached multi-day activity at 31% versus 18% for the other paid campaigns (n=186). This is based on simulated campaign data until a real ad account is connected.",
         impactScore: 66,
         timesSeen: 1,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "Retargeting outperformed the other paid sources",
+            body: "Comparing campaigns on activity rather than signups put retargeting clearly ahead.",
+            dateMillis: nowMillis - 7 * DAY,
+          },
+          {
+            label: "Caveat",
+            title: "Standing on simulated numbers",
+            body: "These campaigns are simulated until an ad account is connected. Treat the direction as real and the size of the gap loosely.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000104",
         createdAtMillis: nowMillis - 14 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "revenue",
-        kind: "checkout_abandonment",
-        status: "surfaced",
-        confidence: "medium",
         title: "23 started checkouts were abandoned in the last 30 days",
         body: "Twenty-three users created a purchase URL more than 24 hours ago and never completed it. Nineteen of them have marketing consent and can receive a recovery email.",
         impactScore: 68,
         timesSeen: 3,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "Twenty-three checkouts left unfinished",
+            body: "Each of these users created a purchase URL more than a day ago and never came back to it.",
+            dateMillis: nowMillis - 14 * DAY,
+          },
+          {
+            label: "Checked",
+            title: "Consent confirmed before proposing anything",
+            body: "Nineteen of the twenty-three can be emailed. The other four are out of reach and were excluded.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000105",
         createdAtMillis: nowMillis - 7 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "outreach",
-        kind: "send_time",
-        status: "surfaced",
-        confidence: "medium",
         title: "Emails sent at 18:00 local open at twice the morning rate",
         body: "Marketing emails delivered around 18:00 recipient-local time opened at 44%, compared with 21% for morning sends. Both groups cleared the minimum sample threshold.",
         impactScore: 61,
         timesSeen: 1,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "Evening sends opened twice as often",
+            body: "Grouping past sends by recipient-local hour separated the evening window from the morning one cleanly.",
+            dateMillis: nowMillis - 7 * DAY,
+          },
+          {
+            label: "Confirmed",
+            title: "Both groups were large enough to trust",
+            body: "Each side cleared the sample threshold, so this is not one unusually good send carrying the average.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000106",
         createdAtMillis: nowMillis - 14 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "product",
-        kind: "friction_hotspot",
-        status: "surfaced",
-        confidence: "medium",
         title: "The Export button dead-clicks 47% of the time",
         body: "The Export button on the dashboard produced no visible effect for 60 of 128 clicks, far above the 9% site-wide baseline. Its disabled state likely looks interactive.",
         impactScore: 58,
         timesSeen: 2,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "One button swallowed half its clicks",
+            body: "Sixty of 128 clicks on Export produced nothing on screen, against a 9% baseline everywhere else.",
+            dateMillis: nowMillis - 14 * DAY,
+          },
+          {
+            label: "Diagnosed",
+            title: "The disabled state reads as clickable",
+            body: "People click it several times before giving up, which points at how it looks rather than a broken handler.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000107",
         createdAtMillis: nowMillis - 7 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "outreach",
-        kind: "qualitative_theme",
-        status: "new",
-        confidence: "low",
         title: "Developer communities keep asking for teardown-style demo sessions",
         body: "Four of 11 sampled community conversations asked how other teams structure convincing product demos. A practical teardown event could answer that demand without becoming a sales pitch.",
         impactScore: 53,
         timesSeen: 1,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Heard",
+            title: "The same question kept coming up",
+            body: "Four of eleven sampled community threads asked how other teams structure a demo that lands.",
+            dateMillis: nowMillis - 7 * DAY,
+          },
+          {
+            label: "Open question",
+            title: "A signal, not yet a plan",
+            body: "Four conversations is thin. Worth a short round of interviews before committing to an event.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000108",
         createdAtMillis: nowMillis - 7 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "product",
-        kind: "qualitative_theme",
-        status: "new",
-        confidence: "low",
         title: "Feature requests cluster around scheduled demo exports",
         body: "Five of 14 recent support conversations asked to schedule or automatically refresh exported demos. Validate the workflow before committing to a build.",
         impactScore: 49,
         timesSeen: 1,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Heard",
+            title: "Support conversations converged on scheduling",
+            body: "Five of fourteen recent conversations asked to schedule or auto-refresh an exported demo.",
+            dateMillis: nowMillis - 7 * DAY,
+          },
+          {
+            label: "Open question",
+            title: "The wanted workflow is still unclear",
+            body: "It is not obvious whether people want a schedule, a refresh button, or an API. Worth asking before anything is built.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000109",
         createdAtMillis: nowMillis - 14 * DAY,
         updatedAtMillis: nowMillis - 2 * DAY,
         domain: "content",
-        kind: "funnel_dropoff",
-        status: "surfaced",
-        confidence: "medium",
         title: "SEO visitors who read the setup docs activate at 31%",
         body: "Organic visitors who continued from the integration guide into setup activated at 31% (44 of 142), versus 14% for visitors who skipped the docs (19 of 136).",
         impactScore: 63,
         timesSeen: 2,
         lastSeenAtMillis: nowMillis - 2 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "Docs readers activated at twice the rate",
+            body: "Forty-four of 142 organic visitors who read the integration guide activated, against 19 of 136 who skipped it.",
+            dateMillis: nowMillis - 14 * DAY,
+          },
+          {
+            label: "Open question",
+            title: "Cause or self-selection",
+            body: "Reading the guide may cause activation, or motivated users may simply read more. Only a test separates the two.",
+            dateMillis: nowMillis - 2 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000110",
         createdAtMillis: nowMillis - 21 * DAY,
         updatedAtMillis: nowMillis - 9 * DAY,
         domain: "users",
-        kind: "retention",
-        status: "acknowledged",
-        confidence: "medium",
         title: "Retention flattens at 22% and newer cohorts are improving",
         body: "Weekly cohorts settle at roughly 22% long-run retention instead of decaying to zero. Newer cohorts are trending slightly above the older baseline.",
         impactScore: 55,
         timesSeen: 2,
         lastSeenAtMillis: nowMillis - 9 * DAY,
+        timeline: [
+          {
+            label: "Detected",
+            title: "Retention settled instead of decaying",
+            body: "Weekly cohorts level off near 22% rather than trending to zero, which is the shape you want to see.",
+            dateMillis: nowMillis - 21 * DAY,
+          },
+          {
+            label: "Confirmed",
+            title: "Newer cohorts sit above the baseline",
+            body: "The last three cohorts are slightly better than the older ones, though not yet by a decisive margin.",
+            dateMillis: nowMillis - 9 * DAY,
+          },
+          {
+            label: "Where it stands",
+            title: "Acknowledged, revisiting later",
+            body: "Nothing to act on today. We will look again once another month of cohorts has landed.",
+            dateMillis: nowMillis - 9 * DAY,
+          },
+        ],
       },
     ],
     actions: [
@@ -161,6 +292,20 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: null,
         expiresAtMillis: nowMillis + 14 * DAY,
         executedAtMillis: null,
+        timeline: [
+          {
+            label: "Drafted",
+            title: "Written up for your review",
+            body: "Aimed at the nineteen consented users who left setup unfinished, with a fifth held back so the result can be measured.",
+            dateMillis: nowMillis - 30 * 60 * 1000,
+          },
+          {
+            label: "Where it stands",
+            title: "Waiting on your approval",
+            body: "Nothing is sent until someone on your side approves it. The proposal expires in two weeks if it goes unreviewed.",
+            dateMillis: nowMillis - 30 * 60 * 1000,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000202",
@@ -175,6 +320,26 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "The treatment converted 26 of 118 recipients, versus 2 of 30 in the holdout. Referencing the abandoned plan and matching the evening activity window are both worth repeating.",
         expiresAtMillis: nowMillis - 10 * DAY,
         executedAtMillis: nowMillis - 23 * DAY,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A reminder naming the abandoned plan",
+            body: "Drafted for buyers who got as far as choosing a plan, with a holdout reserved up front.",
+            dateMillis: nowMillis - 24 * DAY,
+          },
+          {
+            label: "Sent",
+            title: "Delivered in the evening window",
+            body: "118 recipients received it; 30 were held back and received nothing.",
+            dateMillis: nowMillis - 23 * DAY,
+          },
+          {
+            label: "Measured",
+            title: "It worked",
+            body: "26 of 118 recipients converted against 2 of 30 held back. Naming the plan and sending in the evening are both worth repeating.",
+            dateMillis: nowMillis - 15 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000203",
@@ -189,6 +354,26 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "The generic newsletter converted 3 of 160 recipients, while the holdout converted 5 of 40. Broad sends without a concrete hook hurt more than they help for this audience.",
         expiresAtMillis: nowMillis - 7 * DAY,
         executedAtMillis: nowMillis - 20 * DAY,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A general product-news update",
+            body: "Deliberately broad, to find out whether this audience responds to newsletters at all.",
+            dateMillis: nowMillis - 21 * DAY,
+          },
+          {
+            label: "Sent",
+            title: "Delivered to 160 recipients",
+            body: "40 more were held back so the send could be compared against doing nothing.",
+            dateMillis: nowMillis - 20 * DAY,
+          },
+          {
+            label: "Measured",
+            title: "The holdout did better",
+            body: "3 of 160 recipients converted against 5 of 40 who got nothing. We stopped proposing broad sends without a concrete hook.",
+            dateMillis: nowMillis - 12 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000204",
@@ -203,6 +388,26 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "Treatment converted at 8.0% and holdout at 7.9%. The feature angle neither helped nor hurt, so it is not worth repeating without a stronger hook.",
         expiresAtMillis: nowMillis - 4 * DAY,
         executedAtMillis: nowMillis - 17 * DAY,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A single-feature email",
+            body: "A narrower follow-up to the newsletter test: one feature, one reason to look at it.",
+            dateMillis: nowMillis - 18 * DAY,
+          },
+          {
+            label: "Sent",
+            title: "Delivered alongside a holdout",
+            body: "The comparison group again received nothing.",
+            dateMillis: nowMillis - 17 * DAY,
+          },
+          {
+            label: "Measured",
+            title: "No difference worth acting on",
+            body: "8.0% against 7.9%. The feature angle neither helped nor hurt, so it is not worth repeating as written.",
+            dateMillis: nowMillis - 9 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000205",
@@ -217,6 +422,26 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "The treatment recovered 11 of 47 checkouts against none of 9 in the holdout. This is directionally strong, but the holdout is too small for a firm conclusion.",
         expiresAtMillis: nowMillis + DAY,
         executedAtMillis: nowMillis - 12 * DAY,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A gentler version of the reminder",
+            body: "Asks whether the plan is still under consideration rather than pushing to complete the purchase.",
+            dateMillis: nowMillis - 13 * DAY,
+          },
+          {
+            label: "Sent",
+            title: "Delivered to 47 buyers",
+            body: "Only 9 could be held back — the pool of abandoned checkouts that week was small.",
+            dateMillis: nowMillis - 12 * DAY,
+          },
+          {
+            label: "Measured",
+            title: "Promising, but read it carefully",
+            body: "11 of 47 recovered against none of 9 held back. The direction is strong; the holdout is too small to call it settled.",
+            dateMillis: nowMillis - 4 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000206",
@@ -231,6 +456,26 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "The theme now matches the product, but a configuration switch has no holdout and cannot be attributed to an outcome.",
         expiresAtMillis: nowMillis + 3 * DAY,
         executedAtMillis: nowMillis - 11 * DAY,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "Bring emails in line with the product",
+            body: "Lifecycle emails still used the default light styling and looked unrelated to the app.",
+            dateMillis: nowMillis - 11 * DAY,
+          },
+          {
+            label: "Applied",
+            title: "The theme was switched",
+            body: "Every lifecycle email now renders in the dark theme.",
+            dateMillis: nowMillis - 11 * DAY,
+          },
+          {
+            label: "Where it stands",
+            title: "Nothing to measure here",
+            body: "A configuration change applies to everyone at once, so there is no holdout and no outcome to attribute to it.",
+            dateMillis: nowMillis - 10 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000207",
@@ -245,6 +490,20 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: "Rejected during review because the company strategy explicitly rules out discounting. Future proposals should use value-led angles.",
         expiresAtMillis: nowMillis + 4 * DAY,
         executedAtMillis: null,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A discount aimed at inactive trials",
+            body: "Drafted as a way to restart conversations with trials that had gone quiet.",
+            dateMillis: nowMillis - 10 * DAY,
+          },
+          {
+            label: "Rejected",
+            title: "Turned down in review",
+            body: "Discounting is ruled out by your positioning, so this never sent. Later proposals lead with product value instead.",
+            dateMillis: nowMillis - 9 * DAY,
+          },
+        ],
       },
       {
         id: "00000000-0000-4000-8000-000000000208",
@@ -259,6 +518,20 @@ export function buildGtmDemoDataset(nowMillis: number): GtmDataset {
         retrospective: null,
         expiresAtMillis: nowMillis - 16 * DAY,
         executedAtMillis: null,
+        timeline: [
+          {
+            label: "Proposed",
+            title: "A last nudge before plans lapsed",
+            body: "Aimed at buyers whose unfinished setup was about to age out.",
+            dateMillis: nowMillis - 30 * DAY,
+          },
+          {
+            label: "Expired",
+            title: "The review window closed",
+            body: "Nobody reviewed it in time, so it never sent. Proposals lapse rather than send themselves.",
+            dateMillis: nowMillis - 16 * DAY,
+          },
+        ],
       },
     ],
     notes: [

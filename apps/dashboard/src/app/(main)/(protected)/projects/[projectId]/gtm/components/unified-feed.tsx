@@ -19,9 +19,7 @@ export function UnifiedFeed(props: { limit?: number }) {
     <GtmLoadableSection data={data}>
       {(dataset) => {
         const items: FeedItem[] = [
-          ...dataset.insights
-            .filter((item) => item.status !== "dismissed")
-            .map((value): FeedItem => ({ type: "insight", value, time: value.createdAtMillis })),
+          ...dataset.insights.map((value): FeedItem => ({ type: "insight", value, time: value.createdAtMillis })),
           ...dataset.actions
             .filter((item) => item.status === "proposed")
             .map((value): FeedItem => ({ type: "action", value, time: value.createdAtMillis })),
@@ -43,9 +41,7 @@ export function UnifiedFeed(props: { limit?: number }) {
             {visible.map((item) => {
               const Icon = item.type === "insight" ? LightbulbIcon : PlayCircleIcon;
               const body = item.type === "insight" ? item.value.body : item.value.summary;
-              const eyebrow = item.type === "insight"
-                ? `${item.value.confidence} confidence insight`
-                : "Recorded action";
+              const eyebrow = item.type === "insight" ? "Growth signal" : "Recorded action";
               const edit = admin == null
                 ? null
                 : () => item.type === "insight"
@@ -74,13 +70,11 @@ export function UnifiedFeed(props: { limit?: number }) {
                       )}
                     </div>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{body}</p>
-                    <div className="mt-4">
-                      <DesignBadge
-                        size="sm"
-                        color={item.type === "insight" ? "purple" : "blue"}
-                        label={item.value.status}
-                      />
-                    </div>
+                    {item.type === "action" && (
+                      <div className="mt-4">
+                        <DesignBadge size="sm" color="blue" label={item.value.status} />
+                      </div>
+                    )}
                   </div>
                 </article>
               );
