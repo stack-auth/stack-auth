@@ -97,10 +97,20 @@ describe("SpacetimeDB bindings stay in sync with server schema", () => {
   const serverSchema = read("apps/internal-tool/spacetimedb/src/index.ts");
 
   it("server reducers match generated client reducer list", () => {
+    // Scheduled reducers are private in SpacetimeDB v2 — only the scheduler and the database owner
+    // may invoke them — so `spacetime generate` deliberately leaves them out of the client bindings
+    // (it also skips the private scheduler table that drives them). They therefore carry no
+    // positional-drift risk on the client, and comparing them here would fail permanently. Derive
+    // the exclusion set from the schema itself, via the `scheduled: () => <reducer>` reference on
+    // the scheduler table, so future scheduled reducers are excluded without touching this test.
+    const scheduledReducerNames = new Set(Array.from(
+      serverSchema.matchAll(/scheduled:\s*\([^)]*\)\s*(?::\s*[A-Za-z_][A-Za-z0-9_]*\s*)?=>\s*([a-z_]+)/g),
+      m => m[1],
+    ));
     const serverReducerNames = Array.from(
       serverSchema.matchAll(/export const ([a-z_]+) = spacetimedb\.reducer/g),
       m => m[1],
-    ).sort();
+    ).filter(name => !scheduledReducerNames.has(name)).sort();
     const clientSource = read("apps/internal-tool/src/module_bindings/index.ts");
     const clientReducerNames = Array.from(
       clientSource.matchAll(/__reducerSchema\("([a-z_]+)"/g),
