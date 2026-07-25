@@ -48,9 +48,9 @@ describe("StackClientApp sign-in cache warm-up", () => {
       return { id: "user-id", is_anonymous: false, is_restricted: false };
     });
 
-    // The token store is only updated once the user is cached, so `useUser()` hooks that re-render because of the new
-    // session read a warm cache instead of suspending and flashing their Suspense fallback.
-    const cachedUsersOnTokenStoreChange: unknown[] = [];
+    // The new session's user is cached before the token store update is published, so `useUser()` hooks that re-render
+    // because of the new session read a warm cache instead of suspending and flashing their Suspense fallback.
+    const cacheStatusesOnTokenStoreChange: string[] = [];
     const tokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore").call(
       clientApp,
       await Reflect.get(clientApp, "_createCookieHelper").call(clientApp),
@@ -58,7 +58,7 @@ describe("StackClientApp sign-in cache warm-up", () => {
     tokenStore.onChange(() => {
       const session = Reflect.get(clientApp, "_getSessionFromTokenStore").call(clientApp, tokenStore);
       const currentUserCache = Reflect.get(clientApp, "_currentUserCache");
-      cachedUsersOnTokenStoreChange.push(currentUserCache.getIfCached([session]));
+      cacheStatusesOnTokenStoreChange.push(currentUserCache.getIfCached([session]).status);
     });
 
     await Reflect.get(clientApp, "_signInToAccountWithTokens").call(clientApp, {
@@ -71,6 +71,6 @@ describe("StackClientApp sign-in cache warm-up", () => {
     expect(cachedUser.status).toBe("ok");
     expect(cachedUser.data.data).toMatchObject({ id: "user-id" });
     expect(getClientUserByTokenCalls).toBe(1);
-    expect(cachedUsersOnTokenStoreChange.length).toBeGreaterThan(0);
+    expect(cacheStatusesOnTokenStoreChange).toEqual(["ok"]);
   });
 });

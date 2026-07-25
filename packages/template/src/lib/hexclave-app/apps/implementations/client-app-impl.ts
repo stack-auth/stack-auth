@@ -1577,8 +1577,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
    * - So different token stores are separated and don't leak information between each other, eg. if the same user sends two requests to the same server they should get a different session object
    */
   private _sessionsByTokenStoreAndSessionKey = new WeakMap<Store<TokenObject>, Map<string, InternalSession>>();
-  protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>): InternalSession {
-    const tokenObj = tokenStore.get();
+  /**
+   * @param overrideTokenObj The tokens to build the session for, if they haven't been written to the token store yet.
+   *                         Used to create (and hence warm the caches of) the session of a sign-in before the token
+   *                         store update makes it observable to the rest of the app.
+   */
+  protected _getSessionFromTokenStore(tokenStore: Store<TokenObject>, overrideTokenObj?: TokenObject): InternalSession {
+    const tokenObj = overrideTokenObj ?? tokenStore.get();
     const sessionKey = InternalSession.calculateSessionKey(tokenObj);
     const existing = sessionKey ? this._sessionsByTokenStoreAndSessionKey.get(tokenStore)?.get(sessionKey) : null;
     if (existing) return existing;
@@ -1637,28 +1642,33 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
       throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
-    // Fetch the user of the incoming tokens before publishing them, so we can seed the current-user cache in the same
-    // tick as the token store update below. Mounted `useUser()` hooks re-read the cache synchronously when the token
-    // store changes, so an empty cache entry for the new session makes them suspend — flashing their Suspense fallback
-    // over UI that was already on the screen. That is most visible on the sign-in/sign-up pages, which sit there
-    // signed out until the analytics anonymous sign-up swaps in a session a few seconds after the page loaded.
+    // Fetch the user of the incoming tokens before publishing them, so the new session's cache is already warm when
+    // the token store update below notifies its subscribers. Mounted `useUser()` hooks re-read the cache when the
+    // session changes, so an empty cache entry for the new session makes them suspend — flashing their Suspense
+    // fallback over UI that was already on the screen. That is most visible on the sign-in/sign-up pages, which sit
+    // there signed out until the analytics anonymous sign-up swaps in a session a few seconds after the page loaded.
     const prefetchedUser = await this._prefetchCurrentUserForFreshTokens(tokens);
 
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
-    tokenStore.set(tokens);
 
     // If these tokens resolve to a session we already have (eg. the RDE dashboard re-installing a freshly minted
     // access token for the same access-only session), push the new token into it in place; constructing a new
     // session here would cold-invalidate every session-scoped cache and suspend the UI on each refresh.
-    const session = this._getSessionFromTokenStore(tokenStore);
+    //
+    // Note that we create the session (and seed its cache) from the tokens directly, before writing them to the token
+    // store; that way, the session is already fully warm by the time the token store notifies its subscribers.
+    const session = this._getSessionFromTokenStore(tokenStore, tokens);
     session.updateAccessToken(tokens);
+    if (prefetchedUser !== null) {
+      this._currentUserCache.forceSetCachedValue([session], prefetchedUser);
+    }
+
+    tokenStore.set(tokens);
 
     if (prefetchedUser === null) {
-      // We have nothing to seed the cache with (no access token to pre-fetch with, or the pre-fetch failed), so warm
-      // it in the background instead; that may lose the race against the re-render, but it's the best we can do.
+      // We had nothing to seed the cache with (no access token to pre-fetch with, or the pre-fetch failed), so warm it
+      // in the background instead; that may lose the race against the re-render, but it's the best we can do.
       runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
-    } else {
-      this._currentUserCache.forceSetCachedValue([session], prefetchedUser);
     }
   }
 
