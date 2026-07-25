@@ -7,7 +7,7 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClien
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@hexclave/shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@hexclave/shared/dist/schema-fields";
-import { StatusError } from "@hexclave/shared/dist/utils/errors";
+import { HexclaveAssertionError, StatusError } from "@hexclave/shared/dist/utils/errors";
 import type { InferType } from "yup";
 
 type CliSessionState = "anonymous" | "none";
@@ -261,6 +261,27 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
     const browserRefreshTokenSession = await getRefreshTokenSession(tenancy.id, refresh_token);
     if (!browserRefreshTokenSession) {
       throw new StatusError(400, "Invalid refresh token");
+    }
+
+    let browserUser;
+    try {
+      browserUser = await usersCrudHandlers.adminRead({
+        tenancy,
+        user_id: browserRefreshTokenSession.projectUserId,
+        allowedErrorTypes: [KnownErrors.UserNotFound],
+      });
+    } catch (error) {
+      if (KnownErrors.UserNotFound.isInstance(error)) {
+        throw new HexclaveAssertionError("Refresh token session references a missing user", { cause: error });
+      }
+      throw error;
+    }
+
+    if (browserUser.is_restricted) {
+      if (browserUser.restricted_reason === null) {
+        throw new HexclaveAssertionError("Restricted user is missing a restricted reason");
+      }
+      throw new KnownErrors.RestrictedUserNotAllowed(browserUser.restricted_reason);
     }
 
     // Atomically claim the pending CLI auth attempt. Any anonymous session
