@@ -76,11 +76,13 @@ function PageClientInner() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
-  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(true);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const creatingTeamRef = useRef(false);
   const creatingProjectRef = useRef(false);
+  // Users without a project have nowhere to go: the projects page immediately sends them back
+  // here, so dismissing the creation dialog must be a no-op for them.
+  const canLeaveProjectCreation = projects.length > 0;
 
   useEffect(() => {
     if (selectedTeamId != null) {
@@ -336,13 +338,21 @@ function PageClientInner() {
   if (selectedProject == null) {
     return (
       <div className="flex w-full flex-grow items-center justify-center">
+        {/*
+          The dialog is the entire page, so its open state is derived from the route rather than
+          from component state: dismissing it navigates away instead of closing it in place. Keeping
+          a local `open` state here used to leave the page blank, because the projects page bounces
+          users without projects straight back to /new-project without remounting this component,
+          so the closed state survived the round trip.
+        */}
         <Dialog
-          open={isCreateProjectOpen}
+          open
           onOpenChange={(open) => {
-            setIsCreateProjectOpen(open);
-            if (!open) {
-              router.push("/projects");
+            // Navigating away mid-creation would hide the result (or error) of the request.
+            if (open || creatingProjectRef.current || !canLeaveProjectCreation) {
+              return;
             }
+            router.push("/projects");
           }}
         >
           <DialogContent
@@ -397,9 +407,11 @@ function PageClientInner() {
               </div>
 
               <DialogFooter className="border-t border-black/[0.08] px-6 py-4 dark:border-white/[0.08] sm:justify-end sm:space-x-2">
-                <DesignButton type="button" variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
-                  Cancel
-                </DesignButton>
+                {canLeaveProjectCreation && (
+                  <DesignButton type="button" variant="outline" className="rounded-xl" onClick={() => router.push("/projects")} disabled={creatingProject}>
+                    Cancel
+                  </DesignButton>
+                )}
                 <DesignButton
                   type="submit"
                   className="rounded-xl"
