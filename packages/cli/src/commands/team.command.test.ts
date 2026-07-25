@@ -86,7 +86,13 @@ describe("team command parsing", () => {
     ]);
 
     expect(team.removeUser).toHaveBeenCalledWith("user-2");
-    expect(logSpy).toHaveBeenCalledWith("Removed team member: user-2");
+    expect(logSpy.mock.calls).toMatchInlineSnapshot(`
+      [
+        [
+          "Removed team member: user-2",
+        ],
+      ]
+    `);
   });
 
   it("parses the team id on invitations list", async () => {
@@ -107,6 +113,12 @@ describe("team command parsing", () => {
     ]);
 
     expect(team.listInvitations).toHaveBeenCalledTimes(1);
-    expect(logSpy).toHaveBeenCalledWith("No invitations found.");
+    expect(logSpy.mock.calls).toMatchInlineSnapshot(`
+      [
+        [
+          "No invitations found.",
+        ],
+      ]
+    `);
   });
 });

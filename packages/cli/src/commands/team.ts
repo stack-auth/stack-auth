@@ -17,7 +17,11 @@ type ConfirmationOptions = {
 };
 
 function isJson(program: Command): boolean {
-  return Boolean((program.opts() as { json?: boolean }).json);
+  return Boolean(program.opts<{ json?: boolean }>().json);
+}
+
+function printResult(program: Command, result: unknown, humanOutput: string): void {
+  console.log(isJson(program) ? JSON.stringify(result, null, 2) : humanOutput);
 }
 
 async function withTeamPermissionError<T>(operation: string, callback: () => Promise<T>): Promise<T> {
@@ -55,11 +59,7 @@ async function confirmDestructive(action: string, options: ConfirmationOptions):
 
 function printTeams(program: Command, teams: Team[]): void {
   const result = teams.map((team) => ({ id: team.id, displayName: team.displayName }));
-  if (isJson(program)) {
-    console.log(JSON.stringify(result, null, 2));
-  } else {
-    console.log(formatTeamList(result));
-  }
+  printResult(program, result, formatTeamList(result));
 }
 
 export function formatTeamList(teams: Array<{ id: string, displayName: string }>): string {
@@ -74,11 +74,120 @@ export function formatTeamMembers(members: Array<{ id: string, displayName: stri
 
 function printTeam(program: Command, team: Team, prefix: string): void {
   const result = { id: team.id, displayName: team.displayName };
-  if (isJson(program)) {
-    console.log(JSON.stringify(result, null, 2));
-  } else {
-    console.log(`${prefix}: ${result.id} (${result.displayName})`);
-  }
+  printResult(program, result, `${prefix}: ${result.id} (${result.displayName})`);
+}
+
+function registerTeamMembersCommand(team: Command, program: Command): void {
+  const members = team
+    .command("members")
+    .description("Manage team members");
+
+  members
+    .command("list")
+    .description("List members of a team")
+    .option("--team-id <id>", "Team ID")
+    .action(async (options: TeamOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      const teamUsers = await withTeamPermissionError("list team members", () => selectedTeam.listUsers());
+      const result = teamUsers.map((member) => ({
+        id: member.id,
+        displayName: member.teamProfile.displayName,
+      }));
+      printResult(program, result, formatTeamMembers(result));
+    });
+
+  members
+    .command("remove")
+    .description("Remove a member from a team")
+    .option("--team-id <id>", "Team ID")
+    .requiredOption("--user-id <id>", "User ID to remove")
+    .option("-y, --yes", "Skip the confirmation prompt")
+    .action(async (options: TeamOptions & { userId: string } & ConfirmationOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      await confirmDestructive(`remove user ${options.userId} from team ${selectedTeam.id}`, options);
+      await withTeamPermissionError("remove this team member", () => selectedTeam.removeUser(options.userId));
+      printResult(program, { teamId: selectedTeam.id, userId: options.userId }, `Removed team member: ${options.userId}`);
+    });
+}
+
+function registerTeamInvitationsCommand(team: Command, program: Command): void {
+  const invitations = team
+    .command("invitations")
+    .description("Manage team invitations");
+
+  invitations
+    .command("list")
+    .description("List invitations sent by a team")
+    .option("--team-id <id>", "Team ID")
+    .action(async (options: TeamOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      const sentInvitations = await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations());
+      const result = sentInvitations.map((invitation) => ({
+        id: invitation.id,
+        email: invitation.recipientEmail,
+        expiresAt: invitation.expiresAt.toISOString(),
+      }));
+      const humanOutput = result.length === 0
+        ? "No invitations found."
+        : result.map((invitation) => `${invitation.id}\t${invitation.email ?? "(unknown)"}\t${invitation.expiresAt}`).join("\n");
+      printResult(program, result, humanOutput);
+    });
+
+  invitations
+    .command("revoke")
+    .description("Revoke a team invitation")
+    .option("--team-id <id>", "Team ID")
+    .requiredOption("--invitation-id <id>", "Invitation ID")
+    .option("-y, --yes", "Skip the confirmation prompt")
+    .action(async (options: TeamOptions & { invitationId: string } & ConfirmationOptions) => {
+      const user = await getUser();
+      const selectedTeam = await getTeam(user, options);
+      await confirmDestructive(`revoke invitation ${options.invitationId}`, options);
+      const invitation = (await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations()))
+        .find((candidate) => candidate.id === options.invitationId);
+      if (invitation == null) {
+        throw new CliError(`Invitation '${options.invitationId}' was not found for team '${selectedTeam.id}'.`);
+      }
+      await withTeamPermissionError("revoke this invitation", () => invitation.revoke());
+      printResult(program, { teamId: selectedTeam.id, invitationId: options.invitationId }, `Invitation revoked: ${options.invitationId}`);
+    });
+
+  invitations
+    .command("received")
+    .description("List invitations received by the current user")
+    .action(async () => {
+      const user = await getUser();
+      const receivedInvitations = await user.listTeamInvitations();
+      const result = receivedInvitations.map((invitation) => ({
+        id: invitation.id,
+        teamId: invitation.teamId,
+        teamDisplayName: invitation.teamDisplayName,
+        email: invitation.recipientEmail,
+        expiresAt: invitation.expiresAt.toISOString(),
+      }));
+      const humanOutput = result.length === 0
+        ? "No received invitations found."
+        : result.map((invitation) => `${invitation.id}\t${invitation.teamId}\t${invitation.teamDisplayName}\t${invitation.expiresAt}`).join("\n");
+      printResult(program, result, humanOutput);
+    });
+
+  invitations
+    .command("accept")
+    .description("Accept an invitation received by the current user")
+    .requiredOption("--invitation-id <id>", "Invitation ID")
+    .action(async (options: { invitationId: string }) => {
+      const user = await getUser();
+      const invitation = (await user.listTeamInvitations())
+        .find((candidate) => candidate.id === options.invitationId);
+      if (invitation == null) {
+        throw new CliError(`Received invitation '${options.invitationId}' was not found.`);
+      }
+      await invitation.accept();
+      printResult(program, { invitationId: options.invitationId, teamId: invitation.teamId }, `Invitation accepted for team: ${invitation.teamId}`);
+    });
 }
 
 export function registerTeamCommand(program: Command) {
@@ -115,46 +224,7 @@ export function registerTeamCommand(program: Command) {
       printTeam(program, newTeam, "Team created");
     });
 
-  const members = team
-    .command("members")
-    .description("Manage team members");
-
-  members
-    .command("list")
-    .description("List members of a team")
-    .option("--team-id <id>", "Team ID")
-    .action(async (options: TeamOptions) => {
-      const user = await getUser();
-      const selectedTeam = await getTeam(user, options);
-      const teamUsers = await withTeamPermissionError("list team members", () => selectedTeam.listUsers());
-      const result = teamUsers.map((member) => ({
-        id: member.id,
-        displayName: member.teamProfile.displayName,
-      }));
-      if (isJson(program)) {
-        console.log(JSON.stringify(result, null, 2));
-      } else {
-        console.log(formatTeamMembers(result));
-      }
-    });
-
-  members
-    .command("remove")
-    .description("Remove a member from a team")
-    .option("--team-id <id>", "Team ID")
-    .requiredOption("--user-id <id>", "User ID to remove")
-    .option("-y, --yes", "Skip the confirmation prompt")
-    .action(async (options: TeamOptions & { userId: string } & ConfirmationOptions) => {
-      const user = await getUser();
-      const selectedTeam = await getTeam(user, options);
-      await confirmDestructive(`remove user ${options.userId} from team ${selectedTeam.id}`, options);
-      await withTeamPermissionError("remove this team member", () => selectedTeam.removeUser(options.userId));
-      if (isJson(program)) {
-        console.log(JSON.stringify({ teamId: selectedTeam.id, userId: options.userId }, null, 2));
-      } else {
-        console.log(`Removed team member: ${options.userId}`);
-      }
-    });
+  registerTeamMembersCommand(team, program);
 
   team
     .command("invite")
@@ -175,102 +245,10 @@ export function registerTeamCommand(program: Command) {
         })).trim();
       }
       await withTeamPermissionError("invite this user", () => selectedTeam.inviteUser({ email }));
-      if (isJson(program)) {
-        console.log(JSON.stringify({ teamId: selectedTeam.id, email }, null, 2));
-      } else {
-        console.log(`Invitation sent to ${email}.`);
-      }
+      printResult(program, { teamId: selectedTeam.id, email }, `Invitation sent to ${email}.`);
     });
 
-  const invitations = team
-    .command("invitations")
-    .description("Manage team invitations");
-
-  invitations
-    .command("list")
-    .description("List invitations sent by a team")
-    .option("--team-id <id>", "Team ID")
-    .action(async (options: TeamOptions) => {
-      const user = await getUser();
-      const selectedTeam = await getTeam(user, options);
-      const sentInvitations = await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations());
-      const result = sentInvitations.map((invitation) => ({
-        id: invitation.id,
-        email: invitation.recipientEmail,
-        expiresAt: invitation.expiresAt.toISOString(),
-      }));
-      if (isJson(program)) {
-        console.log(JSON.stringify(result, null, 2));
-      } else if (result.length === 0) {
-        console.log("No invitations found.");
-      } else {
-        console.log(result.map((invitation) => `${invitation.id}\t${invitation.email ?? "(unknown)"}\t${invitation.expiresAt}`).join("\n"));
-      }
-    });
-
-  invitations
-    .command("revoke")
-    .description("Revoke a team invitation")
-    .option("--team-id <id>", "Team ID")
-    .requiredOption("--invitation-id <id>", "Invitation ID")
-    .option("-y, --yes", "Skip the confirmation prompt")
-    .action(async (options: TeamOptions & { invitationId: string } & ConfirmationOptions) => {
-      const user = await getUser();
-      const selectedTeam = await getTeam(user, options);
-      await confirmDestructive(`revoke invitation ${options.invitationId}`, options);
-      const invitation = (await withTeamPermissionError("list team invitations", () => selectedTeam.listInvitations()))
-        .find((candidate) => candidate.id === options.invitationId);
-      if (invitation == null) {
-        throw new CliError(`Invitation '${options.invitationId}' was not found for team '${selectedTeam.id}'.`);
-      }
-      await withTeamPermissionError("revoke this invitation", () => invitation.revoke());
-      if (isJson(program)) {
-        console.log(JSON.stringify({ teamId: selectedTeam.id, invitationId: options.invitationId }, null, 2));
-      } else {
-        console.log(`Invitation revoked: ${options.invitationId}`);
-      }
-    });
-
-  invitations
-    .command("received")
-    .description("List invitations received by the current user")
-    .action(async () => {
-      const user = await getUser();
-      const receivedInvitations = await user.listTeamInvitations();
-      const result = receivedInvitations.map((invitation) => ({
-        id: invitation.id,
-        teamId: invitation.teamId,
-        teamDisplayName: invitation.teamDisplayName,
-        email: invitation.recipientEmail,
-        expiresAt: invitation.expiresAt.toISOString(),
-      }));
-      if (isJson(program)) {
-        console.log(JSON.stringify(result, null, 2));
-      } else if (result.length === 0) {
-        console.log("No received invitations found.");
-      } else {
-        console.log(result.map((invitation) => `${invitation.id}\t${invitation.teamId}\t${invitation.teamDisplayName}\t${invitation.expiresAt}`).join("\n"));
-      }
-    });
-
-  invitations
-    .command("accept")
-    .description("Accept an invitation received by the current user")
-    .requiredOption("--invitation-id <id>", "Invitation ID")
-    .action(async (options: { invitationId: string }) => {
-      const user = await getUser();
-      const invitation = (await user.listTeamInvitations())
-        .find((candidate) => candidate.id === options.invitationId);
-      if (invitation == null) {
-        throw new CliError(`Received invitation '${options.invitationId}' was not found.`);
-      }
-      await invitation.accept();
-      if (isJson(program)) {
-        console.log(JSON.stringify({ invitationId: options.invitationId, teamId: invitation.teamId }, null, 2));
-      } else {
-        console.log(`Invitation accepted for team: ${invitation.teamId}`);
-      }
-    });
+  registerTeamInvitationsCommand(team, program);
 
   team
     .command("leave")
@@ -282,11 +260,7 @@ export function registerTeamCommand(program: Command) {
       const selectedTeam = await getTeam(user, options);
       await confirmDestructive(`leave team ${selectedTeam.id}`, options);
       await user.leaveTeam(selectedTeam);
-      if (isJson(program)) {
-        console.log(JSON.stringify({ teamId: selectedTeam.id }, null, 2));
-      } else {
-        console.log(`Left team: ${selectedTeam.id}`);
-      }
+      printResult(program, { teamId: selectedTeam.id }, `Left team: ${selectedTeam.id}`);
     });
 
   team
@@ -309,11 +283,7 @@ export function registerTeamCommand(program: Command) {
         })).trim();
       }
       await withTeamPermissionError("update this team", () => selectedTeam.update({ displayName }));
-      if (isJson(program)) {
-        console.log(JSON.stringify({ id: selectedTeam.id, displayName }, null, 2));
-      } else {
-        console.log(`Team updated: ${selectedTeam.id} (${displayName})`);
-      }
+      printResult(program, { id: selectedTeam.id, displayName }, `Team updated: ${selectedTeam.id} (${displayName})`);
     });
 
   team
@@ -326,10 +296,6 @@ export function registerTeamCommand(program: Command) {
       const selectedTeam = await getTeam(user, options);
       await confirmDestructive(`delete team ${selectedTeam.id}`, options);
       await withTeamPermissionError("delete this team", () => selectedTeam.delete());
-      if (isJson(program)) {
-        console.log(JSON.stringify({ teamId: selectedTeam.id }, null, 2));
-      } else {
-        console.log(`Team deleted: ${selectedTeam.id}`);
-      }
+      printResult(program, { teamId: selectedTeam.id }, `Team deleted: ${selectedTeam.id}`);
     });
 }

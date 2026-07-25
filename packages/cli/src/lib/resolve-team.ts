@@ -1,14 +1,21 @@
 import { input, select } from "@inquirer/prompts";
-import type { Team } from "@hexclave/js";
 import { CliError } from "./errors.js";
 import { isNonInteractiveEnv } from "./interactive.js";
 
-export type ResolveTeamOptions = {
-  teamId?: string,
-  createTeam?: (displayName: string) => Promise<Team>,
+export type ResolveTeamItem = {
+  id: string,
+  displayName: string,
 };
 
-export async function resolveTeam(teams: Team[], options: ResolveTeamOptions = {}): Promise<Team> {
+export type ResolveTeamOptions<T extends ResolveTeamItem> = {
+  teamId?: string,
+  createTeam?: (displayName: string) => Promise<T>,
+};
+
+export async function resolveTeam<T extends ResolveTeamItem>(
+  teams: T[],
+  options: ResolveTeamOptions<T> = {},
+): Promise<T> {
   const teamId = options.teamId?.trim();
   if (teamId) {
     const team = teams.find((candidate) => candidate.id === teamId);

@@ -1829,6 +1829,8 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async removeUser(userId: string) {
         await app._interface.removeUserFromTeam(crud.id, userId, session);
         await app._teamMemberProfilesCache.refresh([session, crud.id]);
+        await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
       },
       // IF_PLATFORM react-like
       useUsers() {
@@ -2322,6 +2324,7 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
       async leaveTeam(team: Team) {
         await app._interface.leaveTeam(team.id, session);
         await app._currentUserTeamsCache.refresh([session]);
+        await app._currentUserCache.refresh([session]);
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));

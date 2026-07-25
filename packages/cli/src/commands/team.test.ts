@@ -6,20 +6,20 @@ describe("formatTeamList", () => {
     expect(formatTeamList([
       { id: "team-1", displayName: "Acme" },
       { id: "team-2", displayName: "Beta" },
-    ])).toBe("team-1\tAcme\nteam-2\tBeta");
+    ])).toMatchInlineSnapshot(`"team-1\tAcme\nteam-2\tBeta"`);
   });
 
   it("returns an empty-list sentinel", () => {
-    expect(formatTeamList([])).toBe("No teams found.");
+    expect(formatTeamList([])).toMatchInlineSnapshot(`"No teams found."`);
   });
 });
 
 describe("formatTeamMembers", () => {
   it("uses a placeholder for missing member display names", () => {
-    expect(formatTeamMembers([{ id: "user-1", displayName: null }])).toBe("user-1\t(none)");
+    expect(formatTeamMembers([{ id: "user-1", displayName: null }])).toMatchInlineSnapshot(`"user-1\t(none)"`);
   });
 
   it("returns an empty-list sentinel", () => {
-    expect(formatTeamMembers([])).toBe("No team members found.");
+    expect(formatTeamMembers([])).toMatchInlineSnapshot(`"No team members found."`);
   });
 });

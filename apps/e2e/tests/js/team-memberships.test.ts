@@ -72,3 +72,24 @@ it("rejects client team member removal without the remove-members permission", {
     KnownErrors.TeamPermissionRequired.isInstance(error)
   ));
 });
+
+it("refreshes the current user after leaving a team", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-leave@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  const user = await clientApp.getUser({ or: "throw" });
+  const team = await user.createTeam({ displayName: "Leave Team" });
+
+  expect((await user.listTeams()).some((candidate) => candidate.id === team.id)).toBe(true);
+  expect(user.selectedTeam?.id).toBe(team.id);
+
+  await user.leaveTeam(team);
+
+  expect((await user.listTeams()).some((candidate) => candidate.id === team.id)).toBe(false);
+  const refreshedUser = await clientApp.getUser({ or: "throw" });
+  expect(refreshedUser.selectedTeam).toBeNull();
+});

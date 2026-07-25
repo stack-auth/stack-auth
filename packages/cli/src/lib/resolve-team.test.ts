@@ -1,13 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Team } from "@hexclave/js";
 import { CliError } from "./errors.js";
 import { resolveTeam } from "./resolve-team.js";
 
-function makeTeam(id: string, displayName: string): Team {
-  return {
-    id,
-    displayName,
-  } as Team;
+function makeTeam(id: string, displayName: string) {
+  return { id, displayName };
 }
 
 const savedCi = process.env.CI;
