@@ -30,7 +30,6 @@ export async function createProjectInteractively(
   const teams = await user.listTeams();
   const team = await resolveTeam(teams, {
     teamId: opts.teamId,
-    createIfNone: true,
     createTeam: async (teamDisplayName) => await user.createTeam({ displayName: teamDisplayName }),
   });
 
