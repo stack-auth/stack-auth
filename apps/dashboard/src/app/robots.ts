@@ -19,6 +19,7 @@ export default function robots(): MetadataRoute.Robots {
           '/playground',
           '/purchase/',
           '/integrations/',
+          '/health',
           '/rde-debug',
           '/development-environment',
         ],
