@@ -1,5 +1,6 @@
 import { StackClientApp } from "@hexclave/js";
 import type { CurrentInternalUser, AdminOwnedProject } from "@hexclave/js";
+import { createUrlIfValid } from "@hexclave/shared/dist/utils/urls";
 import { AuthError } from "./errors.js";
 import type { SessionAuth, ProjectAuthWithRefreshToken } from "./auth.js";
 
@@ -25,7 +26,15 @@ export async function getInternalUser(auth: SessionAuth): Promise<CurrentInterna
     throw new AuthError("Your session is invalid or expired. Run `hexclave login` again.");
   }
   if (user.isRestricted) {
-    const onboardingUrl = `${auth.dashboardUrl.replace(/\/+$/, "")}/onboarding`;
+    const dashboardUrl = createUrlIfValid(auth.dashboardUrl);
+    const onboardingUrl = dashboardUrl == null
+      ? `${auth.dashboardUrl.replace(/\/+$/, "")}/onboarding`
+      : (() => {
+        dashboardUrl.pathname = `${dashboardUrl.pathname.replace(/\/+$/, "")}/onboarding`;
+        dashboardUrl.search = "";
+        dashboardUrl.hash = "";
+        return dashboardUrl.toString();
+      })();
     throw new AuthError(`Finish setting up your account at ${onboardingUrl} before using the CLI.`);
   }
   return user as CurrentInternalUser;
