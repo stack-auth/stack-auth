@@ -1637,6 +1637,13 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     if (!("accessToken" in tokens) || !("refreshToken" in tokens)) {
       throw new HexclaveAssertionError("Invalid tokens object; can't sign in with this", { tokens });
     }
+    // Fetch the user of the incoming tokens before publishing them, so we can seed the current-user cache in the same
+    // tick as the token store update below. Mounted `useUser()` hooks re-read the cache synchronously when the token
+    // store changes, so an empty cache entry for the new session makes them suspend — flashing their Suspense fallback
+    // over UI that was already on the screen. That is most visible on the sign-in/sign-up pages, which sit there
+    // signed out until the analytics anonymous sign-up swaps in a session a few seconds after the page loaded.
+    const prefetchedUser = await this._prefetchCurrentUserForFreshTokens(tokens);
+
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
 
@@ -1646,8 +1653,31 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     const session = this._getSessionFromTokenStore(tokenStore);
     session.updateAccessToken(tokens);
 
-    // Pre-fetch the current user so the cache is warm when useUser() re-renders (write-only, so it never suspends).
-    runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
+    if (prefetchedUser === null) {
+      // We have nothing to seed the cache with (no access token to pre-fetch with, or the pre-fetch failed), so warm
+      // it in the background instead; that may lose the race against the re-render, but it's the best we can do.
+      runAsynchronously(this._currentUserCache.getOrWait([session], "write-only"));
+    } else {
+      this._currentUserCache.forceSetCachedValue([session], prefetchedUser);
+    }
+  }
+
+  /**
+   * Fetches the current user for a token pair that has not been written to the token store yet, without touching the
+   * app-level session (token stores created from an explicit token pair are in-memory only).
+   *
+   * Returns `null` if the user could not be fetched, in which case callers should fall back to a background refresh.
+   */
+  private async _prefetchCurrentUserForFreshTokens(
+    tokens: { accessToken: string | null, refreshToken: string },
+  ): Promise<Result<CurrentUserCrud['Client']['Read'] | null> | null> {
+    const freshTokenStoreInit = this._getTokenStoreInitForFreshTokens(tokens);
+    if (freshTokenStoreInit === undefined) {
+      return null;
+    }
+    const prefetchSession = await this._getSession(freshTokenStoreInit);
+    const result = await this._currentUserCache.getOrWait([prefetchSession], "write-only");
+    return result.status === "ok" ? result : null;
   }
 
   protected _getTokenStoreInitForFreshTokens(tokens: { accessToken: string | null, refreshToken: string }): TokenStoreInit | undefined {
