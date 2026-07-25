@@ -73,7 +73,7 @@ it("rejects client team member removal without the remove-members permission", {
   ));
 });
 
-it("refreshes the current user after leaving a team", { timeout: 60_000 }, async ({ expect }) => {
+it("refreshes the current user after removing themselves from a team", { timeout: 60_000 }, async ({ expect }) => {
   const { clientApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   await clientApp.signUpWithCredential({
@@ -83,13 +83,35 @@ it("refreshes the current user after leaving a team", { timeout: 60_000 }, async
   });
   const user = await clientApp.getUser({ or: "throw" });
   const team = await user.createTeam({ displayName: "Leave Team" });
+  const userWithTeam = await clientApp.getUser({ or: "throw" });
 
-  expect((await user.listTeams()).some((candidate) => candidate.id === team.id)).toBe(true);
-  expect(user.selectedTeam?.id).toBe(team.id);
+  expect((await userWithTeam.listTeams()).some((candidate) => candidate.id === team.id)).toBe(true);
+  expect(userWithTeam.selectedTeam?.id).toBe(team.id);
 
-  await user.leaveTeam(team);
+  const clientTeam = await userWithTeam.getTeam(team.id);
+  if (!clientTeam) throw new Error("Team not found for client user");
+  await clientTeam.removeUser(userWithTeam.id);
 
-  expect((await user.listTeams()).some((candidate) => candidate.id === team.id)).toBe(false);
+  expect((await userWithTeam.listTeams()).some((candidate) => candidate.id === team.id)).toBe(false);
+  const refreshedUser = await clientApp.getUser({ or: "throw" });
+  expect(refreshedUser.selectedTeam).toBeNull();
+});
+
+it("refreshes the current user after leaving a team", { timeout: 60_000 }, async ({ expect }) => {
+  const { clientApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
+
+  await clientApp.signUpWithCredential({
+    email: "membership-leave-team@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  const user = await clientApp.getUser({ or: "throw" });
+  const team = await user.createTeam({ displayName: "Leave Team" });
+  const userWithTeam = await clientApp.getUser({ or: "throw" });
+
+  await userWithTeam.leaveTeam(team);
+
+  expect((await userWithTeam.listTeams()).some((candidate) => candidate.id === team.id)).toBe(false);
   const refreshedUser = await clientApp.getUser({ or: "throw" });
   expect(refreshedUser.selectedTeam).toBeNull();
 });
