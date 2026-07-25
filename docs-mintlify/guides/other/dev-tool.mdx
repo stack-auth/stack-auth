@@ -1,0 +1,91 @@
+---
+title: "Dev Tool Indicator"
+description: "The floating dev tool the Hexclave SDK mounts in development — inspect the current user, view API logs, preview auth pages, and more."
+sidebarTitle: "Dev Tool"
+---
+
+The **dev tool indicator** is a small floating button that the Hexclave client SDK mounts in your browser during development. Clicking it opens a panel with tools for inspecting and testing your integration — the current user, enabled auth methods, live API logs, your auth pages, an AI assistant, an embedded dashboard, and a support form.
+
+It is a development aid only. It does not run in production builds by default, and it is never shown to your end users unless you explicitly opt in.
+
+<Info>
+The dev tool is part of the client SDK itself — it works with any framework package (`@hexclave/next`, `@hexclave/react`, `@hexclave/js`, ...) and even with the no-bundler `<script type="module">` setup that imports from esm.sh. It mounts automatically when you construct a `HexclaveClientApp` in the browser; there is nothing extra to install or import.
+</Info>
+
+## When it appears
+
+Visibility is controlled by the `devTool` option on your `HexclaveClientApp`:
+
+| Value | Behavior |
+| --- | --- |
+| `"auto"` _(default)_ | Show in development only (see the heuristics below). |
+| `true` | Always show, including in production. |
+| `false` | Never show. |
+
+```typescript
+import { HexclaveClientApp } from "@hexclave/js"; // replace `js` with the correct framework SDK package
+
+const hexclaveClientApp = new HexclaveClientApp({
+  tokenStore: "cookie",
+  projectId: "your-project-id",
+  publishableClientKey: "your-publishable-client-key",
+  devTool: "auto", // "auto" (default) | true | false
+});
+```
+
+With the default `"auto"` setting, the SDK decides as follows:
+
+- If a build-time `NODE_ENV` is available (i.e. you use a bundler), the tool is shown only when `NODE_ENV === "development"`.
+- If there is no `NODE_ENV` (for example the no-bundler `<script type="module">` setup), the tool is shown when the page is served from `localhost` or opened from a `file:` URL.
+
+<Note>
+The indicator only mounts for a `HexclaveClientApp` running in a browser-like environment. It never mounts for a `HexclaveServerApp` or during server-side rendering.
+</Note>
+
+### Toggling it from the console
+
+You can force the tool on or off at runtime — this works even in production, and the choice is remembered in `localStorage` for the current browser:
+
+```js
+HexclaveDevTool.enable();  // force-show the panel
+HexclaveDevTool.disable(); // force-hide it
+HexclaveDevTool.reset();   // revert to the default "auto" behavior
+```
+
+## The indicator
+
+The indicator is a small floating button with the Hexclave logo. By default it sits in the **bottom-right corner** of the page.
+
+- **Click** it to open or close the panel.
+- **Drag** it anywhere; on release it snaps to the nearest corner. Its position is remembered across page loads.
+
+The panel is resizable from its top and left edges, and it remembers its size and the last active tab. It does not automatically reopen after a reload — you reopen it by clicking the indicator. The panel header also has a **Docs** link and a close button.
+
+## What you can do
+
+The panel is organized into tabs.
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="user">
+    See the current user (avatar, name, email, and whether they are authenticated) and the auth methods enabled for your project (password, magic link, passkey, OAuth providers). On `localhost` you can **Quick Sign Up** a throwaway test user, sign out, or spin up a **Random User** — handy for exercising auth flows without a real account. A setup checklist appears while anything essential (project, active auth method, a signed-in test user) is still missing.
+  </Card>
+  <Card title="Customize" icon="pen-ruler">
+    Browse every Hexclave handler page (sign-in, sign-up, forgot password, account settings, and more). Each entry shows whether it uses the built-in handler component, a hosted page, or your own custom component, and flags custom components that are outdated. **Open** previews a page in a new tab, and copyable prompts let you paste instructions into your coding agent to customize or upgrade a page.
+  </Card>
+  <Card title="AI" icon="wand-magic-sparkles">
+    Chat with an assistant for help with Hexclave integration, troubleshooting, and best practices. Suggested questions get you started, and the assistant can call tools to answer with details specific to your project.
+  </Card>
+  <Card title="Console" icon="terminal">
+    A live log of the SDK's API calls and auth events — method, URL, status, duration, and any errors. Copy the logs to your clipboard, export them to a file, or clear them.
+  </Card>
+  <Card title="Dashboard" icon="table-columns">
+    Embeds your project's local development-environment dashboard right inside the panel. If a local dashboard isn't running, it links you to the cloud dashboard instead.
+  </Card>
+  <Card title="Support" icon="life-ring">
+    Send feedback or file a bug report without leaving your app, and jump to the Discord community, email support, or GitHub.
+  </Card>
+</CardGroup>
+
+## Turning it off
+
+To hide the indicator entirely, pass `devTool: false` when constructing your app, or run `HexclaveDevTool.disable()` in the console. Because the default is `"auto"`, the indicator is already excluded from production builds unless you opted in with `devTool: true`.
