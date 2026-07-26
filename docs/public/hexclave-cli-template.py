@@ -6,7 +6,7 @@ from typing import Optional
 
 def prompt_cli_login(
   *,
-  base_url: str = "https://api.stack-auth.com",
+  base_url: str = "https://api.hexclave.com",
   app_url: str,
   project_id: str,
   publishable_client_key: Optional[str] = None,
