@@ -240,7 +240,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
           clientSecret: provider.client_secret,
           // Injecting the hexclave-branded callback for new providers is the
           // dashboard's job; this legacy path leaves it unset so providers fall
-          // back to the Hexclave callback.
+          // back to the stack-auth callback.
           customCallbackUrl: undefined,
           facebookConfigId: provider.facebook_config_id,
           microsoftTenantId: provider.microsoft_tenant_id,

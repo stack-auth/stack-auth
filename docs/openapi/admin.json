@@ -5028,7 +5028,7 @@
                   "price_id": {
                     "type": "string",
                     "example": "price_1234567890abcdef",
-                    "description": "The Stack auth price ID to purchase"
+                    "description": "The Hexclave price ID to purchase"
                   },
                   "quantity": {
                     "type": "integer",
