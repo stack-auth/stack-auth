@@ -84,13 +84,20 @@ describe("StackClientApp sign-in cache warm-up", () => {
       noAutomaticPrefetch: true,
     });
 
+    let onFirstPrefetchStarted!: () => void;
+    const firstPrefetchStarted = new Promise<void>((resolve) => { onFirstPrefetchStarted = resolve; });
+    let releaseFirstPrefetch!: () => void;
+    const firstPrefetchReleased = new Promise<void>((resolve) => { releaseFirstPrefetch = resolve; });
+
     const clientInterface = Reflect.get(clientApp, "_interface");
     let getClientUserByTokenCalls = 0;
     Reflect.set(clientInterface, "getClientUserByToken", async () => {
       getClientUserByTokenCalls += 1;
-      // Only the first sign-in's pre-fetch is slow, so the second one gets to publish while the first is still waiting.
+      // The first sign-in's pre-fetch only finishes once we let it, so the second one deterministically gets to publish
+      // while the first one is still waiting.
       if (getClientUserByTokenCalls === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        onFirstPrefetchStarted();
+        await firstPrefetchReleased;
       }
       return { id: "user-id", is_anonymous: false, is_restricted: false };
     });
@@ -101,9 +108,11 @@ describe("StackClientApp sign-in cache warm-up", () => {
     });
 
     const slowSignIn = signIn("old-refresh-token", "old-refresh-token-id");
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await firstPrefetchStarted;
     await signIn("new-refresh-token", "new-refresh-token-id");
+    releaseFirstPrefetch();
     await slowSignIn;
+    expect(getClientUserByTokenCalls).toBe(2);
 
     const tokenStore = Reflect.get(clientApp, "_getOrCreateTokenStore").call(
       clientApp,
