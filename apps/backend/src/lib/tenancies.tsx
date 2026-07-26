@@ -100,7 +100,7 @@ function getDeployedDomainsQuery(tenancySelector: Prisma.Sql): RawQuery<string[]
         WHERE ${tenancySelector}
           AND "status" = 'READY'
           AND "vercelDeploymentUrl" IS NOT NULL
-        ORDER BY "deploymentServiceId", "createdAt" DESC
+        ORDER BY "deploymentServiceId", "createdAt" DESC, "id" DESC
       )
       -- Pending custom domains are not trusted until Vercel confirms ownership
       -- and DNS, otherwise adding an unclaimed hostname would widen redirects.
