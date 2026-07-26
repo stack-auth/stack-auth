@@ -96,6 +96,16 @@ describe('validateRedirectUrl', () => {
         'https://deployment-abc.vercel.app/handler/oauth-callback',
       );
     });
+
+    it('does not trust deployment values with unsupported schemes', () => {
+      const tenancy = createMockTenancy({});
+      tenancy.deployedDomains = ['file:///tmp/deployment'];
+
+      expect(validateRedirectUrl('https://tmp/deployment', tenancy)).toBe(false);
+      expect(getOAuthRedirectUrisForTenancy(tenancy)).not.toContain(
+        'https:///handler/oauth-callback',
+      );
+    });
   });
 
   describe('exact domain matching', () => {

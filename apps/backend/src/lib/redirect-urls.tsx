@@ -46,7 +46,7 @@ function getDeployedOrigins(tenancy: RedirectTenancy): string[] {
       // Deployment URLs are public HTTPS origins even when Vercel returns a
       // bare host or a stored value includes a scheme/path.
       const url = createUrlIfValid(domain.includes("://") ? domain : `https://${domain}`);
-      if (url == null) {
+      if (url == null || !["http:", "https:"].includes(url.protocol) || url.hostname === "") {
         captureError("invalid-deployment-domain", new HexclaveAssertionError("A deployment domain could not be normalized for redirect validation.", {
           domain,
         }));
