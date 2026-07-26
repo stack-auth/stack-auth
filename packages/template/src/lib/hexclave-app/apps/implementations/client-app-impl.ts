@@ -1658,10 +1658,10 @@ export class _HexclaveClientAppImplIncomplete<HasTokenStore extends boolean, Pro
     // Note that we create the session (and seed its cache) from the tokens directly, before writing them to the token
     // store; that way, the session is already fully warm by the time the token store notifies its subscribers.
     const session = this._getSessionFromTokenStore(tokenStore, tokens);
-    session.updateAccessToken(tokens);
     if (prefetchedUser !== null) {
       this._currentUserCache.forceSetCachedValue([session], prefetchedUser);
     }
+    session.updateAccessToken(tokens);
 
     tokenStore.set(tokens);
 
