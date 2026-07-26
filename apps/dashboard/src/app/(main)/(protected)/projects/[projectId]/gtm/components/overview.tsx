@@ -8,7 +8,7 @@ import { BriefingHeader } from "./briefing-header";
 import { DomainWorkspace } from "./domain-workspace";
 import { UnifiedFeed } from "./unified-feed";
 
-export function GtmOverview(props: { toolbar: ReactNode, project?: { id: string, displayName: string } }) {
+export function GtmOverview(props: { toolbar: ReactNode, activityAction?: ReactNode, project?: { id: string, displayName: string } }) {
   const routeProject = useAdminApp().useProject();
   const project = props.project ?? routeProject;
 
@@ -17,7 +17,7 @@ export function GtmOverview(props: { toolbar: ReactNode, project?: { id: string,
       <div className="space-y-8 lg:space-y-12">
         {props.toolbar}
         <article className="overflow-hidden rounded-2xl border border-foreground/[0.08] bg-background p-4 sm:p-6">
-          <BriefingHeader projectName={project.displayName} />
+          <BriefingHeader projectName={project.displayName} action={props.activityAction} />
           <details className="group mt-4">
             <summary className="flex cursor-pointer list-none items-center justify-between border-t border-foreground/[0.08] px-2 py-5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 [&::-webkit-details-marker]:hidden">
               <span>Open today’s short brief</span>

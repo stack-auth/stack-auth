@@ -4,6 +4,7 @@ import { DesignBadge, DesignButton } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { cn } from "@/components/ui";
 import { useGtmData } from "@/lib/gtm/gtm-data";
+import { getGtmSuggestionHref } from "@/lib/gtm/gtm-mode";
 import {
   classifyAction,
   classifyInsight,
@@ -44,16 +45,14 @@ function radarPolygon(radar: Map<GtmDomainId, number> | null): string | null {
 
 function DomainTimeline(props: {
   items: Suggestion[],
-  domainLabel: string,
   admin: GtmAdminControls | null,
   projectId: string,
   demo: boolean,
 }) {
   if (props.items.length === 0) {
     return (
-      <div className="border-y border-foreground/[0.08] py-8">
-        <p className="text-sm font-medium text-foreground">No {props.domainLabel.toLowerCase()} suggestions yet.</p>
-        <p className="mt-1 text-xs text-muted-foreground">Waiting for verified evidence.</p>
+      <div className="py-8">
+        <p className="text-sm text-muted-foreground">No suggestions yet.</p>
       </div>
     );
   }
@@ -62,13 +61,10 @@ function DomainTimeline(props: {
     <div className="grid gap-3 sm:grid-cols-2">
       {props.items.slice(0, 4).map((item) => {
         const admin = props.admin;
-        const isCustomerProject = props.projectId !== "internal";
         const suggestionType = item.type === "insight" ? "insights" : "actions";
         const timelineHref = admin != null
           ? urlString`/projects/internal/gtm/admin/${props.projectId}/${suggestionType}/${item.value.id}`
-          : isCustomerProject
-            ? urlString`/projects/${props.projectId}/gtm/${suggestionType}/${item.value.id}?demo=${props.demo ? "true" : "false"}`
-            : null;
+          : getGtmSuggestionHref(props.projectId, suggestionType, item.value.id, props.demo);
         const card = (
           <article
             className={cn(
@@ -251,7 +247,6 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
                 <h4 className="mb-5 font-serif text-3xl">Suggestions</h4>
                 <DomainTimeline
                   items={selectedSuggestions}
-                  domainLabel={current.label}
                   admin={admin}
                   projectId={props.projectId}
                   demo={demo}
@@ -261,7 +256,7 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
               <section className="py-9">
                 <h4 className="mb-5 font-serif text-3xl">Notes</h4>
                 {selectedNotes.length === 0
-                  ? <p className="py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} notes yet.</p>
+                  ? <p className="py-8 text-sm text-muted-foreground">No notes yet.</p>
                   : (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {selectedNotes.map((note) => (
@@ -291,7 +286,7 @@ export function DomainWorkspace(props: { projectId: string, projectName: string 
               <section className="py-9">
                 <h4 className="mb-5 font-serif text-3xl">Archive</h4>
                 {archived.length === 0
-                  ? <p className="py-8 text-sm text-muted-foreground">No {current.label.toLowerCase()} actions archived yet.</p>
+                  ? <p className="py-8 text-sm text-muted-foreground">No archive yet.</p>
                   : (
                     <div className="border-y">
                       {archived.map((item) => (

@@ -24,7 +24,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { GtmStoryCard, StoryReveal, storyCanvasVariants, type GtmStoryChapter } from "./story-card";
 
 /** White pill CTA, matching the story card's primary action. */
-const storyPrimaryButtonClass = "rounded-full bg-white px-5 text-slate-950 transition-colors duration-150 hover:bg-white/90 hover:transition-none";
+const storyPrimaryButtonClass = "rounded-full bg-white px-5 text-slate-950 transition-colors duration-150 hover:bg-white/90 hover:transition-none dark:bg-white dark:text-slate-950 dark:hover:bg-white/90";
 
 /** Glass field styling so inputs stay legible on top of the saturated canvas. */
 const storyFieldClass = "!border-white/25 !bg-black/20 !text-white !ring-white/10 placeholder:!text-white/60 focus-visible:!ring-white/70 dark:!border-white/25 dark:!bg-black/20 dark:!text-white dark:!ring-white/10 dark:placeholder:!text-white/60 dark:focus-visible:!ring-white/70";

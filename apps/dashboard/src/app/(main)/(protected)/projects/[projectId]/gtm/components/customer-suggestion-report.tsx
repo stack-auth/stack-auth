@@ -358,12 +358,11 @@ function TimelineEditorDialog(props: {
 }
 
 function SuggestionReport(props: { suggestion: Suggestion, adminTargetProjectId?: string }) {
-  const { demo } = useGtmData();
   const projectId = useProjectId();
   const suggestion = props.suggestion;
   const [editorOpen, setEditorOpen] = useState(false);
   const returnHref = props.adminTargetProjectId == null
-    ? urlString`/projects/${projectId}/gtm?demo=${demo ? "true" : "false"}`
+    ? urlString`/projects/${projectId}/gtm`
     : urlString`/projects/internal/gtm/admin?project_id=${props.adminTargetProjectId}`;
 
   return (
